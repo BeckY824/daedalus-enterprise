@@ -15,6 +15,7 @@ import { useLocalPref } from "@/lib/local-pref";
 import { 只留当前行, 露出这一列, 算可见列, 切换后存 } from "@/lib/list-select";
 import { 当前列表地址, 读勾选, 记勾选, 记横滚, 记本地页, 清勾选, 进来可还原 } from "@/lib/list-return";
 import { 横滚回 } from "@/lib/hscroll-restore";
+import { 躲开钉住列补宽 } from "@/lib/list-edge-clear";
 
 /**
  * 列表页的那张表。**全站只有这一个表格实现**（批 2 抽出来，批 3 六页照用）。
@@ -94,6 +95,12 @@ type Props<T> = {
   /** 点行不去别的页、在这儿做点事（比如打开编辑框）。行链接给了空串的行也走它 */
   行点击?: (r: T) => void;
   横向?: number;
+  /**
+   * 横滚停在最左时，表头字别被右边钉住的操作列和它左边的渐隐压成半截（设计语言 C-A2 · C-新6）：给了列键，
+   * 就按眼下的框宽给这一列多补一点宽，把后面的列往右推到「看得见的最后一个表头字在渐隐左边、下一个整个藏到钉住列底下」。
+   * 算法在 lib/list-edge-clear.ts。补的这一列最好是靠左摆的短内容（渠道页是「渠道属性」），多出来的是右边留白。手机宽不补
+   */
+  补宽列?: string;
   /**
    * 不给 = 在浏览器里分页（行已经一次全拿下来了，多数列表页是这样）。
    * 给了 = 服务端分页，由调用方去翻。false = 不分页。
@@ -182,7 +189,7 @@ const 骨架格 = {
 const 手机名字宽 = 120;
 
 export default function DataList<T extends { id: string }>({
-  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 浮起操作条 = false, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开, 回来还原 = false,
+  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 浮起操作条 = false, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开, 回来还原 = false, 补宽列,
 }: Props<T>) {
   const router = useRouter();
   const 预取 = useHoverPrefetch();
@@ -429,6 +436,9 @@ export default function DataList<T extends { id: string }>({
     没写的照钉：PR #384 第一版一律不钉，线索列表的操作列（分配按钮、批量自动分配的结果格）在 375 宽被推到 930–1068px，看不见
   */
   const 手机 = 屏.md === false;
+  /** 补宽列多给的宽（见 补宽列）；量的时候要减掉它才是「不补时」的位置。没给补宽列、手机宽时不算 */
+  const [量得补宽, set补宽] = useState(0);
+  const 补宽 = 补宽列 && !手机 ? 量得补宽 : 0;
   const 显示的列 = useMemo(
     () =>
       全部列
@@ -439,14 +449,54 @@ export default function DataList<T extends { id: string }>({
           // 只钉常驻的：能被收进「列」里的列不该当名字
           ...(i === 0 && c.常驻 && !c.fixed ? { fixed: "left" as const, ...(手机 && typeof c.width === "number" && c.width > 手机名字宽 ? { width: 手机名字宽 } : {}) } : {}),
           ...(手机 && c.手机不钉 && (c.fixed === "right" || c.fixed === "end") ? { fixed: undefined } : {}),
+          ...(补宽 && 列键(c) === 补宽列 && typeof c.width === "number" ? { width: c.width + 补宽 } : {}),
           // 带上列键做类名，挪到看得见 靠它找表头
           // 折行：备注这类长文照旧折行；操作列（表头空）按钮不截
           className: [c.className, `dl-col-${列键(c)}`, c.折行 ? "dl-wrap" : "", c.title === "" ? "dl-act" : ""].filter(Boolean).join(" "),
           // 操作列表头是空的，读屏念到这一格只有「列标题」；看不见的「操作」两个字给读屏用（10-27 整合第 8 条）
           ...(c.title === "" ? { title: <span className="sr-only">操作</span> } : {}),
         })),
-    [全部列, 可见, 手机],
+    [全部列, 可见, 手机, 补宽, 补宽列],
   );
+  /*
+    补宽列：量表头。表格坐标 = 相对 <table> 左沿（横滚了也一样）；钉住的操作列左沿 = 框宽 − 右钉住各格宽。
+    框变宽变窄（拖窗口、左栏收起）重量一次；列变了（勾列、名字列跟数据变宽）也重量。
+    ResizeObserver 一挂上就先回调一次，第一次量也走它。当前补了多少按表头实量（这一格的宽 − 列定义的宽），不靠记下来的值：
+    手机宽 ↔ 电脑宽来回切时记的值会和画出来的对不上
+  */
+  useEffect(() => {
+    if (!补宽列 || 手机) return;
+    const 外 = 表框.current;
+    if (!外) return;
+    const 定宽 = 全部列.find((c) => 列键(c) === 补宽列)?.width;
+    if (typeof 定宽 !== "number") return;
+    const 算 = (): number | null => {
+      const 框 = 外.querySelector<HTMLElement>(".ant-table-content");
+      const 表 = 框?.querySelector<HTMLTableElement>(":scope > table");
+      if (!框 || !表) return null;
+      const 格们 = [...表.querySelectorAll<HTMLElement>(":scope > thead > tr > th")];
+      const 起 = 格们.findIndex((th) => th.classList.contains(`dl-col-${补宽列}`));
+      if (起 < 0) return 0;
+      const 现 = Math.max(0, Math.round(格们[起].getBoundingClientRect().width - 定宽));
+      // 不补时也没横滚（列加起来没框宽）：没有被压的，不补
+      if (框.scrollWidth - 现 <= 框.clientWidth + 1) return 0;
+      const 钉 = (th: HTMLElement) => th.classList.contains("ant-table-cell-fix-end") || th.classList.contains("ant-table-cell-fix-start");
+      const 界 = 框.clientWidth - 格们.filter((th) => th.classList.contains("ant-table-cell-fix-end")).reduce((w, th) => w + th.getBoundingClientRect().width, 0);
+      const 表左 = 表.getBoundingClientRect().left;
+      const 字 = 格们.slice(起 + 1).filter((th) => !钉(th)).flatMap((th) => {
+        const r = document.createRange();
+        r.selectNodeContents(th.querySelector(".ant-table-column-title") ?? th);
+        const b = r.getBoundingClientRect();
+        return b.width > 0 ? [{ 左: b.left - 表左 - 现, 右: b.right - 表左 - 现 }] : [];
+      });
+      const 渐隐 = parseFloat(getComputedStyle(外).getPropertyValue("--edge-fade")) || 24;
+      return 躲开钉住列补宽(字, 界, 渐隐, 160);
+    };
+    const 量 = () => { const d = 算(); if (d !== null) set补宽(d); };
+    const 看 = new ResizeObserver(量);
+    看.observe(外);
+    return () => 看.disconnect();
+  }, [补宽列, 手机, 全部列, 可见]);
   useEffect(() => {
     if (!待露.current) return;
     挪到看得见(待露.current);

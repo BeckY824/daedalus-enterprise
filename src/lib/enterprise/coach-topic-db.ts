@@ -20,6 +20,7 @@ import {
   发起通知谁, 回复通知谁, 关闭通知谁, type 主题项目, type 发起身份, type 主题状态,
 } from "./coach-topic";
 import { 能看项目, 权限项目选, type 谁 } from "./permissions";
+import { 录音点评开着, 我的录音草稿, type 录音给界面 } from "./coach-rec-db";
 import { 夹页, 复盘列表每页, type 主题范围, type 主题状态筛, type 复盘主题 } from "@/lib/project/review-tabs";
 
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -57,6 +58,11 @@ export type 项目主题们 = {
   待回复数: number;
   /** 公海、回收站：只读 */
   冻结: boolean;
+  /**
+   * 录音点评（11-22 PR2，lib/enterprise/coach-rec-db.ts）：开关开着、我能发时才有——「传录音文件」入口和我自己没传完 / 待提交的录音草稿。
+   * 开关关着 = 没有这一格，页面和原来一样
+   */
+  录音?: { 草稿们: 录音给界面[] };
 };
 
 /** 人的叫法：主业务角色（教练写「销售教练」，兼了总管理的写总管理）；发主题时按发起身份写 */
@@ -124,6 +130,7 @@ export async function 读项目主题(me: 谁, projectId: string): Promise<项�
     当前节点: p.node,
     待回复数: 们.filter((t) => t.status === "待回复").length,
     冻结: 冻结了(判),
+    ...(能发主题(me, 判, org) && (await 录音点评开着()) ? { 录音: { 草稿们: await 我的录音草稿(me, p.id) } } : {}),
   };
 }
 
