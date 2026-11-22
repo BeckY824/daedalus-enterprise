@@ -38,7 +38,7 @@ import { ComposerFoot, ComposerTools, ComposerTop, SendKey } from "./ComposerPar
 import ComposerPlus from "./ComposerPlus";
 import { useNarrow } from "@/lib/roster";
 import { useIsNowSkin } from "@/lib/use-skin";
-import { 引用事件 } from "./TurnMenu";
+import { 加引用, 引用事件 } from "./TurnMenu";
 import type { Suggestion } from "./HomeChat";
 import type { 这一屏 } from "./useHomeTurns";
 
@@ -255,8 +255,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
     const 接 = (e: Event) => {
       const 片段 = (e as CustomEvent<string>).detail;
       if (!片段) return;
-      const 前缀 = `关于「${片段}」：`;
-      setQ((v) => (v.startsWith(前缀) ? v : 前缀 + v));
+      setQ((v) => 加引用(v, 片段));
       requestAnimationFrame(() => {
         const ta = taRef.current;
         if (!ta) return;

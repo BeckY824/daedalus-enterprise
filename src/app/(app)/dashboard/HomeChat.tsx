@@ -161,7 +161,13 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
   const 一张纸 = 现状 && 驾驶舱 && !empty;
   const 对话id = useConversationId(scope) ?? 会话?.id ?? null;
   const 刚发在屏 = turns.some((t) => t.id === 刚发的);
-  const 落底键 = useToLatestKey(对话id, 刚发在屏);
+  /*
+    换对话（落底键变了；认领不换键、不算）就把「刚发的」清掉（#420 审查挡合 1）：老对话里点「重新回答」，刚发的 = 库里那一轮的 id，
+    换到别的再切回来，载入对话装回同一个 id，它又「在屏」——ToLatest 不贴底、TurnView 又把它顶到框顶，最后一轮下面空出一框高
+  */
+  const 落底键 = useToLatestKey(对话id, 刚发在屏, () => {
+    if (刚发的 !== null) set刚发的(null);
+  });
   const 视图中 = useViewAs();
   const 标题 = (会话 && 会话.id === 对话id ? 会话.title : null) ?? 截标题(turns[0]?.question ?? "");
   const 待办 = !窄 && (

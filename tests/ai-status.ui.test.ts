@@ -199,6 +199,38 @@ it("出错 / 打断（现状主题，设计语言 HC-2a C11-A）：打断灰点�
   await page.close();
 });
 
+it("触屏 / 390（现状主题，#420 审查挡合 2）：展开钮、「重新回答 / 重试」点击区 ≥ 44，那一行不变高（普通、紧凑都不变）；1280 不撑", async () => {
+  const 量 = async (page: Page) => page.locator(".ais-hd").evaluate((e) => {
+    const h = (s: string) => { const x = e.querySelector(s); return x ? Math.round(x.getBoundingClientRect().height * 2) / 2 : null; };
+    return { 行: Math.round(e.getBoundingClientRect().height * 2) / 2, 钮: h("button.ais-hd-b"), 重: h(".ais-retry") };
+  });
+  const steps = [步(0, "search_customers(x)", "done", "1 位"), 步(1, "get_customer(c)", "done", "被打断")];
+  const 宽钮 = { page: (await open(1280)).page };
+  await 画(宽钮.page, { steps, 态: "interrupted", 起 });
+  const 电脑 = await 量(宽钮.page);
+  await 画(宽钮.page, { steps, 态: "interrupted", 起, compact: true });
+  const 电脑紧 = await 量(宽钮.page);
+  await 宽钮.page.close();
+  expect(电脑.钮!).toBeLessThan(44);
+  const { page, errors } = await open(390, 844);
+  for (const [compact, 原] of [[false, 电脑], [true, 电脑紧]] as const) {
+    await 画(page, { steps, 态: "interrupted", 起, compact });
+    const 手机 = await 量(page);
+    expect(手机.钮!, `展开钮${compact ? "（紧凑）" : ""}`).toBeGreaterThanOrEqual(44);
+    expect(手机.重!, `重新回答${compact ? "（紧凑）" : ""}`).toBeGreaterThanOrEqual(44);
+    expect(手机.行, `这一行不变高${compact ? "（紧凑）" : ""}`).toBe(原.行);
+    expect(await page.getByRole("button", { name: "重新回答", exact: true }).evaluate((e) => e.getBoundingClientRect().width)).toBeGreaterThanOrEqual(44);
+  }
+  // 出错的「重试」（字短）宽也够 44
+  await 画(page, { steps: [步(0, "list_contracts(p9)", "error")], 态: "error", 起, 原因: "这个项目还没建合同" });
+  const 重试 = await page.getByRole("button", { name: "重试", exact: true }).evaluate((e) => { const r = e.getBoundingClientRect(); return [r.width, r.height]; });
+  expect(重试[0]).toBeGreaterThanOrEqual(44);
+  expect(重试[1]).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
 const 长名 = "某某超长国际贸易进出口集团股份有限公司华东区域分公司".repeat(4);
 const 计划 = (id: string, 名: string, subject = "发报价") => ({ id, kind: "add_plan", customerId: `c-${id}`, customerName: 名, reason: "到期了", subject, plannedAt: "2026-11-23", method: "电话" });
 

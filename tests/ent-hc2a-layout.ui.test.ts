@@ -45,6 +45,8 @@ beforeAll(async () => {
   const r = await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import TurnView from '@/app/(app)/dashboard/TurnView';
+    import { 加引用 } from '@/app/(app)/dashboard/TurnMenu';
+    window.__加引用 = 加引用;
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     import { useIsNowSkin } from '@/lib/use-skin';
     let root;
@@ -205,6 +207,56 @@ it("C8 操作行：最后一轮常显，之前的悬停才出；⋯ 往上弹，
   } finally { await close(); }
 });
 
+it("C8 ⋯ 补点（#420 审查）：⋯ 有提示「更多」、菜单打开焦点进菜单；引用选中的字（按下 ⋯ 那一刻存下，之后选区没了也照样引）；连着引用不叠两层；移除的那轮不算「后面还有一轮」", async () => {
+  const { page, errors, close } = await 开(1366);
+  try {
+    await page.evaluate(() => { document.querySelector(".cli")!.addEventListener("cli:quote", (e) => { (window as unknown as { __引用: unknown }).__引用 = (e as CustomEvent).detail; }); });
+    const 钮0 = 轮(page, 0).getByRole("button", { name: "这一轮的更多操作" });
+    await 轮(page, 0).locator(".cli-a").hover();
+    await 钮0.hover();
+    await expect.poll(() => page.locator(".ant-tooltip:not(.ant-tooltip-hidden)").filter({ hasText: "更多" }).count()).toBe(1);
+    // 在第 0 轮回答里选一段字，再点 ⋯
+    const 选的 = await 轮(page, 0).locator(".cli-a").evaluate((e) => {
+      const 走 = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+      const t = 走.nextNode() as Text;
+      const r = document.createRange(); r.setStart(t, 0); r.setEnd(t, Math.min(4, t.length));
+      const 选 = window.getSelection()!; 选.removeAllRanges(); 选.addRange(r);
+      return 选.toString();
+    });
+    expect(选的.length).toBeGreaterThan(0);
+    await 钮0.click();
+    const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+    await 菜单.waitFor();
+    // 菜单打开焦点进菜单（键盘能直接上下选）
+    await expect.poll(() => page.evaluate(() => !!document.activeElement?.closest(".ant-dropdown"))).toBe(true);
+    // 菜单开着时选区没了（焦点挪走、点击收掉选区）：仍引用按下 ⋯ 那一刻选中的字
+    await page.evaluate(() => window.getSelection()!.removeAllRanges());
+    await 菜单.getByText("引用到新问题").click();
+    expect(await page.evaluate(() => (window as unknown as { __引用: unknown }).__引用)).toBe(选的.replace(/\s+/g, " ").trim());
+    // 没选字：引用这一问
+    await 钮0.click();
+    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").getByText("引用到新问题").click();
+    expect(await page.evaluate(() => (window as unknown as { __引用: unknown }).__引用)).toBe("今天该跟谁");
+    // 连着引用：开头已有的引用先去掉，不叠两层
+    const 加 = (原: string, 片段: string) => page.evaluate(([原, 片段]) => (window as unknown as { __加引用: (a: string, b: string) => string }).__加引用(原, 片段), [原, 片段] as const);
+    expect(await 加("", "今天该跟谁")).toBe("关于「今天该跟谁」：");
+    expect(await 加("关于「今天该跟谁」：", "华东展具")).toBe("关于「华东展具」：");
+    expect(await 加("关于「今天该跟谁」：要不要先打电话", "华东展具")).toBe("关于「华东展具」：要不要先打电话");
+    expect(await 加("关于「a」：关于「b」：接着问", "c")).toBe("关于「c」：接着问");
+    expect(await 加("我想问关于「a」：的事", "c")).toBe("关于「c」：我想问关于「a」：的事");
+    // 最后一轮移除（还在「已移除… 撤销」那 5 秒）：前一轮就是看得见的最后一轮，操作行常显
+    await expect.poll(() => page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").count()).toBe(0);
+    await page.locator(".cli-log").evaluate((e) => { e.scrollTop = e.scrollHeight; });
+    await 轮(page, 2).getByRole("button", { name: "这一轮的更多操作" }).click();
+    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").getByText("移除这一轮").click();
+    await 轮(page, 2).locator(".cli-turn-gone-t").waitFor();
+    await page.mouse.move(1, 1);
+    await expect.poll(() => 轮(page, 1).locator(".cli-bar").evaluate((e) => getComputedStyle(e).opacity)).toBe("1");
+    expect(await 轮(page, 0).locator(".cli-bar").evaluate((e) => getComputedStyle(e).opacity)).toBe("0");
+    expect(errors).toEqual([]);
+  } finally { await close(); }
+});
+
 it("C8 触屏 390：每轮操作行常显、钮 44；页面不横滚", async () => {
   const { page, errors, close } = await 开(390);
   try {
@@ -214,6 +266,10 @@ it("C8 触屏 390：每轮操作行常显、钮 44；页面不横滚", async () 
     for (const b of 钮们) expect(b).toEqual([true, true]);
     // 第一颗图标仍和正文同一条线
     expect(Math.abs((await 字左(page, ".cli-turn:nth-child(1) .cli-bar .cli-ic")) - (await 字左(page, ".cli-turn:nth-child(1) .cli-a")))).toBeLessThanOrEqual(1);
+    // 步骤条展开钮点击区 ≥ 44（--hit-touch），那一行不变高（负外边距收回，仍约 28）（#420 审查挡合 2）
+    const 步骤 = await 轮(page, 0).locator(".ais-hd").evaluate((e) => ({ 行: e.getBoundingClientRect().height, 钮: e.querySelector("button.ais-hd-b")!.getBoundingClientRect().height }));
+    expect(步骤.钮).toBeGreaterThanOrEqual(44);
+    expect(步骤.行, "步骤条那一行仍是原来的一行高（没被 44 撑高）").toBeLessThan(30);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await close(); }

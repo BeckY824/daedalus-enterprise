@@ -3,6 +3,7 @@
  * 过程中还自己往下挪 16px。原因：重答的老轮不算「刚发」，没有 cli-turn-new、也不顶。
  * 期望和刚发一问一样：问句顶到框顶、离顶 14，下面留一框高的空，流式不拽人；同一轮连着重答两次也再顶一次；
  * 中间某一轮重答也顶到框顶，但不在两轮之间空出一框高。
+ * #420 审查挡合 1：重答过之后换到别的对话、再切回来，要落底（#410「换对话落底」），不能又顶到框顶、下面空一框高。
  *
  * 外面照 HC-1 的一张纸（.cli-paper 框里滚）；里面是真 TurnLog + 真 TurnView + 真 ToLatest，
  * 「刚发的」照 HomeChat 那样挂在外层状态上（动作.刚发）；任务表换成一个能订阅的小桩，好模拟重答后一段段流出来。
@@ -37,10 +38,16 @@ beforeAll(async () => {
   const r = await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import TurnLog from '@/app/(app)/dashboard/TurnLog';
-    import ToLatest from '@/app/(app)/dashboard/ToLatest';
+    import ToLatest, { useToLatestKey } from '@/app/(app)/dashboard/ToLatest';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
-    function 页({ 轮们 }) {
+    function 页({ 轮们: 初 }) {
+      // 照 HomeChat：这一屏装着哪段对话、哪几轮；window.__换 模拟点列表里另一段（对话 id 先变、那几轮后到）
+      const [屏, set屏] = React.useState({ 对话: 'A', 轮们: 初 });
+      window.__换 = (对话, 轮们) => set屏({ 对话, 轮们 });
+      const 轮们 = 屏.轮们;
       const [刚发的, set刚发的] = React.useState(null);
+      const 刚发在屏 = 轮们.some((t) => t.id === 刚发的);
+      const 键 = useToLatestKey(屏.对话, 刚发在屏, () => { if (刚发的 !== null) set刚发的(null); });
       const [动作] = React.useState(() => ({
         start: (t) => { window.__开跑 = (window.__开跑 || []).concat(t.id); window.__设任务('home:' + t.id, { status: 'running', startedAt: Date.now(), value: { text: '', steps: [] } }); },
         在跑: () => false,
@@ -52,7 +59,7 @@ beforeAll(async () => {
           <div className="cli-col cli-frame">
             <div className="cli-head"><span className="cli-head-t">对话</span></div>
             <TurnLog turns={轮们} 刚发的={刚发的} scope="s" 动作={动作} 企业版 />
-            <ToLatest key="c1" 刚发={轮们.some((t) => t.id === 刚发的)} />
+            <ToLatest key={键} 刚发={刚发在屏} />
             <div className="cli-composer cli-composer-sticky"><div className="cli-input"><textarea rows={1} aria-label="问一句" /></div></div>
           </div>
         </div></div></div>
@@ -164,6 +171,36 @@ it("重新回答（中间一轮）：顶到框顶离顶 14，但不在两轮之�
       return Math.round(们[i + 1].getBoundingClientRect().top - 们[i].getBoundingClientRect().bottom);
     }, 中);
     expect(缝).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await close(); }
+});
+
+it("重新回答后换对话再切回来（#420 审查挡合 1）：落到最底、不出「↓」，没有哪一轮再算刚发（不顶框顶、最后一轮下面不空一框高）", async () => {
+  const { page, errors, close } = await 开(1366, 900);
+  try {
+    const 末 = 轮数 - 1;
+    await page.locator(".cli-log > .cli-turn").nth(末).getByRole("button", { name: "重新回答" }).click();
+    await 等顶到(page, 末);
+    await 流(page, `t${末}`, 3);
+    expect(await 离顶(page, 末)).toEqual({ 轮: 0, 问: 14 });
+    // 切到 B（另一段，6 轮），再切回 A：对话 id 先变、库里那几轮后到；A 装回来还是同样的 id（t0…t7，重答那轮 t7 也在）
+    const B轮们 = Array.from({ length: 6 }, (_, i) => ({ id: `b${i}`, question: `B 的问题 ${i}`, kind: "ask", at: 起 + i * 1000 }));
+    await page.evaluate((B) => {
+      const w = window as unknown as { __jobs: Record<string, unknown>; __换: (对话: string, 轮们: unknown) => void };
+      B.forEach((t, i) => { w.__jobs[`home:${t.id}`] = { status: "done", startedAt: 0, endedAt: 8000, value: { ms: 8000, text: `B 第 ${i} 轮`, steps: [], answer: { text: `B 第 ${i} 轮`, records: [], customers: [], proposals: [] } } }; });
+      w.__换("B", B);
+    }, B轮们);
+    await page.waitForTimeout(80);
+    await page.evaluate((B) => (window as unknown as { __换: (对话: string, 轮们: unknown) => void }).__换("A", B), B轮们);
+    await page.waitForTimeout(80);
+    await page.evaluate((A) => (window as unknown as { __换: (对话: string, 轮们: unknown) => void }).__换("A", A), 轮们);
+    await page.waitForTimeout(150);
+    expect(await page.locator(".cli-log .cli-turn-new").count(), "切回来没有哪一轮还算刚发").toBe(0);
+    expect(await page.locator(".cli-log").evaluate((e) => e.scrollHeight - e.scrollTop - e.clientHeight), "切回来落到最底").toBeLessThan(2);
+    expect(await page.locator(".cli-latest-b").evaluate((e) => ({ 露: !(e as HTMLButtonElement).hidden, 蓝点: e.classList.contains("has-new") }))).toEqual({ 露: false, 蓝点: false });
+    // 最后一轮下面不空一框高：最后一轮底边贴着框底（只差底边留白）
+    const 空 = await page.locator(".cli-log").evaluate((e, i) => e.getBoundingClientRect().bottom - e.querySelectorAll<HTMLElement>(":scope > .cli-turn")[i].getBoundingClientRect().bottom, 末);
+    expect(空).toBeLessThan(80);
     expect(errors).toEqual([]);
   } finally { await close(); }
 });
