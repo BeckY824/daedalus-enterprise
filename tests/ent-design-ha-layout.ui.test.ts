@@ -39,6 +39,9 @@ beforeAll(async () => {
     import VerifyInbox from '@/app/(app)/projects/VerifyInbox';
     import { usePinCenter } from '@/app/(app)/dashboard/use-pin-center';
     import { useIsNowSkin } from '@/lib/use-skin';
+    import { configureBrowserBusinessTimeZone } from '@/lib/business-clock';
+    // 企业版浏览器端业务钟 = 北京（app/(app)/layout.tsx 的 BusinessProvider 传 timeZone）；页面本身开在伦敦时区，时间仍按北京写
+    configureBrowserBusinessTimeZone('Asia/Shanghai');
     const 长 = '某某超长贸易进出口有限公司'.repeat(5);
     const 示例们 = [
       { label: "今天该跟谁", question: "今天该跟谁", kind: "fill" },
@@ -56,6 +59,8 @@ beforeAll(async () => {
     const 两位 = (n) => String(n).padStart(2, '0');
     const 北京 = new Date(今.getTime() + 8 * 3600_000);
     const 今天串 = 两位(北京.getUTCMonth() + 1) + '-' + 两位(北京.getUTCDate());
+    const 今天日 = 北京.getUTCFullYear() + '-' + 今天串;
+    const 京 = (hm) => new Date(今天日 + 'T' + hm + ':00+08:00').toISOString();
     function 首页({ 待办, 卡数 }) {
       const [槽, set槽] = useState(null);
       const [q, setQ] = useState("");
@@ -65,12 +70,12 @@ beforeAll(async () => {
       usePinCenter(网格, 现状);
       const 开命令 = q.startsWith('/');
       return (
-        <div className="cli cli-empty"><div className="cli-ck"><div className="cli-ck-g" ref={网格}>
+        <><div className="cli cli-empty"><div className="cli-ck"><div className="cli-ck-g" ref={网格}>
           <div className="cli-col cli-frame">
             {待办 && <>
-              <AwaitAssignTodo 数据={{ 条数: 128, 最早: 今天串 + ' 09:30' }} />
+              <AwaitAssignTodo 数据={{ 条数: 128, 最早: 今天串 + ' 09:30', 最早At: 京('09:30') }} />
               <CoachTopicTodo 数据={{ 条数: 12, 最早: { at: new Date(今.getTime() - 3600_000).toISOString(), projectId: 'p1', title: '主题' + 长 } }} />
-              <ReplyDueTodo 数据={{ 条数: 8, 超时: 3, 最早: { projectId: 'p2', name: 长, 时: 今天串 + ' 21:00 – 22:00', 超时: true } }} />
+              <ReplyDueTodo 数据={{ 条数: 8, 超时: 3, 最早: { projectId: 'p2', name: 长, 时: 今天串 + ' 21:00 – 22:00', 始: 京('21:00'), 终: 京('22:00'), 超时: true } }} />
               <VerifyInbox 首页 们={[
                 { projectId: 'p3', 项目: '超长项目名' + 长, 负责人: '负责人' + 长, 步: '市场复核', 无效原因: '其他：' + 长, 初判说明: '说明' + 长, 复核说明: null, 异议说明: null, 更新于: new Date(今.getTime() - 2 * 86400_000).toISOString() },
                 { projectId: 'p4', 项目: '二号', 负责人: '乙', 步: '销售终验', 无效原因: null, 初判说明: null, 复核说明: null, 异议说明: null, 更新于: 今.toISOString() },
@@ -91,6 +96,9 @@ beforeAll(async () => {
           </div>
           <HomeCards 数={卡数} />
         </div></div></div>
+        {/* 别的页右侧 AI 面板那颗发送钮（不在 .cli-frame 里）：H-新5 只改首页，这颗照旧墨色 */}
+        <div data-testid="dock-like"><button type="button" className="cli-send" aria-label="发送">↑</button></div>
+        </>
       );
     }
     const root = createRoot(document.getElementById('root'));
@@ -105,7 +113,7 @@ afterAll(async () => { await browser?.close(); });
 type 皮 = "now" | "ledger" | "tech";
 const 卡数 = { "month-new": 591, key: 123, "no-follow": 4802, "due-soon": 0 };
 async function 开(o: { 宽: number; 高?: number; 待办?: boolean; skin?: 皮 }): Promise<{ page: Page; errors: string[] }> {
-  const page = await browser.newPage({ viewport: { width: o.宽, height: o.高 ?? 900 }, reducedMotion: "reduce" });
+  const page = await browser.newPage({ viewport: { width: o.宽, height: o.高 ?? 900 }, reducedMotion: "reduce", timezoneId: "Europe/London" });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const skin = o.skin ?? "now";
@@ -187,6 +195,8 @@ it("H-新4 / 新3 / 新5（1366 高 900）：整块上下居中；开命令表�
     // 发送钮：有字品牌蓝（等底色过渡走完）
     await page.waitForTimeout(300);
     expect(await page.locator(".cli-frame .cli-send").evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(10, 102, 216)");
+    // 右侧 AI 面板（别的页）那颗不改：照旧墨色
+    expect(await page.locator("[data-testid=dock-like] .cli-send").evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgb(29, 29, 31)");
     expect(await page.locator(".cli-cmds-float").count()).toBe(1);
     expect(await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height)).toBeCloseTo(组.h, 0);
     expect(Math.abs(await 顶(page, ".cli-ck-g") - 组.t)).toBeLessThan(1.5);

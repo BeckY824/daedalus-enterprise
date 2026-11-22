@@ -177,7 +177,11 @@ export const 钟上指定回复提醒 = 指定回复提醒扫一遍;
  * 超时 = 其中已经发过超时提醒、还没记沟通的（超时未跟进自动转 reply-overdue.ts，过了截止也留在这里，直到记了沟通或被转走）；
  * 有超时的先链到超时那条。没填指定回复时间、按分配时刻起算的超时（11-20）：时 = 这一位的计时起点（分配 / 接手那刻），分配话 = 「分配后 1 小时未跟进」，首页那行不写「指定回复」
  */
-export type 待回复客户数 = { 条数: number; 超时?: number; 最早: { projectId: string; name: string; 时: string; 超时?: true; 分配话?: string } | null };
+/**
+ * 最早.时 = 服务端按北京墙钟写好的短串（旧写法，换皮主题照摆）；始 / 终 = 同一段时间的 ISO 瞬间（设计语言 H-A 11-21：首页现状主题拿它走 smartTime，
+ * 短串没年份、跨年会认错，不从短串认回）。按分配的：始 = 计时起点（分配 / 接手那刻），终 = null
+ */
+export type 待回复客户数 = { 条数: number; 超时?: number; 最早: { projectId: string; name: string; 时: string; 始?: string | null; 终?: string | null; 超时?: true; 分配话?: string } | null };
 export async function 待回复客户of(userId: string, 现在: Date = new Date()): Promise<待回复客户数 | null> {
   if (!企业版() || !回复提醒开) return null;
   try {
@@ -188,12 +192,14 @@ export async function 待回复客户of(userId: string, 现在: Date = new Date(
     const 剩 = 们.filter((p) => !回了.has(p.id) && !超时ids.has(p.id)).sort((a, b) => 回复截止(a)!.getTime() - 回复截止(b)!.getTime());
     if (!剩.length && !超时们.length) return null;
     const 时of = (p: 两格) => 指定回复文字(p.replyStartAt, p.replyEndAt, 现在);
+    const 瞬间 = (d: Date | null | undefined) => d?.toISOString() ?? null;
+    const 段of = (p: 两格) => ({ 时: 时of(p), 始: 瞬间(p.replyStartAt), 终: 瞬间(p.replyEndAt) });
     const 超 = 超时们[0];
     const 最早 = 超
       ? 超.按分配
-        ? { projectId: 超.id, name: 超.name, 时: 短时刻(超.分配于, 现在) || 空值符, 超时: true as const, 分配话: 分配后未跟进话(超时提醒分钟) }
-        : { projectId: 超.id, name: 超.name, 时: 时of(超), 超时: true as const }
-      : { projectId: 剩[0].id, name: 剩[0].name, 时: 时of(剩[0]) };
+        ? { projectId: 超.id, name: 超.name, 时: 短时刻(超.分配于, 现在) || 空值符, 始: 瞬间(超.分配于), 终: null, 超时: true as const, 分配话: 分配后未跟进话(超时提醒分钟) }
+        : { projectId: 超.id, name: 超.name, ...段of(超), 超时: true as const }
+      : { projectId: 剩[0].id, name: 剩[0].name, ...段of(剩[0]) };
     return { 条数: 剩.length + 超时们.length, ...(超时们.length ? { 超时: 超时们.length } : {}), 最早 };
   } catch (e) {
     console.error("[指定回复提醒] 首页待办没取到", e);

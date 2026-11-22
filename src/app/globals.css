@@ -5755,9 +5755,10 @@ button.proj-miss-chip { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { :root:is(:not([data-skin]), [data-skin="now"]) .cli-cmds-float > .cli-cmds { animation: none; } }
 /* H-新3：键盘选中、鼠标悬停只亮一行——指到哪行选中就挪到哪行（Composer on指命令），没选中的行悬停不再另铺一层灰 */
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-cmds-one .cli-cmd:hover:not(.cli-cmd-on) { background: transparent; }
-/* H-新5：发送钮（打断钮同）用品牌蓝，全屏只这一颗主色钮；空的时候照旧浅灰 */
-:root:is(:not([data-skin]), [data-skin="now"]) .cli-send:not(:disabled) { background: var(--brand); color: var(--on-ink); }
-:root:is(:not([data-skin]), [data-skin="now"]) .cli-send:not(:disabled):hover { background: var(--brand-deep); }
+/* H-新5：首页（外框 .cli-frame）的发送钮（打断钮同）用品牌蓝，这一屏只这一颗主色钮；空的时候照旧浅灰。
+   别的页右侧 AI 面板不改：那些页已有页面自己的主色钮（每屏一个主色钮） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-frame .cli-send:not(:disabled) { background: var(--brand); color: var(--on-ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-frame .cli-send:not(:disabled):hover { background: var(--brand-deep); }
 /* D38：手机（P-界面-14 飞书网页 390）不写键盘提示，触屏没有 Enter / Shift / 「/」这几个键 */
 @media (max-width: 767px) {
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-hints-keys { display: none; }

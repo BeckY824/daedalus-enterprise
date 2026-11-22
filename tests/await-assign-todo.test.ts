@@ -22,13 +22,14 @@ describe("待分配新线索那一行", () => {
   it("有：一行，条数、最早时间、去分配链到 /leads?f=await-assign；没有关闭按钮", () => {
     // 最早是服务端按北京墙钟写好的（list.ts 数待分配 → 短时刻）；设计语言 H-A（11-21，H-新13）现状主题把它认回那一刻再走 smartTime
     // （全站同一套：今天 16:00 · 昨天 · 3 天前 · 11 月 18 日），时间不拆行（home-cth-todo-time）
+    // 用服务端多传的 最早At（ISO），不从短串认回（短串没年份，跨年会认错）
     vi.useFakeTimers({ now: new Date("2026-11-21T12:00:00+08:00"), toFake: ["Date"] });
-    const html = 渲({ 条数: 3, 最早: "11-20 16:00" });
+    const html = 渲({ 条数: 3, 最早: "11-20 16:00", 最早At: "2026-11-20T08:00:00.000Z" });
     expect(html).toContain("待分配新线索 3 条");
     expect(html).toContain('最早 <span class="home-cth-todo-time">昨天</span>');
-    expect(渲({ 条数: 1, 最早: "11-21 09:30" })).toContain('<span class="home-cth-todo-time">今天 09:30</span>');
-    // 认不出的串原样摆（不丢字）
-    expect(渲({ 条数: 1, 最早: "—" })).toContain('<span class="home-cth-todo-time">—</span>');
+    expect(渲({ 条数: 1, 最早: "11-21 09:30", 最早At: "2026-11-21T01:30:00.000Z" })).toContain('<span class="home-cth-todo-time">今天 09:30</span>');
+    // 旧数据没有 最早At：照摆服务端写好的短串
+    expect(渲({ 条数: 1, 最早: "11-20 16:00" })).toContain('<span class="home-cth-todo-time">11-20 16:00</span>');
     expect(html).toContain('href="/leads?f=await-assign"');
     expect(html).toContain("去分配 ›");
     expect(html).toContain('class="home-cth-todo home-cth-todo-one"');
