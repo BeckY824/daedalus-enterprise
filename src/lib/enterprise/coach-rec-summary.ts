@@ -56,9 +56,15 @@ export type 整理结果 = { 可总结: false } | { 可总结: true; 主题: str
 const 条们 = (v: unknown): string[] =>
   Array.isArray(v) ? v.filter((x): x is string => typeof x === "string").map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean).slice(0, 3) : [];
 
-/** 模型回的 JSON → 主题、要点（按段拼成「【段名】\n· 一条」；超长按主题上限截） */
+/** 模型回的内容认不出（不是对象、缺主题或要点）：当整理失败，不当「没听清」（PR5 审查） */
+export const 回的不对话 = "AI 回的内容格式不对";
+
+/**
+ * 模型回的 JSON → 主题、要点（按段拼成「【段名】\n· 一条」；超长按主题上限截）。
+ * 只有模型明说 可总结: false 才算没听清；别的认不出的（不是对象、缺主题或要点）抛错 = 整理失败（PR5 审查）
+ */
 export function 认整理结果(j: unknown, 四段: boolean): 整理结果 {
-  if (!j || typeof j !== "object") return { 可总结: false };
+  if (!j || typeof j !== "object" || Array.isArray(j)) throw new Error(回的不对话);
   const o = j as Record<string, unknown>;
   if (o.可总结 === false) return { 可总结: false };
   const 主题 = typeof o.主题 === "string" ? o.主题.replace(/\s+/g, " ").trim().slice(0, 主题标题上限) : "";
@@ -69,7 +75,7 @@ export function 认整理结果(j: unknown, 四段: boolean): 整理结果 {
     ...(四段 ? ([[段名.回应, 条们(o.对方的回应)]] as [string, string[]][]) : []),
   ];
   const 要点 = 段们.filter(([, 们]) => 们.length).map(([名, 们]) => `【${名}】\n${们.map((x) => `· ${x}`).join("\n")}`).join("\n").slice(0, 主题内容上限);
-  if (!主题 || !要点) return { 可总结: false };
+  if (!主题 || !要点) throw new Error(回的不对话);
   return { 可总结: true, 主题, 要点 };
 }
 

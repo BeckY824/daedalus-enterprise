@@ -57,11 +57,17 @@ const 选 = { id: true, projectId: true, authorId: true, status: true, format: t
 type 行 = { id: string; projectId: string; authorId: string; status: string; format: string | null; segCount: number; audioPath: string | null; durationMs: number | null; sampleRate: number | null;
   asrTaskId: string | null; asrSubmittedAt: Date | null; createdAt: Date };
 
-type 内存 = { 退避: Map<string, { 次: number; 下次: number }>; 上次查: Map<string, number>; 在跑: boolean; 整理在跑: boolean; 钟?: ReturnType<typeof setInterval> };
+type 内存 = { 退避: Map<string, { 次: number; 下次: number }>; 上次查: Map<string, number>; 在跑: boolean; 整理在跑: boolean; 钟?: ReturnType<typeof setInterval>;
+  /** 整理好了但写库一直失败的（连 整理失败 也写不进）：到这个时刻以前不再拿出来整理（不每 5 秒重调一次模型，PR5 审查） */
+  整理别碰?: Map<string, number> };
 const g = globalThis as unknown as { __录音转写?: 内存 };
 const 存: 内存 = (g.__录音转写 ??= { 退避: new Map(), 上次查: new Map(), 在跑: false, 整理在跑: false });
+const 整理别碰 = (): Map<string, number> => (存.整理别碰 ??= new Map());
+/** 写库一直失败时隔多久再拿出来整理 */
+export const 整理写失败等毫秒 = 10 * 60_000;
 /** 测试用：模拟进程重启（内存里的重试次数、上次查的时刻都清掉） */
 export function 清转写内存(): void {
+  存.整理别碰?.clear();
   存.退避.clear();
   存.上次查.clear();
   存.在跑 = false;
@@ -259,10 +265,12 @@ async function 查一条(r: 行, 通道: 转写通道 | null, 现在: number): P
  * 调了模型就记一笔 ai_use（coachSum「录音点评整理」，不扣个人 AI 提问次数）；字数不够没调模型的不记。
  * 一次一条（模型一次最多两分钟，单独一条线，不挡转写轮询）。服务重启时还在整理中的：重启后这里接着再整理一次（不另判失败）
  */
-export async function 整理一轮(opt: { 整理?: typeof AI整理 } = {}): Promise<number> {
+export async function 整理一轮(opt: { 整理?: typeof AI整理; 现在?: number } = {}): Promise<number> {
   if (!(await 录音点评开着())) return 0;
+  const 现在 = opt.现在 ?? Date.now();
+  const 别碰 = [...整理别碰()].filter(([, 到]) => 到 > 现在).map(([id]) => id);
   const r = await defaultClient.entCoachRecording.findFirst({
-    where: { status: "整理中", deletedAt: null },
+    where: { status: "整理中", deletedAt: null, ...(别碰.length ? { id: { notIn: 别碰 } } : {}) },
     orderBy: { updatedAt: "asc" },
     select: { id: true, projectId: true, authorId: true, transcript: true, speakers: true, asrTaskId: true },
   });
@@ -279,14 +287,25 @@ export async function 整理一轮(opt: { 整理?: typeof AI整理 } = {}): Prom
     await 失败(r, `AI 没整理成（${原话}），可以点「重试整理」，或者打开确认框自己写主题和要点发出`, "整理中");
     return 1;
   }
-  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({
-    where: { id: r.id, status: "整理中", deletedAt: null },
-    data: 果.可总结
-      ? { status: "待确认", draftTitle: 果.主题, draftBody: 果.要点, error: null }
-      : { status: "待确认", draftTitle: null, draftBody: null, error: 没听清话 },
-  }));
+  // 调了模型就先记用量（后面写库失败也算调过一次）
   const 作者 = await defaultClient.user.findUnique({ where: { id: r.authorId }, select: { id: true, name: true } });
-  if (果.调了 && 作者) await recordAudit({ user: 作者, action: "ai_use", entity: "Ai", entityId: "coachSum", summary: "录音点评整理", detail: { 对象: r.id } });
+  if (果.调了 && 作者) await recordAudit({ user: 作者, action: "ai_use", entity: "Ai", entityId: "coachSum", summary: "录音点评整理", detail: { 对象: r.id } }).catch(() => {});
+  let 改: { count: number };
+  try {
+    改 = await 主题写(() => prisma.entCoachRecording.updateMany({
+      where: { id: r.id, status: "整理中", deletedAt: null },
+      data: 果.可总结
+        ? { status: "待确认", draftTitle: 果.主题, draftBody: 果.要点, error: null }
+        : { status: "待确认", draftTitle: null, draftBody: null, error: 没听清话 },
+    }));
+  } catch (e) {
+    // 写库失败（锁住、磁盘问题）：算一次失败，不留在整理中让下一轮再调模型（PR5 审查）；连失败也写不进的，这条 10 分钟内不再拿出来
+    console.warn(`[录音整理] ${r.id} 写结果出错：${e instanceof Error ? e.message.slice(0, 200) : e}`);
+    整理别碰().set(r.id, 现在 + 整理写失败等毫秒);
+    await 失败(r, "AI 整理好了，但存的时候出错了，可以点「重试整理」", "整理中").catch(() => {});
+    return 1;
+  }
+  整理别碰().delete(r.id);
   if (改.count === 1) await 录音整理好了通知(r.authorId, { id: r.id, projectId: r.projectId });
   return 1;
 }

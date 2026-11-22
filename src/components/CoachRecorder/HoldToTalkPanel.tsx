@@ -2,10 +2,12 @@
 /**
  * 录音点评 · 录音面板（11-22，录音点评 PR3，方案 §4.6–4.8 + 11-22 安卓实测后的调整）：「按住说话」「点按录音」并排两种，记住上次选的。
  *
- * 按住说话（短的口头点评，一条几段合计 ≤10 分钟）：按住按钮（或面板打开时按住空格）开始，松手结束 → 待提交；
+ * 按住说话（短的口头点评，一条几段合计 ≤10 分钟）：按住按钮（或焦点在录音按钮 / 面板本身时按住空格；焦点在别的按钮、输入框上不拦，PR3 审查）开始，松手结束 → 待提交；
  *   按着往上滑 ≥60px（鼠标拖出按钮）/ 按 Esc = 待取消，松手丢掉；不到 1 秒丢掉（「说话时间太短」）；9:30 起「还能说 30 秒」，10:00 自动当松手。
  *   飞书里优先飞书原生录（feishu-recorder.ts，准备不好退网页录）；第一次用（麦克风还没问过）这一次只拿授权不录。
- * 点按录音（线下陪练这类长录音，一条最长 2 小时）：点一下开始、再点一下停，单独「取消」；一律网页录；手机上开录前提示别锁屏、申请屏幕常亮；录着离开页面先问。
+ * 点按录音（线下陪练这类长录音，一条最长 2 小时）：点一下开始、再点一下停，单独「取消」（先问一句再丢，Esc 不管用，PR3 审查）；一律网页录；手机上开录前提示别锁屏、申请屏幕常亮；录着离开页面先问。
+ * 补段沿用第一段的录法（看 sourceKind：飞书原生录的只能接着飞书录、只能按住；网页录的在飞书里也走网页录），补段时录法切换锁住（PR3 审查：格式不一样服务端拒收）。
+ * 「准备中」（引飞书 SDK、问麦克风权限）面板关了：中止，不再开麦克风（PR3 审查）。
  * 打断（来电、锁屏、切后台、话筒被占用、录音器出错、触摸被系统收走）→ 当作松手：已录的进待提交，卡上写「录音在 0:42 被打断（…），已录部分已保存」，
  *   可以「再按住补一段」（同一条录音的下一段，服务端拼）。
  * 边录边传：15 秒一片（uploader.ts 片队列，断网攒着重试）；网络跟不上录音时提示「网络较慢……先别关页面」。
@@ -69,7 +71,7 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
   const router = useRouter();
   const 屏 = Grid.useBreakpoint();
   const 手机 = 屏.md === false;
-  const [式, set式] = useState<录法式>(() => (typeof window === "undefined" ? "按住" : 读式()));
+  const [选式, set式] = useState<录法式>(() => (typeof window === "undefined" ? "按住" : 读式()));
   const [录, set录] = useState<录音给界面 | null>(续 ?? null);
   const [阶, set阶] = useState<"空" | "准备" | "录" | "收">("空");
   const [已, set已] = useState(0);
@@ -82,21 +84,33 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
   const 这次 = useRef<一次 | null>(null);
   const 按着 = useRef(false);
   const 按钮 = useRef<HTMLButtonElement>(null);
+  const 面板 = useRef<HTMLDivElement>(null);
+  /** 面板关了（点 ×、Esc、换页）：准备中的这次中止，不再开麦克风 */
+  const 关了 = useRef(false);
+  /** 这次是空格按下开始的：松空格才收尾（焦点挪走了也照样收） */
+  const 空格按着 = useRef(false);
+  const [问丢段, set问丢段] = useState(false);
+  /** 音量条（不写行内样式：按音量改 transform） */
+  const 音量条 = useRef<HTMLSpanElement>(null);
   const 常亮 = useRef<{ release: () => Promise<void> } | null>(null);
   const 能录 = 能网页录() || 在飞书里();
 
+  // 补段：沿用第一段的录法（飞书原生录 / 网页录），录法切换锁住；飞书原生录只有按住说话
+  const 定的来源 = 录 && 录.段数 >= 1 && 录.sourceKind !== "上传" ? 录.sourceKind : null;
+  const 式: 录法式 = 定的来源 === "飞书原生录" ? "按住" : 选式;
   // 已经录了多少（补段时前面几段的；服务端算的时长，读不出按 0）
   const 前面 = 录?.时长毫秒 ?? 0;
   const 上限 = 式 === "按住" ? 按住上限毫秒 : 点按上限毫秒;
   const 还能 = 上限 - 前面;
 
   // 飞书里先把原生录音准备好（按下时少等一会儿）；准备不好按下时退网页录
-  useEffect(() => { if (式 === "按住" && 在飞书里()) void 准备飞书录音(); }, [式]);
+  useEffect(() => { if (式 === "按住" && 在飞书里() && 定的来源 !== "网页录") void 准备飞书录音(); }, [式, 定的来源]);
 
   const 收尾 = useCallback(async (怎么: "松手" | "取消" | { 打断: 打断原因 }) => {
     const x = 这次.current;
     if (!x || x.结束中) return;
     x.结束中 = true;
+    set问丢段(false);
     const 时长 = Date.now() - x.起;
     void 常亮.current?.release().catch(() => {});
     常亮.current = null;
@@ -128,10 +142,11 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
         for (let i = 0; i * 片上限字节 < 段.数据.byteLength; i++) x.队列.放(x.段, i, new Blob([段.数据.slice(i * 片上限字节, (i + 1) * 片上限字节)]));
       }
     } catch {
+      // 飞书原生录中途坏了：这一页之后改走网页录（feishu-recorder 记着）；前面是飞书录的补段不能换网页录
       x.队列.停();
       这次.current = null;
       set阶("空");
-      set提示({ 话: "这段没录下来（飞书录音没给文件），换成网页录再试一次", 坏: true });
+      set提示({ 话: 定的来源 === "飞书原生录" ? "这段没录下来（飞书录音出错）。这条前面是飞书录的，补的也得飞书录：先提交这条，要补的另录一条" : "这段没录下来（飞书录音出错），再按住一次会改用网页录", 坏: true });
       const id = await x.编号;
       if (id) await 调(`/api/coach-rec/${id}/drop`).catch(() => null);
       return;
@@ -155,7 +170,7 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
     set录(r.体.录音 as 录音给界面);
     set提示(打断 ? { 话: `录音在 ${读秒(前面 + 时长)} 被打断（${打断}），已录部分已保存，可以再${式 === "按住" ? "按住" : "点"}补一段` } : 前面 + 时长 >= 上限 - 500 ? { 话: `单次最长 ${上限 / 60_000} 分钟，已到上限` } : null);
     router.refresh();
-  }, [前面, 上限, 式, 录, router]);
+  }, [前面, 上限, 式, 录, 定的来源, router]);
 
   const 开始 = useCallback(async () => {
     if (阶 !== "空" || 这次.current) return;
@@ -163,18 +178,24 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
     if (还能 <= 最短录音毫秒) return set提示({ 话: `这条已经录满 ${上限 / 60_000} 分钟，提交以后另录一条`, 坏: true });
     if (录 && !录.能补) return set提示({ 话: "这条已经交了，另起一条录", 坏: true });
     set阶("准备");
-    // 选录法：按住说话在飞书里先原生，不行退网页录；点按录音一律网页录
-    const fs = 式 === "按住" && 在飞书里() ? await 准备飞书录音() : null;
+    // 选录法：补段沿用第一段的；新的一条：按住说话在飞书里先原生（这一页原生录坏过的直接网页录），不行退网页录；点按录音一律网页录
+    const 要飞书 = 定的来源 ? 定的来源 === "飞书原生录" : 式 === "按住" && 在飞书里();
+    const fs = 要飞书 ? await 准备飞书录音() : null;
+    if (关了.current) return;
+    if (定的来源 === "飞书原生录" && !fs) { set阶("空"); return set提示({ 话: "这条前面是飞书录的，补的也得飞书录，可飞书录音这会儿用不了：先提交这条，要补的另录一条", 坏: true }); }
     let 流: MediaStream | null = null;
     if (!fs) {
       if (!能网页录()) { set阶("空"); return set提示({ 话: "这里录不了音：可以改用「传录音文件」，或者复制链接到浏览器里打开", 坏: true }); }
       const 权限 = 式 === "按住" ? await 麦克风权限() : "不知道";
+      if (关了.current) return;
       try {
         流 = await 开麦();
       } catch (e) {
+        if (关了.current) return;
         set阶("空");
         return set提示({ 话: 开麦错话(e).话, 坏: true });
       }
+      if (关了.current) { for (const t of 流.getTracks()) t.stop(); return; }
       // 第一次用（刚弹过授权）或者授权时已经松手了：这一次只拿授权，不录
       if (式 === "按住" && (权限 === "prompt" || !按着.current)) {
         for (const t of 流.getTracks()) t.stop();
@@ -224,7 +245,9 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
         常亮.current = null; // 拿不到不报错
       }
     }
-  }, [阶, 还能, 上限, 录, 式, projectId, 收尾]);
+  }, [阶, 还能, 上限, 录, 式, 定的来源, projectId, 收尾]);
+
+  useEffect(() => { 音量条.current?.style.setProperty("transform", `scaleX(${Math.max(0.05, 音量)})`); });
 
   // 计时、倒数、到上限自动当松手
   useEffect(() => {
@@ -249,19 +272,29 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
     return () => { document.removeEventListener("visibilitychange", 藏); window.removeEventListener("beforeunload", 走); };
   }, [阶, 式, 收尾]);
 
-  // 按住空格（光标不在输入框里）= 按住按钮；录着按 Esc = 取消
+  // 按住空格 = 按住按钮：只在焦点在录音按钮上、或者面板本身（面板、弹框框体、没有别的焦点）时；焦点在别的按钮、输入框、选项上不拦（PR3 审查）。
+  // 按住说话录着按 Esc = 取消；点按录音 Esc 不管用（取消要点「取消」再确认）
   useEffect(() => {
-    const 在输入 = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+    const 控件 = "button, a[href], input, select, textarea, [contenteditable], [role=button], [role=radio], [role=tab], [role=menuitem], [role=option], [role=checkbox], [role=switch]";
+    const 归面板 = (t: EventTarget | null) => {
+      const 板 = 面板.current;
+      if (!板 || !(t instanceof Element)) return false;
+      if (t === 按钮.current) return true;
+      if (t.closest(控件)) return false;
+      return t === 板 || t.contains(板) || 板.contains(t) || !!t.closest(".ptt-modal, .ptt-sheet");
+    };
     const 下 = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && 这次.current) { e.preventDefault(); e.stopPropagation(); void 收尾("取消"); return; }
-      if (式 !== "按住" || e.code !== "Space" || e.repeat || 在输入(e.target)) return;
+      if (e.key === "Escape" && 这次.current && 式 === "按住") { e.preventDefault(); e.stopPropagation(); void 收尾("取消"); return; }
+      if (式 !== "按住" || e.code !== "Space" || e.repeat || !归面板(e.target)) return;
       e.preventDefault();
+      空格按着.current = true;
       按着.current = true;
       void 开始();
     };
     const 上 = (e: KeyboardEvent) => {
-      if (式 !== "按住" || e.code !== "Space" || 在输入(e.target)) return;
+      if (式 !== "按住" || e.code !== "Space" || !空格按着.current) return;
       e.preventDefault();
+      空格按着.current = false;
       按着.current = false;
       if (这次.current) void 收尾("松手");
     };
@@ -273,7 +306,15 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
   // 面板关了（换页、点 ×）还在录：当作松手存下（用最新的收尾，只在真关掉时跑）
   const 收尾钩 = useRef(收尾);
   useEffect(() => { 收尾钩.current = 收尾; }, [收尾]);
-  useEffect(() => () => { if (这次.current) void 收尾钩.current("松手"); }, []);
+  useEffect(() => {
+    关了.current = false;
+    return () => {
+      关了.current = true;
+      if (这次.current) void 收尾钩.current("松手");
+    };
+  }, []);
+  // 打开时焦点放到面板上（按空格就能录）
+  useEffect(() => { const t = setTimeout(() => { if (!面板.current?.contains(document.activeElement)) 面板.current?.focus({ preventScroll: true }); }, 0); return () => clearTimeout(t); }, []);
 
   const 按下 = (e: React.PointerEvent<HTMLButtonElement>) => {
     if (式 !== "按住" || e.button !== 0) return;
@@ -336,9 +377,9 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
   const 剩 = 还能 - 已;
   const 慢 = 队 ? 慢话(队, 这次.current?.每秒字节 ?? 网页录每秒字节) : null;
   const 体 = (
-    <div className="ptt-panel" data-testid="ptt-panel">
+    <div className="ptt-panel" data-testid="ptt-panel" ref={面板} tabIndex={-1}>
       <div className="crec-notice">请先告知在场的人正在录音。录音挂在项目「{项目名}」上；原声只有你和项目负责人能听。</div>
-      <Segmented block value={式} disabled={阶 !== "空"} onChange={(v) => { set式(v as 录法式); 记式(v as 录法式); set提示(null); }}
+      <Segmented block value={式} disabled={阶 !== "空" || !!定的来源} onChange={(v) => { set式(v as 录法式); 记式(v as 录法式); set提示(null); }}
         options={[{ label: "按住说话", value: "按住" }, { label: "点按录音", value: "点按" }]} data-testid="ptt-mode" />
       <div className="crec-hint">{式 === "按住" ? `按住说话，松手结束；往上滑（或按 Esc）取消。一条最长 ${按住上限毫秒 / 60_000} 分钟，适合短点评。` : `点一下开始、再点一下停，适合陪练这类长录音，一条最长 ${点按上限毫秒 / 3_600_000} 小时。`}</div>
       {/* 按着的时候按钮上面的东西不能变高变矮（按钮一挪，指针就「出了按钮」= 取消）：待提交块录着也留着（只收起按钮），计时条占一格固定高的位置，提示写在按钮下面 */}
@@ -375,7 +416,7 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
             <div className={`ptt-float${取消中 ? " ptt-cancel" : ""}`} role="status" aria-live="polite" data-testid="ptt-float">
               <span className="ptt-dot" aria-hidden />
               <span className="ptt-time" data-testid="ptt-time">{读秒(前面 + 已)}</span>
-              <span className="ptt-level" aria-hidden><span style={{ transform: `scaleX(${Math.max(0.05, 音量)})` }} /></span>
+              <span className="ptt-level" aria-hidden><span ref={音量条} /></span>
               <span className="ptt-float-t">{取消中 ? "松手取消" : 剩 <= 倒数毫秒 ? `还能说 ${Math.max(0, Math.ceil(剩 / 1000))} 秒` : 式 === "按住" ? "上滑取消" : `已录 ${Math.floor((前面 + 已) / 1000)} 秒`}</span>
             </div>
           )}
@@ -398,7 +439,16 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
             onClick={点} onContextMenu={(e) => e.preventDefault()}>
             {按钮字}
           </button>
-          {式 === "点按" && 录着 && <Button className="ptt-cancel-btn" onClick={() => void 收尾("取消")} data-testid="ptt-cancel">取消</Button>}
+          {式 === "点按" && 录着 && <Button className="ptt-cancel-btn" onClick={() => set问丢段(true)} disabled={问丢段} data-testid="ptt-cancel">取消</Button>}
+        </div>
+      )}
+      {式 === "点按" && 录着 && 问丢段 && (
+        <div className="pd-del-band" role="group" aria-label="丢掉正在录的这段？" data-testid="ptt-cancel-ask">
+          <span className="pd-del-band-t">丢掉正在录的这段？已录 {读秒(已)}，丢了不能恢复{录?.段数 ? "（前面录好的段留着）" : ""}</span>
+          <span className="pd-del-band-a">
+            <Button size="small" onClick={() => set问丢段(false)} data-testid="ptt-cancel-no">接着录</Button>
+            <Button size="small" type="primary" danger onClick={() => void 收尾("取消")} data-testid="ptt-cancel-ok">丢掉</Button>
+          </span>
         </div>
       )}
       {提示 && <div role={提示.坏 ? "alert" : "status"} className={提示.坏 ? "crec-warn" : "crec-hint"} data-testid="ptt-tip">{提示.话}</div>}
@@ -406,7 +456,7 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
       {式 === "点按" && 手机 && <div className="crec-hint" data-testid="ptt-keep-awake">录音时请保持屏幕亮着、不要切到别的 App；来电会打断录音</div>}
     </div>
   );
-  const 关面板 = () => { if (阶 === "录" && 式 === "点按") void 收尾("松手"); 关(); };
+  const 关面板 = () => { 关了.current = true; if (阶 === "录" && 式 === "点按") void 收尾("松手"); 关(); };
   return 手机 ? (
     <Drawer open placement="bottom" height="auto" title="录音点评" onClose={关面板} className="ptt-sheet" keyboard={!录着} destroyOnHidden>{体}</Drawer>
   ) : (

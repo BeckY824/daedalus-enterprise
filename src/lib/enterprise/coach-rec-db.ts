@@ -20,8 +20,8 @@ import { recordAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { 企业版 } from "./switch";
 import { 读组织 } from "./org";
-import { 权限项目选, type 谁 } from "./permissions";
-import { 文件名打码 } from "./notice-mask";
+import { 权限项目选, 是教练, type 谁 } from "./permissions";
+import { 文件名打码, 打码还原 } from "./notice-mask";
 import { 正在切换视图 } from "./view-as";
 import type { 主题项目 } from "./coach-topic";
 import {
@@ -165,8 +165,9 @@ const 正在合成话 = "正在合成录音文件，稍等几秒再看";
 
 /**
  * 收一片（PUT chunk/:seg/:seq）。每片都重判权限（开始以后丢了权限的就停）；同一片重复传按片号覆盖；正在拼合的不收。
- * 总量不超过 200MB（传文件另不超过开始时报的大小）；每段第 0 片都认文件头，认不出（或和前面的段格式不一样）的当场删、拒收；
- * 一片都还没收就被拒的（第一片就不是录音），这一条直接放弃，不留空的「上传中」占着每人 5 条的名额
+ * 总量不超过 200MB（补段时连前面拼好的段 r.bytes 一起算，PR3 审查；传文件另不超过开始时报的大小）；每段第 0 片都认文件头，认不出（或和前面的段格式不一样）的当场删、拒收；
+ * 一段都还没拼好、一片都还没收就被拒的（第一片就不是录音），这一条直接放弃，不留空的「上传中」占着每人 5 条的名额；
+ * 补段（前面已经有拼好的段）被拒的只拒这一片，整条留着（PR3 审查：补一段格式不一样不能把前面的段弄丢）
  */
 export async function 收一片(me: 人, id: unknown, 段: number, 片: number, 体: ReadableStream<Uint8Array> | null, 声明字节: number | null): Promise<结果<{ 字节: number; 已收字节: number }>> {
   const 认 = await 认能传(me, id);
@@ -177,16 +178,17 @@ export async function 收一片(me: 人, id: unknown, 段: number, 片: number, 
   if (段 <= r.segCount) return 不行("这一段已经传完了", 409); // 补段（PR3）：已经拼好的段不能再往里传
   const dir = 录音目录(r);
   const 别的片 = (await 已收片(dir)).filter((x) => !(x.段 === 段 && x.片 === 片));
+  const 已拼字节 = r.sourceKind !== "上传" && r.segCount ? r.bytes ?? 0 : 0;
   const 别的字节 = 别的片.reduce((a, x) => a + x.字节, 0);
   const 总上限 = r.sourceKind === "上传" && r.bytes ? Math.min(r.bytes, 文件上限字节) : 文件上限字节;
-  const 本片上限 = Math.min(片上限字节, 总上限 - 别的字节);
+  const 本片上限 = Math.min(片上限字节, 总上限 - 已拼字节 - 别的字节);
   if (声明字节 !== null && 声明字节 > 片上限字节) return 不行(`一片最多 ${片上限字节 / 1024 / 1024}MB`, 413);
   if (本片上限 <= 0 || (声明字节 !== null && 声明字节 > 本片上限)) return 不行(r.sourceKind === "上传" ? "传的比文件本身还多，请重新选文件" : `录音超过 ${文件上限字节 / 1024 / 1024}MB`, 413);
   let 写: { 字节: number; 头: Uint8Array };
   try {
     写 = await 写片(dir, 段, 片, 体, 本片上限);
   } catch (e) {
-    if (e instanceof 片超限) return 不行(本片上限 < 片上限字节 ? "传的比文件本身还多，请重新选文件" : `一片最多 ${片上限字节 / 1024 / 1024}MB`, 413);
+    if (e instanceof 片超限) return 不行(本片上限 >= 片上限字节 ? `一片最多 ${片上限字节 / 1024 / 1024}MB` : r.sourceKind === "上传" ? "传的比文件本身还多，请重新选文件" : `录音超过 ${文件上限字节 / 1024 / 1024}MB`, 413);
     if (e instanceof 片读超时) return 不行("网络断了，这一片没传完", 408);
     throw e;
   }
@@ -199,7 +201,7 @@ export async function 收一片(me: 人, id: unknown, 段: number, 片: number, 
     const 认出 = 认录音格式(写.头);
     if (!认出 || (r.format && 认出 !== r.format)) {
       await 删片(dir, 段, 片);
-      if (!别的片.length) await 弃掉空的(me, r);
+      if (!别的片.length && r.segCount === 0) await 弃掉空的(me, r);
       return 不行(认出 ? "这一段和前面录的格式不一样" : "认不出这个文件的格式：只收 m4a、mp3、wav、aac、amr、ogg、flac、mp4、3gp、webm 录音", 415);
     }
     格式 ??= 认出;
@@ -296,8 +298,9 @@ async function 拼合一条(me: 人, r: 录音库行, p: { name: string }, 打�
     const 总 = 已有段数 && r.sourceKind !== "上传" ? (新行.bytes ?? 0) + 这回 : 这回;
     const 段数 = 已有段数 + 段们.length;
     const 打断们 = 打断 ? [...读打断们(新行.interrupts), { 段: 段数, ...打断 }] : null;
-    // 时长（PR3）：录的（不是传的文件）把各段读一遍加起来，给待提交卡写、前端按它管 10 分钟上限；读不出（没装 ffmpeg）就空着，PR4 规整时再算
-    const 时长 = r.sourceKind === "上传" ? null : await 各段时长(r, 段数, 新行.format);
+    // 时长（PR3）：录的（不是传的文件）把各段读一遍加起来，给待提交卡写、前端按它管 10 分钟上限；读不出（没装 ffmpeg）就空着，PR4 规整时再算。
+    // 补段（PR3 审查）：前面几段的合计已经在 durationMs 里，只读这回新拼的段再加上，不每次把全部段重新解码；前面没算出来（空）的才从头读
+    const 时长 = r.sourceKind === "上传" ? null : await 各段时长(r, 已有段数 && 新行.durationMs !== null ? { 从段: 已有段数 + 1, 基: 新行.durationMs } : { 从段: 1, 基: 0 }, 段数, 新行.format);
     const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({
       where: { id: r.id, status: "上传中", deletedAt: null, endedAt: 占位 },
       data: {
@@ -330,13 +333,13 @@ async function 拼合一条(me: 人, r: 录音库行, p: { name: string }, 打�
   }
 }
 
-/** 各段（seg-01.<格式>…）时长加起来；有一段读不出 = null；ffmpeg 不可用 = undefined（不动库里的） */
-async function 各段时长(r: 录音库行, 段数: number, 格式: string | null): Promise<number | null | undefined> {
+/** 第 从段…段数 段（seg-NN.<格式>）时长加到 基 上；有一段读不出 = null；ffmpeg 不可用 = undefined（不动库里的） */
+async function 各段时长(r: 录音库行, 起: { 从段: number; 基: number }, 段数: number, 格式: string | null): Promise<number | null | undefined> {
   if (!是录音格式(格式)) return undefined;
   const { ffmpeg自检, 读时长 } = await import("./asr/ffmpeg");
   if (!(await ffmpeg自检()).ok) return undefined;
-  let 合 = 0;
-  for (let s = 1; s <= 段数; s++) {
+  let 合 = 起.基;
+  for (let s = 起.从段; s <= 段数; s++) {
     const f = 认录音文件(path.join(录音相对目录(r), `seg-${String(s).padStart(2, "0")}.${格式}`));
     const 毫秒 = f ? await 读时长(f).catch(() => null) : null;
     if (毫秒 === null) return null;
@@ -468,7 +471,7 @@ async function 交去整理(me: 人, r: 录音库行, 从: "整理失败" | "待
 
 /**
  * 稍后再发（POST :id/draft，PR5）：只有录的人；待确认、整理失败的存下确认框里改过的主题、要点（空也行，下次接着写）。
- * 销售教练看到的是打过码的草稿，存回去的就是打码后的字（不会把号码再写回来）
+ * 销售教练看到的是打过码的草稿：库里要存原文（PR5 审查），提交上来没改动的打码段按原文换回原号码（打码还原），教练自己改的照他写的存
  */
 export async function 存录音草稿(me: 人, id: unknown, 输入: { title?: unknown; body?: unknown }): Promise<结果<{ 录音: 录音给界面 }>> {
   if (!(await 录音点评开着())) return 不行(没开放话, 404);
@@ -477,8 +480,10 @@ export async function 存录音草稿(me: 人, id: unknown, 输入: { title?: un
   if (r.status !== "待确认" && r.status !== "整理失败") return 不行(r.status === "已发出" ? "这条已经发出了" : "这条还没整理好", 409);
   const 问题 = 草稿输入问题(输入);
   if (问题) return 不行(问题, 400);
-  const title = String(输入.title ?? "").trim();
-  const body = String(输入.body ?? "").trim();
+  const 原文们 = [r.draftTitle, r.draftBody, r.transcript];
+  const 教练 = 是教练(me, await 读组织());
+  const title = 教练 ? 打码还原(String(输入.title ?? "").trim(), 原文们) : String(输入.title ?? "").trim();
+  const body = 教练 ? 打码还原(String(输入.body ?? "").trim(), 原文们) : String(输入.body ?? "").trim();
   await 主题写(() => prisma.entCoachRecording.updateMany({
     where: { id: r.id, status: r.status, deletedAt: null },
     data: { draftTitle: title || null, draftBody: body || null },

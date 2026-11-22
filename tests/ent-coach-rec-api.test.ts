@@ -766,6 +766,37 @@ describe("录音 PR3：补段、丢段、打断", () => {
     expect(await raw.entCoachRecording.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "待提交" });
   });
 
+  it("PR3 审查：飞书原生录第一段（wav），再切网页录补一段（webm）→ 只拒这一片 415，前一段不丢、整条不放弃", async () => {
+    当("教练");
+    const 头wav = new Uint8Array(Buffer.from("RIFF\0\0\0\0WAVE", "binary"));
+    const id = ((await 开一条(项目, { sourceKind: "飞书原生录", fileName: undefined, bytes: undefined, mime: undefined })).体.录音 as { id: string }).id;
+    expect((await 片(id, 0, 字节(120, 头wav))).status).toBe(200);
+    expect((await 完(id)).体.录音).toMatchObject({ status: "待提交", 段数: 1, 格式: "wav" });
+    expect((await 续录(id)).status).toBe(200);
+    const 网页段 = await 片(id, 0, 字节(100, new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])), "2");
+    expect(网页段.status).toBe(415);
+    expect(网页段.体.error).toContain("格式不一样");
+    const 行 = await raw.entCoachRecording.findUniqueOrThrow({ where: { id } });
+    expect(行).toMatchObject({ status: "上传中", segCount: 1, deletedAt: null, bytes: 120 });
+    const 目录 = path.join(录音根(), 行.createdAt.toISOString().slice(0, 7).replace("-", ""), id);
+    expect(fs.existsSync(path.join(目录, "seg-01.wav"))).toBe(true);
+    // 丢掉这段 → 回到待提交，第 1 段还能听、能交
+    expect((await 丢(id)).体.录音).toMatchObject({ status: "待提交", 段数: 1, 总字节: 120 });
+    expect(fs.existsSync(path.join(目录, "seg-01.wav"))).toBe(true);
+  });
+
+  it("PR3 审查：补段时 200MB 总量连前面拼好的段一起算", async () => {
+    const id = await 录一段();
+    expect((await 完(id)).status).toBe(200);
+    expect((await 续录(id)).status).toBe(200);
+    await raw.entCoachRecording.update({ where: { id }, data: { bytes: 文件上限字节 - 50 } });
+    const 超 = await 片(id, 0, 字节(100), "2");
+    expect(超.status).toBe(413);
+    expect(超.体.error).toContain("录音超过");
+    expect((await 片(id, 0, 字节(40), "2")).status).toBe(200);
+    expect(await raw.entCoachRecording.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "上传中", segCount: 1, deletedAt: null });
+  });
+
   it.skipIf(!有ffmpeg)("有 ffmpeg：传完把各段时长加起来（2 秒 + 3 秒 ≈ 5 秒）", async () => {
     const 生成 = (秒: number) => {
       const f = path.join(临时.dir, `t${秒}.m4a`);

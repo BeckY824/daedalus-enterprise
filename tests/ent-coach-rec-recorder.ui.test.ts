@@ -12,6 +12,8 @@
  *   - 飞书里：按住说话走飞书原生录（签名 → config → 授权 → RecorderManager），松手读文件字节按片传，sourceKind 飞书原生录；飞书来电打断照样记
  *   - 草稿条：录的待提交卡写打断、「再录一段」→ 面板「按住 再补一段」→ resume、第 2 段的片、finish
  *   - 手机 390：选择板「录音点评」能点；面板从底部升起，按钮 ≥88 高、不横向撑出
+ *   - PR3 审查：点按录音 Esc 不管用、「取消」先问再丢；「准备中」关面板不开麦；空格只在焦点在录音按钮 / 面板上时录；
+ *     飞书原生录中途没给文件 → 这一页改走网页录；补段沿用第一段的录法、录法切换锁住
  * 麦克风、MediaRecorder、飞书 tt / h5sdk、网络都用页面里的假的（记下每次请求）。
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -54,7 +56,11 @@ const 假环境 = ([不能录]: [boolean]) => {
   w.__轨 = [];
   w.__录 = null;
   class 轨 extends EventTarget { kind = "audio"; stop() { (w as Record<string, unknown>).__停轨 = ((w.__停轨 as number) ?? 0) + 1; } }
-  Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: async () => ({ state: w.__权限 }) } });
+  Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: async () => {
+    // __权限慢：问权限卡住，等测试 __放权限()（模拟「准备中」）
+    if (w.__权限慢) await new Promise<void>((ok) => { (w as Record<string, unknown>).__放权限 = ok; });
+    return { state: w.__权限 };
+  } } });
   Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia: async () => {
     (w as Record<string, unknown>).__开麦 = ((w.__开麦 as number) ?? 0) + 1;
     if (w.__拒) throw new DOMException("no", "NotAllowedError");
@@ -126,7 +132,11 @@ const 假飞书 = () => {
       onInterruptionBegin: (f: () => void) => { 回调.断 = f; },
       onFrameRecorded: (f: () => void) => { 回调.帧 = f; },
     }),
-    getFileSystemManager: () => ({ readFile: (o: { filePath: string; success: (r: { data: ArrayBuffer }) => void }) => { w.__飞书.读 = o.filePath; o.success({ data: new ArrayBuffer(12_000) }); } }),
+    getFileSystemManager: () => ({ readFile: (o: { filePath: string; success: (r: { data: ArrayBuffer }) => void; fail: (e: unknown) => void }) => {
+      w.__飞书.读 = o.filePath;
+      if (w.__飞书坏) o.fail(new Error("坏"));
+      else o.success({ data: new ArrayBuffer(12_000) });
+    } }),
   };
   (w as Record<string, unknown>).__飞书断 = () => 回调.断?.();
 };
@@ -297,6 +307,7 @@ it("点按录音：点一下开始、再点停；单独「取消」；选过的�
   await 等录着(page);
   await page.waitForTimeout(1100);
   await page.getByTestId("ptt-cancel").click();
+  await page.getByTestId("ptt-cancel-ok").click();
   await page.getByTestId("ptt-tip").filter({ hasText: "已取消" }).waitFor();
   expect((await 请求们(page)).slice(-2)).toEqual(["POST /api/coach-rec/crec1/resume", "POST /api/coach-rec/crec1/drop"]);
   await page.getByTestId("ptt-pending").filter({ hasText: "已录 1 段" }).waitFor();
@@ -308,6 +319,89 @@ it("点按录音：点一下开始、再点停；单独「取消」；选过的�
   expect(errors).toEqual([]);
   expect(二.errors).toEqual([]);
   await 二.page.close();
+});
+
+it("PR3 审查：点按录音 Esc 不管用；点「取消」先问，「接着录」不丢、照常录，「丢掉」才丢", async () => {
+  const { page, errors } = await open("form", { 草稿们: [] }, { 记式: "点按" });
+  await 开面板(page);
+  await page.getByTestId("ptt-btn").click();
+  await 等录着(page);
+  await page.waitForTimeout(1100);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(200);
+  expect(await page.getByTestId("ptt-float").isVisible()).toBe(true); // 还在录
+  expect(await page.getByTestId("ptt-panel").isVisible()).toBe(true);
+  await page.getByTestId("ptt-cancel").click();
+  expect(await page.getByTestId("ptt-cancel-ask").innerText()).toContain("丢掉正在录的这段？");
+  await page.getByTestId("ptt-cancel-no").click();
+  expect(await page.getByTestId("ptt-cancel-ask").count()).toBe(0);
+  expect(await page.getByTestId("ptt-float").isVisible()).toBe(true);
+  expect((await 请求们(page)).filter((x) => x.endsWith("/drop"))).toEqual([]);
+  // 问着的时候点停：照常存下，问的那条收起
+  await page.getByTestId("ptt-cancel").click();
+  await page.getByTestId("ptt-btn").click();
+  await page.getByTestId("ptt-pending").waitFor();
+  expect(await page.getByTestId("ptt-cancel-ask").count()).toBe(0);
+  expect((await 请求们(page)).at(-1)).toBe("POST /api/coach-rec/crec1/finish");
+  // 补一段，取消 → 丢掉
+  await page.getByTestId("ptt-btn").click();
+  await 等录着(page);
+  await page.getByTestId("ptt-cancel").click();
+  await page.getByTestId("ptt-cancel-ok").click();
+  await page.getByTestId("ptt-tip").filter({ hasText: "已取消" }).waitFor();
+  expect((await 请求们(page)).filter((x) => x.endsWith("/drop")).length).toBe(1);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+it("PR3 审查：「准备中」面板关了 → 中止，不开麦克风、不发开始请求", async () => {
+  const { page, errors } = await open("form", { 草稿们: [] });
+  await 开面板(page);
+  await page.evaluate(() => { (window as unknown as 页).__权限慢 = true; });
+  await 按住(page);
+  await page.waitForFunction(() => typeof (window as unknown as Record<string, unknown>).__放权限 === "function");
+  expect((await page.getByTestId("ptt-btn").innerText()).replace(/\s+/g, "")).toBe("准备中…");
+  await page.locator(".ptt-modal .ant-modal-close").dispatchEvent("click"); // 准备中点 × 关面板
+  await page.getByTestId("ptt-panel").waitFor({ state: "detached" });
+  await page.evaluate(() => (window as unknown as { __放权限: () => void }).__放权限());
+  await page.waitForTimeout(300);
+  await page.mouse.up();
+  expect(await page.evaluate(() => (window as unknown as Record<string, number>).__开麦 ?? 0)).toBe(0);
+  expect(await 请求们(page)).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+it("PR3 审查：空格只在焦点在录音按钮 / 面板上时录；焦点在别的按钮上不拦", async () => {
+  const 草稿 = { id: "crec9", status: "待提交", sourceKind: "网页录", 文件名: null, 总字节: 9000, 已收字节: 9000, 已收片: [], 格式: "m4a", 开始于: "", 更新于: "1", 能听: true, 时长毫秒: 5000, 段数: 1, 打断们: [], 能补: true, 错: null };
+  const { page, errors } = await open("list", { 草稿们: [草稿] });
+  await page.getByTestId("crec-add-seg").click();
+  await page.getByTestId("ptt-panel").waitFor();
+  // 打开时焦点在面板上：按住空格就录
+  await page.waitForFunction(() => document.activeElement?.getAttribute("data-testid") === "ptt-panel" || !!document.activeElement?.closest(".ptt-modal"));
+  await page.keyboard.down("Space");
+  await 等录着(page);
+  await page.waitForTimeout(1100);
+  await page.keyboard.up("Space");
+  await page.waitForFunction(() => (window as unknown as 页).__请求.some((x) => x.endsWith("/finish")));
+  const 前 = (await 请求们(page)).length;
+  // 焦点在「删掉」按钮上：空格是点这个按钮，不录
+  await page.getByTestId("ptt-delete").focus();
+  await page.keyboard.down("Space");
+  await page.waitForTimeout(300);
+  await page.keyboard.up("Space");
+  await page.getByRole("group", { name: "放弃这段录音？" }).waitFor();
+  expect(await page.getByTestId("ptt-float").count()).toBe(0);
+  expect((await 请求们(page)).length).toBe(前);
+  // 焦点在录音按钮上：按住空格录
+  await page.getByTestId("ptt-btn").focus();
+  await page.keyboard.down("Space");
+  await 等录着(page);
+  await page.waitForTimeout(1100);
+  await page.keyboard.up("Space");
+  await page.waitForFunction(() => (window as unknown as 页).__请求.filter((x) => x.endsWith("/finish")).length === 2);
+  expect(errors).toEqual([]);
+  await page.close();
 });
 
 it("网络断了（片一直 503）：写「网络断了，还有约 N 秒的录音没传上去，联网后自动补传」；网好了补传、传完", async () => {
@@ -380,6 +474,63 @@ it("飞书里：按住说话走飞书原生录（签名、config、授权），�
   expect(((await 体(page)).finish as { 打断: { 原因: string } }).打断.原因).toBe("来电或话筒被占用");
   expect(errors).toEqual([]);
   await page.close();
+});
+
+it("PR3 审查：飞书原生录中途没给文件 → 这段丢掉，这一页之后改走网页录，不再走原生", async () => {
+  const { page, errors } = await open("form", { 草稿们: [] }, { 飞书: true });
+  await 开面板(page);
+  await page.evaluate(() => { (window as unknown as 页).__飞书坏 = true; });
+  await 按住(page);
+  await 等录着(page);
+  await page.waitForTimeout(1100);
+  await page.mouse.up();
+  await page.getByTestId("ptt-tip").filter({ hasText: "再按住一次会改用网页录" }).waitFor();
+  expect((await 请求们(page)).at(-1)).toBe("POST /api/coach-rec/crec1/drop");
+  await page.evaluate(() => { (window as unknown as 页).__飞书坏 = false; }); // 飞书好了也不再试原生（这一页记着）
+  await 按住(page);
+  await 等录着(page);
+  await page.waitForTimeout(1100);
+  await page.mouse.up();
+  await page.getByTestId("ptt-pending").waitFor();
+  expect((await 体(page)).start).toEqual({ projectId: "p1", sourceKind: "网页录" });
+  expect(await page.evaluate(() => (window as unknown as 页).__飞书)).toMatchObject({ 开始: 1 });
+  expect(await page.evaluate(() => (window as unknown as Record<string, number>).__开麦)).toBe(1);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+it("PR3 审查：补段沿用第一段的录法——网页录的在飞书里补也走网页录；飞书原生录的锁按住、走飞书；录法切换锁住", async () => {
+  const 草稿 = (sourceKind: string) => ({ id: "crec9", status: "待提交", sourceKind, 文件名: null, 总字节: 9000, 已收字节: 9000, 已收片: [], 格式: "m4a", 开始于: "", 更新于: "1", 能听: true, 时长毫秒: 5000, 段数: 1, 打断们: [], 能补: true, 错: null });
+  const 一 = await open("list", { 草稿们: [草稿("网页录")] }, { 飞书: true });
+  await 一.page.getByTestId("crec-add-seg").click();
+  await 一.page.getByTestId("ptt-panel").waitFor();
+  expect(await 一.page.locator(".ptt-modal .ant-segmented").getAttribute("class")).toContain("ant-segmented-disabled");
+  await 按住(一.page);
+  await 等录着(一.page);
+  await 一.page.waitForTimeout(1100);
+  await 一.page.mouse.up();
+  await 一.page.waitForFunction(() => (window as unknown as 页).__请求.some((x) => x.endsWith("/finish")));
+  expect(await 一.page.evaluate(() => (window as unknown as 页).__飞书)).toMatchObject({ 开始: 0 });
+  expect(await 一.page.evaluate(() => (window as unknown as Record<string, number>).__开麦)).toBe(1);
+  expect(一.errors).toEqual([]);
+  await 一.page.close();
+
+  // 飞书原生录的草稿：上次选的是点按也锁成按住、走飞书
+  const 二 = await open("list", { 草稿们: [草稿("飞书原生录")] }, { 飞书: true, 记式: "点按" });
+  await 二.page.getByTestId("crec-add-seg").click();
+  await 二.page.getByTestId("ptt-panel").waitFor();
+  expect((await 二.page.getByTestId("ptt-btn").innerText()).replace(/\s+/g, "")).toBe("按住再补一段");
+  expect(await 二.page.locator(".ptt-modal .ant-segmented").getAttribute("class")).toContain("ant-segmented-disabled");
+  await 按住(二.page);
+  await 等录着(二.page);
+  await 二.page.waitForTimeout(1100);
+  await 二.page.mouse.up();
+  await 二.page.waitForFunction(() => (window as unknown as 页).__请求.some((x) => x.endsWith("/finish")));
+  expect(await 二.page.evaluate(() => (window as unknown as 页).__飞书)).toMatchObject({ 开始: 1 });
+  expect(await 二.page.evaluate(() => (window as unknown as Record<string, number>).__开麦 ?? 0)).toBe(0);
+  expect(await 请求们(二.page)).toEqual(["POST /api/coach-rec/crec9/resume", "PUT /api/coach-rec/crec9/chunk/2/0", "POST /api/coach-rec/crec9/finish"]);
+  expect(二.errors).toEqual([]);
+  await 二.page.close();
 });
 
 it("草稿条：录的待提交卡写打断、「再录一段」→ 面板「按住 再补一段」→ resume、第 2 段、finish", async () => {

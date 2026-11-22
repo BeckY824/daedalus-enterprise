@@ -43,6 +43,8 @@ const 假服务器 = () => {
   w.__请求 = [];
   window.fetch = (async (url: string, init?: RequestInit) => {
     w.__请求.push(`${init?.method ?? "GET"} ${url} ${init?.body ?? ""}`.trim());
+    const 回 = (window as unknown as { __回?: number }).__回;
+    if (回) return new Response(JSON.stringify({ error: "这条录音点评已经发出了" }), { status: 回, headers: { "content-type": "application/json" } });
     return new Response(JSON.stringify({ ok: true, id: "t9", 录音: {} }), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
 };
@@ -102,6 +104,29 @@ it("稍后再发：没改直接关、改了才存；不要了先问再删；按�
   await page.getByTestId("crec-confirm-redo").click();
   await page.getByTestId("crec-confirm-redo-ok").click();
   await expect.poll(async () => (await 请求们(page)).at(-1)).toBe("POST /api/coach-rec/crec1/retry {}");
+  await page.close();
+});
+
+it("点 × / 按 Esc 关框时存草稿：服务端回 409（别处已经发出、删了）也关框、刷新；点「稍后再发」回 409 留在框里写原因", async () => {
+  const { page, errors } = await open(基([录({})]));
+  await page.evaluate(() => { (window as unknown as { __回?: number }).__回 = 409; });
+  await page.getByTestId("crec-confirm-open").click();
+  await page.getByTestId("crec-confirm").getByLabel("要点").fill("改了");
+  await page.locator(".crec-confirm .ant-modal-close").click();
+  await expect.poll(() => page.getByTestId("crec-confirm").count()).toBe(0);
+  expect((await 请求们(page)).at(-1)).toContain("POST /api/coach-rec/crec1/draft");
+  expect(await page.evaluate(() => (window as unknown as { __刷?: number }).__刷)).toBe(1);
+  // Esc 同样
+  await page.getByTestId("crec-confirm-open").click();
+  await page.getByTestId("crec-confirm").getByLabel("要点").fill("又改了");
+  await page.keyboard.press("Escape");
+  await expect.poll(() => page.getByTestId("crec-confirm").count()).toBe(0);
+  // 稍后再发（按钮）回 409：框留着、写原因
+  await page.getByTestId("crec-confirm-open").click();
+  await page.getByTestId("crec-confirm").getByLabel("要点").fill("再改");
+  await page.getByTestId("crec-confirm-later").click();
+  await page.getByTestId("crec-confirm").getByRole("alert").filter({ hasText: "已经发出了" }).waitFor();
+  expect(errors).toEqual([]);
   await page.close();
 });
 
