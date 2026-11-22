@@ -51,7 +51,7 @@ import { defaultClient as raw } from "@/lib/prisma";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 录音点评开关键, 停用成员录音, 删主题的录音文件, 忘掉存储情况, 我的录音草稿 } from "@/lib/enterprise/coach-rec-db";
+import { 录音点评开关键, 停用成员录音, 删主题的录音文件, 忘掉存储情况, 我的录音草稿, 没发出的录音数 } from "@/lib/enterprise/coach-rec-db";
 import { 清理一轮 } from "@/lib/enterprise/coach-rec-housekeep";
 import { 录音根, 录音目录 } from "@/lib/enterprise/coach-rec-store";
 import { 放弃没发出的录音, 进公海关主题 } from "@/lib/project/pool-owner";
@@ -264,7 +264,10 @@ describe("当场连带", () => {
   it("停用成员：TA 没发出的录音当场放弃、删文件（开关关着也删）；删主题：录音文件连带删、行留着", async () => {
     const a = await 一条({ status: "待提交", endedAt: new Date() });
     const b = await 一条({ status: "已发出", transcript: "x", topicId: "t1" });
+    // 停用确认框先数（跟进 11-22：有才提一句），口径和真删的同一份
+    expect(await 没发出的录音数(人.教练)).toBe(1);
     expect(await 停用成员录音(人.教练)).toBe(1);
+    expect(await 没发出的录音数(人.教练)).toBe(0);
     expect((await 行(a.id)).status).toBe("已放弃");
     // 当场删了、audioPurgedAt 记上（清理一轮不会再看到它）：这里自己留一条「系统」的痕
     expect(await raw.auditLog.findMany({ where: { entity: "EntCoachRecording", entityId: a.id }, select: { userName: true, action: true, summary: true } })).toEqual([{ userName: "系统", action: "delete", summary: "录音成员停用，没发出的录音已自动删除" }]);

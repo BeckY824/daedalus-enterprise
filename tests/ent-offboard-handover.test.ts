@@ -80,7 +80,7 @@ describe("办离职：原地不动", () => {
   it("系统管理员办离职：只停用，客户、项目、线索、渠道负责人仍是他；不记历史负责人", async () => {
     const d = await 摆数据();
     当(系统, "ADMIN");
-    expect(await 停用清点(离职)).toEqual({ ok: true, 原地: { 客户: 1, 项目: 2 } });
+    expect(await 停用清点(离职)).toEqual({ ok: true, 原地: { 客户: 1, 项目: 2 }, 录音: 0 });
     expect(await deactivateUser(离职, "")).toEqual({ ok: true });
     expect((await prisma.user.findUniqueOrThrow({ where: { id: 离职 } })).active).toBe(false);
     expect(await 归谁(d.c.id)).toBe(离职);
@@ -124,7 +124,7 @@ describe("办离职：原地不动", () => {
     mocks.项目模式 = false;
     await 摆数据();
     当(系统, "ADMIN");
-    expect(await 停用清点(离职)).toEqual({ ok: true, 原地: { 客户: 1, 项目: 0 } });
+    expect(await 停用清点(离职)).toEqual({ ok: true, 原地: { 客户: 1, 项目: 0 }, 录音: 0 });
   });
 
   it("重新启用：没交走的还在他名下，不动", async () => {

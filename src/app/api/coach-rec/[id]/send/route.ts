@@ -13,6 +13,6 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (me instanceof Response) return me;
   const 体 = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   if (!体 || typeof 体 !== "object") return Response.json({ error: "参数不对" }, { status: 400 });
-  const r = await 发录音点评(me, (await ctx.params).id, { title: 体.title, body: 体.body });
+  const r = await 发录音点评(me, (await ctx.params).id, { title: 体.title, body: 体.body, 版本: 体.版本 });
   return 回(r.ok ? r : { ok: false, error: r.error, 状态: "状态" in r ? r.状态 : 400 });
 }

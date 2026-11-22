@@ -22,7 +22,7 @@ import { 企业版 } from "./switch";
 import { 系统 } from "@/lib/project/timeout";
 import { 读组织 } from "./org";
 import { 权限项目选, 是教练, type 谁 } from "./permissions";
-import { 文件名打码, 打码还原, 还原超长话 } from "./notice-mask";
+import { 文件名打码, 打码还原, 还原超长话, 有对不上的码, 内容变了话, 版本变了 } from "./notice-mask";
 import { 正在切换视图 } from "./view-as";
 import type { 主题项目 } from "./coach-topic";
 import {
@@ -224,7 +224,8 @@ export async function 收一片(me: 人, id: unknown, 段: number, 片: number, 
     if (!认出 || (r.format && 认出 !== r.format)) {
       await 删片(dir, 段, 片);
       if (!别的片.length && r.segCount === 0) await 弃掉空的(me, r);
-      return 不行(认出 ? "这一段和前面录的格式不一样" : "认不出这个文件的格式：只收 m4a、mp3、wav、aac、amr、ogg、flac、mp4、3gp、webm 录音", 415);
+      // 网页录、飞书录（跟进 11-22）：说录音的话，不说「文件」；传文件的照旧列能收的格式
+      return 不行(认出 ? "这一段和前面录的格式不一样" : r.sourceKind === "上传" ? "认不出这个文件的格式：只收 m4a、mp3、wav、aac、amr、ogg、flac、mp4、3gp、webm 录音" : "这一段录音的格式认不出来", 415);
     }
     格式 ??= 认出;
   }
@@ -311,7 +312,7 @@ async function 拼合一条(me: 人, r: 录音库行, p: { name: string }, 打�
     }
     if (!是录音格式(新行.format)) {
       await 还位();
-      return 不行("认不出这个文件的格式", 415);
+      return 不行(r.sourceKind === "上传" ? "认不出这个文件的格式" : "这条录音的格式认不出来", 415);
     }
     const 段们 = [...new Set(片们.map((x) => x.段))];
     const 路径们: string[] = [];
@@ -496,7 +497,7 @@ async function 交去整理(me: 人, r: 录音库行, 从: "整理失败" | "待
  * 稍后再发（POST :id/draft，PR5）：只有录的人；待确认、整理失败的存下确认框里改过的主题、要点（空也行，下次接着写）。
  * 销售教练看到的是打过码的草稿：库里要存原文（PR5 审查），提交上来没改动的打码段按原文换回原号码（打码还原），教练自己改的照他写的存
  */
-export async function 存录音草稿(me: 人, id: unknown, 输入: { title?: unknown; body?: unknown }): Promise<结果<{ 录音: 录音给界面 }>> {
+export async function 存录音草稿(me: 人, id: unknown, 输入: { title?: unknown; body?: unknown; 版本?: unknown }): Promise<结果<{ 录音: 录音给界面 }>> {
   if (!(await 录音点评开着())) return 不行(没开放话, 404);
   const r = await 读录音(id);
   if (!r || r.authorId !== me.id || r.deletedAt) return 不行("找不到这条录音", 404);
@@ -507,6 +508,9 @@ export async function 存录音草稿(me: 人, id: unknown, 输入: { title?: un
   const 教练 = 是教练(me, await 读组织());
   const title = 教练 ? 打码还原(String(输入.title ?? "").trim(), 原文们) : String(输入.title ?? "").trim();
   const body = 教练 ? 打码还原(String(输入.body ?? "").trim(), 原文们) : String(输入.body ?? "").trim();
+  // 确认框开着时这条在别处重新整理过、原号码没了：打码段换不回去，别把「139****5678」存进库，整条拒存（3703 实操跟进）。
+  // 版本 = 打开框时这条的 更新于；对得上的（没在别处动过）教练自己照着打码样子写的字照存
+  if (教练 && 版本变了(输入.版本, r.updatedAt) && (有对不上的码(title, 原文们) || 有对不上的码(body, 原文们))) return 不行(内容变了话, 412);
   const 超 = 还原超长话(输入.title ?? "", title, 主题标题上限, "主题") ?? 还原超长话(输入.body ?? "", body, 主题内容上限, "要点");
   if (超) return 不行(超, 400);
   await 主题写(() => prisma.entCoachRecording.updateMany({
@@ -594,6 +598,12 @@ export async function 取给转写(id: string): Promise<{ 文件: string; 类型
   const 文件 = 认录音文件(r.audioPath);
   const 大小 = 文件 ? 文件大小(文件) : null;
   return 文件 && 大小 !== null ? { 文件, 类型: 格式类型[r.format], 大小 } : null;
+}
+
+/** 停用清点（停用确认框）：这个人还有几条没发出的录音点评（停用时 停用成员录音 会删掉的那些，口径同一份）。不看开关 */
+export async function 没发出的录音数(userId: string): Promise<number> {
+  if (!企业版() || !userId) return 0;
+  return defaultClient.entCoachRecording.count({ where: { authorId: userId, status: { notIn: ["已发出", "已放弃"] }, deletedAt: null } });
 }
 
 /**

@@ -27,6 +27,8 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
     import CoachTopics,{StartReviewButton} from '@/app/(app)/projects/[id]/CoachTopics';
+    import {configureBrowserBusinessTimeZone} from '@/lib/business-clock';
+    configureBrowserBusinessTimeZone('Asia/Shanghai'); // 企业版页面由 BusinessProvider 设成北京钟，这里照样设
     const root=createRoot(document.getElementById('root'));
     const 长项目='项目名很长'+'Y'.repeat(120);
     const 基=(录音)=>({们:[],能发:true,填写人:{id:'u1',name:'教练',身份:'销售教练'},负责人:{id:'u2',name:'负责人'},项目名:长项目,当前节点:'线索验证',待回复数:0,冻结:false,...(录音?{录音:{可录:true,...录音}}:{})});
@@ -74,8 +76,8 @@ const 假服务器 = () => {
   }) as typeof fetch;
 };
 
-async function open(what: "list" | "form", 录音: unknown, width = 1366, 假钟 = false) {
-  const page = await browser.newPage({ viewport: { width, height: 800 } });
+async function open(what: "list" | "form", 录音: unknown, width = 1366, 假钟 = false, 时区?: string) {
+  const page = await browser.newPage({ viewport: { width, height: 800 }, ...(时区 ? { timezoneId: 时区 } : {}) });
   page.setDefaultTimeout(8000);
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
@@ -158,6 +160,16 @@ it("提交整理（PR4）：点了 POST submit、卡上变「正在转写」带�
   await 灰.page.getByTestId("coach-review-write").waitFor();
   expect(await 灰.page.getByTestId("coach-review-upload").count()).toBe(0);
   await 灰.page.close();
+});
+
+it("待提交卡的到期日按北京时间写（跟进 11-22：和「明天到期」通知同一天，不随浏览器时区差一天）", async () => {
+  // 北京 11 月 30 日 01:30 = 洛杉矶 11 月 29 日 09:30
+  const 待 = { id: "crec2", status: "待提交", sourceKind: "上传", 文件名: "通话录音.m4a", 总字节: 12 * MB, 已收字节: 12 * MB, 已收片: [], 格式: "m4a", 开始于: "", 更新于: "1", 能听: false, 到期于: "2026-11-29T17:30:00.000Z" };
+  const { page, errors } = await open("list", { 草稿们: [待] }, 1280, false, "America/Los_Angeles");
+  expect(await page.evaluate(() => new Date("2026-11-29T17:30:00.000Z").getDate())).toBe(29);
+  expect(await page.getByTestId("crec-expire").innerText()).toBe("没发出的草稿 11 月 30 日 自动删除");
+  expect(errors).toEqual([]);
+  await page.close();
 });
 
 it("超过 200MB 不让传；超过 20MB 提示连 Wi-Fi", async () => {

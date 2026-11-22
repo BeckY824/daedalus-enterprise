@@ -310,7 +310,7 @@ describe("稍后再发、发出", () => {
     // 再打开还是打码的；发出：抄了转写里的号码（打码样子）也换回原号码
     const 再 = (await 读项目主题(我("教练"), 项目))!.录音!.草稿们.find((d) => d.id === id)!;
     expect(再.确认?.主题).toBe("回访 138****5678（周二）");
-    const r = await 读(await 发(请(`/api/coach-rec/${id}/send`, { title: 再.确认!.主题, body: "· 打 138****5678 确认；改成 138****0000" }), 参(id)));
+    const r = await 读(await 发(请(`/api/coach-rec/${id}/send`, { title: 再.确认!.主题, body: "· 打 138****5678 确认；改成 138****0000", 版本: 再.更新于 }), 参(id)));
     expect(r.status).toBe(200);
     const t = await raw.entCoachTopic.findUniqueOrThrow({ where: { id: r.体.id as string } });
     expect(t.title).toBe("回访 13812345678（周二）");
@@ -338,6 +338,31 @@ describe("稍后再发、发出", () => {
     expect(发出.体.error).toContain("换回原号码后");
     expect(await 行(id)).toMatchObject({ status: "待确认", draftTitle: 原题 });
     expect(await raw.entCoachTopic.count()).toBe(0);
+  });
+
+  it("确认框开着时这条在别处重新整理过、原号码没了：存草稿、发出都回 412「内容已在别处更新」，打码样子不落库；没变过的照存（3703 实操跟进）", async () => {
+    const 转写没号 = "(00:00) 说话人 1：报价单下周二前发过去，数量周一电话确认。\n(00:05) 说话人 2：好的。";
+    const id = await 放一条({ status: "待确认", transcript: 转写没号, draftTitle: "回访 13912345678", draftBody: "· 打 13912345678 确认数量" });
+    当("教练");
+    const 教 = (await 读项目主题(我("教练"), 项目))!.录音!.草稿们.find((d) => d.id === id)!;
+    expect(教.确认?.主题).toBe("回访 139****5678");
+    // 别处「按转写重新整理」：草稿换了、原号码没了（更新于跟着变）
+    await new Promise((r) => setTimeout(r, 5));
+    await raw.entCoachRecording.update({ where: { id }, data: { draftTitle: "报价单下周二前发出", draftBody: "· 周一电话确认数量" } });
+    const 存 = await 读(await 存稿(请(`/api/coach-rec/${id}/draft`, { title: `${教.确认!.主题}（周二）`, body: 教.确认!.要点, 版本: 教.更新于 }), 参(id)));
+    expect(存).toMatchObject({ status: 412, 体: { error: "内容已在别处更新，请重新打开" } });
+    // 老页面没带版本也一样拦
+    expect((await 读(await 存稿(请(`/api/coach-rec/${id}/draft`, { title: 教.确认!.主题, body: "· 改了" }), 参(id)))).status).toBe(412);
+    const 发出 = await 读(await 发(请(`/api/coach-rec/${id}/send`, { title: 教.确认!.主题, body: 教.确认!.要点, 版本: 教.更新于 }), 参(id)));
+    expect(发出.status).toBe(412);
+    expect(await 行(id)).toMatchObject({ status: "待确认", draftTitle: "报价单下周二前发出", draftBody: "· 周一电话确认数量" });
+    expect(await raw.entCoachTopic.count()).toBe(0);
+    expect(JSON.stringify(await raw.entCoachRecording.findMany())).not.toContain("****");
+    // 重新打开（新版本）：没有打码段的照常存
+    const 新 = (await 读项目主题(我("教练"), 项目))!.录音!.草稿们.find((d) => d.id === id)!;
+    const 再存 = await 读(await 存稿(请(`/api/coach-rec/${id}/draft`, { title: "新主题", body: 新.确认!.要点, 版本: 新.更新于 }), 参(id)));
+    expect(再存.status).toBe(200);
+    expect((await 行(id)).draftTitle).toBe("新主题");
   });
 
   it("打码还原：同一个打码样子对应几个原号码按顺序轮；对不上的不动；没有号码的原文不动", () => {
