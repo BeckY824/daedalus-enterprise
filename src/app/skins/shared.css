@@ -99,7 +99,7 @@
 
   --ant-color-bg-base: var(--panel);
   --ant-color-bg-container: var(--panel);
-  --ant-color-bg-elevated: var(--panel);
+  --ant-color-bg-elevated: var(--pop-bg);   /* 浮层底：换皮主题 --pop-bg 就是它们的 --panel；现状暗黑抬亮一档（D-2） */
   --ant-color-bg-layout: var(--workbench);
   --ant-color-bg-container-disabled: var(--hover);
   --ant-color-bg-spotlight: color-mix(in srgb, var(--ink) 88%, var(--panel));
@@ -184,7 +184,7 @@
   --ant-table-border-color: var(--line-soft);
   --ant-table-footer-bg: var(--workbench);
   --ant-table-footer-color: var(--ink);
-  --ant-table-filter-dropdown-bg: var(--panel);
+  --ant-table-filter-dropdown-bg: var(--pop-bg);
   --ant-table-filter-dropdown-menu-bg: var(--panel);
   --ant-table-expand-icon-bg: var(--panel);
   --ant-table-header-border-radius: var(--r-card);
@@ -217,8 +217,8 @@
   --ant-message-content-bg: var(--panel);
 }
 :root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-modal, .ant-modal-css-var) {
-  --ant-modal-content-bg: var(--panel);
-  --ant-modal-header-bg: var(--panel);
+  --ant-modal-content-bg: var(--pop-bg);
+  --ant-modal-header-bg: var(--pop-bg);
   --ant-modal-footer-bg: transparent;
   --ant-modal-title-color: var(--ink);
   --ant-border-radius-lg: var(--r-pop);   /* 组件里重设全局名：只在弹窗这一层生效 */

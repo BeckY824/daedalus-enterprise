@@ -44,12 +44,17 @@
   --workbench: #f5f5f7; --panel: #ffffff; --line: #e3e3e8; --line-soft: #ededf0;
 }
 
-/* now：蓝主色提亮；八个分类色换成暗底上的亮一档 */
+/* now：蓝主色提亮；八个分类色换成暗底上的亮一档。
+   设计语言 D-2 · 方案 A（11-22）：页面、名单、内容同一层 --panel #171A1F；模块线用浅的那档 #24272E；
+   浮层抬亮到 #1D2026，再加一圈 1px --line（#2C3038）——纸和浮层同色时只靠影子认不出边 */
 :root[data-mode="dark"][data-skin="now"],
 :root[data-mode="dark"][data-skin] [data-skin-preview="now"] {
   --brand: #6b95ff; --brand-deep: #c3d3ff; --brand-bg: #1a2547; --brand-line: #2f437a;
   --cat-blue: #60a5fa; --cat-green: #4ade80; --cat-yellow: #facc15; --cat-orange: #fb923c;
   --cat-pink: #f472b6; --cat-violet: #a78bfa; --cat-cyan: #22d3ee; --cat-amber: #fbbf24;
+  --mod-line: var(--line-soft);
+  --pop-bg: #1d2026;
+  --shadow-pop: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.5);
 }
 
 /* 像素：线和硬阴影原来是黑的，暗底上换成亮的（墨色 / 淡字色），点阵底纹跟着线色走 */

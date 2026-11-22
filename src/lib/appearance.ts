@@ -2,7 +2,9 @@
  * 外观：这台电脑上的样子（设置 → 外观）。**只换值，不换结构、不动数据，也不影响同事**。
  *
  * 一个外观 = 挂在 <html> 上的三个属性，globals.css 按属性换 token：
- *   data-paper  底色。tone = 原底（左栏和页面是浅灰的工作台色，现在的样子）；white = 白底（地面铺白）
+ *   data-paper  底色。white = 白底（默认，设计语言 D-2 · 方案 A，11-22 用户定：现状下页面、名单、内容一张白纸，左栏浅灰）；
+ *               tone = 原底（个人偏好，给想要原样的人：左栏和页面是浅灰的工作台色，内容放在白卡片里）。
+ *               没存过的一律白底；存过「原底」的照它（存的是整份外观，见 读外观）
  *   data-skin   主题。一套主题 = 一组 token 值 + 不超过 10 条形状规则 + 自己的动效曲线和时长，
  *               样式在 src/app/skins/<key>.css（现状就是 globals.css 的 :root，不另开文件）。
  *               加一套主题：主题表 加一项、skins/ 下加一个文件、layout.tsx 引入——调用处一行都不用改。
@@ -20,8 +22,8 @@ import { 名单宽预设段 } from "./roster-width";
 export const 外观键 = "daedalus.appearance";
 
 export const 底色表 = [
-  { key: "tone", 名: "原底", 说明: "左栏和页面是浅灰的，卡片是白的" },
-  { key: "white", 名: "白底", 说明: "整页铺白，卡片靠一道细线分开" },
+  { key: "white", 名: "白底", 说明: "一张白纸，模块靠细线和留白分开" },
+  { key: "tone", 名: "原底", 说明: "原来的样子：页面浅灰，内容放在白卡片里" },
 ] as const;
 export type 底色 = (typeof 底色表)[number]["key"];
 
@@ -42,7 +44,8 @@ export const 明暗表 = [
 export type 明暗 = (typeof 明暗表)[number]["key"];
 
 export type 外观 = { paper: 底色; skin: 主题; mode: 明暗 };
-export const 默认外观: 外观 = { paper: "tone", skin: "now", mode: "light" };
+/* 设计语言 D-2（11-22）：底色默认从「原底」改成「白底」 */
+export const 默认外观: 外观 = { paper: "white", skin: "now", mode: "light" };
 
 const 系统暗查询 = "(prefers-color-scheme: dark)";
 

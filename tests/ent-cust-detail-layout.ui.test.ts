@@ -193,10 +193,10 @@ it("1024 / 1280 / 1366：不横滚、卡不出栏、模块互不重叠", async (
         const 叠 = Math.min(a.右, c.右) - Math.max(a.左, c.左) > 1 && Math.min(a.下, c.下) - Math.max(a.上, c.上) > 1;
         expect(叠, `${w} ${a.名} × ${c.名}`).toBe(false);
       }
-      // 同一栏的卡之间留缝（和项目详情一样 12～16）
+      // 同一栏的模块上下排开、不叠：设计语言 D-2 方案 A（11-22）起模块不画卡、之间不留缝，靠一根 --mod-line 分开（原来是卡与卡留 12～16 的缝）
       for (const 栏 of ["左", "中"]) {
         const 列 = 有.filter(m => m.栏 === 栏).sort((a, c) => a.上 - c.上);
-        for (let i = 1; i < 列.length; i++) expect(列[i].上 - 列[i - 1].下, `${w} ${列[i - 1].名} → ${列[i].名}`).toBeGreaterThanOrEqual(10);
+        for (let i = 1; i < 列.length; i++) expect(列[i].上 - 列[i - 1].下, `${w} ${列[i - 1].名} → ${列[i].名}`).toBeGreaterThanOrEqual(-0.5);
       }
       expect(errors).toEqual([]);
     } finally { await page.close(); }

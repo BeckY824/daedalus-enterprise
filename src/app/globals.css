@@ -140,6 +140,16 @@
      还是 --workbench，不能跟着一起变白，否则它们就和白卡片糊成一片 */
   --page-bg: var(--workbench);
   --border: var(--line);
+  /* 设计语言 D-2 · 方案 A「一张纸」（11-22 用户定）的几个名字。这里是换皮主题的兜底，换皮主题的规则不读它们；
+     现状的值在下面「外观」那段：
+       --rail-bg   左栏底。兜底跟着地面走（原来就是 --page-bg）；现状铺 --workbench 浅灰（用户 11-22 选「左栏浅灰」）
+       --mod-line  模块之间、栏与栏之间的线。= --line #E3E3E8，比行线 --line-soft 深一档（终审：#EDEDF0 压白底只有 1.17:1，Windows 普通屏看不见）
+       --mod-title 模块标题的字色（13 / 600），内容压过标题
+       --pop-bg    浮层底（弹窗、抽屉、下拉、气泡、⌘K）。浅色 = 纸；暗黑下纸和浮层同色，现状抬亮到 #1D2026（dark.css） */
+  --rail-bg: var(--page-bg);
+  --mod-line: var(--line);
+  --mod-title: var(--text-muted);
+  --pop-bg: var(--panel);
 
   /* ---------- 主题要换、现状用不着的几个钩子（2026-09-28，设置 → 外观 → 主题） ----------
      「现状」下每一个都等于原来写死的那个值，所以加上它们界面一个像素都不变；
@@ -204,10 +214,16 @@
    只换值，不换结构。<html> 上的 data-paper / data-skin 在第一次绘制前由 layout 里那段小脚本挂好，
    所以刷新时不会先闪一下原底。这里不许写裸色值（tests/design-tokens.test.ts），只许指到已有 token 上 */
 :root[data-paper="white"] { --page-bg: var(--panel); }
-/* 设计语言 D-1（11-22）：现状的内容卡圆角统一到卡片那档 10（原来 14，借的浮层圆角；暗黑下本来就是 10） */
-:root:is(:not([data-skin]), [data-skin="now"]), [data-skin-preview="now"] { --r-mod: var(--r-card); }
-/* 白底地面上左栏选中块退回浅灰：白底 + 阴影压在白地面上只剩一圈影子，认不出选中的是哪项 */
+/* 设计语言 D-1（11-22）：现状的内容卡圆角统一到卡片那档 10（原来 14，借的浮层圆角；暗黑下本来就是 10）。
+   D-2 · 方案 A（11-22）：现状默认就是一张白纸——页面、名单栏、内容区同一层 --panel，左栏铺 --workbench 浅灰；
+   模块不画卡，靠小号灰标题 + 发丝线 + 留白分开（下面「方案 A」那段，只在现状且不是「原底」时挂）。
+   「原底」（data-paper="tone"）是留给想要原样的人的个人偏好：地面退回浅灰，内容照旧是白卡（lib/appearance.ts） */
+:root:is(:not([data-skin]), [data-skin="now"]), [data-skin-preview="now"] { --r-mod: var(--r-card); --page-bg: var(--panel); --rail-bg: var(--workbench); }
+:root:is(:not([data-skin]), [data-skin="now"])[data-paper="tone"] { --page-bg: var(--workbench); }
+/* 白底地面上左栏选中块退回浅灰：白底 + 阴影压在白地面上只剩一圈影子，认不出选中的是哪项（换皮主题的白底） */
 :root[data-paper="white"]:not([data-mode="dark"]) { --nav-on-bg: var(--hover); }
+/* 现状的左栏不管哪种底色都铺浅灰，选中块照旧白底 + 薄阴影（下面 .rail-on-bg 那条），浮在灰色侧栏上 */
+:root:is(:not([data-skin]), [data-skin="now"])[data-paper="white"]:not([data-mode="dark"]) { --nav-on-bg: var(--panel); }
 /* 设置 → 外观 那一栏 */
 .appr { display: flex; flex-direction: column; gap: var(--s5); max-width: 640px; }
 .appr-note { margin: 0; color: var(--text-muted); font-size: var(--fs-note); }
@@ -380,10 +396,10 @@ html.glass .auth-solo .auth-main { background: transparent; }
    名字长了省略号收尾，「退出」永远在条里看得见；窄屏两边各留 16px */
 .view-as-bar { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 4px 6px 4px 12px; border: 1px solid var(--warning-line); border-radius: 999px; background: var(--warning-bg); color: var(--warning-text); font-size: var(--fs-min); line-height: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); white-space: nowrap; }
 /* 手机顶栏（AppShell 小屏那支的 Header）：底下一根线和页面分开。
-   设计语言 D-1（11-22）：现状里顶栏是一张白纸（--panel，暗黑下跟着变暗；原来 antd 的 headerBg 是 JS 写死的白），底线加深到 --line——
+   设计语言 D-1（11-22）：现状里顶栏是一张白纸（--panel，暗黑下跟着变暗；原来 antd 的 headerBg 是 JS 写死的白），底线加深到 --line（D-2 起读 --mod-line）——
    页面以后也是白的，这根线是顶栏和正文之间唯一的分界。换皮主题照旧 --line-soft */
 .m-top { border-bottom: 1px solid var(--line-soft); }
-:root:is(:not([data-skin]), [data-skin="now"]) .m-top { background: var(--panel); border-bottom-color: var(--line); }
+:root:is(:not([data-skin]), [data-skin="now"]) .m-top { background: var(--panel); border-bottom-color: var(--mod-line); }
 /* 手机：顶栏只有一行，浮在上面会盖住菜单键，改成排在顶栏上方；电脑上内容区顶部另留了空（AppShell） */
 @media (max-width: 767px) { .view-as-bar { position: static; transform: none; align-self: center; margin: 6px 16px; } }
 .view-as-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -450,7 +466,7 @@ a {
      164px 图标 + 文字同一行   → 认得出了，但一格 32 高、字 14，整栏像个工具条
      220px、一格 38 高、字 15  → 现在这个（2026-09-17）。比例照 Claude 桌面端：栏占窗口两成出头，
                                 行高和字号都比正文大半档，一眼就是导航，不是一列标签 */
-.rail { width: var(--rail-w); flex: none; position: sticky; top: 0; height: 100vh; background: var(--page-bg); border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; padding: 14px 12px 14px; }
+.rail { width: var(--rail-w); flex: none; position: sticky; top: 0; height: 100vh; background: var(--rail-bg); border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; padding: 14px 12px 14px; }
 /* 桌面端：顶上给红黄绿钮留位，这一块也是拖窗口的把手。
    侧栏 164 宽之后钮不用再挤了——整组 52 宽按标准的 20px 内缩放着，右边还剩 92 到竖线，
    和别的 macOS 应用一个观感。栏宽也就不必再比网页版多一截。 */
@@ -657,7 +673,7 @@ html.glass .rail-fb { background: color-mix(in srgb, var(--brand-bg) 85%, transp
 .rail-fb.on { background: var(--brand); color: var(--on-ink); }
 .rail-fb.on:hover { background: var(--brand-deep); color: var(--on-ink); }
 .rail-fb-dot { position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: 999px; background: var(--danger);
-  box-shadow: 0 0 0 2px var(--page-bg); pointer-events: none; }
+  box-shadow: 0 0 0 2px var(--rail-bg); pointer-events: none; }
 /* 写反馈框的标题行：右边一个「我的反馈 ›」，进去看发过的和回复 */
 .fb-title { display: flex; align-items: baseline; gap: 12px; padding-right: 28px; }
 .fb-title-link { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
@@ -750,8 +766,9 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 .rail-ask-k { margin-left: auto; font-size: var(--fs-min); color: var(--text-faint); }
 /* 选中的底色是一块会滑动的层（AppShell 里的 layoutId），压在图标和字下面 */
 .rail-on-bg { position: absolute; inset: 0; border-radius: var(--r-card); background: var(--nav-on-bg); z-index: 0; }
-/* 现状明亮下的选中块：白底 + 一圈 0.5px 发丝描边 + 1px 软影（原型 g.feel）。换皮、暗黑、白底地面不挂，各走各的底色 */
-:root:is(:not([data-skin]), [data-skin="now"]):not([data-mode="dark"]):not([data-paper="white"]) :is(.rail-on-bg, .rail-fav-i.on) {
+/* 现状明亮下的选中块：白底 + 一圈 0.5px 发丝描边 + 1px 软影（原型 g.feel）。换皮、暗黑不挂，各走各的底色。
+   D-2（11-22）起现状的左栏两种底色都是浅灰，白底地面也挂 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on) {
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 6%, transparent), 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
 }
 .rail-item > :not(.rail-on-bg) { position: relative; z-index: 1; }
@@ -3271,7 +3288,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
    三种情况退回实色面板（--panel）：浏览器不支持 backdrop-filter（@supports）、系统开了「减少透明度」、
    低配机（html.lite-fx，外观预设脚本按 CPU 核数 / 内存挂上——整页模糊每帧都要重算，集显上会掉帧） */
 :root .cmdk-root :is(.ant-modal-container, .ant-modal-content) {
-  background: var(--panel); border-radius: var(--r-pop);
+  background: var(--pop-bg); border-radius: var(--r-pop);
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 10%, transparent), var(--shadow-pop);
 }
 :root .cmdk-root .ant-modal-mask { background: color-mix(in srgb, var(--ink) 18%, transparent); }
@@ -4459,7 +4476,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 
 /* ---------- 侧栏、页头：半透明 + 毛玻璃（支持才开，不支持就是原来的实色地面） ---------- */
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html:not(.glass) .rail { background: color-mix(in srgb, var(--page-bg) 78%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+  html:not(.glass) .rail { background: color-mix(in srgb, var(--rail-bg) 78%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
 }
 .rail { border-right-color: var(--line-soft); }
 
@@ -6245,7 +6262,7 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-chip:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop {
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: min(440px, calc(100vw - 32px)); max-height: min(60vh, 420px); overflow-y: auto;
-  padding: var(--s2); background: var(--panel); border-radius: var(--r-pop); box-shadow: var(--shadow-pop);
+  padding: var(--s2); background: var(--pop-bg); border-radius: var(--r-pop); box-shadow: var(--shadow-pop);
   animation: cli-drop-in var(--t-pop) var(--ease) backwards;
 }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop[hidden] { display: none; }
@@ -6299,4 +6316,104 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-head-pop { left: var(--s4); right: var(--s4); width: auto; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log { padding: 0 var(--s4) var(--s3); }
   :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer-sticky { padding: var(--s2) var(--s3) calc(var(--s3) + env(safe-area-inset-bottom)); }
+}
+
+
+/* ================= 设计语言 D-2 · 方案 A「一张纸 + 分隔线」（11-22 用户定，评审页 评审-底色与模块分区-20261122） =================
+   只挂现状主题、且底色不是「原底」（设置 → 外观；默认白底，lib/appearance.ts）。「原底」照旧是浅灰地面 + 白卡，换皮主题一律不动。
+   规矩（两方案共用 + A）：
+     1. 全站一层纸 --page-bg（= --panel）：页面、名单栏、内容区同色；左栏铺 --rail-bg 浅灰
+     2. 模块不画卡：没有框、圆角、底色；靠小号灰标题（13 / 600 --mod-title）+ 模块之间一根 --mod-line + 留白分开
+     3. 栏与栏之间一根竖的 --mod-line；密集看板（复盘统计、看板三列）用分格线
+     4. 容器不许有底色，只有叶子小块（问句气泡、步骤条 .ais-done、节点条、草稿框）可以铺一档 --workbench / --hover
+     5. 浮层是全站唯一带阴影的东西（--shadow-pop，底 --pop-bg）
+     6. 手机（≤767）：模块铺满全宽，不再留 12 的外边距和圆角，内容左右 16
+   这一批只做首页、客户详情、复盘三页；客户列表、公海、渠道、设置等其余页（D-3）照旧是白卡（1px 线、圆角 10、无影） */
+
+/* ---------- 外壳：栏与栏之间一根 --mod-line ---------- */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rail, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .pane { border-right-color: var(--mod-line); }
+/* 手机顶栏的反馈红点：描边跟顶栏的纸色，不跟左栏的灰 */
+:root:is(:not([data-skin]), [data-skin="now"]) .m-top .rail-fb-dot { box-shadow: 0 0 0 2px var(--panel); }
+
+/* ---------- 首页：问答区去框；右栏四个指标是四段模块，左边一根竖线 ---------- */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .cli-ck .cli-frame { border-color: transparent; border-radius: 0; background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards { gap: 0; border-left: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .cli-empty .home-cards { align-self: stretch; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card { border: 0; border-radius: 0; background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card + .home-card { border-top: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards .home-card-k { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-kpi-card:is(:hover, :active) { border-color: transparent; background: var(--row-hover); }
+/* 窄（问答区那一格 ≤ 639）：指标卡排成 2 × 2，上面一根横线，格与格之间分格线 */
+@container (max-width: 639px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards { border-left: 0; border-top: 1px solid var(--mod-line); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card + .home-card { border-top: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card:nth-child(n + 3) { border-top: 1px solid var(--mod-line); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card:nth-child(even) { border-left: 1px solid var(--mod-line); }
+}
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .cli:not(.cli-paper) .cli-ck .cli-frame { margin-inline: -12px; padding-inline: var(--s4); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .home-cards { margin-inline: -12px; }
+}
+
+/* ---------- 客户详情：左栏 | 中栏 | 右栏三栏之间两根竖线；栏里每个模块不画卡，模块之间一根横线 ---------- */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd { column-gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd > .rec-rail { border-right: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb { column-gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb > .cd-side { border-left: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.cd-mid, .cd-side) { gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec-rail-blocks > .proj-fold + .proj-fold { margin-top: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > :not(:first-child, .cd-search-wrap) { border-top: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .ant-card, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .ant-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .ant-card > .ant-card-head, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .ant-card > .ant-card-head { min-height: 40px; border-bottom-color: transparent !important; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .ant-card > .ant-card-head .ant-card-head-title, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .ant-card > .ant-card-head .ant-card-head-title { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-mid > .cd-search-wrap { padding: 0 var(--s4) var(--s2); }
+/* 卡头收到 40 高：右上那颗收起钮（28 见方）跟着上移，和标题同一条中线 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .proj-fold-btn { top: 6px; }
+/* 项目区里不算模块的几条（提醒条、页签行、项目告示）：两边让出 16，不贴着栏线 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb > :is(.cd-alert, .cd-zh, .cd-notice) { margin-inline: var(--s4); }
+/* 中栏、右栏各是一扇自己滚的窗：原来左右各让 4px 给卡片阴影（栏框比列宽 8px），没了卡就不用让，不然两栏叠进对方 8px、竖线压字 */
+@container cdzone (min-width: 560px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .main .rec-page > .rec.rec-cd > .rec-zone > .cd-zb > :is(.cd-mid, .cd-side) { margin-inline: 0; padding-inline: 0; }
+}
+/* 窄了右栏落到中栏下面、左栏拆进单栏：竖线换成横线 */
+@container cdzone (max-width: 559px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb > .cd-side { border-left: 0; border-top: 1px solid var(--mod-line); }
+}
+@container rec (max-width: 629px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb > .cd-side { border-left: 0; border-top: 1px solid var(--mod-line); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd { row-gap: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd > .rec-rail-blocks > .proj-fold { border-top: 1px solid var(--mod-line); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd > .rec-zone { border-top: 1px solid var(--mod-line); padding-top: var(--s3); }
+}
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .rec-page .rec.rec-cd { margin-inline: -12px; }
+}
+
+/* ---------- 复盘：四个统计并成一条（格与格之间分格线），各块不画卡、上面一根横线；看板三列用竖线分 ---------- */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards { gap: 0; margin-bottom: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card { border: 0; border-radius: 0; background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card + .btodo-card { border-left: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card:hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card.is-on, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card.is-on:hover { background: var(--brand-bg); box-shadow: none; }
+@container (max-width: 480px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card:nth-child(odd) { border-left: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card:nth-child(n + 3) { border-top: 1px solid var(--mod-line); }
+}
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list { border: 0; border-top: 1px solid var(--mod-line); border-radius: 0; background: transparent; padding: 0 0 var(--s4); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-wrap > .btodo-list + :is(.btodo-list, .rtalk-side) { margin-top: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head { min-height: 40px; margin-bottom: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head .section-title { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rkpi { border: 0; border-block: 1px solid var(--mod-line); border-radius: 0; background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board { gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col { padding-inline: var(--s3); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col:first-child { padding-inline-start: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col:last-child { padding-inline-end: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col + .btodo-col { border-left: 1px solid var(--mod-line); }
+@container (max-width: 560px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col { padding-inline: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col + .btodo-col { border-left: 0; border-top: 1px solid var(--mod-line); padding-top: var(--s3); }
+}
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .btodo-wrap { margin-inline: -12px; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list { padding-inline: var(--s4); }
 }

@@ -344,7 +344,8 @@ it.each([[1, 1024, 768], [1, 1366, 900], [2, 1024, 768], [2, 1366, 900]] as cons
       await page.locator(".home-kpi-body").waitFor();
       await page.waitForTimeout(400);
       const 标 = `${行} 行 ${宽}×${高} ${点法}`;
-      if (行 === 1) expect(await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height), `${标} 这一组变高了`).toBeGreaterThan(组高 + 10);
+      // 设计语言 D-2 方案 A（11-22）：1366 下右栏指标拉满问答区那么高，展开一张在格里摆得下、这一组不变高；1024（右栏落到下面）才量得出变高
+      if (行 === 1 && 宽 === 1024) expect(await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height), `${标} 这一组变高了`).toBeGreaterThan(组高 + 10);
       expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${标} 展开`).toBeLessThanOrEqual(1);
       expect(Math.abs(await 顶(page, ".cli-frame") - 框起), `${标} 问答卡顶`).toBeLessThanOrEqual(1);
       await 点();

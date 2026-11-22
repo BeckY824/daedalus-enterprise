@@ -6,7 +6,7 @@ import { describe, it, expect } from "vitest";
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
-import { 读外观, 外观预设脚本, 外观键, 默认外观, 网页玻璃键, 解明暗, 明暗表 } from "@/lib/appearance";
+import { 读外观, 外观预设脚本, 外观键, 默认外观, 网页玻璃键, 解明暗, 明暗表, 底色表 } from "@/lib/appearance";
 
 const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 const WIN = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
@@ -50,7 +50,7 @@ function 跑玻璃(存的: string | null, ua: string, 少透明 = false) {
 }
 
 describe("外观", () => {
-  it("没存过、坏 JSON、认不出的值，一律回到默认（现在的样子）", () => {
+  it("没存过、坏 JSON、认不出的值，一律回到默认（白底、现状、浅色）", () => {
     for (const raw of [null, "", "{", '"white"', '{"paper":"pink","skin":"neon"}']) {
       expect(读外观(raw)).toEqual(默认外观);
       expect(跑脚本(raw)).toEqual(默认外观);
@@ -101,7 +101,22 @@ describe("外观", () => {
       },
       document: { documentElement: { dataset, classList: { add: () => {} } } },
     });
-    expect(dataset).toEqual({ paper: "tone", skin: "tech", mode: "light" });
+    expect(dataset).toEqual({ paper: "white", skin: "tech", mode: "light" });
+  });
+
+  it("设计语言 D-2（11-22）：默认是白底；存过「原底」的照它显示，存过白底的照旧白底", () => {
+    expect(默认外观.paper).toBe("white");
+    // 没存过（新电脑、清过本地）：白底
+    expect(读外观(null).paper).toBe("white");
+    expect(跑(null).dataset.paper).toBe("white");
+    // 存过整份外观但没有 paper 这一项（更早的版本）：白底
+    expect(跑(JSON.stringify({ skin: "now", mode: "dark" })).dataset).toEqual({ paper: "white", skin: "now", mode: "dark" });
+    // 存过「原底」：照它
+    const 原底 = JSON.stringify({ paper: "tone", skin: "now", mode: "light" });
+    expect(读外观(原底).paper).toBe("tone");
+    expect(跑(原底).dataset).toEqual({ paper: "tone", skin: "now", mode: "light" });
+    // 设置页「底色」一行白底排在前面
+    expect(底色表.map((x) => x.key)).toEqual(["white", "tone"]);
   });
 
   it("白底只换地面，不许在 :root 之外写色值", () => {
