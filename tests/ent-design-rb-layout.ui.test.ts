@@ -348,7 +348,13 @@ it.each([1024, 1280, 1366, 390])("沟通 %ipx：「沟通｜主题」在筛选�
   expect(await page.locator(".btodo-list .btodo-head [data-testid=talk-kind]").count()).toBe(0);
   const 头 = page.locator('section[aria-label="沟通记录列表"] > .btodo-head');
   expect(字(await 头.locator(".section-title").innerText())).toBe("项目沟通（1,234）");
+  // 设计语言 D-2 · 方案 A（默认白底）：复盘不画卡，卡头和模块标题一样 40 高、不外伸、头下不画线；「原底」照旧是 R-B 的 48 卡头 + 细线
+  expect((await 头.boundingBox())!.height).toBeGreaterThanOrEqual(39.5);
+  expect(await 头.evaluate((e) => getComputedStyle(e).borderBottomWidth)).toBe("0px");
+  await page.evaluate(() => { document.documentElement.dataset.paper = "tone"; });
   expect((await 头.boundingBox())!.height).toBeGreaterThanOrEqual(47.5);
+  expect(await 头.evaluate((e) => getComputedStyle(e).borderBottomWidth)).toBe("1px");
+  await page.evaluate(() => { delete document.documentElement.dataset.paper; });
   expect(字(await page.locator(".rtalk-foot").nth(1).innerText())).toBe(字("线下拜访 · 客户主动 · 附件 3 个 · 记录人1"));
   expect(await page.locator(".rblk-k-meta").count()).toBe(0);
   const 侧 = page.locator(".rtalk-side");
