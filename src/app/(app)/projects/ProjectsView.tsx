@@ -539,14 +539,15 @@ export default function ProjectsView({
         : []),
       ...(!新线索
         ? [{
-            键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 有值: !!f.phase,
+            // 市场管理的客户页（我分出去的）：阶段 / 进程同客户页带「挤」——一行放不下先收进「更多筛选」，现状主题手机上一律收（设计语言 L-A · L-新5 / D06）
+            键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 挤: 换回客户列表, 有值: !!f.phase,
             渲染: (style: CSSProperties) => (
               <Select style={style} aria-label="阶段" value={f.phase || ""} onChange={(v: string) => apply({ phase: v, node: "" })} options={[{ value: "", label: "全部阶段" }, ...阶段们.map((s) => ({ value: s, label: s }))]} />
             ),
           }]
         : []),
       {
-        键: "node", 名: "进程", 宽: 130, 默认外露: true, 有值: !!f.node,
+        键: "node", 名: "进程", 宽: 130, 默认外露: true, 挤: 换回客户列表, 有值: !!f.node,
         渲染: (style: CSSProperties) => (
           <Select style={style} aria-label="进程" placeholder="全部进程" allowClear value={f.node || undefined} onChange={(v?: string | null) => apply({ node: v ?? "" })} options={进程选项} popupMatchSelectWidth={false} />
         ),

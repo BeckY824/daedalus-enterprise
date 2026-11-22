@@ -5741,13 +5741,15 @@ button.proj-miss-chip { cursor: pointer; }
 /* ---------- 设计语言 L-A · 客户列表页头、工具栏 / 筛选（11-21，只挂现状主题；换皮主题外观不动） ---------- */
 /* L-新7 客户状态下拉：每项释义只占一行，放不下省略号、悬停看全（components/DictNote.tsx 一行） */
 :root:is(:not([data-skin]), [data-skin="now"]) .dict-note-1l { font-size: var(--fs-min); line-height: 1.4; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 390 筛选格的短写（客户状态「全部状态」）：电脑上只出全写（短写只在现状主题渲染，CustomersView 新样） */
+:root:is(:not([data-skin]), [data-skin="now"]) .ph-short { display: none; }
 /* L-新13 导出中：进度 +「取消导出」在页头下一行，不挤页头按钮 */
 :root:is(:not([data-skin]), [data-skin="now"]) .cust-export-row { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2); }
 /* D37 筛选行「全部 X」一个颜色：占位字原来是 faint（2.21:1，像禁用），和选中值（墨色）一排两种深浅；客户页、市场管理客户页 */
 :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar .ant-select-placeholder { color: var(--ink); }
 /* L-新5「更多筛选」写字：1200 起摆得下（1280 / 1366 和 390 一样写「更多筛选」）；1024 正文只有 752，照旧只留图标和数字 */
 @media (min-width: 1200px) and (max-width: 1439px) {
-  :root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .cf-more-t { display: inline; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .cf-more-t { display: inline; }
 }
 @media (max-width: 767px) {
   /* D06 手机宽首屏多露行：页头副标题收起；导入、导出只留图标（D35 图标已分开，字靠 aria-label），四颗一排 */
@@ -5755,16 +5757,20 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cust-head-io { width: var(--ctl-h); padding-inline: 0; }
   :root:is(:not([data-skin]), [data-skin="now"]) .cust-head-io > span:not(.ant-btn-icon) { display: none; }
   /* 筛选行三排：①「列表 | 看板」…「列」②搜索 + 重置 ③客户状态、负责人、更多筛选（阶段 / 进程收进更多筛选，同 1366，L-新5）。
-     原来五排（列表 | 看板 / 搜索 / 状态 + 负责人 / 阶段 + 进程 / 更多筛选 + 重置）再单独一排「列」，表格从 y≈420 才开始 */
-  :root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list-bar > .ant-space { order: 1; flex-basis: 100%; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list-bar > .list-bar-end { order: 2; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list-bar > .ant-space > .ant-space-item { order: 2; min-width: 0; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list-bar > .ant-space > .ant-space-item:has(> .ant-tag) { order: 0; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 200px; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { flex: 1 1 96px; }
-  :root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
+     原来五排（列表 | 看板 / 搜索 / 状态 + 负责人 / 阶段 + 进程 / 更多筛选 + 重置）再单独一排「列」，表格从 y≈420 才开始。
+     市场管理的客户页（我分出去的，.cust-market）同一摆法：「客户列表 | 我分出去的」…「列」/ 搜索 + 重置 / 成员、创建人、更多筛选 */
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space { order: 1; flex-basis: 100%; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .list-bar-end { order: 2; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item { order: 2; min-width: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-tag) { order: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 200px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { flex: 1 1 96px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
+  /* 「全部客户状态」手机上换短写「全部状态」，一格放得下不截 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .ph-full { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .ph-short { display: inline; }
   /* K9 市场管理的客户页（我分出去的）：标题块独占一行，按钮换到下一行，标题不再挤成「客…」、副标题不竖排 */
   :root:is(:not([data-skin]), [data-skin="now"]) .cust-market > .page-head > :first-child { flex-basis: 100% !important; }
 }

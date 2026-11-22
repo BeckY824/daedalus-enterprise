@@ -227,6 +227,37 @@ it("D06：390 宽筛选少占行——表头在首屏一半以上，首屏露出
   } finally { await page.close(); }
 });
 
+/** 筛选行里每个下拉的占位字 / 选中字：截没截（scrollWidth > clientWidth） */
+const 截了的下拉 = (page: Page) => page.locator(".list-bar .ant-select").evaluateAll((xs) => xs.flatMap((x) => {
+  const t = (x.querySelector(".ant-select-placeholder") ?? x.querySelector(".ant-select-content")) as HTMLElement | null;
+  return t && t.scrollWidth > t.clientWidth + 1 ? [(t.textContent ?? "").trim()] : [];
+}));
+/** 筛选行占几排：各格（不显示的除外）的 top 去重 */
+const 筛选排数 = (page: Page) => page.locator(".list-bar").evaluate((b) => new Set([...b.querySelectorAll(":scope > .list-view-seg, :scope > .ant-space > .ant-space-item, :scope > .ant-btn, :scope > .ant-dropdown-trigger")]
+  .filter((e) => e.getClientRects().length > 0 && getComputedStyle(e).visibility !== "hidden").map((e) => Math.round(e.getBoundingClientRect().top))).size);
+
+it("390：筛选行的下拉一格都不截——「全部客户状态」手机上短写「全部状态」（悬停看全写），读屏名照旧「客户状态」", async () => {
+  const { page, errors } = await 开(390);
+  try {
+    expect(await 截了的下拉(page)).toEqual([]);
+    const 状态 = page.locator(".list-bar .ant-select").filter({ has: page.getByRole("combobox", { name: "客户状态" }) });
+    expect(await 状态.locator(".ant-select-placeholder").innerText()).toBe("全部状态");
+    expect(await 状态.locator(".ph-short").getAttribute("title")).toBe("全部客户状态");
+    expect(await 筛选排数(page)).toBe(3);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("1366：「全部客户状态」照全写", async () => {
+  const { page, errors } = await 开(1366);
+  try {
+    const 状态 = page.locator(".list-bar .ant-select").filter({ has: page.getByRole("combobox", { name: "客户状态" }) });
+    expect(await 状态.locator(".ant-select-placeholder").innerText()).toBe("全部客户状态");
+    expect(await 截了的下拉(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("L-新6：负责人下拉里同名的两位带部门，别的照旧只写名字", async () => {
   const { page, errors } = await 开(1366);
   try {
@@ -308,6 +339,27 @@ for (const w of [1024, 1366, 390]) {
   });
 }
 
+for (const w of [1280, 1366, 390]) {
+  it(`L-新5 / D06：市场管理客户页筛选同客户页一个摆法——阶段 / 进程在「更多筛选」里、按钮写字，390 三排、下拉不截（${w} 宽）`, async () => {
+    const { page, errors } = await 开市场(w);
+    try {
+      await page.locator(".list-bar .cf-probe[data-cf-ready]").waitFor({ state: "attached" });
+      if (w < 768) expect(await page.getByRole("combobox", { name: "阶段" }).count()).toBe(0);
+      const 更多 = page.getByRole("button", { name: /^更多筛选/ });
+      expect(await 更多.locator(".cf-more-t").evaluate((el) => getComputedStyle(el).display)).not.toBe("none");
+      expect(await 筛选排数(page)).toBe(w < 768 ? 3 : 1);
+      expect(await 截了的下拉(page)).toEqual([]);
+      if (await page.getByRole("combobox", { name: "阶段" }).count() === 0) {
+        await 更多.click();
+        await expect.poll(() => page.locator(".ant-popover").getByRole("combobox", { name: "阶段" }).count()).toBe(1);
+      }
+      for (const x of await 点得中(page, ".list-bar button:not(.ant-input-clear-icon)")) if (x.字 !== "重置") expect(x, `${w} 宽 ${x.字}`).toEqual({ 字: x.字, 中: true, 在屏: true });
+      expect(await 页横滚(page)).toBe(false);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
 it("D37：市场管理客户页筛选行「全部成员 / 全部创建人 / 全部阶段 / 全部进程」一个颜色", async () => {
   const { page, errors } = await 开市场(1366);
   try {
@@ -320,10 +372,17 @@ it("D37：市场管理客户页筛选行「全部成员 / 全部创建人 / 全�
   } finally { await page.close(); }
 });
 
-it("换皮主题外观不动：像素主题市场管理客户页页头照原来「离职交接 · 看板 | 列表 · 新建 ▾」", async () => {
+it("换皮主题外观不动：像素主题市场管理客户页页头照原来「离职交接 · 看板 | 列表 · 新建 ▾」，手机宽阶段 / 进程照摆外面", async () => {
   const { page, errors } = await 开市场(1366, "pixel");
   try {
     expect(await 市场页头序(page)).toEqual(["离职交接", "分段:看板|列表", "新建"]);
+    await page.close();
+    // 手机宽阶段 / 进程照原样摆外面
+    const 窄 = await 开市场(390, "pixel");
+    await 窄.page.locator(".list-bar .cf-probe[data-cf-ready]").waitFor({ state: "attached" });
+    expect(await 窄.page.getByRole("combobox", { name: "阶段" }).count()).toBe(1);
+    expect(窄.errors).toEqual([]);
+    await 窄.page.close();
     expect(errors).toEqual([]);
-  } finally { await page.close(); }
+  } finally { if (!page.isClosed()) await page.close(); }
 });

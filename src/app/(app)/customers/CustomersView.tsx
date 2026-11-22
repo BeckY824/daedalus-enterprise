@@ -685,7 +685,10 @@ export default function CustomersView({
       ? [{
           键: "custStatus", 名: "客户状态", 宽: 140, 默认外露: true, 有值: !!f.custStatus,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部客户状态" allowClear aria-label="客户状态"
+            <Select style={style} allowClear aria-label="客户状态"
+              /* 手机宽（390）这一格只有约 120 宽，「全部客户状态」会被截成「全部客户…」：现状主题手机上换成短写「全部状态」，
+                 悬停看全写、读屏照 aria-label「客户状态」（globals.css .ph-short / .ph-full）；换皮主题照原样 */
+              placeholder={新样 ? <><span className="ph-full">全部客户状态</span><span className="ph-short" title="全部客户状态">全部状态</span></> : "全部客户状态"}
               popupRender={(menu) => <>{下拉说明(字典定义.custStatus.说明)}{menu}</>} popupMatchSelectWidth={false}
               // 释义收成一行（L-新7）：原来每项两三行，一屏只露 4 项；放不下省略号、悬停看全
               {...释义下拉(字典释义?.状态, undefined, 新样)}
