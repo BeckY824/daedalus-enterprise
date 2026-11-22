@@ -47,7 +47,7 @@ describe("D-1 底子：去卡影、圆角 10、看板列、390 顶栏", () => {
     expect(净.slice(i, 净.indexOf("}", i))).toContain("border-radius: var(--r-mod)");
     有规则(".list .ant-table-wrapper .ant-table", "border-radius: var(--r-mod)");
     有规则(".list .ant-table-wrapper .ant-table-container", "border-radius: var(--r-mod)");
-    有规则(`${现状} .list .ant-table-wrapper .ant-table`, "box-shadow: 0 0 0 1px var(--card-line)");
+    有规则(`${现状}:not(.glass) .list .ant-table-wrapper .ant-table`, "box-shadow: 0 0 0 1px var(--card-line)");
   });
 
   it("antd 的卡片外壳、表头圆角和 --r-card 一致（现状 10）", async () => {
@@ -55,6 +55,16 @@ describe("D-1 底子：去卡影、圆角 10、看板列、390 顶栏", () => {
     const px = Number.parseFloat(根.get("--r-card")!);
     expect(themeConfig.components!.Card!.borderRadiusLG).toBe(px);
     expect(themeConfig.components!.Table!.headerBorderRadius).toBe(px);
+  });
+
+  it("分段钮（.cd-seg）选中：现状一圈 1px --line、字重 500；暗黑下比轨道亮（不读 --panel）", () => {
+    有规则(`${现状} .cd-seg > button.on`, "box-shadow: 0 0 0 1px var(--line); font-weight: 500");
+    有规则(`:root[data-mode="dark"]:is(:not([data-skin]), [data-skin="now"]) .cd-seg > button.on`, "background: color-mix(in srgb, var(--ink) 10%, var(--hover))");
+  });
+
+  it("玻璃模式下表格卡不再叠一圈 1px（html.glass 自己有边）", () => {
+    expect(净).not.toContain(`${现状} .list .ant-table-wrapper .ant-table {`);
+    expect(净).toMatch(/html\.glass \.ant-table-wrapper \.ant-table \{ border: 1px/);
   });
 
   it("复盘任务看板列在现状下不铺灰底", () => {

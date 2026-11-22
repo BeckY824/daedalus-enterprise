@@ -134,17 +134,18 @@ it.each([1024, 1280, 1366])("公海页 %ipx：属性筛选 全部 / 线索池 / 
     const 筛 = page.locator(".ant-segmented").first();
     await 筛.waitFor();
     const 项 = await 筛.locator(".ant-segmented-item").evaluateAll(els => els.map(e => { const r = e.getBoundingClientRect(); return { 字: (e.textContent ?? "").trim(), 顶: Math.round(r.top), 高: Math.round(r.height), 选中: e.classList.contains("ant-segmented-item-selected") }; }));
-    expect(项.map(x => x.字)).toEqual(["全部 99999", "线索池 33333", "商机池 33333", "订单池 33333", "客户池 33333"]);
+    // 设计语言 G-A（现状主题）：数带千分位
+    expect(项.map(x => x.字)).toEqual(["全部 99,999", "线索池 33,333", "商机池 33,333", "订单池 33,333", "客户池 33,333"]);
     // 一排：顶对齐，每一项都是单行高（不在格子里折成两行）
     expect(new Set(项.map(x => x.顶)).size).toBe(1);
     const 单行 = Math.min(...项.map(x => x.高));
     for (const x of 项) expect(x.高, x.字).toBeLessThanOrEqual(单行 + 1);
-    expect(项.find(x => x.选中)?.字).toBe("订单池 33333");
-    // 10-31 晚：入池原因、排序、搜索和属性同一行（1280 放得下；1024 允许挤到下一行）
-    if (w >= 1280) {
-      const 中 = await page.evaluate(() => [".ant-segmented", ".ant-select", ".ant-input-affix-wrapper"].map(q => { const r = document.querySelector(q)!.getBoundingClientRect(); return Math.round(r.top + r.height / 2); }));
-      expect(Math.max(...中) - Math.min(...中)).toBeLessThanOrEqual(3);
-    }
+    expect(项.find(x => x.选中)?.字).toBe("订单池 33,333");
+    // 设计语言 G-A（现状主题）：两行固定结构——池子行（分段 + 最右回收站开关），筛选行（搜索、入池方式、排序、更多筛选 … 列）；三个宽度都不折第三行
+    const 中 = await page.evaluate(() => [".ant-segmented", ".pool-bin", ".pool-fl .ant-input-affix-wrapper", ".pool-fl .ant-select", "button[aria-label='选择要显示的列']"].map(q => { const r = document.querySelector(q)!.getBoundingClientRect(); return Math.round(r.top + r.height / 2); }));
+    expect(Math.abs(中[0] - 中[1])).toBeLessThanOrEqual(3);
+    expect(Math.max(...中.slice(2)) - Math.min(...中.slice(2))).toBeLessThanOrEqual(3);
+    expect(中[2] - 中[0]).toBeGreaterThan(20);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -160,7 +161,8 @@ it.each([1024, 1280, 1366])("公海页 %ipx：有「公海回收站」入口，�
     await page.evaluate(() => (window as unknown as { __render: () => void }).__render());
     const 入口 = page.getByRole("button", { name: /公海回收站/ });
     await 入口.waitFor();
-    expect((await 入口.innerText()).replace(/\s+/g, " ").trim()).toBe("公海回收站 9999");
+    // 设计语言 G-A（现状主题）：选了某一池，数写清是这一池里的
+    expect((await 入口.innerText()).replace(/\s+/g, " ").trim()).toBe("公海回收站（订单池 9,999）");
     expect(await 入口.getAttribute("aria-pressed")).toBe("false");
     // 入口整个在屏里、单行，页面不横向撑出
     const 框 = await 入口.evaluate(e => { const r = e.getBoundingClientRect(); return { 右: r.right, 左: r.left, 高: r.height, 挡: !e.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) }; });
@@ -195,7 +197,8 @@ it.each([1024, 1280, 1366])("公海页 %ipx：客户池并成一行、展开逐�
     await page.evaluate(() => (window as unknown as { __render2: () => void }).__render2());
     const 开 = page.getByRole("button", { name: /展开 .* 名下 3 个项目/ });
     await 开.waitFor();
-    expect(await page.locator("tr[data-row-key='k:k1']").innerText()).toContain("共 3 个项目");
+    // 设计语言 G-A（现状主题，G5）：「N 个项目」灰字，不用胶囊
+    expect(await page.locator("tr[data-row-key='k:k1']").innerText()).toContain("3 个项目");
     await 开.click();
     const 子行 = page.locator(".pool-sub-row");
     await 子行.first().waitFor();
@@ -237,8 +240,9 @@ it.each([1024, 1280, 1366])("公海页 %ipx：三态开着「号码不全 N」�
     await page.route("http://route.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
     await page.goto("http://route.test/pool"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: 公海bundle });
     await page.evaluate((t) => (window as unknown as { __render: (q: string, t: unknown) => void }).__render("", t), 三态);
-    await page.locator(".pool-filters").waitFor();
-    const 排 = await page.evaluate(() => { const f = document.querySelector(".pool-filters")!; return { 高: Math.round(f.getBoundingClientRect().height), 子: [...f.children].map(c => { const b = c.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width)]; }) }; });
+    // 设计语言 G-A（现状主题）：筛选行是 .pool-fl（池子在上面一行）
+    await page.locator(".pool-fl").waitFor();
+    const 排 = await page.evaluate(() => { const f = document.querySelector(".pool-fl")!; return { 高: Math.round(f.getBoundingClientRect().height), 子: [...f.children].map(c => { const b = c.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width)]; }) }; });
     return { page, errors, 排 };
   };
   const 关 = await 打开(null);

@@ -108,9 +108,11 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
   await page.goto(`/pool?keyword=${encodeURIComponent(客户名)}`);
   const 公海行 = 表行(page, 客户名);
   await 公海行.getByRole("button", { name: `领取 ${客户名}` }).click();
-  // 11-15 起领取在行上原地确认（InlineConfirm，写明「以后退回公海就不能再领回」），点「确认领取」才领
-  await expect(公海行).toContainText("以后退回公海就不能再领回");
-  await 公海行.getByRole("button", { name: "确认领取" }).click();
+  // 11-15 起领取先原地确认（写明「以后退回公海就不能再领回」），点「确认领取」才领；
+  // 设计语言 G-A（11-22，现状主题）确认条挪到这一行下面整行宽（K4：不被钉住的操作列盖），是单独一条「确认领取 客户名」
+  const 确认条 = page.getByRole("group", { name: `确认领取 ${客户名}` });
+  await expect(确认条).toContainText("以后退回公海就不能再领回");
+  await 确认条.getByRole("button", { name: "确认领取" }).click();
   await expect(page.getByText(`已领取「${客户名}」`)).toBeVisible();
   // 领走了：公海里没有它了
   await expect(表行(page, 客户名)).toHaveCount(0);
