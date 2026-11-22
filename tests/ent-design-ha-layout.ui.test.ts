@@ -346,6 +346,11 @@ it.each([[1, 1024, 768], [1, 1366, 900], [2, 1024, 768], [2, 1366, 900]] as cons
       const 标 = `${行} 行 ${宽}×${高} ${点法}`;
       // 设计语言 D-2 方案 A（11-22）：1366 下右栏指标拉满问答区那么高，展开一张在格里摆得下、这一组不变高；1024（右栏落到下面）才量得出变高
       if (行 === 1 && 宽 === 1024) expect(await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height), `${标} 这一组变高了`).toBeGreaterThan(组高 + 10);
+      // 1366 这一组不变高，就得量展开的那张真摆得下：卡底边不超出 .cli-ck-g（超出就是压到下面去、被截或盖住别的）
+      if (宽 === 1366) {
+        const 底 = await page.evaluate(() => ({ 卡: document.querySelectorAll(".home-kpi-card")[2].getBoundingClientRect().bottom, 组: document.querySelector(".cli-ck-g")!.getBoundingClientRect().bottom }));
+        expect(底.卡, `${标} 展开的卡底边不出 .cli-ck-g`).toBeLessThanOrEqual(底.组 + 0.5);
+      }
       expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${标} 展开`).toBeLessThanOrEqual(1);
       expect(Math.abs(await 顶(page, ".cli-frame") - 框起), `${标} 问答卡顶`).toBeLessThanOrEqual(1);
       await 点();

@@ -104,18 +104,26 @@ describe("外观", () => {
     expect(dataset).toEqual({ paper: "white", skin: "tech", mode: "light" });
   });
 
-  it("设计语言 D-2（11-22）：默认是白底；D-2 以前存下的「原底」当没选过、按白底；D-2 起在设置页选的「原底」照它", () => {
+  it("设计语言 D-2（11-22）：默认是白底；现状主题下 D-2 以前存下的「原底」当没选过、按白底，换皮主题的照旧；D-2 起在设置页选的「原底」照它", () => {
     expect(默认外观.paper).toBe("white");
     // 没存过（新电脑、清过本地）：白底
     expect(读外观(null).paper).toBe("white");
     expect(跑(null).dataset.paper).toBe("white");
     // 存过整份外观但没有 paper 这一项（更早的版本）：白底
     expect(跑(JSON.stringify({ skin: "now", mode: "dark" })).dataset).toEqual({ paper: "white", skin: "now", mode: "dark" });
-    // D-2 以前存下的「原底」（没有底色版，或版本不对）：当没选过，白底；明暗、主题照旧
-    for (const 旧 of [{ paper: "tone", skin: "now", mode: "dark" }, { paper: "tone", skin: "pixel", mode: "dark", paperV: 1 }]) {
+    // 现状主题下 D-2 以前存下的「原底」（没有底色版，或版本不对；没存主题也算现状）：当没选过，白底；明暗、主题照旧
+    for (const 旧 of [{ paper: "tone", skin: "now", mode: "dark" }, { paper: "tone", skin: "now", mode: "dark", paperV: 1 }, { paper: "tone", mode: "dark" }]) {
       const raw = JSON.stringify(旧);
-      expect(读外观(raw)).toEqual({ paper: "white", skin: 旧.skin, mode: "dark" });
-      expect(跑(raw).dataset).toEqual({ paper: "white", skin: 旧.skin, mode: "dark" });
+      expect(读外观(raw)).toEqual({ paper: "white", skin: "now", mode: "dark" });
+      expect(跑(raw).dataset).toEqual({ paper: "white", skin: "now", mode: "dark" });
+    }
+    // 方案 A 只改现状皮肤（11-22 用户定）：换皮主题以前存的「原底」不看底色版，照旧原底
+    for (const skin of ["pixel", "luxe", "ledger", "tech"] as const) {
+      for (const 旧 of [{ paper: "tone", skin, mode: "dark" }, { paper: "tone", skin, mode: "dark", paperV: 1 }]) {
+        const raw = JSON.stringify(旧);
+        expect(读外观(raw), `${skin} ${raw}`).toEqual({ paper: "tone", skin, mode: "dark" });
+        expect(跑(raw).dataset, `${skin} ${raw}`).toEqual({ paper: "tone", skin, mode: "dark" });
+      }
     }
     // D-2 起在设置页选的「原底」（存外观值 带上底色版）：照它
     const 存 = 存外观值({ paper: "tone", skin: "now", mode: "light" });

@@ -196,6 +196,7 @@
   --ctl-h-sm: 28px; --ctl-h: 32px; --ctl-h-lg: 40px;   /* 控件三档高；lib/theme.ts 的 controlHeight* 抄这三个（tests/design-tokens.test.ts 对） */
   --card-pad: 16px;                    /* 卡片左右内边距 */
   --card-head-h: 48px;                 /* 卡头高；lib/theme.ts 的 Card.headerHeight 抄这个 */
+  --mod-head-h: 40px;                  /* 设计语言 D-2 · 方案 A：不画卡的模块标题行高（客户详情各模块、复盘各块的头） */
   --card-gap: 12px;                    /* 卡与卡之间 */
   --edge-fade: 24px;                   /* 横滑条两端渐隐宽度（节点条） */
   --skel-delay: 180ms;                 /* 加载多久后才出骨架：快的不闪（D07）。是延迟不是过渡，所以不叫 --t-* */
@@ -219,7 +220,9 @@
    模块不画卡，靠小号灰标题 + 发丝线 + 留白分开（下面「方案 A」那段，只在现状且不是「原底」时挂）。
    「原底」（data-paper="tone"）是留给想要原样的人的个人偏好：地面退回浅灰，内容照旧是白卡（lib/appearance.ts） */
 :root:is(:not([data-skin]), [data-skin="now"]), [data-skin-preview="now"] { --r-mod: var(--r-card); --page-bg: var(--panel); --rail-bg: var(--workbench); }
+/* 「原底」：现状自己、以及设置 → 外观里现状那张小样（选了原底的人看到的小样也得是原底，不是方案 A） */
 :root:is(:not([data-skin]), [data-skin="now"])[data-paper="tone"] { --page-bg: var(--workbench); }
+:root[data-paper="tone"] [data-skin-preview="now"] { --page-bg: var(--workbench); }
 /* 白底地面上左栏选中块退回浅灰：白底 + 阴影压在白地面上只剩一圈影子，认不出选中的是哪项（换皮主题的白底） */
 :root[data-paper="white"]:not([data-mode="dark"]) { --nav-on-bg: var(--hover); }
 /* 现状的左栏不管哪种底色都铺浅灰，选中块是白块（白底下不带阴影，原底照旧带薄阴影，见下面 .rail-on-bg 那条） */
@@ -1254,8 +1257,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
     display: none;
   }
 
+  /* 手机档正文左右内边距：方案 A 铺满全宽的模块用它的负值抵掉（D-2） */
+  :root { --content-pad-x: 12px; }
   .app-content {
-    padding: 14px 12px !important;
+    padding: 14px var(--content-pad-x) !important;
   }
 
   .page-head h1 {
@@ -6669,8 +6674,8 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card:nth-child(even) { border-left: 1px solid var(--mod-line); }
 }
 @media (max-width: 767px) {
-  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .cli:not(.cli-paper) .cli-ck .cli-frame { margin-inline: -12px; padding-inline: var(--s4); }
-  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .home-cards { margin-inline: -12px; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .cli:not(.cli-paper) .cli-ck .cli-frame { margin-inline: calc(-1 * var(--content-pad-x)); padding-inline: var(--s4); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .home-cards { margin-inline: calc(-1 * var(--content-pad-x)); }
 }
 
 /* ---------- 客户详情：左栏 | 中栏 | 右栏三栏之间两根竖线；栏里每个模块不画卡，模块之间一根横线 ---------- */
@@ -6682,11 +6687,11 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec-rail-blocks > .proj-fold + .proj-fold { margin-top: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > :not(:first-child, .cd-search-wrap) { border-top: 1px solid var(--mod-line); }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .ant-card, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .ant-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .ant-card > .ant-card-head, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .ant-card > .ant-card-head { min-height: 40px; border-bottom-color: transparent !important; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .ant-card > .ant-card-head, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .ant-card > .ant-card-head { min-height: var(--mod-head-h); border-bottom-width: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .ant-card > .ant-card-head .ant-card-head-title, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .ant-card > .ant-card-head .ant-card-head-title { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-mid > .cd-search-wrap { padding: 0 var(--s4) var(--s2); }
-/* 卡头收到 40 高：右上那颗收起钮（28 见方）跟着上移，和标题同一条中线 */
-:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .proj-fold-btn { top: 6px; }
+/* 卡头收到 --mod-head-h（40）高：右上那颗收起钮（--hit 28 见方）跟着上移，和标题同一条中线 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .proj-fold-btn { top: calc((var(--mod-head-h) - var(--hit)) / 2); }
 /* 项目区里不算模块的几条（提醒条、页签行、项目告示）：两边让出 16，不贴着栏线 */
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb > :is(.cd-alert, .cd-zh, .cd-notice) { margin-inline: var(--s4); }
 /* 中栏、右栏各是一扇自己滚的窗：原来左右各让 4px 给卡片阴影（栏框比列宽 8px），没了卡就不用让，不然两栏叠进对方 8px、竖线压字 */
@@ -6704,7 +6709,7 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd > .rec-zone { border-top: 1px solid var(--mod-line); padding-top: var(--s3); }
 }
 @media (max-width: 767px) {
-  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .rec-page .rec.rec-cd { margin-inline: -12px; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .rec-page .rec.rec-cd { margin-inline: calc(-1 * var(--content-pad-x)); }
 }
 
 /* ---------- 复盘：四个统计并成一条（格与格之间分格线），各块不画卡、上面一根横线；看板三列用竖线分 ---------- */
@@ -6720,7 +6725,7 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list { border: 0; border-top: 1px solid var(--mod-line); border-radius: 0; background: transparent; padding: 0 0 var(--s4); }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-wrap > .btodo-list + :is(.btodo-list, .rtalk-side) { margin-top: 0; }
 /* R-B 给复盘卡头（.data-shell-body 里）的是 antd Card 那套：48 高、左右负外边距贴卡边、头下一条细线。方案 A 没有卡：头不外伸、不画线，和模块标题一样 40 高 */
-:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head { min-height: 40px; margin: 0 0 var(--s2); padding: 0; border-bottom: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head { min-height: var(--mod-head-h); margin: 0 0 var(--s2); padding: 0; border-bottom: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head .section-title { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rkpi { border: 0; border-block: 1px solid var(--mod-line); border-radius: 0; background: transparent; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board { gap: 0; }
@@ -6733,6 +6738,6 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col + .btodo-col { border-left: 0; border-top: 1px solid var(--mod-line); padding-top: var(--s3); }
 }
 @media (max-width: 767px) {
-  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .btodo-wrap { margin-inline: -12px; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .btodo-wrap { margin-inline: calc(-1 * var(--content-pad-x)); }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list { padding-inline: var(--s4); }
 }
