@@ -7,16 +7,20 @@
  *   - 越权：别人的录音传片、看进度、传完、放弃一律 404（不露编号在不在）；听原声只给录的人（发出后另给负责人）
  *   - 每片重判：开始以后丢了上下级关系、项目进了公海，下一片就拒
  *   - 大小：开始报 >200MB 拒；一片 >5MB 拒；传的比报的多拒；没传齐不能传完
- *   - 格式：第一片按文件头认，认不出的拒收、当场删
+ *   - 格式：每段第 0 片按文件头认，认不出的拒收、当场删；一片都没收就被拒的整条放弃（不留空的上传中）
+ *   - 传完同时只许一个（审查必修 1）：两个传完并发 / 晚 20–60ms，文件逐字节对、库里待提交、只记一条留痕；
+ *     别的进程占着位（endedAt 未过期）时回 409 且不收新片，占位过期了能接手；传完以后再传完回现状
+ *   - 收一片 60 秒没来字节就停（片读超时）、不留临时文件；每人同时最多 2 片
  *   - 路径：编号、段号、片号不像样的直接拒，文件只落在数据目录 coach-rec/<年月>/<编号>/ 下
  *   - 每人同时最多 5 条没传完的
- *   - 切换视图：开始、传片、听原声都拒（403）
+ *   - 切换视图：开始、传片、传完、放弃、看进度、听原声都拒（403）；页面数据里不给对方的草稿和待提交卡
  *   - 腾讯云取文件：只认签名（过期、改过、换编号都 404），还要状态 = 转写中、开关开着
- *   - 号码打码：销售教练看到的文件名里号码打码，别人原样；留痕里一律打码
+ *   - 号码打码：销售教练看到的文件名里号码打码（安卓通话录音那几种号码连日期的写法也打），别人原样；留痕里一律打码
  * 用拷出来的一份库、显式单连接，数据目录用临时目录，不碰共用的测试库。
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 const 临时 = vi.hoisted(() => {
@@ -59,7 +63,8 @@ import { invalidateSettingsCache } from "@/lib/settings";
 import { 视图票, 签视图票 } from "@/lib/enterprise/view-as";
 import { 录音点评开关键 } from "@/lib/enterprise/coach-rec-db";
 import { 读项目主题 } from "@/lib/enterprise/coach-topic-db";
-import { 录音根 } from "@/lib/enterprise/coach-rec-store";
+import { 录音根, 写片, 片读超时 } from "@/lib/enterprise/coach-rec-store";
+import { 占片位, 还片位 } from "@/app/api/coach-rec/common";
 import { 签取文件地址 } from "@/lib/enterprise/coach-rec-sign";
 import { 片上限字节, 文件上限字节 } from "@/lib/enterprise/coach-rec";
 import { POST as 开始 } from "@/app/api/coach-rec/start/route";
@@ -267,9 +272,108 @@ describe("开关开着：传、传完、续传、放弃", () => {
     expect(文件.startsWith(path.join(临时.dir, "coach-rec") + path.sep)).toBe(true);
     expect(fs.readFileSync(文件).equals(Buffer.from(整))).toBe(true);
     expect(fs.existsSync(path.join(path.dirname(文件), "seg-01"))).toBe(false);
-    // 传完后再传片、再传完都拒
+    // 传完后再传片拒；再传完回现状（待提交，当成功），不再拼一遍
     expect((await 片(id, 0, 字节(10))).status).toBe(409);
+    const 再 = await 完(id);
+    expect(再.status).toBe(200);
+    expect((再.体.录音 as { status: string }).status).toBe("待提交");
+    expect(fs.readFileSync(文件).equals(Buffer.from(整))).toBe(true);
+  });
+
+  /** 开一条 n 片（最后一片 尾 字节）的传文件、传齐，回编号和整份内容（每片内容不同，拼错位一比就知道） */
+  async function 传齐(n: number, 尾 = 1000): Promise<{ id: string; 整: Uint8Array }> {
+    当("教练");
+    const 总 = 片上限字节 * (n - 1) + 尾;
+    const 整 = new Uint8Array(总);
+    for (let i = 0; i < 总; i++) 整[i] = (i * 31 + (i >> 12)) & 0xff;
+    整.set(M4A头().subarray(0, 12));
+    const id = ((await 开一条(项目, { bytes: 总 })).体.录音 as { id: string }).id;
+    for (let i = 0; i < n; i++) expect((await 片(id, i, 整.subarray(i * 片上限字节, Math.min(总, (i + 1) * 片上限字节)))).status).toBe(200);
+    return { id, 整 };
+  }
+  async function 核拼好(id: string, 整: Uint8Array) {
+    const 行 = await raw.entCoachRecording.findUniqueOrThrow({ where: { id } });
+    expect(行).toMatchObject({ status: "待提交", bytes: 整.length, chunks: Math.ceil(整.length / 片上限字节) });
+    const 文件 = path.join(录音根(), 行.audioPath!);
+    const 读到 = fs.readFileSync(文件);
+    expect(读到.length).toBe(整.length);
+    expect(读到.equals(Buffer.from(整))).toBe(true);
+    // 目录里只剩拼好的那一个文件：没有片、没有临时文件
+    expect(fs.readdirSync(path.dirname(文件))).toEqual([path.basename(文件)]);
+    expect((await raw.auditLog.findMany({ where: { entity: "EntCoachRecording", entityId: id, action: "update" } })).length).toBe(1);
+  }
+
+  it("并发传完（审查必修 1）：两个同时到、文件逐字节对、待提交、只记一条留痕", async () => {
+    const { id, 整 } = await 传齐(6);
+    const [a, b] = await Promise.all([完(id), 完(id)]);
+    expect([a.status, b.status]).toEqual([200, 200]);
+    for (const x of [a, b]) expect((x.体.录音 as { status: string }).status).toBe("待提交");
+    await 核拼好(id, 整);
+  });
+
+  for (const 晚 of [20, 60]) {
+    it(`并发传完：第二个晚 ${晚}ms 到，照样不拼第二遍、文件不坏`, async () => {
+      const { id, 整 } = await 传齐(6);
+      const a = 完(id);
+      await new Promise((r) => setTimeout(r, 晚));
+      const [x, y] = await Promise.all([a, 完(id)]);
+      expect([x.status, y.status]).toEqual([200, 200]);
+      await 核拼好(id, 整);
+    });
+  }
+
+  it("别的进程占着位（endedAt 没过期）：传完回 409「正在合成」、不收新片；占位过期了能接手拼完", async () => {
+    const { id, 整 } = await 传齐(2);
+    await raw.entCoachRecording.update({ where: { id }, data: { endedAt: new Date() } });
+    const f = await 完(id);
+    expect(f.status).toBe(409);
+    expect(f.体.error).toContain("正在合成");
+    expect((await 片(id, 1, 整.subarray(片上限字节))).status).toBe(409);
+    expect((await raw.entCoachRecording.findUniqueOrThrow({ where: { id } })).status).toBe("上传中");
+    // 占位的进程死了（10 分钟前占的）：接手
+    await raw.entCoachRecording.update({ where: { id }, data: { endedAt: new Date(Date.now() - 11 * 60 * 1000) } });
+    expect((await 完(id)).status).toBe(200);
+    await 核拼好(id, 整);
+  });
+
+  it("片没传齐就点传完：占位还回去，接着传完再传完照常", async () => {
+    当("教练");
+    const 总 = 片上限字节 + 1000;
+    const 整 = 字节(总);
+    const id = ((await 开一条(项目, { bytes: 总 })).体.录音 as { id: string }).id;
+    expect((await 片(id, 0, 整.subarray(0, 片上限字节))).status).toBe(200);
     expect((await 完(id)).status).toBe(409);
+    expect((await raw.entCoachRecording.findUniqueOrThrow({ where: { id } })).endedAt).toBeNull();
+    expect((await 片(id, 1, 整.subarray(片上限字节))).status).toBe(200);
+    expect((await 完(id)).status).toBe(200);
+  });
+
+  it("收一片：60 秒（这里 50ms）没来新字节就停、抛 片读超时，不留临时文件、不留片", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "crm-crec-timeout-"));
+    const 挂着 = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(new Uint8Array(10)); } });
+    await expect(写片(dir, 1, 0, 挂着, 片上限字节, 50)).rejects.toBeInstanceOf(片读超时);
+    expect(fs.readdirSync(path.join(dir, "seg-01"))).toEqual([]);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("同一片两个请求同时写：各写各的临时文件，最后是完整的一片", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "crm-crec-same-"));
+    const 内容 = 字节(200_000);
+    const 流 = () => new ReadableStream<Uint8Array>({ start(c) { for (let i = 0; i < 内容.length; i += 10_000) c.enqueue(内容.slice(i, i + 10_000)); c.close(); } });
+    await Promise.all([写片(dir, 1, 0, 流()), 写片(dir, 1, 0, 流())]);
+    expect(fs.readdirSync(path.join(dir, "seg-01"))).toEqual(["0000.part"]);
+    expect(fs.readFileSync(path.join(dir, "seg-01", "0000.part")).equals(Buffer.from(内容))).toBe(true);
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("每人同时最多收 2 片，别人不受影响；还了位又能收", () => {
+    expect(占片位("u1")).toBe(true);
+    expect(占片位("u1")).toBe(true);
+    expect(占片位("u1")).toBe(false);
+    expect(占片位("u2")).toBe(true);
+    还片位("u1");
+    expect(占片位("u1")).toBe(true);
+    for (const u of ["u1", "u1", "u2"]) 还片位(u);
   });
 
   it("草稿条：页面数据带我的草稿，别人看不到", async () => {
@@ -279,12 +383,29 @@ describe("开关开着：传、传完、续传、放弃", () => {
     expect((await 读项目主题({ id: 人.组长, role: "SALES" }, 项目))?.录音?.草稿们).toEqual([]);
   });
 
-  it("第一片认不出格式 → 415，当场删，不记格式", async () => {
+  it("第一片认不出格式 → 415，当场删；一片都没收，这一条直接放弃（不留空的上传中占名额）", async () => {
     当("教练");
     const id = ((await 开一条()).体.录音 as { id: string }).id;
     const r = await 片(id, 0, 字节(100, new Uint8Array(Buffer.from("<html><script>alert(1)</script>"))));
     expect(r.status).toBe(415);
-    expect((await 看(id)).体.录音).toMatchObject({ 已收片: [], 格式: null });
+    const 行 = await raw.entCoachRecording.findUniqueOrThrow({ where: { id } });
+    expect(行).toMatchObject({ status: "已放弃", format: null });
+    expect(行.deletedAt).toBeTruthy();
+    expect(fs.existsSync(path.join(录音根(), 行.createdAt.toISOString().slice(0, 7).replace("-", ""), id))).toBe(false);
+    expect((await 看(id)).status).toBe(404);
+    expect(await raw.entCoachRecording.count({ where: { authorId: 人.教练, status: "上传中" } })).toBe(0);
+  });
+
+  it("录音多段：每段第 0 片都核文件头；第 2 段认不出 / 格式和第 1 段不一样都拒，已收的不动", async () => {
+    当("教练");
+    const id = ((await 开一条(项目, { sourceKind: "网页录" })).体.录音 as { id: string }).id;
+    expect((await 片(id, 0, 字节(100))).status).toBe(200);
+    expect((await 片(id, 0, 字节(100, new Uint8Array(Buffer.from("<html>"))), "2")).status).toBe(415);
+    const 不一样 = await 片(id, 0, 字节(100, new Uint8Array(Buffer.from("OggS"))), "2");
+    expect(不一样.status).toBe(415);
+    expect(不一样.体.error).toContain("格式不一样");
+    expect((await 片(id, 0, 字节(100), "2")).status).toBe(200);
+    expect((await 看(id)).体.录音).toMatchObject({ status: "上传中", 格式: "m4a", 已收片: [{ 段: 1, 片: 0, 字节: 100 }, { 段: 2, 片: 0, 字节: 100 }] });
   });
 
   it("认得出的几种：mp3（ID3）、wav、amr、ogg、flac、webm、3gp 都收", async () => {
@@ -438,6 +559,25 @@ describe("切换视图", () => {
     expect((await 弃(id)).status).toBe(403);
     expect(await raw.entCoachRecording.count()).toBe(个);
   });
+
+  it("切到教练的视角：没传完的那条 传完 / 放弃 / 看进度 都 403、状态和片不动；页面数据里不给对方的草稿和待提交卡", async () => {
+    const 好 = await 传好一条("教练");
+    当("教练");
+    const 半 = ((await 开一条(项目, { bytes: 200 })).体.录音 as { id: string }).id;
+    expect((await 片(半, 0, 字节(100))).status).toBe(200);
+    expect((await 读项目主题({ id: 人.教练, role: "ADMIN" }, 项目))?.录音?.草稿们.map((d) => d.id).sort()).toEqual([好, 半].sort());
+    罐.票.set("crm_session", await 签会话(人.老板));
+    罐.票.set(视图票, await 签视图票(人.老板, 人.教练));
+    忘掉企业版范围();
+    for (const 一条 of [半, 好]) {
+      expect((await 完(一条)).status).toBe(403);
+      expect((await 弃(一条)).status).toBe(403);
+      expect((await 看(一条)).status).toBe(403);
+    }
+    expect(await raw.entCoachRecording.findUniqueOrThrow({ where: { id: 半 } })).toMatchObject({ status: "上传中", chunks: 1 });
+    expect(await raw.entCoachRecording.findUniqueOrThrow({ where: { id: 好 } })).toMatchObject({ status: "待提交" });
+    expect((await 读项目主题({ id: 人.教练, role: "ADMIN" }, 项目))?.录音?.草稿们).toEqual([]);
+  });
 });
 
 describe("腾讯云取文件（签名地址）", () => {
@@ -476,6 +616,26 @@ describe("号码打码", () => {
     const 留痕 = await raw.auditLog.findMany({ where: { entity: "EntCoachRecording" } });
     expect(留痕.length).toBe(2);
     for (const l of 留痕) expect(l.summary).not.toContain("13812345678");
+  });
+
+  it.each([
+    "通话录音-13812345678-20261122.m4a",
+    "通话录音 13812345678 20261122093012.m4a",
+    "record-13812345678.m4a",
+    "通话录音 1381234567820261122093012.m4a",
+  ])("安卓通话录音文件名 %s：教练看到的、开始 / 传完 / 删掉三条留痕里都不带号码", async (名) => {
+    当("教练");
+    const id = ((await 开一条(项目, { fileName: 名 })).体.录音 as { id: string; 文件名: string }).id;
+    expect((await 看(id)).体.录音).toMatchObject({ 文件名: expect.not.stringContaining("13812345678") });
+    expect((await 片(id, 0, 字节(100))).status).toBe(200);
+    expect((await 完(id)).status).toBe(200);
+    expect((await 弃(id)).status).toBe(200);
+    const 留痕 = await raw.auditLog.findMany({ where: { entity: "EntCoachRecording", entityId: id } });
+    expect(留痕.map((l) => l.action).sort()).toEqual(["create", "delete", "update"]);
+    for (const l of 留痕) {
+      expect(l.summary).not.toContain("13812345678");
+      expect(l.summary).not.toMatch(/\d{7,}/);
+    }
   });
 });
 

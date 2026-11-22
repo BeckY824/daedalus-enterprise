@@ -6,12 +6,15 @@
  *   seg-01.<格式>                   传完拼好的一段（拼好就删片；传文件只有这一段）
  * 路径只由录音编号、开始年月、段号、片号拼，客户端给的文件名不进路径。
  * 每片先写到 .tmp、fsync、再改名，传一半断了不会留下半片冒充整片；改名后 fsync 目录。
+ * 临时文件名带 randomUUID、用 "wx" 独占新建（PR2 审查必修 1）：同一片 / 同一段两个请求同时写，各写各的临时文件，不会写进同一个、拼坏；
+ * 谁最后改名谁的算（片内容一样，覆盖无害）。拼段 同时只许一个请求做，由 coach-rec-db.ts 传完 在库里占位 + 进程内锁保证。
  */
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import path from "node:path";
 import { 附件目录 } from "@/lib/attachments";
-import { 是录音编号, 录音月份, 是录音格式, 片上限字节, type 录音格式 } from "./coach-rec";
+import { 是录音编号, 录音月份, 是录音格式, 片上限字节, 片读超时毫秒, type 录音格式 } from "./coach-rec";
 
 /** 数据目录下的 coach-rec/（和 attachments/ 同级） */
 export function 录音根(): string {
@@ -36,6 +39,18 @@ export function 认录音文件(相对: string | null | undefined, 根 = 录音�
 }
 
 export class 片超限 extends Error {}
+/** 收一片时 片读超时毫秒 内一个字节都没来（对方网断了、挂着不发）：停下，接口回 408 */
+export class 片读超时 extends Error {}
+
+/** 读一下请求体，超时就抛 片读超时（计时器读完就清，不留悬着的 setTimeout） */
+async function 限时读<T>(p: Promise<T>, 毫秒: number): Promise<T> {
+  let 计时: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([p, new Promise<never>((_, 拒) => { 计时 = setTimeout(() => 拒(new 片读超时()), 毫秒); })]);
+  } finally {
+    clearTimeout(计时);
+  }
+}
 
 async function 写盘同步目录(dir: string): Promise<void> {
   // 改名落盘：目录也 fsync（Linux 上不做这步，断电时新名字可能丢）。Windows / 部分文件系统不让开目录，忽略
@@ -46,15 +61,15 @@ async function 写盘同步目录(dir: string): Promise<void> {
 }
 
 /**
- * 收一片：边读边写到 .tmp，超过 片上限字节 就停、删临时文件、抛 片超限；读完 fsync、改名成正式片（同号覆盖）。
- * 回写了多少字节、开头 16 字节（第一片拿去认格式）
+ * 收一片：边读边写到 .tmp，超过 片上限字节 就停、删临时文件、抛 片超限；超过 片读超时毫秒 没来新字节就停、抛 片读超时；
+ * 读完 fsync、改名成正式片（同号覆盖）。回写了多少字节、开头 16 字节（每段第 0 片拿去认格式）
  */
-export async function 写片(dir: string, 段: number, 片: number, 体: ReadableStream<Uint8Array> | null, 上限 = 片上限字节): Promise<{ 字节: number; 头: Uint8Array }> {
+export async function 写片(dir: string, 段: number, 片: number, 体: ReadableStream<Uint8Array> | null, 上限 = 片上限字节, 超时 = 片读超时毫秒): Promise<{ 字节: number; 头: Uint8Array }> {
   const 段目录 = path.join(dir, 段名(段));
   await fsp.mkdir(段目录, { recursive: true });
   const 正式 = path.join(段目录, 片名(片));
-  const 临时 = `${正式}.${process.pid}.${Date.now()}.tmp`;
-  const h = await fsp.open(临时, "w", 0o600);
+  const 临时 = `${正式}.${randomUUID()}.tmp`;
+  const h = await fsp.open(临时, "wx", 0o600);
   let 字节 = 0;
   const 头 = new Uint8Array(16);
   let 头满 = 0;
@@ -62,7 +77,10 @@ export async function 写片(dir: string, 段: number, 片: number, 体: Readabl
     if (体) {
       const 读 = 体.getReader();
       for (;;) {
-        const { done, value } = await 读.read();
+        const { done, value } = await 限时读(读.read(), 超时).catch(async (e) => {
+          if (e instanceof 片读超时) await 读.cancel().catch(() => {});
+          throw e;
+        });
         if (done) break;
         if (!value?.byteLength) continue;
         字节 += value.byteLength;
@@ -123,8 +141,8 @@ export async function 拼段(r: { id: string; createdAt: Date }, 段: number, �
   const 片们 = (await fsp.readdir(段目录)).filter((f) => /^\d{4}\.part$/.test(f)).sort();
   const 相对 = path.join(录音相对目录(r), `${段名(段)}.${格式}`);
   const 正式 = path.join(根, 相对);
-  const 临时 = `${正式}.${process.pid}.tmp`;
-  const h = await fsp.open(临时, "w", 0o600);
+  const 临时 = `${正式}.${randomUUID()}.tmp`;
+  const h = await fsp.open(临时, "wx", 0o600);
   try {
     for (const f of 片们) await h.write(await fsp.readFile(path.join(段目录, f)));
     await h.sync();

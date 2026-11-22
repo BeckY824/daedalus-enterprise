@@ -8,7 +8,7 @@ import { Readable } from "node:stream";
 import { getCurrentUser } from "@/lib/auth";
 import { 视图拒绝响应 } from "@/lib/enterprise/view-as";
 import { 录音点评开着, 没开放话 } from "@/lib/enterprise/coach-rec-db";
-import { 进程并发片数 } from "@/lib/enterprise/coach-rec";
+import { 进程并发片数, 每人并发片数 } from "@/lib/enterprise/coach-rec";
 import { 解析范围 } from "@/app/ocr-files/[...path]/route";
 
 export type 登录的人 = { id: string; name: string; role: string };
@@ -30,17 +30,23 @@ export function 回(r: ({ ok: true } & object) | { ok: false; error: string; 状
 }
 
 /**
- * 每个进程同时最多收 进程并发片数 片（每片边收边写盘，不整片进内存；限的是同时开着的写盘和连接）。
- * 满了接口回 429 + Retry-After，浏览器隔几秒自己重试；占的位在 finally 里还
+ * 每个进程同时最多收 进程并发片数 片、每人最多 每人并发片数 片（每片边收边写盘，不整片进内存；限的是同时开着的写盘和连接）。
+ * 满了接口回 429 + Retry-After，浏览器隔几秒自己重试（不算进重试次数）；占的位在 finally 里还（传同一个人的编号）
  */
 let 收着 = 0;
-export function 占片位(): boolean {
-  if (收着 >= 进程并发片数) return false;
+const 每人收着 = new Map<string, number>();
+export function 占片位(userId: string): boolean {
+  const 他的 = 每人收着.get(userId) ?? 0;
+  if (收着 >= 进程并发片数 || 他的 >= 每人并发片数) return false;
   收着 += 1;
+  每人收着.set(userId, 他的 + 1);
   return true;
 }
-export function 还片位(): void {
+export function 还片位(userId: string): void {
   收着 = Math.max(0, 收着 - 1);
+  const 他的 = (每人收着.get(userId) ?? 0) - 1;
+  if (他的 > 0) 每人收着.set(userId, 他的);
+  else 每人收着.delete(userId);
 }
 export const 片位占着 = () => 收着;
 

@@ -5,9 +5,10 @@
  * 入口：「发起点评 ▾ → 传录音文件」（电脑弹框；手机 ≤767 整屏，底部选择板见 CoachTopics.tsx StartReviewButton）；
  *       沟通卡最上面的录音草稿条（没传完的「接着传」、传完待提交的回放 / 删掉）。只有开关开着、我能对这个项目发主题时才有（服务端给 数据.录音）。
  * 怎么传（方案 §4.6）：浏览器把文件切成 5MB 一片按顺序 PUT /api/coach-rec/<id>/chunk/1/<片号>；一片失败自动重试 3 次（隔 2 / 5 / 15 秒），
- *       还不行就停下写「网络断了，已传 62%」和「继续」；服务器忙（429）按它说的秒数再试。传完 POST finish → 待提交。
+ *       还不行就停下写「网络断了，已传 62%」和「继续」；服务器忙（429）按它说的秒数再试，不算进那 3 次（最多等 40 回，约两分钟）。传完 POST finish → 待提交。
  * 续传：本机 localStorage 只记「文件名 + 大小 + 修改时间 → 录音编号」（读写包 try，失败就当没有）；回来重新选同一个文件，先问服务器收到哪几片、只补没收到的。
- *       选的文件对不上草稿就问「换成这个文件重新传？」（旧的删掉）。
+ *       选的文件对不上草稿就问「换成这个文件重新传？」（旧的删掉）。「继续」时先问原来那条：已经是待提交（上次其实传完了）就直接显示完成，不新开、不重传。
+ * 文件名：框里显示的本机原名也过 文件名打码（安卓通话录音的文件名带对方号码）。
  * 时长：浏览器读出来只给人看（不信它，服务端 PR4 用 ffprobe 算）。「提交整理」要等转写（PR4）接上，这一版灰着。
  */
 import { useEffect, useRef, useState } from "react";
@@ -15,13 +16,16 @@ import { useRouter } from "next/navigation";
 import { Button, Modal, Progress } from "antd";
 import type { 录音给界面 } from "@/lib/enterprise/coach-rec-db";
 import { 片上限字节, 文件上限字节, 建议WiFi字节, 选文件accept } from "@/lib/enterprise/coach-rec";
-import { 通知文字打码 } from "@/lib/enterprise/notice-mask";
+import { 文件名打码 } from "@/lib/enterprise/notice-mask";
 
-const 读大小 = (n: number) => (n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
+/** 字节数没有（空、0）写「—」，不写成 1KB */
+const 读大小 = (n: number | null | undefined) => (!n ? "—" : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
 const 读时长 = (秒: number) => `${Math.floor(秒 / 60)}:${String(Math.floor(秒 % 60)).padStart(2, "0")}`;
 const 百分 = (已: number, 总: number | null) => (总 ? Math.min(100, Math.floor((已 / 总) * 100)) : 0);
 const 等 = (毫秒: number) => new Promise((r) => setTimeout(r, 毫秒));
 const 重试间隔 = [2000, 5000, 15000];
+/** 服务器忙（429）不算进重试次数，但也不无限等：最多等这么多回 */
+const 忙等上限 = 40;
 
 /** 本机记「哪个文件 → 哪条录音」：只是续传的便利，读写失败就当没有 */
 const 记键 = (projectId: string) => `crec-upload:${projectId}`;
@@ -52,7 +56,7 @@ async function 调(url: string, init?: RequestInit): Promise<{ ok: boolean; stat
 }
 const 话 = (x: { 体: Record<string, unknown> }, 默认: string) => (typeof x.体.error === "string" ? x.体.error : 默认);
 /** 草稿是不是这个文件：大小一样、名字一样（销售教练看到的名字里号码打了码，按打码后的比） */
-const 是这个文件 = (d: 录音给界面, f: File) => d.总字节 === f.size && (d.文件名 === f.name || d.文件名 === 通知文字打码(f.name));
+const 是这个文件 = (d: 录音给界面, f: File) => d.总字节 === f.size && (d.文件名 === f.name || d.文件名 === 文件名打码(f.name));
 
 type 阶段 = { k: "选" } | { k: "问换"; 旧: 录音给界面 } | { k: "传"; 已: number } | { k: "停"; 已: number; 为什么: string } | { k: "完"; 录音: 录音给界面 };
 
@@ -88,13 +92,13 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 关 }: { projec
     if (续 && 续.status === "上传中" && !是这个文件(续, f)) set阶({ k: "问换", 旧: 续 });
   };
 
-  /** 找这个文件能接着传的那条：草稿条点进来的、或本机记过的；服务器上还在上传中才算 */
+  /** 找这个文件能接着传的那条：草稿条点进来的、或本机记过的；服务器上还在上传中（接着传）或已经待提交（上次其实传完了）才算 */
   const 找续 = async (f: File): Promise<录音给界面 | null> => {
     const 候选 = 续?.status === "上传中" && 是这个文件(续, f) ? 续.id : 读记(projectId)[文件指纹(f)];
     if (!候选) return null;
     const r = await 调(`/api/coach-rec/${候选}/status`);
     const 录 = r.ok ? (r.体.录音 as 录音给界面) : null;
-    if (录?.status === "上传中" && 录.总字节 === f.size) return 录;
+    if ((录?.status === "上传中" || 录?.status === "待提交") && 录.总字节 === f.size) return 录;
     写记(projectId, 文件指纹(f), null);
     return null;
   };
@@ -105,6 +109,13 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 关 }: { projec
     停了.current = false;
     set阶({ k: "传", 已: 0 });
     let 录 = await 找续(文件).catch(() => null);
+    if (录?.status === "待提交") {
+      // 上次「传完」其实成了（回话路上断了）：直接显示完成，不新开、不重传
+      写记(projectId, 文件指纹(文件), null);
+      set阶({ k: "完", 录音: 录 });
+      router.refresh();
+      return;
+    }
     if (!录) {
       const r = await 调("/api/coach-rec/start", {
         method: "POST", headers: { "content-type": "application/json" },
@@ -130,6 +141,7 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 关 }: { projec
       }
       let 好 = false;
       let 最后话 = "网络断了";
+      let 忙等 = 0;
       for (let 次 = 0; 次 <= 重试间隔.length && !好; 次++) {
         if (停了.current) return;
         const r = await 调(`/api/coach-rec/${录.id}/chunk/1/${i}`, { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: 片 }).catch(() => null);
@@ -139,8 +151,15 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 关 }: { projec
           set阶({ k: "选" });
           return set错(话(r, "没传上去"));
         }
+        if (r?.status === 429 && 忙等 < 忙等上限) {
+          // 服务器忙：按它说的秒数等，不算进重试次数
+          忙等 += 1;
+          次 -= 1;
+          await 等((r.等秒 || 3) * 1000);
+          continue;
+        }
         最后话 = r?.status === 429 ? "服务器忙" : "网络断了";
-        if (次 < 重试间隔.length) await 等(r?.status === 429 && r.等秒 ? r.等秒 * 1000 : 重试间隔[次]);
+        if (次 < 重试间隔.length) await 等(重试间隔[次]);
       }
       if (!好) return set阶({ k: "停", 已, 为什么: 最后话 });
       已 += 片.size;
@@ -193,12 +212,12 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 关 }: { projec
         )}
         {文件 && (
           <div className="crec-file" data-testid="crec-file-info">
-            <div className="crec-file-name" title={文件.name}>{文件.name}</div>
+            <div className="crec-file-name" title={文件名打码(文件.name)}>{文件名打码(文件.name)}</div>
             <div className="crec-hint">{读大小(文件.size)}{时长 !== null ? ` · 约 ${读时长(时长)}` : ""}{文件.size > 建议WiFi字节 ? ` · 约 ${读大小(文件.size)}，建议连 Wi-Fi` : ""}</div>
           </div>
         )}
         {阶.k === "问换" && (
-          <div role="alert" className="crec-warn">上次没传完的是「{阶.旧.文件名 ?? "录音"}」（{读大小(阶.旧.总字节 ?? 0)}），和这个文件对不上。换成这个文件重新传？上次传的那部分会删掉。</div>
+          <div role="alert" className="crec-warn">上次没传完的是「{阶.旧.文件名 ?? "录音"}」（{读大小(阶.旧.总字节)}），和这个文件对不上。换成这个文件重新传？上次传的那部分会删掉。</div>
         )}
         {(阶.k === "传" || 阶.k === "停") && 文件 && (
           <div className="crec-progress" aria-live="polite">
@@ -219,7 +238,7 @@ export function PendingCard({ 录, 删 }: { 录: 录音给界面; 删?: () => vo
     <div className="crec-pending" data-testid="crec-pending">
       <div className="crec-pending-h">
         <span className="crec-file-name" title={录.文件名 ?? ""}>{录.文件名 ?? "录音"}</span>
-        <span className="crec-hint">待提交 · {读大小(录.已收字节)}</span>
+        <span className="crec-hint">待提交 · {读大小(录.总字节 || 录.已收字节)}</span>
       </div>
       {录.能听 && <audio className="crec-audio" controls preload="none" src={`/api/coach-rec/${录.id}/audio`} aria-label="回放录音" />}
       <div className="crec-acts">

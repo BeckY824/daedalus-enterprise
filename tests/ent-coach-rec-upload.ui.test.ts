@@ -1,11 +1,13 @@
 /**
  * 录音点评 PR2（11-22）「传录音文件」界面（projects/[id]/CoachRecUpload.tsx、CoachTopics.tsx StartReviewButton）：
  *   - 开关关着（没有 数据.录音）：「发起点评 ▾」下拉和原来一样，只有写点评、录音点评两项，没有传录音文件
- *   - 开着：电脑下拉多一项「传录音文件」；手机 390 宽改成底部选择板，三项纵排、每项 ≥48 高
+ *   - 开着：电脑下拉多一项「传录音文件」；手机 390 宽改成底部选择板，三项纵排、每项 ≥44 高（--hit-touch）
  *   - 传：选文件 → 显示名字、大小 → 开始上传 → 每片 PUT（5MB 一片）→ 传完 → 待提交卡；>20MB 提示连 Wi-Fi；>200MB 不让传
  *   - 断网：一片重试 3 次还不行就停下写「网络断了，已传 N%」，点「继续」从断的那片接着传（不重传已收的片）
  *   - 续传：草稿条「上次传到 N%」→「接着传」→ 选同一个文件只补没收到的片；选别的文件先问换不换
- *   - 手机 390 宽：传文件框整屏，底部按钮通栏、点得中；超长文件名、草稿条不横向撑出
+ *   - 手机 390 宽：传文件框整屏，底部按钮通栏、点得中；超长文件名、草稿条不横向撑出；框里、草稿条、待提交卡、删前确认条的按钮都 ≥44 高
+ *   - 服务器忙（429）按 Retry-After 等，不算进 3 次重试；「继续」时原来那条已经是待提交 → 直接显示完成，不再传
+ *   - 框里显示的本机文件名号码打码；字节数没有时写「—」
  * 网络用页面里的假 fetch（记下每次请求），重试间隔用假时钟快进。
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -46,6 +48,8 @@ const 假服务器 = () => {
   w.__请求 = [];
   w.__坏片 = new Set();
   w.__已收 = [];
+  (w as Record<string, unknown>).__忙 = 0;
+  (w as Record<string, unknown>).__已完 = false;
   const 回 = (状态: number, 体: unknown) => new Response(JSON.stringify(体), { status: 状态, headers: { "content-type": "application/json" } });
   const 录 = (x: object) => ({ id: "crec1", status: "上传中", sourceKind: "上传", 文件名: "x", 总字节: 0, 已收字节: 0, 已收片: [], 格式: null, 开始于: "", 更新于: "", 能听: false, ...x });
   window.fetch = (async (url: string, init?: RequestInit) => {
@@ -54,11 +58,15 @@ const 假服务器 = () => {
     if (url === "/api/coach-rec/start") { const b = JSON.parse(String(init!.body)); return 回(200, { ok: true, 录音: 录(b && { 文件名: b.fileName, 总字节: b.bytes }) }); }
     const m = /\/chunk\/1\/(\d+)$/.exec(url);
     if (m) {
+      if ((w.__忙 as number) > 0) { (w as Record<string, unknown>).__忙 = (w.__忙 as number) - 1; return new Response(JSON.stringify({ error: "同时在传的太多" }), { status: 429, headers: { "content-type": "application/json", "retry-after": "1" } }); }
       if (w.__坏片.has(Number(m[1]))) return 回(503, { error: "忙" });
       w.__已收.push({ 段: 1, 片: Number(m[1]), 字节: (init!.body as Blob).size });
       return 回(200, { ok: true });
     }
-    if (url.endsWith("/status")) return 回(200, { ok: true, 录音: 录({ 文件名: "通话录音.m4a", 总字节: 12 * MB, 已收片: w.__已收, 已收字节: w.__已收.reduce((a, x) => a + x.字节, 0) }) });
+    if (url.endsWith("/status")) {
+      if (w.__已完) return 回(200, { ok: true, 录音: 录({ status: "待提交", 文件名: "通话录音.m4a", 总字节: 12 * MB, 已收字节: 12 * MB, 能听: true }) });
+      return 回(200, { ok: true, 录音: 录({ 文件名: "通话录音.m4a", 总字节: 12 * MB, 已收片: w.__已收, 已收字节: w.__已收.reduce((a, x) => a + x.字节, 0) }) });
+    }
     if (url.endsWith("/finish")) return 回(200, { ok: true, 录音: 录({ status: "待提交", 文件名: "通话录音.m4a", 已收字节: 12 * MB, 能听: true }) });
     if (url.endsWith("/abandon")) return 回(200, { ok: true });
     return 回(404, { error: "没有" });
@@ -86,6 +94,7 @@ const 点得中 = (page: Page, sel: string) => page.locator(sel).first().evaluat
   const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
   return !!hit && (hit === el || el.contains(hit)) && r.bottom <= window.innerHeight && r.right <= window.innerWidth;
 });
+const 按钮高 = (page: Page, sel: string) => page.locator(sel).evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
 const 没撑出 = (page: Page) => page.evaluate(() => {
   const 坏: string[] = [];
   if (document.documentElement.scrollWidth > window.innerWidth) 坏.push(`页面 ${document.documentElement.scrollWidth} > ${window.innerWidth}`);
@@ -165,6 +174,51 @@ it("断网：一片重试 3 次还不行就停下写已传几成；网好了点�
   await page.close();
 });
 
+it("服务器忙（429）按 Retry-After 等、不算进 3 次重试：连着忙 6 回照样传完", async () => {
+  const { page } = await open("form", { 草稿们: [] }, 1280, true);
+  await page.evaluate(() => { (window as unknown as { __忙: number }).__忙 = 6; });
+  await page.getByTestId("coach-topic-new").click();
+  await page.getByTestId("coach-review-upload").click();
+  await page.getByTestId("crec-file").setInputFiles(文件("通话录音.m4a", 6 * MB));
+  await page.getByTestId("crec-start").click();
+  for (let i = 0; i < 8; i++) await page.clock.runFor(1_500);
+  await page.getByTestId("crec-pending").waitFor();
+  expect(await page.getByTestId("crec-stopped").count()).toBe(0);
+  expect((await 请求们(page)).filter((r) => r.endsWith("/chunk/1/0")).length).toBe(7);
+  await page.close();
+});
+
+it("「继续」时原来那条已经是待提交（上次传完的回话断了）：直接显示完成，不新开、不重传", async () => {
+  const { page } = await open("form", { 草稿们: [] }, 1280, true);
+  await page.evaluate(() => (window as unknown as { __坏片: Set<number> }).__坏片.add(1));
+  await page.getByTestId("coach-topic-new").click();
+  await page.getByTestId("coach-review-upload").click();
+  await page.getByTestId("crec-file").setInputFiles(文件("通话录音.m4a", 12 * MB));
+  await page.getByTestId("crec-start").click();
+  for (let i = 0; i < 4; i++) await page.clock.runFor(16_000);
+  await page.getByTestId("crec-stopped").waitFor();
+  await page.evaluate(() => { (window as unknown as { __已完: boolean }).__已完 = true; });
+  const 之前 = (await 请求们(page)).length;
+  await page.getByTestId("crec-resume").click();
+  await page.getByTestId("crec-pending").waitFor();
+  expect((await 请求们(page)).slice(之前)).toEqual(["GET /api/coach-rec/crec1/status"]);
+  expect(await page.getByTestId("crec-pending").innerText()).toContain("12.0MB");
+  await page.close();
+});
+
+it("框里显示的本机文件名号码打码（安卓通话录音的写法）", async () => {
+  const { page } = await open("form", { 草稿们: [] }, 1280);
+  await page.getByTestId("coach-topic-new").click();
+  await page.getByTestId("coach-review-upload").click();
+  for (const 名 of ["通话录音-13812345678-20261122.m4a", "通话录音 13812345678 20261122093012.m4a", "record-13812345678.m4a"]) {
+    await page.getByTestId("crec-file").setInputFiles(文件(名, 1 * MB));
+    const 显示 = page.locator("[data-testid=crec-file-info] .crec-file-name");
+    expect(await 显示.innerText()).not.toContain("13812345678");
+    expect(await 显示.getAttribute("title")).not.toContain("13812345678");
+  }
+  await page.close();
+});
+
 it("草稿条续传：选同一个文件只补没收到的片；选别的文件先问换不换", async () => {
   const 草稿 = { id: "crec1", status: "上传中", sourceKind: "上传", 文件名: "通话录音.m4a", 总字节: 12 * MB, 已收字节: 5 * MB, 已收片: [{ 段: 1, 片: 0, 字节: 5 * MB }], 格式: "m4a", 开始于: "", 更新于: "", 能听: false };
   const { page } = await open("list", { 草稿们: [草稿] }, 1280);
@@ -180,13 +234,13 @@ it("草稿条续传：选同一个文件只补没收到的片；选别的文件�
   await page.close();
 });
 
-it("手机 390：底部选择板三项、每项 ≥48 高；传文件框整屏、底部按钮通栏点得中；超长名字不撑出", async () => {
+it("手机 390：底部选择板三项、每项 ≥44 高；传文件框整屏、底部按钮通栏点得中；超长名字不撑出", async () => {
   const { page, errors } = await open("form", { 草稿们: [] }, 390);
   await page.getByTestId("coach-topic-new").click();
   await page.getByTestId("coach-review-sheet").waitFor();
   const 项 = await page.locator(".crec-sheet-item").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)));
   expect(项.length).toBe(3);
-  for (const h of 项) expect(h).toBeGreaterThanOrEqual(48);
+  for (const h of 项) expect(h).toBeGreaterThanOrEqual(44);
   expect(await 没撑出(page)).toEqual([]);
   await page.locator(".crec-sheet-item").nth(1).click();
   await page.getByTestId("crec-upload").waitFor();
@@ -194,8 +248,12 @@ it("手机 390：底部选择板三项、每项 ≥48 高；传文件框整屏�
   const 框 = await page.locator(".crec-modal :is(.ant-modal-container, .ant-modal-content)").evaluate((el) => ({ w: (el as HTMLElement).offsetWidth, h: (el as HTMLElement).offsetHeight }));
   expect(框.w).toBe(390);
   expect(框.h).toBeGreaterThanOrEqual(800);
-  // 弹框打开的缩放动画走完再量点得中
+  // 弹框打开的缩放动画走完再量点得中、量按钮高
   await page.waitForFunction(() => !document.querySelector(".crec-modal.ant-zoom-appear, .crec-modal.ant-zoom-enter"));
+  // 「换一个文件」和底部「取消 / 开始上传」：390 宽都 ≥44 高
+  const 框里 = await 按钮高(page, ".crec-form .ant-btn, .crec-modal .ant-modal-footer .ant-btn");
+  expect(框里.length).toBe(3);
+  for (const h of 框里) expect(h).toBeGreaterThanOrEqual(44);
   expect(await 点得中(page, "[data-testid=crec-start]")).toBe(true);
   expect(await 没撑出(page)).toEqual([]);
   expect(errors).toEqual([]);
@@ -208,10 +266,20 @@ it("手机 390：草稿条、待提交卡超长名字不撑出，按钮点得中
     { id: "crec1", status: "上传中", sourceKind: "上传", 文件名: 长, 总字节: 12 * MB, 已收字节: 5 * MB, 已收片: [], 格式: "m4a", 开始于: "", 更新于: "", 能听: false },
     { id: "crec2", status: "待提交", sourceKind: "上传", 文件名: 长, 总字节: 12 * MB, 已收字节: 12 * MB, 已收片: [], 格式: "m4a", 开始于: "", 更新于: "", 能听: true },
   ];
-  const { page } = await open("list", { 草稿们 }, 390);
-  expect(await page.getByTestId("crec-draft").count()).toBe(2);
+  const { page } = await open("list", { 草稿们: [...草稿们, { ...草稿们[1], id: "crec3", 总字节: null, 已收字节: 0 }] }, 390);
+  expect(await page.getByTestId("crec-draft").count()).toBe(3);
   expect(await 没撑出(page)).toEqual([]);
   expect(await 点得中(page, "[data-testid=crec-continue]")).toBe(true);
+  // 接着传 / 删掉、提交整理 / 删掉：390 宽都 ≥44 高
+  const 高们 = await 按钮高(page, ".crec-drafts .ant-btn");
+  expect(高们.length).toBe(6);
+  for (const h of 高们) expect(h).toBeGreaterThanOrEqual(44);
+  // 字节数没有的写「—」，不写 1KB
+  expect(await page.getByTestId("crec-pending").nth(1).innerText()).toContain("待提交 · —");
+  // 删前确认条的「取消 / 确认删掉」
+  await page.getByTestId("crec-draft").first().getByRole("button", { name: "删掉" }).click();
+  for (const h of await 按钮高(page, ".crec-draft .pd-del-band .ant-btn")) expect(h).toBeGreaterThanOrEqual(44);
+  expect((await 按钮高(page, ".crec-draft .pd-del-band .ant-btn")).length).toBe(2);
   await page.close();
 });
 
