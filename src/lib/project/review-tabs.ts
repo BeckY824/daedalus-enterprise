@@ -24,7 +24,8 @@ export function 读卡点看板筛(sp: 卡点看板地址): 看板筛选 {
   const 取 = (v?: string) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 64) : undefined);
   return {
     我的认领: sp.bm === "1" || undefined,
-    只看自己: sp.bo === "1" || undefined,
+    // R-A（11-22）：范围合成一个分段「全部｜只看自己｜我认领的」，两个都带时落「我认领的」（认领人本来就在「只看自己」里，blocker.ts 顶上注释）
+    只看自己: (sp.bo === "1" && sp.bm !== "1") || undefined,
     原因: 取(sp.br),
     类型: 取(sp.bt),
     影响: 取(sp.bi),

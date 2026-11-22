@@ -76,8 +76,9 @@ it("卡点列表：显示开了几天 / 用了几天解决，没有时限、没�
     // 等级照旧；没有指认 / 转让 / 退回
     expect(await page.getByText("重要卡点").count()).toBe(3);
     expect(t).not.toMatch(/指认|转让|退回|标为已解决/);
-    expect(t).toContain("待接受，还没人认领");
-    expect(t).toMatch(/处理中 0\/1 ⏳认领人/);
+    // R-A（11-22）：卡点卡片 状态点+文字在首行，会签行写「还没人认领」/「会签 x/y ✓甲 ⏳乙」
+    expect(t).toContain("还没人认领");
+    expect(t).toMatch(/会签 0\/1 ⏳认领人/);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -88,7 +89,7 @@ it("11-19 新卡点（没存标题）：卡片头只有标签行，不再加粗�
     await page.getByText("BLK-20261101-004").waitFor();
     expect(await page.getByText("重要卡点 · 价格").count()).toBe(0);
     expect(await page.getByText("重要卡点", { exact: true }).count()).toBe(1);
-    expect(await page.locator(".pd-blk").innerText()).not.toContain("Y".repeat(10));
+    expect(await page.locator(".bk-card").innerText()).not.toContain("Y".repeat(10));
     await page.evaluate(() => (window as unknown as { __render: (x: string) => void }).__render("list"));
     await page.getByText("报价卡住" + "Y".repeat(60)).first().waitFor();
     expect(errors).toEqual([]);
@@ -179,7 +180,7 @@ const 窗 = (page: import("playwright").Page, k: string) => page.evaluate((k) =>
 it("dt.blocker：认领就地变色、不弹提示、没有撤销；被挡原因写在那条卡点下面、按钮还在", async () => {
   const { page, errors } = await open("list");
   try {
-    const 第一条 = page.locator(".pd-blk").first();
+    const 第一条 = page.locator(".bk-card").first();
     await 第一条.getByRole("button", { name: /^认\s*领$/ }).click();
     await expect.poll(() => 第一条.getAttribute("class")).toContain("is-claimed");
     await 第一条.getByRole("status").filter({ hasText: "已认领" }).waitFor();
@@ -191,7 +192,7 @@ it("dt.blocker：认领就地变色、不弹提示、没有撤销；被挡原因
   const p2 = await open("list");
   try {
     await p2.page.evaluate(() => Reflect.set(window, "__认领回", { ok: false, error: "这个卡点已经有人认领了" }));
-    const 第一条 = p2.page.locator(".pd-blk").first();
+    const 第一条 = p2.page.locator(".bk-card").first();
     await 第一条.getByRole("button", { name: /^认\s*领$/ }).click();
     await 第一条.getByRole("alert").filter({ hasText: "已经有人认领" }).waitFor();
     expect(await 第一条.getAttribute("class")).not.toContain("is-claimed");

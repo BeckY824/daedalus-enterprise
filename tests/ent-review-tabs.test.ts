@@ -31,6 +31,9 @@ describe("纯函数：地址栏、条件", () => {
       我的认领: true, 只看自己: undefined, 原因: "r1", 类型: "重要卡点", 影响: undefined, 项目: "p1",
     });
     expect(读卡点看板筛({ br: "x".repeat(100) }).原因).toHaveLength(64);
+    // R-A（11-22）：范围是一个分段，bm 和 bo 都带时落「我认领的」
+    expect(读卡点看板筛({ bo: "1" })).toMatchObject({ 我的认领: undefined, 只看自己: true });
+    expect(读卡点看板筛({ bm: "1", bo: "1" })).toMatchObject({ 我的认领: true, 只看自己: undefined });
     expect([读沟通段("7"), 读沟通段("90"), 读沟通段("5"), 读沟通段()]).toEqual(["7", "90", "all", "all"]);
     expect([夹页(0, 50), 夹页(9, 50), 夹页(2, 50), 夹页(3, 0)]).toEqual([1, 3, 2, 1]);
   });
