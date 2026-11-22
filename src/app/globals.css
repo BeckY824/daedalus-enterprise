@@ -4437,8 +4437,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* ---------- 列表页：表格成一张白卡（圆角 --r-mod、--shadow-card；现状 D-1 起 10、无影），表头白底灰字；行高、表头高不动（40 / 36） ---------- */
 .list .ant-table-wrapper .ant-table { border-radius: var(--r-mod); box-shadow: var(--shadow-card); background: var(--panel); }
 .list .ant-table-wrapper .ant-table-container { border-radius: var(--r-mod); overflow: hidden; }
-/* 现状 D-1：表格卡没了阴影，用一圈 1px --card-line 认边（画在阴影位，不占尺寸、不挪表格一个像素） */
-:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-wrapper .ant-table { box-shadow: 0 0 0 1px var(--card-line); }
+/* 现状 D-1：表格卡没了阴影，用一圈 1px --card-line 认边（画在阴影位，不占尺寸、不挪表格一个像素）。
+   玻璃模式（html.glass）自己给表格画了半透明 1px 边，这圈不再叠一道 */
+:root:is(:not([data-skin]), [data-skin="now"]):not(.glass) .list .ant-table-wrapper .ant-table { box-shadow: 0 0 0 1px var(--card-line); }
 .list .ant-table-thead > tr > th { background: var(--panel); border-bottom-color: var(--line-soft); }
 .list .ant-table-thead > tr > th::before { display: none; }
 .list .ant-table-tbody > tr > td { border-bottom-color: var(--line-soft); }
@@ -4644,6 +4645,10 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
   transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .cd-seg > button.on { background: var(--panel); color: var(--ink); box-shadow: var(--shadow-card); }
 .cd-seg > button:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+/* 设计语言 D-1 收尾（3703 实操）：--shadow-card 改 none 后，选中钮原来那圈阴影没了，浅色下和轨道只剩约 1.18:1。
+   现状单独给选中钮留一圈 1px --line、字重 500；暗黑下轨道是 --hover，选中钮的 --panel 比它还暗，改成比轨道亮一档 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cd-seg > button.on { box-shadow: 0 0 0 1px var(--line); font-weight: 500; }
+:root[data-mode="dark"]:is(:not([data-skin]), [data-skin="now"]) .cd-seg > button.on { background: color-mix(in srgb, var(--ink) 10%, var(--hover)); }
 .rec-zone .cd-comm > .ant-card-head > .ant-card-head-wrapper { flex-wrap: wrap; row-gap: 8px; }
 .rec-zone .cd-comm > .ant-card-head > .ant-card-head-wrapper > .ant-card-head-title { flex: 1 0 auto; max-width: 100%; }
 .rec-zone .cd-comm > .ant-card-head > .ant-card-head-wrapper > .ant-card-extra { margin-inline-start: auto; }
