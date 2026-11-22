@@ -6197,6 +6197,33 @@ button.proj-miss-chip { cursor: pointer; }
 /* D37 补（L-A 补点发现）：市场管理客户页（我分出去的）的「看板」视图，筛选在看板上方 .pipe-top，不在 .list-bar——
    「全部成员 / 全部创建人 / 全部进程」占位字也墨色，和「全部阶段」（选中值）一个颜色。销售客户页的看板筛选仍是 .list-bar，上面 L-A 那条已管 */
 :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .pipe-top .ant-select-placeholder { color: var(--ink); }
+/* ===== 设计语言 C-A2（11-22，落地计划-三页设计）：渠道筛选 + 列表。只挂现状主题；换皮主题外观不动 ===== */
+/* C1 筛选：下拉「全部主渠道 / 全部属性 / 全部负责人」墨色（D37，同客户页 L-A）；「更多筛选」1200 起写字 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar .ant-select-placeholder { color: var(--ink); }
+@media (min-width: 1200px) and (max-width: 1439px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .cf-more-t { display: inline; }
+}
+@media (max-width: 767px) {
+  /* 390（D06，同客户页 L-A 摆法）：① 搜索 + 重置 ② 下拉两两一排 + 更多筛选；「列」在第一排右端 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space { order: 1; flex-basis: 100%; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item { order: 2; min-width: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 200px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { flex: 1 1 120px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
+}
+/* C3 表格卡头：「渠道（N）· 统计：…」+「?」 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-period-note.chan-list-head { align-items: center; gap: var(--s1) var(--s2); min-height: var(--card-head-h); margin: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list-head .section-title { font-size: var(--fs-section); font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list-head .chan-period-label { font-weight: 400; color: var(--text-muted); }
+/* C4 列表：「—」没有数据（--empty-fg），「0」照数字色（C-新5）；表头「?」；末行不被 AI 球盖（D40） */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-empty { color: var(--empty-fg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-th { display: inline-flex; align-items: center; gap: var(--s1); }
+/* 「?」的 ::after 点击区（--hit 28）比 16 的圈每边多出 6px，在 nowrap 的表头里算作字冲出盒子（PR #413 排版闸门「有效线索? 字宽 79，盒子 73」）。
+   右边先留出这一截：点击区不伸到排序箭头上，盒子也装得下 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-th:has(> .chan-dash-q:last-child) { padding-inline-end: calc((var(--hit) - 16px) / 2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list { padding-bottom: var(--ai-safe); }
 
 /* ---------- 设计语言 G-A · 公海（11-22，只挂现状主题；换皮主题外观不动。结构改动在 PoolView.tsx 新样） ---------- */
 /* G0 标题后的总数（--count-fg，等宽数字）；右上「我手上 N / 上限 M」中性胶囊，到上限换要人处理的橙底 */

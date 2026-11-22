@@ -204,7 +204,7 @@ export default function ChannelDash({
         <div className="chan-dash-k">
           <span className="chan-dash-kk">
             商机
-            <Tooltip title={`按头一回到商机（或直接到订单）的时间数，${含公海(k.公海?.商机)}。项目列表只能按创建时间筛，时间口径对不上，所以不链`}>
+            <Tooltip trigger={["hover", "focus"]} title={`按头一回到商机（或直接到订单）的时间数，${含公海(k.公海?.商机)}。项目列表只能按创建时间筛，时间口径对不上，所以不链`}>
               <span className="chan-dash-q" tabIndex={0} aria-label="商机怎么数">?</span>
             </Tooltip>
           </span>
@@ -214,7 +214,7 @@ export default function ChannelDash({
         <div className="chan-dash-k">
           <span className="chan-dash-kk">
             订单
-            <Tooltip title={`按头一回进订单的时间数，${含公海(k.公海?.订单)}。项目列表只能按创建时间筛，时间口径对不上，所以不链`}>
+            <Tooltip trigger={["hover", "focus"]} title={`按头一回进订单的时间数，${含公海(k.公海?.订单)}。项目列表只能按创建时间筛，时间口径对不上，所以不链`}>
               <span className="chan-dash-q" tabIndex={0} aria-label="订单怎么数">?</span>
             </Tooltip>
           </span>
@@ -253,7 +253,7 @@ export default function ChannelDash({
                 </span>
                 {x.旁 && (
                   新样 ? (
-                    <Tooltip title={x.比 == null ? x.说 : `${x.说}；流失 ${百分(Math.max(0, 1 - x.比))}`}>
+                    <Tooltip trigger={["hover", "focus"]} title={x.比 == null ? x.说 : `${x.说}；流失 ${百分(Math.max(0, 1 - x.比))}`}>
                       <span className="chan-dash-fun-side" tabIndex={0}>→ {百分(x.比)}</span>
                     </Tooltip>
                   ) : (
@@ -307,7 +307,7 @@ export default function ChannelDash({
         <div className="chan-dash-cell">
           <div className="chan-dash-h">
             低效渠道预警{预警头数}
-            <Tooltip title={`线索不少于 ${预警线索下限} 条，且转商机率或有效率不到全员的一半、或转商机为 0；最多列 3 个，线索多的在前`}>
+            <Tooltip trigger={["hover", "focus"]} title={`线索不少于 ${预警线索下限} 条，且转商机率或有效率不到全员的一半、或转商机为 0；最多列 3 个，线索多的在前`}>
               <span className="chan-dash-q" tabIndex={0} aria-label="预警规则">?</span>
             </Tooltip>
           </div>
@@ -393,6 +393,7 @@ export default function ChannelDash({
           <div className="chan-dash-h">
             进公海
             <Tooltip
+              trigger={["hover", "focus"]}
               title={`数${公海.视角 === "市场管理" ? "本人和实线下属" : "自己"}创建的线索：这段时间进公海、现在还在公海的条数（一条只算一次，按最近那回的方式；被领走、分走了就不算）`
                 + `÷ 同期在这个渠道新建的线索；导入时就没负责人的不算。回收站 = 删进回收站、还没恢复的；判无效 = 还在公海、被标了无效；`
                 + `验证判无效 = 线索验证最终判了无效（记线索流失，不进公海）。被退回、判无效、验证判无效各列最多 ${原因最多} 个原因。只看数，不进公海`}

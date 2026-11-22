@@ -1,6 +1,6 @@
 /**
  * 渠道列表统计跟看板时间段（员工反馈第 2 批 2D）的界面：
- * - 默认「全部」，列表、看板同一档；看板上切「本月」，列表的数、抽屉的数跟着换，表格上方那行写明「列表统计：本月 · YYYY-MM-DD 起」；
+ * - 默认「全部」，列表、看板同一档；看板上切「本月」，列表的数、抽屉的数跟着换，表格上方那行写明「列表统计：本月 · YYYY-MM-DD 起」（现状主题并进表格卡头「渠道（N）· 统计：本月 · …」，C-A2）；
  * - 数字点进项目列表带同一段创建时间（createdFrom），切回全部不带；
  * - 本月没数的格显示「—」；
  * - Windows 1024 / 1280 / 1366 宽（主栏 = 视口扣掉左栏 220 和页边距），超长渠道名：页面不横滚、说明那行不撑宽、档位点得中。
@@ -62,7 +62,8 @@ async function open(width: number, hash = "") {
 const 线索列 = (page: Page, 名 = "关联线索") => 列字(page, 名);
 const 列字 = async (page: Page, 名: string) => {
   const 表头 = await page.locator(".chan-list .ant-table-thead th").allInnerTexts();
-  const i = 表头.findIndex((t) => t.trim() === 名);
+  // 现状主题「有效线索」表头带「?」（设计语言 C-A2 · C-新5）
+  const i = 表头.findIndex((t) => t.replace("?", "").trim() === 名);
   return page.locator(".chan-list .ant-table-tbody tr.ant-table-row").evaluateAll((trs, i) => trs.map((tr) => (tr.children[i] as HTMLElement).innerText.trim()), i);
 };
 const 说明 = (page: Page) => page.getByTestId("chan-period-note");
@@ -73,7 +74,7 @@ for (const width of [1024, 1280, 1366]) {
     const { page, errors, 右界 } = await open(width);
     try {
       // 默认全部，和看板一致
-      expect(await 说明(page).locator(".chan-period-label").innerText()).toBe("列表统计：全部");
+      expect(await 说明(page).locator(".chan-period-label").innerText()).toBe("· 统计：全部");
       expect(await 线索列(page)).toEqual(["41", "23", "5"]);
       // 有效线索另成一列：这批一条都没判过（没有已判定）→「—」（客户 11-18 第 10 题 A，同看板）
       expect(await 列字(page, "有效线索")).toEqual(["—", "—", "—"]);
@@ -82,13 +83,16 @@ for (const width of [1024, 1280, 1366]) {
 
       await 档(page, "本月").click();
       await expect.poll(() => 线索列(page)).toEqual(["7", "—", "2"]);
-      expect(await 说明(page).locator(".chan-period-label").innerText()).toMatch(/^列表统计：本月 · \d{4}-\d{2}-01 起$/);
+      expect(await 说明(page).locator(".chan-period-label").innerText()).toMatch(/^· 统计：本月 · \d{4}-\d{2}-01 起$/);
       expect(await 首链.getAttribute("href")).toMatch(/[?&]createdFrom=\d{4}-\d{2}-01(&|$)/);
       // 商机按到达时间数（同看板），点开不带创建时间段；说明行写明
       const 商机链 = page.locator(".chan-list .ant-table-tbody tr.ant-table-row").first().locator("a.chan-num").nth(1);
       expect(await 商机链.getAttribute("href")).toMatch(/phase=%E5%95%86%E6%9C%BA/);
       expect(await 商机链.getAttribute("href")).not.toContain("createdFrom");
-      expect(await 说明(page).locator(".chan-period-hint").innerText()).toContain("商机、订单、成交按到达该阶段的时间算");
+      // 现状主题（设计语言 C-A2 · C3）：说明并进表格卡头，按哪种时间算那句在「?」悬停里
+      await 说明(page).locator(".chan-dash-q").hover();
+      await expect.poll(() => page.locator(".ant-tooltip:not(.ant-tooltip-hidden) .chan-period-hint").innerText().catch(() => "")).toContain("商机、订单、成交按到达该阶段的时间算");
+      await page.mouse.move(0, 0);
       // 累计成交本月没有 → 「—」
       const 表头 = await page.locator(".chan-list .ant-table-thead th").allInnerTexts();
       const 成交列 = 表头.findIndex((t) => t.trim() === "累计成交");
@@ -111,7 +115,7 @@ for (const width of [1024, 1280, 1366]) {
 
       await 全部钮.click();
       await expect.poll(() => 线索列(page)).toEqual(["41", "23", "5"]);
-      expect(await 说明(page).locator(".chan-period-label").innerText()).toBe("列表统计：全部");
+      expect(await 说明(page).locator(".chan-period-label").innerText()).toBe("· 统计：全部");
       expect(await 首链.getAttribute("href")).not.toContain("createdFrom");
       expect(errors).toEqual([]);
     } finally { await page.close(); }
@@ -125,7 +129,7 @@ it("按主渠道合计也跟档：本月合成一行 = 7 + 0 + 2", async () => {
     await page.locator("[aria-label='统计口径']").getByText("按主渠道").click();
     await expect.poll(() => page.locator(".chan-list .ant-table-thead th").allInnerTexts()).toContain("子渠道数");
     await expect.poll(() => 线索列(page)).toEqual(["9"]);
-    expect(await 说明(page).locator(".chan-period-label").innerText()).toMatch(/^列表统计：本月/);
+    expect(await 说明(page).locator(".chan-period-label").innerText()).toMatch(/^· 统计：本月/);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -133,7 +137,7 @@ it("按主渠道合计也跟档：本月合成一行 = 7 + 0 + 2", async () => {
 it("自定义那一段的数还没到：表格出骨架、不拿「—」冒充，和看板一样", async () => {
   const { page, errors } = await open(1280, "#custom");
   try {
-    expect(await 说明(page).locator(".chan-period-label").innerText()).toBe("列表统计：自定义 · 2026-10-01 至 2026-10-31");
+    expect(await 说明(page).locator(".chan-period-label").innerText()).toBe("· 统计：自定义 · 2026-10-01 至 2026-10-31");
     expect(await page.locator(".chan-list .list-skel-on").count()).toBe(1);
     expect(await page.locator(".chan-list [aria-busy=true]").count()).toBeGreaterThan(0);
     // 切回预设，骨架收起、数回来
