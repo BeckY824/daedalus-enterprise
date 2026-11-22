@@ -1759,7 +1759,7 @@ export default function ProjectDetail({
   const 沟通身 = () => (
         <div id="project-follow-body" className={p.企业版 ? "proj-mod-body" : undefined}>
         {/* 教练主题（11-17）：没关的钉在最上面，不混进下面这一串沟通（看全部沟通那条时间线里也不混） */}
-        <CoachTopics 数据={教练主题} />
+        <CoachTopics 数据={教练主题} projectId={p.id} />
         {p.followUps.length === 0 && <div style={{ color: "var(--text-muted)" }}>{p.customer ? "还没有挂在这个项目上的沟通" : p.pooled ? "领取后可见" : "无权查看"}</div>}
         {搜着 && p.followUps.length > 0 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>没有对得上「{搜.trim()}」的沟通</div>}
         {!搜着 && 隐藏中 && 列沟通.length === 0 && <div style={{ color: "var(--text-muted)" }}>接手后还没有沟通；接手前的 {p.followUps.length} 条已隐藏</div>}

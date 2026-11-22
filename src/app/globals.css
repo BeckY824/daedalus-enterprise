@@ -5332,6 +5332,45 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .cth-ellipsis { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 .cth-closed-toggle { align-self: flex-start; padding: 0; border: 0; background: none; color: var(--text-muted); font-size: var(--fs-note); cursor: pointer; }
 .cth-closed-toggle:hover { color: var(--ink); text-decoration: underline; }
+/* 录音点评 ·「传录音文件」（11-22，录音点评 PR2，(app)/projects/[id]/CoachRecUpload.tsx）：外观只放 now 皮肤（别的主题沿用 antd 默认样子，功能不受影响）。
+   电脑是 520 宽弹框；手机（≤767）整屏：告知在最上、主按钮通栏贴底让出安全区、进度条通栏。发起点评的手机底部选择板（.crec-sheet）三项纵排、每项整行 ≥ 触屏点击区（--hit-touch）；手机上框里、草稿条、待提交卡的按钮也都 ≥ --hit-touch */
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-form { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-notice { padding: var(--s2) var(--s3); border-radius: var(--r-ctl); background: var(--hover); color: var(--ink-soft); font-size: var(--fs-note); line-height: 1.5; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-row { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-k { flex: none; width: 5em; color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-v { flex: 1; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-hint { color: var(--text-muted); font-size: var(--fs-note); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-file { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-file-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-warn { padding: var(--s2) var(--s3); border: 1px solid var(--warning-line); border-radius: var(--r-ctl); background: var(--warning-bg); color: var(--warning-text); font-size: var(--fs-note); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-progress { display: flex; flex-direction: column; gap: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-pending { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s2) var(--s3); border: 1px solid var(--line-soft); border-radius: var(--r-card); background: var(--panel); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-pending-h { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-pending-h .crec-file-name { flex: 1 1 auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-pending-h .crec-hint { flex: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-audio { width: 100%; max-width: 100%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-acts { display: inline-flex; flex-wrap: wrap; gap: var(--s2); flex: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-drafts { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-draft-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2) var(--s3); padding: var(--s2) var(--s3); border: 1px dashed var(--line); border-radius: var(--r-card); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-draft-t { flex: 1 1 200px; min-width: 0; color: var(--ink-soft); font-size: var(--fs-note); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-draft-row .crec-acts { margin-inline-start: auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-list { display: flex; flex-direction: column; padding-bottom: env(safe-area-inset-bottom); }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item { display: block; width: 100%; min-height: var(--hit-touch); padding: var(--s2) var(--s4); border: 0; border-bottom: 1px solid var(--line-soft); background: none; color: var(--ink); text-align: start; cursor: pointer; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item:last-child { border-bottom: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item:disabled { color: var(--text-muted); cursor: not-allowed; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item .menu-2l { max-width: none; }
+@media (max-width: 767px) {
+  /* 手机整屏：弹框铺满、内容区可滚、底部按钮通栏贴底（让出安全区） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal.ant-modal { top: 0; width: 100vw !important; max-width: 100vw; margin: 0; padding: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal :is(.ant-modal-container, .ant-modal-content) { display: flex; flex-direction: column; min-height: 100dvh; border-radius: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal .ant-modal-body { flex: 1; overflow-y: auto; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal .ant-modal-footer { display: flex; gap: var(--s2); padding-bottom: calc(var(--s3) + env(safe-area-inset-bottom)); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal .ant-modal-footer > .ant-btn { flex: 1 1 0; min-width: 0; height: var(--hit-touch); margin: 0; }
+  /* 「选录音文件」、待提交卡的「提交整理 / 删掉」、草稿条的「接着传 / 删掉」、删前确认条的「取消 / 确认删掉」：390 宽点击区 ≥ 44（PR2 审查必修 3） */
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.crec-form, .crec-acts, .crec-draft .pd-del-band) .ant-btn { min-height: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .crec-draft-row .crec-acts { width: 100%; justify-content: flex-end; }
+}
 /* 首页待办「待回复主题」（overview 之外的首页，dashboard/CoachTopicTodo.tsx）：一行，窄了折行，长主题省略 */
 .home-cth-todo { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px var(--s3); margin-bottom: 16px; padding: var(--s2) var(--s3); border: 1px solid var(--line-soft); border-radius: var(--r-card); background: var(--panel); min-width: 0; }
 .home-cth-todo-t { font-weight: 600; color: var(--ink); white-space: nowrap; }
@@ -6158,6 +6197,33 @@ button.proj-miss-chip { cursor: pointer; }
 /* D37 补（L-A 补点发现）：市场管理客户页（我分出去的）的「看板」视图，筛选在看板上方 .pipe-top，不在 .list-bar——
    「全部成员 / 全部创建人 / 全部进程」占位字也墨色，和「全部阶段」（选中值）一个颜色。销售客户页的看板筛选仍是 .list-bar，上面 L-A 那条已管 */
 :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .pipe-top .ant-select-placeholder { color: var(--ink); }
+/* ===== 设计语言 C-A2（11-22，落地计划-三页设计）：渠道筛选 + 列表。只挂现状主题；换皮主题外观不动 ===== */
+/* C1 筛选：下拉「全部主渠道 / 全部属性 / 全部负责人」墨色（D37，同客户页 L-A）；「更多筛选」1200 起写字 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar .ant-select-placeholder { color: var(--ink); }
+@media (min-width: 1200px) and (max-width: 1439px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .cf-more-t { display: inline; }
+}
+@media (max-width: 767px) {
+  /* 390（D06，同客户页 L-A 摆法）：① 搜索 + 重置 ② 下拉两两一排 + 更多筛选；「列」在第一排右端 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space { order: 1; flex-basis: 100%; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item { order: 2; min-width: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 200px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { flex: 1 1 120px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-list .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
+}
+/* C3 表格卡头：「渠道（N）· 统计：…」+「?」 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-period-note.chan-list-head { align-items: center; gap: var(--s1) var(--s2); min-height: var(--card-head-h); margin: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list-head .section-title { font-size: var(--fs-section); font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list-head .chan-period-label { font-weight: 400; color: var(--text-muted); }
+/* C4 列表：「—」没有数据（--empty-fg），「0」照数字色（C-新5）；表头「?」；末行不被 AI 球盖（D40） */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-empty { color: var(--empty-fg); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-th { display: inline-flex; align-items: center; gap: var(--s1); }
+/* 「?」的 ::after 点击区（--hit 28）比 16 的圈每边多出 6px，在 nowrap 的表头里算作字冲出盒子（PR #413 排版闸门「有效线索? 字宽 79，盒子 73」）。
+   右边先留出这一截：点击区不伸到排序箭头上，盒子也装得下 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-th:has(> .chan-dash-q:last-child) { padding-inline-end: calc((var(--hit) - 16px) / 2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-list { padding-bottom: var(--ai-safe); }
 
 /* ---------- 设计语言 G-A · 公海（11-22，只挂现状主题；换皮主题外观不动。结构改动在 PoolView.tsx 新样） ---------- */
 /* G0 标题后的总数（--count-fg，等宽数字）；右上「我手上 N / 上限 M」中性胶囊，到上限换要人处理的橙底 */

@@ -2092,6 +2092,69 @@ model EntCoachTopic {
   @@index([status, projectId])
 }
 
+/// 录音点评的一条录音（迁移 162，录音点评 PR2，11-22）：传录音文件、按住说话、点按录音都是一行。文件在数据目录 coach-rec/<年月>/<id>/（lib/enterprise/coach-rec-store.ts），
+/// 库里只记状态和元数据。判定在 lib/enterprise/coach-rec.ts（只认 coach-topic.ts 的 能发主题），读写在 coach-rec-db.ts。
+/// 转写（PR4）、整理和发出（PR5）要的列一起建好，之后不再加列。指向项目、人、主题的列都不建外键
+model EntCoachRecording {
+  id             String    @id @default(cuid())
+  /// 在哪个项目上开始的（开始时锁定）
+  projectId      String
+  /// 谁录 / 谁传的（开始时锁定 = 当前登录的人，不能代别人）
+  authorId       String
+  /// 上传中 / 待提交 / 转写中 / 整理中 / 待确认 / 已发出 / 已放弃 / 整理失败
+  status         String    @default("上传中")
+  /// 上传 / 网页录 / 飞书原生录
+  sourceKind     String
+  /// 传文件时的原文件名（给录的人自己看；对销售教练显示时号码打码）
+  fileName       String?
+  /// 浏览器报的类型（只作参考，不信）
+  mime           String?
+  /// 服务端按文件头认出来的格式（m4a / mp3 / wav ……）
+  format         String?
+  /// 传文件：开始时报的总字节数（传完要对得上）；录音：结束时算出的
+  bytes          Int?
+  /// 收到几片（每片 ≤5MB）
+  chunks         Int       @default(0)
+  /// 几段（被打断后接着录的多段；传文件固定 1 段）
+  segCount       Int       @default(0)
+  /// 时长（服务端 ffprobe 算，PR4 起写；不信客户端）
+  durationMs     Int?
+  sampleRate     Int?
+  /// 规整后的文件（数据目录下的相对路径，PR4 起写）
+  audioPath      String?
+  /// 录音被打断的记录（JSON：第几段、在几秒、什么原因，PR3 起写）
+  interrupts     String?
+  /// 转写全文、分段（JSON）、说话人数、用的哪条通道、腾讯云任务号和提交时刻（PR4 起写）
+  transcript     String?
+  segments       String?
+  speakers       Int?
+  engine         String?
+  asrTaskId      String?
+  asrSubmittedAt DateTime?
+  /// AI 起草的主题、要点（确认时改过的也存这里，PR5 起写）
+  draftTitle     String?
+  draftBody      String?
+  /// 整理失败的原因（给人看的话，不带密钥、签名）
+  error          String?
+  /// 发出后对应的主题（EntCoachTopic.id，PR5 起写）
+  topicId        String?
+  /// 草稿到期前提醒过没有（PR6）
+  remindedAt     DateTime?
+  startedAt      DateTime  @default(now())
+  endedAt        DateTime?
+  /// 放弃 / 删除的时刻（文件当场删）
+  deletedAt      DateTime?
+  /// 音频到期删掉的时刻（转写、要点留着，PR6）
+  audioPurgedAt  DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([authorId, status])
+  @@index([projectId])
+  @@index([status])
+  @@index([topicId])
+}
+
 /// 教练主题下的回复（迁移 144）：负责人回复、发起一方追问都是一行。发出后不能改、不能删；主题真删随主题级联
 model EntCoachReply {
   id        String        @id @default(cuid())
