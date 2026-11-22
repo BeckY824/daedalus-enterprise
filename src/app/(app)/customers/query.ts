@@ -85,7 +85,8 @@ export async function 客户范围条件(scope: string | undefined, userId?: str
   if (!企业版() || !是客户范围(scope) || scope === "visible") return null;
   const me = userId ?? (await requireUser()).id;
   if (scope === "mine") return { salesOwnerId: me };
-  return { salesOwnerId: { not: me }, id: { in: await 组员客户编号(defaultClient, [me]) } };
+  // 组员客户 500 个一批拼成 OR（客户id集合，同 32C）：一句 IN 带全过 999 位时，受限身份的范围层带否定条件、Prisma 拆不了批，报 P2029、整页打不开
+  return { AND: [{ salesOwnerId: { not: me } }, 客户id集合(await 组员客户编号(defaultClient, [me]))] };
 }
 
 /** 「超过 N 天没跟进」认的天数：1–3650 的整数；别的（地址栏手改的、0、小数）当没筛 */
