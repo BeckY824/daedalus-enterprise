@@ -64,7 +64,9 @@ export function KPI排({ 格们, 名, 新样 = false, 列 = 6 }: { 格们: 格[]
         );
         const 说 = g.全 ? <>{g.全}<br />{g.注}</> : g.注;
         return (
-          <Tooltip key={g.k} title={说} placement="bottom" mouseEnterDelay={0.3} trigger={新样 && !g.去 ? ["hover", "click"] : undefined}>
+          // hover + focus 不用 click：触屏长按时 pointerenter 延时打开、抬起后 click 又切回关，闪一下就没（C-A1 3704 实操同一个坑）；
+          // 格子有 tabIndex=0，点按即聚焦、点别处才收
+          <Tooltip key={g.k} title={说} placement="bottom" mouseEnterDelay={0.3} trigger={新样 && !g.去 ? ["hover", "focus"] : undefined}>
             {g.去 ? <Link href={g.去} className="rkpi-i">{里}</Link> : <div className="rkpi-i" tabIndex={0}>{里}</div>}
           </Tooltip>
         );

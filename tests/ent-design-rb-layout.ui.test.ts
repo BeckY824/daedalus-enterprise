@@ -154,14 +154,31 @@ it.each([1024, 1280, 1366, 390])("数据·现在 %ipx：概况 6 格 + 阶段 4 
   expect(errors).toEqual([]); await page.close();
 });
 
-it("数据·现在：待回款悬停看全值（电脑）、点一下看全值（390 触屏）", async () => {
+/**
+ * 像手指那样点按：按下停 150ms 再抬起。Playwright 的 tap() 一瞬间，测不出 trigger 带 click 时
+ * 「按下 pointerenter 延时打开、抬起后 click 又切回关」那一闪（C-A1 3704 实操同一个坑）
+ */
+async function 指点(page: Page, loc: import("playwright").Locator, 按住 = 150) {
+  await loc.scrollIntoViewIfNeeded();
+  const b = (await loc.boundingBox())!;
+  const s = await page.context().newCDPSession(page);
+  await s.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }] });
+  await page.waitForTimeout(按住);
+  await s.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await s.detach();
+}
+
+it("数据·现在：待回款悬停看全值（电脑）、点一下看全值且留住不闪（390 触屏）", async () => {
   const { page } = await 打开("data", 1280);
   await page.locator('section[aria-label="复盘概况"] .rkpi-i', { hasText: "待回款" }).hover();
   await expect.poll(() => page.locator(".ant-tooltip:not(.ant-tooltip-hidden)").innerText().catch(() => "")).toContain("98,765,432,109");
   await page.close();
   const m = await 打开("data", 390);
-  await m.page.locator('section[aria-label="复盘概况"] .rkpi-i', { hasText: "待回款" }).tap();
+  // 长按（按住 400ms，比悬停延时 300ms 长）：规范「悬停 / 长按看全值」
+  await 指点(m.page, m.page.locator('section[aria-label="复盘概况"] .rkpi-i', { hasText: "待回款" }), 400);
   await expect.poll(() => m.page.locator(".ant-tooltip:not(.ant-tooltip-hidden)").innerText().catch(() => "")).toContain("98,765,432,109");
+  await m.page.waitForTimeout(500);
+  expect(await m.page.locator(".ant-tooltip:not(.ant-tooltip-hidden)").innerText().catch(() => "")).toContain("98,765,432,109");
   await m.page.close();
 });
 
