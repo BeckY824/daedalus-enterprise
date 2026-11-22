@@ -9,11 +9,18 @@ import type { ReactNode } from "react";
  */
 export const 释义下拉宽 = 300;
 
-export function 带释义(释义?: Record<string, string>) {
+export function 带释义(释义?: Record<string, string>, 一行 = false) {
   if (!释义 || !Object.keys(释义).length) return undefined;
   return function 渲染(o: { label?: ReactNode; value?: unknown }): ReactNode {
     const 释 = 释义[String(o.value)];
     if (!释) return o.label;
+    // 一行（设计语言 L-A · L-新7，客户列表筛选）：释义只占一行、放不下省略号，悬停看全；样子在 globals.css .dict-note-1l（只挂现状主题）
+    if (一行) return (
+      <div data-testid="dict-note-option">
+        <div>{o.label}</div>
+        <div className="muted dict-note-1l" title={释}>{释}</div>
+      </div>
+    );
     return (
       <div data-testid="dict-note-option">
         <div>{o.label}</div>
@@ -24,8 +31,8 @@ export function 带释义(释义?: Record<string, string>) {
 }
 
 /** 一起给 Select 的几样：optionRender + 下拉宽（有释义才加宽；没释义的返回空对象，下拉和原来一样） */
-export function 释义下拉(释义?: Record<string, string>, 宽: number | boolean = 释义下拉宽) {
-  const optionRender = 带释义(释义);
+export function 释义下拉(释义?: Record<string, string>, 宽: number | boolean = 释义下拉宽, 一行 = false) {
+  const optionRender = 带释义(释义, 一行);
   return optionRender ? { optionRender, popupMatchSelectWidth: 宽 } : {};
 }
 

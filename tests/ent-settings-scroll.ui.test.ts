@@ -305,15 +305,40 @@ for (const [w, h] of [[1024, 768], [1280, 800], [1366, 768]] as const) {
 }
 
 it("手机整页 375：目录压在正文上面，点目录换栏滚到正文顶", async () => {
-  const { page, errors } = await 开(375, 812, false);
+  // 地址没写明哪一栏（从左栏点「设置」进来）：进页第一下不动窗口，目录在上面
+  const { page, errors } = await 开(375, 812, false, "");
   try {
     const 前 = await 位置(page);
     expect(前.bodyTop).toBeGreaterThan(前.vh * 0.5);
-    await page.getByRole("tab", { name: /团队成员/ }).click();
-    await page.waitForFunction(() => location.search === "?tab=members");
+    await page.getByRole("tab", { name: /操作日志/ }).click();
+    await page.waitForFunction(() => location.search === "?tab=audit");
     const a = await 位置(page);
     expect(a.bodyTop).toBeGreaterThanOrEqual(0);
     expect(a.bodyTop).toBeLessThan(40);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/*
+  设计语言 L-A · L-新10（P-全局-02 / P-界面-14）：客户页「导入」去 /settings?tab=enterprise——地址写明了哪一栏，手机上下排进来就落在那一栏正文顶，
+  不停在一屏目录上（原来 390 第一屏是设置目录，「企业版导入」压在下面）；浮层、整页一样。电脑两栏正文本来就在眼前，窗口不动
+*/
+for (const 浮层 of [false, true]) {
+  it(`手机 375${浮层 ? "浮层" : "整页"}：地址写明 ?tab=audit，进来就落在那一栏正文顶`, async () => {
+    const { page, errors } = await 开(375, 812, 浮层, "?tab=audit");
+    try {
+      await expect.poll(() => 位置(page).then((a) => Math.round(a.bodyTop))).toBeLessThan(40);
+      const a = await 位置(page);
+      expect(a.bodyTop).toBeGreaterThanOrEqual(-1);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+it("整页 1366×768：地址写明 ?tab=audit，窗口不动（两栏正文本来就看得见）", async () => {
+  const { page, errors } = await 开(1366, 768, false, "?tab=audit");
+  try {
+    expect((await 位置(page)).y).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

@@ -340,6 +340,15 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     企 && !看板视图 ? 行P.then((rs) => 抬头节点们(prisma, rs)).then((m) => 只留看得见的项目名(m, (ids) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } }))) : undefined,
   ]);
   const 三态开 = !!组织规则?.三态.开;
+  /*
+    负责人筛选同名的带部门（设计语言 L-A · L-新6）：企业版按组织架构给每人带上部门名，下拉里只有撞名的那几位才显示出来（lib/utils.ts 成员选项带部门）。
+    组织读不到（不是企业版）就照原样
+  */
+  const 组织 = 企 ? await 权限组织() : null;
+  const 带部门的人 = 组织 ? users.map((u) => {
+    const 部门id = 组织.成员.get(u.id)?.deptId;
+    return { ...u, 部门: 部门id ? 组织.部门.get(部门id)?.name ?? null : null };
+  }) : users;
   // 业务配置里删掉了、库里还有人在用的职位：筛选下拉照样给（第 2 期 2b「删选项后老记录照样能筛」）
   const 旧职位 = 用着的职位.map((g) => g.trim()).filter((g) => g && !b.grades.includes(g)).sort();
   // 团队有两个以上一级部门才摆「全部部门」（10-23：总管理默认看全公司，列表加部门筛选）；只有一个时等于没分部门
@@ -381,7 +390,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       跟进排序={跟进排序}
       能按号码筛={能按号码筛}
       排序币种={sortCurrency}
-      users={users}
+      users={带部门的人}
       channels={channels}
       渠道筛选项={渠道筛选项}
       直接新建={sp.new === "1"}
