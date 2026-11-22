@@ -27,7 +27,7 @@ import type { 待分配数 } from "@/lib/enterprise/await-assign-core";
 import { 新线索来源, 新线索要下一步, 新线索企业, type 新线索企业格 } from "@/components/ProposalCard";
 import HomeCards from "./HomeCards";
 import ChatHead from "./ChatHead";
-import ToLatest from "./ToLatest";
+import ToLatest, { useToLatestKey } from "./ToLatest";
 import { 截标题 } from "./home-look";
 import type { 首页卡数 } from "@/lib/project/home-cards";
 
@@ -137,6 +137,7 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
     start: (t) => 最新.current.start(t),
     在跑: () => 最新.current.running != null,
     问: (q) => composerRef.current?.问(q),
+    刚发: (id) => set刚发的(id),
   }));
 
   const empty = turns.length === 0;
@@ -159,6 +160,8 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
   */
   const 一张纸 = 现状 && 驾驶舱 && !empty;
   const 对话id = useConversationId(scope) ?? 会话?.id ?? null;
+  const 刚发在屏 = turns.some((t) => t.id === 刚发的);
+  const 落底键 = useToLatestKey(对话id, 刚发在屏);
   const 视图中 = useViewAs();
   const 标题 = (会话 && 会话.id === 对话id ? 会话.title : null) ?? 截标题(turns[0]?.question ?? "");
   const 待办 = !窄 && (
@@ -201,9 +204,10 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
       )}
       {/*
         换对话按这一屏装着的对话 id 重挂（不按地址上的 会话：地址先变、库里那段要等 useHomeTurns 的效果装进来，
-        按地址换会在旧内容上挂上、「刚发」也拿旧那几轮算）。挂上后内容再长高 ToLatest 自己跟着落底（3703 实操 #410）
+        按地址换会在旧内容上挂上、「刚发」也拿旧那几轮算）。挂上后内容再长高 ToLatest 自己跟着落底（3703 实操 #410）。
+        新对话第一问答完认领上 id 那一下不算换对话、不重挂，「↓」和蓝点原样留着（useToLatestKey）
       */}
-      {一张纸 && <ToLatest key={对话id ?? "new"} 刚发={turns.some((t) => t.id === 刚发的)} />}
+      {一张纸 && <ToLatest key={落底键} 刚发={刚发在屏} />}
 
       <Composer
         ref={composerRef}

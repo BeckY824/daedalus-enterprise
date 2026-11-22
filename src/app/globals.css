@@ -6184,7 +6184,8 @@ button.proj-miss-chip { cursor: pointer; }
 }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log > * { flex: none; width: 100%; max-width: var(--chat-col); margin-inline: auto; }
 /* C12-A：发出去的那一问顶到框顶，下面留出一框高的空、回答往下长（ChatGPT / Claude 的做法）；再发一问，上一轮的空收回 */
-:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log > .cli-turn-new { min-height: 100cqh; }
+/* 只给最后一轮留（后面只剩 TurnLog 末尾那个空 div）：中间某一轮点了重新回答，下面本来就有内容能把它顶到框顶，不在两轮之间空出一框高 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-log > .cli-turn-new:nth-last-child(2) { min-height: 100cqh; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer-sticky { position: static; flex: none; background: none; padding: var(--s2) var(--s5) var(--s5); }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-paper .cli-composer > * { max-width: var(--chat-col); margin-inline: auto; }
 

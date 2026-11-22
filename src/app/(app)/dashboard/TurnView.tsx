@@ -181,13 +181,23 @@ export default function TurnView({
   useEffect(() => () => {
     if (移走中Ref.current) 移走.current();
   }, []);
-  // 刚发出的这一问：把问题滚到视口顶部，答案往下面的空白里生成。
+  /*
+    重新回答 / 重试 / 再问一次：和刚发一问一样（HC-1 3703 实操补点：老对话最后一轮点「重新回答」，问句停在框底附近、
+    回答全在视线下面）。onRetry 那头把这一轮记成「刚发的」（TurnLog），这里再记一次数——
+    同一轮连着重答两次时「刚发的」没变，靠这个数让下面那个效果再顶一次
+  */
+  const [重答次, set重答次] = useState(0);
+  const 重答 = () => {
+    onRetry();
+    set重答次((n) => n + 1);
+  };
+  // 刚发出的这一问（或刚点了重答的这一轮）：把问题滚到视口顶部，答案往下面的空白里生成。
   // 不能用 block:"end"——那会把它顶到输入框后面，人看不见自己刚发的话。
+  // 只在「变成刚发的」那一刻（挂上时、或重答时）顶一次；翻历史不乱跳
   useEffect(() => {
     if (!scrollOnMount) return;
     滚到(ref.current, "start");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [scrollOnMount, 重答次]);
 
   /*
     流式跟随。整页滚动（首页）时沿用老判据「离底部够近就跟」；
@@ -311,7 +321,7 @@ export default function TurnView({
         {done && (
           <div className="cli-bar">
             <Tooltip title="重新背调（会再扣一次）">
-              <button type="button" className="cli-ic" aria-label="重新背调" onClick={onRetry}>
+              <button type="button" className="cli-ic" aria-label="重新背调" onClick={重答}>
                 <ReloadOutlined />
               </button>
             </Tooltip>
@@ -359,7 +369,7 @@ export default function TurnView({
           写着={writing}
           等确认={待确认}
           附注={!done && !现状 ? "Esc 打断" : undefined}
-          onRetry={onRetry}
+          onRetry={重答}
         />
       )}
 
@@ -390,7 +400,7 @@ export default function TurnView({
         <div className="cli-stopped">
           <span className="cli-stop-mark" />
           这一条的回答不在了
-          <button type="button" className="cli-link" onClick={onRetry}>
+          <button type="button" className="cli-link" onClick={重答}>
             再问一次
           </button>
         </div>
@@ -454,7 +464,7 @@ export default function TurnView({
             </Tooltip>
           )}
           <Tooltip title="重新回答">
-            <button type="button" className="cli-ic" aria-label="重新回答" disabled={AI已用完} onClick={onRetry}>
+            <button type="button" className="cli-ic" aria-label="重新回答" disabled={AI已用完} onClick={重答}>
               <ReloadOutlined />
               <AiCost />
             </button>
