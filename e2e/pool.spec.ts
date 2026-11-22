@@ -15,6 +15,11 @@ const 李四 = { 用户名: "lisi", 密码: "admin123" };
 const 客户名 = "公海测试客户";
 /** multiuser 的 E 组会停用李四且不恢复（duplicate.spec 里也记着）：这里先启用，结束时还原成原样，不改别人的前提 */
 let 原在职: { email: string; active: boolean }[] = [];
+/**
+ * 表格里这位客户那一行：只认数据行（.ant-table-row）。搜不到时客户页 / 公海页的空态句写「没有对得上「词」的客户」
+ * （设计语言 L-B D21），那句摆在表格占位行里，占位行也是 role=row、名字里带关键词，光按名字找会把它算成一行
+ */
+const 表行 = (page: Page, 名: string) => page.getByRole("row", { name: new RegExp(名) }).and(page.locator(".ant-table-row"));
 
 async function 登录(page: Page, who: { 用户名: string; 密码: string }) {
   for (let i = 0; i < 3; i++) {
@@ -63,7 +68,7 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
   const 张 = await 一个人(browser, 张三);
   // 张三：搜到这一位，勾上，批量「放进公海」
   await 张.page.goto(`/customers?keyword=${encodeURIComponent(客户名)}`);
-  const 行 = 张.page.getByRole("row", { name: new RegExp(客户名) });
+  const 行 = 表行(张.page, 客户名);
   await expect(行).toBeVisible();
   await 行.getByRole("checkbox").check();
   // 企业版批量条按钮 11-12 起叫「退回公海」（D3）
@@ -88,7 +93,7 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
   await expect(张.page.getByRole("button", { name: /公海里有 1 位匹配/ })).toHaveCount(0);
   await 张.page.goto(`/pool?keyword=${encodeURIComponent(客户名)}`);
   await 张.page.waitForSelector(".list");
-  await expect(张.page.getByRole("row", { name: new RegExp(客户名) })).toHaveCount(0);
+  await expect(表行(张.page, 客户名)).toHaveCount(0);
   // 老链接 ?pool=1 转去 /pool
   await 张.page.goto(`/customers?pool=1&keyword=${encodeURIComponent(客户名)}`);
   await expect(张.page).toHaveURL(/\/pool\?keyword=/);
@@ -99,16 +104,16 @@ test("放进公海 → 别人在 /pool 里领走；原负责人领不回；记�
   // 李四：客户页里没有它，公海页里有
   await page.goto(`/customers?keyword=${encodeURIComponent(客户名)}`);
   await page.waitForSelector(".list");
-  await expect(page.getByRole("row", { name: new RegExp(客户名) })).toHaveCount(0);
+  await expect(表行(page, 客户名)).toHaveCount(0);
   await page.goto(`/pool?keyword=${encodeURIComponent(客户名)}`);
-  const 公海行 = page.getByRole("row", { name: new RegExp(客户名) });
+  const 公海行 = 表行(page, 客户名);
   await 公海行.getByRole("button", { name: `领取 ${客户名}` }).click();
   // 11-15 起领取在行上原地确认（InlineConfirm，写明「以后退回公海就不能再领回」），点「确认领取」才领
   await expect(公海行).toContainText("以后退回公海就不能再领回");
   await 公海行.getByRole("button", { name: "确认领取" }).click();
   await expect(page.getByText(`已领取「${客户名}」`)).toBeVisible();
   // 领走了：公海里没有它了
-  await expect(page.getByRole("row", { name: new RegExp(客户名) })).toHaveCount(0);
+  await expect(表行(page, 客户名)).toHaveCount(0);
   const db = 连库();
   try {
     const c = await db.customer.findFirstOrThrow({ where: { name: 客户名 }, include: { salesOwner: true, pool: true } });

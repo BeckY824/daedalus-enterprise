@@ -78,10 +78,12 @@ it("四张卡 + 列；没有类型分段和去计划页；逾期有数是红的�
   // U-复盘-01（10-31）：四个页签，「待办」改叫「任务」、默认停在它
   expect(await page.getByRole("tab").allInnerTexts()).toEqual(["任务", "卡点", "沟通", "数据"]);
   expect(await page.getByRole("tab", { name: "任务" }).getAttribute("aria-selected")).toBe("true");
-  // 人员选择器在页签上面
-  const 人 = await page.locator(".data-shell-who").boundingBox();
-  const 签 = await page.locator(".data-shell-tabs").boundingBox();
-  expect(人!.y).toBeLessThan(签!.y);
+  // R-A（11-22）：人员选择器并进页签行右侧（不再单占一行在页签上面）
+  expect(await page.locator(".data-shell-bar-who:not(.data-shell-who-inline)").count()).toBe(0);
+  const 人 = await page.locator(".data-shell-who-inline").boundingBox();
+  const 签 = await page.getByRole("tab", { name: "任务" }).boundingBox();
+  expect(人!.x).toBeGreaterThan(签!.x + 签!.width);
+  expect(Math.abs((人!.y + 人!.height / 2) - (签!.y + 签!.height / 2))).toBeLessThan(12);
   const 卡 = page.locator(".btodo-card");
   expect(await 卡.locator(".home-card-k").allInnerTexts()).toEqual(["逾期", "今天到期", "本周到期", "全部待办"]);
   expect(await 卡.locator(".home-card-v").allInnerTexts()).toEqual(["3", "2", "1", "45"]);

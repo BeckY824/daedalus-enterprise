@@ -119,6 +119,7 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
           项目们={d.项目们}
           原因们={d.原因们}
           筛={筛}
+          能管={d.能管}
         />
       </DataShell>
     );

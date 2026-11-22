@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Button, Input, Modal, Select, Space, Tag, Timeline } from "antd";
+import { Button, Dropdown, Input, Modal, Select, Space, Tag, Timeline } from "antd";
+import { MoreOutlined } from "@ant-design/icons";
 import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
 import { useIsNowSkin } from "@/lib/use-skin";
@@ -238,7 +239,22 @@ export function 卡点头({ b, 带项目 = false }: { b: 卡点卡; 带项目?: 
  * 最后一个点「我已完成」的人要写解决方案和解决结果，写完卡点就锁成已解决。
  * 项目详情和复盘页「卡点」页签共用；带项目 = 卡片上带项目名
  */
-export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }: { 们: 卡点卡[]; 带项目?: boolean; 空?: string }) {
+type 列表参数 = {
+  们: 卡点卡[];
+  带项目?: boolean;
+  空?: string;
+  /**
+   * 在复盘「卡点」分栏看板里（设计语言 R-A）：栏头已经说了状态，卡片上不再写状态；待接受那栏也不写「还没人认领」。
+   * 项目详情 / 客户详情不分栏，首行留「圆点 + 状态」
+   */
+  在分栏?: boolean;
+};
+export function BlockerList(props: 列表参数) {
+  const 新样 = useIsNowSkin();
+  return 新样 ? <BlockerListNow {...props} /> : <BlockerListOld {...props} />;
+}
+
+function BlockerListOld({ 们, 带项目 = false, 空 = "还没有卡点" }: 列表参数) {
   const { 忙, 跑 } = useRun();
   const [完成于, set完成于] = useState<卡点卡 | null>(null);
   const [note, setNote] = useState("");
@@ -351,5 +367,203 @@ export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点" }:
         </Space>
       </Modal>
     </>
+  );
+}
+
+const 状态圆点: Record<string, string> = { 待接受: "rblk-dot-wait", 处理中: "rblk-dot-doing", 已解决: "rblk-dot-done" };
+
+/** 现状主题的会签行：状态已在首行 / 栏头，这里只写进度（「会签 1/2 ✓甲 ⏳乙」）；没人认领 = 「还没人认领」 */
+export function 会签进度(b: Pick<卡点卡, "进度" | "认领">): string {
+  if (!b.认领.length) return "还没人认领";
+  return `会签 ${b.进度.完成}/${b.进度.共} ${b.认领.map((c) => `${c.done ? "✓" : "⏳"}${c.名字}`).join(" ")}`;
+}
+
+/**
+ * 现状主题的卡点卡片（设计语言 R-A，落地计划-三页设计 R-A ⑤）：固定五段——
+ *   ① 首行：项目名（带项目时，最多两行）/ 状态圆点 + 字（不在分栏时）｜右「已开 N 天」「用了 N 天解决」（耗时，10-27 定，不走 smartTime）
+ *   ② 属性行：类型 · 影响 · 原因，灰字一行；只有「重要卡点」红小标、待审核原因橙小标；老卡点「原阻碍主体：X」照留
+ *   ③ 正文：老卡点标题和描述一样时只写一次
+ *   ④ 进度段：会签行（分栏里的待接受不写）、每人备注、资源申请、解决方案 / 结果
+ *   ⑤ 底行：编号 · 发布人 · 来源沟通已删除｜认领、我已完成（描边小钮）、流转记录（N）、⋯（能删的人才有：删除 → 原地确认）
+ */
+function BlockerListNow({ 们, 带项目 = false, 空 = "还没有卡点", 在分栏 = false }: 列表参数) {
+  const { 忙, 跑 } = useRun();
+  const [完成于, set完成于] = useState<卡点卡 | null>(null);
+  const [展开, set展开] = useState<Set<string>>(new Set());
+  const [错于, set错于] = useState<{ id: string; 话: string } | null>(null);
+  const [刚认领, set刚认领] = useState<Set<string>>(new Set());
+  const [待删, set待删] = useState<string | null>(null);
+  const 认领 = async (b: 卡点卡) => {
+    set错于(null);
+    set刚认领((x) => new Set(x).add(b.id));
+    const r = await 跑(() => 认领卡点Action(b.id));
+    if (!r.ok) {
+      set刚认领((x) => { const n = new Set(x); n.delete(b.id); return n; });
+      set错于({ id: b.id, 话: r.error ?? "没认领上，请稍后再试" });
+    }
+  };
+  const 删 = async (b: 卡点卡) => {
+    set错于(null);
+    const r = await 跑(() => 删卡点Action(b.id));
+    if (!r.ok) set错于({ id: b.id, 话: r.error ?? "没删掉，请稍后再试" });
+    return r;
+  };
+
+  if (!们.length) return <p className="bk-none">{空}</p>;
+  return (
+    <>
+      <div className={`bk-list${在分栏 ? " is-col" : ""}`}>
+        {们.map((b) => {
+          const 认领中 = 刚认领.has(b.id) && b.status === "待接受";
+          const 状态 = 认领中 ? "处理中" : b.status;
+          const 重要 = b.type === "重要卡点";
+          const 标题另写 = b.有标题 && b.title.trim() !== b.description.trim();
+          const 写会签 = !(在分栏 && b.status === "待接受" && !b.认领.length);
+          return (
+            <article key={b.id} className={`bk-card${认领中 ? " is-claimed" : ""}`} data-status={状态} aria-label={`卡点 ${b.code}`}>
+              <div className="bk-r1">
+                {带项目 ? (
+                  <Link href={`/projects/${b.projectId}`} className="bk-proj" title={b.项目}>{b.项目}</Link>
+                ) : null}
+                {!在分栏 && (
+                  <span className="bk-st"><i className={`rblk-dot ${状态圆点[状态] ?? ""}`} aria-hidden />{状态}</span>
+                )}
+                <span className="bk-age">{耗时文字(b)}</span>
+              </div>
+              <div className="bk-meta">
+                {重要 ? <span className="bk-flag is-bad">{b.type}</span> : <span>{b.type}</span>}
+                <span className="bk-sep" aria-hidden>·</span>
+                <span>{b.impact}</span>
+                {b.原因们.map((r) => (
+                  <span key={r.id} className="bk-reason">
+                    <span className="bk-sep" aria-hidden>·</span>
+                    {r.name}
+                    {r.status === "待审核" && <span className="bk-flag is-warn" title="新加的原因，等总管理员审核">待审核</span>}
+                  </span>
+                ))}
+                {b.原阻碍主体 && (
+                  <span className="bk-reason" title="老卡点，没归到阻碍原因（统计在「未分类（老数据）」里）">
+                    <span className="bk-sep" aria-hidden>·</span>原阻碍主体：{b.原阻碍主体}
+                  </span>
+                )}
+              </div>
+              {标题另写 && <div className="bk-title">{b.title}</div>}
+              {(b.description || (b.有标题 && !标题另写)) && <div className="bk-desc">{b.description || b.title}</div>}
+              {(写会签 || b.认领.some((c) => c.note) || b.resourceRequest || b.solution || b.result) && (
+                <div className="bk-prog">
+                  {写会签 && <div className="bk-sign" aria-label="会签进度">{会签进度(b)}</div>}
+                  {b.认领.filter((c) => c.note).map((c) => (
+                    <div key={c.名字} className="bk-line is-muted">{c.名字}：{c.note}</div>
+                  ))}
+                  {b.resourceRequest && <div className="bk-line"><span className="bk-k">资源申请</span>{b.resourceRequest}</div>}
+                  {b.solution && <div className="bk-line"><span className="bk-k">解决方案</span>{b.solution}</div>}
+                  {b.result && <div className="bk-line"><span className="bk-k">解决结果</span>{b.result}</div>}
+                </div>
+              )}
+              <div className="bk-foot">
+                <span className="bk-id">
+                  {b.code} · {b.发布人} 发布{b.followUpId ? "" : " · 来源沟通已删除"}
+                </span>
+                <span className="bk-acts">
+                  {b.能.认领 && !刚认领.has(b.id) && <Button size="small" disabled={忙} onClick={() => void 认领(b)}>认领</Button>}
+                  {认领中 && <span role="status" className="pd-blk-claimed">已认领</span>}
+                  {b.能.完成 && <Button size="small" disabled={忙} onClick={() => set完成于(b)}>我已完成</Button>}
+                  <Button size="small" type="text" className="bk-log" aria-expanded={展开.has(b.id)} onClick={() => set展开((x) => { const n = new Set(x); if (n.has(b.id)) n.delete(b.id); else n.add(b.id); return n; })}>
+                    {展开.has(b.id) ? "收起流转" : `流转记录（${b.流转.length}）`}
+                  </Button>
+                  {b.能.删 && (
+                    <InlineConfirm 问="连流转记录一起删，找不回来" 做={() => 删(b)} 开={待删 === b.id} set开={(v) => set待删(v ? b.id : null)}>
+                      <Dropdown
+                        trigger={["click"]}
+                        menu={{ items: [{ key: "del", danger: true, label: "删除" }], onClick: () => set待删(b.id) }}
+                      >
+                        <Button size="small" type="text" className="bk-more" aria-label="更多操作" icon={<MoreOutlined />} disabled={忙} />
+                      </Dropdown>
+                    </InlineConfirm>
+                  )}
+                </span>
+              </div>
+              {错于?.id === b.id && <div role="alert" className="cd-task-err">{错于.话}</div>}
+              {展开.has(b.id) && (
+                <Timeline
+                  className="bk-timeline"
+                  items={b.流转.map((l) => ({
+                    color: l.action === "resolve" ? "green" : l.action === "handover" || l.action === "takeover" ? "orange" : "blue",
+                    content: (
+                      <div>
+                        <div>{流转文字(l)}</div>
+                        {l.note && <div className="bk-line is-muted">说明：{l.note}</div>}
+                        <div className="bk-when">{fmtDateTime(l.at)}</div>
+                      </div>
+                    ),
+                  }))}
+                />
+              )}
+            </article>
+          );
+        })}
+      </div>
+      {完成于 && <CompleteBlockerModal b={完成于} 跑={跑} 忙={忙} 关={() => set完成于(null)} />}
+    </>
+  );
+}
+
+/**
+ * 「我已完成」框（设计语言 R-A ⑥，规则「必填标记」「校验」）：每格有标签、必填 * 在标签前、提交键一直可点，
+ * 缺了就格子红框 + 格子下一行红字、焦点跳到第一处；提交键写动作名（最后一位「我已完成，标为已解决」）。
+ * 最后一位点了就锁成已解决、不能撤回（P-界面-40 原地确认那一类，这句照留）
+ */
+function CompleteBlockerModal({ b, 跑, 忙, 关 }: { b: 卡点卡; 跑: (f: () => Promise<结果>) => Promise<结果>; 忙: boolean; 关: () => void }) {
+  const [note, setNote] = useState("");
+  const [solution, setSolution] = useState("");
+  const [result, setResult] = useState("");
+  const [试过, set试过] = useState(false);
+  const 最后 = !!b.能.最后一个;
+  const 缺方案 = 最后 && !solution.trim();
+  const 缺结果 = 最后 && !result.trim();
+  const 交 = async (): Promise<结果> => {
+    if (缺方案 || 缺结果) {
+      set试过(true);
+      const 第一处 = 缺方案 ? "解决方案" : "解决结果";
+      window.setTimeout(() => document.querySelector<HTMLElement>(`.bk-done-modal textarea[aria-label="${第一处}"]`)?.focus(), 0);
+      return { ok: false, error: "有一项没填好，看标红的" };
+    }
+    return 跑(() => 完成卡点Action(b.id, { note, ...(最后 ? { solution, result } : {}) }));
+  };
+  const 叫 = 最后 ? "我已完成，标为已解决" : "我已完成";
+  return (
+    <Modal
+      open
+      title="我已完成"
+      rootClassName="bk-done-modal"
+      onCancel={关}
+      footer={<Space>
+        <Button onClick={关} disabled={忙}>取消</Button>
+        <SaveButton 已保存="已记上" 没保存="没记上" 做={交} 成了={关}>{叫}</SaveButton>
+      </Space>}
+    >
+      <div className="bk-done-form">
+        <div>
+          <div className="fm-label">我的备注</div>
+          <Input.TextArea aria-label="我的备注" rows={2} maxLength={描述上限} value={note} onChange={(e) => setNote(e.target.value)} placeholder="我这边做了什么" />
+          <div className="fm-help">可不写</div>
+        </div>
+        {最后 && (
+          <>
+            <div>
+              <div className="fm-label"><span className="fm-req" aria-hidden>*</span>解决方案</div>
+              <Input.TextArea aria-label="解决方案" aria-required status={试过 && 缺方案 ? "error" : undefined} rows={3} maxLength={描述上限} value={solution} onChange={(e) => setSolution(e.target.value)} />
+              {试过 && 缺方案 && <div className="fm-err" role="alert">写一下怎么解决的</div>}
+            </div>
+            <div>
+              <div className="fm-label"><span className="fm-req" aria-hidden>*</span>解决结果</div>
+              <Input.TextArea aria-label="解决结果" aria-required status={试过 && 缺结果 ? "error" : undefined} rows={2} maxLength={描述上限} value={result} onChange={(e) => setResult(e.target.value)} />
+              {试过 && 缺结果 && <div className="fm-err" role="alert">写一下结果怎样</div>}
+            </div>
+          </>
+        )}
+        <div className="fm-help">{最后 ? "你是最后一位：点了卡点就标为已解决，不能撤回。" : "点了就不能撤回；所有认领人都完成后卡点锁定为已解决。"}</div>
+      </div>
+    </Modal>
   );
 }

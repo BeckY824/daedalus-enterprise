@@ -5841,6 +5841,159 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-go { flex: 1 1 auto; white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: break-word; }
 :root:is(:not([data-skin]), [data-skin="now"]) .home-kpi-close { flex: none; white-space: nowrap; }
 
+/* ===== 设计语言 R-A（11-22，落地计划-三页设计）：复盘「卡点」页签四块 + 卡点卡片五段 + 人员行并进页签行。只挂现状主题 ===== */
+/* 人员选择在页签行右端：行高跟页签走（控件 32 < 页签 46），切到卡点右端空着，页签顶不挪 */
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-tabs-who > .ant-tabs-nav .ant-tabs-extra-content { display: flex; align-items: center; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-inline { display: flex; align-items: center; gap: var(--s2); margin: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-btn { display: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-sheet-body { display: flex; flex-direction: column; gap: var(--s3); }
+:root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-sheet-body .data-shell-who { width: 100%; }
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-inline { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-btn { display: inline-flex; max-width: 30vw; min-height: var(--hit-touch); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .data-shell-who-btn > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk { container-type: inline-size; display: flex; flex-direction: column; gap: var(--card-gap); min-width: 0; transition: opacity var(--t) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk.is-pending { opacity: 0.7; }
+/* ① 筛选条：卡外一行；1024 固定两行；390 同客户列表 L-A：范围 + 重置一排，四个下拉两两一排摆在外面 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-filter { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-scope { flex: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels { display: flex; align-items: center; gap: var(--s2); min-width: 0; flex: 1 1 auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-sel { width: 140px; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:first-child, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:last-child { width: 176px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-sel .ant-select-content { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-reset { flex: none; margin-inline-start: auto; }
+@container (max-width: 1000px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-filter { display: grid; grid-template-columns: auto 1fr auto; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-reset { grid-column: 3; grid-row: 1; justify-self: end; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels { grid-column: 1 / -1; grid-row: 2; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:first-child, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:last-child { width: auto; }
+}
+@container (max-width: 560px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-filter { grid-template-columns: minmax(0, 1fr) auto; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-reset { grid-column: 2; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels { display: flex; flex-wrap: wrap; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:first-child, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sels > .rbk-sel:last-child { flex: 1 1 140px; width: auto; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-scope { min-width: 0; max-width: 100%; overflow-x: auto; }
+}
+
+/* 卡：客户详情那款（卡头 48、标题 15/600、左右 16） */
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-card { min-width: 0; padding: 0 var(--card-pad) var(--card-pad); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-card-h { display: flex; align-items: center; gap: var(--s2); min-height: var(--card-head-h); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-card-t { display: inline-flex; align-items: center; gap: var(--s2); margin: 0; font-size: var(--fs-section); font-weight: 600; color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-card-note { margin-inline-start: auto; color: var(--text-muted); font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-count { color: var(--count-fg); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* 空态卡：还没有 X + 一句说明，不放插图 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-empty { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s5) var(--card-pad); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-empty-t { font-size: var(--fs-section); font-weight: 600; color: var(--ink); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-empty-s { color: var(--text-muted); font-size: var(--fs-note); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-filter-none { flex-direction: row; align-items: center; justify-content: space-between; gap: var(--s3); }
+
+/* ② 概况卡：三格，竖线分开；窄了竖排 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-sum-body { display: grid; grid-template-columns: minmax(150px, 0.6fr) minmax(0, 1fr) minmax(0, 1.3fr); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-cell { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 0 var(--s4); border-inline-start: 1px solid var(--line-soft); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-cell:first-child { padding-inline-start: 0; border-inline-start: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-cell:last-child { padding-inline-end: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-cell-h { display: flex; align-items: center; gap: var(--s2); color: var(--text-muted); font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-cell-none { color: var(--text-muted); font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-cell-n { flex-direction: row; gap: var(--s5); align-items: flex-start; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-num { display: flex; flex-direction: column; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-num b { font-family: var(--font-num); font-size: var(--fs-num); font-weight: 600; line-height: 1.2; color: var(--ink); font-variant-numeric: tabular-nums; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-num span { color: var(--text-muted); font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-audit { margin-inline-start: auto; font-size: var(--fs-note); }
+/* 横条行：名称｜条｜数 三列对齐 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-bar-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(48px, 0.8fr) 4ch; align-items: center; gap: var(--s2); width: 100%; min-height: 24px; padding: 0 var(--s1); border: 0; border-radius: var(--r-ctl); background: none; color: var(--ink); font: inherit; font-size: var(--fs-note); text-align: start; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-bar-row.is-btn { cursor: pointer; border-inline-start: 2px solid transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-bar-row.is-btn:hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-bar-row.is-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-bar-row.is-on { background: var(--brand-bg); border-inline-start-color: var(--brand); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-bar-k { display: inline-flex; align-items: center; gap: var(--s1); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-bar-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-bar-track { display: block; height: 6px; border-radius: 999px; background: var(--line-soft); overflow: hidden; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-bar-track > i { display: block; height: 100%; background: var(--brand); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-bar-v { text-align: end; font-variant-numeric: tabular-nums; font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w0 { width: 0%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w5 { width: 5%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w10 { width: 10%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w15 { width: 15%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w20 { width: 20%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w25 { width: 25%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w30 { width: 30%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w35 { width: 35%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w40 { width: 40%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w45 { width: 45%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w50 { width: 50%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w55 { width: 55%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w60 { width: 60%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w65 { width: 65%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w70 { width: 70%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w75 { width: 75%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w80 { width: 80%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w85 { width: 85%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w90 { width: 90%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w95 { width: 95%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-w100 { width: 100%; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-flag { flex: none; padding: 0 6px; border-radius: 999px; background: var(--tag-bg); color: var(--tag-fg); font-size: var(--fs-min); line-height: 18px; white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-flag.is-warn { background: var(--warning-bg); color: var(--warning-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-more-rows { align-self: flex-start; padding: 0 var(--s1); border: 0; background: none; color: var(--brand); font: inherit; font-size: var(--fs-note); cursor: pointer; min-height: var(--hit); }
+@container (max-width: 720px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-sum-body { grid-template-columns: minmax(0, 1fr); gap: var(--s3); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-cell { padding: var(--s3) 0 0; border-inline-start: 0; border-top: 1px solid var(--line-soft); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-cell:first-child { padding-top: 0; border-top: 0; }
+}
+
+/* ③ 三栏：空栏收成 200 窄栏，有内容的栏分剩下的宽；栏里卡片自动排多列。窄了上下排，空栏一行 */
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-cols { display: flex; align-items: flex-start; gap: var(--card-gap); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-col { flex: 1 1 0; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-col.is-empty { flex: 0 0 200px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-col-list .bk-list.is-col { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: var(--s3); }
+:root:is(:not([data-skin]), [data-skin="now"]) .rbk-col-none { margin: 0; color: var(--text-muted); font-size: var(--fs-note); }
+@container (max-width: 760px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-cols { flex-direction: column; align-items: stretch; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-col, :root:is(:not([data-skin]), [data-skin="now"]) .rbk-col.is-empty { flex: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-col.is-empty { display: flex; flex-wrap: wrap; align-items: center; column-gap: var(--s3); padding-bottom: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-col.is-empty .rbk-col-none { padding-bottom: var(--s2); }
+}
+/* 390：AI 球不压最后一栏 */
+@media (max-width: 767px) { :root:is(:not([data-skin]), [data-skin="now"]) .rbk { padding-bottom: var(--ai-safe); } }
+
+/* ④ 卡点卡片（BlockerList 现状主题；复盘分栏 / 项目详情 / 客户详情共用） */
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-list { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-none { margin: 0; color: var(--text-muted); font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-card { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--panel); transition: background var(--t-fast) var(--ease); overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-card:hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-r1 { display: flex; align-items: flex-start; gap: var(--s2); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-proj { min-width: 0; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-st { display: inline-flex; align-items: center; gap: 6px; flex: none; font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-age { flex: none; margin-inline-start: auto; color: var(--text-muted); font-size: var(--fs-note); white-space: nowrap; font-variant-numeric: tabular-nums; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0 4px; color: var(--text-muted); font-size: var(--fs-note); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-reason { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-sep { color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-flag { padding: 0 6px; border-radius: 999px; font-size: var(--fs-min); line-height: 18px; white-space: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-flag.is-bad { background: var(--danger-bg); color: var(--danger-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-flag.is-warn { background: var(--warning-bg); color: var(--warning-text); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-title { font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-desc { white-space: pre-wrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-prog { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-line { white-space: pre-wrap; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-line.is-muted { color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-k { margin-inline-end: var(--s2); color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s2); min-width: 0; margin-top: 2px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-id { min-width: 0; color: var(--text-muted); font-size: var(--fs-min); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-acts { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--s1); margin-inline-start: auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-acts .ant-btn-sm { min-height: var(--ctl-h-sm); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-more.ant-btn { min-width: var(--hit); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-timeline { margin-top: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-when { color: var(--text-muted); font-size: var(--fs-min); }
+@media (max-width: 767px), (pointer: coarse) { :root:is(:not([data-skin]), [data-skin="now"]) .bk-acts .ant-btn { min-height: var(--hit-touch); } }
+@media (max-width: 767px), (pointer: coarse) {
+  :root:is(:not([data-skin]), [data-skin="now"]) :is(.rbk-more, .rbk-reset, .rbk-none-reset).ant-btn { min-height: var(--hit-touch); }
+  /* 范围分段：触屏点击区 44（同 L-A 导入导出） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .rbk-scope .ant-segmented-item-label { min-height: var(--hit-touch); line-height: var(--hit-touch); }
+}
+/* 「我已完成」框：每格有标签，格间 12 */
+:root:is(:not([data-skin]), [data-skin="now"]) .bk-done-form { display: flex; flex-direction: column; gap: var(--s3); }
 /* =====================================================================
    设计语言 H-B（11-22，全站外壳：左栏 / 顶栏、⌘K、铃铛；依据 现在-首页-20261121.md H1 / H2 / H3）。
    只挂现状主题，换皮主题外观不动
@@ -5854,6 +6007,68 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) :is(.rail-num, .chat-g-h, .cmdk-sec, .notice-meta, .rail-search kbd, .rail-ask-k) { color: var(--text-muted); }
 /* H-新10：⌘K 底部只一行三颗键，放不下也不折 */
 :root:is(:not([data-skin]), [data-skin="now"]) .cmdk-foot-one { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- 设计语言 L-B · 客户列表表格、批量条、仅项目、看板（11-22，只挂现状主题；换皮主题外观不动） ---------- */
+/* L-新9 钉住列边上那道渐隐：原来贴边压一层墨色、从表头通到底，像一根滚动条；现在只留底色淡出，宽收成 --edge-fade（24）。
+   滑到钉住列底下的字（国家「土耳其」，L-新8 后半）是淡出去的，不是一刀切成半截再压一道灰边 */
+:root:is(:not([data-skin]), [data-skin="now"]) .list :is(.ant-table-cell-fix-end, .ant-table-container)::after {
+  width: var(--edge-fade); background: linear-gradient(to left, var(--panel), transparent);
+}
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-cell-fix-start::after {
+  width: var(--edge-fade); background: linear-gradient(to right, var(--panel), transparent);
+}
+/* 选中 / 悬停的行底色不同：渐隐接这一行自己的底色，不在浅蓝底上透出一截白 */
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-row:hover > .ant-table-cell-fix-end::after { background: linear-gradient(to left, var(--row-hover), transparent); }
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-row:hover > .ant-table-cell-fix-start::after { background: linear-gradient(to right, var(--row-hover), transparent); }
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-row-selected > .ant-table-cell-fix-end::after { background: linear-gradient(to left, var(--brand-bg), transparent); }
+:root:is(:not([data-skin]), [data-skin="now"]) .list .ant-table-row-selected > .ant-table-cell-fix-start::after { background: linear-gradient(to right, var(--brand-bg), transparent); }
+/* L-新14 批量条：表格单独成一层（isolation），钉住列的层级（antd 按列数算，二三十）只在表格里比，浮起的批量条（z 5）不再被客户列压住 */
+:root:is(:not([data-skin]), [data-skin="now"]) .cu-morph-wrap .list .ant-table-wrapper { isolation: isolate; }
+/* D20 筛选行「只看…」胶囊：同筛选控件一个高（32），圆角、字号同全站标签；关闭钮点得中 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.list-chip { margin: 0; height: var(--ctl-h); display: inline-flex; align-items: center; padding-inline: var(--s3); font-size: var(--fs-note); }
+/* D20 表格里的小标签一套：回收状态（三态，tri-state-ui.css 自写的 20 高）和全站 antd 标签同高 22、全圆角、12 号字；
+   沉睡接中性灰（--tag-bg / --tag-fg），待回收（要人处理）橙不变 */
+:root:is(:not([data-skin]), [data-skin="now"]) .tri-tag { height: 22px; line-height: 22px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .tri-tag.tri-沉睡 { background: var(--tag-bg); color: var(--tag-fg); }
+/* D30 看板卡悬停只换底色（规范：悬停只换底色），不再浮起换阴影；拖着的卡片照旧浮起，只看进度的卡片悬停不变 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pipe-card:not(.pipe-card-ro, .is-dragging):hover { background: var(--row-hover); box-shadow: var(--shadow-card); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pipe-card.pipe-card-ro:hover { box-shadow: var(--shadow-card); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pipe-card { transition: background var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+/* 「仅项目」小表的「个项目」：只在手机宽两排摆法里出（电脑宽有列头「项目数」） */
+:root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-unit { display: none; }
+@media (min-width: 768px) {
+  /* F-040 / L-新11：仅项目小表后四列（负责人、级别、客户状态、最近跟进）他永远看不到、一直空着，却占了 32% 宽，
+     1024 宽客户名那列只剩 ~47px；现状主题不摆这四列，宽度还给客户名 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-r { grid-template-columns: minmax(0, 1fr) 96px 12% 14% 14% 9%; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-r > :nth-child(n + 7) { display: none; }
+}
+@media (max-width: 767px) {
+  /* L-新14 批量条：手机宽靠左、右边让出 --ai-safe（72），不压在右下 AI 球上；放不下就在条里折行（折行后圆角换卡片档） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .list-sel.list-sel-float { margin-inline: 0 auto; max-width: calc(100% - var(--ai-safe)); border-radius: var(--r-card); row-gap: var(--s1); }
+  /* L-新11「仅项目」小表 390：标题不折成两行、说明折行写完；列头收起，每位客户两排——
+     ①「仅项目」+ 客户名（折行写完，不省略，一点不再冒黑气泡盖住整行）②编号 · 类型 · 地区 · 节点 · N 个项目（空的不摆）。
+     原来十列网格（96px + 81%）在 358 宽里把客户名那列挤成 0 宽（3703 实操 F-040 截图） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-h { flex-wrap: wrap; row-gap: 2px; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-h > :first-child { flex: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-h .muted { flex: 1 1 200px; white-space: normal; overflow: visible; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-head { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1) var(--s3); padding: var(--s2) var(--s3); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-head + .cust-ponly-row { border-top: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row > .cust-ponly-c { padding: 0; flex: none; max-width: 100%; font-size: var(--fs-note); color: var(--text-muted); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row > .cust-ponly-c:empty { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row > .cust-ponly-name { flex: 1 0 100%; align-items: flex-start; overflow: visible; font-size: var(--fs-body); color: var(--ink); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-row > .cust-ponly-name > a { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .cust-ponly-unit { display: inline; }
+}
+/* L-B · 行内动作 .row-act 一种款（D09，落地计划「只在 L-B 改一次」）：带字的行内按钮（领取、录投入、详情、恢复、展开……）是文字按钮——
+   蓝字、不带框、悬停浅蓝底；行上不标红。只剩图标的（⋯、编辑、停用，本来就是 type="text"）不变。触屏点击区 44 照旧（上面 pointer: coarse 那条）。
+   用在：渠道、客户列表、公海、成员表（跟进计划行尾是 .plan-row-act 图标钮，不用这一款） */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.row-act.ant-btn-variant-outlined { border-color: transparent; background: transparent; box-shadow: none; color: var(--brand); padding-inline: var(--s1); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.row-act.ant-btn-variant-outlined:not(:disabled):hover { border-color: transparent; background: var(--brand-bg); color: var(--brand-deep); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.row-act.ant-btn-variant-outlined:disabled { border-color: transparent; background: transparent; color: var(--text-faint); }
+/* D37 补（L-A 补点发现）：市场管理客户页（我分出去的）的「看板」视图，筛选在看板上方 .pipe-top，不在 .list-bar——
+   「全部成员 / 全部创建人 / 全部进程」占位字也墨色，和「全部阶段」（选中值）一个颜色。销售客户页的看板筛选仍是 .list-bar，上面 L-A 那条已管 */
+:root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .pipe-top .ant-select-placeholder { color: var(--ink); }
 
 /* =====================================================================
    设计语言 HC-1（11-22，首页对话：骨架、头部、列宽、待办、滚动、390 对话栏；
