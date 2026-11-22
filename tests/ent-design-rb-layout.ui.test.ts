@@ -191,6 +191,22 @@ it("数据 1024：小字整句在悬停提示里（本月「没成」的另有�
   await d.page.close();
 });
 
+/** 设计语言 D-2 · 方案 A（3703 实操 11-22：复盘·数据这几块还是白卡）：默认白底不画卡，上面一根线；「原底」照旧白卡 */
+it.each(["data", "month"] as const)("数据 %s 1280：antd 卡（漏斗、瀑布、各进程、按负责人、走势）方案 A 不画卡；原底照旧白卡", async (页) => {
+  const { page, errors } = await 打开(页, 1280);
+  const 量 = () => page.evaluate(() => [...document.querySelectorAll(".data-shell-body .ant-card")].map((e) => {
+    const c = getComputedStyle(e), h = e.querySelector(":scope > .ant-card-head");
+    return { 名: (e.querySelector(".section-title")?.textContent ?? "").trim(), 左线: c.borderLeftWidth, 上线: c.borderTopWidth, 圆角: c.borderTopLeftRadius, 底: c.backgroundColor, 头线: h ? getComputedStyle(h).borderBottomWidth : "0px" };
+  }));
+  const 卡们 = await 量();
+  const 该有 = 页 === "data" ? ["全周期漏斗", "线索瀑布", "各进程的项目", "按负责人"] : ["项目走势", "按负责人"];
+  for (const 名 of 该有) expect(卡们.some((k) => k.名.startsWith(名)), `${页} 有「${名}」`).toBe(true);
+  for (const k of 卡们) expect({ 名: k.名, 左线: k.左线, 上线: k.上线, 圆角: k.圆角, 底: k.底, 头线: k.头线 }, `${页} ${k.名}`).toEqual({ 名: k.名, 左线: "0px", 上线: "1px", 圆角: "0px", 底: "rgba(0, 0, 0, 0)", 头线: "0px" });
+  await page.evaluate(() => { document.documentElement.dataset.paper = "tone"; });
+  for (const k of await 量()) { expect(k.左线, `原底 ${页} ${k.名}`).toBe("1px"); expect(k.圆角, `原底 ${页} ${k.名}`).not.toBe("0px"); }
+  expect(errors).toEqual([]); await page.close();
+});
+
 it("数据·现在 1440 + AI 面板开着：概况 6 格改三格一排，数字都露着", async () => {
   const { page, errors } = await 打开("data", 1440, undefined, undefined, true);
   const 概况 = page.locator('section[aria-label="复盘概况"]');

@@ -157,6 +157,15 @@ describe("D-2 方案 A「一张纸」：token、原底开关、三页", () => {
     有规则(`${A} .btodo-cards > .btodo-card + .btodo-card`, "border-left: 1px solid var(--mod-line)");
   });
 
+  it("复盘·数据的 antd 卡（漏斗、瀑布、各进程、按负责人、走势）也不画卡；回收提醒行横向裁掉转动的箭头；手机客户详情页面自己的内边距兜住三栏负外边距", () => {
+    有规则(`${A} .data-shell-body .ant-card`, "border: 0; border-top: 1px solid var(--mod-line); border-radius: 0; background: transparent; box-shadow: none");
+    有规则(`${A} .data-shell-body .ant-card > .ant-card-head`, "min-height: var(--mod-head-h); padding-inline: 0; border-bottom-width: 0");
+    有规则(`${A} .data-shell-body .ant-card > .ant-card-head .section-title`, "color: var(--mod-title)");
+    有规则(`${A} .data-shell-body .ant-card > .ant-card-body`, "padding-inline: 0");
+    有规则(`${A} .ov-rc-head`, "overflow-x: clip");
+    有规则(`${A} .app-content > .rec-page:has(> .rec.rec-cd)`, "margin-inline: calc(-1 * var(--content-pad-x)); padding-inline: var(--content-pad-x)");
+  });
+
   it("叶子小块照旧铺一档浅底：首页对话的步骤条、客户详情的节点条不跟着去底", () => {
     有规则(".ais-done", "background: var(--workbench)");
     expect(净.slice(净.indexOf(`${A} .rail, ${A} .pane {`))).not.toMatch(/\.ais-done|\.proj-stage/);

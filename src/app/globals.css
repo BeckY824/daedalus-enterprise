@@ -6710,6 +6710,9 @@ button.proj-miss-chip { cursor: pointer; }
 }
 @media (max-width: 767px) {
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .rec-page .rec.rec-cd { margin-inline: calc(-1 * var(--content-pad-x)); }
+  /* 页面直接挂在正文里时（受限客户详情等）：页面自己先伸到正文边、再用同样宽的内边距把页头缩回来，
+     三栏的负外边距落在页面的内边距里，页面自己不算横向溢出（e2e owner-first-batch「受限客户详情 375 文字溢出」） */
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content > .rec-page:has(> .rec.rec-cd) { margin-inline: calc(-1 * var(--content-pad-x)); padding-inline: var(--content-pad-x); }
 }
 
 /* ---------- 复盘：四个统计并成一条（格与格之间分格线），各块不画卡、上面一根横线；看板三列用竖线分 ---------- */
@@ -6727,6 +6730,15 @@ button.proj-miss-chip { cursor: pointer; }
 /* R-B 给复盘卡头（.data-shell-body 里）的是 antd Card 那套：48 高、左右负外边距贴卡边、头下一条细线。方案 A 没有卡：头不外伸、不画线，和模块标题一样 40 高 */
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head { min-height: var(--mod-head-h); margin: 0 0 var(--s2); padding: 0; border-bottom: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head .section-title { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
+/* 回收提醒每行末尾的 › 展开时转 90°：它的框比 1em 那一列高（行高 + 兜底字体），转过来横着就比列宽，转到一半对角线更宽；
+   原来卡里有 16 内边距兜着，方案 A 不留内边距，转出去的 2～5px 撑出整页横向滚动（1024 实测，tests/ent-pr5b-kpi-recycle）。行按钮横向裁掉，竖向照常 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .ov-rc-head { overflow-x: clip; }
+/* 复盘·数据（项目现状 / 本月）的 antd 卡：全周期漏斗、线索瀑布、各进程的项目、按负责人、项目走势。和上面 .btodo-list 一样不画卡：
+   不要框、圆角、底，上面一根 --mod-line；卡头收到 --mod-head-h、不画底线、左右不缩，标题 13 / 600 灰；正文左右不缩（3703 实操 11-22：这几块还是白卡） */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .data-shell-body .ant-card { border: 0; border-top: 1px solid var(--mod-line); border-radius: 0; background: transparent; box-shadow: none; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .data-shell-body .ant-card > .ant-card-head { min-height: var(--mod-head-h); padding-inline: 0; border-bottom-width: 0; border-radius: 0; background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .data-shell-body .ant-card > .ant-card-head .section-title { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .data-shell-body .ant-card > .ant-card-body { padding-inline: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rkpi { border: 0; border-block: 1px solid var(--mod-line); border-radius: 0; background: transparent; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board { gap: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col { padding-inline: var(--s3); }
