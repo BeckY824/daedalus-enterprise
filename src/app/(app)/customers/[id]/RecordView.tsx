@@ -1688,7 +1688,7 @@ export default function RecordView({
           {/* 企业版项目模式：客户背调挪到左栏，只摆状态标签，点开弹详情（U-客户-03；AI 改进后再挪显眼处） */}
           {去项目跟进 && 摆法.背调卡 && aiEnabled && (
             <ProjectFold 名="客户背调">
-              <CustomerResearchTag customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} on记跟进={点跟进} 卡 />
+              <CustomerResearchTag customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} on记跟进={点跟进} 卡 上次初值={上次背调} />
             </ProjectFold>
           )}
           {留痕放左栏 && 状态留痕 && <div className="rec-sec tri-log-left" data-testid="tri-log-left">{状态留痕}</div>}
