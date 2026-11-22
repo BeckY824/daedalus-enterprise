@@ -168,8 +168,12 @@ export function 项目名另比(取我: () => Promise<谁 | null>): 另比一词
       已加入: 加入了.has(p.id) ? [me.id] : [],
     }, org));
     if (!能看.length) return null;
-    // 再经限定层核一遍（同 我能看的项目们）：只核内存里筛剩下的那几个
-    const 核过 = await prisma.project.findMany({ where: { id: { in: 能看.map((p) => p.id) }, pooledAt: null }, select: { customerId: true } });
+    // 再经限定层核一遍（同 我能看的项目们）：只核内存里筛剩下的那几个。
+    // 500 个一批（32C）：受限身份的范围层带否定条件，Prisma 拆不了过 999 个参数的 IN，宽词（如搜「1」）一句带全会报 P2029、整页打不开（同 carry-over-db 带走公海项目）
+    const 核过: { customerId: string }[] = [];
+    for (let i = 0; i < 能看.length; i += 500) {
+      核过.push(...(await prisma.project.findMany({ where: { id: { in: 能看.slice(i, i + 500).map((p) => p.id) }, pooledAt: null }, select: { customerId: true } })));
+    }
     return 核过.length ? 名单(核过.map((p) => p.customerId)) : null;
   };
 }

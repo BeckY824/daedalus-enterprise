@@ -9,7 +9,7 @@
  */
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Dropdown, Input, Modal, Tag, type MenuProps } from "antd";
+import { Button, Drawer, Dropdown, Grid, Input, Modal, Tag, type MenuProps } from "antd";
 import { DownOutlined } from "@ant-design/icons";
 import { fmtDateTime } from "@/lib/utils";
 import { 教练发起标签, 主题标题上限, 主题内容上限, 回复上限 } from "@/lib/enterprise/coach-topic";
@@ -18,6 +18,7 @@ import { 发主题动作, 回复主题动作, 关闭主题动作, 删主题动�
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
 import { 两行, 项目小标题 } from "./project-menu";
+import { CoachRecUploadModal, CoachRecDrafts } from "./CoachRecUpload";
 
 const 状态色: Record<string, string> = { 待回复: "orange", 已回复: "blue", 已关闭: "default" };
 
@@ -28,26 +29,48 @@ export const 录音点评未开放 = "录音点评即将开放";
  * 「发起点评 ▾」（教练点评改版 PR1，11-21；原沟通卡头的「发起主题」）：能发才摆（P-教练-11/12/13，数据.能发 由服务端算，不新增规则）。
  * 客户页摆在右上角、「更多操作 ▾」左边；独立项目页（看不到客户的上级留在 /projects/<id>）摆在沟通卡头。
  * 下拉：灰字小标题「项目 · 名字（节点）」（设计语言 D2 · M1-b，和「更多操作 ▾」同一句）→「写点评」（原「发起主题」那只框，字段、服务端都不变）→「录音点评」（灰着、点不动，第二行写为什么）
+ * 录音点评 PR2（11-22）：开关开着时（服务端给了 数据.录音）多一项「传录音文件」；手机（≤767）上改成从底部弹出的选择板，三项纵排、整行可点。
+ * 开关关着时没有 数据.录音，和原来一模一样
  */
 export function StartReviewButton({ 数据, projectId, size }: { 数据: 项目主题们 | null | undefined; projectId: string; size?: "small" }) {
-  const [开, set开] = useState(false);
+  const [开, set开] = useState<"写" | "传" | null>(null);
+  const [板, set板] = useState(false);
+  const 屏 = Grid.useBreakpoint();
   if (!数据?.能发) return null;
   const 当前 = 项目小标题(数据.项目名, 数据.当前节点);
+  const 录音 = !!数据.录音;
+  const 写项 = { key: "write", label: <span data-testid="coach-review-write">{两行("写点评", "打字写，和原来的「发起主题」一样")}</span>, onClick: () => set开("写") };
+  const 传项 = { key: "upload", label: <span data-testid="coach-review-upload">{两行("传录音文件", "手机录音机、通话录音录好的文件")}</span>, onClick: () => set开("传") };
+  const 录项 = { key: "voice", disabled: true, label: <span data-testid="coach-review-voice" title={录音点评未开放}>{两行("录音点评", 录音点评未开放)}</span> };
   const items: MenuProps["items"] = [{
     type: "group",
     key: "cur",
     label: <span className="rec-menu-cur-t" title={当前}>{当前}</span>,
-    children: [
-      { key: "write", label: <span data-testid="coach-review-write">{两行("写点评", "打字写，和原来的「发起主题」一样")}</span>, onClick: () => set开(true) },
-      { key: "voice", disabled: true, label: <span data-testid="coach-review-voice" title={录音点评未开放}>{两行("录音点评", 录音点评未开放)}</span> },
-    ],
+    children: 录音 ? [写项, 传项, 录项] : [写项, 录项],
   }];
+  // 手机底部选择板只在录音开着时用（关着时下拉照旧，页面和原来一样）；md 没算出来之前（首屏）按电脑
+  const 用板 = 录音 && 屏.md === false;
+  const 选 = (k: "写" | "传") => { set板(false); set开(k); };
   return (
     <>
-      <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items, className: "rec-head-menu" }}>
-        <Button size={size} data-testid="coach-topic-new">发起点评 <DownOutlined /></Button>
-      </Dropdown>
-      {开 && <NewTopicModal 数据={数据} projectId={projectId} 关={() => set开(false)} />}
+      {用板
+        ? <Button size={size} data-testid="coach-topic-new" onClick={() => set板(true)}>发起点评 <DownOutlined /></Button>
+        : (
+          <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items, className: "rec-head-menu" }}>
+            <Button size={size} data-testid="coach-topic-new">发起点评 <DownOutlined /></Button>
+          </Dropdown>
+        )}
+      {用板 && (
+        <Drawer open={板} placement="bottom" height="auto" onClose={() => set板(false)} title={<span className="rec-menu-cur-t" title={当前}>{当前}</span>} className="crec-sheet" destroyOnHidden>
+          <div className="crec-sheet-list" data-testid="coach-review-sheet">
+            <button type="button" className="crec-sheet-item" onClick={() => 选("写")}>{两行("写点评", "打字写，和原来的「发起主题」一样")}</button>
+            <button type="button" className="crec-sheet-item" onClick={() => 选("传")} data-testid="coach-review-upload">{两行("传录音文件", "手机录音机、通话录音录好的文件")}</button>
+            <button type="button" className="crec-sheet-item" disabled title={录音点评未开放}>{两行("录音点评", 录音点评未开放)}</button>
+          </div>
+        </Drawer>
+      )}
+      {开 === "写" && <NewTopicModal 数据={数据} projectId={projectId} 关={() => set开(null)} />}
+      {开 === "传" && <CoachRecUploadModal projectId={projectId} 项目名={数据.项目名} 关={() => set开(null)} />}
     </>
   );
 }
@@ -95,13 +118,16 @@ function NewTopicModal({ 数据, projectId, 关 }: { 数据: 项目主题们; pr
 }
 
 /** 沟通卡身最上面那一段：没有主题就什么都不画 */
-export default function CoachTopics({ 数据 }: { 数据: 项目主题们 | null | undefined }) {
+export default function CoachTopics({ 数据, projectId }: { 数据: 项目主题们 | null | undefined; projectId?: string }) {
   const [看关的, set看关的] = useState(false);
-  if (!数据 || !数据.们.length) return null;
+  // 录音草稿（录音点评 PR2，只有录的人自己的；开关关着没有 数据.录音）：钉在主题上面
+  const 草稿 = 数据?.录音?.草稿们.length && projectId ? <CoachRecDrafts projectId={projectId} 项目名={数据.项目名} 草稿们={数据.录音.草稿们} /> : null;
+  if (!数据 || !数据.们.length) return 草稿;
   const 开着 = 数据.们.filter((t) => t.status !== "已关闭");
   const 关了 = 数据.们.filter((t) => t.status === "已关闭");
   return (
     <div className="cth-list" data-testid="coach-topics" aria-label="教练主题">
+      {草稿}
       {数据.冻结 && <div className="muted cth-frozen">项目在公海或回收站里，主题只能看</div>}
       {开着.map((t) => <TopicItem key={t.id} t={t} />)}
       {关了.length > 0 && (
