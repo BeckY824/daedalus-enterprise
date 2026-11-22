@@ -21,6 +21,28 @@ const 算在底 = 40;
  * 刚发的那一问由 TurnView 自己顶到框顶（离顶 14），它的效果先跑（子组件的 effect 先于这里），这里「刚发」时不贴底、也不去底；
  * 人往上翻之后流式回答照旧不拽他（首页框里本来就不跟）。
  */
+/**
+ * ToLatest 的 key：换一段对话就换（重挂、落底），**新对话第一问答完认领上 id 那一下不换**。
+ *
+ * 认领 = 对话 id 从空变成真 id、屏上还是刚问的那几轮（刚发的那一问还在）。那一下按 id 换 key 会重挂，
+ * 人正往上翻着看时「↓」上的蓝点就丢了（HC-1 3703 实操补点）。从一屏新对话（还没认领）直接点列表里另一段，
+ * 那几轮整个换掉、刚发的不在了，照样算换对话。
+ *
+ * 换对话时调 换对话了（HomeChat 在那儿清「刚发的」）：重答过的老轮 id 留在「刚发的」里，切走再切回来会又算刚发。
+ */
+export function useToLatestKey(对话id: string | null, 刚发在屏: boolean, 换对话了?: () => void): string {
+  const [记, set记] = useState<{ id: string | null; n: number; 键: string }>(() => ({ id: 对话id, n: 0, 键: 对话id ?? "new0" }));
+  if (记.id === 对话id) return 记.键;
+  const 认领 = 记.id === null && 对话id !== null && 刚发在屏;
+  const 新记 = { id: 对话id, n: 记.n + 1, 键: 认领 ? 记.键 : (对话id ?? `new${记.n + 1}`) };
+  // 渲染中按上一次的值调状态（React 认的写法）：这一次就用新键，不先拿旧键画一遍
+  set记(新记);
+  // 换对话（不是认领）：调用方在这里把「刚发的」清掉（同一个组件的状态，渲染中调也是 React 认的写法）——
+  // 不清的话，老对话里重答过的那一轮换走再换回来又「在屏」，不贴底、又被顶到框顶（#420 审查挡合 1）
+  if (!认领) 换对话了?.();
+  return 新记.键;
+}
+
 export default function ToLatest({ 刚发: 刚发的 }: { 刚发: boolean }) {
   const 钮 = useRef<HTMLButtonElement>(null);
   const [露, set露] = useState(false);

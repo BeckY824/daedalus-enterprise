@@ -34,7 +34,7 @@ export const themeConfig: ThemeConfig = {
     colorSuccess: palette.success,
     colorWarning: palette.warning,
     colorError: palette.danger,
-    /* 16a：控件 8（--r-ctl）、卡片 10（--r-card）；浮层、卡片外壳另在组件里给 14（--r-pop） */
+    /* 16a：控件 8（--r-ctl）、卡片 10（--r-card）；浮层另在组件里给 14（--r-pop）。卡片外壳 D-1（11-22）起也是 10 */
     borderRadius: 8,
     borderRadiusLG: 10,
     borderRadiusSM: 4,
@@ -63,7 +63,8 @@ export const themeConfig: ThemeConfig = {
     colorBgLayout: palette.workbench,
     colorBgContainer: palette.panel,
     colorFillTertiary: palette.hover,
-    /* 和 :root 的 --shadow-card / --shadow-pop 一字不差 */
+    /* antd 自己的两档阴影：boxShadow 只剩 antd 内部少数地方在用（现状的内容卡 D-1 起无影，:root --shadow-card 是 none，卡边靠 1px --card-line）；
+       boxShadowSecondary 给下拉、气泡等浮层，和 :root --shadow-pop 后两层一样（--shadow-pop 另多一圈 0.5px 发丝） */
     boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05)",
     boxShadowSecondary: "0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10)",
     ...antd动效,
@@ -95,8 +96,9 @@ export const themeConfig: ThemeConfig = {
       collapsedIconSize: 16,
     },
     Card: {
-      /* 16a：卡片外壳圆角 14、不画边框（globals.css .ant-card 接 --card-line / --shadow-card，换主题时边框回来） */
-      borderRadiusLG: 14,
+      /* 卡片外壳圆角 = --r-mod（现状 10；设计语言 D-1 11-22 起，原来借浮层的 14）。边和影在 globals.css .ant-card 接 --card-line / --shadow-card。
+         换皮、暗黑走 skins/shared.css 的 --ant-border-radius-lg（= --r-card），不读这里 */
+      borderRadiusLG: 10,
       paddingLG: 16,
       /* = --card-head-h */
       headerHeight: 48,
@@ -121,7 +123,7 @@ export const themeConfig: ThemeConfig = {
       cellPaddingInlineSM: 12,
       /* 表格正文就是正文，和别处一样 14。13.5 是上一版为了多塞一列凑出来的 */
       fontSize: 14,
-      headerBorderRadius: 14,
+      headerBorderRadius: 10,  /* = --r-mod（列表表格卡，D-1 起 10） */
     },
     Button: {
       primaryShadow: "none",

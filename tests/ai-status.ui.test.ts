@@ -57,8 +57,11 @@ const 步 = (i: number, label: string, status: "running" | "done" | "error", det
 const 画 = (page: Page, p: Record<string, unknown>) => page.evaluate((p) => (window as unknown as { __status: (p: unknown) => void }).__status(p), p);
 const 头 = (page: Page) => page.locator(".ais-tt").innerText();
 
-it("进行中：头部写人话、不写工具名，只露最近 3 步，更早的收起", async () => {
+const 换皮 = (page: Page, 名: string | null) => page.evaluate((名) => { if (名) document.documentElement.dataset.skin = 名; else delete document.documentElement.dataset.skin; }, 名);
+
+it("进行中（换皮主题照旧）：头部写人话、不写工具名，只露最近 3 步，更早的收起", async () => {
   const { page, errors } = await open();
+  await 换皮(page, "ledger");
   const steps = [
     步(0, "search_customers(张三)", "done", "3 位"),
     步(1, "get_customer(c1)", "done", "6 条跟进"),
@@ -88,6 +91,35 @@ it("进行中：头部写人话、不写工具名，只露最近 3 步，更早�
   await page.close();
 });
 
+it("进行中（现状主题，设计语言 HC-2a C7-A）：一行不带框，点 › 才竖排最近 3 步；不写「Esc 打断」由调用方管", async () => {
+  const { page, errors } = await open();
+  const steps = [
+    步(0, "search_customers(张三)", "done", "3 位"),
+    步(1, "get_customer(c1)", "done", "6 条跟进"),
+    步(2, "get_customer(c2)", "done", "2 条跟进"),
+    步(3, "list_projects()", "done", "4 个"),
+    步(4, "query_records(项目)", "done", "7 条"),
+    步(5, "get_customer(c3)", "running"),
+  ];
+  await 画(page, { steps, 态: "running", 起 });
+  expect(await 头(page)).toBe("正在读客户的记录…");
+  expect(await page.locator(".ais-mt").first().innerText()).toMatch(/^第 6 步 · \d+ 秒$/);
+  expect(await page.locator(".ais-row").count()).toBe(0);
+  expect(await page.locator(".ais-chev").count()).toBe(1);
+  // 不带框、不带底
+  const 框 = await page.locator(".ais").evaluate((e) => { const c = getComputedStyle(e); return { 边: c.borderTopWidth, 底: c.backgroundColor }; });
+  expect(框).toEqual({ 边: "0px", 底: "rgba(0, 0, 0, 0)" });
+  await page.locator(".ais-hd-b").click();
+  expect(await page.locator(".ais-hd-b").getAttribute("aria-expanded")).toBe("true");
+  expect(await page.locator(".ais-row").count()).toBe(3);
+  expect(await page.locator(".ais-more").innerText()).toBe("前面还有 3 步");
+  expect(await page.locator(".ais").innerText()).not.toMatch(/get_customer|query_records|list_projects|\(c\d\)/);
+  await page.locator(".ais-more").click();
+  expect(await page.locator(".ais-row").count()).toBe(6);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
 it("做完收成一行「用了 X 秒 · N 步」，点开看每步：人话 + 原始调用 + 折叠的打算", async () => {
   const { page } = await open();
   const steps = [步(0, "list_channels()", "done", "12 个渠道", "先看看有哪些渠道"), 步(1, "query_records(客户, 渠道)", "done", "在客户里，找 渠道 是 展会，取 20 条")];
@@ -110,8 +142,9 @@ it("做完收成一行「用了 X 秒 · N 步」，点开看每步：人话 + �
   await page.close();
 });
 
-it("出错：「停在第 N 步：原因」，前面做完的留着，有重试；被打断写「已打断」", async () => {
+it("出错（换皮主题照旧）：「停在第 N 步：原因」，前面做完的留着，有重试；被打断写「已打断」", async () => {
   const { page } = await open();
+  await 换皮(page, "ledger");
   const steps = [步(0, "search_customers(北岸)", "done", "2 位重名"), 步(1, "list_contracts(p9)", "error")];
   await 画(page, { steps, 态: "error", 起, 原因: "这个项目还没建合同" });
   expect(await 头(page)).toBe("停在第 2 步：这个项目还没建合同");
@@ -135,6 +168,66 @@ it("出错：「停在第 N 步：原因」，前面做完的留着，有重试�
   await 画(page, { steps, 态: "wait", 起, ms: 3000, 等确认: 3 });
   expect(await 头(page)).toBe("等你确认 3 项");
   expect(await page.locator(".ais").getAttribute("data-state")).toBe("wait");
+  await page.close();
+});
+
+it("出错 / 打断（现状主题，设计语言 HC-2a C11-A）：打断灰点「已停下 · 第 N 步」+ 重新回答；超时写「等了 N 秒没回来」", async () => {
+  const { page } = await open();
+  const steps = [步(0, "search_customers(北岸)", "done", "2 位重名"), 步(1, "list_contracts(p9)", "error")];
+  await 画(page, { steps, 态: "error", 起, 原因: "这个项目还没建合同" });
+  expect(await 头(page)).toBe("停在第 2 步：这个项目还没建合同");
+  expect(await page.locator(".ais").evaluate((e) => getComputedStyle(e).backgroundColor)).toBe("rgba(0, 0, 0, 0)");
+  // 收成一行，点开看前面那两步
+  expect(await page.locator(".ais-row").count()).toBe(0);
+  await page.locator(".ais-hd-b").click();
+  expect(await page.locator(".ais-row").count()).toBe(2);
+  await page.getByRole("button", { name: "重试", exact: true }).click();
+  expect(await page.evaluate(() => (window as unknown as { __重试: number }).__重试)).toBe(1);
+  // 超时：说等了多久（ms = 起到停）
+  await 画(page, { steps: [], 态: "error", 起, ms: 90_000, 原因: "AI 这次超时没回音，稍后再问一次试试" });
+  expect(await 头(page)).toBe("等了 90 秒没回来");
+  expect(await page.getByRole("button", { name: "重试", exact: true }).count()).toBe(1);
+  // 打断：灰点，不是完成的绿
+  await 画(page, { steps: [步(0, "search_customers(x)", "done", "1 位"), 步(1, "get_customer(c)", "done", "被打断")], 态: "interrupted", 起 });
+  expect(await 头(page)).toBe("已停下 · 第 2 步");
+  expect(await page.locator(".ais").evaluate((e) => e.classList.contains("ais-stopped"))).toBe(true);
+  const 点色 = await page.locator(".ais-dot").evaluate((e) => getComputedStyle(e).backgroundColor);
+  const 灰 = await page.evaluate(() => { const d = document.createElement("i"); d.style.color = "var(--text-faint)"; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; });
+  expect(点色).toBe(灰);
+  await page.getByRole("button", { name: "重新回答", exact: true }).click();
+  expect(await page.evaluate(() => (window as unknown as { __重试: number }).__重试)).toBe(1);
+  await page.close();
+});
+
+it("触屏 / 390（现状主题，#420 审查挡合 2）：展开钮、「重新回答 / 重试」点击区 ≥ 44，那一行不变高（普通、紧凑都不变）；1280 不撑", async () => {
+  const 量 = async (page: Page) => page.locator(".ais-hd").evaluate((e) => {
+    const h = (s: string) => { const x = e.querySelector(s); return x ? Math.round(x.getBoundingClientRect().height * 2) / 2 : null; };
+    return { 行: Math.round(e.getBoundingClientRect().height * 2) / 2, 钮: h("button.ais-hd-b"), 重: h(".ais-retry") };
+  });
+  const steps = [步(0, "search_customers(x)", "done", "1 位"), 步(1, "get_customer(c)", "done", "被打断")];
+  const 宽钮 = { page: (await open(1280)).page };
+  await 画(宽钮.page, { steps, 态: "interrupted", 起 });
+  const 电脑 = await 量(宽钮.page);
+  await 画(宽钮.page, { steps, 态: "interrupted", 起, compact: true });
+  const 电脑紧 = await 量(宽钮.page);
+  await 宽钮.page.close();
+  expect(电脑.钮!).toBeLessThan(44);
+  const { page, errors } = await open(390, 844);
+  for (const [compact, 原] of [[false, 电脑], [true, 电脑紧]] as const) {
+    await 画(page, { steps, 态: "interrupted", 起, compact });
+    const 手机 = await 量(page);
+    expect(手机.钮!, `展开钮${compact ? "（紧凑）" : ""}`).toBeGreaterThanOrEqual(44);
+    expect(手机.重!, `重新回答${compact ? "（紧凑）" : ""}`).toBeGreaterThanOrEqual(44);
+    expect(手机.行, `这一行不变高${compact ? "（紧凑）" : ""}`).toBe(原.行);
+    expect(await page.getByRole("button", { name: "重新回答", exact: true }).evaluate((e) => e.getBoundingClientRect().width)).toBeGreaterThanOrEqual(44);
+  }
+  // 出错的「重试」（字短）宽也够 44
+  await 画(page, { steps: [步(0, "list_contracts(p9)", "error")], 态: "error", 起, 原因: "这个项目还没建合同" });
+  const 重试 = await page.getByRole("button", { name: "重试", exact: true }).evaluate((e) => { const r = e.getBoundingClientRect(); return [r.width, r.height]; });
+  expect(重试[0]).toBeGreaterThanOrEqual(44);
+  expect(重试[1]).toBeGreaterThanOrEqual(44);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(errors).toEqual([]);
   await page.close();
 });
 

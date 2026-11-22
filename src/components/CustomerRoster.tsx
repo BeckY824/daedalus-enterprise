@@ -364,6 +364,34 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
   );
 }
 
+/**
+ * 名单还在路上时中栏摆的骨架（11-22 切页卡顿：@pane/customers/[id]/loading.tsx）。
+ * 名单原来不在任何 Suspense 里，点一位客户要等名单那几句查询算完整页才切过去，客户详情自己的骨架也出不来；
+ * 有了它，切页在服务端吐出外壳时就提交，名单和详情各自晚到。
+ * 和 CustomerRoster 同一个判法：名单收在抽屉里（窄窗、人自己收起、手机底部抽屉）时什么都不摆，只在整栏露着时摆同宽的一栏——
+ * 栏的底色和边线立刻就有（正文不左右跳），里面的灰条照 --skel-delay 晚 180ms 才淡入，快的看不见
+ */
+export function CustomerRosterSkeleton() {
+  const 中栏 = useMiddlePane("roster");
+  if (!中栏.露着) return null;
+  return (
+    <aside className="pane pane-roster pane-roster-cust" aria-busy="true" aria-label="正在载入名单">
+      <div className="roster-skel" data-testid="roster-skeleton">
+        <div className="skel-bar roster-skel-h" />
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={i} className="roster-skel-row">
+            <div className="roster-skel-av" />
+            <div className="roster-skel-m">
+              <div className="skel-bar" />
+              <div className="skel-bar" />
+            </div>
+          </div>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 /** 服务端没有 layout 阶段，退回 useEffect（只为不报警告；宽度首帧前已由 外观预设脚本 挂好） */
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
