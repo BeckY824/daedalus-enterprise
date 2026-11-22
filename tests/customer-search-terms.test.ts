@@ -201,3 +201,56 @@ describe("客户列表搜项目名（只算我能看的、不在公海的项目�
     }
   });
 });
+
+describe("搜索命中的项目多（32C：过 999 个参数）", () => {
+  // 复现：受限身份（销售）搜一个宽词，能看的项目过 999 个，再经限定层核一遍时 id IN (…) 一句带不下，范围层的否定条件又让 Prisma 拆不了批，
+  // 改前报 P2029、整页「这一页没能打开」。这里造 1200 个小王的项目（名字都带「批量」），小王搜「批量」要照常出来
+  const 个数 = 1200;
+  beforeAll(async () => {
+    await raw.customer.create({ data: { id: "bulk", name: "批量客户甲", phone: "", salesOwnerId: 小王 } });
+    await raw.customer.create({ data: { id: "bulk2", name: "某乙", phone: "", salesOwnerId: 小王 } });
+    await raw.project.createMany({ data: Array.from({ length: 个数 }, (_, i) => ({ name: `批量项目${i}`, customerId: i % 2 ? "bulk" : "bulk2", ownerId: 小王, creatorId: 小王 })) });
+  });
+  afterAll(async () => {
+    await raw.project.deleteMany({ where: { customerId: { in: ["bulk", "bulk2"] } } });
+    await raw.customer.deleteMany({ where: { id: { in: ["bulk", "bulk2"] } } });
+  });
+
+  it("小王（受限）搜「批量」：不报错，两位客户都出；老板也一样", async () => {
+    expect(await 列表(小王, "批量")).toEqual(["bulk", "bulk2"]);
+    expect(await 列表(老板, "批量")).toEqual(["bulk", "bulk2"]);
+  });
+
+  it("候选超过先取的行数（宽词另一条路）也不报错", async () => {
+    设项目名候选先取(100);
+    try {
+      expect(await 列表(小王, "批量")).toEqual(["bulk", "bulk2"]);
+    } finally {
+      设项目名候选先取(2000);
+    }
+  });
+});
+
+describe("「我参与的」挂的客户多（同类：过 999 个参数）", () => {
+  // 复现：同 32C，客户范围条件 的「我参与的」把组员客户整份塞进一句 id IN (…)，受限身份经限定层带否定条件，过 999 位报 P2029、整页打不开。
+  // 这里造 1100 位外人负责的客户，每位挂一个外人负责、小王已加入的项目；小王选「我参与的」要照常列出全部
+  const 个数 = 1100;
+  const 号 = (i: number) => `joined${String(i).padStart(4, "0")}`;
+  beforeAll(async () => {
+    await raw.customer.createMany({ data: Array.from({ length: 个数 }, (_, i) => ({ id: 号(i), name: `参与客户${i}`, phone: "", salesOwnerId: 外人 })) });
+    await raw.project.createMany({ data: Array.from({ length: 个数 }, (_, i) => ({ id: `p-${号(i)}`, name: `参与项目${i}`, customerId: 号(i), ownerId: 外人, creatorId: 外人 })) });
+    await raw.projectMember.createMany({ data: Array.from({ length: 个数 }, (_, i) => ({ projectId: `p-${号(i)}`, userId: 小王, inviteStatus: "JOINED" })) });
+  });
+  afterAll(async () => {
+    await raw.projectMember.deleteMany({ where: { userId: 小王, projectId: { startsWith: "p-joined" } } });
+    await raw.project.deleteMany({ where: { id: { startsWith: "p-joined" } } });
+    await raw.customer.deleteMany({ where: { id: { startsWith: "joined" } } });
+  });
+
+  it("小王（受限）选「我参与的」：不报错，1100 位都列出", async () => {
+    临时.我 = { id: 小王, name: 人们[小王], email: `${小王}@x.com`, role: "SALES" };
+    const ids = await 以谁的身份(小王, async () => (await db.customer.findMany({ where: await 客户筛选条件({ scope: "joined" }), select: { id: true } })).map((r) => r.id));
+    expect(ids.length).toBe(个数);
+    expect(ids.every((id) => id.startsWith("joined"))).toBe(true);
+  });
+});
