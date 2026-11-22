@@ -432,6 +432,8 @@ export default function ProjectsView({
 
   // 单格没填（含导入占位的 "-"）一律写「—」（11-01 用户定，lib/empty-value.ts）
   const 无 = <span style={{ color: "var(--empty-fg)" }}>{空值符}</span>;
+  // 行末「分配」「自动分配」的按钮款：L-B 定的行内款 .row-act（D09）
+  const 行钮 = { className: "row-act", size: "small" } as const;
   // 企业版默认只摆 7 列（项目、客户、进程、下一步时间、金额、负责人、回公海日），其余收在「列」里（默认: false）；1366 宽不横向滚
   const 收起 = 企业版 ? { 默认: false } : {};
   const 普通列表: 列<项目行>[] = [
@@ -474,12 +476,14 @@ export default function ProjectsView({
       // 客户公海里的项目跟客户走，不单独分（线索公海的 pooled 也是真，所以不看 pooled；服务端也拦）；
       // 例外：销售管理 / 总管理能「分配」，客户整包出公海（P-公海-10），不摆自动分配。
       // 线索公海的行（客户不在公海）：服务端按「能管公海」拦（P-转-02），市场管理这类管不了公海的不摆两颗键（审核 11-18 分配 P0-3 界面余项）
+      // 两颗用 L-B 定的行内款 .row-act（D09，设计语言 E3 · 新线索）——蓝字、不带框、悬停浅蓝底，和公海「领取」、渠道「录投入」一个样；
+      // 谁看得见、点了做什么都不变
       render: (_: unknown, r: 项目行) => (分配果们[r.id] ? <分配果标 果={分配果们[r.id]} /> : r.result ? null : r.客户在公海 ? (能分公海客户项目 ? (
-        <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
+        <Button aria-label={`分配 ${r.name}`} {...行钮} onClick={() => set分配中(r)}>分配</Button>
       ) : null) : r.pooled && !能分公海客户项目 ? null : (
         <Space size={2}>
-          <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
-          <Button aria-label={`自动分配 ${r.name}`} type="link" size="small" onClick={() => void 自动分(r)}>自动分配</Button>
+          <Button aria-label={`分配 ${r.name}`} {...行钮} onClick={() => set分配中(r)}>分配</Button>
+          <Button aria-label={`自动分配 ${r.name}`} {...行钮} onClick={() => void 自动分(r)}>自动分配</Button>
         </Space>
       )),
     }] : []),
@@ -671,7 +675,8 @@ export default function ProjectsView({
 
   return (
     // cust-market：市场管理的客户页（我分出去的），手机宽页头标题不挤（K9，globals.css）
-    <div className={换回客户列表 ? "cust-market" : undefined}>
+    // leads-page：新线索页（D37 占位字墨色、D06 手机宽筛选摆法，globals.css 设计语言 E3 · 新线索）
+    <div className={换回客户列表 ? "cust-market" : 新线索 ? "leads-page" : undefined}>
       {进筛选行 ? (
         工具位 && createPortal(<>{回到看板}{项目按钮}</>, 工具位)
       ) : 客户页 ? (

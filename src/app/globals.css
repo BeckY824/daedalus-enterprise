@@ -6732,3 +6732,21 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root:root .proj-inline-edit > .ant-input-textarea-show-count { margin-bottom: 18px; }
 :root:root:root .proj-inline-edit > .ant-input-textarea-show-count .ant-input-data-count { bottom: -18px; font-size: var(--fs-min); line-height: 18px; }
 
+/* ---------- 设计语言 E3 · 新线索（11-22，结构改动在 ProjectsView.tsx：外层 .leads-page、行末两颗 .row-act） ---------- */
+/* D37 筛选行「全部成员」「全部进程」占位字墨色：原来是 faint（2.21:1，像禁用），同 L-A 客户页 */
+:root:root .leads-page .list-bar .ant-select-placeholder { color: var(--ink); }
+@media (max-width: 767px) {
+  /* D06 首屏多露行：页头副标题收起（原来在 390 折成六行，把「我分出去的」「新线索」挤到右下） */
+  :root:root .leads-page > .page-head > :first-child > p { display: none; }
+  /* 筛选两排（照 L-A 客户页的摆法）：①搜索 + 重置 …「列」②负责人、进程各占一半。
+     原来四排：搜索 / 两个下拉 / 「列」一个人一排，表格从 y≈390 才开始。筛选组拆开（display: contents），各格直接排进 .list-bar */
+  :root:root .leads-page .list-bar > .ant-space { display: contents; }
+  :root:root .leads-page .list-bar > .list-bar-gap { display: none; }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item { min-width: 0; }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 160px; }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
+  :root:root .leads-page .list-bar > :is(.ant-btn, .ant-dropdown-trigger) { order: 2; flex: none; }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { order: 3; flex: 1 1 calc(50% - var(--s1)); }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
+}
