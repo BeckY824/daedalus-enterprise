@@ -1618,11 +1618,7 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 .rec-composer-bar > .ant-btn { flex: none; }
 .rec-composer-hint + .ant-btn { margin-left: auto; }
 .rec-filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 16px 4px; }
-.rec-chip {
-  font-size: var(--fs-note); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border);
-  color: var(--text-muted); cursor: pointer; background: var(--panel); transition: all var(--t-fast) var(--ease);
-}
-.rec-chip:hover { border-color: var(--brand-line); color: var(--ink); }
+/* .rec-chip 的底样式在下面「沟通框」那段（D20，设计语言 E6c：原来这里还有一份，每一项都被下面那份盖掉，删了外观不变） */
 .rec-chip-on { background: var(--brand-bg); border-color: var(--brand-line); color: var(--brand); }
 .rec-plan {
   margin: 12px 16px 0; padding: 10px 14px; border-radius: var(--r-card);
