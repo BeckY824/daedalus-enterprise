@@ -154,7 +154,18 @@ it("「有效线索」表头「?」：悬停说清「—」和「0」，点了�
     const q = page.locator(".chan-list .ant-table-thead .chan-th .chan-dash-q");
     await q.hover();
     await expect.poll(() => page.locator(".ant-tooltip:not(.ant-tooltip-hidden)", { hasText: "「—」= 这批线索销售还没在线索验证里判过" }).isVisible()).toBe(true);
+    // 只出「?」这一个说明，不叠 antd 的「点击升序」（showSorterTooltip: false）
+    await page.waitForTimeout(400);
+    expect(await page.locator(".ant-tooltip:not(.ant-tooltip-hidden)").filter({ hasText: /点击/ }).count()).toBe(0);
+    await page.locator(".chan-list .ant-table-thead th:has(.chan-th) .ant-table-column-sorters").hover({ position: { x: 4, y: 8 } });
+    await page.waitForTimeout(400);
+    expect(await page.locator(".ant-tooltip:not(.ant-tooltip-hidden)").filter({ hasText: /点击/ }).count()).toBe(0);
     await q.click();
+    expect(await 列字(page, "有效线索")).toEqual(前);
+    // 键盘：Tab 到「?」按 Enter，也不排序（Enter 不冒到表头那一格）
+    await q.focus();
+    await page.keyboard.press("Enter");
+    await page.waitForTimeout(200);
     expect(await 列字(page, "有效线索")).toEqual(前);
     // C3「?」悬停写列表按哪种时间算
     await page.getByTestId("chan-period-note").locator(".chan-dash-q").hover();
@@ -177,6 +188,31 @@ it("390 触屏：点按表格卡头「?」、「有效线索」表头「?」，�
     await page.waitForTimeout(500);
     expect(await 区别.isVisible()).toBe(true);
     expect(await 列字(page, "有效线索")).toEqual(前);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([1024, 1366, 1440])("%ipx：横滚停在最左，表头字不被钉住的操作列和渐隐压成半截（C-新6）", async (w) => {
+  const { page, errors } = await 打开(w);
+  try {
+    const 框 = page.locator(".chan-list .ant-table-content");
+    await 框.evaluate((e) => { e.scrollLeft = 0; });
+    // 补宽在 effect 里量完再画一次：等它稳住
+    const 量 = () => page.locator(".chan-list .ant-table-thead").evaluate((thead) => {
+      const ths = [...thead.querySelectorAll<HTMLElement>("th")];
+      const 操作左 = Math.min(...ths.filter((th) => th.classList.contains("ant-table-cell-fix-end")).map((th) => th.getBoundingClientRect().left));
+      return ths.filter((th) => !th.classList.contains("ant-table-cell-fix-end") && !th.classList.contains("ant-table-cell-fix-start")).flatMap((th) => {
+        const r = document.createRange();
+        r.selectNodeContents(th.querySelector(".ant-table-column-title") ?? th);
+        const b = r.getBoundingClientRect();
+        if (!b.width) return [];
+        // 看得见的（左沿在操作列左边）右沿要在渐隐左边；整个藏到操作列底下的不管
+        return b.left < 操作左 && b.right > 操作左 - 24 ? [`${th.innerText.trim()} ${Math.round(b.left)}–${Math.round(b.right)}（操作列 ${Math.round(操作左)}）`] : [];
+      });
+    });
+    await expect.poll(量).toEqual([]);
+    // 真横滚着（不是表格刚好放得下）
+    expect(await 框.evaluate((e) => e.scrollWidth > e.clientWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

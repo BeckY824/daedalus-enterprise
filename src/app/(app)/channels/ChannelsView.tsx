@@ -354,15 +354,18 @@ export default function ChannelsView({
   // 列工厂对「按子渠道」「按主渠道」两种行都能用（只看 统计）
   const 数列 = <T extends 有统计,>(键: 数键, 说明: string, 标题: string = 键): 列<T> => ({
     title: 新样 && 键 === "有效线索" ? (
-      // 现状主题（设计语言 C-A2 · C-新5）：「—」和「0」意思不同，表头写个「?」说清；点「?」不触发排序
+      // 现状主题（设计语言 C-A2 · C-新5）：「—」和「0」意思不同，表头写个「?」说清；点「?」、键盘在「?」上按 Enter / 空格都不触发排序
       <span className="nowrap chan-th">
         {标题}
         {/* hover + focus 不用 click：触屏按下 pointerenter 延时开、抬起后 click 又切回关，闪一下就没（C-A1 3704 实操） */}
         <Tooltip trigger={["hover", "focus"]} title={<>「—」= 这批线索销售还没在线索验证里判过；「0」= 判过了、没有判有效的。<br />{说明}</>}>
-          <span className="chan-dash-q" tabIndex={0} role="button" aria-label="「—」和「0」的区别" onClick={(e) => e.stopPropagation()}>?</span>
+          <span className="chan-dash-q" tabIndex={0} role="button" aria-label="「—」和「0」的区别" onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); }}>?</span>
         </Tooltip>
       </span>
     ) : <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 新样 && 键 === "有效线索" ? 120 : 104, align: "right",
+    // 带「?」的那列不要 antd 的「点击升序」提示：悬停时和「?」的说明叠成两个
+    ...(新样 && 键 === "有效线索" ? { showSorterTooltip: false } : {}),
     // 有效线索没判过（「—」）排在判过、0 条有效的后面（同看板，有效线索显示）
     sorter: (a, b2) => (键 === "有效线索" ? (有效线索显示(统计(a)) ?? -1) - (有效线索显示(统计(b2)) ?? -1) : 统计(a)[键] - 统计(b2)[键]),
     render: (_: unknown, r: T) => {
@@ -789,6 +792,8 @@ export default function ChannelsView({
       {两层 && 按主看 ? (
         <DataList<主渠道汇总>
           页="channels-main"
+          // 现状主题：横滚停在最左时表头不被钉住的操作列压成半截（C-新6），多出来的宽给「渠道属性」
+          补宽列={新样 ? "属性" : undefined}
           // 进详情再回来、刷新：第几页、横滚还原（29R 推广）
           回来还原
           空库={全部行.length === 0 && 主渠道们.length === 0}
@@ -803,6 +808,8 @@ export default function ChannelsView({
       ) : (
       <DataList<Row>
         页="channels"
+        // 现状主题：横滚停在最左时「关联订单」这类表头不被钉住的操作列和渐隐压成半截（C-新6），多出来的宽给「渠道属性」
+        补宽列={新样 ? "attr" : undefined}
         // 进详情再回来、刷新：第几页、勾选、横滚还原（29R 推广）
         回来还原
         空库={全部行.length === 0}
