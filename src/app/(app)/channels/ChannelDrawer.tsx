@@ -32,9 +32,12 @@ import { RosterNote } from "./RosterNote";
 
 const 投入备注上限 = 200;
 const 无 = <span className="muted">—</span>;
-/** 现状主题：空值写「—」，原因用 Tooltip（悬停、触屏点按都出，规范「空值」「悬停 / 长按」），不只靠 title */
+/**
+ * 现状主题：空值写「—」，原因用 Tooltip（悬停、触屏点按都出，规范「空值」「悬停 / 长按」），不只靠 title；
+ * 触发用 hover + focus 不用 click（触屏按下 pointerenter 延时开、抬起后 click 又关，闪一下就没）
+ */
 const 空因 = (因: string | null | undefined) => (因 ? (
-  <Tooltip title={因} trigger={["hover", "click"]}>
+  <Tooltip title={因} trigger={["hover", "focus"]}>
     <span className="muted chan-empty-tip" tabIndex={0} aria-label={`— ${因}`}>—</span>
   </Tooltip>
 ) : 无);
@@ -263,8 +266,9 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
                 ),
               }]
             : []),
-          { key: "成交", label: "累计成交", span: "filled", children: 钱(s?.累计成交) },
-          { key: "投入", label: "当前投入", span: "filled", children: 钱(s?.当前投入) },
+          // 现状主题：没数的「—」和别的空值一个色（--empty-fg，D02），不用墨色
+          { key: "成交", label: "累计成交", span: "filled", children: 新样 && !s?.累计成交?.length ? 无 : 钱(s?.累计成交) },
+          { key: "投入", label: "当前投入", span: "filled", children: 新样 && !s?.当前投入?.length ? 无 : 钱(s?.当前投入) },
         ]}
       />
       </section>

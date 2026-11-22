@@ -52,7 +52,7 @@ afterAll(async () => { await browser?.close(); });
 
 /** 内容区按真实页面算：≥768 左边留 232 侧栏 + 24 页边距；390 没侧栏、16 边距 */
 async function 打开(width: number, o: Record<string, unknown> = {}, skin?: string, 触屏 = false): Promise<{ page: Page; errors: string[] }> {
-  const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: 触屏 }); page.setDefaultTimeout(5000);
+  const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: 触屏, isMobile: 触屏 }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const 窄 = width < 768;
   const 壳 = 窄 ? "padding:0 16px" : "margin-left:232px;padding:0 24px";
@@ -73,6 +73,29 @@ async function 点得中(page: Page, loc: import("playwright").Locator) {
   expect(b.x).toBeGreaterThanOrEqual(0);
   expect(b.x + b.width).toBeLessThanOrEqual(page.viewportSize()!.width);
   return loc.evaluate((e, [x, y]) => { const h = document.elementFromPoint(x, y); return !!h && (h === e || e.contains(h)); }, [b.x + b.width / 2, b.y + b.height / 2] as const);
+}
+
+/**
+ * 像手指那样点按：按下停 150ms 再抬起（真机一次点按大约这么久）。Playwright 的 tap() 是一瞬间的，
+ * 触屏上 pointerenter（按下就来）延时 100ms 打开那一步赶不上，原来 trigger 带 click 的「开了又被 click 切回关」测不出来
+ */
+async function 指点(page: Page, loc: import("playwright").Locator) {
+  await loc.scrollIntoViewIfNeeded();
+  const b = (await loc.boundingBox())!;
+  const s = await page.context().newCDPSession(page);
+  const 点 = [{ x: b.x + b.width / 2, y: b.y + b.height / 2 }];
+  await s.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: 点 });
+  await page.waitForTimeout(150);
+  await s.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  await s.detach();
+}
+
+/** 从元素中心偏 (dx, dy) 的点都落在它（或它里面）上：量 ::after 撑出来的点击区 */
+async function 偏点中(loc: import("playwright").Locator, 偏: [number, number][]) {
+  await loc.scrollIntoViewIfNeeded();
+  const b = (await loc.boundingBox())!;
+  return loc.evaluate((e, 点) => 点.every(([x, y]) => { const h = document.elementFromPoint(x, y); return !!h && (h === e || e.contains(h)); }),
+    偏.map(([dx, dy]) => [b.x + b.width / 2 + dx, b.y + b.height / 2 + dy] as [number, number]));
 }
 
 it.each([1024, 1280, 1366, 390])("%ipx：50 个长名渠道、成交过亿不横向溢出；页头计数、口径在看板头、KPI 26 号不截", async (w) => {
@@ -100,12 +123,13 @@ it.each([1024, 1280, 1366, 390])("%ipx：50 个长名渠道、成交过亿不横
     // 投入待录入并进投入格；能录才有「去补录 ›」；没有虚线条
     const 投入 = page.locator(".chan-dash-k").filter({ hasText: "投入 / ROI" });
     expect(await 投入.innerText()).toMatch(/47 个渠道没录/);
-    expect(await 点得中(page, 投入.getByRole("button", { name: /去补录/ }))).toBe(true);
+    const 补 = 投入.getByRole("button", { name: /去补录/ });
+    expect(await 点得中(page, 补)).toBe(true);
+    // 「去补录 ›」点击区 28 高：中心上下 13.5px 还点得到它（字只有 19 高）
+    expect(await 偏点中(补, [[0, -13.5], [0, 13.5]])).toBe(true);
     expect(await page.locator(".chan-dash-empty").count()).toBe(0);
-    // 「?」点击区 ≥28：中心往外 12px 还点得到它
-    const q = page.locator(".chan-dash-q").first();
-    const qb = (await q.boundingBox())!;
-    expect(await q.evaluate((e, [x, y]) => document.elementFromPoint(x, y) === e, [qb.x + qb.width / 2 + 12, qb.y + qb.height / 2] as const)).toBe(true);
+    // 「?」点击区 ≥28：中心往外 13.5px（上下左右）还点得到它
+    expect(await 偏点中(page.locator(".chan-dash-q").first(), [[13.5, 0], [-13.5, 0], [0, 13.5], [0, -13.5]])).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -139,7 +163,7 @@ it("漏斗写转化率「→ x%」不写流失率；三层转化率卡留着、�
   } finally { await page.close(); }
 });
 
-it("390：KPI 照旧 2×3（不横滑）；分布 / 三层 / TOP5 / 进公海默认收成卡头一行，「展开」44 高点得中；漏斗、低效渠道照开", async () => {
+it("390：KPI 照旧 2×3（不横滑）；分布 / 三层 / TOP5 / 进公海默认收成卡头一行，卡头都是 48，「展开」点击区 44 点得中；漏斗、低效渠道照开", async () => {
   const { page, errors } = await 打开(390);
   try {
     const 列 = await page.locator(".chan-dash-k").evaluateAll((ks) => new Set(ks.map((k) => Math.round(k.getBoundingClientRect().left))).size);
@@ -151,9 +175,14 @@ it("390：KPI 照旧 2×3（不横滑）；分布 / 三层 / TOP5 / 进公海默
       const 卡 = page.locator(".chan-dash-cell").filter({ hasText: 名 }).first();
       expect(await 卡.getAttribute("class")).toContain("is-fold");
       const 钮 = 卡.locator(".chan-fold");
-      expect((await 钮.boundingBox())!.height).toBeGreaterThanOrEqual(44);
       expect(await 点得中(page, 钮)).toBe(true);
+      // 点击区 44：中心上下 21.5px 还点得到（::after 撑，钮本身不撑高卡头）
+      expect(await 偏点中(钮, [[0, -21.5], [0, 21.5], [-21.5, 0], [21.5, 0]])).toBe(true);
     }
+    // 收的、不收的卡头一样高：都是 48（原来收的 52）
+    const 头高 = await page.locator(".chan-dash-cell > .chan-dash-h").evaluateAll((hs) => hs.filter((h) => h.getBoundingClientRect().height > 0).map((h) => Math.round(h.getBoundingClientRect().height)));
+    expect(头高.length).toBeGreaterThanOrEqual(5);
+    expect(new Set(头高)).toEqual(new Set([48]));
     expect(await page.getByTestId("chan-dash-top").isVisible()).toBe(false);
     await page.locator(".chan-dash-cell").filter({ hasText: "线索 TOP5" }).locator(".chan-fold").click();
     expect(await page.getByTestId("chan-dash-top").isVisible()).toBe(true);
@@ -200,6 +229,14 @@ it.each([1366, 390])("抽屉 %ipx：基本信息卡头有「编辑」、标签�
     // 投入产出比没录 → 「—」，原因进悬停
     const 比 = 抽.locator(".ant-descriptions-item").filter({ hasText: "投入产出比" }).locator(".ant-descriptions-item-content");
     expect((await 比.innerText()).trim()).toBe("—");
+    // 「当前投入 —」和别的空值一个色（--empty-fg），不是墨色
+    const 投 = 抽.locator(".ant-descriptions-item").filter({ hasText: "当前投入" }).locator(".ant-descriptions-item-content");
+    expect((await 投.innerText()).trim()).toBe("—");
+    const [投色, 空色] = await 投.evaluate((c) => {
+      const t = document.createElement("i"); t.style.color = "var(--empty-fg)"; c.appendChild(t);
+      const r = [getComputedStyle(c.querySelector(".muted") ?? c).color, getComputedStyle(t).color]; t.remove(); return r;
+    });
+    expect(投色).toBe(空色);
     const 录 = 抽.getByRole("button", { name: /录一笔投入/ });
     expect(await 录.getAttribute("class")).not.toContain("ant-btn-primary");
     expect(await 点得中(page, 录)).toBe(true);
@@ -219,6 +256,10 @@ it("换皮主题（账簿）：页头照旧挂口径切换，看板头没有「�
     const 第二条 = page.getByTestId("chan-dash-top").locator(".chan-dash-top-bar i").nth(1);
     expect(await 第二条.getAttribute("style")).toMatch(/width:\s*98\.8/);
     expect(await 第二条.getAttribute("class")).toBeNull();
+    // 切到按主渠道：账簿照旧，不加「看板按子渠道算」灰字
+    await page.locator(".page-head [aria-label='统计口径']").getByText("按主渠道").click();
+    await expect.poll(() => page.locator(".page-head [aria-label='统计口径'] .ant-segmented-item-selected").innerText()).toBe("按主渠道");
+    expect(await page.locator(".chan-dash-basis").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -228,9 +269,19 @@ it("页头计数跟当前视图走：按子渠道写渠道个数，切「按主�
   try {
     expect(await page.locator(".page-count").innerText()).toBe("50");
     expect(await page.getByTestId("chan-dash-top").locator(".chan-dash-top-bar i").nth(1).getAttribute("class")).toBe("chan-w100");
+    // 按子渠道时不写「看板按子渠道算」；切到按主渠道，开关旁出灰字，看板本身照旧按子渠道算
+    expect(await page.locator(".chan-dash-basis").count()).toBe(0);
     await page.locator(".chan-dash-bar [aria-label='统计口径']").getByText("按主渠道").click();
     await expect.poll(() => page.locator(".page-count").innerText()).toBe("1");
     expect(await page.locator(".page-count").getAttribute("aria-label")).toBe("共 1 个主渠道");
+    const 灰字 = page.locator(".chan-dash-bar .chan-dash-basis");
+    expect(await 灰字.innerText()).toBe("看板按子渠道算");
+    const [灰色, 淡色] = await 灰字.evaluate((e) => {
+      const t = document.createElement("i"); t.style.color = "var(--text-muted)"; e.parentElement!.appendChild(t);
+      const r = [getComputedStyle(e).color, getComputedStyle(t).color]; t.remove(); return r;
+    });
+    expect(灰色).toBe(淡色);
+    expect(await page.locator(".chan-dash-hint").innerText()).toMatch(/按筛选出的 50 个渠道算/);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -240,11 +291,15 @@ it("390 触屏：点按 KPI 缩写金额出全值；抽屉里「投入产出比 
   try {
     const 成交 = page.locator(".chan-dash-k").filter({ hasText: "成交额" }).locator(".chan-dash-kv");
     await 成交.scrollIntoViewIfNeeded();
-    await 成交.tap();
-    await page.getByRole("tooltip").filter({ hasText: /^¥ 12,9\d{2},\d{3},\d{3}$/ }).first().waitFor();
+    await 指点(page, 成交);
+    const 全值 = page.getByRole("tooltip").filter({ hasText: /^¥ 12,9\d{2},\d{3},\d{3}$/ }).first();
+    await 全值.waitFor();
+    // 点按出来要留住：原来 trigger 带 click，mouseenter 开、click 又关，不到 250ms 就没了
+    await page.waitForTimeout(500);
+    expect(await 全值.isVisible()).toBe(true);
     const 投入 = page.locator(".chan-dash-k").filter({ hasText: "投入 / ROI" }).locator(".chan-dash-kv");
     expect(await 投入.innerText()).toBe("¥ 1,598 万");
-    await 投入.tap();
+    await 指点(page, 投入);
     await page.getByRole("tooltip").filter({ hasText: "¥ 15,978,000" }).first().waitFor();
     // 抽屉：没录投入的渠道，投入产出比「—」点按出原因
     await page.locator(".ant-table-tbody tr.ant-table-row").first().waitFor();
@@ -253,8 +308,11 @@ it("390 触屏：点按 KPI 缩写金额出全值；抽屉里「投入产出比 
     await 抽.waitFor();
     const 横 = 抽.locator(".ant-descriptions-item").filter({ hasText: "投入产出比" }).locator(".chan-empty-tip");
     await expect.poll(async () => { const b = await 横.boundingBox(); return b ? Math.round(b.x) : 99999; }).toBeLessThan(390);
-    await 横.tap();
-    await page.getByRole("tooltip").filter({ hasText: "还没录投入" }).first().waitFor();
+    await 指点(page, 横);
+    const 因 = page.getByRole("tooltip").filter({ hasText: "还没录投入" }).first();
+    await 因.waitFor();
+    await page.waitForTimeout(500);
+    expect(await 因.isVisible()).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }

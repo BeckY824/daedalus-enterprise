@@ -693,10 +693,17 @@ export default function ChannelsView({
   const 有看板 = Boolean(看板底数 && rows.length > 0);
   /* 现状主题（设计语言 C-A1 C-新1）：口径切换和时段一样改的是下面所有数，挪进看板头；没看板（筛空了）时留在标题旁，免得切不回来 */
   const 口径进看板 = 新样 && 有看板;
+  /* 看板本身一直按子渠道算（TOP5、预警、「按筛选出的 N 个渠道算」都是子渠道）：切到「按主渠道」只换下面的表，开关旁灰字说清，不改口径 */
+  const 看板口径 = (
+    <>
+      {口径钮}
+      {按主看 && <span className="chan-dash-basis">看板按子渠道算</span>}
+    </>
+  );
   /* 看板 + 下面一行写明列表按哪一段算（2D）：看板可能很高，滚到列表时看不到看板上的档，这一行贴着表格说 */
   const 看板块 = 看板底数 && rows.length > 0 ? (
     <>
-      <ChannelDash 渠道们={rows} 底数={看板底数} 段={看板段} 期={期} 改期={set期} 改忙={set看板忙} 公海={公海} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} 口径={口径进看板 ? 口径钮 : undefined} />
+      <ChannelDash 渠道们={rows} 底数={看板底数} 段={看板段} 期={期} 改期={set期} 改忙={set看板忙} 公海={公海} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} 口径={口径进看板 ? 看板口径 : undefined} />
       <div className="chan-period-note" data-testid="chan-period-note">
         <span className="chan-period-label">列表统计：{时段字(期, 时段)}</span>
         <span className="chan-period-hint">{有期 ? "项目、线索按这段时间新建的算；商机、订单、成交按到达该阶段的时间算（同看板），点开商机、订单看全部时间的；投入按投入日期；累计运营天数不分时段。在上方看板切换" : "全部时间；在上方看板切换时段"}</span>

@@ -5771,12 +5771,18 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-cell { padding: 0 var(--card-pad) var(--s3); }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-h { flex-wrap: wrap; min-height: var(--card-head-h); margin: 0 calc(-1 * var(--card-pad)) var(--s3); padding: var(--s1) var(--card-pad); border-bottom: 1px solid var(--line-soft); font-size: var(--fs-section); font-weight: 600; }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-count { color: var(--count-fg); font-size: var(--fs-note); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* 「?」16×16 带 1px 边：::after 的 inset 量的是 14 的内边距盒，按 14 算才是 28（按 16 算只有 26） */
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-q { position: relative; }
-:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-q::after { content: ""; position: absolute; inset: calc((16px - var(--hit)) / 2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-q::after { content: ""; position: absolute; inset: calc((14px - var(--hit)) / 2); }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-kk, :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-ks { white-space: normal; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-kv { font-size: var(--fs-num); line-height: 1.2; white-space: normal; overflow: visible; text-overflow: clip; }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-amt { white-space: nowrap; }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-todo .link-plain { color: var(--brand); }
+/* 「去补录 ›」字只有 19 高：点击区用 ::after 上下撑到 28（D05），不改行高 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-todo-go { position: relative; }
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-todo-go::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: var(--hit); transform: translateY(-50%); }
+/* 切到「按主渠道」时开关旁的灰字「看板按子渠道算」 */
+:root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-basis { color: var(--text-muted); font-size: var(--fs-note); white-space: nowrap; }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-fun li { grid-template-columns: minmax(0, 1fr) minmax(56px, auto); }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-fun-side { overflow: visible; text-overflow: clip; color: var(--ink); }
 :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-warn { gap: 0; }
@@ -5801,7 +5807,9 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-k:nth-child(n + 4) { border-top: 1px solid var(--line-soft); }
 }
 @container (max-width: 560px) {
-  :root:is(:not([data-skin]), [data-skin="now"]) .chan-fold { display: inline-flex; min-height: var(--hit-touch); }
+  /* 「展开」本身不撑高卡头（卡头统一 48，D19）：点击区靠 ::after 撑到 44 高、至少 44 宽 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-fold { display: inline-flex; position: relative; align-self: center; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .chan-fold::after { content: ""; position: absolute; top: 50%; left: 50%; width: max(100%, var(--hit-touch)); height: var(--hit-touch); transform: translate(-50%, -50%); }
   :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-cell.is-fold { padding-bottom: 0; }
   :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-cell.is-fold > :not(.chan-dash-h) { display: none; }
   :root:is(:not([data-skin]), [data-skin="now"]) .chan-dash-cell.is-fold > .chan-dash-h { margin-bottom: 0; border-bottom: 0; }

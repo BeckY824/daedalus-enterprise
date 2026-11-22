@@ -44,10 +44,11 @@ const 环类 = (名: string, i: number) => (名 === "其他" ? "chan-c-other" : 
 const 宽类 = (比: number) => `chan-w${Math.min(100, Math.max(比 > 0 ? 5 : 0, Math.round(比 * 20) * 5))}`;
 /**
  * 金额窄格（设计语言 D39）：缩写，每个币种一段不拆行；全值用 Tooltip（悬停、触屏点按都出，规范「悬停 / 长按看全值」），
- * 不只靠 title（触屏看不到）
+ * 不只靠 title（触屏看不到）。触发用 hover + focus，不用 click：触屏按下时 pointerenter 延时打开、抬起后的 click 又切回关（闪一下就没）；
+ * 格子有 tabIndex=0，点按即聚焦、点别处失焦才收
  */
 const 缩写格 = (合计: { 币种: string; 合计: number }[]) => (
-  <Tooltip title={合计文字(合计)} trigger={["hover", "click"]}>
+  <Tooltip title={合计文字(合计)} trigger={["hover", "focus"]}>
     <span className="chan-dash-kv chan-dash-kv-tip" tabIndex={0} aria-label={合计文字(合计)}>{缩写段(合计)}</span>
   </Tooltip>
 );
@@ -234,7 +235,7 @@ export default function ChannelDash({
             <span className="chan-dash-ks chan-dash-todo">
               {k.未录投入} 个渠道没录
               {能录 && k.首个未录 && (
-                <> · <button type="button" className="link-plain" onClick={() => 看详情(k.首个未录!, true)}>去补录 ›</button></>
+                <> · <button type="button" className="link-plain chan-todo-go" onClick={() => 看详情(k.首个未录!, true)}>去补录 ›</button></>
               )}
             </span>
           )}
