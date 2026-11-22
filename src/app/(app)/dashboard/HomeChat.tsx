@@ -7,7 +7,8 @@ import type { 页面范围 } from "@/lib/ai-context-page";
 import { useModel } from "@/components/ModelPicker";
 import type { ModelOption } from "@/lib/llm";
 import { useBusiness } from "@/lib/business-client";
-import { 首页屏 } from "@/lib/home-thread";
+import { 首页屏, useConversationId } from "@/lib/home-thread";
+import { useViewAs } from "@/components/ViewAsContext";
 import AiQuickAsks, { type 快捷项 } from "@/components/AiQuickAsks";
 import type { 历史消息 } from "@/lib/thread-history";
 import PaneToggle from "@/components/PaneToggle";
@@ -25,6 +26,9 @@ import type { 待回复客户数 } from "@/lib/enterprise/reply-notice";
 import type { 待分配数 } from "@/lib/enterprise/await-assign-core";
 import { 新线索来源, 新线索要下一步, 新线索企业, type 新线索企业格 } from "@/components/ProposalCard";
 import HomeCards from "./HomeCards";
+import ChatHead from "./ChatHead";
+import ToLatest from "./ToLatest";
+import { 截标题 } from "./home-look";
 import type { 首页卡数 } from "@/lib/project/home-cards";
 
 /** kind "fill"：点了只把 question 填进输入框、光标放到末尾，等人自己改完按回车（企业版首页的示例问题） */
@@ -148,15 +152,29 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
   const 现状 = useIsNowSkin();
   const 网格 = useRef<HTMLDivElement>(null);
   usePinCenter(网格, 现状 && 驾驶舱 && empty);
+  /*
+    设计语言 HC-1（用户 11-22 选 C0-A / C1-A / C2-A / C3-A / C12-A / C13-A）：现状主题、首页驾驶舱、问过之后，
+    对话框是「一张纸」——页面不滚、四边一律 24，框顶一行标题（ChatHead）、中间对话在框里滚、框底输入框；
+    对话一条 760 宽的列在框里居中；顶部待办收成标题行右边「待办 N」。换皮主题、右侧 AI 面板（窄）照旧
+  */
+  const 一张纸 = 现状 && 驾驶舱 && !empty;
+  const 对话id = useConversationId(scope) ?? 会话?.id ?? null;
+  const 视图中 = useViewAs();
+  const 标题 = (会话 && 会话.id === 对话id ? 会话.title : null) ?? 截标题(turns[0]?.question ?? "");
+  const 待办 = !窄 && (
+    <>
+      {放弃条}
+      <AwaitAssignTodo 数据={待分配} />
+      <CoachTopicTodo 数据={待回复主题} />
+      <ReplyDueTodo 数据={待回复客户} />
+      {待复核}
+      <AssignEtaLine 轮到={轮到} />
+    </>
+  );
 
   const 对话列 = (
     <div className={`cli-col${外框 ? " cli-frame" : ""}`}>
-      {!窄 && 放弃条}
-      {!窄 && <AwaitAssignTodo 数据={待分配} />}
-      {!窄 && <CoachTopicTodo 数据={待回复主题} />}
-      {!窄 && <ReplyDueTodo 数据={待回复客户} />}
-      {!窄 && 待复核}
-      {!窄 && <AssignEtaLine 轮到={轮到} />}
+      {一张纸 ? <ChatHead 标题={标题} 对话id={对话id} 能改={!视图中} 待办={待办} /> : 待办}
       {empty && 窄 ? (
         /*
           窄模式（右侧面板）的空屏：380 宽塞不下问候、信号、建议问题那一套，
@@ -181,6 +199,11 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
       ) : (
         <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} 企业版={企业版} />
       )}
+      {/*
+        换对话按这一屏装着的对话 id 重挂（不按地址上的 会话：地址先变、库里那段要等 useHomeTurns 的效果装进来，
+        按地址换会在旧内容上挂上、「刚发」也拿旧那几轮算）。挂上后内容再长高 ToLatest 自己跟着落底（3703 实操 #410）
+      */}
+      {一张纸 && <ToLatest key={对话id ?? "new"} 刚发={turns.some((t) => t.id === 刚发的)} />}
 
       <Composer
         ref={composerRef}
@@ -203,9 +226,9 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
     <新线索来源.Provider value={渠道名们 ?? null}>
     <新线索要下一步.Provider value={要下一步}>
     <新线索企业.Provider value={企业格 ?? null}>
-      <div className={`cli${empty ? " cli-empty" : ""}${窄 ? " cli-narrow" : ""}`}>
+      <div className={`cli${empty ? " cli-empty" : ""}${窄 ? " cli-narrow" : ""}${一张纸 ? " cli-paper" : ""}`}>
         {/* 首页对话列表收起了（或窗口太窄成了抽屉）：问答区左上角一颗侧栏图标把它叫回来，和列表页头上那颗是同一个。右侧 AI 面板（窄）里不摆 */}
-        {!窄 && <PaneToggle 栏="chat" 位置="主区" className="pane-toggle-float" />}
+        {!窄 && !一张纸 && <PaneToggle 栏="chat" 位置="主区" className="pane-toggle-float" />}
         {驾驶舱 ? (
           /* 容器查询量的是这一格（去掉左栏、对话列表之后剩的宽），不是整个窗口；PaneToggle 是 fixed，得留在它外面 */
           <div className="cli-ck">
