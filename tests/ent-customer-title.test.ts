@@ -11,7 +11,7 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 客户抬头, 客户显名, 区域段, 要查节点, 抬头节点们, type 抬头料 } from "@/lib/enterprise/customer-title";
+import { 客户抬头, 客户显名, 区域段, 要查节点, 抬头节点们, 只留看得见的项目名, type 抬头料 } from "@/lib/enterprise/customer-title";
 import { 客户显名 as 转导出的客户显名 } from "@/lib/project/relate-names";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
@@ -186,7 +186,7 @@ describe("抬头节点们：一页一句，含公海、不按看的人算", () =
     const 新线索 = await 造客户({ customerNo: 8 });
     await 造项目(新线索.id, { name: "VR设备", nextStepText: "跟进", phase: "线索", node: "线索验证", updatedAt: 时(2) });
     const 格们 = await 抬头节点们(prisma, [新线索]);
-    expect(格们[新线索.id]).toEqual({ 节点: "线索验证", 项目名: "VR设备" });
+    expect(格们[新线索.id]).toMatchObject({ 节点: "线索验证", 项目名: "VR设备" });
     expect(客户抬头(新线索, 格们[新线索.id])).toBe("VR设备");
   });
 
@@ -205,6 +205,28 @@ describe("抬头节点们：一页一句，含公海、不按看的人算", () =
     const 乙看 = await 以谁的身份(乙, () => 抬头节点们(prisma, [c]));
     expect(只看节点(甲看)).toEqual({ [c.id]: "成交推进" });
     expect(乙看).toEqual(甲看);
+  });
+
+  it("F-040 可见性：项目名只给看得见那个项目的人（P-看-12）；甲是客户负责人、项目归乙甲看不到 → 甲看「编号|节点」，乙看项目名；节点人人一样", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    invalidateSettingsCache();
+    await setSetting("enterprise.rule.org_scope", true);
+    await prisma.entMember.create({ data: { userId: 甲, bizRole: "sales" } });
+    await prisma.entMember.create({ data: { userId: 乙, bizRole: "sales" } });
+    忘掉企业版范围();
+    const c = await 造客户({ customerNo: 10 });
+    await 造项目(c.id, { name: "乙起的项目名", phase: "线索", node: "线索验证", updatedAt: 时(4), ownerId: 乙 });
+    const 主键查 = (ids: string[]) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } });
+    const 抬头 = (谁: string) => 以谁的身份(谁, async () => {
+      const 格们 = await 只留看得见的项目名(await 抬头节点们(prisma, [c]), 主键查);
+      return 客户抬头(c, 格们[c.id]);
+    });
+    expect(await 抬头(甲)).toBe("NO.00010|线索验证");
+    expect(await 抬头(乙)).toBe("乙起的项目名");
+    // 没带项目名的格不发查询
+    let 句 = 0;
+    expect(await 只留看得见的项目名({ [c.id]: { 节点: "线索验证", 项目名: null, 项目id: "x" } }, async () => { 句++; return []; })).toEqual({ [c.id]: { 节点: "线索验证", 项目名: null, 项目id: "x" } });
+    expect(句).toBe(0);
   });
 
   it("查询条数：一页 50 位里有 0 / 1 / 50 位要查节点 → 0 / 1 / 1 句（不随行数加）", async () => {

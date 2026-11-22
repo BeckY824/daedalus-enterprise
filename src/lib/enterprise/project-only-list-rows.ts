@@ -24,6 +24,11 @@ export type 仅项目列表行 = {
   customerType: string | null;
   customerAttr: string | null;
   地区: string;
+  /** 抬头区域段用（F-040 审查）：有区域没主体的客户在块里照「区|节点」，和下面客户表格第一列一样 */
+  addrCountry: string | null;
+  addrProvince: string | null;
+  addrCity: string | null;
+  addrDistrict: string | null;
   /** 我自己在这位客户名下的项目里最近有动静的那个的节点（同客户列表「当前节点」的写法） */
   当前节点: string | null;
   /** 抬头用（F-040）：同一个项目的节点、项目名；全空客户抬头写项目名（customer-title.ts 全空抬头） */
@@ -60,6 +65,7 @@ export async function 仅项目列表行们(me: { id: string; role?: string | nu
     const 位 = 本套位置({ phase: d.phase, node: d.node, result: d.result }, 企业版字典);
     const 行: 仅项目列表行 = {
       id: c.id, name: c.name, shortName: c.shortName, school: c.school, customerNo: c.customerNo, customerType: c.customerType, customerAttr: c.customerAttr,
+      addrCountry: c.addrCountry, addrProvince: c.addrProvince, addrCity: c.addrCity, addrDistrict: c.addrDistrict,
       地区: 拼地址(c),
       当前节点: 位 ? 节点字(位) : null,
       抬头格: 位 ? { 节点: 节点字(位), 项目名: d.name } : null,
