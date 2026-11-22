@@ -3,6 +3,7 @@
  * 输入框四周那几样：框里左下角的工具键、框上方那一条、发送 / 打断键、框底下的提示和建议问题。
  * 只管画，状态全在 Composer。
  */
+import type { ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { Dropdown, Tooltip } from "antd";
 import { ArrowUpOutlined, SnippetsOutlined, GlobalOutlined, MailOutlined } from "@ant-design/icons";
@@ -89,7 +90,7 @@ export function ComposerTools({ 宽, 摆背调键, 背调模式, on切背调, fi
   );
 }
 
-export function ComposerTop({ 客户, 背调模式, 邮件, on去掉邮件, 提示粘贴, on切, on不切, 没这个命令, q, cmdMatches, cmdIdx, on选命令 }: {
+export function ComposerTop({ 客户, 背调模式, 邮件, on去掉邮件, 提示粘贴, on切, on不切, 没这个命令, q, cmdMatches, cmdIdx, on选命令, 浮 = false, on指命令 }: {
   客户: string;
   背调模式: boolean;
   邮件: 邮件信号 | null;
@@ -102,6 +103,13 @@ export function ComposerTop({ 客户, 背调模式, 邮件, on去掉邮件, 提�
   cmdMatches: { cmd: string; hint: string }[];
   cmdIdx: number;
   on选命令: (cmd: string) => void;
+  /**
+   * 设计语言 H-A（11-21，H-新4）：命令表做成从输入框上沿向上浮出的浮层，不占高度——首页驾驶舱是上下居中的，
+   * 命令表撑高问答卡会让整块（连右边指标卡）跟着往上跳。只有现状主题、首页外框里给 true；别处照旧接在框上
+   */
+  浮?: boolean;
+  /** 鼠标指到哪一行就把选中挪到哪一行（H-新3：键盘选中和鼠标悬停只亮一行）。不给 = 照旧悬停各亮各的 */
+  on指命令?: (i: number) => void;
 }) {
   if (背调模式 && 邮件)
     return (
@@ -136,8 +144,10 @@ export function ComposerTop({ 客户, 背调模式, 邮件, on去掉邮件, 提�
         </button>
       </div>
     );
+  /* 浮层：外面一层 0 高的锚贴着输入框上沿，命令表从锚往上长（globals.css .cli-cmds-float） */
+  const 包 = (x: ReactNode) => (浮 ? <div className="cli-cmds-float">{x}</div> : x);
   if (没这个命令)
-    return (
+    return 包(
       <div className="cli-cmds">
         <div className="cli-cmd">
           <span className="cli-cmd-k">{q.trim()}</span>
@@ -146,10 +156,15 @@ export function ComposerTop({ 客户, 背调模式, 邮件, on去掉邮件, 提�
       </div>
     );
   if (cmdMatches.length > 0)
-    return (
-      <div className="cli-cmds">
+    return 包(
+      <div className={`cli-cmds${on指命令 ? " cli-cmds-one" : ""}`}>
         {cmdMatches.map((c, i) => (
-          <div key={c.cmd} className={`cli-cmd${i === cmdIdx ? " cli-cmd-on" : ""}`} onMouseDown={() => on选命令(c.cmd)}>
+          <div
+            key={c.cmd}
+            className={`cli-cmd${i === cmdIdx ? " cli-cmd-on" : ""}`}
+            onMouseDown={() => on选命令(c.cmd)}
+            onMouseEnter={on指命令 ? () => on指命令(i) : undefined}
+          >
             <span className="cli-cmd-k">{c.cmd}</span>
             <span className="cli-cmd-h">{c.hint}</span>
           </div>
@@ -217,7 +232,8 @@ export function ComposerFoot({ 摆建议, 示例槽, suggestions, suggIdx, 空, 
       {示例槽 === undefined ? 示例 : 示例槽 && 示例 ? createPortal(示例, 示例槽) : null}
 
       <div className="cli-hints">
-        <span>
+        {/* 键盘提示：现状主题手机上不写（D38，触屏没有这几个键，globals.css .cli-hints-keys） */}
+        <span className="cli-hints-keys">
           <kbd>Enter</kbd> 发送 · <kbd>Shift+Enter</kbd> 换行 · <kbd>/</kbd> 命令
           {在跑 && (
             <>
