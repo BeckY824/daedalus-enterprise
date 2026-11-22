@@ -23,7 +23,8 @@ export type 块 = { 选择器: string; 体: string; 起: number; 止: number; to
     :root[data-skin="x"]  :root[data-skin="x"][data-paper="y"]（可再带 :not([data-mode="dark"])，科技白底暗黑下让位）
     [data-skin-preview="x"]
     暗黑（app/dark.css）：:root[data-mode="dark"]:not([data-skin="x"])、:root[data-mode="dark"] [data-skin-preview]:not([data-skin-preview="x"])、
-                          :root[data-mode="dark"][data-skin="x"]、:root[data-mode="dark"][data-skin] [data-skin-preview="x"]、[data-mode-preview="x"]
+                          :root[data-mode="dark"][data-skin="x"]（可再带 :not([data-paper="y"])，D-2 方案 A 的暗黑 token 不挂「原底」）、
+                          :root[data-mode="dark"][data-skin] [data-skin-preview="x"]、[data-mode-preview="x"]
 */
 const TOKEN选择器 = new RegExp(
   "^(?:" +
@@ -32,7 +33,7 @@ const TOKEN选择器 = new RegExp(
       String.raw`\[data-skin-preview="[\w-]+"\]`,
       String.raw`:root\[data-mode="dark"\]:not\(\[data-skin="[\w-]+"\]\)`,
       String.raw`:root\[data-mode="dark"\] \[data-skin-preview\]:not\(\[data-skin-preview="[\w-]+"\]\)`,
-      String.raw`:root\[data-mode="dark"\]\[data-skin="[\w-]+"\]`,
+      String.raw`:root\[data-mode="dark"\]\[data-skin="[\w-]+"\](?::not\(\[data-paper="[\w-]+"\]\))?`,
       String.raw`:root\[data-mode="dark"\]\[data-skin\] \[data-skin-preview="[\w-]+"\]`,
       String.raw`\[data-mode-preview="[\w-]+"\]`,
     ].join("|") +

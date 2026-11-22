@@ -158,7 +158,7 @@
   --seal: var(--ink);                  /* 你确认的那一下（建议卡落的印）。账簿换成朱红，且只许它用 */
   /* 左栏当前项的底：16a 起不用蓝底（蓝留给要人点的东西）。2026-11 PR2 外壳（原型 g.feel / g.nav）：
      浅灰底改成白底 + 一层很薄的阴影，像从灰色侧栏里浮起来的一块（Apple 侧栏的选中态）；
-     阴影只给现状明亮（下面 .rail-on-bg 那条），换皮、暗黑各用自己的 --nav-on-bg、不带阴影；白底地面上退回浅灰（白压白看不出） */
+     阴影只给现状明亮的「原底」（下面 .rail-on-bg 那条；D-2 方案 A 的白底下选中是不带影的白块），换皮、暗黑各用自己的 --nav-on-bg、不带阴影；白底地面上退回浅灰（白压白看不出） */
   --nav-on-bg: var(--panel);
   --nav-on-fg: var(--ink);             /* 左栏当前项的字 */
   --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "SF Pro SC", "PingFang SC", "Noto Sans SC", "Daedalus YaHei", "Microsoft YaHei", Roboto, sans-serif;
@@ -222,7 +222,7 @@
 :root:is(:not([data-skin]), [data-skin="now"])[data-paper="tone"] { --page-bg: var(--workbench); }
 /* 白底地面上左栏选中块退回浅灰：白底 + 阴影压在白地面上只剩一圈影子，认不出选中的是哪项（换皮主题的白底） */
 :root[data-paper="white"]:not([data-mode="dark"]) { --nav-on-bg: var(--hover); }
-/* 现状的左栏不管哪种底色都铺浅灰，选中块照旧白底 + 薄阴影（下面 .rail-on-bg 那条），浮在灰色侧栏上 */
+/* 现状的左栏不管哪种底色都铺浅灰，选中块是白块（白底下不带阴影，原底照旧带薄阴影，见下面 .rail-on-bg 那条） */
 :root:is(:not([data-skin]), [data-skin="now"])[data-paper="white"]:not([data-mode="dark"]) { --nav-on-bg: var(--panel); }
 /* 设置 → 外观 那一栏 */
 .appr { display: flex; flex-direction: column; gap: var(--s5); max-width: 640px; }
@@ -767,8 +767,8 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 /* 选中的底色是一块会滑动的层（AppShell 里的 layoutId），压在图标和字下面 */
 .rail-on-bg { position: absolute; inset: 0; border-radius: var(--r-card); background: var(--nav-on-bg); z-index: 0; }
 /* 现状明亮下的选中块：白底 + 一圈 0.5px 发丝描边 + 1px 软影（原型 g.feel）。换皮、暗黑不挂，各走各的底色。
-   D-2（11-22）起现状的左栏两种底色都是浅灰，白底地面也挂 */
-:root:is(:not([data-skin]), [data-skin="now"]):not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on) {
+   D-2 · 方案 A（11-22 用户定）：白底下选中项是白块、不带阴影（浅灰左栏上白块本身认得出）；这圈影只留给「原底」（完整的旧样子） */
+:root:is(:not([data-skin]), [data-skin="now"])[data-paper="tone"]:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on) {
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 6%, transparent), 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
 }
 .rail-item > :not(.rail-on-bg) { position: relative; z-index: 1; }

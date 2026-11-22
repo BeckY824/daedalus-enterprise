@@ -99,21 +99,37 @@ describe("D-2 方案 A「一张纸」：token、原底开关、三页", () => {
     expect(根.get("--page-bg")).toBe("var(--workbench)"); // 换皮主题的地面不动
   });
 
-  it("现状：页面一张白纸、左栏浅灰；「原底」退回浅灰地面；左栏选中块两种底色都是白底", () => {
+  it("现状：页面一张白纸、左栏浅灰；「原底」退回浅灰地面；左栏选中块两种底色都是白块，阴影只留给原底", () => {
     有规则(`${现状}, [data-skin-preview="now"]`, "--page-bg: var(--panel); --rail-bg: var(--workbench)");
     有规则(`${现状}[data-paper="tone"]`, "--page-bg: var(--workbench)");
     有规则(`${现状}[data-paper="white"]:not([data-mode="dark"])`, "--nav-on-bg: var(--panel)");
-    expect(净).toContain(`${现状}:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on) {`);
+    expect(净).toContain(`${现状}[data-paper="tone"]:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on) {`);
+    expect(净).not.toContain(`${现状}:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on) {`);
     expect(净).toContain(".rail { width: var(--rail-w); flex: none; position: sticky; top: 0; height: 100vh; background: var(--rail-bg);");
   });
 
-  it("暗黑（现状）：模块线用浅的那档、浮层抬亮到 #1D2026 并加 1px 线；antd 浮层底读 --pop-bg", () => {
-    const i = 暗.indexOf(':root[data-mode="dark"][data-skin="now"],');
+  it("暗黑（现状）：模块线用浅的那档、浮层抬亮到 #1D2026 并加 1px 线（原底不挂）；antd 浮层底读 --pop-bg", () => {
+    const i = 暗.indexOf(':root[data-mode="dark"][data-skin="now"]:not([data-paper="tone"]),');
+    expect(i, "方案 A 的暗黑 token 要单独一块、限在非原底").toBeGreaterThan(-1);
     const 块 = 暗.slice(i, 暗.indexOf("}", i));
     expect(块).toContain("--mod-line: var(--line-soft)");
     expect(块).toContain("--pop-bg: #1d2026");
     expect(块).toContain("--shadow-pop: 0 0 0 1px var(--line)");
     for (const 片 of ["--ant-color-bg-elevated: var(--pop-bg)", "--ant-modal-content-bg: var(--pop-bg)", "--ant-modal-header-bg: var(--pop-bg)"]) expect(共).toContain(片);
+    // 现状主题自己的暗黑块（主色、分类色）里不再有这三项：原底下要照旧
+    const j = 暗.indexOf(':root[data-mode="dark"][data-skin="now"],');
+    const 主块 = 暗.slice(j, 暗.indexOf("}", j));
+    for (const k of ["--mod-line", "--pop-bg", "--shadow-pop"]) expect(主块).not.toContain(k);
+  });
+
+  it("暗黑下分段控件选中字、页签未选中字跟着 --ink（theme.ts 写死的是浅色墨色）", () => {
+    const 净共 = 去注释(共);
+    const 段 = 净共.slice(净共.indexOf(".css-var-dd:is(.ant-segmented, .ant-segmented-css-var)"));
+    const 段体 = 段.slice(0, 段.indexOf("}"));
+    expect(段体).toContain("--ant-segmented-item-selected-color: var(--ink)");
+    expect(段体).toContain("--ant-segmented-item-hover-color: var(--ink)");
+    const 签 = 净共.slice(净共.indexOf(".css-var-dd:is(.ant-tabs, .ant-tabs-css-var)"));
+    expect(签.slice(0, 签.indexOf("}"))).toContain("--ant-tabs-item-color: var(--ink)");
   });
 
   it("方案 A 的形状规则都限在现状 + 非原底下（换皮、原底不受影响）", () => {
