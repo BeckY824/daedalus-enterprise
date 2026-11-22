@@ -74,13 +74,13 @@ beforeAll(async () => {
           <div className="cli-col cli-frame">
             {待办 && <>
               <AwaitAssignTodo 数据={{ 条数: 128, 最早: 今天串 + ' 09:30', 最早At: 京('09:30') }} />
-              <CoachTopicTodo 数据={{ 条数: 12, 最早: { at: new Date(今.getTime() - 3600_000).toISOString(), projectId: 'p1', title: '主题' + 长 } }} />
+              {待办 === true && <CoachTopicTodo 数据={{ 条数: 12, 最早: { at: new Date(今.getTime() - 3600_000).toISOString(), projectId: 'p1', title: '主题' + 长 } }} />}
               <ReplyDueTodo 数据={{ 条数: 8, 超时: 3, 最早: { projectId: 'p2', name: 长, 时: 今天串 + ' 21:00 – 22:00', 始: 京('21:00'), 终: 京('22:00'), 超时: true } }} />
-              <VerifyInbox 首页 们={[
+              {待办 === true && <VerifyInbox 首页 们={[
                 { projectId: 'p3', 项目: '超长项目名' + 长, 负责人: '负责人' + 长, 步: '市场复核', 无效原因: '其他：' + 长, 初判说明: '说明' + 长, 复核说明: null, 异议说明: null, 更新于: new Date(今.getTime() - 2 * 86400_000).toISOString() },
                 { projectId: 'p4', 项目: '二号', 负责人: '乙', 步: '销售终验', 无效原因: null, 初判说明: null, 复核说明: null, 异议说明: null, 更新于: 今.toISOString() },
-              ]} />
-              <AssignEtaLine 轮到={{ 数: 128, 待补: 2, 放弃待补: 1 }} />
+              ]} />}
+              {待办 === true && <AssignEtaLine 轮到={{ 数: 128, 待补: 2, 放弃待补: 1 }} />}
             </>}
             <Welcome userName={"测试员" + 长} context="" 欢迎={"欢迎使用 测试产品"} 示例槽={set槽} />
             <div className="cli-composer">
@@ -112,7 +112,7 @@ afterAll(async () => { await browser?.close(); });
 
 type 皮 = "now" | "ledger" | "tech";
 const 卡数 = { "month-new": 591, key: 123, "no-follow": 4802, "due-soon": 0 };
-async function 开(o: { 宽: number; 高?: number; 待办?: boolean; skin?: 皮 }): Promise<{ page: Page; errors: string[] }> {
+async function 开(o: { 宽: number; 高?: number; 待办?: boolean | 2; skin?: 皮 }): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: o.宽, height: o.高 ?? 900 }, reducedMotion: "reduce", timezoneId: "Europe/London" });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
@@ -290,3 +290,31 @@ for (const skin of ["ledger", "tech"] as const) {
     } finally { await page.close(); }
   });
 }
+
+/*
+  3704 实操（11-22）挡下的：顶部两行待办（销售、销售管理、市场管理常见）时，多行输入把问答卡撑高、外层 .cli-ck 跟着过了 min-height，
+  原来按容器高当「窗口变了」重新居中，整块往上跳（1024×768 115 → 54、1366×900 149 → 138；展开指标卡挪 2px）。只认视口尺寸变了才重钉
+*/
+it.each([[1024, 768], [1366, 900]])("H-新4（%i×%i，顶部 2 行待办）：多行输入、展开指标卡，问答卡顶不动（≤1px）", async (宽, 高) => {
+  const { page } = await 开({ 宽, 高, 待办: 2 });
+  try {
+    expect(await page.locator(".cli-frame .home-cth-todo").count()).toBe(2);
+    const 起 = await 顶(page, ".cli-ck-g");
+    await page.locator(".cli-frame textarea").click();
+    await page.evaluate(() => (window as unknown as { __输: (v: string) => void }).__输(Array.from({ length: 12 }, (_, i) => `第 ${i + 1} 行`).join("\n")));
+    await page.waitForTimeout(150);
+    expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${宽} 多行`).toBeLessThanOrEqual(1);
+    expect(Math.abs(await 顶(page, ".cli-frame") - 起), `${宽} 问答卡顶`).toBeLessThanOrEqual(1);
+    await page.evaluate(() => (window as unknown as { __输: (v: string) => void }).__输(""));
+    await page.waitForTimeout(300);
+    expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${宽} 清空`).toBeLessThanOrEqual(1);
+    await page.locator(".home-kpi-card").nth(1).locator(".home-kpi-head").click();
+    await page.locator(".home-kpi-body").waitFor();
+    await page.waitForTimeout(300);
+    expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${宽} 展开指标卡`).toBeLessThanOrEqual(1);
+    // 展开着再多行输入：还是不动
+    await page.evaluate(() => (window as unknown as { __输: (v: string) => void }).__输(Array.from({ length: 12 }, (_, i) => `第 ${i + 1} 行`).join("\n")));
+    await page.waitForTimeout(150);
+    expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${宽} 展开 + 多行`).toBeLessThanOrEqual(1);
+  } finally { await page.close(); }
+});
