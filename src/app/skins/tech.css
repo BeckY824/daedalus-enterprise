@@ -25,6 +25,7 @@
   --avatar-1: var(--brand-bg); --avatar-2: var(--success-bg); --avatar-3: var(--warning-bg); --avatar-4: var(--danger-bg);
   --avatar-5: var(--hover); --avatar-6: var(--brand-bg); --avatar-7: var(--danger-bg); --avatar-8: var(--hover);
   --cat-teal: var(--success); --cat-lime: var(--warning);
+  --violet: #a78bfa;
   --logo-frame: #e6ebf2; --logo-line: #6f97ff;
 
   --font-ui: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, "PingFang SC", "Daedalus YaHei", "Microsoft YaHei", monospace;

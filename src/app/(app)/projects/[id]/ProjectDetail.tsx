@@ -1540,7 +1540,7 @@ export default function ProjectDetail({
       {p.企业版 && p.重复咨询 && (
         <div {...资料行()} data-testid="project-repeat-others-row">
           <span style={键样}>其他在推项目</span>
-          <span className="proj-one">
+          <span className="proj-one" title={[p.重复咨询.看得到.map((x) => x.name).join("、"), p.重复咨询.看不到 > 0 ? `另有 ${p.重复咨询.看不到} 个你看不到的` : ""].filter(Boolean).join("；") || undefined}>
             {p.重复咨询.看得到.length === 0 && p.重复咨询.看不到 === 0 ? "—" : (
               <>
                 {p.重复咨询.看得到.map((x, i) => <span key={x.id}>{i > 0 && "、"}<Link href={`/projects/${x.id}`}>{x.name}</Link></span>)}
