@@ -19,6 +19,7 @@ import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
 import { useBusiness } from "@/lib/business-client";
 import { 合计文字 } from "@/lib/currency";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { isFormValidationError } from "@/lib/form-validation";
 import { dayjs, fmtDate } from "@/lib/utils";
 import Link from "next/link";
@@ -51,6 +52,8 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
 }) {
   const router = useRouter();
   const b = useBusiness();
+  // 现状主题（设计语言 C-A1 C5）：三块卡头统一（动作在卡头右侧 ghost）、字段行无冒号定宽、空值一律「—」原因进悬停、投入空态句；换皮主题照旧
+  const 新样 = useIsNowSkin();
   const [投入, set投入] = useState<投入行[] | null>(null);
   const [能录, set能录] = useState(false);
   const [不能录因, set不能录因] = useState<string | null>(null);
@@ -172,15 +175,23 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
       onClose={onClose}
       title={<span className="chan-full" title={row.name}><span>{row.name}</span>{!渠道启用(row) && <Tag style={{ margin: 0, flex: "none" }}>已停用</Tag>}</span>}
       styles={{ wrapper: { width: "min(560px, 100vw)" } }}
-      extra={onEdit && <Button size="small" icon={<EditOutlined />} onClick={onEdit}>编辑</Button>}
+      extra={!新样 && onEdit && <Button size="small" icon={<EditOutlined />} onClick={onEdit}>编辑</Button>}
       destroyOnHidden
     >
       {/* U-渠道-01（10-31 会议）：基本信息、统计、投入记录各成一块，块里单列排，不分两栏 */}
       <section className="chan-block" aria-label="基本信息">
-      <div className="section-title">基本信息</div>
+      {新样 ? (
+        <div className="section-title chan-block-h">
+          <span>基本信息</span>
+          {onEdit && <Button size="small" type="text" icon={<EditOutlined />} onClick={onEdit}>编辑</Button>}
+        </div>
+      ) : (
+        <div className="section-title">基本信息</div>
+      )}
       <Descriptions
         className="chan-desc"
         size="small"
+        colon={!新样}
         column={1}
         items={[
           { key: "attr", label: "渠道属性", children: row.attr ?? 无 },
@@ -209,10 +220,15 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
       </section>
 
       <section className="chan-block" aria-label="统计">
-      <div className="section-title">统计{时段名 && <span className="muted chan-period-title">（{时段名}）</span>}</div>
+      {新样 ? (
+        <div className="section-title chan-block-h"><span>统计 · {时段名 ?? "全部时间"}</span></div>
+      ) : (
+        <div className="section-title">统计{时段名 && <span className="muted chan-period-title">（{时段名}）</span>}</div>
+      )}
       <Descriptions
         className="chan-desc"
         size="small"
+        colon={!新样}
         column={1}
         items={[
           // 关联线索 = 在线索阶段、没流失的；有效线索同看板，一条都没判过写「—」（客户 11-18 第 10 题 A）
@@ -223,7 +239,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
           { key: "项目", label: "关联项目", children: 数(s, "关联项目") },
           { key: "线索转商机", label: "线索→商机", children: 转(s?.线索转商机) },
           { key: "商机转订单", label: "商机→订单", children: 转(s?.商机转订单) },
-          { key: "比", label: "投入产出比", children: s?.产出比 ?? <span className="muted" title={s?.产出比说明 ?? undefined}>{s?.产出比说明 ?? "—"}</span> },
+          { key: "比", label: "投入产出比", children: s?.产出比 ?? <span className="muted" title={s?.产出比说明 ?? undefined}>{新样 ? "—" : s?.产出比说明 ?? "—"}</span> },
           ...(同名分布 !== undefined
             ? [{
                 key: "分布",
@@ -234,6 +250,8 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
                     平均值 {同名分布.平均} · 最高值 {同名分布.最高} · 最低值 {同名分布.最低}
                     <span className="muted">（「{row.platform ?? row.name}」下 {同名分布.个数} 个来源能算）</span>
                   </span>
+                ) : 新样 ? (
+                  <span className="muted" title={`「${row.platform ?? row.name}」下的来源都还算不了产出比`}>—</span>
                 ) : (
                   <span className="muted">「{row.platform ?? row.name}」下的来源都还算不了产出比</span>
                 ),
@@ -247,6 +265,16 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
 
       <section className="chan-block" aria-label="投入记录">
 
+      {新样 ? (
+        <div className="section-title chan-block-h">
+          <span>投入记录{投入 && 投入.length > 0 && <span className="chan-count">（{投入.length}）</span>}</span>
+          {能录 && !录 && (
+            <Button size="small" type="text" icon={<PlusOutlined />} onClick={() => set录(true)}>
+              录一笔投入
+            </Button>
+          )}
+        </div>
+      ) : (
       <div className="section-title" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
         <span>投入记录</span>
         {能录 && !录 && (
@@ -255,6 +283,7 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
           </Button>
         )}
       </div>
+      )}
       {/* 只能看的人说一句为什么没有「录一笔投入」，免得以为按钮丢了 */}
       {!能录 && 不能录因 && 投入 !== null && <div className="muted" style={{ margin: "4px 0 8px", fontSize: 12 }}>{不能录因}</div>}
 
@@ -302,6 +331,12 @@ export default function ChannelDrawer({ row, 同名分布, 不问归属, 先录 
       {错 && <div className="muted" role="alert" style={{ margin: "8px 0" }}>{错}</div>}
       {投入 === null ? (
         <Skeleton active paragraph={{ rows: 2 }} title={false} />
+      ) : 投入.length === 0 && 新样 ? (
+        // D21：空态一句「还没有 X」+ 一句说明，不带插图
+        <div className="chan-invest-none">
+          <span className="chan-invest-none-t">还没有投入记录</span>
+          {能录 && <span className="chan-invest-none-s">录了之后列表上就算得出投入产出比</span>}
+        </div>
       ) : 投入.length === 0 ? (
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={能录 ? "还没录投入。录了之后列表上就算得出投入产出比" : "还没录投入"} />
       ) : (

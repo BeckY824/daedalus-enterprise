@@ -30,6 +30,7 @@ import { 子渠道名, 子渠道提示, 主渠道名上限, 按主渠道汇总, 
 import MainChannels, { MainChannelEdit, 主渠道编辑初值, type 主渠道编辑中 } from "./MainChannels";
 import ChannelDrawer from "./ChannelDrawer";
 import ChannelDash from "./ChannelDash";
+import { useIsNowSkin } from "@/lib/use-skin";
 import SaveButton from "@/components/SaveButton";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 筛渠道, 看板时段, 自定义, type 档, type 看板底数, type 看板公海 } from "@/lib/enterprise/channel-dash";
@@ -195,6 +196,7 @@ export default function ChannelsView({
     行错计时.current = setTimeout(() => set行错(null), 5000);
   }
   const b = useBusiness();
+  const 新样 = useIsNowSkin();
   /*
     列表统计跟看板时间段（员工反馈第 2 批 2D）：档放这里、看板和列表共用一个，看板上切，列表、抽屉、按主渠道合计跟着换。
     默认同看板：地址栏带着自定义就是自定义，不然「全部」（= 原来的列表）。没有看板（不是企业版）就一直是全部
@@ -671,10 +673,23 @@ export default function ChannelsView({
         ? `主渠道「${填的主}」已停用，换一个或先到「主渠道」里启用`
         : undefined;
 
+  /* 统计按两层看（P-渠道-01 附.5）：看板 + 列表一起切 */
+  const 口径钮 = 两层 ? (
+    <Segmented
+      aria-label="统计口径"
+      size={新样 ? "small" : undefined}
+      value={按主看 ? "主" : "子"}
+      onChange={(v) => set按主看(v === "主")}
+      options={[{ value: "子", label: "按子渠道" }, { value: "主", label: "按主渠道" }]}
+    />
+  ) : null;
+  const 有看板 = Boolean(看板底数 && rows.length > 0);
+  /* 现状主题（设计语言 C-A1 C-新1）：口径切换和时段一样改的是下面所有数，挪进看板头；没看板（筛空了）时留在标题旁，免得切不回来 */
+  const 口径进看板 = 新样 && 有看板;
   /* 看板 + 下面一行写明列表按哪一段算（2D）：看板可能很高，滚到列表时看不到看板上的档，这一行贴着表格说 */
   const 看板块 = 看板底数 && rows.length > 0 ? (
     <>
-      <ChannelDash 渠道们={rows} 底数={看板底数} 段={看板段} 期={期} 改期={set期} 改忙={set看板忙} 公海={公海} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} />
+      <ChannelDash 渠道们={rows} 底数={看板底数} 段={看板段} 期={期} 改期={set期} 改忙={set看板忙} 公海={公海} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} 口径={口径进看板 ? 口径钮 : undefined} />
       <div className="chan-period-note" data-testid="chan-period-note">
         <span className="chan-period-label">列表统计：{时段字(期, 时段)}</span>
         <span className="chan-period-hint">{有期 ? "项目、线索按这段时间新建的算；商机、订单、成交按到达该阶段的时间算（同看板），点开商机、订单看全部时间的；投入按投入日期；累计运营天数不分时段。在上方看板切换" : "全部时间；在上方看板切换时段"}</span>
@@ -709,14 +724,13 @@ export default function ChannelsView({
           1024 宽 + AI 栏常驻时切换 + 「主渠道」+「新建渠道」一排会撑出页头；标题那块能折行，放不下就掉到标题下面
         */
         titleAside={
-          两层 ? (
-            <Segmented
-              aria-label="统计口径"
-              value={按主看 ? "主" : "子"}
-              onChange={(v) => set按主看(v === "主")}
-              options={[{ value: "子", label: "按子渠道" }, { value: "主", label: "按主渠道" }]}
-            />
-          ) : undefined
+          // 现状主题：标题后写渠道个数（--count-fg）；口径切换在看板头（见 口径进看板）
+          新样 ? (
+            <>
+              <span className="page-count" aria-label={`共 ${全部行.length} 个渠道`}>{全部行.length}</span>
+              {口径进看板 ? null : 口径钮}
+            </>
+          ) : 口径钮 ?? undefined
         }
         extra={
           能管 && (
