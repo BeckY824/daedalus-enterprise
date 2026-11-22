@@ -6159,6 +6159,106 @@ button.proj-miss-chip { cursor: pointer; }
    「全部成员 / 全部创建人 / 全部进程」占位字也墨色，和「全部阶段」（选中值）一个颜色。销售客户页的看板筛选仍是 .list-bar，上面 L-A 那条已管 */
 :root:is(:not([data-skin]), [data-skin="now"]) :is(.cu-morph-wrap, .cust-market) .pipe-top .ant-select-placeholder { color: var(--ink); }
 
+/* ---------- 设计语言 G-A · 公海（11-22，只挂现状主题；换皮主题外观不动。结构改动在 PoolView.tsx 新样） ---------- */
+/* G0 标题后的总数（--count-fg，等宽数字）；右上「我手上 N / 上限 M」中性胶囊，到上限换要人处理的橙底 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-head-n { color: var(--count-fg); font-size: var(--fs-section); font-weight: 400; font-variant-numeric: tabular-nums; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-hold { display: inline-flex; align-items: center; height: var(--ctl-h-sm); padding-inline: var(--s3); border-radius: var(--r-tag); background: var(--tag-bg); color: var(--tag-fg); font-size: var(--fs-note); font-variant-numeric: tabular-nums; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-hold[data-full] { background: var(--warning-bg); color: var(--warning-text); }
+/* G1 两行固定结构：池子行占满一行（回收站开关顶到最右），筛选行在下、右端「列」。.pool-bar 不占盒子，两行直接排进 .list-bar */
+:root:is(:not([data-skin]), [data-skin="now"]) .list-bar:has(> .pool-bar) { flex-wrap: wrap; align-items: center; row-gap: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-bar { display: contents; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-pools { flex: 1 0 100%; display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .ant-segmented { flex: 0 1 auto; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-n { color: var(--count-fg); font-variant-numeric: tabular-nums; }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-segmented-item-selected .pool-n { color: var(--ink-soft); }
+/* 公海回收站：独立开关钮，和分段同高；按下态浅蓝底 + 主色框（不叫池、不并进分段） */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.pool-bin { margin-left: auto; flex: none; }
+/* 行上「领取」点开了确认条：按下态（浅蓝底），和下面那条连起来认 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-op .ant-btn.row-act[aria-expanded="true"] { background: var(--brand-bg); color: var(--brand-deep); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.pool-bin[aria-pressed="true"] { background: var(--brand-bg); border-color: var(--brand); color: var(--brand-deep); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-btn.pool-bin[aria-pressed="true"] .pool-n { color: var(--brand-deep); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-fl { flex: 0 1 auto; display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > .ant-select.pool-sort { width: 120px; }
+/* D37「全部入池方式」占位字墨色，和排序的选中值一个颜色 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-fl .ant-select-placeholder { color: var(--ink); }
+/* 「更多筛选（N）」1200 起写字（同 L-A 客户页），1024 只留图标和数字 */
+@media (min-width: 1200px) and (max-width: 1439px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl .cf-more-t { display: inline; }
+}
+/* 1024 这一档：搜索框收到 200（占位「搜客户名 / 项目名」照样写全，G-新3），筛选行和「列」一行，不折第三行 */
+@media (min-width: 768px) and (max-width: 1199px) {
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > .ant-input-affix-wrapper { width: 200px !important; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools .ant-segmented-item-label { padding-inline: var(--s2); }
+}
+/* G2 领 / 分之后的提示条：规范的提示行（浅蓝底、13 号字、右边关）；截断说明 13 号灰字 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-note { border-color: var(--brand-line); background: var(--brand-bg); color: var(--ink); font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-cut { font-size: var(--fs-note); }
+/* G3 公海属性：中性灰标签（D10：绿只给完成）；项目名 = 客户名写灰字「同客户名」；日期 13 号、等宽、右对齐（列上 align），并成两行的 12 号 */
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-tag.ant-tag.ant-tag.pool-attr { margin: 0; background: var(--tag-bg); color: var(--tag-fg); border-color: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-table-cell .pool-same, :root:is(:not([data-skin]), [data-skin="now"]) .ant-table-cell a.pool-same { color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .ant-table-cell.pool-tcol { font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-t { font-variant-numeric: tabular-nums; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-t2 { display: flex; flex-direction: column; align-items: flex-end; font-size: var(--fs-min); line-height: 18px; }
+/* G5 客户池并成一行：名字前一个展开箭头；「N 个项目」13 号灰字，不用胶囊；子列表左缩 24、浅底和上面的行分开 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-name { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-name > :not(.pool-fold) { min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-fold { flex: none; color: var(--text-muted); font-size: var(--fs-min); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-fold svg { transition: transform var(--t-fast) var(--ease); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-many > .pool-many-n { flex: none; font-size: var(--fs-note); color: var(--text-muted); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-sub-tr > td { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-sub { padding-left: var(--s5); }
+/* G4 / K4 领取确认挪到行下：整行宽（antd 展开行在横滚表里贴着可视区），左后果、右「确认领取 · 取消」，不被钉住的操作列盖 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-ask-tr > td { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-ask { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2) var(--s3); min-width: 0; white-space: normal; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-ask > .pool-why { flex: 1 1 240px; min-width: 0; margin: 0; font-size: var(--fs-note); line-height: 20px; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-ask > .pool-row-err { margin: 0; font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-ask .inlc { flex: none; margin-left: auto; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-ask .inlc-q:empty { display: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-ask :is(.inlc-yes, .inlc-no) { height: var(--ctl-h-sm); padding-inline: var(--s3); font-size: var(--fs-note); }
+/* G6 批量条同客户列表那一款（浮在底部）：条头写「已选 N 个」（公海一行可能是项目），不用 DataList 那句「N 位已选」；表格单独成一层，钉住列不盖批量条 */
+:root:is(:not([data-skin]), [data-skin="now"]) .list-sel-float:has(.pool-sel-n) > b { display: none; }
+:root:is(:not([data-skin]), [data-skin="now"]) .list:has(.pool-bar) .ant-table-wrapper { isolation: isolate; }
+/* G7 换池骨架：快的不闪，--skel-delay 后才出 */
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-skel { animation: app-loading-in var(--t) var(--ease) var(--skel-delay) both; }
+/* G8 选人框底下那句后果：13 号、行距 22（输入框白底 + --field-line 走全站 D17 那几条） */
+:root:is(:not([data-skin]), [data-skin="now"]) .pool-pick-eff { font-size: var(--fs-note); line-height: 22px; }
+@media (pointer: coarse), (max-width: 767px) {
+  /* D34 后半：「领取」触屏 44 高、宽随字，不再被 44 × 44 压成方块；确认条的两颗键同样 44 高 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-op .ant-btn.row-act:not(.ant-btn-icon-only) { padding-inline: var(--s3); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-ask :is(.inlc-yes, .inlc-no) { height: var(--hit-touch); }
+}
+@media (max-width: 767px) {
+  /* D06 首屏多露行：副标题收起 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .page-head:has(.pool-head-n) > :first-child > p { display: none; }
+  /* D34 前半：池子改下拉（不横滑）；同一排右边是回收站开关和「列」。筛选三排：①池子 · 回收站 · 列 ②搜索 · 排序 ③入池方式 · 更多筛选 · 重置 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .list-bar:has(> .pool-bar) > .list-bar-gap { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools { flex: 1 1 0; order: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .list-bar:has(> .pool-bar) > :not(.pool-bar) { order: 1; flex: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .pool-pick-attr { flex: 0 1 auto; min-width: 0; }
+  /* 选了某一池：390 下拉就在回收站开关左边、已写着池名，开关括号里不再重复池名（「公海回收站（2,949）」，悬停说明照旧写「数字是 X 里的」），
+     让出宽给下拉；还挤时下拉只截池名（省略号），后面的数照全写（「订单池…」把数截掉了，#414 3704 实操） */
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-bin .pool-bin-attr { display: none; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pick-attr .ant-select-content > .pool-seg { display: flex; gap: 4px; min-width: 0; max-width: 100%; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pick-attr .pool-seg-k { min-width: 1em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pick-attr .pool-seg .pool-n { flex: none; }
+  /* 375 下拉比 390 再窄 15，线索池五位数（「线索池 54,341」）的数右沿超出下拉内容框约 10px（#414 3704 补点「线 53,83」）：
+     手机宽回收站开关、下拉左右内边距各收到 8（不另加断点，三档断点守卫），让出的宽给下拉，数照全写、池名照样只截省略号 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .ant-btn.pool-bin { padding-inline: var(--s2); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-pools > .pool-pick-attr { padding-inline: var(--s2); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl { flex: 1 1 100%; order: 2; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > .ant-input-affix-wrapper { order: 0; flex: 1 1 160px; width: auto !important; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > .ant-select.pool-sort { order: 1; flex: 0 1 120px; min-width: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > :not(.ant-input-affix-wrapper, .pool-sort) { order: 2; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > .ant-select:not(.pool-sort) { flex: 1 1 128px; min-width: 0; width: auto !important; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-fl > .list-reset { order: 3; flex: none; }
+  /* G5 客户池展开的子行：手机宽五格挤不下（第三行被原因挤成几个字），改两排——①项目名 ②进程 · 入池方式 · 时间 … 领取 */
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-sub { padding-left: var(--s3); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-sub-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--s2); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-sub-row > :first-child { flex: 1 0 100%; }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-sub-row > :not(:first-child, .pool-sub-act) { flex: 0 1 auto; min-width: 0; font-size: var(--fs-note); }
+  :root:is(:not([data-skin]), [data-skin="now"]) .pool-sub-row > .pool-sub-act { flex: 1 0 auto; flex-wrap: wrap; }
+}
+
 /* =====================================================================
    设计语言 HC-1（11-22，首页对话：骨架、头部、列宽、待办、滚动、390 对话栏；
    依据 现在-首页对话-20261122.md HC-01/02/03/04/07/21/22/24/25，用户 11-22 选 C0-A / C1-A / C2-A / C3-A / C5-A / C12-A / C13-A）。
