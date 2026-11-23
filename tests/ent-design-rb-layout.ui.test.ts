@@ -191,7 +191,7 @@ it("数据 1024：小字整句在悬停提示里（本月「没成」的另有�
   await d.page.close();
 });
 
-/** 设计语言 D-2 · 方案 A（3703 实操 11-22：复盘·数据这几块还是白卡）：默认白底不画卡，上面一根线；「原底」照旧白卡 */
+/** 设计语言 D-2 · 方案 A（3703 实操 11-22：复盘·数据这几块还是白卡）：白底不画卡，上面一根线；「原底」照旧白卡 */
 it.each(["data", "month"] as const)("数据 %s 1280：antd 卡（漏斗、瀑布、各进程、按负责人、走势）方案 A 不画卡；原底照旧白卡", async (页) => {
   const { page, errors } = await 打开(页, 1280);
   const 量 = () => page.evaluate(() => [...document.querySelectorAll(".data-shell-body .ant-card")].map((e) => {
@@ -364,7 +364,7 @@ it.each([1024, 1280, 1366, 390])("沟通 %ipx：「沟通｜主题」在筛选�
   expect(await page.locator(".btodo-list .btodo-head [data-testid=talk-kind]").count()).toBe(0);
   const 头 = page.locator('section[aria-label="沟通记录列表"] > .btodo-head');
   expect(字(await 头.locator(".section-title").innerText())).toBe("项目沟通（1,234）");
-  // 设计语言 D-2 · 方案 A（默认白底）：复盘不画卡，卡头和模块标题一样 40 高、不外伸、头下不画线；「原底」照旧是 R-B 的 48 卡头 + 细线
+  // 设计语言 D-2 · 方案 A（白底）：复盘不画卡，卡头和模块标题一样 40 高、不外伸、头下不画线；「原底」照旧是 R-B 的 48 卡头 + 细线
   expect((await 头.boundingBox())!.height).toBeGreaterThanOrEqual(39.5);
   expect(await 头.evaluate((e) => getComputedStyle(e).borderBottomWidth)).toBe("0px");
   await page.evaluate(() => { document.documentElement.dataset.paper = "tone"; });

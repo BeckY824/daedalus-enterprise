@@ -216,9 +216,10 @@
    所以刷新时不会先闪一下原底。这里不许写裸色值（tests/design-tokens.test.ts），只许指到已有 token 上 */
 :root[data-paper="white"] { --page-bg: var(--panel); }
 /* 设计语言 D-1（11-22）：现状的内容卡圆角统一到卡片那档 10（原来 14，借的浮层圆角；暗黑下本来就是 10）。
-   D-2 · 方案 A（11-22）：现状默认就是一张白纸——页面、名单栏、内容区同一层 --panel，左栏铺 --workbench 浅灰；
+   D-2 · 方案 A（11-22）：「白底」是一张白纸——页面、名单栏、内容区同一层 --panel，左栏铺 --workbench 浅灰；
    模块不画卡，靠小号灰标题 + 发丝线 + 留白分开（下面「方案 A」那段，只在现状且不是「原底」时挂）。
-   「原底」（data-paper="tone"）是留给想要原样的人的个人偏好：地面退回浅灰，内容照旧是白卡（lib/appearance.ts） */
+   「原底」（data-paper="tone"）是默认（11-23 切回）：地面退回浅灰，内容照旧是白卡（lib/appearance.ts）。
+   这里的规则按「不是原底就是白底」写：<html> 上的 data-paper 由 layout.tsx 按默认（原底）先挂好，不会落空 */
 :root:is(:not([data-skin]), [data-skin="now"]), [data-skin-preview="now"] { --r-mod: var(--r-card); --page-bg: var(--panel); --rail-bg: var(--workbench); }
 /* 「原底」：现状自己、以及设置 → 外观里现状那张小样（选了原底的人看到的小样也得是原底，不是方案 A） */
 :root:is(:not([data-skin]), [data-skin="now"])[data-paper="tone"] { --page-bg: var(--workbench); }
@@ -6686,7 +6687,7 @@ button.proj-miss-chip { cursor: pointer; }
 
 
 /* ================= 设计语言 D-2 · 方案 A「一张纸 + 分隔线」（11-22 用户定，评审页 评审-底色与模块分区-20261122） =================
-   只挂现状主题、且底色不是「原底」（设置 → 外观；默认白底，lib/appearance.ts）。「原底」照旧是浅灰地面 + 白卡，换皮主题一律不动。
+   只挂现状主题、且底色不是「原底」（设置 → 外观里选「白底」；默认是原底，lib/appearance.ts）。「原底」照旧是浅灰地面 + 白卡，换皮主题一律不动。
    规矩（两方案共用 + A）：
      1. 全站一层纸 --page-bg（= --panel）：页面、名单栏、内容区同色；左栏铺 --rail-bg 浅灰
      2. 模块不画卡：没有框、圆角、底色；靠小号灰标题（13 / 600 --mod-title）+ 模块之间一根 --mod-line + 留白分开
