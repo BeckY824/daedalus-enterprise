@@ -55,7 +55,9 @@ test("记录页名单：收起、打开、刷新后保持、快捷键、窄窗�
   await page.setViewportSize({ width: 1440, height: 900 });
   await 登录(page);
   await page.goto(`/customers/${客户id}`);
-  const 名单 = page.locator("aside.pane-roster");
+  // 只认真名单：整页载入时 @pane/customers/[id]/loading.tsx 的骨架（同 class、aria-busy）先到，
+  // 真名单流式到达后先放在 <div hidden> 里，React 最多再攒 300ms 才换上去——这段时间两块 aside 同在 DOM，严格模式会报两个
+  const 名单 = page.locator('aside.pane-roster:not([aria-busy="true"])');
   const 主区开关 = page.getByRole("main").getByRole("button", { name: /^显示.+名单$/ });
   await expect(名单).toBeVisible();
   await expect(主区开关).toHaveCount(0);

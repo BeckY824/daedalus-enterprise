@@ -4,12 +4,16 @@ import { useSettingsNote } from "./InlineNote";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Checkbox, Input, InputNumber, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
-import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则, 预览超时回收 } from "@/app/(app)/projects/actions";
+import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则 } from "@/app/(app)/projects/actions";
 import { 上限最大, 时长最大, 字数上限最大, 默认起算日, 是不限, 到上限的人数, 推进权限们, type 推进权限, type 组织规则, type 规则改动, type 节点推进范围 } from "@/lib/project/org-rules";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { useConsequence } from "@/components/ConsequenceDialog";
+import { useCountConfirm } from "./use-count-confirm";
+import { 开关后果of, 改回全部项目后果 } from "@/lib/enterprise/switch-table";
 import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
+import { 写xlsx } from "@/lib/xlsx-write";
+import type { 导出必填拦截Action } from "./required-block-actions";
 import { dayjs } from "@/lib/utils";
 import { useBusinessTimeZone } from "@/lib/business-client";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
@@ -70,6 +74,11 @@ export type 项目设置 = {
   提成比例: 三套提成比例 | null;
   /** 老板、总管理员能改提成比例 */
   能改提成比例: boolean;
+  /**
+   * 导出必填拦截记录的动作（server action，SettingsBody 传进来）：只给能导入导出的人（企业版只给系统管理员），没给 = 不摆导出。
+   * 走 props 不在这里 import：这个组件不直接引服务端文件，设置页各 UI 用例打包时不用再一个个替换
+   */
+  导出拦截?: typeof 导出必填拦截Action;
   /**
    * 按人单设的提成比例（10-28）：人们 = 组织里的销售管理、销售（和已经单设过的人），范围 = 他的业务线用哪一套；
    * 比例 = 已单设的（离职的不在里面）。不是企业版 = null / 没给，卡片不出
@@ -149,7 +158,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} {...卡("组织规则")} />}
       {value.组织规则 && <PoolRouteCard />}
       {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 范围={value.时限节点 ?? "全部"} {...卡("组织规则")} />}
-      {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} {...卡("组织规则")} />}
+      {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 导出={value.导出拦截} {...卡("组织规则")} />}
       {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} {...卡("组织规则")} />}
       {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={卡点挡} {...卡("卡点默认")} />}
       {value.卡点开关 && <BlockerRolesCard 开关={value.卡点开关} 挡={卡点挡} {...卡("卡点开关")} />}
@@ -326,23 +335,11 @@ function HoldCapCard({
   const [每人, set每人] = useState<Record<string, number | null>>(规则.每人上限);
   const 改了 = 默认 !== 规则.默认上限 || 成员.some((u) => (每人[u.id] ?? null) !== (规则.每人上限[u.id] ?? null));
   const 保存 = () => 存(() => 改组织规则({ 公海: { 默认上限: 默认 ?? undefined, 每人上限: 每人 } }));
-  const [问后果, 后果框] = useConsequence();
+  const [先数, 后果框] = useCountConfirm();
   const 拨 = (开: boolean) => 跑(() => 改组织规则({ 公海: { 持有上限开: 开 } }), 开 ? "已开持有上限" : "已关持有上限");
-  // 开之前先说会挡住谁（10-30）：一开就生效，按存着的上限数一遍现在已经到了的人；关不用问。PR9：换成后果框（组织规则开关）
-  const 开前预览 = () => {
-    const n = 到上限的人数(规则, 持有, 成员.map((u) => u.id));
-    const 按 = `按${是不限(规则.默认上限) ? "不限" : ` ${规则.默认上限} 个`}${Object.keys(规则.每人上限).length ? "（单独设过的按各自的）" : ""}算`;
-    void 问后果({
-      题: "开持有上限？",
-      后果: [
-        { 标: "全员", 级: "警", 话: n ? `${按}，现在有 ${n} 人已经到了上限，他们暂时领不了公海` : `${按}，现在没有人到上限` },
-        { 标: "能改回", 话: "随时可以关掉，关了就不再挡" },
-      ],
-      是: "开持有上限",
-      危: false,
-      做: async () => ({ ok: await 拨(true) }),
-    });
-  };
+  // 开之前先说会挡住谁（10-30）：一开就生效，按存着的上限数一遍现在已经到了的人；关不用问。
+  // 「先数再确认」和开关总览共用一份（use-count-confirm.tsx，N8）
+  const 开前预览 = () => void 先数.持有上限(规则, 到上限的人数(规则, 持有, 成员.map((u) => u.id)), async () => ({ ok: await 拨(true) }));
 
   return (
     <Card
@@ -416,29 +413,19 @@ function TimeoutCard({
   const 能改 = (n: string) => !挡 && (全能 || 范围.includes(n));
   const 改了 = 节点.some((n) => (天数[n] ?? null) !== (规则.节点天数[n] ?? null) || (外贸天数[n] ?? null) !== (规则.外贸节点天数?.[n] ?? null));
 
-  /** 先数会回收几个，有就确认；改完提示真收了几个 */
+  const [先数, 数框] = useCountConfirm();
+  /** 先数会回收几个，有就确认；改完提示真收了几个（和开关总览共用 use-count-confirm.tsx，N8） */
   const 确认后存 = async (改: 规则改动, 成了: string) => {
-    const 看 = await 预览超时回收(改).catch(() => null);
-    if (!看) return void 就地.error("没改成，请稍后再试");
-    if (!看.ok) return void 就地.error(看.error ?? "没改成，请稍后再试");
-    const 存 = () => 跑(async () => {
-      const r = await 改组织规则(改);
-      if (r.ok) 就地.success(r.收回 ? `${成了}，${r.收回} 个项目回到了线索公海` : 成了);
-      return r;
+    const r = await 先数.超时回收(改, async () => {
+      await 跑(async () => {
+        const r = await 改组织规则(改);
+        if (r.ok) 就地.success(r.收回 ? `${成了}，${r.收回} 个项目回到了线索公海` : 成了);
+        return r;
+      });
+      // 没成的原因 跑 已经写在就地小条里：框照旧关掉（同原来）
+      return { ok: true };
     });
-    if (!看.个数) return void (await 存());
-    // PR9：换成后果框，写明多少个回公海、谁会收到提醒
-    void 问后果({
-      题: `按新设置，现在会有 ${看.个数} 个项目回到线索公海`,
-      后果: [
-        { 标: "回公海", 级: "警", 话: 看.团队
-          ? "这些项目在进程上已经超过处理时长没跟进。确认后你名下的马上回到公海；别人名下的在他下次打开首页或项目列表时回到公海"
-          : "这些项目在进程上已经超过处理时长没跟进，确认后它们马上回到公海" },
-        { 标: "提醒", 话: "负责人都会收到提醒" },
-      ],
-      是: "确认保存",
-      做: async () => void (await 存()),
-    });
+    if (r && !r.ok) 就地.error(r.error ?? "没改成，请稍后再试");
   };
 
   /**
@@ -478,6 +465,7 @@ function TimeoutCard({
       }
     >
       {后果框}
+      {数框}
       {提示条}
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，线索、商机阶段的项目在一个进程上超过处理时长还没跟进，自动回到线索公海，负责人会收到提醒；下一步时间到期、逾期只提醒，不会因此回收。项目上记沟通要填下一步时间。{默认天数 ? `没填天数的进程按 ${默认天数} 天算` : "没填天数的进程不回收"}，订单阶段不回收。默认关。
@@ -556,9 +544,9 @@ const 同一份 = (a: string[] = [], b: string[] = []) => a.length === b.length 
  * 改范围当场存（和开关一样），存量项目下次保存或点「完成节点」时按必填走
  */
 function AdvanceCard({
-  规则, 挡, 忙, 跑, 存,
+  规则, 挡, 导出, 忙, 跑, 存,
 }: {
-  规则: 组织规则["节点推进"]; 挡: string | null; 忙: boolean;
+  规则: 组织规则["节点推进"]; 挡: string | null; 导出?: typeof 导出必填拦截Action; 忙: boolean;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>; 存: 存法;
 }) {
   const [必填, set必填] = useState<Record<string, string[]>>(规则.必填);
@@ -566,6 +554,20 @@ function AdvanceCard({
   const 阶段们 = (["线索", "商机", "订单"] as const).map((阶段) => ({ 阶段, 节点: 节点们[阶段].filter((n) => 能配必填的节点.includes(n)) }));
   const 时区 = useBusinessTimeZone();
   const 只管新建 = 规则.范围 === "新建";
+  /*
+    开关、「管哪些项目」改回全部项目都会立刻改全员能不能往前推（设置开关 N6）：先弹后果框，不确认不动；
+    文案和开关总览同一份（switch-table.ts 开关后果of / 改回全部项目后果）。改成「开启之后新建的」只少管，不问
+  */
+  const [问后果, 后果框] = useConsequence();
+  const 拨 = (开: boolean) => void 问后果({
+    ...开关后果of("node_advance", 开, { 节点推进范围: 规则.范围 }),
+    做: async () => ({ ok: await 跑(() => 改组织规则({ 节点推进: { 开 } }), 开 ? "已开节点推进" : "已关节点推进") }),
+  });
+  const 改范围 = (范围: 节点推进范围) => {
+    const 存 = () => 跑(() => 改组织规则({ 节点推进: { 范围 } }), "已保存");
+    if (范围 !== "全部") return void 存();
+    void 问后果({ ...改回全部项目后果(), 做: async () => ({ ok: await 存() }) });
+  };
 
   return (
     <Card
@@ -578,14 +580,17 @@ function AdvanceCard({
             aria-label="节点推进"
             checked={规则.开}
             disabled={!!挡 || 忙}
-            onChange={(开) => void 跑(() => 改组织规则({ 节点推进: { 开 } }), 开 ? "已开节点推进" : "已关节点推进")}
+            onChange={拨}
           />
         </Space>
       }
     >
+      {后果框}
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，给进程配上必填的几样，项目在这个进程上填齐了自动推到下一个进程（一次只推一格），进程变更里记一行「必填齐了，自动推进」。没填齐也能保存，项目页上会列出还差哪几样。配了必填的进程，没填齐谁都不能往前推，往后退照旧；没配的进程照原来手动推。改了清单以后，项目下次保存时按新清单走。默认关。
       </div>
+      {/* 导不了的人（能导入导出 以外）不摆导出：点了也是服务端回「只有总管理能用」 */}
+      {导出 && <RequiredBlockExport 导出={导出} 跑={跑} 忙={忙} />}
       {规则.开 && (
         <>
           <div className="set-advance-scope">
@@ -593,7 +598,7 @@ function AdvanceCard({
             <Radio.Group
               size="small" optionType="button" aria-label="节点推进管哪些项目" disabled={!!挡 || 忙}
               value={只管新建 ? "新建" : "全部"}
-              onChange={(e) => void 跑(() => 改组织规则({ 节点推进: { 范围: e.target.value as 节点推进范围 } }), "已保存")}
+              onChange={(e) => 改范围(e.target.value as 节点推进范围)}
               options={[{ value: "全部", label: "全部项目" }, { value: "新建", label: "开启之后新建的" }]}
             />
           </div>
@@ -634,6 +639,50 @@ function AdvanceCard({
         </>
       )}
     </Card>
+  );
+}
+
+/**
+ * 必填拦截记录导出（2026-11-23，lib/project/required-block.ts）：往前推被缺必填拦下的每一次都记着（开关关着也记线索验证那道），
+ * 这里导近 N 天的明细、按节点分布、卡超 24 小时的项目数。开关开不开都摆（关着也有线索验证的拦截）；只摆给能导入导出的人，导不导服务端再判一遍
+ */
+function RequiredBlockExport({ 导出, 跑, 忙 }: { 导出: typeof 导出必填拦截Action; 跑: (f: () => 结果, 成了?: string) => Promise<boolean>; 忙: boolean }) {
+  const [天, set天] = useState(30);
+  // 这段时间超过一次能导的行数：只导了最新的那些，按钮旁边说清从哪一刻起（汇总表里也写着）
+  const [截断话, set截断话] = useState<string | null>(null);
+  const 导 = () => 跑(async () => {
+    const r = await 导出(天);
+    if (!r.ok) return r;
+    const d = r.数据;
+    const 截断 = d.汇总.截断 ? `是：记录太多，只导了最新的 ${d.汇总.次数} 行（从 ${d.汇总.最早 ?? d.汇总.起} 起）；要看更早的，缩短天数分段导` : "否";
+    set截断话(d.汇总.截断 ? `记录太多，只导了最新的 ${d.汇总.次数} 行（从 ${d.汇总.最早 ?? d.汇总.起} 起）` : null);
+    const 汇总表 = {
+      名: "汇总", 表头: ["项", "值"],
+      行: [
+        ["起", d.汇总.起], ["止", d.汇总.止], ["被拦次数", String(d.汇总.次数)], ["涉及项目数", String(d.汇总.项目数)], ["卡超 24 小时的项目数", String(d.汇总.卡超24小时项目数)],
+        ["是否截断", 截断],
+      ],
+      列宽: [24, 24],
+    };
+    const bytes = 写xlsx([汇总表, { 名: "按节点", ...d.按节点 }, { 名: "拦截明细", ...d.明细 }]);
+    const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `必填拦截记录-近${天}天-${dayjs().format("YYYYMMDD")}.xlsx`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    return { ok: true };
+  }, "已导出必填拦截记录");
+  return (
+    <div className="set-advance-scope" data-testid="必填拦截导出">
+      <span>必填拦截记录</span>
+      <Select
+        size="small" aria-label="导出近几天的必填拦截记录" value={天} onChange={set天} className="set-block-days"
+        options={[7, 30, 90, 365].map((n) => ({ value: n, label: `近 ${n} 天` }))}
+      />
+      <Button size="small" disabled={忙} onClick={() => void 导()}>导出</Button>
+      {截断话 && <span className="set-block-cut" role="status">{截断话}</span>}
+    </div>
   );
 }
 
@@ -985,7 +1034,7 @@ function PerUserRatesCard({
 
 const 推进权限说明: Record<推进权限, string> = {
   负责人可推: "负责人自己、系统管理员能往前推（直属上级只看、只转让）",
-  仅上级推: "负责人有直属上级时，只有直属上级能往前推（只推进程，不改别的）",
+  仅上级推: "有直属上级的负责人自己推不动，由直属上级和总管理推（只推进程，不改别的）；跟着「按组织架构看客户」走",
 };
 
 /**
@@ -1012,6 +1061,12 @@ function StageRuleCard({
 }) {
   const 阶段们 = ["线索", "商机"] as const;
   const 出口名 = 字典of(true, 规则.出口叫法).出口们;
+  // 往前推权限、前两个进程要沟通、需求补全期一点就改全员能不能推（设置开关 N6）：先弹后果框，和开关总览同一份文案
+  const [问后果, 后果框] = useConsequence();
+  const 确认改 = (键: "push_perm" | "first_two" | "fill_period", 值: boolean | string, 改: 规则改动["阶段"]) => void 问后果({
+    ...开关后果of(键, 值),
+    做: async () => ({ ok: await 跑(() => 改组织规则({ 阶段: 改 }), "已保存") }),
+  });
   const 原来 = (s: (typeof 阶段们)[number]): [string, string] => [规则.出口叫法[s]?.[0] ?? "", 规则.出口叫法[s]?.[1] ?? ""];
   const [叫法, set叫法] = useState<Record<string, [string, string]>>(() => Object.fromEntries(阶段们.map((s) => [s, 原来(s)])));
   const 改了 = 阶段们.some((s) => 叫法[s][0] !== 原来(s)[0] || 叫法[s][1] !== 原来(s)[1]);
@@ -1025,6 +1080,7 @@ function StageRuleCard({
 
   return (
     <Card title="阶段规则" extra={挡 && <span style={{ color: "var(--text-muted)" }}>{挡}</span>}>
+      {后果框}
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         线索阶段只能走到「{出口名.线索[0].叫法}」或「{出口名.线索[1].叫法}」，商机阶段只能「{出口名.商机[0].叫法}」或「{出口名.商机[1].叫法}」，订单只能从商机进；进了下一个阶段就退不回上一个，阶段里面往后退随便退。每次推进都记在进程变更里。
       </div>
@@ -1033,7 +1089,7 @@ function StageRuleCard({
         aria-label="往前推权限"
         disabled={!!挡 || 忙}
         value={规则.推进权限}
-        onChange={(e) => void 跑(() => 改组织规则({ 阶段: { 推进权限: e.target.value as 推进权限 } }), "已保存")}
+        onChange={(e) => 确认改("push_perm", e.target.value as 推进权限, { 推进权限: e.target.value as 推进权限 })}
         style={{ display: "grid", gap: 4, marginBottom: 16 }}
         options={推进权限们.map((v) => ({ value: v, label: <span>{v}<span style={{ color: "var(--text-muted)" }}>：{推进权限说明[v]}</span></span> }))}
       />
@@ -1044,7 +1100,7 @@ function StageRuleCard({
           style={{ flex: "none", marginTop: 3 }}
           disabled={!!挡 || 忙}
           checked={规则.前两节点要沟通}
-          onChange={(v) => void 跑(() => 改组织规则({ 阶段: { 前两节点要沟通: v } }), "已保存")}
+          onChange={(v) => 确认改("first_two", v, { 前两节点要沟通: v })}
         />
         <div style={{ minWidth: 0 }}>
           <div>线索、商机前两个进程各要一条沟通才能往后推</div>
@@ -1059,7 +1115,7 @@ function StageRuleCard({
           style={{ flex: "none", marginTop: 3 }}
           disabled={!!挡 || 忙}
           checked={规则.需求补全期}
-          onChange={(v) => void 跑(() => 改组织规则({ 阶段: { 需求补全期: v } }), "已保存")}
+          onChange={(v) => 确认改("fill_period", v, { 需求补全期: v })}
         />
         <div style={{ minWidth: 0 }}>
           <div>需求状态补全期</div>

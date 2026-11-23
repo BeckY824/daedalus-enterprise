@@ -17,11 +17,15 @@ import { 只看的人, 业务线放行 } from "./permissions";
 
 export type 市场视角 = "市场成员" | "市场管理";
 
-/** 一个人在项目页算不算市场视角。总管理 / 销售 / 销管兼着的不算（他们本来的范围更大）；设了「只看某人」的照旧走那条 */
+/**
+ * 一个人在项目页算不算市场视角。总管理 / 销售 / 销管兼着的不算（他们本来的范围更大）；设了「只看某人」的照旧走那条。
+ * 销售教练、只读管理员（看全部那一类）放在市场部门里也不算（录音点评跟进 11-22，3703 实操：教练在市场部门里按「市场成员」挡详情，
+ * 打开哪个项目都是「没有找到这条记录」）：他们按 P-教练-01 / 只读管理员的口径看全部，不论部门
+ */
 export function 市场视角of(org: 组织 | null, id: string, 市场成员集: ReadonlySet<string>): 市场视角 | null {
   if (!org || 只看的人(org, id)) return null;
   const 们 = org.成员.get(id)?.角色们 ?? [];
-  if (们.some((r) => r === "director" || r === "sales" || r === "sales_mgr")) return null;
+  if (们.some((r) => r === "director" || r === "sales" || r === "sales_mgr" || r === "coach" || r === "admin")) return null;
   if (们.includes("marketing_mgr")) return "市场管理";
   if (市场成员集.has(id) || 们.includes("channel_ops")) return "市场成员";
   return null;

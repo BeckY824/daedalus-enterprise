@@ -12,6 +12,7 @@ import BizRoleSelect, { 总管级 } from "./BizRoleSelect";
 import { 部门树, type 组织部门 } from "@/lib/enterprise/org-tree";
 import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
 import { 规则, 规则名们, 默认开的规则, 关掉后果, type 规则名 } from "@/lib/enterprise/rules-table";
+import { 父关着打不开 } from "@/lib/enterprise/switch-table";
 import { 字段, 字段名们, 字段级别of, 推荐字段配置, 教练字段级别, type 字段配置, type 字段名 } from "@/lib/enterprise/field-perm-table";
 import { 设置项, 设置项们, 谁能改, type 改权限配置, type 能改的人, type 设置项名 } from "@/lib/enterprise/edit-perm-table";
 import { 市场部门们 } from "@/lib/enterprise/market";
@@ -266,12 +267,22 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         <p className="muted">每条规则单独开关，除了{默认开的规则.map((n) => `「${规则[n].名}」`).join("")}都默认关着：关着时按原来的方式看客户。先把下面的部门和上级填好再打开。</p>
         {/* 每条：开关 + 名字一行，说明在下面（globals.css .org-rule：电脑上说明缩进对齐名字，手机 390 宽下说明占满整行、不挤成一窄列） */}
         <div className="org-rules">
-          {规则名们.map((名) => (
+          {规则名们.map((名) => {
+            // 「主动放弃」跟着「线索分配和配额」（设置开关 11-23）：父开关关着只拦「打开」，开着的照样能关
+            const 打不开 = 名 === "主动放弃" && !开着("线索分配") && !开着(名);
+            const 不起作用 = 名 === "主动放弃" && !开着("线索分配") && 开着(名);
+            return (
             <div className="org-rule" key={名}>
-              <Switch checked={开着(名)} disabled={!能改 || 忙(`规则-${名}`)} aria-label={规则[名].名} data-testid={规则testid[名]}
+              <Switch checked={开着(名)} disabled={!能改 || 忙(`规则-${名}`) || 打不开} aria-label={规则[名].名} data-testid={规则testid[名]}
+                title={打不开 ? 父关着打不开(规则.线索分配.名) : undefined}
                 onChange={(v) => void 拨(名, v)} />
               <b className="org-rule-name">{规则[名].名}</b>
               <p className="muted org-rule-say">{规则[名].说明}</p>
+              {(打不开 || 不起作用) && (
+                <p className="org-rule-say org-rule-lock" role="note">
+                  {父关着打不开(规则.线索分配.名)}{不起作用 ? "；现在开着不起作用，可以关掉" : "，现在打不开"}
+                </p>
+              )}
               {/* 规则开着才有这个选项（10-30）：开了以后配额不起作用，下面「线索分配」里配额框灰掉 */}
               {名 === "线索分配" && 开着(名) && value.线索不设配额 != null && (
                 <div className="org-rule org-rule-sub">
@@ -284,7 +295,8 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
                 </div>
               )}
             </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
 

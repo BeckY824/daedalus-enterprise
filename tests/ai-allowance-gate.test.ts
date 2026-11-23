@@ -320,6 +320,8 @@ const 不扣: Record<string, string> = {
   // 不开 MULTI_TENANT，没有我们的工作区账本可扣
   "lib/enterprise-import/mapping.ts": "企业版私有部署，花的是客户自己的 Key",
   "lib/enterprise-import/ai-clean.ts": "企业版私有部署，花的是客户自己的 Key",
+  // 录音点评整理（2026-11-22 PR5）：企业版私有部署，后台任务里调、没有登录的请求；用量记 ai_use coachSum
+  "lib/enterprise/coach-rec-summary.ts": "企业版私有部署，花的是客户自己的 Key",
 };
 
 type 函数段 = { 名: string; 导出: boolean; 体: string };

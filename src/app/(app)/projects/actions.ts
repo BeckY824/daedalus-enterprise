@@ -28,8 +28,9 @@ import { 规整向导, 规整沟通, 向导接着建, 规整只建客户, 只建
 import { 补潜客培育 } from "@/lib/project/nurture";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
-import { 读必填数据, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, 补回收起点留痕, 能管项目, type 交付项 } from "@/lib/project/db";
-import { 合上改动, 是不限, 三态改动摘要, type 规则改动, type 组织规则 } from "@/lib/project/org-rules";
+import { 读必填数据, 有效沟通差of, 补全期不给, 往前推不给, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, 补回收起点留痕, 能管项目, type 交付项 } from "@/lib/project/db";
+import { 合上改动, 三态改动摘要, 负责人可推, type 规则改动 } from "@/lib/project/org-rules";
+import { 组织规则改动摘要 } from "@/lib/project/org-rules-diff";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 不能新建项目话 } from "@/lib/enterprise/permissions";
@@ -47,12 +48,14 @@ import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通�
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
-import { 项目按必填走, 只管新建之后, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
-import { dayjs } from "@/lib/utils";
+import { 项目按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
 import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 读团队 } from "@/lib/sync/client";
-import { 要写原因, 本套位置, 节点序号, type 位置 } from "@/lib/project/nodes";
+import { 要写原因, 本套位置, 节点序号, 下一步, type 位置 } from "@/lib/project/nodes";
+import { 记必填拦截, 认入口 } from "@/lib/project/required-block";
+import { 企业版推进关, 缺本节点沟通 } from "@/lib/project/stage-gates";
+import { 待分配占位 } from "@/lib/enterprise/await-assign";
 import { 判MQL, MQL合格去, MQL不合格去 } from "@/lib/project/mql";
 import { 销售初判, 市场复核, 销售终验, 总管理终判, 销售认领, 撤回验证, type 初判 } from "@/lib/project/lead-verify";
 import { saveCustomer, type CustomerInput } from "../customers/actions";
@@ -502,7 +505,7 @@ async function 合无效原因(附: { 备注?: string | null; 无效原因?: str
  * 撤（11-20 审查，撤销条用）：期望在 = 项目现在应该在的那一格（刚推到的），对不上就不撤、说「已经被改过」；
  * 下一步 = 推之前的下一步，撤销时一起带回（推进 / 完成节点会清掉它）
  */
-export async function 改项目节点(projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null; 无效原因?: string | null } | null, 撤?: { 期望在?: 位置 | null; 下一步?: { 文字?: string | null; 时间?: string | null } | null } | null) {
+export async function 改项目节点(projectId: string, 到: 位置, 异常?: { categoryId?: string | null; 备注?: string | null; 无效原因?: string | null } | null, 撤?: { 期望在?: 位置 | null; 下一步?: { 文字?: string | null; 时间?: string | null } | null } | null, 入口?: string | null) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
@@ -511,7 +514,7 @@ export async function 改项目节点(projectId: string, 到: 位置, 异常?: {
     if (!因.ok) return { ok: false as const, error: 因.error };
     const 异 = 异常 && typeof 异常 === "object" ? { categoryId: 异常.categoryId ?? null, 备注: 因.备注 } : undefined;
     const 期望在 = 撤 && typeof 撤 === "object" && 撤.期望在 && typeof 撤.期望在 === "object" ? 撤.期望在 : null;
-    const r = await 改节点(me, projectId, 到, 异, { 回原: true, ...(期望在 ? { 期望在, 恢复下一步: 撤?.下一步 ?? null } : {}) });
+    const r = await 改节点(me, projectId, 到, 异, { 回原: true, 入口: 认入口(入口), ...(期望在 ? { 期望在, 恢复下一步: 撤?.下一步 ?? null } : {}) });
     if (r.ok && r.变了) {
       const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true, exceptionCategory: { select: { name: true } } } });
       const 类别 = 到.result === "异常状态" ? p?.exceptionCategory?.name ?? null : null;
@@ -565,16 +568,67 @@ export async function 看板推进预检(projectId: string, 到: 位置): Promis
     const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
     const [规则, org] = await Promise.all([生效组织规则(), 权限组织()]);
-    if (!能改节点(me, p, org) && !上级只推(me, p, await 直属才推(org), 规则)) {
+    const 推的组织 = await 直属才推(org);
+    const 自己能 = 能改节点(me, p, org);
+    if (!自己能 && !上级只推(me, p, 推的组织, 规则)) {
       return { ok: false, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
     }
     const 字典 = 字典of(企业版(), 企业版() ? 规则.阶段.出口叫法 : null);
-    const 往前 = !p.result && 节点序号(本套位置({ ...到, result: null }, 字典), 字典) > 节点序号(本套位置(p, 字典), 字典);
+    // 旧名（企业版 10-31 改名）先对到新名：记的节点和 改节点、记完成节点被拦 一样是新名，同一节点不记两行、统计不拆两名
+    const 现 = 本套位置(p, 字典);
+    const 去 = 本套位置({ ...到, result: null }, 字典);
+    const 往前 = !p.result && 节点序号(去, 字典) > 节点序号(现, 字典);
     // 节点推进管不管这个项目（默认全部项目都管，客户 11-19；设置成只管新建的时存量不拦）：和 改节点 同一个判断
     if (!往前 || !项目按必填走(规则, p)) return { ok: true, 还差: [] };
     const 差 = 必填还差(规则, await 读必填数据(prisma, p, 规则));
+    // 缺着必填拖不过去 = 被拦一次（必填拦截记录，客户 11-23）；卡片弹回、就地补填。补齐后真推再被拦，10 分钟内不重复记。
+    // 和 记完成节点被拦 同一套排除：待分配占位、补全期、往前推不给（「仅上级推」时负责人本人往前推）是没权限，真推也推不动，不记
+    const 没权限 = 待分配占位(me, p) || (企业版() && 补全期不给(me, org, 规则)) || 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则));
+    if (差.length && !没权限) {
+      await 记必填拦截(prisma, {
+        userId: me.id, p: { id: p.id, customerId: p.customerId, phase: 现.phase, node: 现.node }, 到: { phase: 去.phase, node: 去.node },
+        种: "节点必填", 缺: 差.map(必填叫法), 入口: "看板拖动", 代推: !自己能,
+      });
+    }
     return { ok: true, 还差: 差.map(必填叫法) };
   } catch (e) { return 不在了(e); }
+}
+
+/**
+ * 项目页「完成节点」被缺必填拦下、没经服务端推进时记一次被拦（必填拦截记录，客户 11-23）：
+ *   - 这个节点还差必填、点了弹出补填框（节点必填）
+ *   - 推过线索验证还缺几样、按钮灰着、点了灰按钮（线索验证 / 本节点沟通，节点推进开关关着也有）
+ * 只认服务端自己算的，和 改节点 同一套判断、同样的先后：能推这个项目（负责人或「仅上级推」下的直属上级）、不是补全期 / 推进权限挡下的、
+ * 往前一格；先看推进关、再看节点必填。界面交的只有项目 id。只留痕、不回话
+ */
+export async function 记完成节点被拦(projectId: string): Promise<void> {
+  // 认人放在 try 外：没登录照常抛（按未登录处理）
+  const me = await requireUser();
+  try {
+    if (!企业版() || !(await 开着())) return;
+    const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") } });
+    if (!p || p.pooledAt || p.result || p.deletedAt) return;
+    const [规则, org] = await Promise.all([生效组织规则(), 权限组织()]);
+    const 推的组织 = await 直属才推(org);
+    const 自己能 = 能改节点(me, p, org);
+    if (!自己能 && !上级只推(me, p, 推的组织, 规则)) return;
+    if (待分配占位(me, p) || 补全期不给(me, org, 规则) || 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则))) return;
+    const 字典 = 字典of(true, 规则.阶段.出口叫法);
+    const 现 = 本套位置(p, 字典);
+    const 下 = 下一步(现, 字典);
+    if (!下) return;
+    const 记 = (种: "节点必填" | "线索验证" | "本节点沟通", 缺: string[]) =>
+      记必填拦截(prisma, { userId: me.id, p: { id: p.id, customerId: p.customerId, phase: 现.phase, node: 现.node }, 到: 下, 种, 缺, 入口: "完成节点", 代推: !自己能 });
+    let 差记: string[] | null = null;
+    const 差fn = 有效沟通差of(prisma, p, 规则);
+    const 关 = await 企业版推进关(prisma, p, { ...下, result: null }, 规则, async () => (差记 = await 差fn()));
+    if (关) return void (await (关 === 缺本节点沟通(现.node) ? 记("本节点沟通", [`${现.node}的沟通`]) : 记("线索验证", 差记 ?? ["需求状态"])));
+    if (!项目按必填走(规则, p)) return;
+    const 差 = 必填还差(规则, await 读必填数据(prisma, p, 规则));
+    if (差.length) await 记("节点必填", 差.map(必填叫法));
+  } catch (e) {
+    console.error("记完成节点被拦", e);
+  }
 }
 
 /** 企业版「终止进程」（M-节点-04）：按所在阶段落到线索流失 / 丢单 / 异常状态；线索流失、丢单 备注 = 原因（必填），异常状态带类别。审计和 改项目节点 一样记 */
@@ -741,12 +795,6 @@ const 项目字段名: Record<string, string> = {
   stockStatus: "备货状态", logisticsStatus: "物流状态", trackingNo: "物流单号",
   replyStartAt: "指定回复时间", replyEndAt: "指定回复时间",
 };
-
-/** 操作日志里节点推进管哪些项目（客户 11-19：默认存量、新建都管；设置成只管新建的写上从哪一刻起） */
-function 推进范围话(r: 组织规则): string {
-  const 起 = 只管新建之后(r);
-  return 起 ? `只管 ${dayjs(起).format("YYYY-MM-DD HH:mm")} 之后新建的项目` : r.节点推进.范围 === "新建" ? "只管开启之后新建的项目" : "存量和新建的项目都管";
-}
 
 /** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源、项目级别、项目标签、所在地、需求描述、合同金额、定金金额、痛点标注、合同状态、备货状态、物流状态、物流单号、业务线（改了不重新自动分配） */
 export async function 编辑项目(projectId: string, patch: 编辑项目改动, 带待办?: boolean) {
@@ -981,21 +1029,9 @@ export async function 改组织规则(改: 规则改动) {
     const 新 = 合上改动(旧, 改);
     if ("error" in 新) return { ok: false as const, error: 新.error };
     await 存组织规则(新);
-    const g = 新.公海, t = 新.超时回收;
-    const 推 = 新.节点推进;
-    const 说 = 改.三态 !== undefined
-      ? 三态改动摘要(旧.三态, 新.三态)
-      : 改.阶段 !== undefined
-      ? 改.阶段.培育计划上限 !== undefined || 改.阶段.无效原因上限 !== undefined
-        ? `组织规则：培育计划字数上限 ${新.阶段.培育计划上限 ?? "不设"}，无效原因字数上限 ${新.阶段.无效原因上限 ?? "不设"}`
-        : `组织规则：往前推权限 ${新.阶段.推进权限}，改了 ${Object.keys(新.阶段.出口叫法).length} 个阶段的结束状态叫法`
-      : 改.节点推进 !== undefined
-      ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个进程配了必填，${推进范围话(新)}` : `组织规则：节点推进关${改.节点推进.范围 !== undefined ? `，${推进范围话(新)}` : ""}`
-      : 改.超时回收 !== undefined
-      ? (t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长${Object.keys(t.外贸节点天数 ?? {}).length ? `（外贸单设 ${Object.keys(t.外贸节点天数 ?? {}).length} 个）` : ""}` : "组织规则：超时回收关") + (改.超时回收.起算日 !== undefined ? `，起算日 ${t.起算日 ?? "不设"}` : "")
-      : 改.公海?.多项目客户 !== undefined
-      ? `组织规则：多项目客户公海走法 ${g.多项目客户}`
-      : g.持有上限开 ? `组织规则：项目持有上限开，默认 ${是不限(g.默认上限) ? "不限" : `${g.默认上限} 个`}，单独设了 ${Object.keys(g.每人上限).length} 人` : "组织规则：项目持有上限关";
+    // 摘要写「哪项从什么变成什么」（设置开关 N9，11-23）：原来按交了哪一块拼，改阶段开关时写成「往前推权限 X，改了 N 个阶段的结束状态叫法」；
+    // 三态照旧用自己那套（每个天数都带改前 → 改后，M-公海-31）。detail 照旧存改后整份，开关总览拿相邻两行比
+    const 说 = 改.三态 !== undefined ? 三态改动摘要(旧.三态, 新.三态) : 组织规则改动摘要(旧, 新);
     await recordAudit({ user: me, action: "update", entity: "Setting", entityId: "orgRules", summary: 说, detail: 新 });
     // 改了时长当场按新的扫一遍（老板保存前已经看过会回收几个）
     const 收回 = 改.超时回收 !== undefined ? await 公海超时收回(me) : 0;

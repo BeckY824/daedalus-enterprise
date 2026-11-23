@@ -4,6 +4,7 @@ import { 补来源 } from "@/lib/customer-extra-db";
 
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 停用成员录音, 没发出的录音数 } from "@/lib/enterprise/coach-rec-db";
 import { beijingDay } from "@/lib/business-clock";
 import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 解绑飞书 } from "@/lib/enterprise/feishu-login";
@@ -471,6 +472,8 @@ async function 离职原地不动(me: Awaited<ReturnType<typeof requireUser>>, i
     throw e;
   }
   await 撤托管成员(id);
+  // 录音点评（PR6）：TA 没发出的录音（草稿、转写中、整理中）放弃、文件当场删；出错不挡停用，清理一轮兜底
+  await 停用成员录音(id).catch((e) => console.warn(`[录音清理] 停用成员录音出错：${e instanceof Error ? e.message.slice(0, 200) : e}`));
   const 项目 = (await getBusiness()).projectMode === true ? 分.项目.length : 0;
   await recordAudit({
     user: me, action: "deactivate", entity: "User", entityId: id,
@@ -531,7 +534,9 @@ export async function 停用清点(id: string) {
   // 11-03 C4-4：只剩「原地不动」一种，清点的是停用后还留在他名下、要到离职交接里交的；没开项目模式不数项目
   const 分 = await 停用分拣(prisma, id, "转交", true);
   const 项目模式 = (await getBusiness()).projectMode === true;
-  return { ok: true as const, 原地: { 客户: 分.客户.length, 项目: 项目模式 ? 分.项目.length : 0 } };
+  // 没发出的录音点评（录音点评跟进 11-22）：停用时自动删掉，确认框里有才提一句
+  const 录音 = await 没发出的录音数(id).catch(() => 0);
+  return { ok: true as const, 原地: { 客户: 分.客户.length, 项目: 项目模式 ? 分.项目.length : 0 }, 录音 };
 }
 
 export async function reactivateUser(id: string) {

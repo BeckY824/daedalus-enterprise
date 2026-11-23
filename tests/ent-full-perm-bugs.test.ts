@@ -49,6 +49,8 @@ import { patchCustomer } from "@/app/(app)/customers/actions";
 import { restoreContact, 撤销记一笔, type 删掉的联系人 } from "@/app/(app)/customers/[id]/actions";
 import { 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 认父记录 } from "@/app/api/attachments/access";
+import { 只看某人键 } from "@/lib/enterprise/org-core";
+import { 只看某人话 } from "@/lib/enterprise/permissions";
 
 /** 人：代称 → 用户 id */
 const 人 = {
@@ -219,6 +221,68 @@ describe("【中】附件 认父记录：联系人 / 线索 / 商机三支不看
     expect("错" in r, JSON.stringify(r)).toBe(false);
     const r2 = await 作为("销售乙", () => 认父记录({ contactId: c.id }, "删"));
     expect("错" in r2, JSON.stringify(r2)).toBe(true);
+  });
+
+  it("P-删-04（11-23）：删附件和传附件同一口径——能传就能删（项目运营角色的负责人原来传得上、删不掉）；别人的客户照拒", async () => {
+    await 开规则(true);
+    await raw.entMember.update({ where: { userId: 人.销售丙 }, data: { bizRole: "project_ops" } });
+    忘掉企业版范围();
+    const c = await raw.contact.create({ data: { name: "丙客户的联系人", customerId: 客户.丙的 } });
+    const 传 = await 作为("销售丙", () => 认父记录({ contactId: c.id }, true));
+    expect("错" in 传, JSON.stringify(传)).toBe(false);
+    const 删 = await 作为("销售丙", () => 认父记录({ contactId: c.id }, "删"));
+    expect("错" in 删, JSON.stringify(删)).toBe(false);
+    const 别人删 = await 作为("销售乙", () => 认父记录({ contactId: c.id }, "删"));
+    expect("错" in 别人删, JSON.stringify(别人删)).toBe(true);
+    // 公海客户的联系人附件：照旧只有系统管理员删得了
+    const g = await raw.contact.create({ data: { name: "公海客户的联系人", customerId: 客户.公海 } });
+    expect("错" in (await 作为("销售甲", () => 认父记录({ contactId: g.id }, "删")))).toBe(true);
+  });
+
+  it("P-删-04（11-23 审查）：没挂客户的线索附件按能不能改这条线索判——能改的（负责人、系统管理员、市场管理改没分的和圈里的）能传能删；只读角色、只看某人、虚线上级、同组别人都拒", async () => {
+    await 开规则(true);
+    // 线索分配开着：市场管理看得到、改得了没分的线索和市场圈里的人负责的（visibility.ts 线索全看 / 线索圈）
+    await 存设置(规则.线索分配.key, true);
+    for (const [id, bizRole, managerId, dottedManagerId] of [
+      ["p_mkt", "marketing_mgr", null, null], ["p_mm", "sales", "p_mkt", null], ["p_ro", "admin", null, null],
+      ["p_watch", "marketing_mgr", null, null], ["p_dot", "sales_mgr", null, null], ["p_d", "sales", null, "p_dot"],
+    ] as const) {
+      await raw.user.create({ data: { id, email: `${id}@x.com`, name: id, password: "x", role: "SALES", active: true } });
+      await raw.entMember.create({ data: { userId: id, bizRole, managerId, dottedManagerId } });
+    }
+    // 只看某人：p_watch 只看 p_mm
+    await 存设置(只看某人键, { p_watch: "p_mm" });
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    const 甲的 = await raw.lead.create({ data: { name: "甲的散线索", ownerId: 人.销售甲 } });
+    const 没分的 = await raw.lead.create({ data: { name: "没分的散线索", ownerId: null } });
+    const 圈里的 = await raw.lead.create({ data: { name: "市场圈的散线索", ownerId: "p_mm" } });
+    const 自己的 = await raw.lead.create({ data: { name: "只看某人自己的散线索", ownerId: "p_watch" } });
+    const 下属的 = await raw.lead.create({ data: { name: "虚线下属的散线索", ownerId: "p_d" } });
+    const 以 = async <R,>(id: string, f: () => Promise<R>): Promise<R> => {
+      临时.票 = await 签票(id);
+      忘掉企业版范围();
+      try { return await f(); } finally { 临时.票 = undefined; }
+    };
+    const 错 = (r: object) => "错" in r;
+    // 能改这条线索的：传、删都放
+    for (const [id, l] of [[人.销售甲, 甲的], [人.老板, 甲的], [人.老板, 没分的], ["p_mkt", 没分的], ["p_mkt", 圈里的], [人.组长, 甲的]] as const) {
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, true))), `${id} 传 ${l.name}`).toBe(false);
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, "删"))), `${id} 删 ${l.name}`).toBe(false);
+    }
+    // 看得到、改不了的：看放，传、删都拒（只读角色看全部；只看某人自己负责的也只能看；虚线上级看得到虚线下属的）
+    for (const [id, l] of [["p_ro", 甲的], ["p_ro", 没分的], ["p_watch", 圈里的], ["p_watch", 自己的], ["p_dot", 下属的]] as const) {
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, false))), `${id} 看 ${l.name}`).toBe(false);
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, true))), `${id} 传 ${l.name}`).toBe(true);
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, "删"))), `${id} 删 ${l.name}`).toBe(true);
+    }
+    // 只看某人自己负责的也拒，给的是只看某人那句（钉住设置生效了，不是碰巧没在范围里）
+    expect(await 以("p_watch", () => 认父记录({ leadId: 自己的.id }, true))).toEqual({ 错: 只看某人话, 状态: 403 });
+    // 市场管理改不了圈外的人负责的；同组的别人照拒
+    for (const [id, l] of [["p_mkt", 甲的], [人.销售乙, 甲的]] as const) {
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, true))), `${id} 传 ${l.name}`).toBe(true);
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, "删"))), `${id} 删 ${l.name}`).toBe(true);
+    }
   });
 
   it("没设业务角色的人给公海客户的联系人传附件 → 应被拒", async () => {

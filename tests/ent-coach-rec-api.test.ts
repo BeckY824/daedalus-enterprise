@@ -16,10 +16,14 @@
  *   - 切换视图：开始、传片、传完、放弃、看进度、听原声都拒（403）；页面数据里不给对方的草稿和待提交卡
  *   - 腾讯云取文件：只认签名（过期、改过、换编号都 404），还要状态 = 转写中、开关开着
  *   - 号码打码：销售教练看到的文件名里号码打码（安卓通话录音那几种号码连日期的写法也打），别人原样；留痕里一律打码
+ *   - PR3 补段 / 丢段 / 打断：待提交的录音「接着录」回上传中、下一段从 段数 + 1 起（已拼好的段不能再传）；丢段：一段没有整条放弃、
+ *     有段的退回待提交并删这回的片；打断只收白名单原因、记第几段；传的文件不能补；别人的 404；交了的 409；分段回放 ?seg=N；
+ *     有 ffmpeg 时传完把各段时长加起来
  * 用拷出来的一份库、显式单连接，数据目录用临时目录，不碰共用的测试库。
  */
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from "vitest";
 import fs from "node:fs";
+import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
 
@@ -74,6 +78,8 @@ import { POST as 放弃 } from "@/app/api/coach-rec/[id]/abandon/route";
 import { GET as 进度 } from "@/app/api/coach-rec/[id]/status/route";
 import { GET as 原声 } from "@/app/api/coach-rec/[id]/audio/route";
 import { GET as 取文件 } from "@/app/api/coach-rec/fetch/[id]/route";
+import { POST as 接着录 } from "@/app/api/coach-rec/[id]/resume/route";
+import { POST as 丢段 } from "@/app/api/coach-rec/[id]/drop/route";
 
 const 人 = {
   老板: "cr_boss", // director：系统管理员
@@ -401,7 +407,10 @@ describe("开关开着：传、传完、续传、放弃", () => {
     当("教练");
     const id = ((await 开一条(项目, { sourceKind: "网页录" })).体.录音 as { id: string }).id;
     expect((await 片(id, 0, 字节(100))).status).toBe(200);
-    expect((await 片(id, 0, 字节(100, new Uint8Array(Buffer.from("<html>"))), "2")).status).toBe(415);
+    const 认不出 = await 片(id, 0, 字节(100, new Uint8Array(Buffer.from("<html>"))), "2");
+    expect(认不出.status).toBe(415);
+    // 网页录说录音的话，不说「文件」（跟进 11-22）
+    expect(认不出.体.error).toBe("这一段录音的格式认不出来");
     const 不一样 = await 片(id, 0, 字节(100, new Uint8Array(Buffer.from("OggS"))), "2");
     expect(不一样.status).toBe(415);
     expect(不一样.体.error).toContain("格式不一样");
@@ -439,7 +448,7 @@ describe("开关开着：传、传完、续传、放弃", () => {
   it("段号、片号、编号不像样的直接拒（不拼路径）", async () => {
     当("教练");
     const id = ((await 开一条()).体.录音 as { id: string }).id;
-    for (const [seg, seq] of [["0", "0"], ["..", "0"], ["1", "-1"], ["1", "../x"], ["21", "0"], ["1", "40"], ["1", "1e3"]]) {
+    for (const [seg, seq] of [["0", "0"], ["..", "0"], ["1", "-1"], ["1", "../x"], ["21", "0"], ["1", "600"], ["1", "1e3"]]) {
       const r = await 读(await 传片(请(`/api/coach-rec/${id}/chunk/${seg}/${seq}`, { method: "PUT", body: 字节(10) as unknown as BodyInit }), 参({ id, seg, seq })));
       expect(r.status, `${seg}/${seq}`).toBe(400);
     }
@@ -646,5 +655,167 @@ describe("写只走 主题写", () => {
     当("教练");
     await expect(以谁的身份(人.教练, () => db.entCoachRecording.create({ data: { projectId: 项目, authorId: 人.教练, sourceKind: "上传" } }))).rejects.toThrow();
     expect(await raw.entCoachRecording.count()).toBe(0);
+  });
+});
+
+const 完带 = async (id: string, 体: unknown) => 读(await 传完(请(`/api/coach-rec/${id}/finish`, { method: "POST", body: JSON.stringify(体) }), 参({ id })));
+const 续录 = async (id: string) => 读(await 接着录(请(`/api/coach-rec/${id}/resume`, { method: "POST" }), 参({ id })));
+const 丢 = async (id: string) => 读(await 丢段(请(`/api/coach-rec/${id}/drop`, { method: "POST" }), 参({ id })));
+const 有ffmpeg = spawnSync("ffmpeg", ["-version"]).status === 0 && spawnSync("ffprobe", ["-version"]).status === 0;
+
+describe("录音 PR3：补段、丢段、打断", () => {
+  beforeEach(() => 开关(true));
+  const 录一段 = async () => {
+    当("教练");
+    const s = await 开一条(项目, { sourceKind: "网页录", fileName: undefined, bytes: undefined, mime: undefined });
+    expect(s.status).toBe(200);
+    const id = (s.体.录音 as { id: string }).id;
+    expect((await 片(id, 0, 字节(100))).status).toBe(200);
+    expect((await 片(id, 1, 字节(50, new Uint8Array(0)))).status).toBe(200);
+    return id;
+  };
+
+  it("被打断：传完带 打断 记下第几段、在第几秒、什么原因；能补；接着录回上传中，已拼好的段不能再传，下一段拼在后面", async () => {
+    const id = await 录一段();
+    const 一 = await 完带(id, { 打断: { 秒: 42.3, 原因: "来电或话筒被占用" } });
+    expect(一.status).toBe(200);
+    expect(一.体.录音).toMatchObject({ status: "待提交", 段数: 1, 打断们: [{ 段: 1, 秒: 42, 原因: "来电或话筒被占用" }], 能补: true, 总字节: 150 });
+    const 二 = await 续录(id);
+    expect(二.status).toBe(200);
+    expect(二.体.录音).toMatchObject({ status: "上传中", 段数: 1 });
+    // 再点一次（两个窗口、连点）当成功
+    expect((await 续录(id)).status).toBe(200);
+    const 旧段 = await 片(id, 0, 字节(100), "1");
+    expect(旧段.status).toBe(409);
+    expect(旧段.体.error).toBe("这一段已经传完了");
+    // 跳段：第 3 段的片收了也拼不成
+    expect((await 片(id, 0, 字节(100), "3")).status).toBe(200);
+    expect((await 完(id)).status).toBe(409);
+    expect((await 丢(id)).status).toBe(200);
+    expect((await 续录(id)).status).toBe(200);
+    expect((await 片(id, 0, 字节(80), "2")).status).toBe(200);
+    const 三 = await 完带(id, { 打断: { 秒: 90, 原因: "锁屏或切到后台" } });
+    expect(三.体.录音).toMatchObject({ status: "待提交", 段数: 2, 总字节: 230, 打断们: [{ 段: 1, 秒: 42 }, { 段: 2, 秒: 90, 原因: "锁屏或切到后台" }] });
+    const 行 = await raw.entCoachRecording.findUniqueOrThrow({ where: { id } });
+    expect(行).toMatchObject({ segCount: 2, chunks: 3, bytes: 230 });
+    expect(行.audioPath).toMatch(/seg-01\.m4a$/);
+    // 分段回放：不带 seg 给第 1 段；?seg=2 给第 2 段；没有的段不认（给第 1 段）
+    const 听段 = async (seg?: string) => (await 原声(请(`/api/coach-rec/${id}/audio${seg ? `?seg=${seg}` : ""}`), 参({ id }))).arrayBuffer().then((b) => b.byteLength);
+    expect(await 听段()).toBe(150);
+    expect(await 听段("2")).toBe(80);
+    expect(await 听段("9")).toBe(150);
+    expect(await 听段("../x")).toBe(150);
+    // 交了以后不能补
+    await raw.entCoachRecording.update({ where: { id }, data: { status: "转写中" } });
+    expect((await 续录(id)).status).toBe(409);
+  });
+
+  it("打断原因不在白名单、秒数不像样：不记；没带打断照常传完", async () => {
+    const id = await 录一段();
+    expect((await 完带(id, { 打断: { 秒: 3, 原因: "<script>" } })).体.录音).toMatchObject({ status: "待提交", 打断们: [] });
+    const id2 = await 录一段();
+    expect((await 完带(id2, { 打断: { 秒: -5, 原因: "录音出错" } })).体.录音).toMatchObject({ 打断们: [] });
+    expect((await raw.entCoachRecording.findUniqueOrThrow({ where: { id: id2 } })).interrupts ?? null).toBeNull();
+  });
+
+  it("丢段：一段都没有的整条放弃、片当场删；补段时丢 = 退回待提交、这回的片删掉，前面的段不动", async () => {
+    const id = await 录一段();
+    const 行 = await raw.entCoachRecording.findUniqueOrThrow({ where: { id } });
+    const 目录 = path.join(录音根(), 行.createdAt.toISOString().slice(0, 7).replace("-", ""), id);
+    const 一 = await 丢(id);
+    expect(一.status).toBe(200);
+    expect(一.体.录音).toBeNull();
+    expect(await raw.entCoachRecording.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "已放弃" });
+    expect(fs.existsSync(目录)).toBe(false);
+    // 再丢一次当成功
+    expect((await 丢(id)).status).toBe(200);
+
+    const id2 = await 录一段();
+    expect((await 完(id2)).status).toBe(200);
+    expect((await 续录(id2)).status).toBe(200);
+    expect((await 片(id2, 0, 字节(70), "2")).status).toBe(200);
+    const 二 = await 丢(id2);
+    expect(二.体.录音).toMatchObject({ status: "待提交", 段数: 1, 总字节: 150 });
+    const 行2 = await raw.entCoachRecording.findUniqueOrThrow({ where: { id: id2 } });
+    const 目录2 = path.join(录音根(), 行2.createdAt.toISOString().slice(0, 7).replace("-", ""), id2);
+    expect(fs.existsSync(path.join(目录2, "seg-02"))).toBe(false);
+    expect(fs.existsSync(path.join(目录2, "seg-01.m4a"))).toBe(true);
+    // 待提交的丢段：不动、回现状
+    expect((await 丢(id2)).体.录音).toMatchObject({ status: "待提交" });
+  });
+
+  it("传的文件不能补；别人的录音接着录、丢段都 404，状态不动；开关关了 404", async () => {
+    const 传的 = await 传好一条("教练");
+    const r = await 续录(传的);
+    expect(r.status).toBe(409);
+    expect(r.体.error).toBe("传的文件不能补录");
+    const id = await 录一段();
+    expect((await 完(id)).status).toBe(200);
+    当("组长");
+    expect((await 续录(id)).status).toBe(404);
+    expect((await 丢(id)).status).toBe(404);
+    expect(await raw.entCoachRecording.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "待提交" });
+    当("教练");
+    await 开关(false);
+    expect((await 续录(id)).status).toBe(404);
+    expect((await 丢(id)).status).toBe(404);
+  });
+
+  it("补段时丢了权限（项目进公海）：接着录 403", async () => {
+    const id = await 录一段();
+    expect((await 完(id)).status).toBe(200);
+    await raw.project.update({ where: { id: 项目 }, data: { pooledAt: new Date() } });
+    expect((await 续录(id)).status).toBe(403);
+    expect(await raw.entCoachRecording.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "待提交" });
+  });
+
+  it("PR3 审查：飞书原生录第一段（wav），再切网页录补一段（webm）→ 只拒这一片 415，前一段不丢、整条不放弃", async () => {
+    当("教练");
+    const 头wav = new Uint8Array(Buffer.from("RIFF\0\0\0\0WAVE", "binary"));
+    const id = ((await 开一条(项目, { sourceKind: "飞书原生录", fileName: undefined, bytes: undefined, mime: undefined })).体.录音 as { id: string }).id;
+    expect((await 片(id, 0, 字节(120, 头wav))).status).toBe(200);
+    expect((await 完(id)).体.录音).toMatchObject({ status: "待提交", 段数: 1, 格式: "wav" });
+    expect((await 续录(id)).status).toBe(200);
+    const 网页段 = await 片(id, 0, 字节(100, new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])), "2");
+    expect(网页段.status).toBe(415);
+    expect(网页段.体.error).toContain("格式不一样");
+    const 行 = await raw.entCoachRecording.findUniqueOrThrow({ where: { id } });
+    expect(行).toMatchObject({ status: "上传中", segCount: 1, deletedAt: null, bytes: 120 });
+    const 目录 = path.join(录音根(), 行.createdAt.toISOString().slice(0, 7).replace("-", ""), id);
+    expect(fs.existsSync(path.join(目录, "seg-01.wav"))).toBe(true);
+    // 11-23：被拒的这段一片都没收，片目录 seg-02 一起删，不留空目录
+    expect(fs.existsSync(path.join(目录, "seg-02"))).toBe(false);
+    // 丢掉这段 → 回到待提交，第 1 段还能听、能交
+    expect((await 丢(id)).体.录音).toMatchObject({ status: "待提交", 段数: 1, 总字节: 120 });
+    expect(fs.existsSync(path.join(目录, "seg-01.wav"))).toBe(true);
+  });
+
+  it("PR3 审查：补段时 200MB 总量连前面拼好的段一起算", async () => {
+    const id = await 录一段();
+    expect((await 完(id)).status).toBe(200);
+    expect((await 续录(id)).status).toBe(200);
+    await raw.entCoachRecording.update({ where: { id }, data: { bytes: 文件上限字节 - 50 } });
+    const 超 = await 片(id, 0, 字节(100), "2");
+    expect(超.status).toBe(413);
+    expect(超.体.error).toContain("录音超过");
+    expect((await 片(id, 0, 字节(40), "2")).status).toBe(200);
+    expect(await raw.entCoachRecording.findUniqueOrThrow({ where: { id } })).toMatchObject({ status: "上传中", segCount: 1, deletedAt: null });
+  });
+
+  it.skipIf(!有ffmpeg)("有 ffmpeg：传完把各段时长加起来（2 秒 + 3 秒 ≈ 5 秒）", async () => {
+    const 生成 = (秒: number) => {
+      const f = path.join(临时.dir, `t${秒}.m4a`);
+      expect(spawnSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", `sine=frequency=440:sample_rate=16000:duration=${秒}`, "-ac", "1", "-c:a", "aac", "-b:a", "32k", "-f", "mp4", f]).status).toBe(0);
+      return new Uint8Array(fs.readFileSync(f));
+    };
+    当("教练");
+    const id = ((await 开一条(项目, { sourceKind: "网页录", fileName: undefined, bytes: undefined, mime: undefined })).体.录音 as { id: string }).id;
+    expect((await 片(id, 0, 生成(2))).status).toBe(200);
+    const 一 = await 完(id);
+    expect(Math.abs((一.体.录音 as { 时长毫秒: number }).时长毫秒 - 2000)).toBeLessThan(200);
+    expect((await 续录(id)).status).toBe(200);
+    expect((await 片(id, 0, 生成(3), "2")).status).toBe(200);
+    const 二 = await 完(id);
+    expect(Math.abs((二.体.录音 as { 时长毫秒: number }).时长毫秒 - 5000)).toBeLessThan(300);
   });
 });

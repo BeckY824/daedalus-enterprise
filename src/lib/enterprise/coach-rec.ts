@@ -13,7 +13,7 @@
  */
 import { 能发主题, type 主题项目 } from "./coach-topic";
 import { 能看项目, 是教练, type 谁 } from "./permissions";
-import { 文件名打码 } from "./notice-mask";
+import { 文件名打码, 通知文字打码 } from "./notice-mask";
 import { 认格式 } from "@/lib/mic-test-echo";
 import type { 组织 } from "./org-core";
 
@@ -23,8 +23,40 @@ export const 片上限字节 = 5 * 1024 * 1024;
 export const 文件上限字节 = 200 * 1024 * 1024;
 /** 单个最长 2 小时：时长 PR4 用 ffprobe 算了才判（不信客户端），这里只给界面写提示 */
 export const 时长上限毫秒 = 2 * 60 * 60 * 1000;
-/** 一段最多几片（200MB / 5MB） */
-export const 每段片数上限 = Math.ceil(文件上限字节 / 片上限字节);
+/**
+ * 一段最多几片：传文件 5MB 一片最多 40 片；按住说话、点按录音边录边传 15 秒一片（PR3），点按录音一段最长 2 小时 = 480 片，留到 600。
+ * 总字节照样不超过 文件上限字节（收一片时判）
+ */
+export const 每段片数上限 = 600;
+/** 网页录边录边传：每片多少毫秒（MediaRecorder timeslice） */
+export const 录音每片毫秒 = 15_000;
+/** 按住说话一条最长（几段合计）10 分钟；点按录音一条最长 2 小时（11-22 Even 线下陪练要长录音） */
+export const 按住上限毫秒 = 10 * 60 * 1000;
+export const 点按上限毫秒 = 时长上限毫秒;
+/** 不到 1 秒的不要 */
+export const 最短录音毫秒 = 1_000;
+/** 录着被打断的原因（前端认出来报上来，只收这几种；给人看「录音在 0:42 被打断（来电或话筒被占用），已录部分已保存」） */
+export const 打断原因们 = ["锁屏或切到后台", "来电或话筒被占用", "录音出错"] as const;
+export type 打断原因 = (typeof 打断原因们)[number];
+export type 打断 = { 段: number; 秒: number; 原因: 打断原因 };
+/** 传完时带上来的打断：原因在名单里、秒数 0–2 小时；不对的当没有 */
+export function 认打断(x: unknown): { 秒: number; 原因: 打断原因 } | null {
+  if (!x || typeof x !== "object") return null;
+  const o = x as Record<string, unknown>;
+  if (!(打断原因们 as readonly unknown[]).includes(o.原因)) return null;
+  const 秒 = Number(o.秒);
+  if (!Number.isFinite(秒) || 秒 < 0 || 秒 > 时长上限毫秒 / 1000) return null;
+  return { 秒: Math.round(秒), 原因: o.原因 as 打断原因 };
+}
+export function 读打断们(x: string | null | undefined): 打断[] {
+  if (!x) return [];
+  try {
+    const v = JSON.parse(x) as unknown;
+    return Array.isArray(v) ? v.filter((t): t is 打断 => !!t && typeof t === "object" && Number.isInteger((t as 打断).段) && (t as 打断).段 >= 1 && !!认打断(t)) : [];
+  } catch {
+    return [];
+  }
+}
 /** 一条最多几段（录音被打断后接着录的；传文件固定 1 段） */
 export const 段数上限 = 20;
 /** 每个进程同时最多收几片（每片边收边写盘，不整片放内存）；满了 429，浏览器隔几秒自己重试 */
@@ -47,8 +79,44 @@ export const 录音状态 = ["上传中", "待提交", "转写中", "整理中",
 export type 录音状态 = (typeof 录音状态)[number];
 /** 草稿：录的人自己看得到、能放弃的 */
 export const 草稿状态: readonly 录音状态[] = ["上传中", "待提交", "待确认", "整理失败"];
+/** 能「再按住补一段」的：录的（不是传的文件）、待提交、段数没到上限（时长上限前端按 按住上限毫秒 / 点按上限毫秒 管，服务端 PR4 规整时按 2 小时判） */
+export const 能补段 = (r: { status: string; sourceKind: string; segCount: number; deletedAt?: Date | null }) =>
+  !r.deletedAt && r.status === "待提交" && r.sourceKind !== "上传" && r.segCount < 段数上限;
 /** 正在转写、整理：放弃要等它跑完 */
 const 处理中状态: readonly 录音状态[] = ["转写中", "整理中"];
+
+/* ── PR6 清理（coach-rec-housekeep.ts 每小时一轮） ── */
+const 天毫秒 = 24 * 60 * 60 * 1000;
+/** 没发出的草稿（上传中 / 待提交 / 待确认 / 整理失败）放满几天自动删；前一天提醒 */
+export const 草稿保留天 = 7;
+export const 草稿提醒天 = 6;
+/** 音频放几天（从录的那天算）：到期删音频文件，转写、主题要点留着 */
+export const 音频保留天 = 180;
+/**
+ * 草稿从哪一刻算：上传中看最后一次动（updatedAt：开始、接着录、传第一段的片都会改）；
+ * 别的看进这个状态的时刻（endedAt：传完、丢段退回待提交、整理好了、整理失败时记）
+ */
+export function 草稿起点(r: { status: string; endedAt: Date | null; updatedAt: Date }): Date {
+  return r.status === "上传中" ? r.updatedAt : r.endedAt ?? r.updatedAt;
+}
+export const 草稿到期 = (r: { status: string; endedAt: Date | null; updatedAt: Date }): Date => new Date(草稿起点(r).getTime() + 草稿保留天 * 天毫秒);
+export const 草稿该提醒 = (r: { status: string; endedAt: Date | null; updatedAt: Date }, 现在: number): boolean => 现在 - 草稿起点(r).getTime() >= 草稿提醒天 * 天毫秒;
+export const 草稿该删 = (r: { status: string; endedAt: Date | null; updatedAt: Date }, 现在: number): boolean => 现在 - 草稿起点(r).getTime() >= 草稿保留天 * 天毫秒;
+export const 音频该删 = (r: { createdAt: Date }, 现在: number): boolean => 现在 - r.createdAt.getTime() >= 音频保留天 * 天毫秒;
+/** 系统自动删的（到期、项目进公海 / 回收站、成员停用）：error 带这个头，清理一轮删完文件按它给录的人发通知 */
+export const 自动删头 = "【自动删除】";
+export const 自动删话 = {
+  到期: `没发出的草稿放满 ${草稿保留天} 天，已自动删除`,
+  项目没了: "项目进了公海或被删除，没发出的录音已自动删除",
+  停用: "成员停用，没发出的录音已自动删除",
+} as const;
+/** 容量闸：录音目录超过 5GB 或者磁盘剩不到 3GB 就不让开始新的录音 / 传文件；磁盘剩不到 1GB 连正在传的片也不收 */
+export const 录音目录上限字节 = 5 * 1024 ** 3;
+export const 磁盘至少剩字节 = 3 * 1024 ** 3;
+export const 收片磁盘至少剩字节 = 1024 ** 3;
+export const 存储满了话 = "录音存储空间不够了，暂时不能录新的，请联系系统管理员";
+/** 每月转写超过这么多秒，提醒系统管理员（防密钥被刷） */
+export const 每月转写提醒秒 = 200 * 60 * 60;
 
 export const 录音来源 = ["上传", "网页录", "飞书原生录"] as const;
 export type 录音来源 = (typeof 录音来源)[number];
@@ -146,6 +214,15 @@ export function 给人看的文件名(name: string | null | undefined, me: 谁, 
   return org && 是教练(me, org) ? 文件名打码(name) : name;
 }
 
+/**
+ * 给这个人看的转写、要点、确认框里的草稿（PR5，§9 第 3 件「转写给销售教练时电话号码打码」）：销售教练看到的号码打码（通知文字打码，
+ * 日期、时间、金额不动；录的人自己是教练也照打）；别的人原样。库里存原文，只在出给教练时打；原声照旧能听
+ */
+export function 给人看的文字(s: string | null | undefined, me: 谁, org: 组织 | null): string | null {
+  if (!s) return s ?? null;
+  return org && 是教练(me, org) ? 通知文字打码(s) : s;
+}
+
 /** 原文件名规整：只留最后一段、去控制字符、最长 120 字（只是给人看的，不拿来拼路径） */
 export function 规整文件名(x: unknown): string | null {
   if (typeof x !== "string") return null;
@@ -164,13 +241,16 @@ export function 开始输入问题(x: { sourceKind?: unknown; bytes?: unknown; f
   return null;
 }
 
-/** 片们齐不齐：每段从 0 号起连着、没有空洞；传文件还要总字节对得上开始时报的。齐了回 null，否则回一句 */
-export function 片们问题(片们: readonly { 段: number; 片: number; 字节: number }[], 来源: string, 报的字节: number | null): string | null {
+/**
+ * 片们齐不齐：每段从 0 号起连着、没有空洞；传文件还要总字节对得上开始时报的。齐了回 null，否则回一句。
+ * 已有段数（PR3「再按住补一段」）：前面已经拼好的段数，这回的片要从下一段起连着
+ */
+export function 片们问题(片们: readonly { 段: number; 片: number; 字节: number }[], 来源: string, 报的字节: number | null, 已有段数 = 0): string | null {
   if (!片们.length) return "还没传任何内容";
   const 按段 = new Map<number, number[]>();
   for (const x of 片们) 按段.set(x.段, [...(按段.get(x.段) ?? []), x.片]);
   const 段们 = [...按段.keys()].sort((a, b) => a - b);
-  if (段们.some((s, i) => s !== i + 1)) return "录音的段不连续，有一段没传上来";
+  if (段们.some((s, i) => s !== 已有段数 + i + 1)) return "录音的段不连续，有一段没传上来";
   for (const s of 段们) {
     const 号 = 按段.get(s)!.sort((a, b) => a - b);
     if (号.some((q, i) => q !== i)) return "还有片没传上来";

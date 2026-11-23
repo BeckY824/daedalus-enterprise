@@ -286,6 +286,9 @@ test("列设置：能连着勾好几项，单子不会自己收；再点按钮�
   await expect(菜单).toBeHidden();
 });
 
+/** 客户记录页的中栏名单，不含载入骨架（同 class、带 aria-busy，见 e2e/middle-pane.spec.ts 的说明） */
+const 真名单 = 'aside.pane-roster:not([aria-busy="true"])';
+
 test("客户记录：左边有窄名单，切人不回列表", async ({ page }) => {
   // 1960：右边 AI 面板开着时名单要多让出 380 才摆得下（lib/roster.ts 的 DockOpenContext）
   await page.setViewportSize({ width: 1960, height: 900 });
@@ -295,7 +298,7 @@ test("客户记录：左边有窄名单，切人不回列表", async ({ page }) 
   await page.locator(".ant-table-row .link-strong").first().click();
   await expect(page).toHaveURL(/\/customers\/[^/]+$/);
 
-  const 名单 = page.locator("aside.pane-roster");
+  const 名单 = page.locator(真名单);
   await expect(名单).toBeVisible();
   const 第一位 = page.url();
 
@@ -316,7 +319,7 @@ test("客户记录：窄屏下名单收成抽屉，页头最左边那颗侧栏�
   await page.locator(".ant-table-row .link-strong").first().click();
   await expect(page).toHaveURL(/\/customers\/[^/]+$/);
 
-  await expect(page.locator("aside.pane-roster")).toHaveCount(0);
+  await expect(page.locator(真名单)).toHaveCount(0);
   // 原来是「换一位（⌘K）」文字按钮，2026-10-19 统一成中栏开关（components/PaneToggle.tsx）
   const 按钮 = page.getByRole("button", { name: /^显示.+名单$/ });
   await expect(按钮).toBeVisible();
@@ -332,7 +335,7 @@ test("客户记录：13/15 寸 Mac 的窗口（1280 宽）名单就在中栏，�
   await page.waitForSelector(".ant-table-row");
   await page.locator(".ant-table-row .link-strong").first().click();
   await expect(page).toHaveURL(/\/customers\/[^/]+$/);
-  await expect(page.locator("aside.pane-roster")).toBeVisible();
+  await expect(page.locator(真名单)).toBeVisible();
   await expect(page.getByRole("button", { name: /^显示.+名单$/ })).toHaveCount(0);
 });
 
@@ -731,7 +734,7 @@ test("设置：左目录分两组、带搜索，一页上只有一列目录", as
   expect(项).toEqual(
     process.env.CRM_ENTERPRISE === "1"
       // 11-15 起按「我要做什么」分组（原型 st.role，P-界面-46）：我自己 / 团队与权限 / 线索和公海 / 业务与 AI / 数据；「我能做什么」（本人权限）摆在我自己那组
-      ? ["个人资料", "登录与密码", "快捷键", "外观", "我能做什么", "团队成员", "组织架构", "客户回收", "项目模式", "业务配置", "AI 接入", "导入记录", "企业版导入", "导出记录", "回收站", "操作日志"]
+      ? ["个人资料", "登录与密码", "快捷键", "外观", "我能做什么", "开关总览", "团队成员", "组织架构", "客户回收", "项目模式", "业务配置", "AI 接入", "导入记录", "企业版导入", "导出记录", "回收站", "操作日志"]
       : ["个人资料", "登录与密码", "快捷键", "外观", "团队成员", "业务配置", "AI 接入", "导入记录", "导出记录", "操作日志"],
   );
   expect(await page.locator("main .set-nav-h").allInnerTexts()).toEqual(

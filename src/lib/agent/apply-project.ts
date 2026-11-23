@@ -69,7 +69,7 @@ async function 分派(p: 项目卡, me: 我): Promise<分派结果> {
         categoryId = 类.id;
       }
       const 附 = { categoryId, 备注: p.原因 || null };
-      const 结 = 认.终止 ? await 终止项目进程(p.targetId, 附) : await 改项目节点(p.targetId, 认.到, 附);
+      const 结 = 认.终止 ? await 终止项目进程(p.targetId, 附) : await 改项目节点(p.targetId, 认.到, 附, null, "首页AI");
       if (!结.ok) return { ok: false, error: 话(结) };
       if ("变了" in 结 && 结.变了 === false) return { ok: false, error: "项目已经在这一步了，没有改动" };
       const 推 = "自动推到" in 结 && Array.isArray(结.自动推到) && 结.自动推到.length ? `；按规则自动推到了 ${结.自动推到.join("、")}` : "";

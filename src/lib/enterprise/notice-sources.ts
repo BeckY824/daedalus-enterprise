@@ -5,7 +5,7 @@
  * - 收件人看不到的数据（复核人看不到销售的项目）用 看全部 读名字；链接指向他确实能打开的页面
  * - 每个函数都吞掉所有错误：通知只是顺带的，任何一步出错都不能连累已经做成的分配、验证、交接
  */
-import { prisma } from "@/lib/prisma";
+import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { notify } from "./notify";
 import { 离职段 } from "./handover-db";
@@ -20,6 +20,8 @@ import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 不跟着转的提醒 } from "@/lib/carry-over-db";
 import { 快轮到提醒 } from "./assign-eta";
 import { 客户显名, 客户引, 显名列 } from "./customer-title";
+import { 草稿保留天 } from "./coach-rec";
+import { businessDayjs } from "@/lib/business-clock";
 
 type 人 = { id: string; name: string };
 
@@ -842,6 +844,73 @@ export async function 录音没整理成通知(authorId: string, r: { id: string
       body: `${话.slice(0, 120)}。到项目详情「沟通记录」卡顶上的录音草稿里点「重试整理」，或者删掉重新传`,
       link: `/projects/${r.projectId}`,
       key: `coach-rec-fail:${r.id}:${分钟()}`,
+    });
+  });
+}
+
+/**
+ * 录音点评「整理好了」（PR5，改版方案 §4.3）：只给录的人。标题只写项目名；正文说去哪确认发出，不带转写、要点、文件名。
+ * 链接带 crec=<录音编号>：点开回到客户页（项目页按原规则跳客户页、带上参数），沟通卡上的草稿条认出这一条就直接打开确认框。
+ * 键带录音编号和时刻：重新整理一次又好了，各算一条
+ */
+export async function 录音整理好了通知(authorId: string, r: { id: string; projectId: string }): Promise<void> {
+  await 稳("录音整理好了通知", async () => {
+    const p = await 看全部(() => prisma.project.findUnique({ where: { id: r.projectId }, select: { name: true } }));
+    await notify([authorId], {
+      kind: "录音",
+      title: `你在项目「${p?.name ?? "（项目不在了）"}」的录音点评整理好了`,
+      body: `到项目详情「沟通记录」卡顶上的录音草稿里确认主题和要点，没问题就发出；没发出的草稿 ${草稿保留天} 天后自动删除`,
+      link: `/projects/${r.projectId}?crec=${r.id}`,
+      key: `coach-rec-ready:${r.id}:${分钟()}`,
+    });
+  });
+}
+
+/**
+ * 录音点评草稿明天到期（PR6，清理一轮在第 6 天发）：只给录的人。标题只写项目名；正文写哪天删、去哪发出。
+ * 键带草稿起点：同一条重新整理过（起点变了）再到期，各算一条
+ */
+export async function 录音草稿快到期通知(authorId: string, r: { id: string; projectId: string; status: string }, 到期: Date, 起点: Date): Promise<void> {
+  await 稳("录音草稿快到期通知", async () => {
+    const p = await 看全部(() => prisma.project.findUnique({ where: { id: r.projectId }, select: { name: true } }));
+    const 哪天 = businessDayjs(到期).format("M 月 D 日 HH:mm");
+    await notify([authorId], {
+      kind: "录音",
+      title: `你在项目「${p?.name ?? "（项目不在了）"}」的录音点评草稿明天到期`,
+      body: `没发出的草稿放满 ${草稿保留天} 天自动删除（约 ${哪天}）：到项目详情「沟通记录」卡顶上的录音草稿里${r.status === "待确认" ? "确认发出" : r.status === "待提交" ? "提交整理" : "处理"}，不要了可以直接删掉`,
+      link: r.status === "待确认" ? `/projects/${r.projectId}?crec=${r.id}` : `/projects/${r.projectId}`,
+      key: `coach-rec-expire-soon:${r.id}:${起点.getTime()}`,
+    });
+  });
+}
+
+/** 录音点评被系统自动删了（PR6：草稿到期、项目进公海 / 回收站）：只给录的人，正文是为什么（不带转写、文件名） */
+export async function 录音自动删除通知(authorId: string, r: { id: string; projectId: string }, 话: string): Promise<void> {
+  await 稳("录音自动删除通知", async () => {
+    // 项目进了回收站的也要写出名字（限定层会把回收站里的藏掉，这里直接读）
+    const p = await defaultClient.project.findUnique({ where: { id: r.projectId }, select: { name: true, deletedAt: true } });
+    await notify([authorId], {
+      kind: "录音",
+      title: `你在项目「${p?.name ?? "（项目不在了）"}」的录音点评已自动删除`,
+      body: `${话.slice(0, 120)}；录音文件一起删了，要点评请重新录`,
+      link: p && !p.deletedAt ? `/projects/${r.projectId}` : "/projects",
+      key: `coach-rec-auto-del:${r.id}`,
+    });
+  });
+}
+
+/** 这个月录音转写超过 200 小时（PR6，防密钥被刷）：给系统管理员，一个月只提醒一次 */
+export async function 录音转写超量通知(秒: number, 月: string): Promise<void> {
+  await 稳("录音转写超量通知", async () => {
+    const org = await 读组织();
+    const 系统管理员们 = [...org.成员.keys()].filter((id) => 能改后台设置({ id }, org));
+    if (!系统管理员们.length) return;
+    await notify(系统管理员们, {
+      kind: "录音",
+      title: `这个月录音转写已经 ${Math.floor(秒 / 3600)} 小时，超过 200 小时`,
+      body: "看看是不是正常在用；不对劲的话到设置 → AI 接入 →「语音转文字」先关掉开关，再查审计里的「录音转写」",
+      link: "/settings",
+      key: `coach-rec-asr-hours:${月}`,
     });
   });
 }

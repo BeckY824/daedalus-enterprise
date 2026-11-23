@@ -19,19 +19,31 @@ import { 主题写 } from "@/lib/team-scope";
 import { recordAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { 企业版 } from "./switch";
+import { 系统 } from "@/lib/project/timeout";
 import { 读组织 } from "./org";
-import { 权限项目选, type 谁 } from "./permissions";
-import { 文件名打码 } from "./notice-mask";
+import { 权限项目选, 是教练, type 谁 } from "./permissions";
+import { 文件名打码, 打码还原, 还原超长话, 有对不上的码, 内容变了话, 版本变了 } from "./notice-mask";
 import { 正在切换视图 } from "./view-as";
 import type { 主题项目 } from "./coach-topic";
 import {
-  不能开始话, 不能传片话, 能看录音进度, 不能放弃话, 能听原声, 给人看的文件名, 规整文件名, 开始输入问题, 片们问题,
+  不能开始话, 不能传片话, 能看录音进度, 不能放弃话, 能听原声, 给人看的文件名, 给人看的文字, 规整文件名, 开始输入问题, 片们问题,
   认录音格式, 片上限字节, 文件上限字节, 每人未完成上限, 草稿状态, 格式类型, 是录音格式, 是录音编号, 拼合占位毫秒,
+  能补段, 认打断, 读打断们, type 打断,
   type 录音状态, type 录音来源,
+  草稿到期, 自动删头, 自动删话, 录音目录上限字节, 磁盘至少剩字节, 收片磁盘至少剩字节, 存储满了话,
 } from "./coach-rec";
-import { 录音目录, 写片, 已收片, 删片, 拼段, 删录音文件, 认录音文件, 文件大小, 片超限, 片读超时, 录音根 } from "./coach-rec-store";
+import { 录音目录, 录音相对目录, 写片, 已收片, 删片, 删段片, 拼段, 删录音文件, 认录音文件, 文件大小, 片超限, 片读超时, 录音根, 目录字节, 磁盘剩字节 } from "./coach-rec-store";
 import { consumeUserAiQuota } from "@/lib/ai-quota";
 import { 选通道 } from "./asr/channel";
+import { 主题标题上限, 主题内容上限 } from "./coach-topic";
+
+/** 存草稿：主题、要点都能空（下次接着写），不超上限 */
+function 草稿输入问题(x: { title?: unknown; body?: unknown }): string | null {
+  if ((x.title !== undefined && x.title !== null && typeof x.title !== "string") || (x.body !== undefined && x.body !== null && typeof x.body !== "string")) return "主题、要点要是文字";
+  if (String(x.title ?? "").trim().length > 主题标题上限) return `主题最多 ${主题标题上限} 字`;
+  if (String(x.body ?? "").trim().length > 主题内容上限) return `要点最多 ${主题内容上限} 字`;
+  return null;
+}
 import { ffmpeg自检 } from "./asr/ffmpeg";
 
 /** 开关的 Setting 键（PR4 设置页「语音转文字」拨的就是它；没有这一行 = 关） */
@@ -67,9 +79,11 @@ async function 读项目(projectId: unknown): Promise<(主题项目 & { id: stri
   return p ? { ...p, 已加入: p.members.map((m) => m.userId) } : null;
 }
 
-const 录音选 = { id: true, projectId: true, authorId: true, status: true, sourceKind: true, fileName: true, format: true, bytes: true, chunks: true, segCount: true, audioPath: true, durationMs: true, error: true, deletedAt: true, audioPurgedAt: true, startedAt: true, endedAt: true, createdAt: true, updatedAt: true } as const;
+const 录音选 = { id: true, projectId: true, authorId: true, status: true, sourceKind: true, fileName: true, format: true, bytes: true, chunks: true, segCount: true, audioPath: true, durationMs: true, error: true, deletedAt: true, audioPurgedAt: true, startedAt: true, endedAt: true, createdAt: true, updatedAt: true,
+  transcript: true, draftTitle: true, draftBody: true, interrupts: true } as const;
 type 录音库行 = { id: string; projectId: string; authorId: string; status: string; sourceKind: string; fileName: string | null; format: string | null; bytes: number | null; chunks: number; segCount: number;
-  audioPath: string | null; durationMs: number | null; error: string | null; deletedAt: Date | null; audioPurgedAt: Date | null; startedAt: Date; endedAt: Date | null; createdAt: Date; updatedAt: Date };
+  audioPath: string | null; durationMs: number | null; error: string | null; deletedAt: Date | null; audioPurgedAt: Date | null; startedAt: Date; endedAt: Date | null; createdAt: Date; updatedAt: Date;
+  transcript: string | null; draftTitle: string | null; draftBody: string | null; interrupts: string | null };
 async function 读录音(id: unknown): Promise<录音库行 | null> {
   if (!是录音编号(id)) return null;
   return defaultClient.entCoachRecording.findUnique({ where: { id }, select: 录音选 });
@@ -79,10 +93,23 @@ async function 读录音(id: unknown): Promise<录音库行 | null> {
 export type 录音给界面 = {
   id: string; status: 录音状态; sourceKind: 录音来源; 文件名: string | null; 总字节: number | null; 已收字节: number;
   已收片: { 段: number; 片: number; 字节: number }[]; 格式: string | null; 开始于: string; 更新于: string; 能听: boolean;
-  /** 服务端 ffprobe 算的时长（PR4 提交整理以后才有） */
+  /** 服务端 ffprobe 算的时长（PR3 起录的传完就算；PR4 提交整理时再按规整后的文件算一遍） */
   时长毫秒: number | null;
-  /** 整理失败的原因（给人看的话） */
+  /** 拼好了几段（「再按住补一段」接在后面，PR3） */
+  段数: number;
+  /** 录着被打断的（第几段、在第几秒、什么原因）：卡上写「录音在 0:42 被打断（…），已录部分已保存」 */
+  打断们: 打断[];
+  /** 能「再按住补一段」 */
+  能补: boolean;
+  /** 整理失败的原因（给人看的话）；待确认时是提示（没听清，请自己写） */
   错: string | null;
+  /**
+   * 确认框要的（PR5）：待确认、整理失败才有——AI 起草的主题、要点（「稍后再发」改过的也在这里），转写全文（转写失败的没有）。
+   * 只给录的人自己；销售教练看到的号码打码（给人看的文字）
+   */
+  确认?: { 主题: string; 要点: string; 转写: string | null };
+  /** 草稿哪天自动删（PR6：待提交、待确认、整理失败才有；ISO 时刻） */
+  到期于?: string;
 };
 async function 给界面(me: 谁, r: 录音库行, 判: 主题项目 | null): Promise<录音给界面> {
   const org = await 读组织();
@@ -92,9 +119,28 @@ async function 给界面(me: 谁, r: 录音库行, 判: 主题项目 | null): Pr
     id: r.id, status: r.status as 录音状态, sourceKind: r.sourceKind as 录音来源, 文件名: 给人看的文件名(r.fileName, me, org), 总字节: r.bytes, 已收字节,
     已收片: 片们, 格式: r.format, 开始于: r.startedAt.toISOString(), 更新于: r.updatedAt.toISOString(),
     能听: !!判 && !!r.audioPath && 能听原声(me, r, 判, org),
-    时长毫秒: r.durationMs, 错: r.status === "整理失败" ? r.error : null,
+    时长毫秒: r.durationMs, 错: r.status === "整理失败" || r.status === "待确认" ? r.error : null,
+    段数: r.segCount, 打断们: 读打断们(r.interrupts), 能补: r.authorId === me.id && 能补段(r),
+    ...(r.status === "待确认" || r.status === "整理失败"
+      ? { 确认: { 主题: 给人看的文字(r.draftTitle, me, org) ?? "", 要点: 给人看的文字(r.draftBody, me, org) ?? "", 转写: 给人看的文字(r.transcript, me, org) } }
+      : {}),
+    ...(!r.deletedAt && (r.status === "待提交" || r.status === "待确认" || r.status === "整理失败") ? { 到期于: 草稿到期(r).toISOString() } : {}),
   };
 }
+
+/* ── 容量闸（PR6）：录音目录 >5GB 或磁盘剩 <3GB → 不让开始新录音、补段、传文件；磁盘剩 <1GB 连片也不收 ── */
+export type 存储情况 = { 用了: number; 剩: number | null; 满了: boolean };
+let 存储缓存: { 到: number; 值: 存储情况 } | null = null;
+/** 录音目录用了多少、磁盘剩多少（每分钟最多量一次，目录大的时候走一遍也要点时间）；刷新 = 不用缓存（设置页、测试用） */
+export async function 读存储情况(刷新 = false): Promise<存储情况> {
+  if (!刷新 && 存储缓存 && 存储缓存.到 > Date.now()) return 存储缓存.值;
+  const [用了, 剩] = await Promise.all([目录字节(录音根()), 磁盘剩字节()]);
+  const 值 = { 用了, 剩, 满了: 用了 > 录音目录上限字节 || (剩 !== null && 剩 < 磁盘至少剩字节) };
+  存储缓存 = { 到: Date.now() + 60_000, 值 };
+  return 值;
+}
+/** 测试用：清掉缓存 */
+export const 忘掉存储情况 = () => { 存储缓存 = null; };
 
 /** 开始一条（传文件：报文件名、大小；录音 PR3 起用）。填写人 = 当前登录的人，不收 authorId */
 export async function 开始录音(me: 人, 输入: { projectId?: unknown; sourceKind?: unknown; fileName?: unknown; bytes?: unknown; mime?: unknown }): Promise<结果<{ 录音: 录音给界面 }>> {
@@ -108,6 +154,7 @@ export async function 开始录音(me: 人, 输入: { projectId?: unknown; sourc
   if (问题) return 不行(问题, 400);
   const 没完 = await defaultClient.entCoachRecording.count({ where: { authorId: me.id, status: "上传中", deletedAt: null } });
   if (没完 >= 每人未完成上限) return 不行(`你还有 ${没完} 条没传完的录音，先接着传完或删掉几条再开新的`, 429);
+  if ((await 读存储情况()).满了) return 不行(存储满了话, 409);
   const 上传 = 输入.sourceKind === "上传";
   const fileName = 上传 ? 规整文件名(输入.fileName) : null;
   const mime = typeof 输入.mime === "string" ? 输入.mime.slice(0, 100) : null;
@@ -138,8 +185,9 @@ const 正在合成话 = "正在合成录音文件，稍等几秒再看";
 
 /**
  * 收一片（PUT chunk/:seg/:seq）。每片都重判权限（开始以后丢了权限的就停）；同一片重复传按片号覆盖；正在拼合的不收。
- * 总量不超过 200MB（传文件另不超过开始时报的大小）；每段第 0 片都认文件头，认不出（或和前面的段格式不一样）的当场删、拒收；
- * 一片都还没收就被拒的（第一片就不是录音），这一条直接放弃，不留空的「上传中」占着每人 5 条的名额
+ * 总量不超过 200MB（补段时连前面拼好的段 r.bytes 一起算，PR3 审查；传文件另不超过开始时报的大小）；每段第 0 片都认文件头，认不出（或和前面的段格式不一样）的当场删、拒收；
+ * 一段都还没拼好、一片都还没收就被拒的（第一片就不是录音），这一条直接放弃，不留空的「上传中」占着每人 5 条的名额；
+ * 补段（前面已经有拼好的段）被拒的只拒这一片，整条留着（PR3 审查：补一段格式不一样不能把前面的段弄丢）
  */
 export async function 收一片(me: 人, id: unknown, 段: number, 片: number, 体: ReadableStream<Uint8Array> | null, 声明字节: number | null): Promise<结果<{ 字节: number; 已收字节: number }>> {
   const 认 = await 认能传(me, id);
@@ -147,18 +195,22 @@ export async function 收一片(me: 人, id: unknown, 段: number, 片: number, 
   const { r } = 认;
   if (拼合占着(r)) return 不行(正在合成话, 409);
   if (r.sourceKind === "上传" && 段 !== 1) return 不行("传文件只有一段", 400);
+  if (段 <= r.segCount) return 不行("这一段已经传完了", 409); // 补段（PR3）：已经拼好的段不能再往里传
+  const 盘 = (await 读存储情况()).剩;
+  if (盘 !== null && 盘 < 收片磁盘至少剩字节) return 不行("服务器磁盘快满了，这一段没存上，请联系系统管理员", 409);
   const dir = 录音目录(r);
   const 别的片 = (await 已收片(dir)).filter((x) => !(x.段 === 段 && x.片 === 片));
+  const 已拼字节 = r.sourceKind !== "上传" && r.segCount ? r.bytes ?? 0 : 0;
   const 别的字节 = 别的片.reduce((a, x) => a + x.字节, 0);
   const 总上限 = r.sourceKind === "上传" && r.bytes ? Math.min(r.bytes, 文件上限字节) : 文件上限字节;
-  const 本片上限 = Math.min(片上限字节, 总上限 - 别的字节);
+  const 本片上限 = Math.min(片上限字节, 总上限 - 已拼字节 - 别的字节);
   if (声明字节 !== null && 声明字节 > 片上限字节) return 不行(`一片最多 ${片上限字节 / 1024 / 1024}MB`, 413);
   if (本片上限 <= 0 || (声明字节 !== null && 声明字节 > 本片上限)) return 不行(r.sourceKind === "上传" ? "传的比文件本身还多，请重新选文件" : `录音超过 ${文件上限字节 / 1024 / 1024}MB`, 413);
   let 写: { 字节: number; 头: Uint8Array };
   try {
     写 = await 写片(dir, 段, 片, 体, 本片上限);
   } catch (e) {
-    if (e instanceof 片超限) return 不行(本片上限 < 片上限字节 ? "传的比文件本身还多，请重新选文件" : `一片最多 ${片上限字节 / 1024 / 1024}MB`, 413);
+    if (e instanceof 片超限) return 不行(本片上限 >= 片上限字节 ? `一片最多 ${片上限字节 / 1024 / 1024}MB` : r.sourceKind === "上传" ? "传的比文件本身还多，请重新选文件" : `录音超过 ${文件上限字节 / 1024 / 1024}MB`, 413);
     if (e instanceof 片读超时) return 不行("网络断了，这一片没传完", 408);
     throw e;
   }
@@ -170,14 +222,19 @@ export async function 收一片(me: 人, id: unknown, 段: number, 片: number, 
   if (片 === 0) {
     const 认出 = 认录音格式(写.头);
     if (!认出 || (r.format && 认出 !== r.format)) {
-      await 删片(dir, 段, 片);
-      if (!别的片.length) await 弃掉空的(me, r);
-      return 不行(认出 ? "这一段和前面录的格式不一样" : "认不出这个文件的格式：只收 m4a、mp3、wav、aac、amr、ogg、flac、mp4、3gp、webm 录音", 415);
+      // 这一段一片都还没收（补段被拒最常见）：连这一段的片目录一起删，不留空的 seg-NN（11-22 实操：补段被拒后目录里剩 seg-02）
+      if (别的片.some((x) => x.段 === 段)) await 删片(dir, 段, 片);
+      else await 删段片(dir, 段);
+      if (!别的片.length && r.segCount === 0) await 弃掉空的(me, r);
+      // 网页录、飞书录（跟进 11-22）：说录音的话，不说「文件」；传文件的照旧列能收的格式
+      return 不行(认出 ? "这一段和前面录的格式不一样" : r.sourceKind === "上传" ? "认不出这个文件的格式：只收 m4a、mp3、wav、aac、amr、ogg、flac、mp4、3gp、webm 录音" : "这一段录音的格式认不出来", 415);
     }
     格式 ??= 认出;
   }
   const 片数 = 别的片.length + 1;
-  await 主题写(() => prisma.entCoachRecording.update({ where: { id: r.id }, data: { chunks: 片数, ...(格式 !== r.format ? { format: 格式 } : {}) } }));
+  // 补段（PR3）时 chunks 记的是前面拼好的片数，传完再加上这回的；这时不按收着的片数改它
+  const 改 = { ...(r.segCount ? {} : { chunks: 片数 }), ...(格式 !== r.format ? { format: 格式 } : {}) };
+  if (Object.keys(改).length) await 主题写(() => prisma.entCoachRecording.update({ where: { id: r.id }, data: 改 }));
   return { ok: true, 字节: 写.字节, 已收字节: 别的字节 + 写.字节 };
 }
 
@@ -214,7 +271,7 @@ const 拼合中 = new Map<string, Promise<unknown>>();
  * 传完（POST finish）：片齐了（传文件另核总字节），每段拼成一个文件、删片，进「待提交」。
  * 同时只许一个：先过进程内锁，再在库里占位（上传中、endedAt 空或占位已过期 → 记上占位时刻）；占不到 / 已经传完的回现状，不再拼
  */
-export async function 传完(me: 人, id: unknown): Promise<结果<{ 录音: 录音给界面 }>> {
+export async function 传完(me: 人, id: unknown, 打断输入?: unknown): Promise<结果<{ 录音: 录音给界面 }>> {
   if (!(await 录音点评开着())) return 不行(没开放话, 404);
   const 在拼 = 是录音编号(id) ? 拼合中.get(id) : undefined;
   if (在拼) {
@@ -226,8 +283,8 @@ export async function 传完(me: 人, id: unknown): Promise<结果<{ 录音: 录
   const 认 = await 认能传(me, id);
   if (!认.ok) return 认;
   const { r, p } = 认;
-  if (拼合中.has(r.id)) return 传完(me, id);
-  const 做 = 拼合一条(me, r, p);
+  if (拼合中.has(r.id)) return 传完(me, id, 打断输入);
+  const 做 = 拼合一条(me, r, p, r.sourceKind === "上传" ? null : 认打断(打断输入));
   拼合中.set(r.id, 做);
   try {
     return await 做;
@@ -236,7 +293,7 @@ export async function 传完(me: 人, id: unknown): Promise<结果<{ 录音: 录
   }
 }
 
-async function 拼合一条(me: 人, r: 录音库行, p: { name: string }): Promise<结果<{ 录音: 录音给界面 }>> {
+async function 拼合一条(me: 人, r: 录音库行, p: { name: string }, 打断: { 秒: number; 原因: 打断["原因"] } | null): Promise<结果<{ 录音: 录音给界面 }>> {
   const 占位 = new Date();
   const 占 = await 主题写(() => prisma.entCoachRecording.updateMany({
     where: { id: r.id, status: "上传中", deletedAt: null, OR: [{ endedAt: null }, { endedAt: { lt: new Date(占位.getTime() - 拼合占位毫秒) } }] },
@@ -248,22 +305,34 @@ async function 拼合一条(me: 人, r: 录音库行, p: { name: string }): Prom
   try {
     const 新行 = (await 读录音(r.id))!;
     const 片们 = await 已收片(录音目录(r));
-    const 问题 = 片们问题(片们, r.sourceKind, r.bytes);
+    // 补段（PR3）：前面已经拼好的段（seg-01.<格式>…）不动，这回的片从下一段起
+    const 已有段数 = 新行.segCount;
+    const 问题 = 片们问题(片们, r.sourceKind, r.sourceKind === "上传" ? r.bytes : null, 已有段数);
     if (问题) {
       await 还位();
       return 不行(问题, 409);
     }
     if (!是录音格式(新行.format)) {
       await 还位();
-      return 不行("认不出这个文件的格式", 415);
+      return 不行(r.sourceKind === "上传" ? "认不出这个文件的格式" : "这条录音的格式认不出来", 415);
     }
     const 段们 = [...new Set(片们.map((x) => x.段))];
     const 路径们: string[] = [];
     for (const s of 段们) 路径们.push(await 拼段(r, s, 新行.format));
-    const 总 = 片们.reduce((a, x) => a + x.字节, 0);
+    const 这回 = 片们.reduce((a, x) => a + x.字节, 0);
+    const 总 = 已有段数 && r.sourceKind !== "上传" ? (新行.bytes ?? 0) + 这回 : 这回;
+    const 段数 = 已有段数 + 段们.length;
+    const 打断们 = 打断 ? [...读打断们(新行.interrupts), { 段: 段数, ...打断 }] : null;
+    // 时长（PR3）：录的（不是传的文件）把各段读一遍加起来，给待提交卡写、前端按它管 10 分钟上限；读不出（没装 ffmpeg）就空着，PR4 规整时再算。
+    // 补段（PR3 审查）：前面几段的合计已经在 durationMs 里，只读这回新拼的段再加上，不每次把全部段重新解码；前面没算出来（空）的才从头读
+    const 时长 = r.sourceKind === "上传" ? null : await 各段时长(r, 已有段数 && 新行.durationMs !== null ? { 从段: 已有段数 + 1, 基: 新行.durationMs } : { 从段: 1, 基: 0 }, 段数, 新行.format);
     const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({
       where: { id: r.id, status: "上传中", deletedAt: null, endedAt: 占位 },
-      data: { status: "待提交", format: 新行.format, chunks: 片们.length, segCount: 段们.length, bytes: 总, audioPath: 路径们[0], endedAt: new Date() },
+      data: {
+        status: "待提交", format: 新行.format, chunks: (已有段数 ? 新行.chunks : 0) + 片们.length, segCount: 段数, bytes: 总,
+        audioPath: 已有段数 && 新行.audioPath ? 新行.audioPath : 路径们[0], endedAt: new Date(),
+        ...(打断们 ? { interrupts: JSON.stringify(打断们) } : {}), ...(时长 !== undefined ? { durationMs: 时长 } : {}),
+      },
     }));
     if (改.count !== 1) {
       // 没改到：重读一遍再定（PR4 修 PR2 审查遗留）。真被放弃了（放弃删目录在先、拼好的文件可能在后落下）才再删一遍；
@@ -287,6 +356,63 @@ async function 拼合一条(me: 人, r: 录音库行, p: { name: string }): Prom
     }
     throw e;
   }
+}
+
+/** 第 从段…段数 段（seg-NN.<格式>）时长加到 基 上；有一段读不出 = null；ffmpeg 不可用 = undefined（不动库里的） */
+async function 各段时长(r: 录音库行, 起: { 从段: number; 基: number }, 段数: number, 格式: string | null): Promise<number | null | undefined> {
+  if (!是录音格式(格式)) return undefined;
+  const { ffmpeg自检, 读时长 } = await import("./asr/ffmpeg");
+  if (!(await ffmpeg自检()).ok) return undefined;
+  let 合 = 起.基;
+  for (let s = 起.从段; s <= 段数; s++) {
+    const f = 认录音文件(path.join(录音相对目录(r), `seg-${String(s).padStart(2, "0")}.${格式}`));
+    const 毫秒 = f ? await 读时长(f).catch(() => null) : null;
+    if (毫秒 === null) return null;
+    合 += 毫秒;
+  }
+  return 合;
+}
+
+/**
+ * 再按住补一段（POST :id/resume，PR3）：只有录的人；录的（不是传的文件）、待提交、段数没到上限 → 回到上传中，下一段从 段数 + 1 传。
+ * 仍要能对这个项目发（开始以后丢了权限、项目进了公海的不能补）。已经是上传中（两个窗口、连点）当成功回现状
+ */
+export async function 接着录(me: 人, id: unknown): Promise<结果<{ 录音: 录音给界面 }>> {
+  if (!(await 录音点评开着())) return 不行(没开放话, 404);
+  const r = await 读录音(id);
+  if (!r || r.authorId !== me.id || r.deletedAt) return 不行("找不到这条录音", 404);
+  const p = await 读项目(r.projectId);
+  if (!p) return 不行("项目不在了，刷新看看", 404);
+  if (r.status === "上传中" && r.sourceKind !== "上传") return { ok: true, 录音: await 给界面(me, r, p) };
+  if (!能补段(r)) return 不行(r.sourceKind === "上传" ? "传的文件不能补录" : r.status !== "待提交" ? "这条已经交了，不能再补" : "这条录音段数到上限了，提交以后另录一条", 409);
+  const 不能 = 不能开始话(me, p, await 读组织());
+  if (不能) return 不行(不能, 403);
+  if ((await 读存储情况()).满了) return 不行(存储满了话, 409);
+  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({ where: { id: r.id, status: "待提交", deletedAt: null }, data: { status: "上传中", endedAt: null } }));
+  if (改.count !== 1) return 不行("这条录音刚变了，刷新看看", 409);
+  return { ok: true, 录音: await 给界面(me, (await 读录音(r.id))!, p) };
+}
+
+/**
+ * 丢掉正在录的这一段（POST :id/drop，PR3：上滑取消、不到 1 秒）：只有录的人、上传中。
+ * 前面已经拼好的段（补段的情况）留着、回到待提交；一段都没有的 = 整条放弃（同 放弃录音，已收的片当场删）
+ */
+export async function 丢掉这段(me: 人, id: unknown): Promise<结果<{ 录音: 录音给界面 | null }>> {
+  if (!(await 录音点评开着())) return 不行(没开放话, 404);
+  const r = await 读录音(id);
+  if (!r || r.authorId !== me.id) return 不行("找不到这条录音", 404);
+  if (r.deletedAt || r.status === "已放弃") return { ok: true, 录音: null };
+  if (r.status !== "上传中") return { ok: true, 录音: await 给界面(me, r, await 读项目(r.projectId)) };
+  if (r.segCount < 1) {
+    const x = await 放弃录音(me, r.id);
+    return x.ok ? { ok: true, 录音: null } : x;
+  }
+  if (拼合占着(r)) return 不行(正在合成话, 409);
+  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({ where: { id: r.id, status: "上传中", deletedAt: null, segCount: r.segCount }, data: { status: "待提交", endedAt: new Date() } }));
+  if (改.count !== 1) return 不行("这条录音刚变了，刷新看看", 409);
+  const dir = 录音目录(r);
+  for (const 段 of new Set((await 已收片(dir)).map((x) => x.段))) if (段 > r.segCount) await 删段片(dir, 段);
+  return { ok: true, 录音: await 给界面(me, (await 读录音(r.id))!, await 读项目(r.projectId)) };
 }
 
 /** 放弃 / 删掉（POST abandon）：只有录的人；文件当场删、行打记号。已经放弃的当成功 */
@@ -332,18 +458,72 @@ export async function 提交整理(me: 人, id: unknown): Promise<结果<{ 录�
 }
 
 /**
- * 重试整理（POST :id/retry，PR4）：只有录的人；整理失败 → 转写中，从头再交一次（任务号、提交时刻清掉）。
- * 记 AI 用量限频（lib/ai-quota.ts，5 分钟 30 次，和别的 AI 动作同一个桶）。PR5 的 AI 整理失败（已经有转写全文的）由 PR5 接这里
+ * 重试整理（POST :id/retry，PR4；PR5 起也是确认框里的「按转写重新整理」）：只有录的人。
+ *   - 整理失败、没有转写（转写那步没成）→ 转写中，从头再交一次（任务号、提交时刻清掉）
+ *   - 整理失败但转写在（AI 那步没成）、待确认（按转写重新整理）→ 整理中，只再整理一次，不再转写（草稿会被新的盖掉）
+ * 记 AI 用量限频（lib/ai-quota.ts，5 分钟 30 次，和别的 AI 动作同一个桶）
  */
 export async function 重试整理(me: 人, id: unknown): Promise<结果<{ 录音: 录音给界面 }>> {
   if (!(await 录音点评开着())) return 不行(没开放话, 404);
   const r = await 读录音(id);
   if (!r || r.authorId !== me.id || r.deletedAt) return 不行("找不到这条录音", 404);
   if (r.status === "转写中" || r.status === "整理中") return { ok: true, 录音: await 给界面(me, r, await 读项目(r.projectId)) };
-  if (r.status !== "整理失败") return 不行(r.status === "待提交" ? "这条还没交，点「提交整理」" : "这条录音不用重试", 409);
+  const 再整理 = !!r.transcript && (r.status === "整理失败" || r.status === "待确认");
+  if (r.status !== "整理失败" && !再整理) return 不行(r.status === "待提交" ? "这条还没交，点「提交整理」" : r.status === "待确认" ? "这条没有转写，不能重新整理" : "这条录音不用重试", 409);
   const 等 = consumeUserAiQuota(me);
   if (等 !== null) return 不行(`操作太频繁，${等} 秒后再试`, 429);
-  return 交去转写(me, r, "整理失败");
+  return 再整理 ? 交去整理(me, r, r.status as "整理失败" | "待确认") : 交去转写(me, r, "整理失败");
+}
+
+/** 转写在、只再整理一次：整理失败 / 待确认 → 整理中（转写留着；整理一轮 接着做） */
+async function 交去整理(me: 人, r: 录音库行, 从: "整理失败" | "待确认"): Promise<结果<{ 录音: 录音给界面 }>> {
+  if (!(await 录音可用())) return 不行(没配好话, 409);
+  const p = await 读项目(r.projectId);
+  if (!p) return 不行("项目不在了，刷新看看", 404);
+  const 不能 = 不能开始话(me, p, await 读组织());
+  if (不能) return 不行(不能, 403);
+  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({
+    where: { id: r.id, status: 从, deletedAt: null },
+    data: { status: "整理中", error: null },
+  }));
+  const 新 = (await 读录音(r.id))!;
+  if (改.count === 1) {
+    await recordAudit({ user: me, action: "update", entity: "EntCoachRecording", entityId: r.id, summary: `${从 === "待确认" ? "按转写重新整理" : "重试整理"}${r.fileName ? `录音文件「${文件名打码(r.fileName)}」` : "录音"}（项目「${p.name}」）` });
+  } else if (新.status !== "整理中") {
+    return 不行("这条录音刚变了，刷新看看", 409);
+  }
+  return { ok: true, 录音: await 给界面(me, 新, p) };
+}
+
+/**
+ * 稍后再发（POST :id/draft，PR5）：只有录的人；待确认、整理失败的存下确认框里改过的主题、要点（空也行，下次接着写）。
+ * 销售教练看到的是打过码的草稿：库里要存原文（PR5 审查），提交上来没改动的打码段按原文换回原号码（打码还原），教练自己改的照他写的存
+ */
+export async function 存录音草稿(me: 人, id: unknown, 输入: { title?: unknown; body?: unknown; 版本?: unknown }): Promise<结果<{ 录音: 录音给界面 }>> {
+  if (!(await 录音点评开着())) return 不行(没开放话, 404);
+  const r = await 读录音(id);
+  if (!r || r.authorId !== me.id || r.deletedAt) return 不行("找不到这条录音", 404);
+  if (r.status !== "待确认" && r.status !== "整理失败") return 不行(r.status === "已发出" ? "这条已经发出了" : "这条还没整理好", 409);
+  const 问题 = 草稿输入问题(输入);
+  if (问题) return 不行(问题, 400);
+  const 原文们 = [r.draftTitle, r.draftBody, r.transcript];
+  const 教练 = 是教练(me, await 读组织());
+  const title = 教练 ? 打码还原(String(输入.title ?? "").trim(), 原文们) : String(输入.title ?? "").trim();
+  const body = 教练 ? 打码还原(String(输入.body ?? "").trim(), 原文们) : String(输入.body ?? "").trim();
+  // 确认框开着时这条在别处重新整理过、原号码没了：打码段换不回去，别把「139****5678」存进库，整条拒存（3703 实操跟进）。
+  // 版本 = 打开框时这条的 更新于；对得上的（没在别处动过）教练自己照着打码样子写的字照存
+  if (教练 && 版本变了(输入.版本, r.updatedAt) && (有对不上的码(title, 原文们) || 有对不上的码(body, 原文们))) return 不行(内容变了话, 412);
+  const 超 = 还原超长话(输入.title ?? "", title, 主题标题上限, "主题") ?? 还原超长话(输入.body ?? "", body, 主题内容上限, "要点");
+  if (超) return 不行(超, 400);
+  // 带了版本的（确认框）：只在库里还是上面读到的那一版时写（#428 审查）。读完到写之间别处又整理了，还原用的原文已经不是这一版，
+  // 照写可能把打码样子落库：一样回 412 让人重新打开。没带版本的（老页面）照旧只看状态
+  const 带版本 = typeof 输入.版本 === "string";
+  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({
+    where: { id: r.id, status: r.status, deletedAt: null, ...(带版本 ? { updatedAt: r.updatedAt } : {}) },
+    data: { draftTitle: title || null, draftBody: body || null },
+  }));
+  if (带版本 && 改.count !== 1) return 不行(内容变了话, 412);
+  return { ok: true, 录音: await 给界面(me, (await 读录音(r.id))!, await 读项目(r.projectId)) };
 }
 
 async function 交去转写(me: 人, r: 录音库行, 从: "待提交" | "整理失败"): Promise<结果<{ 录音: 录音给界面 }>> {
@@ -381,17 +561,22 @@ export async function 我的录音草稿(me: 谁, projectId: string): Promise<�
   return Promise.all(行们.map((r) => 给界面(me, r, p)));
 }
 
-/** 听原声（GET :id/audio）：回文件绝对路径、类型；判定在 coach-rec.ts 能听原声 */
-export async function 取原声(me: 人, id: unknown): Promise<结果<{ 文件: string; 类型: string; 大小: number; 名: string }>> {
+/**
+ * 听原声（GET :id/audio）：回文件绝对路径、类型；判定在 coach-rec.ts 能听原声。
+ * PR3：录了几段的，交之前（待提交）带 ?seg=N 听第 N 段（audioPath 只指第 1 段；交了以后规整成一整条，seg 不认、给整条）
+ */
+export async function 取原声(me: 人, id: unknown, 段?: unknown): Promise<结果<{ 文件: string; 类型: string; 大小: number; 名: string }>> {
   if (!(await 录音点评开着())) return 不行(没开放话, 404);
   const r = await 读录音(id);
   if (!r) return 不行("找不到这条录音", 404);
   const p = await 读项目(r.projectId);
   if (!p || !能听原声(me, r, p, await 读组织())) return 不行("原声只有发起人和项目负责人能听", 403);
-  const 文件 = 认录音文件(r.audioPath);
+  const 第 = typeof 段 === "string" && /^\d{1,2}$/.test(段) ? Number(段) : null;
+  const 分段 = 第 !== null && 第 >= 1 && 第 <= r.segCount && r.status === "待提交" && 是录音格式(r.format);
+  const 文件 = 认录音文件(分段 ? path.join(录音相对目录(r), `seg-${String(第).padStart(2, "0")}.${r.format}`) : r.audioPath);
   const 大小 = 文件 ? 文件大小(文件) : null;
   if (!文件 || 大小 === null || !是录音格式(r.format)) return 不行(r.status === "上传中" ? "还没传完" : "录音文件不在了", 404);
-  return { ok: true, 文件, 类型: 格式类型[r.format], 大小, 名: `录音-${r.id.slice(-6)}.${r.format}` };
+  return { ok: true, 文件, 类型: 格式类型[r.format], 大小, 名: `录音-${r.id.slice(-6)}${分段 ? `-${第}` : ""}.${r.format}` };
 }
 
 /** 设置页「测试连接」的样例音频（ffmpeg 现生成的 3 秒正弦音，不是业务数据）：编号前缀、放哪、多久以后不给取 */
@@ -420,3 +605,46 @@ export async function 取给转写(id: string): Promise<{ 文件: string; 类型
   const 大小 = 文件 ? 文件大小(文件) : null;
   return 文件 && 大小 !== null ? { 文件, 类型: 格式类型[r.format], 大小 } : null;
 }
+
+/** 停用清点（停用确认框）：这个人还有几条没发出的录音点评（停用时 停用成员录音 会删掉的那些，口径同一份）。不看开关 */
+export async function 没发出的录音数(userId: string): Promise<number> {
+  if (!企业版() || !userId) return 0;
+  return defaultClient.entCoachRecording.count({ where: { authorId: userId, status: { notIn: ["已发出", "已放弃"] }, deletedAt: null } });
+}
+
+/**
+ * 成员停用（PR6，settings/actions.ts 离职原地不动 停完调）：TA 没发出的录音（草稿、转写中、整理中）一律放弃、文件当场删。
+ * 不看开关（开关关着也有可能留着以前的草稿）；删不掉的文件清理一轮兜底再删。回放弃了几条
+ */
+export async function 停用成员录音(userId: string): Promise<number> {
+  if (!企业版() || !userId) return 0;
+  const 们 = await defaultClient.entCoachRecording.findMany({
+    where: { authorId: userId, status: { notIn: ["已发出", "已放弃"] }, deletedAt: null },
+    select: { id: true, createdAt: true, fileName: true },
+  });
+  if (!们.length) return 0;
+  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({
+    where: { id: { in: 们.map((x) => x.id) }, status: { notIn: ["已发出", "已放弃"] }, deletedAt: null },
+    data: { status: "已放弃", deletedAt: new Date(), error: `${自动删头}${自动删话.停用}` },
+  }));
+  for (const r of 们) {
+    if (await 删录音文件(r).then(() => true, () => false)) await 记音频已删(r.id).catch(() => {});
+    // 留痕（PR6 二审）：audioPurgedAt 记上了，清理一轮不会再看到它，这里自己记一条「系统」删的
+    await recordAudit({ user: 系统, action: "delete", entity: "EntCoachRecording", entityId: r.id, summary: `${r.fileName ? `录音文件「${文件名打码(r.fileName)}」` : "录音"}${自动删话.停用}` }).catch(() => {});
+  }
+  return 改.count;
+}
+
+/** 系统管理员删主题（PR6，coach-topic-db.ts 删主题 调）：这个主题的录音文件删掉、记 audioPurgedAt（行留着）。不看开关。回删了几条 */
+export async function 删主题的录音文件(topicId: string): Promise<number> {
+  if (!企业版() || !topicId) return 0;
+  const 们 = await defaultClient.entCoachRecording.findMany({ where: { topicId, audioPurgedAt: null }, select: { id: true, createdAt: true } });
+  let 数 = 0;
+  for (const r of 们) {
+    if (!(await 删录音文件(r).then(() => true, () => false))) continue;
+    await 记音频已删(r.id);
+    数 += 1;
+  }
+  return 数;
+}
+

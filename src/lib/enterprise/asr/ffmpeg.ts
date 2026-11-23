@@ -82,6 +82,11 @@ async function 解出时长(文件: string, env: 环境): Promise<number | null>
   return 毫秒 > 0 ? 毫秒 : null;
 }
 
+/** 一个文件有多长（PR3 传完时给待提交卡写时长）：先读头，读不出（网页录的 webm、分片 mp4 常没写时长）再整段解一遍；都不行 = null */
+export async function 读时长(文件: string, env: 环境 = process.env): Promise<number | null> {
+  return (await 探(文件, env)).时长毫秒 ?? (await 解出时长(文件, env));
+}
+
 /** 腾讯云收、能直接转封装的编码 → 封装（扩展名就是库里 format 列的值） */
 const 转封装 = (编码: string | null): { 格式: "m4a" | "mp3" | "ogg" | "amr" | "flac" | "wav"; 封装: string } | null => {
   if (!编码) return null;

@@ -141,6 +141,16 @@
      还是 --workbench，不能跟着一起变白，否则它们就和白卡片糊成一片 */
   --page-bg: var(--workbench);
   --border: var(--line);
+  /* 设计语言 D-2 · 方案 A「一张纸」（11-22 用户定）的几个名字。这里是换皮主题的兜底，换皮主题的规则不读它们；
+     现状的值在下面「外观」那段：
+       --rail-bg   左栏底。兜底跟着地面走（原来就是 --page-bg）；现状铺 --workbench 浅灰（用户 11-22 选「左栏浅灰」）
+       --mod-line  模块之间、栏与栏之间的线。= --line #E3E3E8，比行线 --line-soft 深一档（终审：#EDEDF0 压白底只有 1.17:1，Windows 普通屏看不见）
+       --mod-title 模块标题的字色（13 / 600），内容压过标题
+       --pop-bg    浮层底（弹窗、抽屉、下拉、气泡、⌘K）。浅色 = 纸；暗黑下纸和浮层同色，现状抬亮到 #1D2026（dark.css） */
+  --rail-bg: var(--page-bg);
+  --mod-line: var(--line);
+  --mod-title: var(--text-muted);
+  --pop-bg: var(--panel);
 
   /* ---------- 主题要换、现状用不着的几个钩子（2026-09-28，设置 → 外观 → 主题） ----------
      「现状」下每一个都等于原来写死的那个值，所以加上它们界面一个像素都不变；
@@ -149,7 +159,7 @@
   --seal: var(--ink);                  /* 你确认的那一下（建议卡落的印）。账簿换成朱红，且只许它用 */
   /* 左栏当前项的底：16a 起不用蓝底（蓝留给要人点的东西）。2026-11 PR2 外壳（原型 g.feel / g.nav）：
      浅灰底改成白底 + 一层很薄的阴影，像从灰色侧栏里浮起来的一块（Apple 侧栏的选中态）；
-     阴影只给现状明亮（下面 .rail-on-bg 那条），换皮、暗黑各用自己的 --nav-on-bg、不带阴影；白底地面上退回浅灰（白压白看不出） */
+     阴影只给现状明亮的「原底」（下面 .rail-on-bg 那条；D-2 方案 A 的白底下选中是不带影的白块），换皮、暗黑各用自己的 --nav-on-bg、不带阴影；白底地面上退回浅灰（白压白看不出） */
   --nav-on-bg: var(--panel);
   --nav-on-fg: var(--ink);             /* 左栏当前项的字 */
   --font-ui: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", "SF Pro SC", "PingFang SC", "Noto Sans SC", "Daedalus YaHei", "Microsoft YaHei", Roboto, sans-serif;
@@ -187,10 +197,16 @@
   --ctl-h-sm: 28px; --ctl-h: 32px; --ctl-h-lg: 40px;   /* 控件三档高；lib/theme.ts 的 controlHeight* 抄这三个（tests/design-tokens.test.ts 对） */
   --card-pad: 16px;                    /* 卡片左右内边距 */
   --card-head-h: 48px;                 /* 卡头高；lib/theme.ts 的 Card.headerHeight 抄这个 */
+  --mod-head-h: 40px;                  /* 设计语言 D-2 · 方案 A：不画卡的模块标题行高（客户详情各模块、复盘各块的头） */
   --card-gap: 12px;                    /* 卡与卡之间 */
   --edge-fade: 24px;                   /* 横滑条两端渐隐宽度（节点条） */
   --skel-delay: 180ms;                 /* 加载多久后才出骨架：快的不闪（D07）。是延迟不是过渡，所以不叫 --t-* */
   --ai-safe: 72px;                     /* 滚动区底部留白，不让右下 AI 球盖住末行（D40） */
+  /* 浮层层级（D22，设计语言 E4）：自绘的浮层按 antd 的刻度排——弹框 1000、气泡 1030、下拉 1050、提示 1070。
+     --z-sheet 整页浮层（设置）在弹框之下：设置里开的弹框、下拉、气泡总在它上面，不靠谁后挂进页面；
+     --z-pop 自绘小浮层（看板闸门「没推过去」）同 antd 气泡层，不和下拉抢同一层 */
+  --z-sheet: 990;
+  --z-pop: 1030;
 }
 /* 不认 linear() 的浏览器（Safari 17.2 以前）：var(--ease) 落到 transition 里会让整条 transition 作废、一点动效都没有。
    退回原来那条不过冲的 ease-out；--ease-spring 也退到它，不再回到 1.34 的过冲 */
@@ -205,10 +221,18 @@
    只换值，不换结构。<html> 上的 data-paper / data-skin 在第一次绘制前由 layout 里那段小脚本挂好，
    所以刷新时不会先闪一下原底。这里不许写裸色值（tests/design-tokens.test.ts），只许指到已有 token 上 */
 :root[data-paper="white"] { --page-bg: var(--panel); }
-/* 设计语言 D-1（11-22）：现状的内容卡圆角统一到卡片那档 10（原来 14，借的浮层圆角；暗黑下本来就是 10） */
-:root:is(:not([data-skin]), [data-skin="now"]), [data-skin-preview="now"] { --r-mod: var(--r-card); }
-/* 白底地面上左栏选中块退回浅灰：白底 + 阴影压在白地面上只剩一圈影子，认不出选中的是哪项 */
+/* 设计语言 D-1（11-22）：现状的内容卡圆角统一到卡片那档 10（原来 14，借的浮层圆角；暗黑下本来就是 10）。
+   D-2 · 方案 A（11-22）：现状默认就是一张白纸——页面、名单栏、内容区同一层 --panel，左栏铺 --workbench 浅灰；
+   模块不画卡，靠小号灰标题 + 发丝线 + 留白分开（下面「方案 A」那段，只在现状且不是「原底」时挂）。
+   「原底」（data-paper="tone"）是留给想要原样的人的个人偏好：地面退回浅灰，内容照旧是白卡（lib/appearance.ts） */
+:root:is(:not([data-skin]), [data-skin="now"]), [data-skin-preview="now"] { --r-mod: var(--r-card); --page-bg: var(--panel); --rail-bg: var(--workbench); }
+/* 「原底」：现状自己、以及设置 → 外观里现状那张小样（选了原底的人看到的小样也得是原底，不是方案 A） */
+:root:is(:not([data-skin]), [data-skin="now"])[data-paper="tone"] { --page-bg: var(--workbench); }
+:root[data-paper="tone"] [data-skin-preview="now"] { --page-bg: var(--workbench); }
+/* 白底地面上左栏选中块退回浅灰：白底 + 阴影压在白地面上只剩一圈影子，认不出选中的是哪项（换皮主题的白底） */
 :root[data-paper="white"]:not([data-mode="dark"]) { --nav-on-bg: var(--hover); }
+/* 现状的左栏不管哪种底色都铺浅灰，选中块是白块（白底下不带阴影，原底照旧带薄阴影，见下面 .rail-on-bg 那条） */
+:root:is(:not([data-skin]), [data-skin="now"])[data-paper="white"]:not([data-mode="dark"]) { --nav-on-bg: var(--panel); }
 /* 设置 → 外观 那一栏 */
 .appr { display: flex; flex-direction: column; gap: var(--s5); max-width: 640px; }
 .appr-note { margin: 0; color: var(--text-muted); font-size: var(--fs-note); }
@@ -381,10 +405,10 @@ html.glass .auth-solo .auth-main { background: transparent; }
    名字长了省略号收尾，「退出」永远在条里看得见；窄屏两边各留 16px */
 .view-as-bar { position: fixed; top: 6px; left: 50%; transform: translateX(-50%); z-index: 1100; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 32px); padding: 4px 6px 4px 12px; border: 1px solid var(--warning-line); border-radius: 999px; background: var(--warning-bg); color: var(--warning-text); font-size: var(--fs-min); line-height: 20px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08); white-space: nowrap; }
 /* 手机顶栏（AppShell 小屏那支的 Header）：底下一根线和页面分开。
-   设计语言 D-1（11-22）：现状里顶栏是一张白纸（--panel，暗黑下跟着变暗；原来 antd 的 headerBg 是 JS 写死的白），底线加深到 --line——
+   设计语言 D-1（11-22）：现状里顶栏是一张白纸（--panel，暗黑下跟着变暗；原来 antd 的 headerBg 是 JS 写死的白），底线加深到 --line（D-2 起读 --mod-line）——
    页面以后也是白的，这根线是顶栏和正文之间唯一的分界。换皮主题照旧 --line-soft */
 .m-top { border-bottom: 1px solid var(--line-soft); }
-:root:is(:not([data-skin]), [data-skin="now"]) .m-top { background: var(--panel); border-bottom-color: var(--line); }
+:root:is(:not([data-skin]), [data-skin="now"]) .m-top { background: var(--panel); border-bottom-color: var(--mod-line); }
 /* 手机：顶栏只有一行，浮在上面会盖住菜单键，改成排在顶栏上方；电脑上内容区顶部另留了空（AppShell） */
 @media (max-width: 767px) { .view-as-bar { position: static; transform: none; align-self: center; margin: 6px 16px; } }
 .view-as-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
@@ -451,7 +475,7 @@ a {
      164px 图标 + 文字同一行   → 认得出了，但一格 32 高、字 14，整栏像个工具条
      220px、一格 38 高、字 15  → 现在这个（2026-09-17）。比例照 Claude 桌面端：栏占窗口两成出头，
                                 行高和字号都比正文大半档，一眼就是导航，不是一列标签 */
-.rail { width: var(--rail-w); flex: none; position: sticky; top: 0; height: 100vh; background: var(--page-bg); border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; padding: 14px 12px 14px; }
+.rail { width: var(--rail-w); flex: none; position: sticky; top: 0; height: 100vh; background: var(--rail-bg); border-right: 1px solid var(--line-soft); display: flex; flex-direction: column; padding: 14px 12px 14px; }
 /* 桌面端：顶上给红黄绿钮留位，这一块也是拖窗口的把手。
    侧栏 164 宽之后钮不用再挤了——整组 52 宽按标准的 20px 内缩放着，右边还剩 92 到竖线，
    和别的 macOS 应用一个观感。栏宽也就不必再比网页版多一截。 */
@@ -658,7 +682,7 @@ html.glass .rail-fb { background: color-mix(in srgb, var(--brand-bg) 85%, transp
 .rail-fb.on { background: var(--brand); color: var(--on-ink); }
 .rail-fb.on:hover { background: var(--brand-deep); color: var(--on-ink); }
 .rail-fb-dot { position: absolute; top: -1px; right: -1px; width: 8px; height: 8px; border-radius: 999px; background: var(--danger);
-  box-shadow: 0 0 0 2px var(--page-bg); pointer-events: none; }
+  box-shadow: 0 0 0 2px var(--rail-bg); pointer-events: none; }
 /* 写反馈框的标题行：右边一个「我的反馈 ›」，进去看发过的和回复 */
 .fb-title { display: flex; align-items: baseline; gap: 12px; padding-right: 28px; }
 .fb-title-link { margin-left: auto; padding: 0; border: 0; background: none; font: inherit; font-size: var(--fs-note); font-weight: 400; color: var(--text-muted); cursor: pointer; white-space: nowrap; }
@@ -751,8 +775,9 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 .rail-ask-k { margin-left: auto; font-size: var(--fs-min); color: var(--text-faint); }
 /* 选中的底色是一块会滑动的层（AppShell 里的 layoutId），压在图标和字下面 */
 .rail-on-bg { position: absolute; inset: 0; border-radius: var(--r-card); background: var(--nav-on-bg); z-index: 0; }
-/* 现状明亮下的选中块：白底 + 一圈 0.5px 发丝描边 + 1px 软影（原型 g.feel）。换皮、暗黑、白底地面不挂，各走各的底色 */
-:root:is(:not([data-skin]), [data-skin="now"]):not([data-mode="dark"]):not([data-paper="white"]) :is(.rail-on-bg, .rail-fav-i.on) {
+/* 现状明亮下的选中块：白底 + 一圈 0.5px 发丝描边 + 1px 软影（原型 g.feel）。换皮、暗黑不挂，各走各的底色。
+   D-2 · 方案 A（11-22 用户定）：白底下选中项是白块、不带阴影（浅灰左栏上白块本身认得出）；这圈影只留给「原底」（完整的旧样子） */
+:root:is(:not([data-skin]), [data-skin="now"])[data-paper="tone"]:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on) {
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 6%, transparent), 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
 }
 .rail-item > :not(.rail-on-bg) { position: relative; z-index: 1; }
@@ -1238,8 +1263,10 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
     display: none;
   }
 
+  /* 手机档正文左右内边距：方案 A 铺满全宽的模块用它的负值抵掉（D-2） */
+  :root { --content-pad-x: 12px; }
   .app-content {
-    padding: 14px 12px !important;
+    padding: 14px var(--content-pad-x) !important;
   }
 
   .page-head h1 {
@@ -1472,10 +1499,15 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .org-save-row { margin-top: 12px; }
 .org-len-input.ant-input-number, .org-len-input.ant-input-number-affix-wrapper { width: 120px; flex: none; }
 .org-len-save.ant-btn { margin-bottom: 16px; }
-/* 项目附件一块（F-项目-18）：合同附件 / 项目方案 / 验收报告 / 其它附件 / 沟通附件各一格，格与格之间一条细线 */
+/* 项目附件一块（F-项目-18）：项目方案 / 合同附件 / 验收报告 / 其它附件 / 沟通附件各一格，格与格之间一条细线 */
 .proj-att-sec { min-width: 0; }
 .proj-att-sec + .proj-att-sec { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .proj-att-h { font-weight: 600; margin-bottom: 8px; }
+/* F-042（P-界面-59）：项目方案、合同附件两格各自一个框、小标题下一行提示放什么（一行，放不下省略、悬停看全文）；后面的格照旧细线隔开 */
+.proj-att-sec.is-box { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-card); }
+.proj-att-sec.is-box + .proj-att-sec.is-box { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.proj-att-sec.is-box + .proj-att-sec:not(.is-box) { padding-top: 0; border-top: 0; }
+.proj-att-tip { margin: -4px 0 8px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-att-from { min-width: 0; }
 .proj-att-from + .proj-att-from { margin-top: 10px; }
 .proj-att-src { display: flex; align-items: center; min-width: 0; color: var(--text-muted); font-size: var(--fs-note, 12px); }
@@ -2235,6 +2267,18 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 /* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */
 .member-table { overflow-x: auto; }
 .member-table .ant-table-thead th { white-space: nowrap; }
+/* 桌面（≥ 768）：格子左右内边距 8 → 4、标签内边距 7 → 4，和 MembersTab「列宽三档」配套，设置正文里整表不横滚（11-23）；勾选列照旧 */
+@media (min-width: 768px) {
+  .member-table.ant-table-wrapper .ant-table :is(.ant-table-thead > tr > th, .ant-table-tbody > tr > td):not(.ant-table-selection-column) { padding-inline: 4px; }
+  .member-table .ant-tag { padding-inline: 4px; }
+}
+/* 窄屏行尾动作只留字：按下停用 / 恢复 / 办离职时 antd 从 0 宽插进转圈（约 +20），会顶出格子、闪出横滚；
+   转圈改成盖在字上居中、字先藏起来，键的宽度不变。换皮主题只有图标（转圈顶替图标），不动 */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .member-table .ant-btn.row-act.ant-btn-loading:not(.ant-btn-icon-only) { position: relative; }
+  .member-table .ant-btn.row-act.ant-btn-loading:not(.ant-btn-icon-only) > .ant-btn-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; }
+  .member-table .ant-btn.row-act.ant-btn-loading:not(.ant-btn-icon-only) > :not(.ant-btn-icon) { visibility: hidden; }
+}
 /* 设置 · 操作日志：日期 / 时分秒两行，动作标签下面写对象 */
 .audit-at, .audit-act { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; white-space: nowrap; }
 .ant-table-thead > tr > th { font-size: var(--fs-note); font-weight: 500; letter-spacing: 0.01em; }
@@ -2338,8 +2382,9 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cite:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .rec-tl-item-flash { animation: rec-flash 1.6s var(--ease); border-radius: var(--r-card); }
 @keyframes rec-flash { 0% { background: var(--brand-bg); } 100% { background: transparent; } }
-/* 到点提醒点进来要指出的那一条（计划块 / 待办行）：它们自己就带浅蓝底，再闪一层浅蓝看不出来——改成边上一圈，只动阴影不动尺寸 */
-.rec-plan.rec-tl-item-flash, .rec-task.rec-tl-item-flash { animation: rec-ring 1.6s var(--ease); }
+/* 到点提醒点进来要指出的那一条（计划块 / 待办行）：它们自己就带浅蓝底，再闪一层浅蓝看不出来——改成边上一圈，只动阴影不动尺寸。
+   项目附件那一格（F-042，黄框里点「项目方案」等定位过来）同样亮一圈 */
+.rec-plan.rec-tl-item-flash, .rec-task.rec-tl-item-flash, .proj-att-sec.rec-tl-item-flash { animation: rec-ring 1.6s var(--ease); }
 @keyframes rec-ring { 0%, 35% { box-shadow: 0 0 0 3px var(--brand-line); } 100% { box-shadow: 0 0 0 3px transparent; } }
 .brief-sec { margin-bottom: 14px; }
 
@@ -2419,15 +2464,17 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 @media (max-width: 767px) { .cli:has(.cli-ck) { min-height: 0; } }
 /* 输入框旁「查重」点开的小框 */
 .home-dedupe { display: flex; flex-direction: column; gap: var(--s3); width: 340px; max-width: calc(100vw - 64px); }
-/* 项目列表项目名前「重复咨询」小标签（重复咨询第一步）：标签不缩，名字照旧单行省略（.fulltext） */
 /* 线索验证判无效框：老客户重复咨询那条的提示（重复咨询第一步） */
 .lv-repeat-hint { margin-bottom: var(--s2); color: var(--text-muted); }
+/* 项目列表项目名前「重复咨询」小标签（重复咨询第一步）：标签不缩，名字照旧单行省略（.fulltext） */
 .proj-name-tagged { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
 .proj-name-tagged .proj-repeat-tag { margin-inline-end: 0; flex-shrink: 0; }
 /* 看板卡片第二行：标签不缩、项目名照旧省略 */
 .pipe-card-m .proj-repeat-tag { flex: none; margin-inline-end: var(--s1); }
 /* 首页查重框里「在 X 名下新建线索」（重复咨询出口 C）：另起一行，键和结果那句可折行 */
 .home-dedupe-act { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s2); }
+/* 手机宽查重小框（11-23）：放不下时整块挪进屏（DedupeKey 挪进屏 shiftX）会贴住屏边（查出结果变高时可能贴左边），外框左右各垫 12px 透明边，看得到的那块离屏边 12px */
+@media (max-width: 767px) { .ant-popover.home-dedupe-pop { padding-inline: var(--s3, 12px); } }
 /* 问答贴着输入框往上长。原来是 flex:1 顶在上边，于是只问了一句、答案还在流的时候，
    过程条挂在页顶、输入框钉在页底，中间空一大片（2026-09-18 报上来的那张图）。
    往上长还有一个好处：新的一轮总是出现在眼睛已经在看的地方。 */
@@ -3220,7 +3267,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .pipe-card.is-gated { box-shadow: 0 0 0 1.5px var(--warning); }
 .pipe-col.is-drop { background: var(--brand-bg); outline: 1px dashed var(--brand); outline-offset: -1px; }
 .pipe-col.is-drop-no { outline: 1px dashed var(--field-line); outline-offset: -1px; }
-.board-gate { position: fixed; z-index: 1050; padding: var(--s3); background: var(--panel); border-radius: var(--r-card); box-shadow: var(--shadow-pop); border: 1px solid var(--line);
+.board-gate { position: fixed; z-index: var(--z-pop); padding: var(--s3); background: var(--panel); border-radius: var(--r-card); box-shadow: var(--shadow-pop); border: 1px solid var(--line);
   animation: board-gate-in var(--t-pop) var(--ease) both; transform-origin: left top; overflow-wrap: anywhere; }
 @keyframes board-gate-in { from { opacity: 0; scale: var(--pop-scale); } to { opacity: 1; scale: 1; } }
 .board-gate-t { color: var(--warning-text); font-weight: 600; }
@@ -3287,7 +3334,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
    三种情况退回实色面板（--panel）：浏览器不支持 backdrop-filter（@supports）、系统开了「减少透明度」、
    低配机（html.lite-fx，外观预设脚本按 CPU 核数 / 内存挂上——整页模糊每帧都要重算，集显上会掉帧） */
 :root .cmdk-root :is(.ant-modal-container, .ant-modal-content) {
-  background: var(--panel); border-radius: var(--r-pop);
+  background: var(--pop-bg); border-radius: var(--r-pop);
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 10%, transparent), var(--shadow-pop);
 }
 :root .cmdk-root .ant-modal-mask { background: color-mix(in srgb, var(--ink) 18%, transparent); }
@@ -3337,7 +3384,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* ── 设置浮层 ──────────────────────────────────────────
    设置不是一页，是一层：盖在你正看的东西上面，关掉回到原处。
    照 Claude / Codex 桌面端那样。装它的是拦截路由，地址仍然是 /settings。 */
-.setm { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+.setm { position: fixed; inset: 0; z-index: var(--z-sheet); display: flex; align-items: center; justify-content: center;
   padding: 40px 24px; background: rgba(17, 24, 39, 0.28); backdrop-filter: blur(2px); }
 /* **高度是定的，不是跟着内容长的**：原来切到「业务配置」「桌面端」这种长栏时，
    整层会当场蹿高一截——人看到的是"弹窗自己放大了"。窗口就该是一个固定的框，
@@ -3925,6 +3972,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .asr-switch { margin-left: 12px; }
 .asr-status { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 12px; margin: 8px 0; font-size: var(--fs-min); }
 .asr-status dd { margin: 0; overflow-wrap: anywhere; }
+.asr-status dd.asr-full { color: var(--danger-text); font-weight: 600; }
 .asr-big { display: grid; gap: 4px; margin: 8px 0; font-size: var(--fs-min); }
 .asr-test-hint { margin-left: 8px; }
 .asr-last { margin-top: 8px; font-size: var(--fs-min); overflow-wrap: anywhere; }
@@ -4282,7 +4330,10 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .member-roles > * { flex: none; }
 .member-roles > .member-roles-tags { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; }
 /* 角色标签（第一个角色 + 「+N」）：放不下自己出「…」 */
-.member-roles .member-role-tag { margin: 0; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-roles .member-role-tag { margin: 0; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; }
+/* 只截第一个角色名，「+N」不截（11-23）：窄格里也看得出还有别的角色，悬停角色名（TruncTip）或「+N」（原生提示）看全部 */
+.member-roles .member-role-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-roles .member-role-more { flex: none; }
 /* 成员管理角色格里的两个小图标（不加宽角色列）：系统管理员小盾牌（P-判定-06，实心 = 是，空心 = 只管本线）、不管设置齿轮（勾上 = 划掉的橙色齿轮） */
 .member-flag-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted); font-size: var(--ic); cursor: pointer; }
 .member-flag-btn:hover:not([aria-disabled="true"]) { background: var(--brand-bg); }
@@ -4486,7 +4537,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 
 /* ---------- 侧栏、页头：半透明 + 毛玻璃（支持才开，不支持就是原来的实色地面） ---------- */
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html:not(.glass) .rail { background: color-mix(in srgb, var(--page-bg) 78%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+  html:not(.glass) .rail { background: color-mix(in srgb, var(--rail-bg) 78%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
 }
 .rail { border-right-color: var(--line-soft); }
 
@@ -4675,6 +4726,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
    现状单独给选中钮留一圈 1px --line、字重 500；暗黑下轨道是 --hover，选中钮的 --panel 比它还暗，改成比轨道亮一档 */
 :root:is(:not([data-skin]), [data-skin="now"]) .cd-seg > button.on { box-shadow: 0 0 0 1px var(--line); font-weight: 500; }
 :root[data-mode="dark"]:is(:not([data-skin]), [data-skin="now"]) .cd-seg > button.on { background: color-mix(in srgb, var(--ink) 10%, var(--hover)); }
+/* antd 分段控件同理：skins/shared.css 暗黑那条给的选中底是 --panel，比轨道 --hover 还暗；现状暗黑抬亮一档（11-22），换皮主题不挂。
+   shared.css 在本文件之后引入、权重相同会赢，这里 .css-var-dd 叠两次压过它 */
+:root[data-mode="dark"]:is(:not([data-skin]), [data-skin="now"]) .css-var-dd.css-var-dd:is(.ant-segmented, .ant-segmented-css-var) { --ant-segmented-item-selected-bg: color-mix(in srgb, var(--ink) 10%, var(--hover)); }
 .rec-zone .cd-comm > .ant-card-head > .ant-card-head-wrapper { flex-wrap: wrap; row-gap: 8px; }
 .rec-zone .cd-comm > .ant-card-head > .ant-card-head-wrapper > .ant-card-head-title { flex: 1 0 auto; max-width: 100%; }
 .rec-zone .cd-comm > .ant-card-head > .ant-card-head-wrapper > .ant-card-extra { margin-inline-start: auto; }
@@ -5409,6 +5463,40 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item:last-child { border-bottom: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item:disabled { color: var(--text-muted); cursor: not-allowed; }
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item .menu-2l { max-width: none; }
+/* 录音点评 PR3（11-22，components/CoachRecorder/HoldToTalkPanel.tsx）：录音面板。按钮的手势相关（不弹长按菜单、不选中文字、不触摸滚动）不分皮肤都要，外观也一起写在这里。
+   按钮整行宽、高 ≥ 2×触屏点击区；录着变红；上滑到取消区变灰底红字。浮层：红点 + 计时 + 音量条 + 一句（上滑取消 / 还能说 N 秒 / 松手取消） */
+.ptt-panel { display: flex; flex-direction: column; gap: var(--s3, 12px); min-width: 0; }
+.ptt-panel:focus { outline: none; }
+.ptt-row { display: flex; align-items: center; gap: var(--s2, 8px); }
+.ptt-btn { flex: 1; min-height: calc(var(--hit-touch, 44px) * 2); padding: var(--s2, 8px) var(--s4, 16px); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--hover); color: var(--ink); font-size: var(--fs-section); font-weight: 600; cursor: pointer;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+.ptt-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.ptt-btn:disabled { color: var(--text-muted); cursor: progress; }
+.ptt-btn.ptt-on { border-color: var(--danger); background: var(--danger); color: var(--on-ink); }
+.ptt-btn.ptt-cancel { border-color: var(--danger-line); background: var(--danger-bg); color: var(--danger-text); }
+.ptt-cancel-btn { flex: none; min-height: var(--hit-touch, 44px); }
+.ptt-slot { min-height: 40px; display: flex; flex-direction: column; justify-content: flex-end; }
+.ptt-float { min-height: 40px; box-sizing: border-box; white-space: nowrap; display: flex; align-items: center; gap: var(--s2, 8px); padding: var(--s2, 8px) var(--s3, 12px); border-radius: var(--r-ctl); background: var(--hover); min-width: 0; }
+.ptt-float.ptt-cancel { background: var(--danger-bg); color: var(--danger-text); }
+.ptt-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: ptt-blink 1s steps(2, start) infinite; }
+.ptt-time { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; }
+.ptt-level { flex: 1; height: 4px; min-width: 40px; overflow: hidden; border-radius: 999px; background: var(--line); }
+.ptt-level > span { display: block; height: 100%; background: var(--danger); transform-origin: left center; transition: transform 80ms var(--ease); }
+.ptt-float-t { flex: none; font-size: var(--fs-note, 12px); }
+.crec-seg { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ptt-fallback { display: flex; flex-direction: column; gap: var(--s2, 8px); }
+@keyframes ptt-blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .ptt-dot { animation: none; } .ptt-level > span { transition: none; } }
+.ptt-sheet .ant-drawer-body { padding-bottom: calc(var(--s4, 16px) + env(safe-area-inset-bottom)); }
+/* 录音点评 PR5：确认框里 AI 起草的两格虚线框；转写全文（收起、只读、等宽换行）；沟通卡上「录音点评」标签（话筒、虚线框）和下面的播放 / 转写 */
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-ai.ant-input, :root:is(:not([data-skin]), [data-skin="now"]) .crec-ai.ant-input-affix-wrapper, :root:is(:not([data-skin]), [data-skin="now"]) .crec-ai .ant-input { border-style: dashed; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-confirm-audio { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-transcript { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-transcript-h { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+:root:is(:not([data-skin]), [data-skin="now"]) .crec-transcript-t { max-height: 320px; margin: 0; padding: var(--s2) var(--s3); overflow: auto; border-radius: var(--r-ctl); background: var(--hover); color: var(--ink-soft); font: inherit; font-size: var(--fs-note); white-space: pre-wrap; overflow-wrap: anywhere; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cth-rec-tag { border-style: dashed; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cth-rec { display: flex; flex-direction: column; align-items: flex-start; gap: var(--s1); margin-top: var(--s2); min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]) .cth-rec .crec-audio { width: 100%; max-width: 360px; }
 @media (max-width: 767px) {
   /* 手机整屏：弹框铺满、内容区可滚、底部按钮通栏贴底（让出安全区） */
   :root:is(:not([data-skin]), [data-skin="now"]) .crec-modal.ant-modal { top: 0; width: 100vw !important; max-width: 100vw; margin: 0; padding: 0; }
@@ -6443,7 +6531,7 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-chip:focus-visible { outline: 0; box-shadow: var(--focus-ring); }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop {
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 20; width: min(440px, calc(100vw - 32px)); max-height: min(60vh, 420px); overflow-y: auto;
-  padding: var(--s2); background: var(--panel); border-radius: var(--r-pop); box-shadow: var(--shadow-pop);
+  padding: var(--s2); background: var(--pop-bg); border-radius: var(--r-pop); box-shadow: var(--shadow-pop);
   animation: cli-drop-in var(--t-pop) var(--ease) backwards;
 }
 :root:is(:not([data-skin]), [data-skin="now"]) .cli-head-pop[hidden] { display: none; }
@@ -6633,4 +6721,125 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]) button.ais-hd-b { padding-block: calc(4px + (var(--hit-touch) - var(--hit)) / 2); margin-block: calc((var(--hit) - var(--hit-touch)) / 2); }
   :root:is(:not([data-skin]), [data-skin="now"]) .ais-compact button.ais-hd-b { padding-block: calc(5px + (var(--hit-touch) - var(--hit)) / 2); margin-block: calc((var(--hit) - var(--hit-touch)) / 2 - 3px); }
   :root:is(:not([data-skin]), [data-skin="now"]) .ais-retry { display: inline-flex; align-items: center; justify-content: center; min-width: var(--hit-touch); min-height: var(--hit-touch); padding-inline: var(--s2); margin-block: calc((var(--hit) - 6px - var(--hit-touch)) / 2); margin-inline-start: calc(-1 * var(--s2)); }
+}
+
+
+/* ---------- 设计语言 E4 · 设置（11-22，只挂现状主题；换皮主题外观不动。结构改动在 MembersTab.tsx：行尾动作图标 + 字、「总管理」「管理员」标签灰；
+   K6 回收站表按列宽排、D22 浮层层级是 bug / 层级修复，所有主题都生效，不在这一段） ---------- */
+/* D19 卡片标题一个号：设置里卡片内的小节标题（Typography.Title level 5，antd 16）和卡头（15，--fs-section）同号 */
+:root:is(:not([data-skin]), [data-skin="now"]) .set-body h5.ant-typography { font-size: var(--fs-section); }
+
+/* ================= 设计语言 D-2 · 方案 A「一张纸 + 分隔线」（11-22 用户定，评审页 评审-底色与模块分区-20261122） =================
+   只挂现状主题、且底色不是「原底」（设置 → 外观；默认白底，lib/appearance.ts）。「原底」照旧是浅灰地面 + 白卡，换皮主题一律不动。
+   规矩（两方案共用 + A）：
+     1. 全站一层纸 --page-bg（= --panel）：页面、名单栏、内容区同色；左栏铺 --rail-bg 浅灰
+     2. 模块不画卡：没有框、圆角、底色；靠小号灰标题（13 / 600 --mod-title）+ 模块之间一根 --mod-line + 留白分开
+     3. 栏与栏之间一根竖的 --mod-line；密集看板（复盘统计、看板三列）用分格线
+     4. 容器不许有底色，只有叶子小块（问句气泡、步骤条 .ais-done、节点条、草稿框）可以铺一档 --workbench / --hover
+     5. 浮层是全站唯一带阴影的东西（--shadow-pop，底 --pop-bg）
+     6. 手机（≤767）：模块铺满全宽，不再留 12 的外边距和圆角，内容左右 16
+   这一批只做首页、客户详情、复盘三页；客户列表、公海、渠道、设置等其余页（D-3）照旧是白卡（1px 线、圆角 10、无影）
+   这一段放在 R-B（复盘三页签）、HC-2a 之后：两边同权重的规则（复盘 .btodo-list 卡头等）方案 A 后写的赢；「原底」不挂这段，照旧是 R-B 的白卡卡头 */
+
+/* ---------- 外壳：栏与栏之间一根 --mod-line ---------- */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rail, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .pane { border-right-color: var(--mod-line); }
+/* 手机顶栏的反馈红点：描边跟顶栏的纸色，不跟左栏的灰 */
+:root:is(:not([data-skin]), [data-skin="now"]) .m-top .rail-fb-dot { box-shadow: 0 0 0 2px var(--panel); }
+
+/* ---------- 首页：问答区去框；右栏四个指标是四段模块，左边一根竖线 ---------- */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .cli-ck .cli-frame { border-color: transparent; border-radius: 0; background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards { gap: 0; border-left: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .cli-empty .home-cards { align-self: stretch; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card { border: 0; border-radius: 0; background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card + .home-card { border-top: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards .home-card-k { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-kpi-card:is(:hover, :active) { border-color: transparent; background: var(--row-hover); }
+/* 窄（问答区那一格 ≤ 639）：指标卡排成 2 × 2，上面一根横线，格与格之间分格线 */
+@container (max-width: 639px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards { border-left: 0; border-top: 1px solid var(--mod-line); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card + .home-card { border-top: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card:nth-child(n + 3) { border-top: 1px solid var(--mod-line); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .home-cards > .home-card:nth-child(even) { border-left: 1px solid var(--mod-line); }
+}
+@media (max-width: 767px) {
+  /* 框本身是 .cli-col（width: 100%）：光给负外边距只会整块左移 12、右边缺一截（3703 实操 390：框 0→366、内容偏左）。宽度跟着加两边的 --content-pad-x，和下面 .home-cards 一样铺满 */
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .cli:not(.cli-paper) .cli-ck .cli-frame { width: calc(100% + 2 * var(--content-pad-x)); margin-inline: calc(-1 * var(--content-pad-x)); padding-inline: var(--s4); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .home-cards { margin-inline: calc(-1 * var(--content-pad-x)); }
+}
+
+/* ---------- 客户详情：左栏 | 中栏 | 右栏三栏之间两根竖线；栏里每个模块不画卡，模块之间一根横线 ---------- */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd { column-gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd > .rec-rail { border-right: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb { column-gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb > .cd-side { border-left: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.cd-mid, .cd-side) { gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec-rail-blocks > .proj-fold + .proj-fold { margin-top: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > :not(:first-child, .cd-search-wrap) { border-top: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .ant-card, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .ant-card { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .ant-card > .ant-card-head, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .ant-card > .ant-card-head { min-height: var(--mod-head-h); border-bottom-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .ant-card > .ant-card-head .ant-card-head-title, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .ant-card > .ant-card-head .ant-card-head-title { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-mid > .cd-search-wrap { padding: 0 var(--s4) var(--s2); }
+/* 卡头收到 --mod-head-h（40）高：右上那颗收起钮（--hit 28 见方）跟着上移，和标题同一条中线 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page :is(.rec-rail-blocks, .cd-mid, .cd-side) > .proj-fold > .proj-fold-btn { top: calc((var(--mod-head-h) - var(--hit)) / 2); }
+/* 项目区里不算模块的几条（提醒条、页签行、项目告示）：两边让出 16，不贴着栏线 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb > :is(.cd-alert, .cd-zh, .cd-notice) { margin-inline: var(--s4); }
+/* 中栏、右栏各是一扇自己滚的窗：原来左右各让 4px 给卡片阴影（栏框比列宽 8px），没了卡就不用让，不然两栏叠进对方 8px、竖线压字 */
+@container cdzone (min-width: 560px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .main .rec-page > .rec.rec-cd > .rec-zone > .cd-zb > :is(.cd-mid, .cd-side) { margin-inline: 0; padding-inline: 0; }
+}
+/* 窄了右栏落到中栏下面、左栏拆进单栏：竖线换成横线 */
+@container cdzone (max-width: 559px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb > .cd-side { border-left: 0; border-top: 1px solid var(--mod-line); }
+}
+@container rec (max-width: 629px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .cd-zb > .cd-side { border-left: 0; border-top: 1px solid var(--mod-line); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd { row-gap: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd > .rec-rail-blocks > .proj-fold { border-top: 1px solid var(--mod-line); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rec-page .rec.rec-cd > .rec-zone { border-top: 1px solid var(--mod-line); padding-top: var(--s3); }
+}
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .rec-page .rec.rec-cd { margin-inline: calc(-1 * var(--content-pad-x)); }
+  /* 页面直接挂在正文里时（受限客户详情等）：页面自己先伸到正文边、再用同样宽的内边距把页头缩回来，
+     三栏的负外边距落在页面的内边距里，页面自己不算横向溢出（e2e owner-first-batch「受限客户详情 375 文字溢出」） */
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content > .rec-page:has(> .rec.rec-cd) { margin-inline: calc(-1 * var(--content-pad-x)); padding-inline: var(--content-pad-x); }
+}
+
+/* ---------- 复盘：四个统计并成一条（格与格之间分格线），各块不画卡、上面一根横线；看板三列用竖线分 ---------- */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards { gap: 0; margin-bottom: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card { border: 0; border-radius: 0; background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card + .btodo-card { border-left: 1px solid var(--mod-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card:hover { background: var(--row-hover); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card.is-on, :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card.is-on:hover { background: var(--brand-bg); box-shadow: none; }
+@container (max-width: 480px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card:nth-child(odd) { border-left: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-cards > .btodo-card:nth-child(n + 3) { border-top: 1px solid var(--mod-line); }
+}
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list { border: 0; border-top: 1px solid var(--mod-line); border-radius: 0; background: transparent; padding: 0 0 var(--s4); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-wrap > .btodo-list + :is(.btodo-list, .rtalk-side) { margin-top: 0; }
+/* R-B 给复盘卡头（.data-shell-body 里）的是 antd Card 那套：48 高、左右负外边距贴卡边、头下一条细线。方案 A 没有卡：头不外伸、不画线，和模块标题一样 40 高 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head { min-height: var(--mod-head-h); margin: 0 0 var(--s2); padding: 0; border-bottom: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list > .btodo-head .section-title { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
+/* 回收提醒每行末尾的 › 展开时转 90°：它的框比 1em 那一列高（行高 + 兜底字体），转过来横着就比列宽，转到一半对角线更宽；
+   原来卡里有 16 内边距兜着，方案 A 不留内边距，转出去的 2～5px 撑出整页横向滚动（1024 实测，tests/ent-pr5b-kpi-recycle）。行按钮横向裁掉，竖向照常 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .ov-rc-head { overflow-x: clip; }
+/* 复盘·数据（项目现状 / 本月）的 antd 卡：全周期漏斗、线索瀑布、各进程的项目、按负责人、项目走势。和上面 .btodo-list 一样不画卡：
+   不要框、圆角、底，上面一根 --mod-line；卡头收到 --mod-head-h、不画底线、左右不缩，标题 13 / 600 灰；正文左右不缩（3703 实操 11-22：这几块还是白卡）。
+   只认这几块自己带的 .rb-mod-card（11-23 收窄）：原来写 .data-shell-body .ant-card，以后复盘页里嵌一张别的卡（抽屉外的弹层、卡里套卡）会被一并压平 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .ant-card.rb-mod-card { border: 0; border-top: 1px solid var(--mod-line); border-radius: 0; background: transparent; box-shadow: none; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .ant-card.rb-mod-card > .ant-card-head { min-height: var(--mod-head-h); padding-inline: 0; border-bottom-width: 0; border-radius: 0; background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .ant-card.rb-mod-card > .ant-card-head .section-title { font-size: var(--fs-note); font-weight: 600; color: var(--mod-title); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .ant-card.rb-mod-card > .ant-card-body { padding-inline: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rkpi { border: 0; border-block: 1px solid var(--mod-line); border-radius: 0; background: transparent; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board { gap: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col { padding-inline: var(--s3); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col:first-child { padding-inline-start: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col:last-child { padding-inline-end: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col + .btodo-col { border-left: 1px solid var(--mod-line); }
+@container (max-width: 560px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col { padding-inline: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col + .btodo-col { border-left: 0; border-top: 1px solid var(--mod-line); padding-top: var(--s3); }
+}
+@media (max-width: 767px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .btodo-wrap { margin-inline: calc(-1 * var(--content-pad-x)); }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list { padding-inline: var(--s4); }
 }

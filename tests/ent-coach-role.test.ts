@@ -30,6 +30,8 @@ import { prisma as db, defaultClient as raw } from "@/lib/prisma";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 读组织 } from "@/lib/enterprise/org";
+import { 项目页去向 } from "@/app/(app)/projects/[id]/load";
+import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import {
   能看全部, 能看项目, 能进设置, 只读角色, 是教练, 只读话of, 只读角色话, 教练只读话, 能当负责人, 不能当负责人话, 能新建和领取, 能领公海,
   能编辑项目, 能转让项目, 能删除, 能改客户, 是管理层, 是系统管理员,
@@ -195,6 +197,26 @@ describe("看得到什么", () => {
     expect(只读角色(我(线教), org)).toBe(true);
     expect(await 项目名单(线教)).toEqual(排(["外销外贸", "内销内贸", "下属内贸", "公海内贸"]));
     expect(await 客户名单(线教)).toContain("客-内销");
+  });
+});
+
+describe("放在市场部门里（录音点评跟进 11-22，3703 实操）", () => {
+  it("教练、兼管理员的放进市场部门：不算市场视角，项目照教练口径都进得去（不落「没有找到这条记录」）", async () => {
+    const 市场部 = (await raw.entDept.create({ data: { name: "市场部" } })).id;
+    await raw.entMember.updateMany({ where: { userId: { in: [教练, 兼管] } }, data: { deptId: 市场部 } });
+    忘掉企业版范围();
+    try {
+      const p = await raw.project.findFirstOrThrow({ where: { name: "外销外贸" }, select: { id: true, customerId: true } });
+      for (const id of [教练, 兼管]) {
+        expect(await 读市场身份(id)).toBeNull();
+        expect(await 作为(id, () => 项目页去向({ id, role: "SALES" } as never, p.id))).toEqual({ 种: "客户页", 到: `/customers/${p.customerId}?project=${p.id}` });
+        expect(await 项目名单(id)).toEqual(排(["外销外贸", "内销内贸", "下属内贸", "公海内贸"]));
+      }
+    } finally {
+      await raw.entMember.updateMany({ where: { userId: { in: [教练, 兼管] } }, data: { deptId: null } });
+      await raw.entDept.delete({ where: { id: 市场部 } });
+      忘掉企业版范围();
+    }
   });
 });
 

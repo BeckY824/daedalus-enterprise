@@ -8,7 +8,8 @@
 import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 公海规则, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
-import { 看全部 } from "@/lib/team-scope";
+import { 看全部, 主题写 } from "@/lib/team-scope";
+import { 自动删头, 自动删话 } from "@/lib/enterprise/coach-rec";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看全部, 只读按线, type 谁 } from "@/lib/enterprise/permissions";
 import { 在推项目条件 } from "./active";
@@ -64,8 +65,10 @@ export const 进公海关主题动作 = "pool-close";
  * closedById 留空 = 系统关的；一个主题一行 AuditLog 留痕。和 进公海清组员 并排：放回、超时回收、客户整体进公海连带、离职放进公海四处同一笔事务里调。
  * 撤销放进公海不重开（关了就关了，发起人要接着说就再发一条）。不是企业版不动
  */
-export async function 进公海关主题(tx: Pick<Prisma.TransactionClient, "entCoachTopic" | "auditLog" | "user">, projectIds: string[], 操作人: string, at: Date = new Date()): Promise<void> {
-  if (!企业版() || !进公海自动关 || !projectIds.length) return;
+export async function 进公海关主题(tx: Pick<Prisma.TransactionClient, "entCoachTopic" | "entCoachRecording" | "auditLog" | "user">, projectIds: string[], 操作人: string, at: Date = new Date()): Promise<void> {
+  if (!企业版() || !projectIds.length) return;
+  await 放弃没发出的录音(tx, projectIds, at);
+  if (!进公海自动关) return;
   for (let i = 0; i < projectIds.length; i += 一批id数) {
     const 这批 = projectIds.slice(i, i + 一批id数);
     const 们 = await tx.entCoachTopic.findMany({ where: { projectId: { in: 这批 }, status: { not: "已关闭" }, deletedAt: null }, select: { id: true, title: true } });
@@ -75,6 +78,20 @@ export async function 进公海关主题(tx: Pick<Prisma.TransactionClient, "ent
     await tx.auditLog.createMany({ data: 们.map((t) => ({
       userId: 操作人, userName: 名, action: 进公海关主题动作, entity: "EntCoachTopic", entityId: t.id, summary: `项目进公海，主题「${t.title}」自动关闭`,
     })) });
+  }
+}
+
+/**
+ * 录音点评（PR6）：项目进公海、进回收站时，上面没发出的录音（草稿、转写中、整理中）一起放弃（事务里，只改库）；
+ * 删文件、给录的人发通知由清理一轮（coach-rec-housekeep.ts）接着做。不看开关（关着也可能留着以前的草稿）
+ */
+export async function 放弃没发出的录音(tx: Pick<Prisma.TransactionClient, "entCoachRecording">, projectIds: string[], at: Date = new Date()): Promise<void> {
+  if (!企业版() || !projectIds.length) return;
+  for (let i = 0; i < projectIds.length; i += 一批id数) {
+    await 主题写(() => tx.entCoachRecording.updateMany({
+      where: { projectId: { in: projectIds.slice(i, i + 一批id数) }, status: { notIn: ["已发出", "已放弃"] }, deletedAt: null },
+      data: { status: "已放弃", deletedAt: at, error: `${自动删头}${自动删话.项目没了}` },
+    }));
   }
 }
 

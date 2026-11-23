@@ -11,13 +11,22 @@
  * 文件名：框里显示的本机原名也过 文件名打码（安卓通话录音的文件名带对方号码）。
  * 时长：浏览器读出来只给人看（不信它，服务端 PR4 用 ffprobe 算，交了以后卡上显示服务端算的）。
  * 「提交整理」（PR4）：录音可用（开关 + 密钥 + ffmpeg 自检）时能点；整理失败的给原因和「重试整理」；转写中、整理中的留在草稿条上、不能删。
+ * 「继续确认」（PR5）：待确认、整理失败的打开确认框（CoachRecConfirm.tsx）；从「整理好了」通知点进来（地址带 crec=<编号>）直接打开那一条。
+ * 录音（PR3，11-22）：录的（网页录 / 飞书原生录）待提交卡写打断（「录音在 0:42 被打断（…），已录部分已保存」）、给「再录一段」（打开录音面板补在后面）；
+ *       录着页面关了 / 断网留下的「上传中」录音：写已传多少，给「保存已传的」（传完 / 退回待提交）和「删掉」。
+ *       传文件按最近几片的速度估还要多久，超过 3 分钟提示「网络较慢……建议连 Wi-Fi」（uploader.ts 传文件慢话）。
  */
+import { businessDayjs } from "@/lib/business-clock";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, Progress } from "antd";
 import type { 录音给界面 } from "@/lib/enterprise/coach-rec-db";
+import type { 项目主题们 } from "@/lib/enterprise/coach-topic-db";
+import { CoachRecConfirm } from "./CoachRecConfirm";
 import { 片上限字节, 文件上限字节, 建议WiFi字节, 选文件accept } from "@/lib/enterprise/coach-rec";
 import { 文件名打码 } from "@/lib/enterprise/notice-mask";
+import { HoldToTalkPanel } from "@/components/CoachRecorder/HoldToTalkPanel";
+import { 传文件慢话 } from "@/components/CoachRecorder/uploader";
 
 /** 字节数没有（空、0）写「—」，不写成 1KB */
 const 读大小 = (n: number | null | undefined) => (!n ? "—" : n >= 1024 * 1024 ? `${(n / 1024 / 1024).toFixed(1)}MB` : `${Math.max(1, Math.round(n / 1024))}KB`);
@@ -70,6 +79,9 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 可提交 = fal
   const [时长, set时长] = useState<number | null>(null);
   const [阶, set阶] = useState<阶段>({ k: "选" });
   const [错, set错] = useState<string | null>(null);
+  /** 最近几片的上行速度（字节 / 秒）：估还要多久，太慢提示连 Wi-Fi */
+  const [速度, set速度] = useState<number | null>(null);
+  const 样本 = useRef<{ 字节: number; 毫秒: number }[]>([]);
   const 停了 = useRef(false);
   const 选 = useRef<HTMLInputElement>(null);
   useEffect(() => () => { 停了.current = true; }, []);
@@ -109,6 +121,8 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 可提交 = fal
     set错(null);
     停了.current = false;
     set阶({ k: "传", 已: 0 });
+    样本.current = [];
+    set速度(null);
     let 录 = await 找续(文件).catch(() => null);
     if (录?.status === "待提交") {
       // 上次「传完」其实成了（回话路上断了）：直接显示完成，不新开、不重传
@@ -145,8 +159,15 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 可提交 = fal
       let 忙等 = 0;
       for (let 次 = 0; 次 <= 重试间隔.length && !好; 次++) {
         if (停了.current) return;
+        const 片起 = performance.now();
         const r = await 调(`/api/coach-rec/${录.id}/chunk/1/${i}`, { method: "PUT", headers: { "content-type": "application/octet-stream" }, body: 片 }).catch(() => null);
-        if (r?.ok) { 好 = true; break; }
+        if (r?.ok) {
+          样本.current = [...样本.current, { 字节: 片.size, 毫秒: Math.max(1, performance.now() - 片起) }].slice(-5);
+          const 和 = 样本.current.reduce((a, x) => ({ 字节: a.字节 + x.字节, 毫秒: a.毫秒 + x.毫秒 }), { 字节: 0, 毫秒: 0 });
+          set速度((和.字节 / 和.毫秒) * 1000);
+          好 = true;
+          break;
+        }
         // 服务器明说不行的（没权限、格式不对、超了）不重试；网络断、超时、服务器忙才重试
         if (r && r.status !== 429 && r.status !== 408 && r.status < 500) {
           set阶({ k: "选" });
@@ -185,6 +206,7 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 可提交 = fal
     关();
   };
   const 已传 = 阶.k === "传" || 阶.k === "停" ? 阶.已 : 0;
+  const 慢 = 阶.k === "传" && 文件 ? 传文件慢话(文件.size - 已传, 速度) : null;
   const 底 = 阶.k === "完"
     ? [<Button key="ok" type="primary" onClick={关框} data-testid="crec-done">好了</Button>]
     : 阶.k === "问换"
@@ -223,6 +245,7 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 可提交 = fal
         {(阶.k === "传" || 阶.k === "停") && 文件 && (
           <div className="crec-progress" aria-live="polite">
             <Progress percent={百分(已传, 文件.size)} status={阶.k === "停" ? "exception" : "active"} />
+            {慢 && <div role="status" className="crec-warn" data-testid="crec-slow">{慢}</div>}
             {阶.k === "停" && <div role="alert" className="crec-warn" data-testid="crec-stopped">{阶.为什么}，已传 {百分(已传, 文件.size)}%。点「继续」从断的地方接着传。</div>}
           </div>
         )}
@@ -237,11 +260,15 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 可提交 = fal
 const 状态字 = (x: 录音给界面): string =>
   x.status === "转写中" ? "正在转写，好了会通知你" : x.status === "整理中" ? "转写好了，正在整理要点" : x.status === "整理失败" ? "没整理成" : x.status === "待确认" ? "整理好了，待确认" : "待提交";
 
+/** 草稿哪天自动删（PR6）：「11 月 29 日」 */
+// 按北京时间说哪天（跟进 11-22）：和「明天到期」通知同一个钟（businessDayjs），不随浏览器时区差一天
+const 到期日 = (iso: string) => businessDayjs(iso).format("M 月 D 日");
+
 /**
  * 待提交卡：回放、「提交整理」、删掉。只有录的人看得到（数据只给录的人）。
  * PR4：可提交（录音可用：开关 + 密钥 + ffmpeg）时「提交整理」能点 → 转写中；整理失败的写原因、给「重试整理」。不可提交时按钮灰着
  */
-export function PendingCard({ 录, 删, 可提交 = false }: { 录: 录音给界面; 删?: () => void; 可提交?: boolean }) {
+export function PendingCard({ 录, 删, 可提交 = false, 开确认, 补段 }: { 录: 录音给界面; 删?: () => void; 可提交?: boolean; 开确认?: (x: 录音给界面) => void; 补段?: (x: 录音给界面) => void }) {
   const router = useRouter();
   const [交后, set交后] = useState<录音给界面 | null>(null);
   const [忙, set忙] = useState(false);
@@ -259,16 +286,26 @@ export function PendingCard({ 录, 删, 可提交 = false }: { 录: 录音给界
   };
   const 能删 = 现.status === "待提交" || 现.status === "整理失败" || 现.status === "待确认";
   const 灰话 = 可提交 ? undefined : "转写还没开放，开放后点这里开始整理";
+  const 是录的 = 现.sourceKind !== "上传";
+  const 名 = 现.文件名 ?? (是录的 ? `录音${现.段数 > 1 ? ` · ${现.段数} 段` : ""}` : "录音");
   return (
     <div className="crec-pending" data-testid="crec-pending" data-status={现.status}>
       <div className="crec-pending-h">
-        <span className="crec-file-name" title={现.文件名 ?? ""}>{现.文件名 ?? "录音"}</span>
+        <span className="crec-file-name" title={名}>{名}</span>
         <span className="crec-hint">{状态字(现)} · {读大小(现.总字节 || 现.已收字节)}{现.时长毫秒 ? ` · ${读时长(现.时长毫秒 / 1000)}` : ""}</span>
       </div>
-      {现.能听 && <audio className="crec-audio" controls preload="none" src={`/api/coach-rec/${现.id}/audio`} aria-label="回放录音" />}
+      {(现.打断们 ?? []).map((d, i) => <div key={i} className="crec-hint" data-testid="crec-interrupted">录音在 {读时长(d.秒)} 被打断（{d.原因}），已录部分已保存</div>)}
+      {现.能听 && (现.status === "待提交" && 现.段数 > 1
+        ? Array.from({ length: 现.段数 }, (_, i) => (
+            <div key={i} className="crec-seg"><span className="crec-hint">第 {i + 1} 段</span><audio className="crec-audio" controls preload="none" src={`/api/coach-rec/${现.id}/audio?seg=${i + 1}`} aria-label={`回放第 ${i + 1} 段`} /></div>
+          ))
+        : <audio className="crec-audio" controls preload="none" src={`/api/coach-rec/${现.id}/audio`} aria-label="回放录音" />)}
       {现.status === "整理失败" && 现.错 && <div role="alert" className="crec-warn" data-testid="crec-fail">{现.错}</div>}
+      {现.到期于 && <div className="crec-hint" data-testid="crec-expire">没发出的草稿 {到期日(现.到期于)} 自动删除</div>}
       <div className="crec-acts">
         {现.status === "待提交" && <Button size="small" type="primary" disabled={!可提交} loading={忙} title={灰话} onClick={() => void 交(false)} data-testid="crec-submit">提交整理</Button>}
+        {补段 && 可提交 && 现.status === "待提交" && 现.能补 && <Button size="small" disabled={忙} onClick={() => 补段(现)} data-testid="crec-add-seg">再录一段</Button>}
+        {开确认 && 现.确认 && (现.status === "待确认" || 现.status === "整理失败") && <Button size="small" type={现.status === "待确认" ? "primary" : "default"} onClick={() => 开确认(现)} data-testid="crec-confirm-open">{现.status === "待确认" ? "继续确认" : "自己写了发出"}</Button>}
         {现.status === "整理失败" && <Button size="small" type="primary" disabled={!可提交} loading={忙} title={灰话} onClick={() => void 交(true)} data-testid="crec-retry">重试整理</Button>}
         {删 && 能删 && <Button size="small" danger type="text" onClick={删}>删掉</Button>}
       </div>
@@ -280,9 +317,35 @@ export function PendingCard({ 录, 删, 可提交 = false }: { 录: 录音给界
 /**
  * 沟通卡最上面的录音草稿条（只有录的人自己看得到）：没传完的写「上次传到 62%」+「接着传」「删掉」；传完待提交的出待提交卡
  */
-export function CoachRecDrafts({ projectId, 项目名, 草稿们, 可提交 = false }: { projectId: string; 项目名: string; 草稿们: 录音给界面[]; 可提交?: boolean }) {
+export function CoachRecDrafts({ projectId, 项目名, 草稿们, 可提交 = false, 数据 }: { projectId: string; 项目名: string; 草稿们: 录音给界面[]; 可提交?: boolean; 数据?: 项目主题们 | null }) {
   const router = useRouter();
   const [续, set续] = useState<录音给界面 | null>(null);
+  const [补, set补] = useState<录音给界面 | null>(null);
+  const [确认, set确认] = useState<录音给界面 | null>(null);
+  // 从「整理好了」通知点进来：地址带 crec=<录音编号>，是我这里的待确认 / 整理失败那条就直接打开确认框（只在进页面时看一次，参数从地址上去掉）
+  useEffect(() => {
+    let 号: string | null = null;
+    try {
+      号 = new URLSearchParams(window.location.search).get("crec");
+    } catch {
+      return;
+    }
+    const d = 号 ? 草稿们.find((x) => x.id === 号 && x.确认) : undefined;
+    if (!d) return;
+    // 下一拍再开（服务端渲染时没有地址，首屏不画框，免得水合对不上）；开了再去掉参数（开发模式下效果跑两遍，第一遍的定时被清掉）
+    const 定时 = setTimeout(() => {
+      set确认(d);
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete("crec");
+        window.history.replaceState(window.history.state, "", u.toString());
+      } catch {
+        /* 去不掉参数也不要紧：只在进页面时看一次 */
+      }
+    }, 0);
+    return () => clearTimeout(定时);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [问删, set问删] = useState<string | null>(null);
   const [忙, set忙] = useState(false);
   const [错, set错] = useState<string | null>(null);
@@ -296,11 +359,29 @@ export function CoachRecDrafts({ projectId, 项目名, 草稿们, 可提交 = fa
     set问删(null);
     router.refresh();
   };
+  /** 录着断掉留下的「上传中」录音：这一段传上去了就传完（拼起来）；这一段一片没有、前面有段的退回待提交；都没有只能删 */
+  const 保存已传 = async (d: 录音给界面) => {
+    const 新段有片 = d.已收片.some((x) => x.段 > d.段数);
+    set忙(true);
+    set错(null);
+    const r = await 调(`/api/coach-rec/${d.id}/${新段有片 ? "finish" : "drop"}`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" }).catch(() => null);
+    set忙(false);
+    if (!r || !r.ok) return set错(r ? 话(r, "没保存上，请重试") : "网络断了，请重试");
+    router.refresh();
+  };
   return (
     <div className="crec-drafts" data-testid="crec-drafts" aria-label="我的录音草稿">
       {草稿们.map((d) => (
         <div key={d.id} className="crec-draft" data-testid="crec-draft">
-          {d.status === "上传中" ? (
+          {d.status === "上传中" && d.sourceKind !== "上传" ? (
+            <div className="crec-draft-row">
+              <span className="crec-draft-t" data-testid="crec-rec-left">上次录音没传完（页面关了或断网），已传上去 {读大小(d.已收字节)}</span>
+              <span className="crec-acts">
+                {(d.已收片.some((x) => x.段 > d.段数) || d.段数 > 0) && <Button size="small" type="primary" loading={忙} onClick={() => void 保存已传(d)} data-testid="crec-save-left">保存已传的</Button>}
+                <Button size="small" danger type="text" onClick={() => set问删(d.id)}>删掉</Button>
+              </span>
+            </div>
+          ) : d.status === "上传中" ? (
             <div className="crec-draft-row">
               <span className="crec-draft-t">「{d.文件名 ?? "录音"}」上次传到 {百分(d.已收字节, d.总字节)}%，重新选同一个文件接着传</span>
               <span className="crec-acts">
@@ -309,7 +390,7 @@ export function CoachRecDrafts({ projectId, 项目名, 草稿们, 可提交 = fa
               </span>
             </div>
           ) : (
-            <PendingCard 录={d} 删={() => set问删(d.id)} 可提交={可提交} />
+            <PendingCard 录={d} 删={() => set问删(d.id)} 可提交={可提交} 开确认={set确认} 补段={set补} />
           )}
           {问删 === d.id && (
             <div className="pd-del-band" role="group" aria-label="确认删掉这条录音" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); set问删(null); } }}>
@@ -324,6 +405,8 @@ export function CoachRecDrafts({ projectId, 项目名, 草稿们, 可提交 = fa
       ))}
       {错 && <div role="alert" className="cd-task-err">{错}</div>}
       {续 && <CoachRecUploadModal projectId={projectId} 项目名={项目名} 续={续} 可提交={可提交} 关={() => set续(null)} />}
+      {补 && <HoldToTalkPanel projectId={projectId} 项目名={项目名} 续={补} 关={() => { set补(null); router.refresh(); }} />}
+      {确认 && <CoachRecConfirm 录={确认} 数据={数据} 可整理={可提交} 关={() => set确认(null)} />}
     </div>
   );
 }

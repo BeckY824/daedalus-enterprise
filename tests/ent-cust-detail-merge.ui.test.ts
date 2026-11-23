@@ -34,7 +34,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   stub(/^\.\.\/actions$|projects\/actions$/, `const f=${空跑};
     export const saveCustomerNumbers=async()=>({ok:true});export const 转走项目预览of=async()=>({项目数:0,项目:[]}),deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=f;
     export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true,followUpId:'f1'});
-    export const 编辑项目=f,改项目沟通=f,改项目节点=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=(...a)=>window.__挂起?new Promise(()=>{}):f(...a),领取项目=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,改项目画像Action=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
+    export const 编辑项目=f,改项目沟通=f,改项目节点=f,记完成节点被拦=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=(...a)=>window.__挂起?new Promise(()=>{}):f(...a),领取项目=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,改项目画像Action=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\/actions$/, `
     export const 客户删除预检=async()=>({ok:true}),删除前清点=async()=>({}),deleteCustomers=async()=>({ok:false});
     export const toggleTask=async()=>({ok:true}),deleteTask=toggleTask,completePlan=toggleTask,撤销记一笔=toggleTask,沟通可选项目=async()=>({ok:true,项目们:null,能建项目:true}),saveFollowUp=toggleTask,deleteFollowUp=toggleTask;
@@ -337,10 +337,10 @@ it.each([1280, 1366, 1440])("提醒条 %ipx：在项目区中栏、进程卡正�
     // 不在客户名下面通栏，在项目区那张网格里
     expect(await 条.evaluate(el => !!el.closest(".rec-zone .cd-zb > .cd-alert"))).toBe(true);
     const [框, 中栏, 右栏, 进程卡] = await Promise.all([条.boundingBox(), page.locator(".cd-mid").boundingBox(), page.locator(".cd-side").boundingBox(), page.locator(".cd-mid > .ant-card").first().boundingBox()]);
-    // 和中栏那一列同宽（量进程卡：D2 起中栏是一扇自己滚的窗，左右各让 4px 给卡片阴影，栏框比列宽 8px）
-    expect(Math.abs(框!.x - 进程卡!.x)).toBeLessThanOrEqual(1);
-    expect(Math.abs(框!.width - 进程卡!.width)).toBeLessThanOrEqual(1);
-    expect(Math.abs(框!.x - 中栏!.x)).toBeLessThanOrEqual(5);
+    // 落在中栏那一列：设计语言 D-2 方案 A（11-22）起模块不画卡、栏与栏之间一根竖线，提醒条两边各让 16，和模块里的字对齐、不贴着栏线
+    expect(Math.abs(框!.x - (进程卡!.x + 16))).toBeLessThanOrEqual(1);
+    expect(Math.abs(框!.width - (进程卡!.width - 32))).toBeLessThanOrEqual(1);
+    expect(Math.abs(框!.x - (中栏!.x + 16))).toBeLessThanOrEqual(1);
     expect(框!.y + 框!.height).toBeLessThanOrEqual(进程卡!.y + 1);
     expect(Math.abs(右栏!.y - 中栏!.y)).toBeLessThanOrEqual(1);
     expect(await page.locator(".rec-head + [data-testid=tri-state-bar]").count()).toBe(0);

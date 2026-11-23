@@ -42,7 +42,7 @@ import type { 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
 import { useDetailNote, 框里原因, type 跑法, type 就地回执 } from "./detail-note";
 import { FoldSplit, ProjectFold, 模块钮色, 连体箭头 } from "./ProjectFold";
 import { 卡名Provider, 客户详情卡点, 项目卡名 } from "./card-names";
-import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
+import { ProjectFillRequired, 定位到模块, 定位到附件格, 附件必填格 } from "./ProjectFillRequired";
 import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
 import { 填法表, 客户格, type 窗外去处, type 草稿们, type 已签收格 } from "@/lib/project/required-fill";
 import ProjectStages from "./ProjectStages";
@@ -68,7 +68,7 @@ import ProjectInlineField, { type 编辑器参数 } from "./ProjectInlineField";
 import { 钱编辑器, 钱格存法 } from "./money-cell";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
-import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 编辑项目 } from "../actions";
+import { 改项目节点, 记完成节点被拦, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 编辑项目 } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, 原因选择, type 卡点卡 } from "../BlockerPanel";
@@ -777,7 +777,9 @@ export default function ProjectDetail({
   };
 
   /** 终止 = true：异常框 / 没成框 点确定走 终止项目进程（M-节点-04，审计写「终止进程」）；成了 = 改成了以后的提示 */
-  const 改到 = (到: 位置, 附: { 终止?: boolean; 成了?: string; 可撤?: boolean } = {}) => {
+  const 改到 = (到: 位置, 附: { 终止?: boolean; 成了?: string; 可撤?: boolean; 入口?: "完成节点" } = {}) => {
+    // 被缺必填拦下时服务端记哪个入口（必填拦截记录）：完成节点 / 别的改进程
+    const 入口 = 附.入口 ?? "改进程";
     set终止中(!!附.终止);
     if (到.result === "异常状态") {
       set原因("");
@@ -804,7 +806,7 @@ export default function ProjectDetail({
     if (附.可撤) {
       const 页上: 位置 = { phase: p.phase, node: p.node, result: p.result ?? null };
       const 回: { r?: Awaited<ReturnType<typeof 改项目节点>> } = {};
-      void 跑(async () => (回.r = await 改项目节点(p.id, 到))).then((ok) => {
+      void 跑(async () => (回.r = await 改项目节点(p.id, 到, null, null, 入口))).then((ok) => {
         if (!ok) return;
         const 原 = 回.r && "原" in 回.r && 回.r.原 ? 回.r.原 : null;
         const 回到: 位置 = 原 ? { phase: 原.phase, node: 原.node, result: 原.result } : 页上;
@@ -819,7 +821,7 @@ export default function ProjectDetail({
       });
       return;
     }
-    void 跑(() => 改项目节点(p.id, 到), 附.成了 ?? `已改到 ${位置文字(到, 字典)}`);
+    void 跑(() => 改项目节点(p.id, 到, null, null, 入口), 附.成了 ?? `已改到 ${位置文字(到, 字典)}`);
   };
 
   /**
@@ -917,6 +919,8 @@ export default function ProjectDetail({
   const 去填 = (键: string) => {
     const 叫 = 必填叫法(键);
     const 说在哪 = (话: string) => 就地.info(`「${叫}」：${话}`);
+    // 附件类（项目方案、合同附件、验收报告，F-042）：直接滚到「项目附件」里那一格亮一下，不开完成节点框（框里这一项也只是一颗「去项目附件」）
+    if (附件必填格[键] && 定位到附件格(键)) return;
     if (节点可改 && !完成不了 && !忙 && 要先补齐 && 节点缺.includes(键)) {
       set头部框("完成");
       /*
@@ -1000,11 +1004,11 @@ export default function ProjectDetail({
         ],
         是: `进${到.phase}`,
         危: false,
-        做: () => 改到(到, { 成了: 完成到字 }),
+        做: () => 改到(到, { 成了: 完成到字, 入口: "完成节点" }),
       });
       return;
     }
-    改到(完成到, { 成了: 跨阶段 ? `${完成到字}` : `已推进到 ${完成到.node}`, 可撤: !跨阶段 });
+    改到(完成到, { 成了: 跨阶段 ? `${完成到字}` : `已推进到 ${完成到.node}`, 可撤: !跨阶段, 入口: "完成节点" });
   };
   /** 「终止进程」（M-节点-04）：按所在阶段落到 线索流失 / 丢单 / 异常状态；先确认，再到写原因 / 选类别的框 */
   const 终止到 = p.企业版 && !p.result ? 终止结局(当前, 字典) : null;
@@ -1078,11 +1082,11 @@ export default function ProjectDetail({
   /** 框里点了要换到别的框（推进 → 结局确认）：先关这个，焦点回到页头。「管理沟通」框 M-权限-09 去掉了，改、删在每条沟通的「…」里 */
   const 换框 = (f: () => void) => () => { set头部框(null); f(); };
   /** 「完成节点」框里填不了的必填：关框，打开或滚到能填的地方 */
-  const 去补必填 = (去: 窗外去处) => {
+  const 去补必填 = (去: 窗外去处, 项?: string) => {
     set头部框(null);
     if (去 === "沟通") set记一条开着(true);
     else if (去 === "线索验证") set验证开着(true);
-    else if (去 === "附件") 定位到模块("project-attachments-fold");
+    else if (去 === "附件") { if (!项 || !定位到附件格(项)) 定位到模块("project-attachments-fold"); }
     else if (去 === "回款") 定位到模块("project-payments-fold");
   };
   /** dt.stage 补填小框（挂在「完成节点」上的 Popover 里）：M-节点-05/09 先查这个节点的必填（占位值不算填了），缺了当场填（11-03 一窗填完），
@@ -1116,8 +1120,13 @@ export default function ProjectDetail({
     </div>
   );
   const 进程钮 = (不在当前: string | undefined) => {
-    const 灰着 = (原因: string | undefined, 钮: ReactNode) => (原因 ? <Tooltip title={原因}><span className="proj-stage-tip">{钮}</span></Tooltip> : 钮);
+    const 灰着 = (原因: string | undefined, 钮: ReactNode, 点了?: () => void) => (原因 ? <Tooltip title={原因}><span className="proj-stage-tip" onClick={点了}>{钮}</span></Tooltip> : 钮);
     const 完成灰 = 不在当前 ?? 完成不了;
+    /*
+      灰着正是因为推过线索验证还缺几样（卡有效沟通，不是没权限、等复核）：点灰按钮 = 被拦一次，记下来（必填拦截记录，客户 11-23「点完成缺必填只提示不留记录是黑箱」）。
+      样子不变（照旧灰着、悬停写原因）；灰按钮本身不收点击，globals.css 让它不接鼠标、点击落到外面这层 span
+    */
+    const 点灰完成 = 完成灰 && !不在当前 && !p.不给推 && 卡有效沟通 && 完成灰 === 缺有效沟通话 && 节点可改 ? () => void 记完成节点被拦(p.id) : undefined;
     const 菜单: NonNullable<MenuProps["items"]> = [
       ...(终止到 ? [{ key: "stop", danger: true, disabled: !!(不在当前 ?? 动不了), label: 两行("终止进程", 不在当前 ?? 动不了 ?? `落到「${结局叫法(终止到, 字典)}」`) }] : []),
     ];
@@ -1140,12 +1149,16 @@ export default function ProjectDetail({
                   arrow={false}
                   destroyOnHidden
                   classNames={{ root: "pd-fill-pop" }}
-                  onOpenChange={(v) => set头部框(v ? "完成" : null)}
+                  onOpenChange={(v) => {
+                    set头部框(v ? "完成" : null);
+                    // 还差必填、补填框弹出来 = 被拦一次（必填拦截记录，服务端自己再算一遍还差什么）；只留痕，不等它
+                    if (v && p.企业版 && p.必填?.还差?.length) void 记完成节点被拦(p.id);
+                  }}
                   content={完成补填框}
                 >
                   <Button className="proj-done-btn" disabled={忙 || !!完成灰} aria-haspopup="dialog" aria-expanded={头部框 === "完成"}>完成节点</Button>
                 </Popover>
-              ) : <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => 完成()}>完成节点</Button>)}
+              ) : <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => 完成()}>完成节点</Button>, 点灰完成)}
               {菜单.length > 0 && (
                 <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => { if (key === "stop") 开终止(); } }}>
                   <Button className="proj-done-btn split-caret" icon={连体箭头} aria-label="终止进程" />
@@ -1931,7 +1944,7 @@ export default function ProjectDetail({
   );
 
   const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
-  // 项目附件合成一块（F-项目-18）：合同附件、项目方案、验收报告、其它附件各一格（节点必填「合同附件」「项目方案」「验收报告」各看自己那一格；没分格的老附件算在「其它」里），
+  // 项目附件合成一块（F-项目-18）：项目方案、合同附件（这两格各自框起来带提示，F-042）、验收报告、其它附件各一格（节点必填「合同附件」「项目方案」「验收报告」各看自己那一格；没分格的老附件算在「其它」里），
   // 最后一格把挂在各条沟通上的截图、录音收过来，写明来自哪条沟通，点了跳到那条（在这里只看、下载，传和删回那条沟通上）
   const 沟通附件们: 沟通附件组[] = p.followUps
     .filter((f) => f.附件?.length)

@@ -2174,3 +2174,34 @@ model EntCoachReply {
 
   @@index([topicId, createdAt])
 }
+
+/// 企业版必填拦截记录（迁移 164）：往前推节点被「缺必填」拦下时记一行（客户要：时间、客户 / 项目编号、节点、缺哪几项；先只记录不报警，之后按天按节点出数）。
+/// 两种拦法都记：节点必填（节点推进配的必填没齐）、线索验证（推过线索验证要的几样没齐，节点推进开关关着也拦）；另记前两节点要沟通的「本节点沟通」。
+/// 同一人同一项目同一节点同一种拦法 10 分钟内只记一行（反复点同一个按钮不重复算）。只记不改，没有界面改它；项目真删不级联（不建外键，导出时按项目查不到写「已删」）。
+/// 「卡了多久」不另存：导出时按项目的节点变更（ProjectNodeLog）找这一行之后第一次离开这个节点的时刻算。说明见 lib/project/required-block.ts
+model EntRequiredBlock {
+  id         String   @id @default(cuid())
+  at         DateTime @default(now())
+  /// 谁点的（被拦的那个人）
+  userId     String
+  projectId  String
+  /// 当时项目挂的客户（导出给客户编号用；客户后来换了照旧记当时的）
+  customerId String?
+  /// 被拦时项目在哪（阶段、节点）
+  phase      String
+  node       String
+  /// 想推到哪（看板拖到的列、完成节点的下一格）；不知道的留空
+  toPhase    String?
+  toNode     String?
+  /// 节点必填 / 线索验证 / 本节点沟通
+  kind       String
+  /// 缺哪几项（显示名，JSON 数组）
+  missing    String
+  /// 入口：完成节点 / 看板拖动 / 首页AI / 线索验证判定 / 判MQL / 改进程 / 其他
+  entry      String
+  /// 直属上级代推（「仅上级推」开着时上级替下属推）被拦
+  onBehalf   Boolean  @default(false)
+
+  @@index([at])
+  @@index([projectId, at])
+}

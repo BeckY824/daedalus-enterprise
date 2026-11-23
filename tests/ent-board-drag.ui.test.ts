@@ -115,7 +115,7 @@ it("拖到下一个进程：先预检再改节点，卡片落到新列、计数�
       await 拖到(page, 1);
       await 列(page, 1).locator('[data-card-id="p1"]').waitFor();
       expect(await 调了(page, "预检")).toEqual([["预检", "p1", { phase: "线索", node: "线索验证" }]]);
-      expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "线索", node: "线索验证", result: null }]]);
+      expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "线索", node: "线索验证", result: null }, null, null, "看板拖动"]]);
       await expect.poll(() => 列(page, 0).locator(".pipe-n").innerText()).toBe("1");
       await expect.poll(() => 列(page, 1).locator(".pipe-n").innerText()).toBe("1");
       expect(await 去了(page)).toEqual([]);
@@ -145,7 +145,7 @@ it("拖到下一阶段的列（线索推进→痛点挖掘）：先确认（待�
     await 问.waitFor();
     await 问.getByRole("button", { name: "进商机" }).click();
     await 列(page, 1).locator('[data-card-id="p1"]').waitFor();
-    expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "商机", node: "痛点挖掘", result: null }]]);
+    expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "商机", node: "痛点挖掘", result: null }, null, null, "看板拖动"]]);
     await page.waitForTimeout(300);
     expect(await page.locator(".undo-bar").count()).toBe(0);
     expect(errors).toEqual([]);
@@ -235,7 +235,7 @@ it("必填没填齐、读得到项目料：弹小框就地补填（和完成节�
       expect(b.x + b.width).toBeLessThanOrEqual(w);
       await 框.getByRole("spinbutton", { name: "金额" }).fill("100");
       await 框.getByRole("button", { name: "保存并完成节点" }).click();
-      await expect.poll(() => 调了(page, "改")).toEqual([["改", "p1", { phase: "线索", node: "线索验证", result: null }]]);
+      await expect.poll(() => 调了(page, "改")).toEqual([["改", "p1", { phase: "线索", node: "线索验证", result: null }, null, null, "看板拖动"]]);
       expect((await 调了(page, "详编"))[0]?.[1]).toBe("p1");
       await expect.poll(() => 框.count()).toBe(0);
       expect(errors).toEqual([]);
@@ -262,7 +262,7 @@ it("键盘：卡片上 Alt+→ 推到下一个进程（同一条路），读屏�
     await 卡(page).focus();
     await page.keyboard.press("Alt+ArrowRight");
     await 列(page, 1).locator('[data-card-id="p1"]').waitFor();
-    expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "线索", node: "线索验证", result: null }]]);
+    expect(await 调了(page, "改")).toEqual([["改", "p1", { phase: "线索", node: "线索验证", result: null }, null, null, "看板拖动"]]);
     expect(await page.locator("[role=status]").filter({ hasText: "已推到「线索验证」" }).count()).toBe(1);
     expect(await 去了(page)).toEqual([]);
     // 减弱动态：按下拖动中途量 transform，没有位移
