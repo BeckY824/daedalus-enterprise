@@ -20,7 +20,7 @@ import {
   发起通知谁, 回复通知谁, 关闭通知谁, 主题标题上限, 主题内容上限, type 主题项目, type 发起身份, type 主题状态,
 } from "./coach-topic";
 import { 能看项目, 权限项目选, 是教练, type 谁 } from "./permissions";
-import { 打码还原, 还原超长话 } from "./notice-mask";
+import { 打码还原, 还原超长话, 有对不上的码, 内容变了话, 版本变了, 通知文字打码 } from "./notice-mask";
 import { 录音点评开着, 录音可用, 我的录音草稿, 没开放话, 删主题的录音文件, type 录音给界面 } from "./coach-rec-db";
 import { 能听原声, 给人看的文字 } from "./coach-rec";
 import { 夹页, 复盘列表每页, type 主题范围, type 主题状态筛, type 复盘主题 } from "@/lib/project/review-tabs";
@@ -193,7 +193,7 @@ const 录音变了 = "这条录音刚变了（可能在别的窗口发出或删�
  * 发起 = 写一条主题（+ 录音点评：同一个事务里把录音改成已发出、记上主题编号；录音不是待确认 / 整理失败了就整个不写）。
  * 权限、输入、留痕、通知同一套（P-教练-21：负责人收到的仍是主题通知，标题 + 去哪看，不带录音、转写）
  */
-async function 发起(me: 人, projectId: string, 输入: { title?: unknown; body?: unknown }, 录音id: string | null): Promise<结果<{ id: string }>> {
+async function 发起(me: 人, projectId: string, 输入: { title?: unknown; body?: unknown }, 录音id: string | null, 录音版本?: Date): Promise<结果<{ id: string }>> {
   if (!企业版()) return { ok: false, error: "教练主题只在企业版里有" };
   const p = await 读项目(projectId);
   if (!p) return { ok: false, error: "项目不在了，刷新看看" };
@@ -212,7 +212,8 @@ async function 发起(me: 人, projectId: string, 输入: { title?: unknown; bod
       const 新 = await tx.entCoachTopic.create({ data: { projectId: p.id, node: p.node, title, body, authorId: me.id }, select: { id: true } });
       if (录音id) {
         const 改 = await tx.entCoachRecording.updateMany({
-          where: { id: 录音id, authorId: me.id, projectId: p.id, status: { in: ["待确认", "整理失败"] }, deletedAt: null },
+          // 录音版本（#428 审查）：只在库里还是还原时读到的那一版才发，不然整个事务回滚（主题不建）
+          where: { id: 录音id, authorId: me.id, projectId: p.id, status: { in: ["待确认", "整理失败"] }, deletedAt: null, ...(录音版本 ? { updatedAt: 录音版本 } : {}) },
           data: { status: "已发出", topicId: 新.id, draftTitle: title, draftBody: body, error: null },
         });
         if (改.count !== 1) throw new Error(录音变了);
@@ -223,7 +224,8 @@ async function 发起(me: 人, projectId: string, 输入: { title?: unknown; bod
     if (e instanceof Error && e.message === 录音变了) return { ok: false, error: 录音变了 };
     throw e;
   }
-  await recordAudit({ user: me, action: "create", entity: "EntCoachTopic", entityId: t.id, summary: `${身份}发起主题「${title}」（项目「${p.name}」${录音id ? "，录音点评" : ""}）` });
+  // 留痕里的主题名过打码（跟进 11-22：录音点评的主题常带客户号码，库里存原文；留痕只给管理员看也不放原号码）
+  await recordAudit({ user: me, action: "create", entity: "EntCoachTopic", entityId: t.id, summary: `${身份}发起主题「${通知文字打码(title)}」（项目「${p.name}」${录音id ? "，录音点评" : ""}）` });
   const { 主题通知 } = await import("./notice-sources");
   await 主题通知(me, "发起", { id: t.id, title, projectId: p.id, 项目名: p.name }, 发起通知谁(me.id, p));
   return { ok: true, id: t.id };
@@ -233,7 +235,7 @@ async function 发起(me: 人, projectId: string, 输入: { title?: unknown; bod
  * 发出录音点评（POST /api/coach-rec/:id/send，PR5）：只有录的人；待确认、整理失败（自己写主题要点也能发）的才能发。
  * 走发主题同一套（权限按现在、P-教练-11/12/13；输入同写点评的上限）；前端不能指定别人的录音（只认录的人自己的这一条）
  */
-export async function 发录音点评(me: 人, 录音id: unknown, 输入: { title?: unknown; body?: unknown }): Promise<结果<{ id: string }> | { ok: false; error: string; 状态: number }> {
+export async function 发录音点评(me: 人, 录音id: unknown, 输入: { title?: unknown; body?: unknown; 版本?: unknown }): Promise<结果<{ id: string }> | { ok: false; error: string; 状态: number }> {
   if (!(await 录音点评开着())) return { ok: false, error: 没开放话, 状态: 404 };
   if (typeof 录音id !== "string" || !/^[\w-]{1,64}$/.test(录音id)) return { ok: false, error: "找不到这条录音", 状态: 404 };
   const r = await defaultClient.entCoachRecording.findUnique({ where: { id: 录音id }, select: { id: true, authorId: true, projectId: true, status: true, deletedAt: true } });
@@ -241,16 +243,24 @@ export async function 发录音点评(me: 人, 录音id: unknown, 输入: { titl
   if (r.status === "已发出") return { ok: false, error: "这条录音点评已经发出了", 状态: 409 };
   if (r.status !== "待确认" && r.status !== "整理失败") return { ok: false, error: "这条录音还没整理好", 状态: 409 };
   // 销售教练提交的是打过码的字：没改动的打码段按原文换回原号码再存（PR5 审查：库里存原文，负责人看到原号码）
-  const 原 = await defaultClient.entCoachRecording.findUnique({ where: { id: r.id }, select: { draftTitle: true, draftBody: true, transcript: true } });
+  const 原 = await defaultClient.entCoachRecording.findUnique({ where: { id: r.id }, select: { draftTitle: true, draftBody: true, transcript: true, updatedAt: true } });
   const 原文们 = [原?.draftTitle, 原?.draftBody, 原?.transcript];
   const 还原 = (x: unknown) => (typeof x === "string" ? 打码还原(x, 原文们) : x);
   const 教练 = 是教练(me, await 读组织());
-  const 改后 = 教练 ? { title: 还原(输入.title), body: 还原(输入.body) } : 输入;
+  const 改后 = 教练 ? { title: 还原(输入.title), body: 还原(输入.body) } : { title: 输入.title, body: 输入.body };
+  // 确认框开着时这条在别处重新整理过、原号码没了：打码段换不回去，拒发（3703 实操跟进）
+  if (教练 && (!原 || 版本变了(输入.版本, 原.updatedAt)) && (有对不上的码(改后.title, 原文们) || 有对不上的码(改后.body, 原文们))) return { ok: false, error: 内容变了话, 状态: 412 };
   // 还原后变长超了上限（带分隔的号码）：给清楚的话，不回笼统的「最多 N 字」（PR5 审查）
   const 超 = 教练 ? 还原超长话(输入.title, 改后.title, 主题标题上限, "主题") ?? 还原超长话(输入.body, 改后.body, 主题内容上限, "要点") : null;
   if (超) return { ok: false, error: 超, 状态: 400 };
-  const x = await 发起(me, r.projectId, 改后, r.id);
+  // 带了版本的：按还原时读到的那一版写（读完到写之间别处又整理了 → 回 412，和上面同一句，#428 审查）
+  const 带版本 = typeof 输入.版本 === "string" && !!原;
+  const x = await 发起(me, r.projectId, 改后, r.id, 带版本 ? 原!.updatedAt : undefined);
   if (x.ok) return x;
+  if (带版本 && x.error === 录音变了) {
+    const 现 = await defaultClient.entCoachRecording.findUnique({ where: { id: r.id }, select: { status: true, deletedAt: true } });
+    if (现 && !现.deletedAt && (现.status === "待确认" || 现.status === "整理失败")) return { ok: false, error: 内容变了话, 状态: 412 };
+  }
   return { ...x, 状态: x.error === 录音变了 ? 409 : /最多|要写/.test(x.error) ? 400 : /不在了/.test(x.error) ? 404 : 403 };
 }
 
@@ -274,7 +284,7 @@ export async function 回复主题(me: 人, topicId: string, body: unknown): Pro
     await tx.entCoachTopic.updateMany({ where: { id: x.t.id, status: { not: "已关闭" }, deletedAt: null }, data: { status } });
     return r;
   }));
-  await recordAudit({ user: me, action: "reply", entity: "EntCoachTopic", entityId: x.t.id, summary: `回复主题「${x.t.title}」（项目「${x.p.name}」）` });
+  await recordAudit({ user: me, action: "reply", entity: "EntCoachTopic", entityId: x.t.id, summary: `回复主题「${通知文字打码(x.t.title)}」（项目「${x.p.name}」）` });
   const { 主题通知 } = await import("./notice-sources");
   const 事件 = me.id === x.p.ownerId ? "回复" : me.id === x.t.authorId ? "追问" : "回复";
   // 通知键带回复编号：同一主题第二次追问、第二次回复不被「人 + 键」去重吞掉
@@ -290,7 +300,7 @@ export async function 关闭主题(me: 人, topicId: string): Promise<结果> {
   const org = await 读组织();
   if (!能关主题(me, x.t, 判项目(x.p), org)) return { ok: false, error: x.t.status === "已关闭" ? "这个主题已经关闭了" : "只有发起人或系统管理员能关闭（发起人停用后负责人也能关）" };
   await 主题写(() => prisma.entCoachTopic.updateMany({ where: { id: x.t.id, status: { not: "已关闭" } }, data: { status: "已关闭", closedById: me.id, closedAt: new Date() } }));
-  await recordAudit({ user: me, action: "close", entity: "EntCoachTopic", entityId: x.t.id, summary: `关闭主题「${x.t.title}」（项目「${x.p.name}」）` });
+  await recordAudit({ user: me, action: "close", entity: "EntCoachTopic", entityId: x.t.id, summary: `关闭主题「${通知文字打码(x.t.title)}」（项目「${x.p.name}」）` });
   const { 主题通知 } = await import("./notice-sources");
   await 主题通知(me, "关闭", { id: x.t.id, title: x.t.title, projectId: x.p.id, 项目名: x.p.name }, 关闭通知谁(me.id, x.p));
   return { ok: true };
@@ -305,7 +315,7 @@ export async function 删主题(me: 人, topicId: string): Promise<结果> {
   await 主题写(() => prisma.entCoachTopic.updateMany({ where: { id: x.t.id, deletedAt: null }, data: { deletedAt: new Date() } }));
   // 录音点评（PR6）：系统管理员删主题，这个主题的录音文件连带删（转写、要点留在行上，主题删了谁也看不到）
   const 删了 = await 删主题的录音文件(x.t.id).catch((e) => { console.warn(`[录音清理] 删主题的录音文件出错：${e instanceof Error ? e.message.slice(0, 200) : e}`); return 0; });
-  await recordAudit({ user: me, action: "delete", entity: "EntCoachTopic", entityId: x.t.id, summary: `删除主题「${x.t.title}」（项目「${x.p.name}」）${删了 ? "，连带删了录音文件" : ""}` });
+  await recordAudit({ user: me, action: "delete", entity: "EntCoachTopic", entityId: x.t.id, summary: `删除主题「${通知文字打码(x.t.title)}」（项目「${x.p.name}」）${删了 ? "，连带删了录音文件" : ""}` });
   return { ok: true };
 }
 

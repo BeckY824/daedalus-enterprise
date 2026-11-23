@@ -44,7 +44,7 @@ const 假服务器 = () => {
   window.fetch = (async (url: string, init?: RequestInit) => {
     w.__请求.push(`${init?.method ?? "GET"} ${url} ${init?.body ?? ""}`.trim());
     const 回 = (window as unknown as { __回?: number }).__回;
-    if (回) return new Response(JSON.stringify({ error: "这条录音点评已经发出了" }), { status: 回, headers: { "content-type": "application/json" } });
+    if (回) return new Response(JSON.stringify({ error: 回 === 412 ? "内容已在别处更新，请重新打开" : "这条录音点评已经发出了" }), { status: 回, headers: { "content-type": "application/json" } });
     return new Response(JSON.stringify({ ok: true, id: "t9", 录音: {} }), { status: 200, headers: { "content-type": "application/json" } });
   }) as typeof fetch;
 };
@@ -78,7 +78,7 @@ it("继续确认：带着 AI 起草的字；转写收起、点开有小字；改
   expect(await 框.textContent()).toContain("机器识别，可能有错字，以录音为准");
   await 框.getByLabel("主题").fill("改过的主题");
   await page.getByTestId("crec-confirm-send").click();
-  await expect.poll(() => 请求们(page)).toEqual([`POST /api/coach-rec/crec1/send ${JSON.stringify({ title: "改过的主题", body: "【下一步建议】\n· 周二发报价单" })}`]);
+  await expect.poll(() => 请求们(page)).toEqual([`POST /api/coach-rec/crec1/send ${JSON.stringify({ title: "改过的主题", body: "【下一步建议】\n· 周二发报价单", 版本: "" })}`]);
   await expect.poll(() => page.getByTestId("crec-confirm").count()).toBe(0);
   expect(errors).toEqual([]);
   await page.close();
@@ -93,7 +93,7 @@ it("稍后再发：没改直接关、改了才存；不要了先问再删；按�
   await page.getByTestId("crec-confirm-open").click();
   await page.getByTestId("crec-confirm").getByLabel("要点").fill("自己改的");
   await page.getByTestId("crec-confirm-later").click();
-  await expect.poll(() => 请求们(page)).toEqual([`POST /api/coach-rec/crec1/draft ${JSON.stringify({ title: "报价单下周二前发出", body: "自己改的" })}`]);
+  await expect.poll(() => 请求们(page)).toEqual([`POST /api/coach-rec/crec1/draft ${JSON.stringify({ title: "报价单下周二前发出", body: "自己改的", 版本: "" })}`]);
   await page.getByTestId("crec-confirm-open").click();
   await page.getByTestId("crec-confirm-drop").click();
   expect(await page.getByRole("group", { name: "放弃这段录音？" }).textContent()).toContain("已录 0:22");
@@ -126,6 +126,23 @@ it("点 × / 按 Esc 关框时存草稿：服务端回 409（别处已经发出�
   await page.getByTestId("crec-confirm").getByLabel("要点").fill("再改");
   await page.getByTestId("crec-confirm-later").click();
   await page.getByTestId("crec-confirm").getByRole("alert").filter({ hasText: "已经发出了" }).waitFor();
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+it("点 × 存草稿回 412（这条在别处重新整理过、打码号码换不回去）：框留着写「内容已在别处更新」，再点 × 直接关、刷新、不再存", async () => {
+  const { page, errors } = await open(基([录({})]));
+  await page.evaluate(() => { (window as unknown as { __回?: number }).__回 = 412; });
+  await page.getByTestId("crec-confirm-open").click();
+  await page.getByTestId("crec-confirm").getByLabel("要点").fill("改了 139****5678");
+  await page.locator(".crec-confirm .ant-modal-close").click();
+  await page.getByTestId("crec-confirm").getByRole("alert").filter({ hasText: "内容已在别处更新，请重新打开" }).waitFor();
+  const 存次 = (await 请求们(page)).filter((x) => x.includes("/draft")).length;
+  expect(存次).toBe(1);
+  await page.locator(".crec-confirm .ant-modal-close").click();
+  await expect.poll(() => page.getByTestId("crec-confirm").count()).toBe(0);
+  expect((await 请求们(page)).filter((x) => x.includes("/draft")).length).toBe(1);
+  expect(await page.evaluate(() => (window as unknown as { __刷?: number }).__刷)).toBe(1);
   expect(errors).toEqual([]);
   await page.close();
 });

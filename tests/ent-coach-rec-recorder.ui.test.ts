@@ -544,8 +544,8 @@ it("PR3 二审：补段传片被拒（415）→ 丢掉这段、退回待提交�
   await 等录着(page);
   await page.waitForTimeout(1100);
   await page.mouse.up();
-  await page.getByTestId("ptt-tip").filter({ hasText: "这一段没留，前面录的还在" }).waitFor();
-  expect(await page.getByTestId("ptt-tip").innerText()).toBe("这一段和前面录的格式不一样；这一段没留，前面录的还在");
+  await page.getByTestId("ptt-tip").filter({ hasText: "这一段录音没传上，前面录的还在" }).waitFor();
+  expect(await page.getByTestId("ptt-tip").innerText()).toBe("这一段录音没传上，前面录的还在（和前面录的格式不一样）");
   expect(await 请求们(page)).toEqual(["POST /api/coach-rec/crec9/resume", "PUT /api/coach-rec/crec9/chunk/2/0", "POST /api/coach-rec/crec9/drop"]);
   await page.getByTestId("ptt-pending").filter({ hasText: "已录 1 段" }).waitFor();
   expect(await page.getByTestId("ptt-pending").getAttribute("data-status")).toBe("待提交");

@@ -355,6 +355,22 @@ describe("改删：发出后不能改删，只有系统管理员软删（只打�
     expect(await 读一条主题(我("老板"), t.id)).toBeNull();
   });
 
+  it("留痕里的主题名打码（跟进 11-22）：删、关、回的留痕不带原号码，库里主题照存原文", async () => {
+    const t = await raw.entCoachTopic.create({ data: { projectId: 项目, node: "线索验证", title: "回访 13812345678 报价", body: "x", authorId: 人.教练 } });
+    当("教练");
+    expect(await 回复主题动作(t.id, "补一句")).toEqual({ ok: true });
+    expect(await 关闭主题动作(t.id)).toEqual({ ok: true });
+    当("老板");
+    expect(await 删主题动作(t.id)).toEqual({ ok: true });
+    const 痕 = await raw.auditLog.findMany({ where: { entity: "EntCoachTopic", entityId: t.id }, select: { action: true, summary: true } });
+    expect(痕.map((x) => x.action).sort()).toEqual(["close", "delete", "reply"]);
+    for (const x of 痕) {
+      expect(x.summary).toContain("回访 138****5678 报价");
+      expect(x.summary).not.toContain("13812345678");
+    }
+    expect((await raw.entCoachTopic.findUniqueOrThrow({ where: { id: t.id } })).title).toBe("回访 13812345678 报价");
+  });
+
   it("没有改主题、改回复的口子：只读角色、负责人直接写库都拒", async () => {
     await 发("教练");
     const t = await 一条();

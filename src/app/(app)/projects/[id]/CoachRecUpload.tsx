@@ -16,6 +16,7 @@
  *       录着页面关了 / 断网留下的「上传中」录音：写已传多少，给「保存已传的」（传完 / 退回待提交）和「删掉」。
  *       传文件按最近几片的速度估还要多久，超过 3 分钟提示「网络较慢……建议连 Wi-Fi」（uploader.ts 传文件慢话）。
  */
+import { businessDayjs } from "@/lib/business-clock";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, Progress } from "antd";
@@ -260,7 +261,8 @@ const 状态字 = (x: 录音给界面): string =>
   x.status === "转写中" ? "正在转写，好了会通知你" : x.status === "整理中" ? "转写好了，正在整理要点" : x.status === "整理失败" ? "没整理成" : x.status === "待确认" ? "整理好了，待确认" : "待提交";
 
 /** 草稿哪天自动删（PR6）：「11 月 29 日」 */
-const 到期日 = (iso: string) => { const d = new Date(iso); return `${d.getMonth() + 1} 月 ${d.getDate()} 日`; };
+// 按北京时间说哪天（跟进 11-22）：和「明天到期」通知同一个钟（businessDayjs），不随浏览器时区差一天
+const 到期日 = (iso: string) => businessDayjs(iso).format("M 月 D 日");
 
 /**
  * 待提交卡：回放、「提交整理」、删掉。只有录的人看得到（数据只给录的人）。

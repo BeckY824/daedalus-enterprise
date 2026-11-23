@@ -99,7 +99,7 @@
 
   --ant-color-bg-base: var(--panel);
   --ant-color-bg-container: var(--panel);
-  --ant-color-bg-elevated: var(--panel);
+  --ant-color-bg-elevated: var(--pop-bg);   /* 浮层底：换皮主题 --pop-bg 就是它们的 --panel；现状暗黑抬亮一档（D-2） */
   --ant-color-bg-layout: var(--workbench);
   --ant-color-bg-container-disabled: var(--hover);
   --ant-color-bg-spotlight: color-mix(in srgb, var(--ink) 88%, var(--panel));
@@ -184,7 +184,7 @@
   --ant-table-border-color: var(--line-soft);
   --ant-table-footer-bg: var(--workbench);
   --ant-table-footer-color: var(--ink);
-  --ant-table-filter-dropdown-bg: var(--panel);
+  --ant-table-filter-dropdown-bg: var(--pop-bg);
   --ant-table-filter-dropdown-menu-bg: var(--panel);
   --ant-table-expand-icon-bg: var(--panel);
   --ant-table-header-border-radius: var(--r-card);
@@ -217,8 +217,8 @@
   --ant-message-content-bg: var(--panel);
 }
 :root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-modal, .ant-modal-css-var) {
-  --ant-modal-content-bg: var(--panel);
-  --ant-modal-header-bg: var(--panel);
+  --ant-modal-content-bg: var(--pop-bg);
+  --ant-modal-header-bg: var(--pop-bg);
   --ant-modal-footer-bg: transparent;
   --ant-modal-title-color: var(--ink);
   --ant-border-radius-lg: var(--r-pop);   /* 组件里重设全局名：只在弹窗这一层生效 */
@@ -275,8 +275,10 @@
   --ant-tabs-ink-bar-color: var(--ink);
   --ant-tabs-item-selected-color: var(--ink);
   --ant-tabs-item-hover-color: var(--ink);
+  /* 没选中的页签：antd 默认取 colorText，theme.ts 里是写死的浅色墨色 #1d1d1f，暗底上看不见；跟着本套 --ink 走（11-22） */
+  --ant-tabs-item-color: var(--ink);
 }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-segmented, .ant-segmented-css-var) { --ant-segmented-track-bg: var(--hover); --ant-segmented-item-selected-bg: var(--panel); --ant-segmented-item-color: var(--ink-soft); }
+:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-segmented, .ant-segmented-css-var) { --ant-segmented-track-bg: var(--hover); --ant-segmented-item-selected-bg: var(--panel); --ant-segmented-item-color: var(--ink-soft); --ant-segmented-item-selected-color: var(--ink); --ant-segmented-item-hover-color: var(--ink); }
 :root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-card, .ant-card-css-var) { --ant-color-border-secondary: var(--line); --ant-card-actions-bg: var(--panel); --ant-card-extra-color: var(--ink); }
 :root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-dropdown, .ant-dropdown-css-var) { --ant-border-radius-lg: var(--r-pop); }
 :root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-tag, .ant-tag-css-var) { --ant-tag-default-bg: var(--hover); --ant-tag-default-color: var(--ink-soft); --ant-tag-solid-text-color: var(--on-ink); }

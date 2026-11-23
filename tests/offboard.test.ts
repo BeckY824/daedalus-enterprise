@@ -219,7 +219,7 @@ describe("停用清点", () => {
 
     const 点 = await 停用清点(乙);
     // 本来在公海的那位不算、不转（11-03 完成度 C4-1）；他客户上同事负责的项目不算、不转（P-转-07，11-05）
-    expect(点).toEqual({ ok: true, 原地: { 客户: 2, 项目: 2 } });
+    expect(点).toEqual({ ok: true, 原地: { 客户: 2, 项目: 2 }, 录音: 0 });
 
     await 离职全部交给(乙, 甲);
     expect(await prisma.customer.count({ where: { salesOwnerId: 甲 } })).toBe(2);

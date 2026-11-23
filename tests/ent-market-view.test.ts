@@ -26,11 +26,13 @@ const org: 组织 = {
     人("mix", ["marketing_mgr", "sales_mgr"]),
     人("d", ["director"]),
     人("w", ["marketing_mgr"]),
+    人("c", ["coach"]),
+    人("adm", ["admin"]),
   ]),
   部门: new Map(),
   只看某人: new Map([["w", "a"]]),
 };
-const 市场成员集 = new Set(["a", "a2", "b"]);
+const 市场成员集 = new Set(["a", "a2", "b", "c", "adm"]);
 
 let 原 = process.env.CRM_ENTERPRISE;
 beforeAll(() => { 原 = process.env.CRM_ENTERPRISE; process.env.CRM_ENTERPRISE = "1"; });
@@ -47,6 +49,9 @@ describe("市场视角", () => {
     expect(市场视角of(org, "w", 市场成员集)).toBeNull();
     expect(市场视角of(null, "a", 市场成员集)).toBeNull();
     expect(市场视角of(org, "nobody", 市场成员集)).toBeNull();
+    // 销售教练、只读管理员放在市场部门里也不算（看全部那一类，11-22 录音点评跟进）
+    expect(市场视角of(org, "c", 市场成员集)).toBeNull();
+    expect(市场视角of(org, "adm", 市场成员集)).toBeNull();
   });
 
   it("圈：市场成员只有自己；市场管理 = 自己 + 实线下属逐级（虚线不算）", () => {

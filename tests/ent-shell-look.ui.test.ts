@@ -214,11 +214,11 @@ describe("左栏（g.nav）：Windows 常见宽度不溢出", () => {
         expect(量.点不到, `${宽}`).toEqual([]);
         expect(量.栏横滚, `${宽}`).toBe(false);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-        // 选中底块就一块，压在「客户」那一项里；现状明亮下是白底 + 薄阴影（g.feel），浮在灰色侧栏上
+        // 选中底块就一块，压在「客户」那一项里；现状明亮下是白块，浮在浅灰左栏上。设计语言 D-2 方案 A（11-22 用户定）：白底下不带阴影（薄阴影只留给「原底」）
         expect(await 栏.evaluate((nav) => [...nav.querySelectorAll(".rail-on-bg")].map((x) => x.parentElement?.getAttribute("aria-label")?.split("，")[0]))).toEqual(["客户"]);
         const 底块 = await 栏.evaluate((nav) => { const cs = getComputedStyle(nav.querySelector(".rail-on-bg")!); return { 底: cs.backgroundColor, 影: cs.boxShadow }; });
         expect(底块.底).toBe("rgb(255, 255, 255)");
-        expect(底块.影).not.toBe("none");
+        expect(底块.影).toBe("none");
         expect(errors).toEqual([]);
       } finally { await page.context().close(); }
     });
