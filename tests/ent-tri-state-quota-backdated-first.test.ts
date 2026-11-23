@@ -156,10 +156,13 @@ describe("建项目带出的首条沟通补录早日期：每个入口都回满�
 
 describe("没标的照旧挡（原有行为不变）", () => {
   /** 第 写 天 写时 建项目（带首个节点那行），同一刻之后记一条沟通日期第 日 天的有效沟通挂上去 */
+  // 写在第 200 天（今天）时不能用固定钟点：北京 0–10 点跑，10:00 / 09:01 还在未来，夜扫按「未来的不算」滤掉（11-23 审查）。改用「刚才」，最早压到今天 0 点
+  const 刚才 = (秒: number) => new Date(Math.max(第(200, "00:00").getTime(), Date.now() - 秒 * 1000));
   const 建带沟通 = async (日: number, 写: number, 标: boolean, content = "电话聊了预算和交付时间") => {
-    const p = await prisma.project.create({ data: { name: "新项目", customerId: 客户, ownerId: 乙, creatorId: 乙, createdAt: 第(写, "09:00") } });
-    await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 乙, toPhase: "线索", toNode: "潜客培育", at: 第(写, "09:00") } });
-    const f = await prisma.followUp.create({ data: { customerId: 客户, ownerId: 乙, type: "PHONE", title: "", content, occurredAt: 第(日), createdAt: 第(写, "09:01") } });
+    const 今 = 写 === 200;
+    const p = await prisma.project.create({ data: { name: "新项目", customerId: 客户, ownerId: 乙, creatorId: 乙, createdAt: 今 ? 刚才(3) : 第(写, "09:00") } });
+    await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 乙, toPhase: "线索", toNode: "潜客培育", at: 今 ? 刚才(3) : 第(写, "09:00") } });
+    const f = await prisma.followUp.create({ data: { customerId: 客户, ownerId: 乙, type: "PHONE", title: "", content, occurredAt: 日 === 200 ? 刚才(2) : 第(日), createdAt: 今 ? 刚才(1) : 第(写, "09:01") } });
     await prisma.followUpProject.create({ data: { followUpId: f.id, projectId: p.id, node: "潜客培育", withProjectCreate: 标 } });
     return { p: p.id, f: f.id };
   };
