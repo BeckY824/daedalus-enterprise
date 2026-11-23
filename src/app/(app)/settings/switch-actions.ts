@@ -129,11 +129,17 @@ const 单键开关: Record<string, 开关键> = {
 const 单键动作 = (summary: string): string | null =>
   /^打开|改成不设配额/.test(summary) ? "打开" : /^关掉|改回按配额/.test(summary) ? "关掉" : null;
 
-/** 组织规则一行的 detail（改后整份）：读不出来 = null */
+/** 组织规则一行的 detail（改后整份）：读不出来 = null。
+ *  只认四大块都是对象的整份规则；脚本写的 {来源, 备份文件, 改动} 之类别的形状不交给规整（会被补成整份默认，比出假改动） */
 function 读规则(detail: string | null): 组织规则 | null {
   if (!detail) return null;
   try {
-    return 规整组织规则(JSON.parse(detail), 字典of(true));
+    const raw: unknown = JSON.parse(detail);
+    const 是对象 = (v: unknown) => typeof v === "object" && v !== null && !Array.isArray(v);
+    if (!是对象(raw)) return null;
+    const o = raw as Record<string, unknown>;
+    if (!["公海", "超时回收", "节点推进", "阶段"].every((k) => 是对象(o[k]))) return null;
+    return 规整组织规则(raw, 字典of(true));
   } catch {
     return null;
   }

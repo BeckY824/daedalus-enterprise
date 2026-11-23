@@ -89,4 +89,24 @@ describe("系统管理员", () => {
     expect(摘要).toEqual(["组织规则：项目持有上限默认：30 个 → 8 个", "组织规则：前两个进程要沟通：关 → 开", "组织规则：节点推进：关 → 开"]);
     expect(默认组织规则.阶段.前两节点要沟通).toBe(false);
   });
+
+  it("读开关改动：上一行是脚本写的 detail（不是整份规则）时比不出，不把没动的开关算成下一行操作人「打开 / 改上限」", async () => {
+    expect(await 改组织规则({ 公海: { 默认上限: 8 }, 阶段: { 前两节点要沟通: true } })).toMatchObject({ ok: true });
+    const 第一行 = await prisma.auditLog.findFirstOrThrow({ where: { entityId: "orgRules" } });
+    await prisma.auditLog.create({
+      data: {
+        at: new Date(第一行.at.getTime() + 1), userId: "script", userName: "脚本", action: "update", entity: "Setting", entityId: "orgRules",
+        summary: "组织规则：脚本改了超时天数",
+        detail: JSON.stringify({ 来源: "scripts/x.ts", 备份文件: "x.bak", 改动: [{ 项: "超时回收处理时长", 前: 5, 后: 7 }] }),
+      },
+    });
+    await new Promise((r) => setTimeout(r, 5));
+    expect(await 改组织规则({ 节点推进: { 开: true } })).toMatchObject({ ok: true });
+    const r = await 读开关改动();
+    if (!r.ok) throw new Error(r.error);
+    // 比的是脚本行：比不出，只记「改了项目规则」，不冒出没动过的「改上限」「打开」
+    expect(r.上次.hold_cap).toMatchObject({ 谁: "系统管理员甲", 动作: "改了项目规则" });
+    expect(r.上次.first_two).toMatchObject({ 谁: "系统管理员甲", 动作: "改了项目规则" });
+    expect(r.上次.node_advance).toMatchObject({ 动作: "改了项目规则" });
+  });
 });
