@@ -1191,8 +1191,8 @@ it("#402 复审：带 #field-xxx 进客户页，这一页上没有那一格时�
   } finally { await 有.page.close(); }
 }, 30_000);
 
-/* 11-23 小修批（D55 整合注意第 11 条）：联系人组头右端「编辑 / ⋯」那组（.rec-contact-acts）原来 -4px 右外边距、多项目胶囊（.cd-pj-pills）-2px 外边距，
-   375 宽伸出所在格 4px / 2px。全宽（768–1536、390 / 375）浅深两色都量：两组的框左右都在外层内容区里（扣掉内边距），整页不横滚 */
+/* 11-23 小修批（D55 整合注意第 11 条）：联系人组头右端「编辑 / ⋯」那组（.rec-contact-acts）原来 -4px 右外边距，375 宽伸出所在格 4px；
+   多项目胶囊（.cd-pj-pills）的 -2px 只是焦点框透明层，量内容区。全宽（768–1536、390 / 375）浅深两色都量：两组的框左右都在外层内容区里（扣掉内边距），整页不横滚 */
 const 伸出们 = (page: Page) => page.evaluate(() => {
   const 出 = (el: Element, 外: Element) => {
     const r = el.getBoundingClientRect(), o = 外.getBoundingClientRect(), s = getComputedStyle(外);
@@ -1200,7 +1200,9 @@ const 伸出们 = (page: Page) => page.evaluate(() => {
   };
   return {
     动作组: [...document.querySelectorAll(".rec-contact-acts")].filter(el => (el as HTMLElement).offsetWidth > 0).map(el => 出(el, el.closest(".rec-contact")!)),
-    胶囊: [...document.querySelectorAll(".cd-pj-pills")].map(el => 出(el, el.parentElement!)),
+    // 胶囊框四边 padding 2 / margin -2 是给焦点框留的透明层（量() 按这个占位算），量它的内容区：框减去自己的内边距
+    胶囊: [...document.querySelectorAll(".cd-pj-pills")].map(el => { const s = getComputedStyle(el), r = el.getBoundingClientRect(), o = el.parentElement!.getBoundingClientRect(), so = getComputedStyle(el.parentElement!);
+      return Math.max(0, Math.round(Math.max((r.right - parseFloat(s.paddingRight)) - (o.right - parseFloat(so.paddingRight)), (o.left + parseFloat(so.paddingLeft)) - (r.left + parseFloat(s.paddingLeft))))); }),
     横滚: document.documentElement.scrollWidth > window.innerWidth + 1,
   };
 });

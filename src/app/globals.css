@@ -4518,8 +4518,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .proj-stage-bar.has-head > .proj-stage-acts { flex: none; flex-wrap: nowrap; }
 .proj-stage-head { flex: 1 1 auto; min-width: 0; padding-bottom: 6px; }
 .cd-pj { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
-/* 内边距 2 给焦点框留地方（overflow 裁掉的那层）；只收上下（11-23：原来四边 -2，左右伸出所在格 2px） */
-.cd-pj-pills { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 2px; margin: -2px 0; }
+/* 内边距 2 给焦点框留地方（overflow 裁掉的那层），四边 -2 外边距抵掉，占位不变——ProjectZone 量() 按这个占位算可用宽，别只收上下（11-23 审查：改成 -2px 0 会多裁「更多」4px） */
+.cd-pj-pills { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 2px; margin: -2px; }
 .cd-pj-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 210px; padding: 0 11px; box-sizing: border-box;
   border: 1px solid var(--line); border-radius: var(--r-tag); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-note);
   white-space: nowrap; text-decoration: none; cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
