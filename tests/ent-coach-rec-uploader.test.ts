@@ -62,6 +62,18 @@ it("429 按 Retry-After 秒数等；服务器明说不行（403）停下、报�
   expect(q.状态().错).toBe("你已经不能对这个项目发点评了");
 });
 
+it("服务器拒了（415 补段格式不一样）：剩下没传的不再算慢，「网络较慢」那句收掉（11-22 实操：被拒后一直挂着）", async () => {
+  const 报们: 队列状态[] = [];
+  const q = 建片队列({ 每秒字节: 3000, 变了: (s) => 报们.push(s), 取: (async () => 回(415, { error: "这一段和前面录的格式不一样" })) as typeof fetch });
+  // 先攒够 20 秒以上的录音量（慢），编号再到
+  for (let i = 0; i < 5; i++) q.放(2, i, 块(20_000));
+  expect(q.状态().慢).toBe(true);
+  q.给编号("c");
+  expect(await q.等传完(10_000)).toBe(false);
+  expect(q.状态()).toMatchObject({ 错: "这一段和前面录的格式不一样", 慢: false });
+  expect(慢话(报们.at(-1)!, 3000)).toBeNull();
+});
+
 it("停：没传的扔掉、不再发；等传完立刻回 false，状态里 停了 = true", async () => {
   const 记: string[] = [];
   const q = 建片队列({ 每秒字节: 3000, 取: (async (url: string) => { 记.push(url); return 回(503); }) as typeof fetch });
