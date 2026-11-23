@@ -232,10 +232,20 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
 /** 挂在一条沟通上的附件（F-项目-18）：来源 = 「谁 · 什么时候 · 头几个字」（lib/project/detail-search.ts 沟通来源） */
 export type 沟通附件组 = { followUpId: string; 来源: string; 附件: 附件[] };
 type 项目附件格 = "合同" | "方案" | "验收报告" | "其它";
-const 附件格们: [项目附件格, string][] = [["合同", "合同附件"], ["方案", "项目方案"], ["验收报告", "验收报告"], ["其它", "其它附件"]];
+/**
+ * 格的顺序和提示（F-042，P-界面-59）：项目方案、合同附件两格单独框起来、各写一句放什么，方案在上（合同格那句「放上面」指它）；
+ * 判必填照旧各认各的格（M-必填-06 认「方案」、M-必填-09 认「合同」），这里只管摆法
+ */
+const 附件格们: [项目附件格, string, string?][] = [
+  ["方案", "项目方案", "方案敲定要求这里至少一份"],
+  ["合同", "合同附件", "合同、补充协议放这里；方案请放上面的「项目方案」"],
+  ["验收报告", "验收报告"],
+  ["其它", "其它附件"],
+];
 
 /**
- * 「项目附件」一块（企业版 P11；F-项目-18 起合成一块）：合同附件 / 项目方案 / 验收报告（M-必填-11）/ 其它附件各一格（分类 = Attachment.tag），
+ * 「项目附件」一块（企业版 P11；F-项目-18 起合成一块）：项目方案 / 合同附件 / 验收报告（M-必填-11）/ 其它附件各一格（分类 = Attachment.tag），
+ * 方案、合同两格单独框起来带一句提示（F-042）；每格挂 data-att-cell，黄框里点附件类必填滚到这一格亮一下（ProjectFillRequired.tsx 定位到附件格），
  * 看得到项目就能看、能改项目才能传和删（接口 api/attachments/access.ts 认项目）；
  * 最后一格「沟通附件」把各条沟通上的截图、录音收过来，每组写明来自哪条沟通（去看 = 跳到那条），这里只看、下载，传和删回那条沟通上
  */
@@ -257,10 +267,11 @@ export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通
   return (
     <Card title={`项目附件（${合计}）`} className="proj-att-card" data-testid="project-attachments">
       {新样 && !只读 && <div className="att-card-hint" data-testid="att-card-hint">单个最多 {读大小(附件上限字节)}；能拖进各格，也可以直接粘贴截图</div>}
-      {附件格们.map(([k, 名]) => (
-        <section key={k} className="proj-att-sec" aria-label={名} data-paste-scope="">
+      {附件格们.map(([k, 名, 提示]) => (
+        <section key={k} className={`proj-att-sec${提示 ? " is-box" : ""}`} aria-label={名} data-paste-scope="" data-att-cell={k}>
           {!新样 && <div className="proj-att-h">{名}（{个数[k]}）</div>}
-          <AttachmentsPanel 归属={{ projectId }} 分类={k} 只读={只读} on个数={记个数[k]} 紧凑 on变了={() => router.refresh()} 小标题={新样 ? `${名}（${个数[k]}）` : undefined} />
+          {!新样 && 提示 && <div className="proj-att-tip">{提示}</div>}
+          <AttachmentsPanel 归属={{ projectId }} 分类={k} 只读={只读} on个数={记个数[k]} 紧凑 on变了={() => router.refresh()} 小标题={新样 ? `${名}（${个数[k]}）` : undefined} 提示={新样 ? 提示 : undefined} />
         </section>
       ))}
       <section className="proj-att-sec" aria-label="沟通附件">

@@ -31,8 +31,9 @@ declare global {
  * 粘贴截图（11-17）：焦点在这块或它所在的弹窗 / 格里时 Ctrl+V / ⌘V，走和点选同一个 传一个（lib/paste-upload.ts）
  * 小标题（设计语言 D5 · M11-b，项目附件现状主题）：这一格自己画小标题，「上传」挪到小标题右边；「单个最多 20 MB」由外面整卡写一次，
  *   这里不再每格写；整格能拖进来（和点选同一个 传一个）；空态「还没有附件」不带句号
+ * 提示（F-042）：小标题下面一行灰字说这一格放什么（项目方案、合同附件两格），一行放不下省略、悬停看全文
  */
-export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = false, 能删: 能删参 = false, 说明, on个数, 分类, 紧凑 = false, on变了, 小标题 }: { 归属: 归属; 只读?: boolean; 能删?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean; on变了?: () => void; 小标题?: ReactNode }) {
+export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = false, 能删: 能删参 = false, 说明, on个数, 分类, 紧凑 = false, on变了, 小标题, 提示 }: { 归属: 归属; 只读?: boolean; 能删?: boolean; 说明?: string; on个数?: (n: number) => void; 分类?: string | null; 紧凑?: boolean; on变了?: () => void; 小标题?: ReactNode; 提示?: ReactNode }) {
   /**
    * 就地反馈（dt.upload / g.save，不弹顶部提示）：在传的每个文件一行（进度环 → ✓ / 没传上的原因），
    * 读没成、删没成、打不开、自动推进了写在块里一行；几秒后自己收。错 = 红字（role=alert）；常 = 灰字（role=status）
@@ -213,6 +214,7 @@ export default function AttachmentsPanel({ 归属: 挂在, 只读: 只读参 = f
           )}
         </div>
       )}
+      {小标题 !== undefined && 提示 && <div className="proj-att-tip">{提示}</div>}
       {小标题 === undefined && !只读 && 紧凑 && <div data-testid="attachment-upload" className="att-compact">
         <Upload
           multiple

@@ -26,6 +26,7 @@ import { 编辑项目, 改项目画像Action, 勾项目交付 } from "../actions
 import type { 项目详情 } from "./ProjectDetail";
 import type { 联系人 } from "./ProjectTeam";
 import { useFormDraft } from "@/components/FormDraft";
+import { 少动, 滚法 } from "@/lib/reduced-motion";
 
 const 去处按钮: Record<窗外去处, string> = { 沟通: "新增沟通", 附件: "去项目附件", 回款: "去回款", 线索验证: "打开线索验证", 客户: "去客户页" };
 const 灰字: CSSProperties = { color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)", overflowWrap: "anywhere" };
@@ -40,6 +41,36 @@ export function 定位到模块(id: string) {
     if (壳.classList.contains("is-closed")) 壳.querySelector<HTMLButtonElement>(":scope > .proj-fold-btn")?.click();
     壳.scrollIntoView({ block: "start", behavior: "smooth" });
   }, 60);
+}
+
+/** 附件类必填落在「项目附件」的哪一格（F-042）：值 = 格上的 data-att-cell（ProjectExtras.tsx 附件格们） */
+export const 附件必填格: Partial<Record<string, string>> = { 项目方案: "方案", 合同附件: "合同", 验收报告: "验收报告" };
+
+/**
+ * 滚到「项目附件」里那一格并亮一圈（F-042，借提醒点进来那一圈 rec-ring，只动阴影不动尺寸）：卡收着先展开、等卡身长出来再滚；
+ * 开了「减弱动态」直接跳过去不滑。这页上没有那一格（看不到附件、不在项目页）= false，外面照原来的走
+ */
+export function 定位到附件格(项: string): boolean {
+  const 格名 = 附件必填格[项];
+  const 壳 = document.getElementById("project-attachments-fold");
+  const 找 = () => (格名 && 壳 ? 壳.querySelector<HTMLElement>(`[data-att-cell="${格名}"]`) : null);
+  if (!壳 || !找()) return false;
+  // 等框关掉（解除滚动锁）再滚，同 定位到模块
+  window.setTimeout(() => {
+    const 收着 = 壳.classList.contains("is-closed");
+    if (收着) 壳.querySelector<HTMLButtonElement>(":scope > .proj-fold-btn")?.click();
+    window.setTimeout(() => {
+      const 格 = 找();
+      if (!格) return;
+      格.scrollIntoView({ block: "center", behavior: 滚法() });
+      // 连点两下也要重新亮：先摘掉、强制重排再挂上
+      格.classList.remove("rec-tl-item-flash");
+      void 格.offsetWidth;
+      格.classList.add("rec-tl-item-flash");
+      window.setTimeout(() => 格.classList.remove("rec-tl-item-flash"), 1600);
+    }, 收着 && !少动() ? 320 : 0);
+  }, 60);
+  return true;
 }
 
 /**
@@ -61,7 +92,8 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
   忙: boolean;
   on完成: () => void;
   on关: () => void;
-  on去: (去: 窗外去处) => void;
+  /** 项 = 点的是哪一项（附件类的落到那一格，F-042） */
+  on去: (去: 窗外去处, 项?: 必填项) => void;
   /** 关了框再回来（去记沟通、传附件）草稿还在：放在 ProjectDetail 上，按项目分开 */
   读草稿: () => 草稿们 | undefined;
   留草稿: (草稿: 草稿们) => void;
@@ -249,7 +281,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
         <span style={{ ...灰字, flex: "1 1 200px", minWidth: 0 }}>{原因}</span>
         {去 === "客户" && 能去 && p.customer && <Link href={`/customers/${p.customer.id}${客户格[项] ? `#field-${客户格[项]}` : ""}`}>{去处按钮.客户}</Link>}
         {去 && 去 !== "客户" && 能去 && (首个去处.get(去) === 项
-          ? <Button size="small" disabled={占着} onClick={() => on去(去)}>{去处按钮[去]}</Button>
+          ? <Button size="small" disabled={占着} onClick={() => on去(去, 项)}>{去处按钮[去]}</Button>
           : <span style={灰字}>点上面的「{去处按钮[去]}」一起补</span>)}
       </div>
     );

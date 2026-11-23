@@ -406,10 +406,10 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
     expect(await 卡.locator('[data-empty="痛点标注"]').innerText()).toBe("—");
     expect(字.indexOf("合同金额")).toBeLessThan(字.indexOf("合同状态"));
     expect(字.indexOf("成交需求")).toBeLessThan(字.indexOf("痛点标注"));
-    // F-项目-18：附件合成左栏一块「项目附件」，合同附件后面紧跟项目方案，再是验收报告（M-必填-11），最后是沟通上的附件
+    // F-项目-18：附件合成左栏一块「项目附件」，项目方案在前、合同附件紧跟（F-042 方案在上，合同格提示「放上面」指它），再是验收报告（M-必填-11），最后是沟通上的附件
     expect(await 卡标题(page, ".proj-main")).toContain("项目附件（0）");
     // 设计语言 D5 · M12：现状主题每格小标题一行带「上传」，格名在 .att-h-t
-    expect(await page.locator(".proj-main .proj-att-h .att-h-t, .proj-main .proj-att-h:not(.att-h-row)").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "验收报告（0）", "其它附件（0）", "沟通附件（0）"]);
+    expect(await page.locator(".proj-main .proj-att-h .att-h-t, .proj-main .proj-att-h:not(.att-h-row)").allInnerTexts()).toEqual(["项目方案（0）", "合同附件（0）", "验收报告（0）", "其它附件（0）", "沟通附件（0）"]);
     // 填了：一行显示（换行压成空格，放不下「…」），悬停浮层用 data-tip 里的原文、保住分段（11-04 用户：待定第 1 点按优化来）
     await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { 成交钱: 钱, 项目附件: 附, 项目新字段: { painPoints: "交期总拖\n售后慢", contractStatus: "待我方确认" } });
     await 卡.getByText("待我方确认").waitFor();
@@ -1822,7 +1822,7 @@ it("F-项目-18：项目附件合一块，最后一格收沟通上的附件、�
     // 三格的个数以接口拿回来的为准（这里接口回空），沟通附件从沟通上收过来：合计 = 0 + 0 + 0 + 1
     await page.getByText("项目附件（1）").waitFor();
     expect((await 卡标题(page, ".proj-main")).slice(0, 4)).toEqual(["", "沟通（2）", "卡点（0）", "项目附件（1）"]);
-    expect(await 块.locator(".proj-att-h .att-h-t, .proj-att-h:not(.att-h-row)").allInnerTexts()).toEqual(["合同附件（0）", "项目方案（0）", "验收报告（0）", "其它附件（0）", "沟通附件（1）"]);
+    expect(await 块.locator(".proj-att-h .att-h-t, .proj-att-h:not(.att-h-row)").allInnerTexts()).toEqual(["项目方案（0）", "合同附件（0）", "验收报告（0）", "其它附件（0）", "沟通附件（1）"]);
     const 组 = 块.getByTestId("follow-att-group");
     expect(await 组.count()).toBe(1);
     const 字 = await 组.innerText();
@@ -1841,6 +1841,79 @@ it("F-项目-18：项目附件合一块，最后一格收沟通上的附件、�
     await page.locator("#follow-f2").waitFor();
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+describe("F-042：项目方案、合同附件分两格各带提示；点黄框里的附件类必填定位到那一格", () => {
+  const 缺附件 = { 必填: { 配了: ["项目方案", "合同附件", "项目级别"], 还差: ["项目方案", "合同附件", "项目级别"] }, 项目附件: { 合同: 0, 方案: 0, 其它: 0, 只读: false } };
+  const 方案提示 = "方案敲定要求这里至少一份", 合同提示 = "合同、补充协议放这里；方案请放上面的「项目方案」";
+  const 进视口 = (page: import("playwright").Page, sel: string) => page.evaluate((sel) => { const r = document.querySelector(sel)!.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; }, sel);
+
+  it.each([["now", 1366], ["now", 390], ["ledger", 1280]] as const)("%s %ipx：两格各自一个框、小标题下一句提示（一行），方案在上；点「项目方案」「合同附件」各落到自己那一格亮一圈，不开完成节点框", async (皮, w) => {
+    const { page, errors } = await open(true, w);
+    try {
+      await page.route("http://proj.test/api/attachments**", r => r.fulfill({ contentType: "application/json", body: JSON.stringify({ 附件: [] }) }));
+      if (皮 !== "now") await page.evaluate(s => { document.documentElement.dataset.skin = s; }, 皮);
+      await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), 缺附件);
+      const 块 = page.getByTestId("project-attachments");
+      await 块.waitFor();
+      const 方案格 = 块.locator("[data-att-cell='方案']"), 合同格 = 块.locator("[data-att-cell='合同']");
+      // 两格单独框起来，其余格照旧
+      expect(await 块.locator("section.proj-att-sec.is-box").evaluateAll(xs => xs.map(x => x.getAttribute("aria-label")))).toEqual(["项目方案", "合同附件"]);
+      expect(await 方案格.evaluate(e => getComputedStyle(e).borderTopStyle)).toBe("solid");
+      expect(await 方案格.locator(".proj-att-tip").innerText()).toBe(方案提示);
+      expect(await 合同格.locator(".proj-att-tip").innerText()).toBe(合同提示);
+      expect(await 块.locator(".proj-att-tip").count()).toBe(2);
+      // 提示在小标题下面；一行，放不下省略（悬停看全文靠全站 TruncTip）
+      for (const 格 of [方案格, 合同格]) {
+        const 题 = (await 格.locator(".proj-att-h").boundingBox())!, 示 = (await 格.locator(".proj-att-tip").boundingBox())!;
+        expect(示.y).toBeGreaterThanOrEqual(题.y + 题.height - 1);
+        expect(await 格.locator(".proj-att-tip").evaluate(e => [getComputedStyle(e).whiteSpace, getComputedStyle(e).textOverflow])).toEqual(["nowrap", "ellipsis"]);
+      }
+      expect((await 方案格.boundingBox())!.y).toBeLessThan((await 合同格.boundingBox())!.y);
+      expect(await 块.evaluate(c => c.scrollWidth <= c.clientWidth + 1)).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      if (皮 === "now") {
+        // 黄框：先把附件卡收起，点「项目方案」→ 卡摊开、滚到方案格、亮一圈；完成节点框不开
+        await 头(page, "project-attachments-fold").click();
+        expect(await 头(page, "project-attachments-fold").getAttribute("aria-expanded")).toBe("false");
+        const 黄框 = page.getByTestId("node-required-miss");
+        await 黄框.getByRole("button", { name: "项目方案" }).click();
+        await page.waitForSelector("[data-att-cell='方案'].rec-tl-item-flash");
+        expect(await 头(page, "project-attachments-fold").getAttribute("aria-expanded")).toBe("true");
+        await expect.poll(() => 进视口(page, "[data-att-cell='方案']")).toBe(true);
+        expect(await page.locator(".pd-fill-pop").count()).toBe(0);
+        expect(await 合同格.evaluate(e => e.classList.contains("rec-tl-item-flash"))).toBe(false);
+        // 亮一圈只动阴影：动画名是 rec-ring，不动尺寸
+        expect(await 方案格.evaluate(e => getComputedStyle(e).animationName)).toBe("rec-ring");
+        await page.waitForSelector("[data-att-cell='方案']:not(.rec-tl-item-flash)", { timeout: 3000 });
+        await 黄框.getByRole("button", { name: "合同附件" }).click();
+        await page.waitForSelector("[data-att-cell='合同'].rec-tl-item-flash");
+        await expect.poll(() => 进视口(page, "[data-att-cell='合同']")).toBe(true);
+        // 非附件类照旧：开完成节点框、落到那一格
+        await 黄框.getByRole("button", { name: "项目级别" }).click();
+        await page.locator(".pd-fill-pop [data-required='项目级别']").waitFor();
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("减弱动态：点「项目方案」直接跳到那一格（不滑），照样亮一圈", async () => {
+    const { page, errors } = await open(true, 1366);
+    try {
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.route("http://proj.test/api/attachments**", r => r.fulfill({ contentType: "application/json", body: JSON.stringify({ 附件: [] }) }));
+      await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), 缺附件);
+      await page.getByTestId("project-attachments").waitFor();
+      await page.evaluate(() => {
+        const 原 = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = function (this: Element, o?: boolean | ScrollIntoViewOptions) { (window as unknown as { __滚: unknown[] }).__滚 = [...((window as unknown as { __滚?: unknown[] }).__滚 ?? []), typeof o === "object" ? o.behavior : o]; return 原.call(this, o); };
+      });
+      await page.getByTestId("node-required-miss").getByRole("button", { name: "项目方案" }).click();
+      await page.waitForSelector("[data-att-cell='方案'].rec-tl-item-flash");
+      expect(await page.evaluate(() => (window as unknown as { __滚?: unknown[] }).__滚)).toEqual(["auto"]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
 });
 
 it("U-项目-07：转让先选人、再点「确认转让」才交；框里写明转了不能撤销，交完没有撤销条", async () => {
