@@ -331,8 +331,13 @@ export default function MembersTab({
   }
 
   const 屏 = Grid.useBreakpoint();
-  // 窄屏 768–1199（Windows 1024 常见）：设置正文只剩 460–494，按宽屏的列宽排整表 594 要横滚（11-23）。
-  // 这一档列都收窄、格子左右内边距收到 4（globals.css .member-table 同一档），行尾动作只留字不带图标；1200 以上、手机照旧
+  // 列宽三档（11-23）：设置正文封顶——浮层 1040 框里正文 732、整页最宽 782，Windows 再让出 10 左右的滚动条；
+  // 原来的宽屏列宽合计 744，1200 以上浮层里任何窗口宽都放不下（员工截图 1264 宽横滚）、1024 整页正文 460–494 更放不下。
+  //   手机（< 768）：照旧，表本来就横滚
+  //   窄屏 768–1199：六列合计 ≤ 452（1024 整页最窄 460 − 8），行尾动作只留字不带图标
+  //   桌面 ≥ 1200：八列合计 644（1200 整页 Windows 正文约 660 − 8 以内），动作「图标 + 字」（D09）
+  // 桌面两档格子左右内边距 4、标签内边距 4（globals.css .member-table 同一断点）
+  const 手机 = 屏.md === false;
   const 窄 = 屏.md === true && !屏.xl;
   /** 行尾动作：现状主题「图标 + 字」（D09，.row-act 文字款；窄屏只留字），换皮主题照原样只有图标（type="text"） */
   const 行钮 = (字: string, 图标: ReactNode) => (新样
@@ -344,15 +349,15 @@ export default function MembersTab({
     {
       title: "姓名",
       dataIndex: "name",
-      // 现状主题行尾动作带字（D09），操作列宽 44、姓名列让出 44，合计不变（1366 设置正文里不横滚）
-      width: 窄 ? 104 : 新样 ? 146 : 190,
+      // 手机照旧：现状主题行尾动作带字（D09），操作列宽 44、姓名列让出 44；桌面两档见上面「列宽三档」
+      width: 手机 ? (新样 ? 146 : 190) : 窄 ? 96 : 124,
       render: (v) => <UserCell name={v} size={30} />,
     },
     按业务角色
       ? {
           title: "角色",
           key: "业务角色",
-          width: 窄 ? 104 : 120,
+          width: 手机 ? 120 : 窄 ? 108 : 124,
           render: (_: unknown, r: Row) => (
             <div className="member-roles">
               {/* 角色标签一行，放不下「…」，悬停看全部（11-04 用户：待定第 5 点按优化来）；系统管理员、不管设置两个小图标不截 */}
@@ -361,8 +366,11 @@ export default function MembersTab({
               {/* 悬停全文走全站的 TruncTip（截了才浮、显示 title）；没截但有「+N」时浏览器原生提示也是全部角色 */}
               {(r.业务角色 ?? []).length > 0 && (
                 <span className="member-roles-tags">
-                  <Tag color={角色色of(r.业务角色![0], 新样)} className="member-role-tag" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>
-                    {角色名[r.业务角色![0]]}{r.业务角色!.length > 1 ? ` +${r.业务角色!.length - 1}` : ""}
+                  {/* 「+N」单独一格不截（11-23 审查：窄格里「渠道运营 +1」的「+1」被截掉，看不出还有别的角色），只截第一个角色名；
+                      title 挂在两小格上不挂标签：TruncTip 量到截了的是角色名那格，浮出它的 title（全部角色），不和标签的原生提示叠两层 */}
+                  <Tag color={角色色of(r.业务角色![0], 新样)} className="member-role-tag">
+                    <span className="member-role-main" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>{角色名[r.业务角色![0]]}</span>
+                    {r.业务角色!.length > 1 && <span className="member-role-more" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>+{r.业务角色!.length - 1}</span>}
                   </Tag>
                 </span>
               )}
@@ -419,13 +427,13 @@ export default function MembersTab({
           ),
         },
     // 1024 宽时设置页右边只剩约 490，两个次要的数先收起，1200 以上才出（10-27）
-    { title: `负责${b.customer}`, dataIndex: "customerCount", width: 80, responsive: ["xl"] },
+    { title: `负责${b.customer}`, dataIndex: "customerCount", width: 手机 ? 80 : 64, responsive: ["xl"] },
     users.some((u) => u.项目阶段)
       ? {
           // 只摆总数，点开看各阶段（10-30）：三个数挤一格在 1366 宽时折两行
           title: "项目数",
           key: "项目数",
-          width: 窄 ? 52 : 72,
+          width: 手机 ? 72 : 52,
           render: (_: unknown, r: Row) => {
             const 总 = 三阶段.reduce((a, ph) => a + (r.项目阶段?.[ph] ?? 0), 0);
             return 总 ? (
@@ -435,12 +443,13 @@ export default function MembersTab({
             ) : 0;
           },
         }
-      : { title: "商机数", dataIndex: "oppCount", width: 窄 ? 52 : 80 },
-    { title: "跟进数", dataIndex: "followCount", width: 70, responsive: ["xl"] },
+      : { title: "商机数", dataIndex: "oppCount", width: 手机 ? 80 : 52 },
+    { title: "跟进数", dataIndex: "followCount", width: 手机 ? 70 : 52, responsive: ["xl"] },
     {
       title: "状态",
       dataIndex: "active",
-      width: 窄 ? 60 : 84,
+      // 「已停用」标签内边距 4 时 50 宽，格子 64 − 8 = 56 放得下（11-23 审查：60 时 56 宽的标签伸出格子）
+      width: 手机 ? 84 : 64,
       render: (v) => (
         <Tag color={v ? "success" : "default"} style={{ margin: 0 }}>
           {v ? "在职" : "已停用"}
@@ -453,8 +462,9 @@ export default function MembersTab({
       // 两个图标按钮（手机上各撑到 44，globals.css .row-act）；120 时 1366 宽下整张表比设置页宽，最右这列被截（10-30 交互规则 G）。
       // 手机宽（< md）两颗 44 加间距要 96、再加格子内边距放不下 96，伸出格子（11-17 手机排版闸门 2H）：手机上给 128，表本来就横滚
       // 设计语言 E4（D09）：现状主题「图标 + 字」（L-B 的 .row-act 款：蓝字、不带框），两颗 + 间距 + 格子内边距要 132，CI（Linux 字体）实测伸出 4px，给到 140；手机宽各撑到 44 高要 136
-      // 窄屏只留字：两颗「编辑」「停用」各 38、触屏各撑到 44（.row-act，换皮的图标键也是），加间距和 4+4 内边距要 98
-      width: 屏.md === false ? (新样 ? 136 : 128) : 窄 ? 98 : 新样 ? 140 : 96,
+      // 窄屏只留字：两颗「编辑」「停用」各 38、触屏各撑到 44（.row-act，换皮的图标键也是），加间距和 4+4 内边距要 98；
+      // 按下停用 / 恢复时转圈盖在字上、不加宽（globals.css），不会顶出格子。桌面「图标 + 字」各 60（转圈顶替图标，宽不变）+ 间距 + 内边距 130，给 132
+      width: 手机 ? (新样 ? 136 : 128) : 窄 ? 98 : 新样 ? 132 : 96,
       // 行上不标红（10-30 交互规则 D）：停用要先清点、再在弹窗里确认，红色留给弹窗
       render: (_, r) =>
         !isAdmin && 能停(r) ? (
