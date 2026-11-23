@@ -63,13 +63,23 @@ it("各身份看到的页签：系统管理员全有、按「我要做什么」�
   } finally { await b.page.close(); }
 });
 
-it("市场管理的「我能做什么」：领公海、删客户是不能", async () => {
+it("市场管理的「我能做什么」：查重撞上公海客户时领取是能、删客户是不能", async () => {
   const { page } = await 开页(browser, 页包, props("成员", { 我的角色: ["marketing_mgr"] }), 1366, "?tab=perm");
   try {
     const 表 = page.getByRole("region", { name: "我能做什么" });
     await 表.getByText("建线索、分配线索").waitFor();
-    expect(await 表.getByRole("listitem").filter({ hasText: "领公海客户" }).getByLabel("不能").count()).toBe(1);
+    expect(await 表.getByRole("listitem").filter({ hasText: "查重撞上公海客户时领取" }).getByLabel("能", { exact: true }).count()).toBe(1);
     expect(await 表.getByRole("listitem").filter({ hasText: "建线索、分配线索" }).getByLabel("能", { exact: true }).count()).toBe(1);
+  } finally { await page.close(); }
+});
+
+it("渠道运营的「我能做什么」：查重撞上公海客户时领取是能、进后台设置是不能", async () => {
+  const { page } = await 开页(browser, 页包, props("成员", { 我的角色: ["channel_ops"] }), 1366, "?tab=perm");
+  try {
+    const 表 = page.getByRole("region", { name: "我能做什么" });
+    await 表.getByText("成熟后转出给销售").waitFor();
+    expect(await 表.getByRole("listitem").filter({ hasText: "查重撞上公海客户时领取" }).getByLabel("能", { exact: true }).count()).toBe(1);
+    expect(await 表.getByRole("listitem").filter({ hasText: "进后台设置" }).getByLabel("不能").count()).toBe(1);
   } finally { await page.close(); }
 });
 
