@@ -46,11 +46,3 @@
   --cat-blue: #60a5fa; --cat-green: #4ade80; --cat-yellow: #facc15; --cat-orange: #fb923c;
   --cat-pink: #f472b6; --cat-violet: #a78bfa; --cat-cyan: #22d3ee; --cat-amber: #fbbf24;
 }
-/* 设计语言 D-2 · 方案 A（11-22）：页面、名单、内容同一层 --panel #171A1F；模块线用浅的那档 #24272E；
-   浮层抬亮到 #1D2026，再加一圈 1px --line（#2C3038）——纸和浮层同色时只靠影子认不出边。
-   「原底」（data-paper="tone"）是完整的旧样子，不挂这三项：模块线、浮层底、浮层影都照旧；外观设置里现状那张小样也跟着当前底色走 */
-:root[data-mode="dark"]:not([data-paper="tone"]) {
-  --mod-line: var(--line-soft);
-  --pop-bg: #1d2026;
-  --shadow-pop: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.5);
-}

@@ -1,28 +1,20 @@
 /**
  * 外观：这台电脑上的样子（设置 → 外观）。**只换值，不换结构、不动数据，也不影响同事**。
  *
- * 一个外观 = 挂在 <html> 上的两个属性，globals.css 按属性换 token：
- *   data-paper  底色。white = 白底（默认，设计语言 D-2 · 方案 A，11-22 用户定：现状下页面、名单、内容一张白纸，左栏浅灰）；
- *               tone = 原底（个人偏好，给想要原样的人：左栏和页面是浅灰的工作台色，内容放在白卡片里）。
- *               「原底」只认 D-2 以后选的（存的时候带 底色版 = 2）。以前存下的「原底」当没选过、按白底：
- *               外观是整份存的，以前只要点过外观里任何一项（比如切过深色），本地就记成了「原底」，分不出是不是真选的（11-22 用户定）。
- * *   data-mode   明暗。只挂解出来的 light / dark：存的是 system（跟随系统）时按 prefers-color-scheme 解，
- *               系统一换当场跟着换（跟随系统的监听）。暗色是一层中性 token 叠在 :root 上，见 src/app/dark.css；
- *               tests/dark-mode.test.ts 核对暗色块盖住了根里每个颜色类 token、正文和浅灰字对比度够
+ * 外观只有一套，能换的只有明暗：挂在 <html data-mode> 上，只挂解出来的 light / dark——存的是 system（跟随系统）时
+ * 按 prefers-color-scheme 解，系统一换当场跟着换（跟随系统的监听，components/ModeFollow.tsx）。
+ * 暗色是一层中性 token 叠在 :root 上，见 src/app/dark.css；tests/dark-mode.test.ts 核对暗色块盖住了根里每个颜色类 token、
+ * 正文和浅灰字对比度够。
  *
  * 存在浏览器本地（localStorage），不进库：外观是「我这台电脑怎么看」，不是团队配置。
  * 首次绘制前由 外观预设脚本 读出来挂上（layout.tsx 的 <head>），否则刷新时会先闪一下默认样子。
+ * 以前这份里还存过主题（skin）、底色（paper / paperV），网页毛玻璃另存在 daedalus.webGlass（11-23 起都删了）：
+ * 存量的这几项一律不读、不报错，界面照默认那套。
  */
 
 import { 名单宽预设段 } from "./roster-width";
 
 export const 外观键 = "daedalus.appearance";
-
-export const 底色表 = [
-  { key: "white", 名: "白底", 说明: "一张白纸，模块靠细线和留白分开" },
-  { key: "tone", 名: "原底", 说明: "原来的样子：页面浅灰，内容放在白卡片里" },
-] as const;
-export type 底色 = (typeof 底色表)[number]["key"];
 
 export const 明暗表 = [
   { key: "light", 名: "浅色", 说明: "浅底深字" },
@@ -31,24 +23,8 @@ export const 明暗表 = [
 ] as const;
 export type 明暗 = (typeof 明暗表)[number]["key"];
 
-export type 外观 = { paper: 底色; mode: 明暗 };
-/**
- * 本地存的那份：外观 + 底色版。底色版 = 2 才认存着的「原底」（D-2 起设置页每次存都带上），
- * 没有底色版的「原底」是 D-2 以前顺手存下的默认值，不算用户选的。以前存下的 skin（换皮主题）一律不认
- */
-export const 底色版 = 2;
-export type 存的外观 = Partial<外观> & { paperV?: number };
-/** 设置页存外观时一律经这里：带上底色版 */
-export function 存外观值(a: 外观): 存的外观 {
-  return { ...a, paperV: 底色版 };
-}
-/** 「原底」要带底色版才认；认不出的都回默认（白底） */
-function 认底色(paper: unknown, 版: unknown): 底色 {
-  if (paper === "tone") return 版 === 底色版 ? "tone" : 默认外观.paper;
-  return 底色表.some((x) => x.key === paper) ? (paper as 底色) : 默认外观.paper;
-}
-/* 设计语言 D-2（11-22）：底色默认从「原底」改成「白底」 */
-export const 默认外观: 外观 = { paper: "white", mode: "light" };
+export type 外观 = { mode: 明暗 };
+export const 默认外观: 外观 = { mode: "light" };
 
 const 系统暗查询 = "(prefers-color-scheme: dark)";
 
@@ -79,21 +55,17 @@ export function 听系统明暗(回调: () => void) {
 
 /** 本地存的东西不可信（旧版本、手改、坏 JSON）：认不出的一律回到默认 */
 export function 读外观(raw: string | null | undefined): 外观 {
-  let v: 存的外观 = {};
+  let v: { mode?: unknown } = {};
   try {
-    v = (raw ? (JSON.parse(raw) as 存的外观) : {}) ?? {};
+    v = (raw ? (JSON.parse(raw) as { mode?: unknown }) : {}) ?? {};
   } catch {
     v = {};
   }
-  return {
-    paper: 认底色(v.paper, v.paperV),
-    mode: 明暗表.some((x) => x.key === v.mode) ? (v.mode as 明暗) : 默认外观.mode,
-  };
+  return { mode: 明暗表.some((x) => x.key === v.mode) ? (v.mode as 明暗) : 默认外观.mode };
 }
 
 /** 把外观挂到 <html> 上 */
 export function 挂外观(a: 外观, el: HTMLElement = document.documentElement) {
-  el.dataset.paper = a.paper;
   el.dataset.mode = 解明暗(a.mode);
 }
 
@@ -105,4 +77,4 @@ export function 挂外观(a: 外观, el: HTMLElement = document.documentElement)
  * 低配机（CPU ≤ 4 核或内存 ≤ 4GB，浏览器报得出来才算）挂 lite-fx：大面积 backdrop-filter 退回实色（⌘K 弹窗，PR2 外壳），
  * 整页模糊每帧都要重算，集显上会掉帧；报不出来的（老浏览器、Safari 没有 deviceMemory）按正常机器
  */
-export const 外观预设脚本 = `(function(){try{var d=${JSON.stringify(默认外观)},v={};try{v=JSON.parse(localStorage.getItem(${JSON.stringify(外观键)})||"{}")||{};}catch(_){}var P=${JSON.stringify(底色表.map((x) => x.key))};var e=document.documentElement;e.dataset.paper=P.indexOf(v.paper)>-1&&(v.paper!=="tone"||v.paperV===${底色版})?v.paper:d.paper;var M=${JSON.stringify(明暗表.map((x) => x.key))},m=M.indexOf(v.mode)>-1?v.mode:d.mode;if(m==="system"){m="light";try{if(matchMedia(${JSON.stringify(系统暗查询)}).matches)m="dark";}catch(_){}}e.dataset.mode=m;if(/Windows/.test(navigator.userAgent))e.classList.add("os-win");try{var hc=navigator.hardwareConcurrency,dm=navigator.deviceMemory;if((hc>0&&hc<=4)||(dm>0&&dm<=4))e.classList.add("lite-fx");}catch(_){}${名单宽预设段}}catch(_){}})();`;
+export const 外观预设脚本 = `(function(){try{var d=${JSON.stringify(默认外观)},v={};try{v=JSON.parse(localStorage.getItem(${JSON.stringify(外观键)})||"{}")||{};}catch(_){}var e=document.documentElement;var M=${JSON.stringify(明暗表.map((x) => x.key))},m=M.indexOf(v.mode)>-1?v.mode:d.mode;if(m==="system"){m="light";try{if(matchMedia(${JSON.stringify(系统暗查询)}).matches)m="dark";}catch(_){}}e.dataset.mode=m;if(/Windows/.test(navigator.userAgent))e.classList.add("os-win");try{var hc=navigator.hardwareConcurrency,dm=navigator.deviceMemory;if((hc>0&&hc<=4)||(dm>0&&dm<=4))e.classList.add("lite-fx");}catch(_){}${名单宽预设段}}catch(_){}})();`;
