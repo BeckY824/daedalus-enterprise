@@ -20,7 +20,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 改节点 } from "@/lib/project/db";
 import { 缺有效沟通还差, 缺本节点沟通 } from "@/lib/project/stage-gates";
-import { 记必填拦截, 读拦截导出, 认入口 } from "@/lib/project/required-block";
+import { 记必填拦截, 读拦截导出, 汇拦截导出, 认入口, type 拦截关联 } from "@/lib/project/required-block";
 import { 记完成节点被拦, 看板推进预检, 改项目节点 } from "@/app/(app)/projects/actions";
 
 let 乙: { id: string; name: string; role: string };
@@ -206,5 +206,36 @@ describe("导出：卡了多久、卡超 24 小时、按节点", () => {
     expect(d.明细.行.map((r) => r[缺])).toEqual(["缺30", "缺20", "缺10"]);
     const 全 = await 读拦截导出(时(24 * 7), 今, 5);
     expect(全.汇总).toMatchObject({ 次数: 5, 截断: false, 最早: "2026-11-21 18:00" });
+  });
+
+  it("5 万行一次算完不到 1 秒（按节点统计不再每段回头 find，离开时刻按变更二分）", () => {
+    const 今 = new Date("2026-11-23T12:00:00Z");
+    const 起 = new Date(今.getTime() - 365 * 86_400_000);
+    const 节点们 = ["潜客培育", "线索验证", "线索推进", "需求确认", "方案报价"];
+    const 行们: Parameters<typeof 汇拦截导出>[0][number][] = [];
+    const 关联: 拦截关联 = { 项目们: [], 人们: [{ id: "u", name: "乙" }], 客户们: [], 变更们: [] };
+    // 5000 个项目，每个在 5 个节点上各被拦 2 次、拦完第二次 1 小时后推到下一个节点：一共 5 万行、2.5 万段
+    for (let i = 0; i < 5000; i++) {
+      const pid = `p${i}`;
+      关联.项目们.push({ id: pid, name: `项目${i}`, deletedAt: null });
+      节点们.forEach((node, j) => {
+        const 基 = 起.getTime() + i * 60_000 + j * 10 * 3_600_000;
+        for (const k of [0, 1]) {
+          行们.push({ id: `${pid}-${j}-${k}`, at: new Date(基 + k * 60_000), userId: "u", projectId: pid, customerId: null, phase: "线索", node, toPhase: null, toNode: null, kind: "节点必填", missing: "[]", entry: "完成节点", onBehalf: false });
+        }
+        if (j < 节点们.length - 1) 关联.变更们.push({ projectId: pid, at: new Date(基 + 3_600_000), fromNode: node, toNode: 节点们[j + 1], toResult: null, fromResult: null });
+      });
+    }
+    行们.sort((a, b) => a.at.getTime() - b.at.getTime());
+    关联.变更们.sort((a, b) => a.at.getTime() - b.at.getTime());
+    expect(行们).toHaveLength(50_000);
+    const t0 = performance.now();
+    const d = 汇拦截导出(行们, 关联, 起, 今);
+    const 用时 = performance.now() - t0;
+    expect(d.汇总).toMatchObject({ 次数: 50_000, 项目数: 5000, 卡超24小时项目数: 5000, 截断: false });
+    // 前四个节点每段卡 1 小时；最后一个节点一直没离开、到 今 都超 24 小时
+    expect(d.按节点.行.find((r) => r[0] === "线索·潜客培育")).toEqual(["线索·潜客培育", 10_000, 5000, 0, 0]);
+    expect(d.按节点.行.find((r) => r[0] === "线索·方案报价")).toEqual(["线索·方案报价", 10_000, 5000, 5000, 5000]);
+    expect(用时).toBeLessThan(1000);
   });
 });

@@ -84,8 +84,19 @@ export type 拦截导出 = {
 /** 一次最多导多少行（表只增不删；超了留最新的，汇总表写明截断） */
 export const 拦截导出上限 = 50_000;
 
-/** 一个项目在一个节点上的一段「卡」：从这一段第一次被拦到离开这个节点（没离开 = 到 今） */
-type 段 = { projectId: string; node: string; 首拦: Date; 离开: Date | null };
+/** 一个项目在一个节点上的一段「卡」：从这一段第一次被拦到离开这个节点（没离开 = 到 今）；节点 = 「阶段·节点」，按节点那张表的键 */
+type 段 = { projectId: string; 节点: string; 首拦: Date; 离开: Date | null };
+
+type 拦截行 = Prisma.EntRequiredBlockGetPayload<object>;
+type 节点变更 = { projectId: string; at: Date; fromNode: string | null; toNode: string | null; toResult: string | null; fromResult: string | null };
+/** 拼导出要的几样关联（读拦截导出 从库里取；拆出来是为了不碰库就能量大批量的耗时） */
+export type 拦截关联 = {
+  项目们: { id: string; name: string; deletedAt: Date | null }[];
+  人们: { id: string; name: string }[];
+  客户们: { id: string; name: string; customerNo: number | null }[];
+  /** 按 at 正序 */
+  变更们: 节点变更[];
+};
 
 /**
  * 导出（系统管理员在设置 → 节点推进里点）：起 ~ 今 的拦截明细、按节点分布，和「卡超 24 小时的项目数」。
@@ -107,59 +118,76 @@ export async function 读拦截导出(起: Date, 今: Date = new Date(), 上限:
       ? prisma.projectNodeLog.findMany({ where: { projectId: { in: 项目ids }, kind: "node", at: { gte: 起 } }, select: { projectId: true, at: true, fromNode: true, toNode: true, toResult: true, fromResult: true }, orderBy: { at: "asc" } })
       : [],
   ]);
-  const 项目 = new Map(项目们.map((p) => [p.id, p]));
-  const 人 = new Map(人们.map((u) => [u.id, u.name]));
-  const 客户 = new Map(客户们.map((c) => [c.id, c]));
-  const 变更 = new Map<string, typeof 变更们>();
-  for (const l of 变更们) (变更.get(l.projectId) ?? 变更.set(l.projectId, []).get(l.projectId)!).push(l);
+  return 汇拦截导出(行们, { 项目们, 人们, 客户们, 变更们 }, 起, 今, 截断);
+}
+
+/**
+ * 读拦截导出 的计算那半：行们按 at 正序。一遍过、不回头找（原来按节点统计每一段都在全部行里 find 一次，5 万行是平方级）：
+ * 段建的时候带上「阶段·节点」；离开时刻只在开新段时找一次（同一段里后面几行的离开时刻就是这一段的），变更按时刻二分
+ */
+export function 汇拦截导出(行们: readonly 拦截行[], 关联: 拦截关联, 起: Date, 今: Date, 截断 = false): 拦截导出 {
+  const 项目 = new Map(关联.项目们.map((p) => [p.id, p]));
+  const 人 = new Map(关联.人们.map((u) => [u.id, u.name]));
+  const 客户 = new Map(关联.客户们.map((c) => [c.id, c]));
+  const 变更 = new Map<string, 节点变更[]>();
+  for (const l of 关联.变更们) (变更.get(l.projectId) ?? 变更.set(l.projectId, []).get(l.projectId)!).push(l);
   /** 这一刻之后项目第一次离开 node 的时刻（换了节点、或点了结局） */
   const 离开于 = (projectId: string, node: string, 从: Date): Date | null => {
-    for (const l of 变更.get(projectId) ?? []) {
-      if (l.at <= 从 || l.fromNode !== node) continue;
+    const ls = 变更.get(projectId);
+    if (!ls) return null;
+    let lo = 0;
+    let hi = ls.length;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (ls[m].at <= 从) lo = m + 1;
+      else hi = m;
+    }
+    for (let i = lo; i < ls.length; i++) {
+      const l = ls[i];
+      if (l.fromNode !== node) continue;
       if (l.toNode !== node || (l.toResult ?? null) !== (l.fromResult ?? null)) return l.at;
     }
     return null;
   };
-  const 时 = (d: Date) => dayjs(d).format("YYYY-MM-DD HH:mm");
   const 小时 = (a: Date, b: Date) => Math.round(((b.getTime() - a.getTime()) / 3_600_000) * 10) / 10;
+  const 超过24 = (s: 段) => (s.离开 ?? 今).getTime() - s.首拦.getTime() > 24 * 3_600_000;
 
   const 段们: 段[] = [];
   const 当前段 = new Map<string, 段>();
+  const 节点表 = new Map<string, { 次: number; 项目: Set<string>; 超24: Set<string>; 还卡: Set<string> }>();
   const 明细行: string[][] = [];
   for (const r of 行们) {
-    const 离开 = 离开于(r.projectId, r.node, r.at);
+    const 节点 = `${r.phase}·${r.node}`;
+    const v = 节点表.get(节点) ?? 节点表.set(节点, { 次: 0, 项目: new Set(), 超24: new Set(), 还卡: new Set() }).get(节点)!;
+    v.次++;
+    v.项目.add(r.projectId);
     const 键 = `${r.projectId}\u0000${r.node}`;
-    const 段 = 当前段.get(键);
-    // 同一段卡：上一段还没离开，或这一行在上一段离开之前
+    let 段 = 当前段.get(键);
+    // 同一段卡：上一段还没离开，或这一行在上一段离开之前（这时这一行之后第一次离开就是这一段的离开）
     if (!段 || (段.离开 && 段.离开 <= r.at)) {
-      const 新段 = { projectId: r.projectId, node: r.node, 首拦: r.at, 离开 };
-      段们.push(新段);
-      当前段.set(键, 新段);
+      段 = { projectId: r.projectId, 节点, 首拦: r.at, 离开: 离开于(r.projectId, r.node, r.at) };
+      段们.push(段);
+      当前段.set(键, 段);
     }
+    const 离开 = 段.离开;
     const p = 项目.get(r.projectId);
     const c = r.customerId ? 客户.get(r.customerId) : undefined;
     明细行.push([
       时(r.at), 人.get(r.userId) ?? "（账号已不在）",
       c ? 客户编号显示(c) : r.customerId ? "（客户已不在）" : "—", c?.name ?? "",
       p ? `${p.name}${p.deletedAt ? "（已删）" : ""}` : "（已删）",
-      `${r.phase}·${r.node}`, r.toNode ? `${r.toPhase ?? ""}·${r.toNode}` : "",
+      节点, r.toNode ? `${r.toPhase ?? ""}·${r.toNode}` : "",
       r.kind, 读缺(r.missing).join("、"), r.entry, r.onBehalf ? "是" : "",
       离开 ? 时(离开) : "还没推过去", String(小时(r.at, 离开 ?? 今)),
     ]);
   }
-  const 超24 = new Set(段们.filter((s) => (s.离开 ?? 今).getTime() - s.首拦.getTime() > 24 * 3_600_000).map((s) => s.projectId));
-
-  const 节点表 = new Map<string, { 次: number; 项目: Set<string>; 超24: Set<string>; 还卡: Set<string> }>();
-  for (const r of 行们) {
-    const k = `${r.phase}·${r.node}`;
-    const v = 节点表.get(k) ?? 节点表.set(k, { 次: 0, 项目: new Set(), 超24: new Set(), 还卡: new Set() }).get(k)!;
-    v.次++;
-    v.项目.add(r.projectId);
-  }
+  const 超24 = new Set<string>();
   for (const s of 段们) {
-    const r = 行们.find((x) => x.projectId === s.projectId && x.node === s.node)!;
-    const v = 节点表.get(`${r.phase}·${r.node}`)!;
-    if ((s.离开 ?? 今).getTime() - s.首拦.getTime() > 24 * 3_600_000) v.超24.add(s.projectId);
+    const v = 节点表.get(s.节点)!;
+    if (超过24(s)) {
+      超24.add(s.projectId);
+      v.超24.add(s.projectId);
+    }
     if (!s.离开) v.还卡.add(s.projectId);
   }
   return {
@@ -171,6 +199,8 @@ export async function 读拦截导出(起: Date, 今: Date = new Date(), 上限:
       表头: ["节点", "被拦次数", "涉及项目数", "卡超 24 小时的项目数", "到现在还卡着的项目数"],
       行: [...节点表].sort((a, b) => b[1].次 - a[1].次).map(([k, v]) => [k, v.次, v.项目.size, v.超24.size, v.还卡.size]),
     },
-    汇总: { 起: 时(起), 止: 时(今), 次数: 行们.length, 项目数: 项目ids.length, 卡超24小时项目数: 超24.size, 截断, 最早: 行们.length ? 时(行们[0].at) : null },
+    汇总: { 起: 时(起), 止: 时(今), 次数: 行们.length, 项目数: new Set(行们.map((r) => r.projectId)).size, 卡超24小时项目数: 超24.size, 截断, 最早: 行们.length ? 时(行们[0].at) : null },
   };
 }
+
+const 时 = (d: Date) => dayjs(d).format("YYYY-MM-DD HH:mm");
