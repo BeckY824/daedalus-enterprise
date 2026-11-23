@@ -162,16 +162,16 @@ export function useCustomFilters(页: string, 项: 筛选项[], { 停用 = false
 const 一行高 = 40;
 
 /**
- * 筛选组（.list-bar 里的 Space）折成两行了没有：折了就把带「挤」的项收进「更多筛选」，记下那一刻「留给筛选组的可用宽」——
- * 行宽减去行里别的格（最左的「列表 / 看板」、右端那一格、「列」……弹性空格不算宽）和格间距。
- * 可用宽比那一刻宽了就放回来试一次（还放不下再收、记新的可用宽，不会来回抖）。只看行宽不够：
+ * 筛选组（.list-bar 里的 Space）折成两行了没有：折了就把带「挤」的项收进「更多筛选」，记下摆开时一行要多宽。
+ * 「留给筛选组的可用宽」= 行宽减去行里别的格（最左的「列表 / 看板」、右端那一格、「列」……弹性空格不算宽）和格间距；
+ * 可用宽够摆开了才放回来（F-043：原来记的是收起那一刻的可用宽、宽了就放回来，竖滚动条一来一去就来回收放到 React #185）。只看行宽不够：
  * 客户页看板往右端那一格放「分配」「我分出去的」、后来又拿走时行宽不变，原来收进去就放不回来（11-12 复审）。
  * 所以行、组、行里别的格都盯着。在画之前量（layout effect），人看不到跳一下。手机宽（< 768）筛选行本来就折，不量：现状主题一律收（手机也收），换皮主题一律摆外面
  */
 function useSqueezeRow(能挤: boolean, 手机也收 = false): [boolean, (el: HTMLSpanElement | null) => void] {
   const [挤掉, set挤掉] = useState(false);
   const [探针, set探针] = useState<HTMLSpanElement | null>(null);
-  const 挤时可用 = useRef(0);
+  const 挤时要宽 = useRef(0);
   useLayoutEffect(() => {
     if (!能挤 || !探针) return;
     const 组 = 探针.closest(".ant-space") as HTMLElement | null;
@@ -185,12 +185,24 @@ function useSqueezeRow(能挤: boolean, 手机也收 = false): [boolean, (el: HT
       const 占 = 格.filter((x) => !x.classList.contains("list-bar-gap")).reduce((n, x) => n + x.getBoundingClientRect().width, 0);
       return 行.clientWidth - 占 - 间距 * 格.length;
     };
+    /*
+      摆开时一行要多宽：组里各格（不显示的探针不算）加格间距。收起之前量，之后拿它比可用宽。
+      不能只记「收起那一刻的可用宽」再看宽没宽（F-043）：页面高度卡在「收起一行不出竖滚动条、摆开折两行就出」之间时，
+      收起 → 竖滚动条没了、可用宽多出一条滚动条宽 → 放回来 → 折两行、滚动条又出来 → 收起……在 layout effect 里同步来回，
+      React 报 #185 整页崩（Windows 滚动条占位；行少的第 2 页最容易卡在这个高度）
+    */
+    const 摆开要宽 = () => {
+      const 格 = (Array.from(组.children) as HTMLElement[]).filter((x) => getComputedStyle(x).display !== "none");
+      const 间距 = parseFloat(getComputedStyle(组).columnGap) || 0;
+      return 格.reduce((n, x) => n + x.getBoundingClientRect().width, 0) + 间距 * Math.max(0, 格.length - 1);
+    };
     const 量 = () => {
       if (!window.matchMedia("(min-width: 768px)").matches) return set挤掉(手机也收);
       const 宽 = 可用宽();
       if (!挤掉) {
-        if (组.getBoundingClientRect().height > 一行高) { 挤时可用.current = 宽; set挤掉(true); }
-      } else if (宽 > 挤时可用.current + 1) set挤掉(false);
+        // 记的是「摆开要多宽」，至少比这一刻的可用宽多 1（这一刻确实折了）：可用宽到了它才放回来，滚动条来去不算
+        if (组.getBoundingClientRect().height > 一行高) { 挤时要宽.current = Math.max(Math.ceil(摆开要宽()), 宽 + 1); set挤掉(true); }
+      } else if (宽 >= 挤时要宽.current) set挤掉(false);
     };
     // 接管之前（服务端出的 HTML）组是不折、放不下藏在行尾的（globals.css .cf-probe:not([data-cf-ready])），
     // 不然量之前筛选行先折成两行（PR #273 CI 1024 宽）。量之前打上标记放开折行，同一帧里量完收好，人看不到跳一下
