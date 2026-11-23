@@ -160,7 +160,6 @@ const 路由白名单: { 文件: string; 参数: string; 理由: string }[] = [
   { 文件: "src/lib/url-filters.ts", 参数: "q.size ? `${path}", 理由: "各列表页共用的筛选写地址：本页改参数，外面包着 startTransition" },
   { 文件: "src/app/(app)/dashboard/StartCard.tsx", 参数: "u", 理由: "首页起步卡（企业版开始）：只去设置、客户列表、新建线索这几个列表类的页，不去详情" },
   { 文件: "src/components/AppShell.tsx", 参数: "路径", 理由: "桌面壳原生菜单（window.desktopNav）发来的跳转；企业版网页里没有 desktopNav" },
-  { 文件: "src/app/(app)/projects/[id]/GiveUpBanner.tsx", 参数: "放弃后去", 理由: "常量 \"/projects\"（项目列表），不去详情" },
 ];
 
 /**
