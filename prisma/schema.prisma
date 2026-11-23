@@ -1193,6 +1193,9 @@ model FollowUpProject {
   project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   /// 记这条时项目在哪个节点
   node       String
+  /// 建这个项目的同一次操作带出的首条沟通（2026-11-23，迁移 166）：新建项目、建档向导、只建客户、线索转项目、号码查重新建线索项目时写 true，之后不改。
+  /// 三态额度重置（M-公海-54「建项目 + 首条沟通合计 1 次」）判补录的首条沟通时，跳过同一次操作里先写下的建项目、首个节点（tri-state-quota.ts 额度沟通日of）
+  withProjectCreate Boolean @default(false)
 
   @@index([projectId])
 }
