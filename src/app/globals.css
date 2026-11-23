@@ -2309,6 +2309,13 @@ button.ais-hd-b { cursor: pointer; }
    只打了字没发、点「新对话」回到空白：卡照摆（.cli-empty 只看这段对话有没有问过） */
 .cli:not(.cli-empty) .cli-ck-g { grid-template-columns: minmax(0, 1fr); }
 .cli:not(.cli-empty) .home-cards { display: none; }
+/* 设计语言 HC-5（P-界面-60，用户 11-23 选 C）：这一格宽 ≥1340（Win 1080p 缩放 100% 的 1920、2560，对话列表开 / 收都算）时问过之后卡不收，
+   和问之前同一个 2:1 骨架——宽屏推翻上面 10-31 那条，右边被卡占着、不会空一大片；对话列 760 照旧居中于框（--chat-col）。
+   更窄（Mac 1440、Win 125% 的 1536）照上面收起。量的是 .cli-ck 这一格（inline-size 容器），跨门槛时卡栏直接出现 / 消失，不做动效 */
+@container (min-width: 1340px) {
+  .cli:not(.cli-empty) .cli-ck-g { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  .cli:not(.cli-empty) .home-cards { display: flex; }
+}
 /* 左边对话套一个外框（10-31 首页改版）：边框、圆角、底色和右边指标卡同一套。还没问：问候在框左上，下面「欢迎使用 {产品名}」、
    三条示例各占一行，输入框贴框底、宽 = 框宽减左右留白；问过之后卡收起、框铺满这一格，框里上面是对话、底下是输入框。
    只有驾驶舱带 .cli-frame（HomeChat 外框），团队版 / 非项目模式首页、右侧 AI 面板都不受影响 */
@@ -2362,16 +2369,6 @@ button.ais-hd-b { cursor: pointer; }
 /* 打断：一行灰字，不是报错 */
 .cli-stopped { margin-top: 8px; padding-left: 20px; color: var(--text-muted); font-size: var(--fs-note); display: flex; gap: 10px; align-items: center; }
 .cli-stop-mark { width: 9px; height: 9px; background: var(--text-faint); border-radius: 2px; }
-/* 涉及的客户：一张卡 */
-.cli-card { margin-top: 12px; margin-left: 20px; border: 1px solid var(--border); border-radius: var(--r-card); background: var(--panel); overflow: hidden; }
-.cli-card-h { padding: 8px 12px; font-size: var(--fs-note); color: var(--text-muted); border-bottom: 1px solid var(--line-soft); background: var(--workbench); }
-.cli-card-row { padding: 8px 12px; border-bottom: 1px solid var(--line-soft); }
-.cli-card-row:last-child { border-bottom: 0; }
-.cli-card-main { display: flex; align-items: center; gap: 12px; font-size: var(--fs-note); flex-wrap: wrap; }
-.cli-card-name { color: var(--ink); font-weight: 500; }
-.cli-card-st { color: var(--text-muted); font-size: var(--fs-min); background: var(--hover); padding: 0 6px; border-radius: var(--r-ctl); }
-.cli-card-open { color: var(--ink); }
-.cli-card-row .cli-draft { margin-top: 8px; }
 /* 开通订阅页 */
 .bill { max-width: 720px; }
 .bill-h { font-size: var(--fs-title); font-weight: 600; color: var(--ink); margin: 0 0 4px; }
@@ -4283,7 +4280,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
    D-55（11-23）起：1px --field-line、很淡的影（--card-raise-a）、圆角 10 */
 .ant-card.ant-card-bordered { border-color: var(--card-line); box-shadow: var(--shadow-card); }
 .ant-card .ant-card-head { border-bottom-color: var(--line-soft) !important; }
-:is(.home-card, .btodo-list, .rkpi, .chan-dash-kpi, .chan-dash-cell, .chan-block, .set-body, .start, .auth-solo .auth-form, .rec-card:not(.rec-rail-blocks, .rec-col-blocks), .bill-plan, .bill-pay, .cli-card, .cli-ck .cli-frame) {
+:is(.home-card, .btodo-list, .rkpi, .chan-dash-kpi, .chan-dash-cell, .chan-block, .set-body, .start, .auth-solo .auth-form, .rec-card:not(.rec-rail-blocks, .rec-col-blocks), .bill-plan, .bill-pay, .cli-ck .cli-frame) {
   border-color: var(--card-line); box-shadow: var(--shadow-card); border-radius: var(--r-mod);
 }
 /* 设置页大卡（.set-body）里再套的卡（antd 卡片、开关总览 / 开关卡）：两层都是 --field-line + 影会出两道深线（11-23 审查）——
@@ -6501,7 +6498,7 @@ button.proj-miss-chip { cursor: pointer; }
 /* C6-A 一条左边线：步骤条、正文、表格、确认卡、涉及客户、追问、操作行都从同一处起，不再各缩 16–20 */
 :root:root .cli-a { padding-left: 0; font-size: var(--fs-body); line-height: 1.7; }
 :root:root :is(.cli-stopped, .cli-err, .cli-next) { padding-left: 0; }
-:root:root .cli-turn > :is(.cli-card, .prop-list) { margin-left: 0; }
+:root:root .cli-turn > .prop-list { margin-left: 0; }
 :root:root .cli-bubble { max-width: 75%; }
 /* 表格：细线、表头 muted、数字列右对齐等宽（Markdown.tsx 给 .md-num）、宽了在表格里横滑 */
 :root:root .cli-a .md-tw { max-width: 100%; overflow-x: auto; margin: var(--s2) 0 var(--s3); }
