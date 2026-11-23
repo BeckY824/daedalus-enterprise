@@ -103,7 +103,7 @@ beforeAll(async () => {
       if(当前&&o.点评!==undefined) 当前.教练主题={们:[],能发:o.点评,填写人:{id:'qa',name:'QA',身份:'销售教练'},负责人:{id:'u2',name:'同事乙'},项目名:当前.p.name,当前节点:'方案报价',待回复数:0,冻结:false};
       flushSync(()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}{innerWidth>=1214&&名单}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <CustomerDetail customer={{id:'a',extra:null,name:o.公司名||'客户A',phone:'13800138000',school:null,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',pool:null}}
-          contacts={o.八人?八人:contacts} {...(o.历史?{换负责人记录:换负责人}:{})} contracts={[]} tasks={[{id:'t1',title:'周五带合同上门',dueAt:'2026-11-13T02:00:00.000Z',done:false}]} plan={null}
+          contacts={o.八人?八人:contacts} {...(o.名片?{联系人分类附件数:{c1:{名片:1,相册:0},c2:{名片:0,相册:0},c3:{名片:0,相册:2}}}:{})} {...(o.历史?{换负责人记录:换负责人}:{})} contracts={[]} tasks={[{id:'t1',title:'周五带合同上门',dueAt:'2026-11-13T02:00:00.000Z',done:false}]} plan={null}
           users={[{id:'qa',name:'QA',email:'qa@x'},{id:'u2',name:'同事乙',email:'b@x'}]} channels={[]} aiEnabled={false} followUps={客户沟通} followUpsHasMore={false}
           项目们={签.map(t=>({id:t.id,name:t.name,phase:'商机',node:t.节点,result:null,pooledAt:null,amount:0,currency:'CNY'}))} 参与项目们={[]} 关联们={[]} 旺旺们={[]}
           跟进去处={[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null,下一步文字:null}]} 待办计划={[]} 能放公海 新建项目={{节点们:['线索验证'],要下一步:false}}
@@ -130,7 +130,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 组员?: boolean | "只看"; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
+type 参 = { 组员?: boolean | "只看"; 名片?: boolean; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -1396,6 +1396,38 @@ for (const 色 of ["light", "dark"] as const) {
         // 这套桩 1280 带名单，右栏约 245 宽：超长名字那一行操作落到下一行；1920 短名字那行一行放得下
         if (w === 1280) expect(m.组!.折行, 标).toContain("欧阳超长名字某某某");
         if (w === 1920) expect(m.组!.折行, 标).not.toContain("刘琛");
+        expect(m.横滚, 标).toBe(false);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  }, 120_000);
+}
+
+for (const 色 of ["light", "dark"] as const) {
+  it(`${色}：联系人卡（1280 / 1366 / 1920 / 390）——名字下面各行字段名 68 列、左边缘和「客户资料」字段名齐，值那一列和客户资料的值齐，号码保护在值那一列；号码不截`, async () => {
+    for (const w of [1280, 1366, 1920, 390]) {
+      const { page, errors } = await 开(w, { 名片: true, 号码: true }, 2400);
+      try {
+        await 上色(page, 色);
+        await page.waitForTimeout(100);
+        const m = await 排版量(page);
+        const 标 = `${色} ${w}`;
+        expect(m.资料名左.length, `${标} ${JSON.stringify(m)}`).toBe(1);
+        expect(m.资料值左.length, 标).toBe(1);
+        expect(m.人行字, 标).toEqual(expect.arrayContaining(["职务", "本项目", "电话", "名片", "相册"]));
+        expect(m.人名左, 标).toEqual(m.资料名左);
+        expect(m.人名宽, 标).toEqual([68]);
+        expect(m.人值左, 标).toEqual(m.资料值左);
+        expect(m.保护左, 标).toEqual(m.资料值左);
+        // 号码一整串不截
+        const 号 = await page.locator(".rec-rail .rec-cg .rec-contact-num").evaluateAll(ls => ls.map(l => {
+          const t = l.querySelector(".copy-val-t")!, b = l.querySelector(".copy-val-b")!;
+          return { 截: t.scrollWidth > t.clientWidth + 1, 同行: Math.abs(t.getBoundingClientRect().top + t.getBoundingClientRect().height / 2 - (b.getBoundingClientRect().top + b.getBoundingClientRect().height / 2)) < 2 };
+        }));
+        expect(号.length, 标).toBe(3);
+        for (const x of 号) expect(x.截, 标).toBe(false);
+        // 值那一列放得下就和号码同一行；这套桩 1280 / 1366 带名单、左栏只有约 230 宽，复制键照全站规矩挪到号码下一行（ent-record-left 量）
+        if (w === 1920 || w === 390) for (const x of 号) expect(x.同行, 标).toBe(true);
         expect(m.横滚, 标).toBe(false);
         expect(errors).toEqual([]);
       } finally { await page.close(); }
