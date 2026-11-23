@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
+import { useFreshRoster } from "@/lib/roster-refresh";
 import { Tag, Drawer } from "antd";
 import { SearchOutlined, TableOutlined } from "@ant-design/icons";
 import { 跟进方式名 } from "@/lib/follow-method";
@@ -34,7 +35,7 @@ const 叫 = "项目列表";
  * 不搜时按「当前阶段」分组（线索 / 商机 / 订单，三大阶段的顺序，lib/roster-groups.ts 项目名单分组），
  * 组头写阶段名和条数，可以折叠（记在这台电脑上）；每行右边写当前进程（阶段里的节点，有结局写结局）。
  */
-export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
+export default function ProjectRoster({ data: 服务端给的 }: { data: ProjectRosterData }) {
   /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
   const 去页 = useNavGo();
   const pathname = usePathname();
@@ -45,6 +46,8 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
   usePaneShortcut(中栏.切换);
   const 搜索框 = useRef<HTMLInputElement>(null);
   const activeId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : "";
+  // 同客户名单：切回标签页、隔了 60 秒以上又换了一个项目时后台换新（lib/roster-refresh.ts）
+  const data = useFreshRoster(服务端给的, "/api/roster/projects", activeId);
 
   const rows = useMemo(() => {
     const k = q.trim().toLowerCase();

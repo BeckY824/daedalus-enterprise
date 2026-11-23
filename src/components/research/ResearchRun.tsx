@@ -14,6 +14,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { useCopy } from "@/lib/clipboard";
 import ResearchCard from "./ResearchCard";
 import { useJob, clearJob, getJob } from "@/lib/ai-jobs";
@@ -266,11 +267,13 @@ function Done({ s, customer, on记跟进 }: { s: 背调状态; customer?: { id: 
         ) : 存到 ?? customer ? (
           <Link className="rs-btn" href={`/customers/${(存到 ?? customer)!.id}?do=followup`}>
             记一条跟进
+            <LinkPending />
           </Link>
         ) : null}
         {!customer && 存到 && (
           <Link className="rs-btn" href={`/customers/${存到.id}`}>
             打开客户
+            <LinkPending />
           </Link>
         )}
         <button type="button" className="rs-btn" onClick={复制}>

@@ -6,6 +6,7 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { CommentOutlined, DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps, type PopoverProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
@@ -1025,8 +1026,8 @@ export default function ProjectDetail({
     if (嵌入?.走后去) {
       // 这一下就跳去客户列表（受限详情里最后一个项目走了），本页没地方写：带一句过去，客户列表落地后在原处说（lib/landing-note.ts、LandingNote）
       留落地话(嵌入.走后去.到, 嵌入.走后去.说法);
-      router.push(嵌入.走后去.到);
-    } else router.push(嵌入?.客户页 ?? "/projects");
+      去页.push(嵌入.走后去.到);
+    } else 去页.push(嵌入?.客户页 ?? "/projects");
   };
   const 确认转给 = async (新: string) => {
     const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
@@ -1864,7 +1865,7 @@ export default function ProjectDetail({
           </Space>
         ) : p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条</Button>
           // 别的版本照旧给「去客户页记一条」
-          : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条</Link>
+          : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条<LinkPending /></Link>
       }
     >
       {沟通身()}

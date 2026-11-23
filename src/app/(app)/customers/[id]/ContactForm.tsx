@@ -5,6 +5,7 @@ import CustomerSearchSelect from "@/components/CustomerSearchSelect";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Modal, Form, Input, Switch, Row, Col, AutoComplete, Button, Select, Space, Alert } from "antd";
 import SaveButton from "@/components/SaveButton";
 import { MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
@@ -315,12 +316,13 @@ export default function ContactForm({
                   {叫法(x.kind)} {x.value}：
                   {x.客户本身 ? (
                     x.customerId ? (
-                      <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">{b.customer}「{x.customerName}」本身的号码</Link>
+                      <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">{b.customer}「{x.customerName}」本身的号码<LinkPending /></Link>
                     ) : `${x.同事}名下的一位${b.customer}（不在你的范围，可与他核实）`
                   ) : x.contactId && x.customerId ? (
                     <>
                       <Link href={`/customers/${encodeURIComponent(x.customerId)}`} target="_blank">
                         {联系人显名(x.name)}（{x.customerName}）
+                        <LinkPending />
                       </Link>
                       {/* 客户页上新建：多半就是同一个人，直接挂过来比再建一位好 */}
                       {!record && customerId && !存法 && x.customerId !== customerId && (

@@ -9,6 +9,7 @@
  * 这三处任何一处回来，旧内容就又会在点下去 30ms 内消失（3705 实测见 PR 描述）。真浏览器里的效果见 tests/nav-smooth.ui.test.ts、e2e-ent/nav-smooth.spec.ts
  */
 import { describe, it, expect } from "vitest";
+import { build } from "esbuild";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -56,7 +57,7 @@ describe("(app)/loading 按槽位出骨架", () => {
     expect(读("loading.tsx")).toMatch(/return <SlotSkeleton \/>/);
     const 壳 = fs.readFileSync(path.resolve(__dirname, "../src/components/AppShell.tsx"), "utf8");
     // 电脑一处、手机两处（客户详情的名单抽屉、首页的对话列表），没有裸的 {pane}
-    expect(壳.match(/<槽位 名="pane">\{pane\}<\/槽位>/g)?.length).toBe(3);
+    expect(壳.match(/<槽位 名="pane"[^>]*>\{pane\}<\/槽位>/g)?.length).toBe(3);
     expect(壳).not.toMatch(/&& pane\}|^\s*\{pane\}\s*$/m);
     expect(读("layout.tsx")).toMatch(/<槽位 名="modal">\{modal\}<\/槽位>/);
   });
@@ -66,4 +67,17 @@ describe("(app)/loading 按槽位出骨架", () => {
     expect(骨).toMatch(/if \(槽 === "modal"\) return null;/);
     expect(骨).toMatch(/if \(槽 === "pane"\) return [^;]*CustomerRosterSkeleton[^;]*: null;/);
   });
+});
+
+describe("首屏包", () => {
+  it("(app)/loading 带进每页首屏包的骨架不连着名单组件（CustomerRoster 的 Drawer、dayjs 那一套）", async () => {
+    const r = await build({
+      entryPoints: [path.resolve(__dirname, "../src/app/(app)/loading.tsx")], bundle: true, write: false, metafile: true, format: "esm", jsx: "automatic",
+      alias: { "@": path.resolve(__dirname, "../src") }, logLevel: "silent",
+      // 壳本来就带的库不算（antd、react、next）；只看骨架自己拉进来的业务代码
+      external: ["react", "react-dom", "next", "next/*", "antd", "@ant-design/*"],
+    });
+    const 进来的 = Object.keys(r.metafile!.inputs);
+    expect(进来的.filter((x) => /CustomerRoster|ProjectRoster|dayjs/.test(x))).toEqual([]);
+  }, 30_000);
 });

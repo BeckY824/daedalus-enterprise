@@ -185,6 +185,8 @@ export default function ProjectsView({
   const router = useRouter();
   /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
   const 去页 = useNavGo();
+  /** 看板里点的那张卡：新页没到之前先高亮（.is-going，跳转优化 PR-A 审查补） */
+  const [去的卡, set去的卡] = useState<string | null>(null);
   const 预取 = useHoverPrefetch();
   const 问一起转 = useCarryConfirm();
   const 字典 = 字典of(企业版, 出口叫法);
@@ -795,14 +797,18 @@ export default function ProjectsView({
                       const 档 = 刚来 ? 新第++ : 序;
                       // 只看进度（市场角色、已分给圈外的人）：卡片照摆、点不进详情（P-看-06）
                       const 能进 = !r.只看进度;
-                      const 去 = () => 能进 && 去页.push(项目地址(r));
+                      const 去 = () => {
+                        if (!能进) return;
+                        set去的卡(r.id);
+                        去页.push(项目地址(r));
+                      };
                       const 卡拖 = 拖.卡片属性(r, c.列);
                       return (
                         <div
                           key={r.id}
                           data-morph-key={客户页 ? r.customerId : r.id}
                           {...卡拖?.dom}
-                          className={`${能进 ? "pipe-card" : "pipe-card pipe-card-ro"}${刚来 ? " pipe-card-new" : 筛前 && !筛前.has(r.id) ? " pipe-card-in" : ""}${卡拖?.类 ?? ""}`}
+                          className={`${能进 ? "pipe-card" : "pipe-card pipe-card-ro"}${去页.pending && 去的卡 === r.id ? " is-going" : ""}${刚来 ? " pipe-card-new" : 筛前 && !筛前.has(r.id) ? " pipe-card-in" : ""}${卡拖?.类 ?? ""}`}
                           style={{ borderLeftColor: 异常 ? "var(--danger)" : 列色[c.色], ["--i" as string]: Math.min(档, 8) }}
                           tabIndex={能进 ? 0 : undefined}
                           role={能进 ? "link" : undefined}

@@ -1,7 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
-import { CustomerRosterSkeleton } from "@/components/CustomerRoster";
+import { CustomerRosterSkeleton } from "@/components/RosterSkeleton";
 import { 项目名单 } from "../../panes";
 
 /**

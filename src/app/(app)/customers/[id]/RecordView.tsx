@@ -10,6 +10,7 @@ import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo,
 import { 只读上下文, 只能看的格上下文, 资料改挡上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, Select, Typography, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 原负责人不能领回提示, 公海客户先领取话, 无效客户不能领短话 } from "@/lib/enterprise/pool-rules";
@@ -1027,6 +1028,7 @@ export default function RecordView({
           <span className="rec-task-k">项目</span>
           <Link className="rec-task-t" href={p.主 ? 客户页项目地址(customer.id, p.id, "#project-follow") : `/projects/${encodeURIComponent(p.id)}#project-follow`} title={`项目「${p.名}」的下一步计划${p.下一步文字 ? `：${p.下一步文字}` : ""}`}>
             {p.下一步文字 ? `${p.名} · ${p.下一步文字}` : p.名}
+            <LinkPending />
           </Link>
           {p.下一步 && (
             <span className="rec-task-due" title={fmtDateTime(p.下一步)} style={{ color: 已过期(p.下一步) ? "var(--danger)" : undefined }}>

@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore, useTransiti
 import { useRouter } from "next/navigation";
 import { Segmented, Space, Button, Tag } from "antd";
 import { PlusOutlined, CheckCircleOutlined, EditOutlined, DeleteOutlined, ProjectOutlined } from "@ant-design/icons";
-import { PageHead, UserCell } from "@/components/ui";
+import { PageHead, RowLink, UserCell } from "@/components/ui";
 import EmptyState from "@/components/EmptyState";
 import { fmtDateTime } from "@/lib/utils";
 import { 每批, 组名, 写每组, 分组 } from "@/lib/plans-groups";
@@ -406,7 +406,7 @@ export default function PlansView({
                       <span className="plan-row-m">
                         <span className="plan-row-t">{x.标题}</span>
                         <span className="plan-row-s">
-                          {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>}
+                          {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <RowLink href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</RowLink>}
                           {x.方式 && <Tag style={{ margin: 0 }}>{x.方式}</Tag>}
                           <Tag style={{ margin: 0 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
                           {/* 原定什么时候做，和实际什么时候做完，是两件事——两个都留着 */}
@@ -563,7 +563,7 @@ function 组块({
               <span className="plan-row-m">
                 <span className="plan-row-t">{x.标题}</span>
                 <span className="plan-row-s">
-                  {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <a href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</a>}
+                  {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <RowLink href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</RowLink>}
                   {x.方式 && <Tag style={{ margin: 0 }}>{x.方式}</Tag>}
                   <Tag style={{ margin: 0 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
                 </span>

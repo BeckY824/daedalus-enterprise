@@ -8,6 +8,7 @@ import AmountTextInput from "@/components/AmountTextInput";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Select, Input, Checkbox, Button } from "antd";
 import { 全称提示, 名称框提示 } from "@/lib/enterprise/fullname-hint";
 import { CheckOutlined, CloseOutlined, RightOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
@@ -431,6 +432,7 @@ export default function ProposalCard({
           )}
           <Link href={查看去处(draft, 落印)} className="cli-link">
             查看 <RightOutlined style={{ fontSize: 10 }} />
+            <LinkPending />
           </Link>
         </span>
         {/* 顺带按必填推了一格：独占一行说推到哪（回执句子，同其它回执折行，手机上没有悬停也看得全） */}
@@ -619,7 +621,7 @@ export default function ProposalCard({
               <div role="note" className="prop-err prop-f-block">
                 {沟通没项目话}
                 {跟进能建项目
-                  ? <>{" "}<Link href={`/customers/${draft.customerId}?建项目=1`}>去建项目</Link></>
+                  ? <>{" "}<Link href={`/customers/${draft.customerId}?建项目=1`}>去建项目<LinkPending /></Link></>
                   : `（${请负责人建项目话}）`}
               </div>
             )}

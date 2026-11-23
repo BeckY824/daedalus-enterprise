@@ -4,7 +4,7 @@ import { createContext, useContext } from "react";
 import { usePathname } from "next/navigation";
 import { Skeleton, Card, Row, Col } from "antd";
 import CustomerDetailSkeleton from "@/components/CustomerDetailSkeleton";
-import { CustomerRosterSkeleton } from "@/components/CustomerRoster";
+import { CustomerRosterSkeleton, ChatPaneSkeleton } from "@/components/RosterSkeleton";
 
 /**
  * (app)/loading.tsx 按槽位出骨架（跳转优化 PR-A，11-24）。
@@ -14,25 +14,26 @@ import { CustomerRosterSkeleton } from "@/components/CustomerRoster";
  * 原来三处画的是同一副「标题 + 四张卡 + 大卡」：左栏切到客户时，中栏那 312px 里也塞着一副正文骨架。
  * 现在壳给中栏、浮层各包一层 <槽位>，骨架看自己在哪个槽位、要去哪一页：
  *   - 正文：去客户详情摆同形的页头 + 三栏卡，别的页摆通用的那副
- *   - 中栏：去客户 / 项目详情摆名单骨架栏，别的页没有中栏，什么都不摆
+ *   - 中栏：去客户 / 项目详情摆名单骨架栏；去首页且开着 AI 摆对话列表那一栏（同宽、空的，正文不横跳）；别的页没有中栏，什么都不摆
  *   - 浮层：什么都不摆（设置浮层有自己的 loading）
  * 只在整页打开、左栏换页这类「本地还没有这一页内容」时出现；换客户、列表进详情不经过它（那时旧内容留着，见 lib/nav-pending.ts）
  */
 type 槽位名 = "main" | "pane" | "modal";
-const 槽位Context = createContext<槽位名>("main");
+const 槽位Context = createContext<{ 名: 槽位名; 有AI: boolean }>({ 名: "main", 有AI: false });
 
-export function 槽位({ 名, children }: { 名: 槽位名; children: React.ReactNode }) {
-  return <槽位Context.Provider value={名}>{children}</槽位Context.Provider>;
+/** 有AI：首页的中栏只在配了 AI 时才有对话列表（@pane/panes.tsx 对话列表），骨架跟着判 */
+export function 槽位({ 名, 有AI = false, children }: { 名: 槽位名; 有AI?: boolean; children: React.ReactNode }) {
+  return <槽位Context.Provider value={{ 名, 有AI }}>{children}</槽位Context.Provider>;
 }
 
 const 客户详情 = /^\/customers\/[^/]+$/;
 const 项目详情 = /^\/projects\/(?!attach$|handover$|new$)[^/]+$/;
 
 export default function SlotSkeleton() {
-  const 槽 = useContext(槽位Context);
+  const { 名: 槽, 有AI } = useContext(槽位Context);
   const p = usePathname() ?? "";
   if (槽 === "modal") return null;
-  if (槽 === "pane") return 客户详情.test(p) ? <CustomerRosterSkeleton /> : 项目详情.test(p) ? <CustomerRosterSkeleton 项目 /> : null;
+  if (槽 === "pane") return 客户详情.test(p) ? <CustomerRosterSkeleton /> : 项目详情.test(p) ? <CustomerRosterSkeleton 项目 /> : p === "/dashboard" && 有AI ? <ChatPaneSkeleton /> : null;
   if (客户详情.test(p)) return <CustomerDetailSkeleton />;
   return <PageSkeleton />;
 }

@@ -693,7 +693,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             只挂客户详情这一处（槽位在手机上是一只关着的抽屉，不占地方）；别的页的中栏手机上照旧不挂 */}
         {/^\/customers\/[^/]+$/.test(pathname) && <槽位 名="pane">{pane}</槽位>}
         {/* 设计语言 HC-1（C13-A）：首页对话栏左边那颗「对话列表」在手机上开左抽屉——列表得挂上才开得出来（关着不占地方） */}
-        {pathname === "/dashboard" && <槽位 名="pane">{pane}</槽位>}
+        {pathname === "/dashboard" && <槽位 名="pane" 有AI={Boolean(ai)}>{pane}</槽位>}
         {/* D28：跳转单挂上，顶栏搜索才开得出来 */}
         <CommandBar 有AI={Boolean(ai)} 企业版项目={企业版项目} 全局搜索={全局搜索} />
         <NavProgress />
@@ -829,7 +829,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
 
 
       {/* 中栏：槽位自己带 <aside class="pane">，没有中栏的路由返回 null；(app)/loading 在这里按中栏画（SlotSkeleton） */}
-      <槽位 名="pane">{pane}</槽位>
+      <槽位 名="pane" 有AI={Boolean(ai)}>{pane}</槽位>
 
       {/* antd 的 Content 自己就渲染成 <main>，外面不能再包一层：
           一个文档只能有一个 main，两个会让读屏和测试都认不出正文是哪块 */}

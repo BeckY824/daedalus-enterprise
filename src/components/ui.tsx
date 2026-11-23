@@ -142,17 +142,19 @@ export function StatCard({
         {href ? (
           <Link href={href} aria-label={`${label}：${value}，查看明细`} className="stat-card-main">
             {头}
+            <LinkPending />
           </Link>
         ) : (
           头
         )}
-        <Link href={noteHref} className="stat-delta stat-note-link">{note}</Link>
+        <Link href={noteHref} className="stat-delta stat-note-link">{note}<LinkPending /></Link>
       </div>
     );
   }
   return href ? (
     <Link href={href} aria-label={`${label}：${value}，查看明细`}>
       {卡}
+      <LinkPending />
     </Link>
   ) : (
     卡

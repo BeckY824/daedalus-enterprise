@@ -6782,3 +6782,8 @@ button.proj-miss-chip { cursor: pointer; }
 /* 左栏收藏、表格里的名字链接：点的那一条先是悬停的底色 */
 .rail-fav-i:has(> .nav-pend) { background: var(--hover); color: var(--ink); }
 .ant-table-wrapper .ant-table-tbody > tr.row-going > td, .ant-table-wrapper .ant-table-tbody > tr:has(.nav-pend) > td { background: var(--brand-bg); }
+/* 审查补（PR-A）：看板点的那张卡（客户看板、项目看板，.is-going = useNavGo 在等）、客户页「关联客户」那一小行先高亮；
+   .nav-pend 本身永远不占地方（链接里的子元素选择器不该把它撑出来） */
+:root:root .nav-pend { display: none; }
+:root:root .pipe-card.is-going, :root:root .pipe-card.is-going:hover { background: var(--brand-bg); border-top-color: var(--brand); border-right-color: var(--brand); border-bottom-color: var(--brand); }
+:root:root .rec-mini:has(.nav-pend) { background: var(--brand-bg); }

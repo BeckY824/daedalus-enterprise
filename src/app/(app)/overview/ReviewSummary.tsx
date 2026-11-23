@@ -2,6 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Tooltip } from "antd";
 import { 金额, 金额缩写 } from "@/lib/currency";
 import { 即将逾期天数 } from "@/lib/project/home-cards";
@@ -71,7 +72,7 @@ export function KPI排({ 格们, 名, 列 = 6 }: { 格们: 格[]; 名: string; �
           // hover + focus 不用 click：触屏长按时 pointerenter 延时打开、抬起后 click 又切回关，闪一下就没（C-A1 3704 实操同一个坑）；
           // 格子有 tabIndex=0，点按即聚焦、点别处才收
           <Tooltip key={g.k} title={说} placement="bottom" mouseEnterDelay={0.3} trigger={!g.去 ? ["hover", "focus"] : undefined}>
-            {g.去 ? <Link href={g.去} className="rkpi-i">{里}</Link> : <div className="rkpi-i" tabIndex={0}>{里}</div>}
+            {g.去 ? <Link href={g.去} className="rkpi-i">{里}<LinkPending /></Link> : <div className="rkpi-i" tabIndex={0}>{里}</div>}
           </Tooltip>
         );
       })}
@@ -130,6 +131,7 @@ function ReviewAlertRow({ 分布, 预警, 将回公海, 不跟批次 = false }: 
                   </Tooltip>
                   <span className="rkpi-warn-s">{p.节点} · {p.负责人}</span>
                   <span className="rkpi-warn-d nowrap">{p.回收日} 收回</span>
+                  <LinkPending />
                 </Link>
               </li>
             ))}

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Button, Dropdown, Input, Modal, Select, Space, Timeline } from "antd";
 import { MoreOutlined } from "@ant-design/icons";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -245,7 +246,7 @@ export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点", �
             <article key={b.id} className={`bk-card${认领中 ? " is-claimed" : ""}`} data-status={状态} aria-label={`卡点 ${b.code}`}>
               <div className="bk-r1">
                 {带项目 ? (
-                  <Link href={`/projects/${b.projectId}`} className="bk-proj" title={b.项目}>{b.项目}</Link>
+                  <Link href={`/projects/${b.projectId}`} className="bk-proj" title={b.项目}>{b.项目}<LinkPending /></Link>
                 ) : null}
                 {!在分栏 && (
                   <span className="bk-st"><i className={`rblk-dot ${状态圆点[状态] ?? ""}`} aria-hidden />{状态}</span>

@@ -6,7 +6,7 @@
  * 「去判无效」：项目页上直接打开「线索验证」；首页、铃铛里没有那个框，去项目页（判无效去）
  */
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Alert, Button, Input, Modal, Radio, Space } from "antd";
 import { 放弃原因们, 其他原因, 放弃补充上限, 走判无效话, 每月放弃次数, type 放弃后客户 } from "@/lib/enterprise/lead-giveup-core";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
@@ -23,7 +23,8 @@ export default function GiveUpDialog({ projectId, 开, 关, 成, 打开判无效
   /** 首页、铃铛：「去判无效」去哪（项目页） */
   判无效去?: string;
 }) {
-  const router = useRouter();
+  /** 去判无效：跳去项目详情，等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const [原因, set原因] = useState<string | null>(null);
   const [补充, set补充] = useState("");
   const [忙, set忙] = useState(false);
@@ -65,7 +66,7 @@ export default function GiveUpDialog({ projectId, 开, 关, 成, 打开判无效
         {走判无效话}
         <Button type="link" size="small" data-testid="proj-giveup-to-invalid" onClick={() => {
           if (打开判无效) { 关(); set错(null); 打开判无效(); }
-          else if (判无效去) { 关(); set错(null); router.push(判无效去); }
+          else if (判无效去) { 关(); set错(null); 去页.push(判无效去); }
           else set错(`这条还没走到「线索·${有效线索节点}」：先把进程推到那一步，再在「线索验证」里判无效`);
         }}>去判无效</Button>
       </div>

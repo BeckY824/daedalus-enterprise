@@ -4,6 +4,7 @@ import { useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Checkbox, Input, Segmented, Table, Tooltip } from "antd";
 import { showUndo } from "@/components/UndoBar";
 import SaveButton from "@/components/SaveButton";
@@ -362,7 +363,7 @@ function 待办卡片({ x, 完成中, 看全员, 只读 = false, 完成 }: { x: 
           <span className="btodo-time nowrap" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? 到期字(x.时间, x.明确钟点) : "没定日期"}</span>
           {逾 > 0 && <span className="btodo-k-over nowrap" suppressHydrationWarning>逾 {逾} 天</span>}
           {看全员 && <span className="btodo-k-owner">{x.ownerName}</span>}
-          {x.去 && <Link href={x.去} className="btodo-k-go nowrap">去跟进 ›</Link>}
+          {x.去 && <Link href={x.去} className="btodo-k-go nowrap">去跟进 ›<LinkPending /></Link>}
         </div>
       </div>
     </article>
@@ -458,7 +459,7 @@ function RecycleProjectRow({ p, 只读 = false }: { p: 预警行; 只读?: boole
   return (
     <li className="ov-rc-p">
       <div className="ov-rc-prow">
-        <Link href={`/projects/${p.id}`} className="ov-rc-name" title={p.名}>{p.名}</Link>
+        <Link href={`/projects/${p.id}`} className="ov-rc-name" title={p.名}>{p.名}<LinkPending /></Link>
         <span className={`ov-rc-left${剩 <= 1 ? " is-late" : ""}`}>{剩 === 0 ? "今天收回" : `还剩 ${剩} 天`}</span>
         {!记 && !只读 && (
           <button type="button" className="ov-rc-log" onClick={() => { set推话(null); set记(true); }}>记一条沟通</button>

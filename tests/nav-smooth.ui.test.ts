@@ -28,6 +28,7 @@ beforeAll(async () => {
     import NavProgress,{PageFade} from '@/components/NavProgress';
     import {useNavGo} from '@/lib/nav-pending';
     import {RowLink} from '@/components/ui';
+    import SlotSkeleton,{槽位} from '@/components/SlotSkeleton';
     function 按钮(){const 去页=useNavGo();return <button id="go" onClick={()=>去页.push('/customers/b')}>去</button>}
     window.__画=(o={})=>{const root=(window.__root||=createRoot(document.getElementById('root')));
       root.render(<>
@@ -36,6 +37,7 @@ beforeAll(async () => {
           <RowLink href="/customers/a" className="roster-row on">甲</RowLink>
           <RowLink href="/customers/b" className="roster-row">乙</RowLink>
         </div>
+        <div id="中栏"><槽位 名="pane" 有AI={!!o.有AI}>{o.骨 ? <SlotSkeleton/> : null}</槽位></div>
         <main><PageFade 页={o.页??'/customers/a'}><input id="草稿" defaultValue=""/><h1>{o.页??'/customers/a'}</h1></PageFade></main>
       </>);};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
@@ -125,4 +127,19 @@ it("减弱动态：等待条不扫，铺满一整条只淡入", async () => {
   expect(r).toEqual({ 动画: "none", 宽: "1280px", 移: "none" });
   expect(await 条透明度(page)).toBeGreaterThan(0.9);
   await close();
+});
+
+it("冷切到首页（开着 AI）：中栏先摆一栏同宽的空骨架，正文不等对话列表来了再横跳；没开 AI、窄屏不摆", async () => {
+  for (const [宽, 有AI, 该有] of [[1280, true, true], [1280, false, false], [390, true, false]] as const) {
+    const { page, close } = await 打开({ viewport: { width: 宽, height: 800 } });
+    await page.evaluate(() => history.pushState(null, "", "/dashboard"));
+    await 画(page, { 骨: true, 有AI });
+    const 栏 = page.locator("#中栏 aside.pane.pane-chat");
+    expect(await 栏.count(), `${宽} 有AI=${有AI}`).toBe(该有 ? 1 : 0);
+    if (该有) {
+      expect((await 栏.boundingBox())?.width, "和对话列表同宽（--chat-w 默认 232）").toBe(232);
+      expect(await page.locator("#中栏 [data-testid=page-skeleton]").count(), "中栏里不塞正文骨架").toBe(0);
+    }
+    await close();
+  }
 });

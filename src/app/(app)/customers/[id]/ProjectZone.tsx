@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Card, Dropdown } from "antd";
 import { DownOutlined } from "@ant-design/icons";
 import { FoldSplit, ProjectFold, 模块钮色 } from "../../projects/[id]/ProjectFold";
@@ -118,7 +120,8 @@ function useLandingFlash(): string | null {
  * 同事项目照旧只给带锁的个数
  */
 export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; 当前id: string | null }) {
-  const router = useRouter();
+  /** 「更多」里挑一个项目：同一页换 ?project=，慢了顶上的条照样亮（lib/nav-pending.ts，跳转优化 PR-A 审查补） */
+  const 去页 = useNavGo();
   const 亮id = useLandingFlash();
   const 亮 = (id: string | undefined) => (!!id && id === 亮id ? " cd-pj-flash" : "");
   const 行 = useRef<HTMLDivElement>(null);
@@ -199,6 +202,7 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
               title={`${t.name} · ${标of(t)}${t.冷天数 != null ? ` · ${t.冷天数} 天没有推进` : ""}`}
             >
               <胶囊身 t={t} />
+              <LinkPending />
             </Link>
           );
         })}
@@ -209,7 +213,7 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
             menu={{
               className: "cd-pj-menu",
               items: 收.map((i) => ({ key: 页签们[i].id, label: <span className="cd-pj-mi" title={页签们[i].name}><胶囊身 t={页签们[i]} /></span> })),
-              onClick: ({ key }) => router.replace(地址(key), { scroll: false }),
+              onClick: ({ key }) => 去页.replace(地址(key), { scroll: false }),
             }}
           >
             <button type="button" className="cd-pj-pill cd-pj-more">更多 {收.length} 个 <DownOutlined aria-hidden /></button>

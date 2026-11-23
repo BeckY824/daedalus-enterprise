@@ -14,6 +14,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import CountUp from "@/components/CountUp";
 import { 首页摆的卡, 首页卡口径, 首页卡色, 首页卡链接, type 首页卡数 } from "@/lib/project/home-cards";
 
@@ -47,6 +48,7 @@ export default function HomeCards({ 数 }: { 数: 首页卡数 }) {
               <div className="home-kpi-body">
                 <Link href={首页卡链接(键)} className="link-strong home-kpi-go">
                   {n > 0 ? `看这 ${n} 个项目 ›` : "去项目页 ›"}
+                  <LinkPending />
                 </Link>
                 <button type="button" className="home-kpi-close" onClick={() => set开着(null)}>收起</button>
               </div>

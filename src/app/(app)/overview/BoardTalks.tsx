@@ -4,6 +4,7 @@ import { useOptimistic, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Pagination, Segmented, Select, Tooltip } from "antd";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
@@ -205,6 +206,7 @@ function 缺沟通块({ 缺 }: { 缺: 缺沟通 }) {
                   <span className="rtalk-miss-n">{p.名}</span>
                 </Tooltip>
                 <span className="rtalk-miss-s">{p.节点} · {p.负责人}</span>
+                <LinkPending />
               </Link>
             </li>
           ))}

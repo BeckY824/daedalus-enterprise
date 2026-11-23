@@ -5,6 +5,7 @@
  * 设计语言 H-A（11-21，H-新13）：时间走 smartTime
  */
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { smartTime } from "@/lib/utils";
 
 export type 待回复主题数 = { 条数: number; 最早: { at: string; projectId: string; title: string } | null };
@@ -15,7 +16,7 @@ export default function CoachTopicTodo({ 数据 }: { 数据: 待回复主题数 
     <div className="home-cth-todo" role="status" data-testid="home-coach-topics">
       <span className="home-cth-todo-t">待回复主题 {数据.条数} 条</span>
       <span className="home-cth-todo-s" title={数据.最早.title}>最早 <span className="home-cth-todo-time">{smartTime(数据.最早.at)}</span> · {数据.最早.title}</span>
-      <Link className="link-strong home-cth-todo-a" href={`/projects/${encodeURIComponent(数据.最早.projectId)}`}>去回复 ›</Link>
+      <Link className="link-strong home-cth-todo-a" href={`/projects/${encodeURIComponent(数据.最早.projectId)}`}>去回复 ›<LinkPending /></Link>
     </div>
   );
 }

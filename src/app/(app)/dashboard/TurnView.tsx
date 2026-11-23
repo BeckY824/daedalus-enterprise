@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Tooltip } from "antd";
 import { useCopy } from "@/lib/clipboard";
 import { CopyOutlined, ReloadOutlined, RightOutlined } from "@ant-design/icons";
@@ -497,6 +498,7 @@ function CustomerRow({ customer, 企业版 }: { customer: 提到的客户; 企�
         )}
         <Link href={`/customers/${customer.id}`} className="cli-link cli-card-open">
           打开 <RightOutlined style={{ fontSize: 10 }} />
+          <LinkPending />
         </Link>
       </div>
       {[
