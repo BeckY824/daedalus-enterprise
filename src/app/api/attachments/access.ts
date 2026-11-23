@@ -1,5 +1,5 @@
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 同事的客户, 只读话, 虚线只读线索 } from "@/lib/team-scope";
+import { 同事的客户, 只读话, 虚线只读线索, 改得了线索 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 附件个数, 项目分类附件数 } from "@/lib/attachments";
 import { getCurrentUser } from "@/lib/auth";
@@ -11,7 +11,7 @@ import type { 组织 } from "@/lib/enterprise/org-core";
 import { 原负责人挡着 } from "@/lib/project/pool-owner";
 import type { 归属 } from "@/lib/attachment-rules";
 import { 能改这条沟通, 能删沟通, 不能删沟通话 } from "@/lib/enterprise/follow-perm";
-import { 能删除, 能改客户, 没设业务角色, 是系统管理员, 只读角色, 只读话of, 只看的人, 只看某人话 } from "@/lib/enterprise/permissions";
+import { 能删除, 能改客户, 没设业务角色, 只读角色, 只读话of, 只看的人, 只看某人话 } from "@/lib/enterprise/permissions";
 import { 只有总管理能删话 } from "@/lib/enterprise/soft-delete";
 
 /**
@@ -40,8 +40,8 @@ export function 读归属(q: URLSearchParams): 归属 | null {
 export async function 认父记录(挂在: 归属, 要改: boolean | "删"): Promise<{ 叫法: string } | { 错: string; 状态: number }> {
   let 客户: string | null;
   let 叫法: string;
-  /** 线索的负责人（挂的是联系人时 undefined）：没挂客户的线索按它判能不能改附件 */
-  let 线索负责人: string | null | undefined;
+  /** 挂的线索（挂的是联系人时 undefined）：没挂客户的线索按能不能改它判附件 */
+  let 线索: string | undefined;
   if ("followUpId" in 挂在) return 认沟通(挂在.followUpId, 要改);
   if ("projectId" in 挂在) return 认项目(挂在.projectId, !!要改);
   // 企业版只用项目：商机表由启动清理（lib/enterprise/legacy-cleanup.ts）清空、写入口全挡，挂商机的一律当不在，不再查库
@@ -53,7 +53,7 @@ export async function 认父记录(挂在: 归属, 要改: boolean | "删"): Pro
     // 虚线下属没转客户的线索：看得到、改不了（改线索走写的范围），附件也只给看
     if (要改 && await 虚线只读线索(defaultClient, l)) return { 错: await 只读话(defaultClient), 状态: 403 };
     客户 = l.customerId;
-    线索负责人 = l.ownerId;
+    线索 = 挂在.leadId;
     叫法 = `线索「${l.name}」`;
   } else {
     if (!企业版()) return { 错: "此版本未开放联系人附件", 状态: 404 };
@@ -65,7 +65,7 @@ export async function 认父记录(挂在: 归属, 要改: boolean | "删"): Pro
   // 同事的客户（只读范围）先挡，话说「只能看」；再按企业版负责人挡
   if (要改 && 客户 && await 同事的客户(defaultClient, 客户)) return { 错: await 只读话(defaultClient), 状态: 403 };
   if (要改 && 企业版()) {
-    const 挡 = await 企业版改附件挡(要改, 客户, 线索负责人);
+    const 挡 = await 企业版改附件挡(要改, 客户, 线索);
     if (挡) return { 错: 挡, 状态: 403 };
   }
   return { 叫法 };
@@ -75,27 +75,28 @@ export async function 认父记录(挂在: 归属, 要改: boolean | "删"): Pro
  * 企业版商机 / 线索 / 联系人附件（11-02）：没业务角色不能动；传跟着改客户走（负责人，公海里先领）。
  * 删和传同一个口径（P-删-04「能编辑这一行的人才能删附件」，11-23 改）：能传就能删；原来删按「能删除」判（客户负责人本人或系统管理员），
  * 能改客户的其他人（比如身为负责人的管理）传得上删不掉。系统管理员照旧能删公海里客户的附件（#403 审查）。
- * 线索没挂客户（客户 = null）：按能不能改这条线索判——线索负责人本人或系统管理员；只读角色、设了「只看某人」的、
- * 市场管理这类看得到全部线索的、虚线上级都不行（原来没客户直接放行，看得到的人都能传能删，11-23 审查）
+ * 线索没挂客户（客户 = null）：按能不能改这条线索判，和改线索同一道（team-scope 改得了线索）——负责人、系统管理员、
+ * 按范围改得了的（市场管理改没分的、市场圈里的人负责的，管理改下属的）能传能删；只读角色、设了「只看某人」的、虚线上级、
+ * 范围外的都不行（原来没客户直接放行，看得到的人都能传能删，11-23 审查）
  */
-async function 企业版改附件挡(要改: true | "删", 客户: string | null, 线索负责人?: string | null): Promise<string | null> {
+async function 企业版改附件挡(要改: true | "删", 客户: string | null, 线索?: string): Promise<string | null> {
   const 我 = await getCurrentUser();
   if (!我) return "请先登录";
   const org = await 权限组织();
   if (!org || 没设业务角色(org, 我.id)) return "你还没有业务角色，不能改数据，请找总管理设置";
   const c = 客户 ? await defaultClient.customer.findUnique({ where: { id: 客户 }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }) : null;
   if (要改 === "删" && 能删除(我, org, c && !c.pool ? c.salesOwnerId : null)) return null;
-  if (!c) return 没挂客户的线索挡(我, org, 要改, 线索负责人);
+  if (!c) return 没挂客户的线索挡(我, org, 要改, 线索);
   if (c.pool) return 要改 === "删" ? 只有总管理能删话 : "这位客户在公海里，先领取再改";
   return 能改客户(我, { salesOwnerId: c.salesOwnerId, 在公海: false }, org) ? null : 要改 === "删" ? "只有负责人能删附件" : "只有负责人能改附件";
 }
 
-/** 没挂客户的线索上的附件能不能传、删：线索负责人本人或系统管理员（同上 企业版改附件挡） */
-function 没挂客户的线索挡(我: { id: string; role?: string | null }, org: 组织, 要改: true | "删", 线索负责人: string | null | undefined): string | null {
+/** 没挂客户的线索上的附件能不能传、删：改得了这条线索才行（同上 企业版改附件挡）。只读角色、只看某人先给各自那句话 */
+async function 没挂客户的线索挡(我: { id: string; role?: string | null }, org: 组织, 要改: true | "删", 线索: string | undefined): Promise<string | null> {
   if (只读角色(我, org)) return 只读话of(我, org);
   if (只看的人(org, 我.id)) return 只看某人话;
-  if (是系统管理员(我, org) || (!!线索负责人 && 线索负责人 === 我.id)) return null;
-  return 要改 === "删" ? "只有线索负责人能删附件" : "只有线索负责人能改附件";
+  if (线索 && await 改得了线索(defaultClient, 线索)) return null;
+  return 要改 === "删" ? "改不了这条线索，附件也不能删" : "改不了这条线索，附件也不能传";
 }
 
 /** 项目附件的权限：带限定的 prisma 取项目（看不到的项目当不在），再按 露客户 / 能管项目 挡 */
