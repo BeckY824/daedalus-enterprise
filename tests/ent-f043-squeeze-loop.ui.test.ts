@@ -20,10 +20,11 @@ beforeAll(async () => {
     import {useCustomFilters} from '@/components/CustomFilters';
     const 下=(名,宽,挤)=>({键:名,名,宽,默认外露:true,挤,有值:false,渲染:(style)=><Select style={style} placeholder={'全部'+名} aria-label={名} options={[{value:'a',label:'a'}]}/>});
     function 页(){
-      const {外露,更多按钮}=useCustomFilters('f043-test',[下('甲',150),下('乙',150),下('丙',150),下('丁',150),下('戊',150),下('己',150),下('阶段',110,true),下('进程',130,true),下('回收',130,true)]);
+      const q=new URLSearchParams(location.search);const fw=Number(q.get('fw')||150);const off=Number(q.get('off')||0);
+      const {外露,更多按钮}=useCustomFilters('f043-test',[下('甲',fw),下('乙',fw),下('丙',fw),下('丁',fw),下('戊',fw),下('己',fw),下('阶段',110,true),下('进程',130,true),下('回收',130,true)]);
       return <div>
-        <div className="list-bar"><Space wrap size={[10,10]}>{外露}{更多按钮}</Space><span className="list-bar-gap"/><button style={{width:60,height:32}}>列</button></div>
-        <div id="filler" style={{height:Number(new URLSearchParams(location.search).get('h'))}}/>
+        <div style={{width:off?'calc(100% - '+off+'px)':undefined}}><div className="list-bar"><Space wrap size={[10,10]}>{外露}{更多按钮}</Space><span className="list-bar-gap"/><button style={{width:60,height:32}}>列</button></div></div>
+        <div id="filler" style={{height:Number(q.get('h'))}}/>
       </div>;
     }
     createRoot(document.getElementById('root')).render(<App><页/></App>);
@@ -34,17 +35,18 @@ beforeAll(async () => {
 afterAll(async () => { await browser?.close(); });
 
 /** 窗口 宽×800（1300 宽：≥1200 下拉不收窄）；filler 高 = 800 − 收起时筛选行高 − 余量：收起时一屏放得下（无竖滚动条），折成两行就放不下（有竖滚动条） */
-async function 打开(宽: number, fillerH: number): Promise<{ page: Page; errors: string[] }> {
+async function 打开(宽: number, fillerH: number, 格宽 = 150, 减宽 = 0): Promise<{ page: Page; errors: string[] }> {
   const ctx = await browser.newContext({ viewport: { width: 宽, height: 800 } });
   const page = await ctx.newPage(); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://f043.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><body style='margin:0'><div id='root'></div></body>" }));
-  await page.goto(`http://f043.test/customers?h=${fillerH}`);
+  await page.goto(`http://f043.test/customers?h=${fillerH}&fw=${格宽}&off=${减宽}`);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ content: "body{margin:0!important;padding:0!important}" });
   await page.addScriptTag({ content: bundle });
-  // 崩了根节点是空的、等不到探针：先等一会儿，由用例先断言没报错
-  await page.waitForTimeout(800);
+  // 等落定：崩了（报错）或筛选行出来了（摆着或收起）；再多等一小会儿，来回收放的话这期间就崩了。由用例先断言没报错
+  await expect.poll(async () => errors.length > 0 || (await page.locator(".list-bar [aria-label='甲']").count()) > 0, { timeout: 5000 }).toBe(true);
+  await page.waitForTimeout(300);
   return { page, errors };
 }
 const 摆着 = (page: Page) => page.locator(".list-bar [aria-label='阶段']").count();
@@ -78,6 +80,16 @@ it("高度不卡在中间（一直有 / 一直没有竖滚动条）时照旧收�
     const { page, errors } = await 打开(1300, h);
     expect(errors).toEqual([]);
     expect(await 摆着(page)).toBe(0);
+    await page.context().close();
+  }
+});
+
+it("行宽带小数（显示缩放 125% / 150%）也不来回收放：clientWidth 取整高估、放回又折的那一种（F-043 复审）", async () => {
+  // 格宽 150.7、行宽少 0.3–0.5px：只按取整的行宽和取整的要宽比，会「量着够、放回去还折」，滚动条一来一去照样 #185
+  for (const 减宽 of [0.3, 0.4, 0.5]) {
+    const { page, errors } = await 打开(1550, 748, 150.7, 减宽);
+    expect(errors).toEqual([]);
+    expect(await page.locator("#root").innerHTML()).not.toBe("");
     await page.context().close();
   }
 });

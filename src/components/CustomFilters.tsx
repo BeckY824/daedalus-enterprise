@@ -172,6 +172,8 @@ function useSqueezeRow(能挤: boolean, 手机也收 = false): [boolean, (el: HT
   const [挤掉, set挤掉] = useState(false);
   const [探针, set探针] = useState<HTMLSpanElement | null>(null);
   const 挤时要宽 = useRef(0);
+  /** 刚放回来那一刻的可用宽：紧接着又折了，下次至少要比它宽才再放（同一个宽度只试放一次，测量带小数也一定收敛） */
+  const 刚放宽 = useRef<number | null>(null);
   useLayoutEffect(() => {
     if (!能挤 || !探针) return;
     const 组 = 探针.closest(".ant-space") as HTMLElement | null;
@@ -183,7 +185,8 @@ function useSqueezeRow(能挤: boolean, 手机也收 = false): [boolean, (el: HT
       const 间距 = parseFloat(getComputedStyle(行).columnGap) || 0;
       // 弹性空格（.list-bar-gap，flex: 1）只占间距、不算宽：它的宽是挤剩下的
       const 占 = 格.filter((x) => !x.classList.contains("list-bar-gap")).reduce((n, x) => n + x.getBoundingClientRect().width, 0);
-      return 行.clientWidth - 占 - 间距 * 格.length;
+      // 用带小数的宽：clientWidth 取整、最多高估 0.5px，显示缩放 125% / 150% 时会「量着够、放回去还折」（F-043 复审）
+      return 行.getBoundingClientRect().width - 占 - 间距 * 格.length;
     };
     /*
       摆开时一行要多宽：组里各格（不显示的探针不算）加格间距。收起之前量，之后拿它比可用宽。
@@ -201,8 +204,17 @@ function useSqueezeRow(能挤: boolean, 手机也收 = false): [boolean, (el: HT
       const 宽 = 可用宽();
       if (!挤掉) {
         // 记的是「摆开要多宽」，至少比这一刻的可用宽多 1（这一刻确实折了）：可用宽到了它才放回来，滚动条来去不算
-        if (组.getBoundingClientRect().height > 一行高) { 挤时要宽.current = Math.max(Math.ceil(摆开要宽()), 宽 + 1); set挤掉(true); }
-      } else if (宽 >= 挤时要宽.current) set挤掉(false);
+        // 刚放回来又折了：要宽再至少比放回那一刻多 1（防反弹）。取整到 1/64px，差不到 1px 就能放下的不至于收了放不回
+        const 放时 = 刚放宽.current;
+        刚放宽.current = null;
+        if (组.getBoundingClientRect().height > 一行高) {
+          挤时要宽.current = Math.max(Math.ceil(摆开要宽() * 64) / 64, 宽 + 1, 放时 === null ? 0 : 放时 + 1);
+          set挤掉(true);
+        }
+      } else if (宽 >= 挤时要宽.current) {
+        刚放宽.current = 宽;
+        set挤掉(false);
+      }
     };
     // 接管之前（服务端出的 HTML）组是不折、放不下藏在行尾的（globals.css .cf-probe:not([data-cf-ready])），
     // 不然量之前筛选行先折成两行（PR #273 CI 1024 宽）。量之前打上标记放开折行，同一帧里量完收好，人看不到跳一下
