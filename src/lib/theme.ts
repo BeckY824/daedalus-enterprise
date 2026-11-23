@@ -63,7 +63,7 @@ export const themeConfig: ThemeConfig = {
     colorBgLayout: palette.workbench,
     colorBgContainer: palette.panel,
     colorFillTertiary: palette.hover,
-    /* antd 自己的两档阴影：boxShadow 只剩 antd 内部少数地方在用（现状的内容卡 D-1 起无影，:root --shadow-card 是 none，卡边靠 1px --card-line）；
+    /* antd 自己的两档阴影：boxShadow 只剩 antd 内部少数地方在用（内容卡的边和影走 globals.css 的 --card-line / --shadow-card：D-55 起 --field-line + 很淡的一层影）；
        boxShadowSecondary 给下拉、气泡等浮层，和 :root --shadow-pop 后两层一样（--shadow-pop 另多一圈 0.5px 发丝） */
     boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05)",
     boxShadowSecondary: "0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10)",

@@ -7,7 +7,7 @@
  *   别处   点正文：对话缩成一行（上一问 +「展开」），点「展开」恢复
  *   在做   收起时还在跑：球外圈转；跑完绿光一闪
  *   动效   减弱动态下只淡入：不缩放，透明度照样过渡
- *   毛玻璃 平时半透明 + 背后模糊；系统减少透明度、低配机 lite-fx 退回实色
+ *   实底   D-55（11-23）毛玻璃删了：浮窗实底 --panel、不模糊
  *   宽度   1024 / 1280 / 1366：浮窗不遮页头按钮、左栏、滚到底的分页按钮，页面不横滚
  *   排版   11-15：开浮窗、问过、收起，正文框 / 正文可滚高 / 客户页三栏的框和可滚高一个像素都不动（图3 截断那次的回归）
  *   一条   图4：没问过时就是一条输入框（≤120 高），说明和快捷项手在浮窗上才摆；问过向上长，最多 60% 屏高
@@ -241,20 +241,14 @@ describe("AI 浮窗（P-界面-39）", () => {
     } finally { await page.context().close(); }
   });
 
-  it("毛玻璃：平时半透明 + 背后模糊；系统减少透明度、低配机（lite-fx）退回实色、不模糊", async () => {
+  it("实底（D-55 · 11-23 删了毛玻璃）：浮窗就是 --panel 白、不模糊；系统减少透明度下也一样", async () => {
     const { page, errors } = await 开(1280);
     try {
       await 打开(page);
       const 面 = () => 浮窗(page).evaluate((d) => { const cs = getComputedStyle(d); return { 底: cs.backgroundColor, 糊: cs.backdropFilter }; });
-      const 平时 = await 面();
-      expect(平时.糊).toContain("blur(26px)");
-      expect(平时.底).toMatch(/^(rgba\(255, 255, 255, 0\.72|color\(srgb 1 1 1 \/ 0\.72)/);
+      expect(await 面()).toEqual({ 底: "rgb(255, 255, 255)", 糊: "none" });
       const cdp = await page.context().newCDPSession(page);
       await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-transparency", value: "reduce" }] });
-      expect(await 面()).toEqual({ 底: "rgb(255, 255, 255)", 糊: "none" });
-      await cdp.send("Emulation.setEmulatedMedia", { features: [] });
-      expect((await 面()).糊).toContain("blur(26px)");
-      await page.evaluate(() => document.documentElement.classList.add("lite-fx"));
       expect(await 面()).toEqual({ 底: "rgb(255, 255, 255)", 糊: "none" });
       expect(errors).toEqual([]);
     } finally { await page.context().close(); }

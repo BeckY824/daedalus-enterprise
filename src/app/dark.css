@@ -28,9 +28,9 @@
   --seal: var(--ink);
   --nav-on-bg: var(--brand-bg); --nav-on-fg: var(--brand-deep);
   --logo-frame: #e6ebf2; --logo-line: #6f97ff;
-  --shadow-card: none;
-  --card-line: var(--line);
   --card-raise-a: 0.3;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / var(--card-raise-a));
+  --card-line: var(--field-line);
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
   --page-pattern: none;
 }

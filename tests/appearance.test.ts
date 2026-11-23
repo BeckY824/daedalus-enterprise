@@ -100,7 +100,7 @@ describe("外观", () => {
     expect(跑(JSON.stringify({ mode: "dark" }), WIN).dataset).toEqual({ mode: "dark" });
   });
 
-  it("低配机（≤4 核或 ≤4GB，报得出来才算）首次绘制前挂 lite-fx（⌘K 毛玻璃退回实色）；报不出来按正常机器", () => {
+  it("D-55（11-23）毛玻璃全删：低配机不再挂 lite-fx；所有样式表（含行内 style）不留 backdrop-filter", () => {
     const 机 = (nav: Record<string, unknown>) => {
       const 类 = new Set<string>();
       vm.runInNewContext(外观预设脚本, {
@@ -108,15 +108,14 @@ describe("外观", () => {
         navigator: { userAgent: MAC, ...nav },
         document: { documentElement: { dataset: {}, classList: { add: (c: string) => 类.add(c) } } },
       });
-      return 类.has("lite-fx");
+      return 类;
     };
-    expect(机({ hardwareConcurrency: 4 })).toBe(true);
-    expect(机({ hardwareConcurrency: 12, deviceMemory: 4 })).toBe(true);
-    expect(机({ hardwareConcurrency: 8, deviceMemory: 8 })).toBe(false);
-    expect(机({})).toBe(false);
-    const css = fs.readFileSync(path.resolve(__dirname, "../src/app/globals.css"), "utf8");
-    // 毛玻璃那几条都排除了 lite-fx
-    for (const m of css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]*\.cmdk-root[^{}]*)\{[^{}]*backdrop-filter:\s*(?!none)[^;]*;/g)) expect(m[1]).toContain(":not(.lite-fx)");
+    expect(机({ hardwareConcurrency: 4, deviceMemory: 2 }).has("lite-fx")).toBe(false);
+    expect(外观预设脚本).not.toMatch(/lite-fx|hardwareConcurrency|deviceMemory/);
+    const 源 = path.resolve(__dirname, "../src");
+    const 文件 = (fs.readdirSync(源, { recursive: true }) as string[]).filter((f) => /\.(css|tsx?)$/.test(f));
+    const 残 = 文件.filter((f) => /backdrop-?filter|backdropFilter/i.test(fs.readFileSync(path.join(源, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "")));
+    expect(残).toEqual([]);
   });
 
   it("os-win 在网页上只改字色：其余 os-win 规则都得限在 .shell-desktop 里", () => {

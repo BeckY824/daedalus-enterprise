@@ -74,7 +74,6 @@ export function 挂外观(a: 外观, el: HTMLElement = document.documentElement)
  * 认值的规矩和 读外观 / 解明暗 同一套（tests/appearance.test.ts 两边对一遍）。
  * Windows 上（网页和桌面端都算）顺手挂 os-win：globals.css 只有「压深浅灰字」那条不限 .shell-desktop，
  * 网页版在 Windows 上也要同样的字色；别的 os-win 规则都限在 .shell-desktop 里，网页不受影响。
- * 低配机（CPU ≤ 4 核或内存 ≤ 4GB，浏览器报得出来才算）挂 lite-fx：大面积 backdrop-filter 退回实色（⌘K 弹窗，PR2 外壳），
- * 整页模糊每帧都要重算，集显上会掉帧；报不出来的（老浏览器、Safari 没有 deviceMemory）按正常机器
+ * 低配机挂 lite-fx 那段 11-23（D-55）随毛玻璃一起删了：全站没有 backdrop-filter，不用再按 CPU / 内存退回实色
  */
-export const 外观预设脚本 = `(function(){try{var d=${JSON.stringify(默认外观)},v={};try{v=JSON.parse(localStorage.getItem(${JSON.stringify(外观键)})||"{}")||{};}catch(_){}var e=document.documentElement;var M=${JSON.stringify(明暗表.map((x) => x.key))},m=M.indexOf(v.mode)>-1?v.mode:d.mode;if(m==="system"){m="light";try{if(matchMedia(${JSON.stringify(系统暗查询)}).matches)m="dark";}catch(_){}}e.dataset.mode=m;if(/Windows/.test(navigator.userAgent))e.classList.add("os-win");try{var hc=navigator.hardwareConcurrency,dm=navigator.deviceMemory;if((hc>0&&hc<=4)||(dm>0&&dm<=4))e.classList.add("lite-fx");}catch(_){}${名单宽预设段}}catch(_){}})();`;
+export const 外观预设脚本 = `(function(){try{var d=${JSON.stringify(默认外观)},v={};try{v=JSON.parse(localStorage.getItem(${JSON.stringify(外观键)})||"{}")||{};}catch(_){}var e=document.documentElement;var M=${JSON.stringify(明暗表.map((x) => x.key))},m=M.indexOf(v.mode)>-1?v.mode:d.mode;if(m==="system"){m="light";try{if(matchMedia(${JSON.stringify(系统暗查询)}).matches)m="dark";}catch(_){}}e.dataset.mode=m;if(/Windows/.test(navigator.userAgent))e.classList.add("os-win");${名单宽预设段}}catch(_){}})();`;

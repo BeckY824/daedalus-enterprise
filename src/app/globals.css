@@ -163,11 +163,13 @@
   --bw: 1px;                           /* 控件边框粗细（喂给 antd 的 lineWidth） */
   --draft: dashed;                     /* 铅笔的线型：AI 起草、还没确认的 */
   /* 16a：卡片不画边框，靠很淡的阴影从地面（#F5F5F7）上浮起来；PR2 外壳加过一圈 0.5px 发丝描边。
-     设计语言 D-1（11-22，底色与模块分区两方案共用的底子）：卡片不再用阴影，阴影只留给浮层（--shadow-pop）；
-     卡边接回 1px --line（和暗黑同一写法），白卡压在白底上也认得出边 */
-  --shadow-card: none;
-  --card-raise-a: 0.04; /* 卡片改进（11-23 用户定白页面底 + 白卡）：白卡压白底靠 --field-line 边 + 一层很淡的影（0 1px 2px 黑，透明度是这个数）认出来；暗黑 .30（dark.css）。只放数不放色值，暗黑守卫不用逐套主题补 */
-  --card-line: var(--line);            /* 卡片边框：明暗都是 --line */
+     设计语言 D-1（11-22）：卡片去阴影、卡边接回 1px --line。
+     卡片改进 D-55（11-23 用户定白页面底 + 白卡，原型-卡片改进「改后 · 页面底白」）：--line 压白底约 1.28:1 看不出边，
+     全站卡片外框（antd Card、16a 那几类自家卡、列表表格卡、看板卡、状态条、设置开关卡）一律四边 --field-line（浅 #c7c7cc / 深 #3a3f48）
+     + 一层很淡的影（0 1px 2px 黑，透明度 --card-raise-a：浅 .04 / 深 .30）。表格行线、卡头线、分隔线仍是 --line / --line-soft，不跟着深 */
+  --card-raise-a: 0.04;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / var(--card-raise-a));
+  --card-line: var(--field-line);      /* 卡片外框：明暗都是 --field-line */
   --shadow-pop: 0 0 0 0.5px rgba(0, 0, 0, 0.08), 0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10);
   /* 聚焦 / 报错的光晕（D1 · 设计语言 11-21）：输入框、按钮键盘聚焦 --focus-ring，报错格子 --error-ring。
      原来的「输入框铺 4% 墨色灰底、不画框」（--field-bg）和底色只有约 1.08:1，用户 11-21 定为缺陷（D17），整段换掉 */
@@ -3171,26 +3173,14 @@ button.ais-hd-b { cursor: pointer; }
 
 /* ---------- ⌘K ----------
    跳页和问一句共用一张单子。藏起来的快捷键等于不存在，所以左栏底下常驻一行提示。 */
-/* ⌘K 弹窗毛玻璃（PR2 外壳 g.feel，原型 sheet）：半透明面板 + 背后模糊提饱和，遮罩改淡（看得见底下那页，知道自己没离开）。
-   CommandBar 的 Modal 挂 rootClassName="cmdk-root"，只管这一张，别的弹窗不动。antd 的选择器两层类，前面垫 :root 压过它；面板 antd 6 叫 .ant-modal-container（5 叫 -content），两个都认。
-   三种情况退回实色面板（--panel）：浏览器不支持 backdrop-filter（@supports）、系统开了「减少透明度」、
-   低配机（html.lite-fx，外观预设脚本按 CPU 核数 / 内存挂上——整页模糊每帧都要重算，集显上会掉帧） */
+/* ⌘K 弹窗（PR2 外壳 g.feel，原型 sheet）：遮罩改淡（看得见底下那页，知道自己没离开）。
+   D-55（11-23 用户「删除……毛玻璃」）：面板实底 --pop-bg + 发丝圈 + 浮层阴影，遮罩不再模糊。
+   CommandBar 的 Modal 挂 rootClassName="cmdk-root"，只管这一张，别的弹窗不动。antd 的选择器两层类，前面垫 :root 压过它；面板 antd 6 叫 .ant-modal-container（5 叫 -content），两个都认 */
 :root .cmdk-root :is(.ant-modal-container, .ant-modal-content) {
   background: var(--pop-bg); border-radius: var(--r-pop);
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 10%, transparent), var(--shadow-pop);
 }
 :root .cmdk-root .ant-modal-mask { background: color-mix(in srgb, var(--ink) 18%, transparent); }
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html:not(.lite-fx) .cmdk-root :is(.ant-modal-container, .ant-modal-content) {
-    background: color-mix(in srgb, var(--panel) 82%, transparent);
-    -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
-  }
-  html:not(.lite-fx) .cmdk-root .ant-modal-mask { -webkit-backdrop-filter: blur(2px); backdrop-filter: blur(2px); }
-}
-@media (prefers-reduced-transparency: reduce) {
-  html:not(.lite-fx) .cmdk-root :is(.ant-modal-container, .ant-modal-content) { background: var(--panel); -webkit-backdrop-filter: none; backdrop-filter: none; }
-  html:not(.lite-fx) .cmdk-root .ant-modal-mask { -webkit-backdrop-filter: none; backdrop-filter: none; }
-}
 .cmdk-in { display: flex; align-items: center; gap: var(--s2); padding: var(--s3) var(--s4); border-bottom: 1px solid var(--line); color: var(--text-muted); }
 .cmdk-in input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font: inherit; font-size: var(--fs-section); color: var(--ink); }
 .cmdk-in input::placeholder { color: var(--text-faint); }
@@ -3227,7 +3217,7 @@ button.ais-hd-b { cursor: pointer; }
    设置不是一页，是一层：盖在你正看的东西上面，关掉回到原处。
    照 Claude / Codex 桌面端那样。装它的是拦截路由，地址仍然是 /settings。 */
 .setm { position: fixed; inset: 0; z-index: var(--z-sheet); display: flex; align-items: center; justify-content: center;
-  padding: 40px 24px; background: rgba(17, 24, 39, 0.28); backdrop-filter: blur(2px); }
+  padding: 40px 24px; background: rgba(17, 24, 39, 0.28); }
 /* **高度是定的，不是跟着内容长的**：原来切到「业务配置」「桌面端」这种长栏时，
    整层会当场蹿高一截——人看到的是"弹窗自己放大了"。窗口就该是一个固定的框，
    内容多了在框里滚。760 是这个框的上限，小窗口时让出上下各 40。 */
@@ -3640,12 +3630,12 @@ button.ais-hd-b { cursor: pointer; }
 .csq-err { margin-top: 12px; padding: 8px 10px; border-radius: var(--r-ctl); background: var(--danger-bg); color: var(--danger-text); font-size: var(--fs-note); line-height: 1.6; overflow-wrap: anywhere; }
 .csq-foot { display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
 
-/* 撤销条（components/UndoBar.tsx）。全站一条，底部居中的玻璃胶囊：图标 + 一句话 + 撤销 + 倒计时环。
+/* 撤销条（components/UndoBar.tsx）。全站一条，底部居中的胶囊（D-55 起实底 --panel，不再毛玻璃）：图标 + 一句话 + 撤销 + 倒计时环。
    从下面弹上来（--ease-spring），收的时候只淡出；鼠标停在上面倒计时（环）一起停 */
 .undo-bar { position: fixed; left: 50%; bottom: 24px; z-index: 1060; transform: translateX(-50%);
   display: flex; align-items: center; gap: 8px; max-width: min(520px, calc(100vw - 32px)); min-height: 40px; padding: 6px 8px 6px 14px;
   border-radius: var(--r-tag); border: 1px solid var(--line); box-shadow: var(--shadow-pop);
-  background: color-mix(in srgb, var(--panel) 88%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+  background: var(--panel);
   font-size: var(--fs-note); color: var(--ink); animation: undo-in var(--t) var(--ease-spring) both; }
 .undo-bar[data-out] { animation: undo-out var(--t-fast) var(--ease) both; pointer-events: none; }
 .undo-ic { flex: none; display: inline-flex; color: var(--success); }
@@ -4265,12 +4255,12 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 
 
 /* ================= 16a 全站观感（2026-11-11，客户两页样板用户认可后铺开） =================
-   值都在 :root（主色 #0A66D8、文字三档、地面 #F5F5F7；D-1 11-22 起 --shadow-card 为 none、--card-line 为 --line、卡片圆角 --r-mod）。
+   值都在 :root（主色 #0A66D8、文字三档；D-55 11-23 起 --card-line 为 --field-line、--shadow-card 为很淡的一层影、卡片圆角 --r-mod）。
    这一块只放「形」：卡片不画框、浮层同一阴影和圆角、标签降色、表格成卡、看板去掉框里套框。
    暗黑时这些规则照样吃，值换成 dark.css 那套，不会坏 */
 
 /* ---------- 卡片：antd Card 和几类自家卡，同一个边（--card-line）、影（--shadow-card）、圆角（--r-mod）----------
-   D-1（11-22）起：1px --line、无影、圆角 10 */
+   D-55（11-23）起：1px --field-line、很淡的影（--card-raise-a）、圆角 10 */
 .ant-card.ant-card-bordered { border-color: var(--card-line); box-shadow: var(--shadow-card); }
 .ant-card .ant-card-head { border-bottom-color: var(--line-soft) !important; }
 :is(.home-card, .btodo-list, .rkpi, .chan-dash-kpi, .chan-dash-cell, .chan-block, .set-body, .start, .auth-solo .auth-form, .rec-card:not(.rec-rail-blocks, .rec-col-blocks), .bill-plan, .bill-pay, .cli-card, .cli-ck .cli-frame) {
@@ -4349,11 +4339,11 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 :root:root .ant-tag.ant-tag.ant-tag.tag-key:not(.ant-tag-solid, .ant-tag-disabled) { background: var(--brand-bg); color: var(--brand-deep); }
 :root:root .ant-tag.ant-tag.ant-tag.pool-tag:not(.ant-tag-solid, .ant-tag-disabled) { background: transparent; color: var(--ink-soft); }
 
-/* ---------- 列表页：表格成一张白卡（圆角 --r-mod、--shadow-card；D-1 起 10、无影），表头白底灰字；行高、表头高不动（40 / 36） ---------- */
+/* ---------- 列表页：表格成一张白卡（圆角 --r-mod 10、--card-line 一圈 + --shadow-card），表头白底灰字；行高、表头高不动（40 / 36） ---------- */
 .list .ant-table-wrapper .ant-table { border-radius: var(--r-mod); box-shadow: var(--shadow-card); background: var(--panel); }
 .list .ant-table-wrapper .ant-table-container { border-radius: var(--r-mod); overflow: hidden; }
-/* D-1：表格卡没了阴影，用一圈 1px --card-line 认边（画在阴影位，不占尺寸、不挪表格一个像素） */
-:root:root .list .ant-table-wrapper .ant-table { box-shadow: 0 0 0 1px var(--card-line); }
+/* D-1：表格卡用一圈 1px --card-line 认边（画在阴影位，不占尺寸、不挪表格一个像素）；D-55 起后面再叠卡片那层淡影 */
+:root:root .list .ant-table-wrapper .ant-table { box-shadow: 0 0 0 1px var(--card-line), var(--shadow-card); }
 .list .ant-table-thead > tr > th { background: var(--panel); border-bottom-color: var(--line-soft); }
 .list .ant-table-thead > tr > th::before { display: none; }
 .list .ant-table-tbody > tr > td { border-bottom-color: var(--line-soft); }
@@ -4372,10 +4362,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .pipe-card:hover, .pipe-card.pipe-card-ro:hover { border-top-color: var(--card-line); border-right-color: var(--card-line); border-bottom-color: var(--card-line); box-shadow: var(--shadow-pop); }
 .pipe-card { transition: box-shadow var(--t-fast) var(--ease); }
 
-/* ---------- 侧栏、页头：半透明 + 毛玻璃（支持才开，不支持就是原来的实色地面） ---------- */
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html .rail { background: color-mix(in srgb, var(--rail-bg) 78%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
-}
+/* ---------- 侧栏：实底 --rail-bg（D-55 · 11-23 删了毛玻璃：原来 78% 半透明压在白页面底上成了 #f7f7f9，不等于 --workbench） ---------- */
 .rail { border-right-color: var(--line-soft); }
 
 /* ---------- 16a 客户详情的排版（只认 .rec-page.ui-v2，RecordView 挂着）：信息显示完整 ---------- */
@@ -4706,10 +4693,10 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .assign-fail { display: inline-block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: middle; color: var(--warning-text); font-size: var(--fs-note); }
 
 /* ---------- AI 浮窗（PR3，P-界面-39；原型 ai.open / ai.minimize / ai.ask / ai.away / ai.bg / ai.ctx、dt.ai） ----------
-   企业版项目模式：点右下角浮标，页面中下方长出一张毛玻璃对话框（不占右栏、正文不收窄），右上角「−」收起回球。
+   企业版项目模式：点右下角浮标，页面中下方长出一张对话框（不占右栏、正文不收窄），右上角「−」收起回球。
    还没问过是一条输入框高；问过之后向上长成对话（has-turns）；点页面别处缩成一行摘要（is-folded）。
    收起不卸载：is-min 只是藏起来（visibility + inert），正在跑的那一问接着跑。
-   毛玻璃照 ⌘K 那段：不支持 backdrop-filter、系统「减少透明度」、低配机 html.lite-fx 三种都退回实色 --panel。 */
+   D-55（11-23 用户「删除……毛玻璃」）：实底 --panel + 现有阴影，不再半透明模糊。 */
 .dock.dock-float {
   position: fixed; z-index: 26; top: auto; height: auto;
   left: calc(var(--rail-w) + (100vw - var(--rail-w)) / 2); bottom: calc(16px + env(safe-area-inset-bottom));
@@ -4735,15 +4722,6 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 }
 /* 第一次挂上就是开着的：从缩着、透明的样子长出来（浏览器不认 @starting-style 就直接出现，不碍事） */
 @starting-style { .dock.dock-float:not(.is-min) { opacity: 0; scale: .92; } }
-@supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html:not(.lite-fx) .dock.dock-float {
-    background: color-mix(in srgb, var(--panel) 72%, transparent);
-    -webkit-backdrop-filter: saturate(190%) blur(26px); backdrop-filter: saturate(190%) blur(26px);
-  }
-}
-@media (prefers-reduced-transparency: reduce) {
-  html:not(.lite-fx) .dock.dock-float { background: var(--panel); -webkit-backdrop-filter: none; backdrop-filter: none; }
-}
 /* 头一行：左上是当前页标签（换页淡入换字），右上是历史和「−」 */
 /* 11-15 改成图4 那样一条：头一行压薄（把手 + 标签 + 历史 + −），输入框不再自带边框和底色——浮窗本身就是那条框 */
 .dock-float-h { padding: 6px 8px 0 4px; gap: 4px; min-height: 0; cursor: grab; touch-action: none; }

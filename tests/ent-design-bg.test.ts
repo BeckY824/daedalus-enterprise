@@ -1,6 +1,7 @@
 /**
  * 设计语言 · 卡片底子（D-1，11-22）：
  *   - 卡片不再用阴影（--shadow-card: none），阴影只留给浮层；卡边接回 1px --line
+ *   （D-55 · 11-23 改：白卡压白底 --line 只有约 1.28:1，卡片外框全站换成 --field-line + 很淡的影 --card-raise-a，表格行线、分隔线不动）
  *   - 内容卡圆角统一到 10：16a 那段卡片和列表表格卡读 --r-mod = --r-card
  *   - 复盘任务看板列不铺灰底；手机顶栏白底 + 一根 --line
  * 11-23 外观只留一套：D-2 方案 A「一张纸」和底色开关都删了，页面是 :root 的卡片。
@@ -23,9 +24,11 @@ const 有规则 = (选择器: string, 体片: string) => {
 describe("D-1 底子：去卡影、圆角 10、看板列、390 顶栏", () => {
   const 根 = 根变量();
 
-  it(":root 卡片无影、1px --line 边；--r-mod 就是 --r-card（10）；页面底白、左栏浅灰、浮层底白", () => {
-    expect(根.get("--shadow-card")).toBe("none");
-    expect(根.get("--card-line")).toBe("var(--line)");
+  it(":root 卡片外框 --field-line + 很淡的影（D-55）；--r-mod 就是 --r-card（10）；页面底白、左栏浅灰、浮层底白", () => {
+    expect(根.get("--shadow-card")).toBe("0 1px 2px rgb(0 0 0 / var(--card-raise-a))");
+    expect(根.get("--card-raise-a")).toBe("0.04");
+    expect(根.get("--card-line")).toBe("var(--field-line)");
+    expect(根.get("--line"), "行线、分隔线不跟着卡边变深").toBe("#e3e3e8");
     expect(根.get("--r-mod")).toBe("var(--r-card)");
     expect(根.get("--r-card")).toBe("10px");
     expect(根.get("--page-bg")).toBe("var(--panel)");
@@ -39,7 +42,7 @@ describe("D-1 底子：去卡影、圆角 10、看板列、390 顶栏", () => {
     expect(净.slice(i, 净.indexOf("}", i))).toContain("border-radius: var(--r-mod)");
     有规则(".list .ant-table-wrapper .ant-table", "border-radius: var(--r-mod)");
     有规则(".list .ant-table-wrapper .ant-table-container", "border-radius: var(--r-mod)");
-    有规则(`${现状} .list .ant-table-wrapper .ant-table`, "box-shadow: 0 0 0 1px var(--card-line)");
+    有规则(`${现状} .list .ant-table-wrapper .ant-table`, "box-shadow: 0 0 0 1px var(--card-line), var(--shadow-card)");
   });
 
   it("antd 的卡片外壳、表头圆角和 --r-card 一致（现状 10）", async () => {
@@ -58,7 +61,7 @@ describe("D-1 底子：去卡影、圆角 10、看板列、390 顶栏", () => {
     有规则(`${现状} .btodo-col`, "background: transparent");
   });
 
-  it("客户状态条没了卡影，三边用 --card-line 认边", () => {
+  it("客户状态条三边用 --card-line 认边", () => {
     有规则(`${现状} .tri-bar`, "border-top: 1px solid var(--card-line)");
   });
 
@@ -76,6 +79,28 @@ describe("D-1 底子：去卡影、圆角 10、看板列、390 顶栏", () => {
     expect(暗).not.toMatch(/--page-bg\s*:/);
     expect(暗).not.toMatch(/--rail-bg\s*:/);
     expect(暗).toContain("--workbench: #0f1115; --panel: #171a1f;");
+    // 卡片外框暗黑同一写法：--field-line #3a3f48 + 影的透明度 .30
+    expect(暗).toContain("--card-line: var(--field-line);");
+    expect(暗).toContain("--card-raise-a: 0.3;");
+    expect(暗).toContain("--shadow-card: 0 1px 2px rgb(0 0 0 / var(--card-raise-a));");
+  });
+
+  it("左栏实底（D-55）：只有 .rail 那条 background: var(--rail-bg)，不再有半透明 color-mix + backdrop-filter 的覆盖", () => {
+    有规则(".rail", "background: var(--rail-bg)");
+    expect(净).not.toMatch(/html \.rail\s*\{/);
+    expect(净).not.toMatch(/backdrop-filter/);
+    // 选择器落在左栏本身（最后一段是 .rail）的规则，底色只许是 --rail-bg
+    const 左栏本身 = [...净.matchAll(/([^{}]*)\{([^{}]*)\}/g)].filter((m) => m[1].split(",").some((x) => /\.rail\s*$/.test(x.trim())) && /background(-color)?\s*:/.test(m[2]));
+    expect(左栏本身.length).toBeGreaterThan(0);
+    for (const m of 左栏本身) expect(m[2], m[1].trim()).toMatch(/background(-color)?\s*:\s*var\(--rail-bg\)/);
+  });
+
+  it("设置开关卡（.sw-card / .sw-ov）外框也走 --card-line", () => {
+    const 设 = 去注释(fs.readFileSync(path.join(源, "app/(app)/settings/settings.css"), "utf8"));
+    for (const k of [".sw-ov {", ".sw-card {"]) {
+      const i = 设.indexOf(k);
+      expect(设.slice(i, 设.indexOf("}", i)), k).toContain("border: 1px solid var(--card-line)");
+    }
   });
 });
 
