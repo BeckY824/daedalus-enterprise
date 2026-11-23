@@ -72,9 +72,10 @@ import { 企业字典, 页面字典, 预读页面字典, 字典种类们 } from 
  * 11-16 沟通汇总和「跟进」菜单共用一遍看得到的项目（customer-follow-feed.ts 客户页沟通两样）：93 → 89 条，上限 100 → 95。
  * 11-19 沟通本人 30 分钟内改（#363）：项目区要认导入建的 / 系统留痕不算本人记的，多一句 EntImportRow（只在有我 30 分钟内记的沟通时才查；
  * 「已修改」和「写过下一步」合成一句留痕），这里的沟通都是刚记的，95 → 96。
+ * 11-24 历史变更入口小方框要「N · 最近」：几张留痕表 UNION ALL 一句 SQL（明细点开才取），96 → 97。
  * 往上调之前先 CUST_DETAIL_QUERY_DUMP=<文件> 跑一遍看明细，是不是又把同一条查了两遍（字典逐类读、看得到的客户、沟通负责人……）
  */
-const 客户详情查询上限 = 96;
+const 客户详情查询上限 = 97;
 /** 三态开着、钟上沉睡 / 待回收的客户：比关着多查的上限（收三态客户 一套，客户行连钟、换负责人记录、占位词复用页面的）。
  * 11-12 第一轮实测多 26 条；第二轮同一请求去重后多 11 条（关 92 / 活跃 95 / 沉睡 103）；最近沟通日改一句 SQL（沟通生效日）后多 8 条（沉睡 100），上限 = 实测 +2 */
 const 三态沉睡多查上限 = 10;
@@ -149,7 +150,7 @@ describe("客户详情一次打开的查询条数", () => {
     // 关着时交给客户详情的东西和原来一样（状态条、留痕不给，页签不带冷标）：界面上什么都不多
     const 元素 = (await 以谁的身份(甲.id, () => CustomerPage({ params: Promise.resolve({ id: 客户 }), searchParams: Promise.resolve({}) } as never))) as { props: Record<string, unknown> };
     expect(元素.props.三态条).toBeNull();
-    expect(元素.props.三态留痕).toBeNull();
+    expect("三态留痕" in 元素.props).toBe(false);
     expect((元素.props.项目数据 as { 页签们: object[] }).页签们.every((t) => !("冷天数" in t))).toBe(true);
     // 关着：三态的表、冷项目那句 SQL 一条都不碰（11-12 实测和改前一样 92 条）
     expect(关着句.filter((q) => /EntCustomerClock|EntCustomerStateLog|FollowUpProject" fp/.test(q))).toEqual([]);
