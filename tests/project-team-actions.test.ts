@@ -103,9 +103,9 @@ describe("改组织规则（企业版持有上限）", () => {
     expect(await 改组织规则({ 公海: { 持有上限开: false } })).toEqual({ ok: true, 收回: 0 });
     expect((await 读组织规则()).公海).toMatchObject({ 持有上限开: false, 默认上限: 8 });
     expect((await 记录()).map((r) => r.summary)).toEqual([
-      "组织规则：项目持有上限开，默认 30 个，单独设了 0 人",
-      "组织规则：项目持有上限开，默认 8 个，单独设了 1 人",
-      "组织规则：项目持有上限关",
+      "组织规则：项目持有上限：关 → 开",
+      "组织规则：项目持有上限默认：30 个 → 8 个；项目持有上限单设：0 人 → 1 人",
+      "组织规则：项目持有上限：开 → 关",
     ]);
   });
 
@@ -116,7 +116,7 @@ describe("改组织规则（企业版持有上限）", () => {
     expect((await 读组织规则()).超时回收.开).toBe(false);
     expect(await 改组织规则(改)).toEqual({ ok: true, 收回: 1 });
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 项目id } })).pooledAt).not.toBeNull();
-    expect((await 记录()).map((r) => r.summary)).toContain("组织规则：超时回收开，设了 1 个进程的处理时长，起算日 不设");
+    expect((await 记录()).map((r) => r.summary)).toContain("组织规则：超时回收：关 → 开；超时回收处理时长：改了 1 处进程时长；超时计时起算日：2026-11-01 → 不设");
     mocks.user = { ...mocks.user, id: 乙, role: "SALES" };
     // 11-01 权限只认业务角色：企业版报错不再说老板
     expect(await 预览超时回收(改)).toMatchObject({ ok: false, error: expect.stringContaining("只有系统管理员") });
@@ -137,9 +137,13 @@ describe("改组织规则（企业版持有上限）", () => {
     expect(await 改组织规则({ 节点推进: { 范围: "新建" } })).toEqual({ ok: true, 收回: 0 });
     expect((await 读组织规则()).节点推进).toMatchObject({ 开: true, 范围: "新建", 生效于: 第一次.生效于 });
     expect(await 改组织规则({ 节点推进: { 范围: "乱写" as never } })).toMatchObject({ ok: false, error: expect.stringContaining("管哪些项目") });
-    const 开那句 = "组织规则：节点推进开，1 个进程配了必填，存量和新建的项目都管";
-    const 新建那句 = expect.stringMatching(/^组织规则：节点推进开，1 个进程配了必填，只管 \d{4}-\d{2}-\d{2} \d{2}:\d{2} 之后新建的项目$/);
-    expect((await 记录()).map((r) => r.summary)).toEqual([开那句, "组织规则：节点推进关", 开那句, 新建那句]);
+    // 摘要写哪项从什么变成什么（设置开关 N9）
+    expect((await 记录()).map((r) => r.summary)).toEqual([
+      "组织规则：节点推进：关 → 开；节点推进必填：改了 1 个进程，现在 1 个进程配了必填",
+      "组织规则：节点推进：开 → 关",
+      "组织规则：节点推进：关 → 开",
+      "组织规则：节点推进管哪些项目：全部项目 → 开启之后新建的",
+    ]);
   });
 
   it("业务员改不了；开关关着拦；填错拦，都不写", async () => {
