@@ -27,7 +27,7 @@ export async function 判MQL(
   if (p.result || p.phase !== "线索" || p.node !== 有效线索节点) return { ok: false, error: `只有停在「${有效线索节点}」的项目能判 MQL` };
   const 等着 = await 等复核拦(prisma, p.id);
   if (等着) return { ok: false, error: 等着 };
-  if (合格) return 改节点(me, p.id, { phase: "线索", node: MQL合格去 });
+  if (合格) return 改节点(me, p.id, { phase: "线索", node: MQL合格去 }, undefined, { 入口: "判MQL" });
   const 日 = parseDateInput(下一步时间);
   if (!日) return { ok: false, error: "MQL 不合格要定下一次培育跟进的日期" };
   if (dayjs(日).format("YYYY-MM-DD") < dayjs(now).format("YYYY-MM-DD")) return { ok: false, error: "下一次培育跟进不能早于今天" };
@@ -36,7 +36,7 @@ export async function 判MQL(
   // 字数上限按组织规则（M-节点-03）：默认不设，管理员在设置里设了才拦
   const 上限 = (await 生效组织规则()).阶段.培育计划上限;
   if (上限 !== null && 内容.length > 上限) return { ok: false, error: `计划内容最多 ${上限} 个字` };
-  const r = await 改节点(me, p.id, { phase: "线索", node: MQL不合格去 });
+  const r = await 改节点(me, p.id, { phase: "线索", node: MQL不合格去 }, undefined, { 入口: "判MQL" });
   if (!r.ok) return r;
   await prisma.$transaction(async (tx) => {
     await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 日 } });

@@ -11,6 +11,7 @@ import { 读卡点默认, 读卡点角色开关, 原因字典, 卡点权限 } fr
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 能管回收站 } from "@/lib/enterprise/soft-delete";
 import { 能导入导出 } from "@/lib/enterprise/import-perm";
+import { 导出必填拦截Action } from "./required-block-actions";
 import { 全部企业字典, 读分配谁能用 } from "@/lib/enterprise/dict";
 import { aiUsageThisMonth } from "@/lib/ai-usage";
 import { multiTenant } from "@/lib/tenant/context";
@@ -253,7 +254,7 @@ export default async function SettingsBody() {
 
   return (
     <SettingsView
-      项目设置={项目设置 && { ...项目设置, 能改提成比例: !!项目设置.提成比例 && 能改提成比例(me, org) }}
+      项目设置={项目设置 && { ...项目设置, 能改提成比例: !!项目设置.提成比例 && 能改提成比例(me, org), 导出拦截: 企业版() && 能导入 ? 导出必填拦截Action : undefined }}
       组织架构={组织架构}
       客户回收={客户回收}
       me={me}

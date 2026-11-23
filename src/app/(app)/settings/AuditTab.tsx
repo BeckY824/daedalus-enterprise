@@ -29,6 +29,7 @@ const ACTION_LABEL: Record<string, string> = {
   giveup: "主动放弃",
 };
 const ENTITY_LABEL: Record<string, string> = {
+  EntRequiredBlock: "必填拦截记录",
   Customer: "学员", Contract: "签约", Lead: "线索", User: "成员", Channel: "渠道", Setting: "系统设置", Ai: "AI 功能", Device: "机器",
   Opportunity: "商机", Contact: "联系人", FollowUp: "沟通记录", Task: "待办", FollowPlan: "跟进计划",
   // 订单 / 供应商表 2026-10-29 删了，老日志里还有这两类对象，叫法留着

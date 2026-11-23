@@ -4,6 +4,7 @@
  *   - 「用建议清单」：只留业务字段（客户第 31b 题，不再带沟通三项、下一步），生产备货填已备货、物流运输填已签收 + 物流单号（客户 11-19 定稿）
  *   - 同一列宽严两项互斥：选了「备货状态（已备货）」就去掉「备货状态（选了任一项就算·旧）」，反过来一样
  *   - 390 / 1024 / 1280 / 1366 宽不横向溢出
+ *   - 必填拦截记录导出（11-23）：只摆给能导入导出的人；超上限只导了最新的那些时，按钮旁说清从哪一刻起
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
@@ -14,7 +15,7 @@ beforeAll(async () => {
   bundle = await 打包(`
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import T from '@/app/(app)/settings/ProjectSettingsTab';import {默认组织规则} from '@/lib/project/org-rules';
-    let root;window.__render=(p)=>(root??=createRoot(document.getElementById('root'))).render(<ConfigProvider locale={zhCN}><App><T 成员={[]} value={{角色们:[],类别们:[],企业选项:null,持有:{},提成比例:null,能改提成比例:false,
+    let root;window.__render=({__能导出=true,...p})=>(root??=createRoot(document.getElementById('root'))).render(<ConfigProvider locale={zhCN}><App><T 成员={[]} value={{角色们:[],类别们:[],企业选项:null,持有:{},提成比例:null,能改提成比例:false,导出拦截:__能导出?((...a)=>window.__act?.('导出必填拦截Action',...a)??{ok:true}):undefined,
       挡:{字典:null,持有上限:null,节点时限:null,必填字段:null,阶段规则:null},组织规则:{...默认组织规则,节点推进:{...默认组织规则.节点推进,...p}}}}/></App></ConfigProvider>);`);
   browser = await chromium.launch();
 }, 120_000);
@@ -88,3 +89,21 @@ for (const 宽 of [390, 1366]) {
     } finally { await page.close(); }
   }, 60_000);
 }
+
+it("必填拦截导出：能导入导出才摆；超上限只导了最新的，按钮旁说清从哪一刻起；导不了的人不摆", async () => {
+  const { page, errors } = await 开页(browser, bundle, { 开: false, 必填: {}, 生效于: null }, 390);
+  try {
+    await page.evaluate(() => {
+      (window as unknown as { __act: (n: string) => unknown }).__act = (n) => n === "导出必填拦截Action"
+        ? { ok: true, 数据: { 明细: { 表头: ["时间（北京）"], 行: [["2026-11-22 14:00"]] }, 按节点: { 表头: ["节点"], 行: [] }, 汇总: { 起: "2026-10-24 20:00", 止: "2026-11-23 20:00", 次数: 50000, 项目数: 1, 卡超24小时项目数: 0, 截断: true, 最早: "2026-11-22 14:00" } } }
+        : { ok: true };
+    });
+    const 区 = page.getByTestId("必填拦截导出");
+    await 区.getByRole("button", { name: /^导\s*出$/ }).click();
+    await 区.getByRole("status").getByText("记录太多，只导了最新的 50000 行（从 2026-11-22 14:00 起）").waitFor();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    await page.evaluate(() => (window as unknown as { __render: (x: unknown) => void }).__render({ __能导出: false, 开: false, 必填: {}, 生效于: null }));
+    await expect.poll(() => page.getByTestId("必填拦截导出").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);

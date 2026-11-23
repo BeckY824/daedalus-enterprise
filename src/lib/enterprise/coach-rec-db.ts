@@ -222,7 +222,9 @@ export async function 收一片(me: 人, id: unknown, 段: number, 片: number, 
   if (片 === 0) {
     const 认出 = 认录音格式(写.头);
     if (!认出 || (r.format && 认出 !== r.format)) {
-      await 删片(dir, 段, 片);
+      // 这一段一片都还没收（补段被拒最常见）：连这一段的片目录一起删，不留空的 seg-NN（11-22 实操：补段被拒后目录里剩 seg-02）
+      if (别的片.some((x) => x.段 === 段)) await 删片(dir, 段, 片);
+      else await 删段片(dir, 段);
       if (!别的片.length && r.segCount === 0) await 弃掉空的(me, r);
       // 网页录、飞书录（跟进 11-22）：说录音的话，不说「文件」；传文件的照旧列能收的格式
       return 不行(认出 ? "这一段和前面录的格式不一样" : r.sourceKind === "上传" ? "认不出这个文件的格式：只收 m4a、mp3、wav、aac、amr、ogg、flac、mp4、3gp、webm 录音" : "这一段录音的格式认不出来", 415);
