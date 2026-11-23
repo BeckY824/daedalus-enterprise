@@ -23,7 +23,7 @@ export default function ProjectFunnel({ 漏斗, 说明, 空, 矮 = false, 脚 }:
   return (
     <Card
       style={矮 ? undefined : { marginTop: 16 }}
-      className={[矮 ? "pfun-card" : "", 新样 ? "pfun-now" : ""].filter(Boolean).join(" ") || undefined}
+      className={["rb-mod-card", 矮 ? "pfun-card" : "", 新样 ? "pfun-now" : ""].filter(Boolean).join(" ")}
       title={<span className="section-title">全周期漏斗</span>}
     >
       {/* 说明放正文里不放 extra：这句偏长，手机宽度下塞在卡片头右边会挤出去 */}
