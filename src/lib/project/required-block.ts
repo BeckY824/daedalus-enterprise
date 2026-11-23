@@ -77,8 +77,12 @@ const 读缺 = (s: string): string[] => {
 export type 拦截导出 = {
   明细: { 表头: string[]; 行: string[][] };
   按节点: { 表头: string[]; 行: (string | number)[][] };
-  汇总: { 起: string; 止: string; 次数: number; 项目数: number; 卡超24小时项目数: number };
+  /** 截断：起 ~ 今 之间超过 上限 行，只导了最新的 上限 行（最早那一行的时刻见 最早），别的数也只按导出的这些行算 */
+  汇总: { 起: string; 止: string; 次数: number; 项目数: number; 卡超24小时项目数: number; 截断: boolean; 最早: string | null };
 };
+
+/** 一次最多导多少行（表只增不删；超了留最新的，汇总表写明截断） */
+export const 拦截导出上限 = 50_000;
 
 /** 一个项目在一个节点上的一段「卡」：从这一段第一次被拦到离开这个节点（没离开 = 到 今） */
 type 段 = { projectId: string; node: string; 首拦: Date; 离开: Date | null };
@@ -87,8 +91,11 @@ type 段 = { projectId: string; node: string; 首拦: Date; 离开: Date | null 
  * 导出（系统管理员在设置 → 节点推进里点）：起 ~ 今 的拦截明细、按节点分布，和「卡超 24 小时的项目数」。
  * 卡超 24 小时 = 同一项目在同一节点上第一次被拦后，过了 24 小时才离开这个节点（或到现在还没离开、已经过了 24 小时）。
  */
-export async function 读拦截导出(起: Date, 今: Date = new Date()): Promise<拦截导出> {
-  const 行们 = await prisma.entRequiredBlock.findMany({ where: { at: { gte: 起, lte: 今 } }, orderBy: { at: "asc" }, take: 50_000 });
+export async function 读拦截导出(起: Date, 今: Date = new Date(), 上限: number = 拦截导出上限): Promise<拦截导出> {
+  // 超上限留最新的（倒序取 上限 + 1 行，多出那一行只用来判截断），再翻回时间正序；原来正序取前 5 万行，丢的是最新的、也不提示
+  const 倒序 = await prisma.entRequiredBlock.findMany({ where: { at: { gte: 起, lte: 今 } }, orderBy: [{ at: "desc" }, { id: "desc" }], take: 上限 + 1 });
+  const 截断 = 倒序.length > 上限;
+  const 行们 = 倒序.slice(0, 上限).reverse();
   const 项目ids = [...new Set(行们.map((r) => r.projectId))];
   const 人ids = [...new Set(行们.map((r) => r.userId))];
   const 客户ids = [...new Set(行们.map((r) => r.customerId).filter((x): x is string => !!x))];
@@ -164,6 +171,6 @@ export async function 读拦截导出(起: Date, 今: Date = new Date()): Promis
       表头: ["节点", "被拦次数", "涉及项目数", "卡超 24 小时的项目数", "到现在还卡着的项目数"],
       行: [...节点表].sort((a, b) => b[1].次 - a[1].次).map(([k, v]) => [k, v.次, v.项目.size, v.超24.size, v.还卡.size]),
     },
-    汇总: { 起: 时(起), 止: 时(今), 次数: 行们.length, 项目数: 项目ids.length, 卡超24小时项目数: 超24.size },
+    汇总: { 起: 时(起), 止: 时(今), 次数: 行们.length, 项目数: 项目ids.length, 卡超24小时项目数: 超24.size, 截断, 最早: 行们.length ? 时(行们[0].at) : null },
   };
 }

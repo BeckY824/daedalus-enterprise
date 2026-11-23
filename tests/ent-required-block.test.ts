@@ -191,4 +191,20 @@ describe("导出：卡了多久、卡超 24 小时、按节点", () => {
     expect(乙行[列("之后离开这个节点")]).toBe("还没推过去");
     expect(乙行[列("卡了多久（小时）")]).toBe("30");
   });
+
+  it("超上限留最新的：倒序取再翻回正序，汇总写明截断、从哪一刻起；没超不截断", async () => {
+    const 今 = new Date("2026-11-23T12:00:00Z");
+    const 时 = (h: number) => new Date(今.getTime() - h * 3_600_000);
+    const p = await 项目();
+    for (const h of [50, 40, 30, 20, 10]) {
+      await prisma.entRequiredBlock.create({ data: { at: 时(h), userId: 乙.id, projectId: p.id, customerId: 客户, phase: "线索", node: p.node, kind: "节点必填", missing: JSON.stringify([`缺${h}`]), entry: "完成节点" } });
+    }
+    const d = await 读拦截导出(时(24 * 7), 今, 3);
+    expect(d.汇总).toMatchObject({ 次数: 3, 截断: true, 最早: "2026-11-22 14:00" });
+    const 缺 = d.明细.表头.indexOf("缺哪几项");
+    // 留下的是最新的三行（30、20、10 小时前），按时间正序
+    expect(d.明细.行.map((r) => r[缺])).toEqual(["缺30", "缺20", "缺10"]);
+    const 全 = await 读拦截导出(时(24 * 7), 今, 5);
+    expect(全.汇总).toMatchObject({ 次数: 5, 截断: false, 最早: "2026-11-21 18:00" });
+  });
 });

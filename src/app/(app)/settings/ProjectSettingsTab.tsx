@@ -646,13 +646,20 @@ function AdvanceCard({
  */
 function RequiredBlockExport({ 跑, 忙 }: { 跑: (f: () => 结果, 成了?: string) => Promise<boolean>; 忙: boolean }) {
   const [天, set天] = useState(30);
+  // 这段时间超过一次能导的行数：只导了最新的那些，按钮旁边说清从哪一刻起（汇总表里也写着）
+  const [截断话, set截断话] = useState<string | null>(null);
   const 导 = () => 跑(async () => {
     const r = await 导出必填拦截Action(天);
     if (!r.ok) return r;
     const d = r.数据;
+    const 截断 = d.汇总.截断 ? `是：记录太多，只导了最新的 ${d.汇总.次数} 行（从 ${d.汇总.最早 ?? d.汇总.起} 起）；要看更早的，缩短天数分段导` : "否";
+    set截断话(d.汇总.截断 ? `记录太多，只导了最新的 ${d.汇总.次数} 行（从 ${d.汇总.最早 ?? d.汇总.起} 起）` : null);
     const 汇总表 = {
       名: "汇总", 表头: ["项", "值"],
-      行: [["起", d.汇总.起], ["止", d.汇总.止], ["被拦次数", String(d.汇总.次数)], ["涉及项目数", String(d.汇总.项目数)], ["卡超 24 小时的项目数", String(d.汇总.卡超24小时项目数)]],
+      行: [
+        ["起", d.汇总.起], ["止", d.汇总.止], ["被拦次数", String(d.汇总.次数)], ["涉及项目数", String(d.汇总.项目数)], ["卡超 24 小时的项目数", String(d.汇总.卡超24小时项目数)],
+        ["是否截断", 截断],
+      ],
       列宽: [24, 24],
     };
     const bytes = 写xlsx([汇总表, { 名: "按节点", ...d.按节点 }, { 名: "拦截明细", ...d.明细 }]);
@@ -672,6 +679,7 @@ function RequiredBlockExport({ 跑, 忙 }: { 跑: (f: () => 结果, 成了?: str
         options={[7, 30, 90, 365].map((n) => ({ value: n, label: `近 ${n} 天` }))}
       />
       <Button size="small" disabled={忙} onClick={() => void 导()}>导出</Button>
+      {截断话 && <span className="set-block-cut" role="status">{截断话}</span>}
     </div>
   );
 }

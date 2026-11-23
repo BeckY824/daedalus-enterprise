@@ -102,3 +102,5 @@
 .set-advance-scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2, 8px); margin-bottom: var(--s2, 8px); }
 /* 必填拦截记录导出（11-23）：天数下拉 */
 .set-block-days { width: 96px; }
+/* 导出超上限只导了最新的那些：就在按钮旁说清 */
+.set-block-cut { color: var(--warning-text); min-width: 0; overflow-wrap: anywhere; }
