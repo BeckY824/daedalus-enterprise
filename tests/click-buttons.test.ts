@@ -11,7 +11,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { 源, 去注释 } from "./skin-css";
+import { 源, 去注释 } from "./css-read";
 
 /** 本来就能用键盘按的标签 */
 const 原生可按 = new Set(["button", "a", "input", "select", "textarea", "summary", "option", "label"]);

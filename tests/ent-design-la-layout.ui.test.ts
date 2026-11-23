@@ -6,7 +6,6 @@
  *   L-新13 导出中 / 导完那句不挤页头按钮：挪到页头下一行
  *   L-新5 / D06 1366 / 390 同一摆法：外面只摆搜索、客户状态、负责人，阶段 / 进程收进「更多筛选」，按钮写字；390 筛选少占行、首屏多露行
  *   L-新6 负责人下拉同名的带部门；L-新7 客户状态下拉释义一行；D37 「全部 X」一个颜色；D35 导入 / 导出图标分开；K9 390「我分出去的」标题不挤
- *   换皮主题（像素、账簿、奢华、科技）外观不动（用户 11-21）：结构改动只在现状主题出，末尾一条对照
  *   排版门槛：Windows 1024 / 1280 / 1366（左栏 220）+ 手机 390，超长客户名 / 同事名；页面不横滚、关键按钮 elementFromPoint 点得中
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -94,20 +93,19 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-/** 打开一页：桌面宽左边留出左栏 220（壳里正文就这么宽）；手机宽左栏收起、按触屏开。主题 = <html data-skin>，不给 = 现状 */
-async function 开(w: number, 参: Record<string, unknown> = {}, 主题?: string): Promise<{ page: Page; errors: string[] }> {
+/** 打开一页：桌面宽左边留出左栏 220（壳里正文就这么宽）；手机宽左栏收起、按触屏开 */
+async function 开(w: number, 参: Record<string, unknown> = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: w, height: w < 768 ? 800 : 900 }, ...(w < 768 ? { isMobile: true, hasTouch: true } : {}) });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
-  await page.route("http://design-la.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><html${主题 ? ` data-skin="${主题}"` : ""}><style>body{margin:0}</style><div id='root'></div></html>` }));
+  await page.route("http://design-la.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><html><style>body{margin:0}</style><div id='root'></div></html>` }));
   await page.goto("http://design-la.test");
-  if (主题) await page.evaluate((t) => document.documentElement.setAttribute("data-skin", t), 主题);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ content: w >= 768 ? "#root{margin-left:220px;padding:22px 26px}" : "#root{padding:12px 16px}" });
   await page.addScriptTag({ content: 列表包 });
   await page.evaluate((x) => (window as unknown as { __render: (x: object) => void }).__render(x), 参);
   await page.locator("tr.ant-table-row").first().waitFor();
-  if (process.env.LA_SHOT) await page.screenshot({ path: `${process.env.LA_SHOT}/la-${w}-${主题 ?? "now"}-${Object.keys(参).join("_") || "base"}.png` });
+  if (process.env.LA_SHOT) await page.screenshot({ path: `${process.env.LA_SHOT}/la-${w}-${Object.keys(参).join("_") || "base"}.png` });
   return { page, errors };
 }
 
@@ -310,30 +308,20 @@ it("D37：筛选行里「全部 X」一个颜色（不是 faint 浅灰）", asyn
   } finally { await page.close(); }
 });
 
-it("换皮主题外观不动：像素主题页头照原来「导入 · 导出 · 新建 ▾ · 离职交接」、阶段 / 进程照原来的摆法", async () => {
-  const { page, errors } = await 开(390, {}, "pixel");
-  try {
-    expect(await 页头钮序(page)).toEqual(["导入", "导出", "新建", "离职交接"]);
-    expect(await page.getByRole("combobox", { name: "阶段" }).count()).toBe(1);
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
-});
-
-
 /** 市场管理的客户页（我分出去的）：列表视图（看法记在本机，先写成「列表」再开） */
-async function 开市场(w: number, 主题?: string): Promise<{ page: Page; errors: string[] }> {
+async function 开市场(w: number): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: w, height: w < 768 ? 800 : 900 }, ...(w < 768 ? { isMobile: true, hasTouch: true } : {}) });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   await page.route("http://design-la.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><style>body{margin:0}</style><div id='root'></div>" }));
   await page.goto("http://design-la.test/customers");
-  await page.evaluate((t) => { localStorage.setItem("projects-view", JSON.stringify("列表")); if (t) document.documentElement.setAttribute("data-skin", t); }, 主题);
+  await page.evaluate(() => { localStorage.setItem("projects-view", JSON.stringify("列表")); });
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ content: w >= 768 ? "#root{margin-left:220px;padding:22px 26px}" : "#root{padding:12px 16px}" });
   await page.addScriptTag({ content: 市场包 });
   await page.evaluate(() => (window as unknown as { __render: () => void }).__render());
   await page.locator(".page-head h1").waitFor();
-  if (process.env.LA_SHOT) await page.screenshot({ path: `${process.env.LA_SHOT}/la-market-${w}-${主题 ?? "now"}.png` });
+  if (process.env.LA_SHOT) await page.screenshot({ path: `${process.env.LA_SHOT}/la-market-${w}.png` });
   return { page, errors };
 }
 /** 页头右上那组从左到右：分段按钮记成「分段:各项」，按钮记字 */
@@ -386,19 +374,4 @@ it("D37：市场管理客户页筛选行「全部成员 / 全部创建人 / 全�
     expect(色们.length).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
-});
-
-it("换皮主题外观不动：像素主题市场管理客户页页头照原来「离职交接 · 看板 | 列表 · 新建 ▾」，手机宽阶段 / 进程照摆外面", async () => {
-  const { page, errors } = await 开市场(1366, "pixel");
-  try {
-    expect(await 市场页头序(page)).toEqual(["离职交接", "分段:看板|列表", "新建"]);
-    await page.close();
-    // 手机宽阶段 / 进程照原样摆外面
-    const 窄 = await 开市场(390, "pixel");
-    await 窄.page.locator(".list-bar .cf-probe[data-cf-ready]").waitFor({ state: "attached" });
-    expect(await 窄.page.getByRole("combobox", { name: "阶段" }).count()).toBe(1);
-    expect(窄.errors).toEqual([]);
-    await 窄.page.close();
-    expect(errors).toEqual([]);
-  } finally { if (!page.isClosed()) await page.close(); }
 });

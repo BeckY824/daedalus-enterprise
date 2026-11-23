@@ -7,8 +7,7 @@
  *   P-界面-44：回收站行上直接「恢复」，一步完成、底部撤销条
  *   权限被挡（server 回 ok:false）：原因就地写出来，不出撤销条、不说成功
  *   Windows 1024 / 1280 / 1366 + 超长名字：确认展开后按钮在屏里、点得到，后果在格子里折行，页面不横向撑出
- * 设计语言 G-A（11-22）：现状主题（默认）领取确认挪到这一行下面的确认条（.pool-ask，表格展开行，K4），下面用 确认处() 找；
- *   「后果写在名字那一格、按钮在操作格里展开」是换皮主题的老摆法，那两条用例切到账簿主题照旧守着。现状主题的排版见 ent-design-ga-layout.ui.test.ts
+ * 设计语言 G-A（11-22）：领取确认在这一行下面的确认条（.pool-ask，表格展开行，K4），下面用 确认处() 找；排版（各宽度按钮点得中）见 ent-design-ga-layout.ui.test.ts
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -56,20 +55,20 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function open(width = 1366, o: { 挡?: boolean; 皮?: string } = {}) {
+async function open(width = 1366, o: { 挡?: boolean } = {}) {
   const page = await browser.newPage({ viewport: { width, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://route.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://route.test/pool"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.evaluate(([挡, 皮]) => { if (皮) document.documentElement.dataset.skin = 皮 as string; const w = window as unknown as W; w.__挡 = !!挡; w.__render(); }, [!!o.挡, o.皮 ?? ""] as const);
+  await page.evaluate((挡) => { const w = window as unknown as W; w.__挡 = 挡; w.__render(); }, !!o.挡);
   await page.locator("tr[data-row-key='c1']").waitFor();
   return { page, errors };
 }
 const 调 = (page: Page, 名: string) => page.evaluate((n) => ((window as unknown as W).__调[n] ?? []).length, 名);
 const 行 = (page: Page, id: string) => page.locator(`tr[data-row-key='${id}']`);
 const 撤销条 = (page: Page) => page.locator(".undo-bar");
-/** 领取确认在哪：现状主题是这一行下面的确认条（展开行 .pool-ask-tr），换皮主题是这一行自己——两处并起来找 */
-const 确认处 = (page: Page, id: string) => page.locator(`tr[data-row-key='${id}'], tr.pool-ask-tr:has(.pool-ask[data-for='${id}'])`);
+/** 领取确认在哪：这一行下面的确认条（展开行 .pool-ask-tr） */
+const 确认处 = (page: Page, id: string) => page.locator(`tr.pool-ask-tr:has(.pool-ask[data-for='${id}'])`);
 
 it("单个领取：先原地确认、写清后果；取消不调；确认连点只领一次，之后底部撤销条", async () => {
   const { page, errors } = await open();
@@ -298,32 +297,10 @@ it("权限被挡：领取 / 批量领取 / 标无效 / 分配 / 恢复都不提�
   } finally { await page.close(); }
 });
 
-it.each([1024, 1280, 1366])("换皮主题（账簿）Windows %ipx + 超长名字：领取确认展开后按钮在屏里点得到，后果不撑破，页面不横向撑出", async (w) => {
-  const { page, errors } = await open(w, { 皮: "ledger" });
+it.each([1024, 1280, 1366])("Windows %ipx + 超长同事名：分配选人框里折行不撑破，页面不横向撑出", async (w) => {
+  const { page, errors } = await open(w);
   try {
-    await page.evaluate(() => (window as unknown as W).__render({ 持有: { 有: 9, 上限: 10 } }));
-    const r = 行(page, "c1");
-    await r.getByRole("button", { name: /^领取/ }).click();
-    await r.getByRole("button", { name: "确认领取" }).waitFor();
-    const 量 = await page.evaluate(() => {
-      const tr = document.querySelector("tr[data-row-key='c1']")!;
-      const 键们 = [...tr.querySelectorAll(".inlc-ask button")].map((b) => {
-        const x = b.getBoundingClientRect();
-        const 顶 = document.elementFromPoint(x.left + x.width / 2, x.top + x.height / 2);
-        return { 在屏: x.left >= 0 && x.right <= window.innerWidth, 点得到: !!顶 && b.contains(顶) };
-      });
-      // 原型 pool.claim：后果写在名字下（客户名称那一格），不挤在操作列里
-      const 格 = tr.querySelector(".pool-why")!.closest("td")!;
-      if (!格.classList.contains("dl-col-客户")) throw new Error("后果没写在名字那一格：" + 格.className);
-      const 后 = tr.querySelector(".pool-why")!;
-      return { 键们, 后果在格里: 后.getBoundingClientRect().right <= 格.getBoundingClientRect().right + 1 && 后.scrollWidth <= 后.clientWidth + 1, 页宽: document.documentElement.scrollWidth <= window.innerWidth };
-    });
-    expect(量.键们).toEqual([{ 在屏: true, 点得到: true }, { 在屏: true, 点得到: true }]);
-    expect(量.后果在格里).toBe(true);
-    expect(量.页宽).toBe(true);
-    // 选人框：超长同事名折行不撑破
-    await r.getByRole("button", { name: /取\s*消/ }).click();
-    await r.getByRole("button", { name: /更多操作/ }).click();
+    await 行(page, "c1").getByRole("button", { name: /更多操作/ }).click();
     await page.getByRole("menuitem", { name: "分配给同事" }).click();
     const 人 = page.getByRole("option", { name: /欧阳/ });
     await 人.waitFor();
@@ -378,29 +355,14 @@ it("分配选人框（P-界面-43）：按部门分组，写持有 / 上限，�
   } finally { await page.close(); }
 });
 
-it("换皮主题（账簿）领取确认（原型 pool.claim）：后果写在名字下、高度长出来；操作格不挂全文悬停；确认后按钮处「已领取 ✓」、行滑出；撤销后滑回（pool.undo）", async () => {
-  const { page, errors } = await open(1366, { 皮: "ledger" });
+it("领取确认后（原型 pool.claim / pool.undo）：按钮处「已领取 ✓」、行滑出；撤销后滑回、按钮复原，不另弹提示", async () => {
+  const { page, errors } = await open(1366);
   try {
     const r = 行(page, "c1");
-    const 高0 = (await r.boundingBox())!.height;
     await r.getByRole("button", { name: /^领取/ }).click();
-    await r.getByRole("button", { name: "确认领取" }).waitFor();
-    // 后果在客户名称格；操作格只有两颗键、挂着 data-no-tip（TruncTip 不冒全文气泡）
-    expect(await r.locator("td.dl-col-客户 .pool-why").count()).toBe(1);
-    expect(await r.locator("td.dl-col-操作 .pool-why").count()).toBe(0);
-    expect(await r.locator("td.dl-col-操作 [data-no-tip]").count()).toBeGreaterThan(0);
-    // 高度是长出来的（motion 从 0 起），不是一下子跳到位：盒子量得到、内容在里面
-    await expect.poll(async () => (await r.boundingBox())!.height).toBeGreaterThan(高0);
-    // 取消：后果收回去，行高回到原来
-    await r.getByRole("button", { name: /取\s*消/ }).click();
-    await expect.poll(() => r.locator(".pool-why").count()).toBe(0);
-    await expect.poll(async () => Math.round((await r.boundingBox())!.height)).toBe(Math.round(高0));
-    // 确认：按钮处写「已领取 ✓」，行带上滑出的类
-    await r.getByRole("button", { name: /^领取/ }).click();
-    await r.getByRole("button", { name: "确认领取" }).click();
+    await 确认处(page, "c1").getByRole("button", { name: "确认领取" }).click();
     await r.getByText("已领取 ✓").waitFor();
     await expect.poll(() => r.getAttribute("class")).toContain("pool-row-leave");
-    // 撤销：行滑回原位（pool-row-back），按钮复原，不另弹提示
     await 撤销条(page).getByRole("button", { name: /撤销/ }).click();
     await expect.poll(() => r.getAttribute("class")).toContain("pool-row-back");
     expect(await r.getAttribute("class")).not.toContain("pool-row-leave");

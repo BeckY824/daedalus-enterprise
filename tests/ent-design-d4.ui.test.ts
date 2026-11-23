@@ -3,10 +3,10 @@ import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
-/* D4 · 设计语言 11-21：进程卡、沟通、待办、卡点的结构和文案改动只在现状主题出，换皮主题保持 D4 之前（用户 11-21「主题不动」，lib/use-skin.ts）。
-   打包和桩照 ent-project-detail.ui.test.ts（同一个 ProjectDetail），这里在账本、科技主题下量 D4 之前的样子，现状主题对照一遍 */
+/* D4 · 设计语言 11-21：进程卡、沟通、待办、卡点的结构和文案改动。
+   打包和桩照 ent-project-detail.ui.test.ts（同一个 ProjectDetail） */
 let browser: Browser, bundle: string;
-const plugin: Plugin = { name: "d4-skins-boundaries", setup(b) {
+const plugin: Plugin = { name: "d4-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   // 教练主题（11-17）的动作：服务端那串（prisma、通知）进不了浏览器包
   stub(/coach-topic-actions$/, "const f=async()=>({ok:true});export const 发主题动作=f,回复主题动作=f,关闭主题动作=f,删主题动作=f;");
@@ -82,13 +82,12 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 皮 = "now" | "ledger" | "tech";
-async function 开(skin: 皮, x: Record<string, unknown>, width = 1280) {
+async function 开(x: Record<string, unknown>, width = 1280) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
-  await page.route("http://d4skins.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html data-skin="${skin}" data-paper="tone" data-mode="light"><meta charset='utf-8'><div id='root'></div></html>` }));
-  await page.goto("http://d4skins.test");
-  for (const f of ["globals.css", "skins/shared.css", "skins/ledger.css", "skins/tech.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+  await page.route("http://d4.test/**", r => r.fulfill({ contentType: "text/html", body: "<!doctype html><html data-mode='light'><meta charset='utf-8'><div id='root'></div></html>" }));
+  await page.goto("http://d4.test");
+  for (const f of ["globals.css", "antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
   await page.addScriptTag({ content: bundle });
   await page.evaluate(v => (window as unknown as { __over: (x: unknown) => void }).__over(v), x);
   await page.getByText("进程变更").first().waitFor().catch(() => { throw new Error(errors.join("\n") || "没渲染出来"); });
@@ -104,90 +103,22 @@ const 菜单项 = async (page: import("playwright").Page) => {
 };
 const 菜单字 = (菜单: import("playwright").Locator) => 菜单.evaluate(m => [...m.children].map(c => c.classList.contains("ant-dropdown-menu-item-divider") ? "—" : (c.textContent ?? "").trim()));
 
-for (const skin of ["ledger", "tech"] as const)
-  describe(`${skin}：D4 之前的样子`, () => {
-    it("进程卡：必填还是一段灰字「这个节点还差必填：…」，没有「还差 N 项」缺项小块", async () => {
-      const { page, errors } = await 开(skin, 缺两项);
-      try {
-        expect(await page.locator(".proj-miss").count()).toBe(0);
-        expect(await page.getByText(/^这个节点还差必填：项目级别、/).count()).toBe(1);
-        expect(errors).toEqual([]);
-      } finally { await page.close(); }
-    });
-
-    it("沟通条目：方式小块 + 发起 / 阶段两个标签，「谁 · 完整时刻」；⋮ 里没有分隔线；删除确认条不会 3 秒自己收起", async () => {
-      const { page, errors } = await 开(skin, 一条沟通);
-      try {
-        const 行 = page.locator(".proj-follow-row").first();
-        expect(await 行.locator(".proj-fu-m").count()).toBe(0);
-        expect(await 行.locator(".ant-tag").allInnerTexts()).toEqual(expect.arrayContaining(["我方发起", "生产备货"]));
-        expect(await 行.innerText()).toMatch(/组长甲 · 2026-10-03 \d{2}:\d{2}/);
-        const 菜单 = await 菜单项(page);
-        expect(await 菜单字(菜单)).toEqual(["新建卡点", "修改", "删除"]);
-        await 菜单.getByText("删除").click();
-        const 问 = page.getByRole("group", { name: "确认删除这条沟通" });
-        await 问.waitFor();
-        await page.mouse.move(2, 2);
-        await page.waitForTimeout(3500);
-        expect(await 问.count()).toBe(1);
-        expect(errors).toEqual([]);
-      } finally { await page.close(); }
-    }, 30_000);
-
-    it("新增沟通框：标题「记一条沟通」、提交键「记下」没填好灰着、原因写在键旁边；标签「名 *」，没有 * 在前的标签", async () => {
-      const { page, errors } = await 开(skin, {});
-      try {
-        await page.getByTestId("follow-card-new").click();
-        const 框 = page.locator(".follow-modal .ant-modal");
-        await 框.waitFor();
-        expect(await 框.locator(".ant-modal-title").innerText()).toBe("记一条沟通");
-        const 记下 = 框.getByRole("button", { name: /^记\s*下$/ });
-        expect(await 记下.isDisabled()).toBe(true);
-        // 发起主体、内容都没填（字典里没有默认的「我方发起」）：键旁那句照 D4 之前的先后写内容那条（PR #402 审查）
-        expect(await 框.getByText("选发起主体").count()).toBe(1);
-        expect((await 框.locator(".ant-modal-footer").innerText()).replace(/\s+/g, "")).toBe("请填写这次沟通的内容取消记下");
-        expect(await 框.locator(".fm-label, .fm-help").count()).toBe(0);
-        expect(await 框.getByText("沟通内容 *", { exact: true }).count()).toBe(1);
-        expect(errors).toEqual([]);
-      } finally { await page.close(); }
-    });
-
-    it("新建卡点框：提交键「发布」没选原因灰着，没有标签；收起钮是浏览器自带 title；搜着、一条卡点都没有写「还没有卡点」", async () => {
-      const { page, errors } = await 开(skin, 一条沟通);
-      try {
-        expect(await page.locator("#project-follow .split-caret").first().getAttribute("title")).toMatch(/^(收起|展开)$/);
-        await page.getByRole("textbox", { name: "搜这个项目的沟通、卡点" }).fill("找不到的词");
-        await page.getByText("还没有卡点").waitFor();
-        await page.getByRole("textbox", { name: "搜这个项目的沟通、卡点" }).fill("");
-        await (await 菜单项(page)).getByText("新建卡点").click();
-        const 框 = page.locator(".blocker-modal .ant-modal");
-        await 框.waitFor();
-        expect(await 框.getByRole("button", { name: /^发\s*布$/ }).isDisabled()).toBe(true);
-        expect(await 框.locator(".fm-label").count()).toBe(0);
-        expect(await 框.getByRole("combobox", { name: "阻碍原因" }).count()).toBe(1);
-        expect(await 框.getByText("阻碍原因（必填，可多选；没有合适的可以直接打字新增）").count()).toBe(1);
-        expect(errors).toEqual([]);
-      } finally { await page.close(); }
-    });
-  });
-
 const 判有效缺 = { phase: "线索", node: "线索验证", 有效沟通差: ["国家"], 线索验证: { 判定: null, 待: null, 无效原因: null, 复核结果: null, 最终结果: null, 终验: null, 初判即终判: false, 叫法: null, 我能: "初判", 痕: [] } };
-for (const [skin, 有块] of [["now", 1], ["ledger", 0], ["tech", 0]] as const)
-  it(`${skin}：线索验证框里判「有效」还差的${有块 ? "是缺项小块" : "照旧一行灰字，没有缺项小块"}`, async () => {
-    const { page, errors } = await 开(skin, 判有效缺);
+it("线索验证框里判「有效」还差的是缺项小块", async () => {
+    const { page, errors } = await 开(判有效缺);
     try {
       await page.getByTestId("lead-verify-nudge").getByRole("button", { name: /打开线索验证/ }).click();
       const 框 = page.locator(".ant-modal").filter({ hasText: "线索验证" }).last();
       await 框.waitFor();
       await expect.poll(() => 框.getByText(/国家/).count()).toBeGreaterThan(0);
-      expect(await 框.getByTestId("lead-verify-miss").count()).toBe(有块);
-      expect(await 框.locator(".proj-miss").count()).toBe(有块);
+      expect(await 框.getByTestId("lead-verify-miss").count()).toBe(1);
+      expect(await 框.locator(".proj-miss").count()).toBe(1);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
 
-it("现状主题对照：缺项小块、「新建沟通」框「保存」一直能点、⋮ 有分隔线、卡点框「保存」", async () => {
-  const { page, errors } = await 开("now", { ...缺两项, ...一条沟通 });
+it("缺项小块、「新建沟通」框「保存」一直能点、⋮ 有分隔线、卡点框「保存」", async () => {
+  const { page, errors } = await 开({ ...缺两项, ...一条沟通 });
   try {
     expect(await page.getByTestId("node-required-miss").count()).toBe(1);
     expect(await page.getByText(/^这个节点还差必填：/).count()).toBe(0);
@@ -209,13 +140,13 @@ it("现状主题对照：缺项小块、「新建沟通」框「保存」一直�
   } finally { await page.close(); }
 }, 30_000);
 
-/* #402 实操：待办框空着点「保存」，红字出在格子下，焦点也要跳到那一格（和新建沟通、新建卡点框一样）；换皮主题照 D4 之前不挪 */
+/* #402 实操：待办框空着点「保存」，红字出在格子下，焦点也要跳到那一格（和新建沟通、新建卡点框一样） */
 describe("待办框空存：焦点跳到第一处没填的格", () => {
-  async function 待办框(skin: 皮, record: Record<string, unknown> | null) {
+  async function 待办框(record: Record<string, unknown> | null) {
     const page = await browser.newPage({ viewport: { width: 1366, height: 900 } }); page.setDefaultTimeout(5000);
     const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
-    await page.route("http://d4skins.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html data-skin="${skin}" data-paper="tone" data-mode="light"><meta charset='utf-8'><div id='root'></div></html>` }));
-    await page.goto("http://d4skins.test");
+    await page.route("http://d4.test/**", r => r.fulfill({ contentType: "text/html", body: "<!doctype html><html data-mode='light'><meta charset='utf-8'><div id='root'></div></html>" }));
+    await page.goto("http://d4.test");
     await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
     await page.addScriptTag({ content: bundle });
     await page.evaluate(r => (window as unknown as { __待办框: (r: unknown) => void }).__待办框(r), record);
@@ -227,8 +158,8 @@ describe("待办框空存：焦点跳到第一处没填的格", () => {
   }
   const 原待办 = { id: "t1", title: "打电话", dueAt: null, dueHasTime: false, updatedAt: "2026-11-20T00:00:00.000Z" };
   for (const [入口, record] of [["客户页「新建待办」", null], ["跟进计划页「改待办」（清空内容）", 原待办]] as const)
-    it(`现状主题 · ${入口}：红字在「待办内容」下，焦点落进那一格，没存`, async () => {
-      const { page, errors, 框 } = await 待办框("now", record);
+    it(`${入口}：红字在「待办内容」下，焦点落进那一格，没存`, async () => {
+      const { page, errors, 框 } = await 待办框(record);
       try {
         const 格 = 框.getByLabel("待办内容");
         if (record) await 格.fill("");
@@ -239,15 +170,4 @@ describe("待办框空存：焦点跳到第一处没填的格", () => {
         expect(errors).toEqual([]);
       } finally { await page.close(); }
     });
-  it("账本主题 · 新建待办：照 D4 之前，焦点不挪（还在提交键上）", async () => {
-    const { page, errors, 框 } = await 待办框("ledger", null);
-    try {
-      const 键 = 框.getByRole("button", { name: /^创\s*建$/ });
-      await 键.click();
-      await 框.getByText("请填写待办内容").waitFor();
-      await page.waitForTimeout(100);
-      expect(await 框.getByLabel("待办内容").evaluate(e => e === document.activeElement)).toBe(false);
-      expect(errors).toEqual([]);
-    } finally { await page.close(); }
-  });
 });

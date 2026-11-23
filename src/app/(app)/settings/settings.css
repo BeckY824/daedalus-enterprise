@@ -57,7 +57,7 @@
 .set-lock-d, .set-lock-who { font-size: var(--fs-min); overflow-wrap: anywhere; }
 .set-lock-tag { flex: none; margin: 0; }
 .set-lock-sent { flex: none; color: var(--success); font-size: var(--fs-note); animation: set-pop var(--t) var(--ease-spring); }
-/* D16（设计语言 E4）：13 号小字用 --success（3.30:1）不过线，现状主题换 --success-text；换皮主题照原样 */
+/* D16（设计语言 E4）：13 号小字用 --success（3.30:1）不过线，换 --success-text */
 :root:root .set-lock-sent { color: var(--success-text); }
 .set-lock-err { flex-basis: 100%; color: var(--danger); font-size: var(--fs-min); }
 .set-ro { margin-bottom: var(--s3, 12px); padding: 8px 12px; border-radius: 10px; background: var(--hover); color: var(--text-muted); font-size: var(--fs-note); }
@@ -98,7 +98,7 @@
 /* 设置浮层骨架（st.open） */
 .set-skel { padding: 4px 0; }
 .set-skel-nav, .set-skel-body { width: 100%; }
-/* 换主题整屏交叉淡化（st.theme）：0.2 秒附近，用 --t 令牌 */
+/* 换明暗整屏交叉淡化（st.theme）：0.2 秒附近，用 --t 令牌 */
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--t); animation-timing-function: var(--ease); }
 .set-advance-since { margin-bottom: var(--s3, 12px); color: var(--text-muted); overflow-wrap: anywhere; }
 .set-advance-scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2, 8px); margin-bottom: var(--s2, 8px); }

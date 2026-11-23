@@ -3,11 +3,9 @@ import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 /* D3 · 设计语言 11-21：客户页左栏的结构改动（联系人每人一组、号码保护灰底加锁、附件「— ＋ 添加」、卡头「＋ 新增」、「展开没填的」、
-   背调「无」不挂标签、新建联系人标题和规矩行）只在现状主题出；换皮主题保持原样（用户 11-21「主题不动」，PR #401 审查必修 2）。
-   这里拿账本、科技两套主题量结构和颜色：联系人仍是第一位摊开 + 其余手风琴，号码保护仍是绿标签；
-   现状主题对照一遍新结构，再在页面上换主题，看不刷新也跟着换（lib/use-skin.ts） */
+   背调「无」不挂标签、新建联系人标题和规矩行），资料格的号码、改不了 / 公海时的入口 */
 let browser: Browser, bundle: string;
-const plugin: Plugin = { name: "d3-skins-boundaries", setup(b) {
+const plugin: Plugin = { name: "d3-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/(^|\/)tri-state-actions$/, "export const 三态继续持有=async()=>({ok:false,error:\"\"}),三态暂缓回收=三态继续持有,三态让同事结束项目=三态继续持有;");
   stub(/follow-method-actions$/, "export const 沟通方式选项=async()=>null,发起主体选项=async()=>null,我常用的沟通方式=async()=>null;");
@@ -15,7 +13,7 @@ const plugin: Plugin = { name: "d3-skins-boundaries", setup(b) {
   stub(/^next\/link$/, "export default function L(p){return <a {...p}/>}");
   stub(/(^|\/)ContactForm$/, "export default function F(){return null}");
   stub(/(^|\/)(TaskForm|PlanForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|LinkedCustomers|NewProjectEntry)$/, "export default function Empty(){return null}");
-  // 新结构经 ContactLinks 摆组头和行；旧结构不给 头，ContactLinks 只摆挂靠那几行（这里没有）
+  // 联系人每人一组经 ContactLinks 摆组头和行
   stub(/(^|\/)ContactLinks$/, "export default function L(p){return <>{p.头?.(null)}{p.children}</>}");
   stub(/(^|\/)AttachmentsPanel$/, "export default function P(p){return <div data-testid='att-panel' data-readonly={p.只读?'1':'0'} data-can-del={p.能删?'1':'0'}/>}");
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({});export const ContactRemoveInline=({c,只删})=><span data-testid='contact-remove' data-only-delete={只删?'1':'0'} hidden>{c.id}</span>;");
@@ -42,11 +40,11 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function open(skin: "now" | "ledger" | "tech", opt: { width?: number; 项目模式?: boolean; 加?: Record<string, unknown> } = {}) {
+async function open(opt: { width?: number; 项目模式?: boolean; 加?: Record<string, unknown> } = {}) {
   const page = await browser.newPage({ viewport: { width: opt.width ?? 1366, height: 900 } }); page.setDefaultTimeout(5000);
-  await page.route("http://skins.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html data-skin="${skin}" data-paper="tone" data-mode="light"><meta charset='utf-8'><div id='root'></div></html>` }));
-  await page.goto("http://skins.test");
-  for (const f of ["globals.css", "skins/shared.css", "skins/ledger.css", "skins/tech.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+  await page.route("http://d3.test/**", r => r.fulfill({ contentType: "text/html", body: "<!doctype html><html data-mode='light'><meta charset='utf-8'><div id='root'></div></html>" }));
+  await page.goto("http://d3.test");
+  for (const f of ["globals.css", "antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
   await page.addScriptTag({ content: bundle });
   await page.evaluate(([加, 项目模式]) => (window as unknown as { __render: (a: unknown, b: boolean) => void }).__render(加, 项目模式), [opt.加, !!opt.项目模式] as const);
   await page.locator(".rec-contact").first().waitFor();
@@ -59,39 +57,8 @@ async function 保护色(page: Page) {
     return { 绿: g > r + 20 && g > b + 20, 灰: Math.max(r, g, b) - Math.min(r, g, b) < 12, 类: el.className.includes("ant-tag-green") };
   });
 }
-async function 旧结构(page: Page) {
-  // 第一位摊开（头里职务 + 号码保护）、其余三位收成手风琴
-  expect(await page.locator(".rec-cg").count()).toBe(0);
-  expect(await page.getByTestId("contact-more").count()).toBe(1);
-  expect(await page.locator(".rec-contact-fold").count()).toBe(3);
-  expect(await page.locator(".rec-contact-tog").count()).toBe(3);
-  expect(await page.locator(".rec-contact-rest-btn").count()).toBe(0);
-  const 首位头 = page.locator(".rec-contact").first().locator(".rec-contact-h");
-  expect(await 首位头.locator(".rec-contact-p").innerText()).toBe("采购总监");
-  expect(await 首位头.locator(".rec-contact-guard").count()).toBe(1);
-  expect(await 首位头.locator(".ant-avatar").evaluate((el) => el.getBoundingClientRect().width)).toBe(26);
-  // 号码保护：绿标签、没有锁
-  expect(await 保护色(page)).toEqual({ 绿: true, 灰: false, 类: true });
-  expect(await page.locator(".rec-contact-guard .anticon").count()).toBe(0);
-  // 卡头「＋」只有图标；附件空格照旧一句「添加名片」；资料「展开更多」
-  const 加 = page.getByRole("button", { name: "新增联系人" });
-  expect((await 加.innerText()).trim()).toBe("");
-  expect(await page.locator(".rec-contact").first().getByRole("button", { name: /的附件$/ }).first().innerText()).toBe("添加名片");
-  expect(await page.locator(".att-empty").count()).toBe(0);
-  expect(await page.getByRole("button", { name: /^展开更多 \d+ 项$/ }).count()).toBe(1);
-  // 手风琴点开一位，摊开整张
-  await page.locator(".rec-contact-tog").first().click();
-  expect(await page.locator(".rec-contact-fold.is-open").count()).toBe(1);
-}
-
-for (const skin of ["ledger", "tech"] as const)
-  it(`${skin}：联系人仍是第一位摊开 + 其余手风琴，号码保护仍是绿标签，附件、卡头、展开键照旧`, async () => {
-    const page = await open(skin);
-    try { await 旧结构(page); } finally { await page.close(); }
-  }, 60_000);
-
-it("现状主题：每人一组、先露 3 位，号码保护灰底加锁，附件「— ＋ 添加」，卡头「＋ 新增」；页面上换成账本不刷新也回到旧结构", async () => {
-  const page = await open("now");
+it("每人一组、先露 3 位，号码保护灰底加锁，附件「— ＋ 添加」，卡头「＋ 新增」", async () => {
+  const page = await open();
   try {
     expect(await page.locator(".rec-cg").count()).toBe(3);
     expect(await page.getByTestId("contact-more").count()).toBe(0);
@@ -101,33 +68,13 @@ it("现状主题：每人一组、先露 3 位，号码保护灰底加锁，附�
     expect((await page.getByRole("button", { name: "新增联系人" }).innerText()).trim()).toBe("新增");
     expect(await page.locator(".att-empty").count()).toBeGreaterThan(0);
     expect(await page.getByRole("button", { name: /^展开没填的 \d+ 项$/ }).count()).toBe(1);
-    await page.evaluate(() => { document.documentElement.dataset.skin = "ledger"; });
-    await page.getByTestId("contact-more").waitFor();
-    await 旧结构(page);
   } finally { await page.close(); }
 }, 60_000);
 
-/** 资料卡里能点的格：没有笔、行不因为笔变高（换皮主题；PR #401 实操：antd 图标的 display 盖掉了 display:none，笔单占一行） */
-async function 无笔不增高(page: Page) {
-  expect(await page.locator(".rec-field-pen").count()).toBe(0);
-  const 格们 = await page.locator("aside .rec-field[role='button']").evaluateAll((els) => els.map((el) => {
-    const cs = getComputedStyle(el); const k = el.querySelector(".rec-field-k")!.getBoundingClientRect(); const v = el.querySelector(".rec-field-v")?.getBoundingClientRect();
-    const 内高 = el.getBoundingClientRect().height - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-    return { 字段: (el as HTMLElement).dataset.field, 多出: Math.round(内高 - Math.max(k.height, v?.height ?? 0)), 右边: cs.paddingRight };
-  }));
-  expect(格们.length).toBeGreaterThan(0);
-  expect(格们.filter((x) => x.多出 > 1 || x.右边 === "24px")).toEqual([]);
-}
-for (const skin of ["ledger", "tech"] as const)
-  it(`${skin}：资料格没有编辑笔、行高不变`, async () => {
-    const page = await open(skin, { 项目模式: true });
-    try { await 无笔不增高(page); } finally { await page.close(); }
-  }, 60_000);
-
 for (const width of [1366, 1024])
   for (const 号 of ["+905079844574", "13800138000"])
-    it(`现状主题 ${width} 宽：资料「电话」${号.length} 位号码整串一行，复制键跟在号码后面同一行`, async () => {
-      const page = await open("now", { width, 项目模式: true, 加: { 客户改: { phone: 号 } } });
+    it(`${width} 宽：资料「电话」${号.length} 位号码整串一行，复制键跟在号码后面同一行`, async () => {
+      const page = await open({ width, 项目模式: true, 加: { 客户改: { phone: 号 } } });
       try {
         const r = await page.locator("[data-field='phone']").evaluate((el) => {
           const t = el.querySelector(".copy-val-t")!.getBoundingClientRect(); const b = el.querySelector(".copy-val-b")!.getBoundingClientRect();
@@ -139,9 +86,9 @@ for (const width of [1366, 1024])
 
 it("改不了资料（总管理看别人的客户）：资料格不是 role=button、没有笔，悬停说为什么", async () => {
   const 话 = "只有负责人或系统管理员能改客户资料（上级、条线总管理只能看、转让）";
-  const 能改 = await open("now", { 项目模式: true });
+  const 能改 = await open({ 项目模式: true });
   try { expect(await 能改.locator("aside .rec-field[role='button']").count()).toBeGreaterThan(0); } finally { await 能改.close(); }
-  const page = await open("now", { 项目模式: true, 加: { 资料改挡: { 话, 公海: false } } });
+  const page = await open({ 项目模式: true, 加: { 资料改挡: { 话, 公海: false } } });
   try {
     expect(await page.locator("aside .rec-field[role='button']").count()).toBe(0);
     expect(await page.locator(".rec-field-pen").count()).toBe(0);
@@ -152,7 +99,7 @@ it("改不了资料（总管理看别人的客户）：资料格不是 role=butt
 
 it("公海客户：资料格不是 role=button、没有笔，「先领取或分配，再改」写在资料卡里", async () => {
   const 话 = "公海里的客户先领取或分配，再改";
-  const page = await open("now", { 项目模式: true, 加: { 资料改挡: { 话, 公海: true } } });
+  const page = await open({ 项目模式: true, 加: { 资料改挡: { 话, 公海: true } } });
   try {
     expect(await page.locator("aside .rec-field[role='button']").count()).toBe(0);
     expect(await page.locator(".rec-field-pen").count()).toBe(0);
@@ -160,30 +107,28 @@ it("公海客户：资料格不是 role=button、没有笔，「先领取或分�
   } finally { await page.close(); }
 }, 60_000);
 
-it("D5 遗留 · 公海客户的联系人：服务端改联系人、挂靠、附件都要先领取——编辑笔、卡头「新增」都不摆（各主题一样）；不在公海照旧有", async () => {
+it("D5 遗留 · 公海客户的联系人：服务端改联系人、挂靠、附件都要先领取——编辑笔、卡头「新增」都不摆；不在公海照旧有", async () => {
   const 话 = "公海里的客户先领取或分配，再改";
-  for (const skin of ["now", "ledger"] as const) {
-    const 自己的 = await open(skin, { 项目模式: true });
-    try {
-      expect(await 自己的.locator(".rec-contact-edit").count(), skin).toBeGreaterThan(0);
-      expect(await 自己的.getByRole("button", { name: "新增联系人" }).count(), skin).toBe(1);
-    } finally { await 自己的.close(); }
-    const 公海 = await open(skin, { 项目模式: true, 加: { 资料改挡: { 话, 公海: true } } });
-    try {
-      expect(await 公海.locator(".rec-contact-edit").count(), skin).toBe(0);
-      expect(await 公海.getByRole("button", { name: /编辑联系人/ }).count(), skin).toBe(0);
-      expect(await 公海.getByRole("button", { name: "新增联系人" }).count(), skin).toBe(0);
-    } finally { await 公海.close(); }
-  }
+  const 自己的 = await open({ 项目模式: true });
+  try {
+    expect(await 自己的.locator(".rec-contact-edit").count()).toBeGreaterThan(0);
+    expect(await 自己的.getByRole("button", { name: "新增联系人" }).count()).toBe(1);
+  } finally { await 自己的.close(); }
+  const 公海 = await open({ 项目模式: true, 加: { 资料改挡: { 话, 公海: true } } });
+  try {
+    expect(await 公海.locator(".rec-contact-edit").count()).toBe(0);
+    expect(await 公海.getByRole("button", { name: /编辑联系人/ }).count()).toBe(0);
+    expect(await 公海.getByRole("button", { name: "新增联系人" }).count()).toBe(0);
+  } finally { await 公海.close(); }
 }, 60_000);
 
 it("#403 审查 · 公海客户：改的入口不摆，删按删除挡另判——系统管理员照常有「删除」（不给「移出」）和联系人附件的删；删不了的人两样都没有", async () => {
   const 话 = "公海里的客户先领取或分配，再改";
-  for (const [能删, skin] of [[true, "now"], [true, "ledger"], [false, "now"]] as const) {
+  for (const 能删 of [true, false]) {
     // 跟进去处 null = 没开项目模式（项目模式下客户页本来就不给删联系人，U-客户-03；联系人附件的删两种模式都有）
-    const page = await open(skin, { 加: { 资料改挡: { 话, 公海: true, 公海删: { 联系人: 能删, 附件: 能删 } }, 联系人分类附件数: { c1: { 名片: 1 } }, 跟进去处: null } });
+    const page = await open({ 加: { 资料改挡: { 话, 公海: true, 公海删: { 联系人: 能删, 附件: 能删 } }, 联系人分类附件数: { c1: { 名片: 1 } }, 跟进去处: null } });
     try {
-      const 标 = `${skin} 能删=${能删}`;
+      const 标 = `能删=${能删}`;
       expect(await page.locator(".rec-contact-edit").count(), 标).toBe(0);
       // 「移出 / 删除」那一块（这里打桩成一个占位）：能删的人每位都有、而且只给「删除」（只删）；删不了的人没有
       const 删块 = page.locator('[data-testid="contact-remove"]');
@@ -202,7 +147,7 @@ it("#403 审查 · 公海客户：改的入口不摆，删按删除挡另判—�
 it.each([390, 1366])("%ipx · 3704 实操：联系人的长微信号（wxid_ 一整串）在卡内断行，不出卡片右边", async (width) => {
   const 长 = "wxid_" + "a1b2c3d4e5f6g7h8".repeat(4);
   const 人 = { id: "c1", name: "张三", position: "采购总监", phone: "13800138000", email: null, wechat: 长, isPrimary: true, remark: null, updatedAt: "2026-01-01T00:00:00.000Z" };
-  const page = await open("now", { width, 加: { contacts: [人] } });
+  const page = await open({ width, 加: { contacts: [人] } });
   try {
     const 组 = page.locator(".rec-contact").first();
     const 值 = 组.locator(".rec-contact-v").filter({ hasText: 长 });
@@ -216,9 +161,7 @@ it.each([390, 1366])("%ipx · 3704 实操：联系人的长微信号（wxid_ 一
   } finally { await page.close(); }
 });
 
-it("D4 · 待办空态：现状主题「还没有待办」，换皮主题照旧「暂无待办」", async () => {
-  for (const [skin, 话] of [["now", "还没有待办"], ["ledger", "暂无待办"], ["tech", "暂无待办"]] as const) {
-    const page = await open(skin);
-    try { expect(await page.getByText(话, { exact: true }).count(), skin).toBe(1); } finally { await page.close(); }
-  }
+it("D4 · 待办空态：「还没有待办」", async () => {
+  const page = await open();
+  try { expect(await page.getByText("还没有待办", { exact: true }).count()).toBe(1); } finally { await page.close(); }
 }, 60_000);

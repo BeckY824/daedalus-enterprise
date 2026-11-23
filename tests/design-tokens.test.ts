@@ -11,14 +11,14 @@
  *   1. :root 和 palette.ts 之外不许有 hex——散一个就红，红的那行告诉你该用哪个 token
  *   2. palette.ts 里的每个值都必须在 :root 里有同样的值——两份镜像不许漂
  * Logo 原来是品牌图形放行；P10 起它的两色走 --logo-frame / --logo-line（暗黑要换），不再放行。
- * 暗黑（app/dark.css）和主题文件一样：色值只许在 token 块里。
+ * 暗黑（app/dark.css）：色值只许在 token 块里。
  *
  * 运营台（/admin）原来另有一套色板、在这里单独放行，12c 整个删了。
  */
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { 拆块 } from "./skin-css";
+import { 拆块 } from "./css-read";
 
 const 根目录 = path.resolve(__dirname, "../src");
 const css = fs.readFileSync(path.join(根目录, "app/globals.css"), "utf8");
@@ -39,8 +39,8 @@ function 所有源文件(dir: string): string[] {
 
 const 放行 = new Set(["app/globals.css", "lib/palette.ts"]);
 
-/** 主题（app/skins/*.css）：色值只许写在 token 块里（:root[data-skin="x"] {…}、白底那块、小样那块），形状规则里一个都不许有 */
-const 抹主题token块 = (文: string) => {
+/** 暗黑（app/dark.css）：色值只许写在 token 块里（:root[data-mode="dark"] {…}、明暗小样那块） */
+const 抹token块 = (文: string) => {
   let out = 文;
   // 从后往前抹：抹掉的块会变短，先抹前面的话后面那些块的位置就错了
   for (const b of 拆块(文).reverse()) if (b.token块) out = out.slice(0, b.起) + out.slice(b.起, b.止).replace(/[^\n]/g, "") + out.slice(b.止);
@@ -54,7 +54,7 @@ describe("色值只在 :root 和 palette.ts 里写死", () => {
       const rel = path.relative(根目录, f).replaceAll("\\", "/");
       if (放行.has(rel)) continue;
       let 文 = 去注释(fs.readFileSync(f, "utf8"));
-      if (rel.startsWith("app/skins/") || rel === "app/dark.css") 文 = 抹主题token块(文);
+      if (rel === "app/dark.css") 文 = 抹token块(文);
       const 行 = 文.split("\n");
       行.forEach((l, i) => {
         for (const m of l.match(HEX) ?? []) 散的.push(`${rel}:${i + 1} ${m}`);
@@ -113,7 +113,7 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     expect(散, "这些文件还在用 --line-strong / --field-bg / palette.lineStrong").toEqual([]);
   });
 
-  it("现状主题的输入框：白底 + --field-line，悬停 --field-line-hover，聚焦主色 + --focus-ring，报错 --danger + --error-ring", () => {
+  it("输入框：白底 + --field-line，悬停 --field-line-hover，聚焦主色 + --focus-ring，报错 --danger + --error-ring", () => {
     const 段 = 全.slice(全.indexOf(".ant-input-outlined, .ant-input-number-outlined"), 全.indexOf(".ant-input-number-actions"));
     expect(段).toMatch(/background: var\(--panel\); border-color: var\(--field-line\);/);
     expect(段).toMatch(/:hover \{\s*background: var\(--panel\); border-color: var\(--field-line-hover\);/);
@@ -122,28 +122,15 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     expect(段).toContain("box-shadow: var(--error-ring)");
   });
 
-  // 只挂在现状主题上：换皮主题（像素、账簿、奢华、科技）不动（用户 11-21；PR #398 审查）
-  const 现状 = ':root:is(:not([data-skin]), [data-skin="now"])';
+  const 前 = ":root:root";
   const 转义 = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  it("自绘的搜索框（中栏名单 .pane-search、左栏 .rail-search）在现状主题下白底 + --field-line，聚焦主色 + 光晕；不带主题限定的老规则照 main 原样", () => {
-    const 前 = 转义(现状);
-    expect(全).toMatch(new RegExp(`${前} \\.pane-search \\{ background: var\\(--panel\\); border: 1px solid var\\(--field-line\\);`));
-    expect(全).toMatch(new RegExp(`${前} \\.pane-search:hover \\{ border-color: var\\(--field-line-hover\\);`));
-    expect(全).toMatch(new RegExp(`${前} \\.pane-search:focus-within \\{ border-color: var\\(--brand\\); box-shadow: var\\(--focus-ring\\); \\}`));
-    expect(全).toMatch(new RegExp(`${前} \\.rail-search \\{ border-color: var\\(--field-line\\); \\}`));
-    // 老规则（换皮主题吃的）：名单搜索框 --hover 灰底无框，左栏框 --line
-    expect(全).toMatch(/^\.pane-search \{[^}]*background: var\(--hover\);/m);
-    expect(全).not.toMatch(/^\.pane-search \{[^}]*border:/m);
-    expect(全).toMatch(/^\.rail-search \{[^}]*border: 1px solid var\(--line\);/m);
-  });
-
-  it("D1 新加的外观规则都带现状主题限定：输入框、复选框、搜索框、标签灰底", () => {
-    for (const 片 of ["border-color: var(--field-line-hover)", "--ant-color-border: var(--ctl-line)", "background: var(--tag-bg); color: var(--tag-fg)", "box-shadow: var(--focus-ring)", "box-shadow: var(--error-ring)"]) {
-      const 选择器们 = [...全.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => m[2].includes(片)).map((m) => m[1].trim());
-      expect(选择器们.length, 片).toBeGreaterThan(0);
-      for (const sel of 选择器们) expect(sel.startsWith(现状), `${片} 挂在没限定主题的规则上：${sel.slice(0, 160)}`).toBe(true);
-    }
+  it("自绘的搜索框（中栏名单 .pane-search、左栏 .rail-search）白底 + --field-line，聚焦主色 + 光晕", () => {
+    const 前缀 = 转义(前);
+    expect(全).toMatch(new RegExp(`${前缀} \\.pane-search \\{ background: var\\(--panel\\); border: 1px solid var\\(--field-line\\);`));
+    expect(全).toMatch(new RegExp(`${前缀} \\.pane-search:hover \\{ border-color: var\\(--field-line-hover\\);`));
+    expect(全).toMatch(new RegExp(`${前缀} \\.pane-search:focus-within \\{ border-color: var\\(--brand\\); box-shadow: var\\(--focus-ring\\); \\}`));
+    expect(全).toMatch(new RegExp(`${前缀} \\.rail-search \\{ border-color: var\\(--field-line\\); \\}`));
   });
 
   it("复选框、单选框（含表格勾选、树勾选）的框换成 --ctl-line", () => {
@@ -162,41 +149,34 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     expect(浅空, "这些「—」还写死 faint / muted，改 var(--empty-fg)").toEqual([]);
   });
 
-  it("标签权重（D10）：现状主题的灰底那条 ≥ 0,6,0，压过 antd 预设色 .ant-tag.ant-tag-blue:not(.ant-tag-disabled).ant-tag-filled（0,4,0）；带色、关键、公海再高一档。不带限定的老规则保持 main 的 0,4,0（换皮主题原样）", () => {
+  it("标签权重（D10）：灰底那条 ≥ 0,6,0，压过 antd 预设色 .ant-tag.ant-tag-blue:not(.ant-tag-disabled).ant-tag-filled（0,4,0）；带色、关键、公海再高一档", () => {
     // :root、类、属性各算一档；:not() / :is() 按括号里最重的一项算（这里都是一档）
     const 分 = (sel: string) => {
       const 去括号 = sel.replace(/:(not|is)\(([^()]*(\([^()]*\))?[^()]*)\)/g, " .x ");
       return (去括号.match(/\.[\w-]+|\[[^\]]+\]|:root/g) ?? []).length;
     };
     const 规则 = [...全.matchAll(/^([^{}\n]*\.ant-tag\.ant-tag[^{]*)\{/gm)].map((m) => m[1].trim()).filter((s) => /:not\(\.ant-tag-solid/.test(s));
-    const 现状规则 = 规则.filter((s) => s.startsWith(现状));
-    const 老规则 = 规则.filter((s) => !s.startsWith(现状));
+    const 现状规则 = 规则.filter((s) => s.startsWith(前));
     const 灰 = 现状规则.find((s) => !/\):is\(|tag-key|pool-tag/.test(s));
     expect(灰).toBeTruthy();
     expect(分(灰!)).toBeGreaterThanOrEqual(6);
     for (const s of 现状规则.filter((x) => x !== 灰)) expect(分(s), s).toBeGreaterThan(分(灰!));
-    const 老灰 = 老规则.find((s) => !/\):is\(|tag-key|pool-tag/.test(s));
-    expect(老灰).toBe(".ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled)");
-    expect(全).toMatch(/background: var\(--hover\); color: var\(--ink\);/);
   });
 
-  it("D2（客户详情骨架、页头、名单）那段规则都带现状主题限定；不带限定的只有两条结构规则（名单「名字 + 时间」行、底部抽屉把手）", () => {
+  it("D2（客户详情骨架、页头、名单）那段规范里的几样都在", () => {
     const 起 = 全.indexOf(".roster-l1 { display: flex;");
     expect(起, "没找到 D2 那段").toBeGreaterThan(0);
     const 止 = 全.indexOf(".rec-field-pen { display: none; }");
     const 段 = 全.slice(起, 止 > 起 ? 止 : undefined);
     const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].map((m) => m[1].trim().replace(/\s+/g, " "));
     expect(选择器们.length).toBeGreaterThan(30);
-    const 结构 = [".roster-l1", ".roster-l1 > .roster-n", ".pane-sheet .sheet-grab", ".pane-sheet .sheet-top"];
-    const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
-    expect(不带).toEqual(结构);
-    // 规范里的几样都在这段、都带限定：当前行浅蓝 + 左 2px、计数 --count-fg、手机名字两行、底部抽屉圆角、中右各自滚、底部留 --ai-safe
+    // 规范里的几样都在这段：当前行浅蓝 + 左 2px、计数 --count-fg、手机名字两行、底部抽屉圆角、中右各自滚、底部留 --ai-safe
     for (const 片 of [".rec-head > :is(.rec-head-sp, .rcd-grow) { display: none; }", "background: var(--brand-bg)", "width: 2px", "color: var(--count-fg)", "-webkit-line-clamp: 2", "var(--r-pop) var(--r-pop) 0 0", "grid-row: 3", "var(--ai-safe)", "font-size: var(--fs-min); color: var(--text-muted)"]) {
       expect(段, 片).toContain(片);
     }
   });
 
-  it("D3（客户资料、联系人、背调）那段规则都带现状主题限定；不带限定的只有列出来的结构规则", () => {
+  it("D3（客户资料、联系人、背调）那段规范里的几样都在", () => {
     const 起 = 全.indexOf(".rec-field-pen { display: none; }");
     expect(起, "没找到 D3 那段").toBeGreaterThan(0);
     const 止 = 全.indexOf(".fm-label { display: block;");
@@ -204,54 +184,31 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     // 一条规则里逗号分开的几个选择器各自都要带限定（括号里的逗号不算）
     const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((m) => m[1].trim().replace(/\s+/g, " ").split(/,(?![^()]*\))\s*/));
     expect(选择器们.length).toBeGreaterThan(40);
-    const 结构 = [
-      ".rec-field-pen", ".rec-field-pen.anticon", ".rec-hist-btn.ant-btn", ".rec-hist-btn.ant-btn", ".hist-sheet-h", ".hist-sheet .rec-hist-row", ".rec-contact-acts", ".rec-contact-av.is-empty",
-      ".rec-contact-num", ".rec-contact-kv", ".att-empty", ".cf-rule", ".rec-contact-pick", ".rec-contact-fl", ".rec-contact-fl.is-req::before", ".rec-contact-err", ".cf-two-err",
-    ];
-    const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
-    expect(不带).toEqual(结构);
-    // 结构规则只排位置，不上颜色——颜色只有回退（头像空名字照 main 的 --ink-soft）和本来就全站一样的提示 / 报错色
     for (const 片 of ["color: var(--empty-fg)", "var(--hit)", "var(--hit-touch)", "order: -2", "display: contents", "white-space: normal", "opacity: 1", "border-top: 1px solid var(--line-soft)", "background: var(--line-soft)", "color: var(--text-muted)"]) {
       expect(段, 片).toContain(片);
     }
   });
 
-  it("D4（进程卡、沟通、待办、卡点）那段规则都带现状主题限定；不带限定的只有新元素的结构规则", () => {
+  it("D4（进程卡、沟通、待办、卡点）那段规范里的几样都在", () => {
     const 起 = 全.indexOf(".fm-label { display: block;");
     expect(起, "没找到 D4 那段").toBeGreaterThan(0);
-    const 止 = 全.indexOf(".cd-skel { display: none; }");
+    const 止 = 全.indexOf(":root:root .proj-info-row {");
     const 段 = 全.slice(起, 止 > 起 ? 止 : undefined);
     const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((m) => m[1].trim().replace(/\s+/g, " ").split(/,(?![^()]*\))\s*/));
     expect(选择器们.length).toBeGreaterThan(30);
-    const 结构 = [
-      ".fm-label", ".fm-req", ".fm-help", ".fm-err",
-      ".proj-miss", ".proj-miss.is-ok", ".proj-miss-t", ".proj-miss.is-ok .proj-miss-t", ".proj-miss-chips", ".proj-miss-chip", "button.proj-miss-chip", ".proj-miss-dot", ".proj-miss-help",
-      ".proj-fu-m", ".proj-fu-l", ".proj-fu-i", ".proj-fu-who", ".proj-fu-t",
-    ];
-    const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
-    expect(不带).toEqual(结构);
-    // 规范里的几样都在这段、都带限定：完成节点浅绿 + 右半白底、只读收起钮白底、节点条两头 --edge-fade、结局钮不省略、
+    // 规范里的几样都在这段：完成节点浅绿 + 右半白底、只读收起钮白底、节点条两头 --edge-fade、结局钮不省略、
     // 手机项目名两行、切换两半等宽 40 高、待办勾选框间距 16（8 + gap 8）
     for (const 片 of ["background: var(--success-bg); border-color: var(--success-line); color: var(--success-text)", "split-solo", "var(--edge-fade)", "max-width: none", "-webkit-line-clamp: 2", "grid-template-columns: 1fr 1fr", "height: 40px", "margin-inline-end: 8px"]) {
       expect(段, 片).toContain(片);
     }
-    // 结构规则只排位置，颜色只用全站一样的提示 / 报错 / 警示色
-    for (const m of 段.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-      if (m[1].trim().startsWith(现状)) continue;
-      for (const c of m[2].matchAll(/(?:^|;)\s*(?:color|background|border(?:-color)?):\s*([^;]+)/g)) {
-        expect(c[1], m[1].trim()).toMatch(/var\(--(danger-text|text-muted|warning(-text|-line|-bg)?|success(-line|-bg|-text)?|panel|ink(-soft)?)\)|inherit|0|none/);
-      }
-    }
   });
 
-  it("D5（项目资料、画像、附件、加载 / 找不到）那段规则都带现状主题限定；不带限定的只有加载骨架默认不摆", () => {
-    const 起 = 全.indexOf(".cd-skel { display: none; }");
+  it("D5（项目资料、画像、附件、加载 / 找不到）那段规范里的几样都在", () => {
+    const 起 = 全.indexOf(":root:root .proj-info-row {");
     expect(起, "没找到 D5 那段").toBeGreaterThan(0);
     const 段 = 全.slice(起);
     const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((m) => m[1].trim().replace(/\s+/g, " ").split(/,(?![^()]*\))\s*/));
     expect(选择器们.length).toBeGreaterThan(30);
-    const 不带 = 选择器们.filter((x) => !x.startsWith(现状));
-    expect(不带).toEqual([".cd-skel"]);
     // 规范里的几样：行距 34（行高 24）、整行悬停 --row-hover、菜单里的「—」--empty-fg、末行 --ai-safe、计数 --count-fg、骨架 --skel-delay、按句断行不拆词
     for (const 片 of ["min-height: 34px", "line-height: 24px", "background: var(--row-hover)", '.ant-select-item-option[title="—"]', "var(--ai-safe)", "color: var(--count-fg)", "var(--skel-delay)", "word-break: keep-all", "var(--hit-touch)"]) {
       expect(段, 片).toContain(片);
@@ -269,7 +226,7 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     expect(`${t.controlHeightLG}px`).toBe(取("--ctl-h-lg"));
     expect(`${themeConfig.components!.Card!.headerHeight}px`).toBe(取("--card-head-h"));
     const { palette, alpha } = await import("@/lib/palette");
-    // antd 主题全站一套：输入类的悬停框、光晕不在这里改（会连带换皮主题），保持 main 的值；现状主题的在 globals.css
+    // 输入类的悬停框、光晕不在 antd 主题里改，保持 main 的值；新样子在 globals.css
     expect(themeConfig.components!.Input).toEqual({ activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.14)}` });
     expect(themeConfig.components!.InputNumber).toBeUndefined();
     expect(themeConfig.components!.DatePicker).toBeUndefined();

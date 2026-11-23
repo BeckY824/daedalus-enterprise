@@ -4,7 +4,8 @@ import path from "node:path";
 import {readFileSync} from "node:fs";
 import {chromium,type Browser} from "playwright";
 let browser:Browser,bundle:string;
-const css=["globals.css","skins/shared.css","skins/ledger.css","skins/tech.css","skins/pixel.css","skins/luxe.css"].map(p=>readFileSync(path.join("src/app",p),"utf8")).join("\n");
+// 样式表照 app/layout.tsx 的顺序：globals → antd-dark → dark
+const css=["globals.css","antd-dark.css","dark.css"].map(p=>readFileSync(path.join("src/app",p),"utf8")).join("\n");
 const plugin:Plugin={name:"chart-next-link",setup(b){b.onResolve({filter:/^next\/navigation$/},()=>({path:"navigation",namespace:"nav"}));b.onLoad({filter:/.*/,namespace:"nav"},()=>({contents:"export const useRouter=()=>({push(){},refresh(){}});export const usePathname=()=>'/dashboard';"}));b.onResolve({filter:/^next\/link$/},()=>({path:"link",namespace:"fixture"}));b.onLoad({filter:/.*/,namespace:"fixture"},()=>({contents:"export default function Link(p){return <a {...p}/>}",loader:"jsx",resolveDir:process.cwd()}))}};
 beforeAll(async()=>{
  bundle=(await build({stdin:{contents:`import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';import Chart from '@/components/Chart';import {StageTag,FollowStatusTag} from '@/components/ui';import {palette,alpha} from '@/lib/palette';import {getInstanceByDom} from 'echarts/core';
@@ -15,36 +16,30 @@ beforeAll(async()=>{
 },120000);
 afterAll(async()=>{await browser?.close()});
 async function open(){const p=await browser.newPage({viewport:{width:900,height:600}});p.setDefaultTimeout(5000);const errors:string[]=[];p.on("pageerror",e=>errors.push(e.stack??e.message));await p.route("http://chart.test/**",r=>r.fulfill({contentType:"text/html",body:"<meta charset='utf-8'><div id='root'></div>"}));await p.goto("http://chart.test");await p.addStyleTag({content:css});await p.addScriptTag({content:bundle});try{await p.locator("canvas").waitFor()}catch(e){console.log("chart-debug",errors,await p.locator("#root").innerHTML());throw e}return p}
-it("真实ECharts原地切换五主题与底色，主色/文字/背景即时跟随且不改业务数据",async()=>{
+it("真实ECharts原地切换明暗，主色/文字/背景即时跟随且不改业务数据",async()=>{
  const p=await open();try{
  await p.evaluate(()=>Reflect.get(window,"__toggle")());
- for(const skin of ["ledger","tech","pixel","luxe","now"]){await p.evaluate(s=>{document.documentElement.dataset.skin=s;document.documentElement.dataset.paper='tone'},skin);
+ for(const mode of ["dark","light"]){await p.evaluate(m=>{document.documentElement.dataset.mode=m},mode);
  await expect.poll(()=>p.evaluate(()=>{const opts=Reflect.get(window,"__options")();const css=getComputedStyle(document.documentElement);return [opts.series[0].lineStyle.color,css.getPropertyValue('--brand').trim()]})).toSatisfy(v=>v[0].toLowerCase()===v[1].toLowerCase());
  const opts=await p.evaluate(()=>Reflect.get(window,"__options")());expect(opts.series[0].name).toBe("#2f6bff");expect(opts.xAxis[0].data).toEqual(["#2f6bff"]);expect(opts.series[0].data).toEqual([10]);expect(opts.legend[0].selected["#2f6bff"]).toBe(false);
  }
- await p.evaluate(()=>{document.documentElement.dataset.skin='tech';document.documentElement.dataset.paper='white'});
+ await p.evaluate(()=>{document.documentElement.dataset.mode='dark'});
  await expect.poll(()=>p.evaluate(()=>{const o=Reflect.get(window,"__options")();return [o.tooltip[0].backgroundColor,getComputedStyle(document.documentElement).getPropertyValue('--panel').trim()]})).toSatisfy(v=>v[0].toLowerCase()===v[1].toLowerCase());
  const original=await p.evaluate(()=>Reflect.get(window,"__original"));expect(original.series[0].lineStyle.color).toBe("#0a66d8"); // 16a 主色 #2f6bff → #0a66d8（palette.brand）
  }finally{await p.close()}
 });
-it("阶段标签随主题分类色更新，图表渐变透明度保留，卸载后重建正常",async()=>{
+it("图表渐变透明度保留，卸载后重建正常",async()=>{
  const p=await open();try{
- await p.evaluate(()=>document.documentElement.dataset.skin='ledger');
- await expect.poll(()=>p.locator("#stage .ant-tag").evaluate(el=>getComputedStyle(el).color)).not.toBe("rgb(37, 99, 235)");
- await expect.poll(()=>p.evaluate(()=>Reflect.get(window,"__options")().series[0].areaStyle.color.colorStops[0].color)).not.toBe("#2f6bff40");
  const colors=await p.evaluate(()=>Reflect.get(window,"__options")().series[0].areaStyle.color.colorStops.map((x:{color:string})=>x.color));expect(colors[0]).toMatch(/40$|0\.25098/);expect(colors[1]).toMatch(/00$|,\s*0\)$/);
  await p.evaluate(()=>Reflect.get(window,"__render")(false));await expect.poll(()=>p.locator("canvas").count()).toBe(0);await p.evaluate(()=>Reflect.get(window,"__render")());await p.locator("canvas").waitFor();
- await expect.poll(()=>p.evaluate(()=>Reflect.get(window,"__options")().series[0].lineStyle.color)).toBe("#1f5a44");
+ await expect.poll(()=>p.evaluate(()=>Reflect.get(window,"__options")().series[0].lineStyle.color)).toBe("#0a66d8");
  }finally{await p.close()}
 });
 
-it("J-118 同义正向状态使用同一种绿，账簿警示棕与朱印色明确分开",async()=>{
+it("J-118 同义正向状态使用同一种绿（浅色、暗黑）",async()=>{
  const p=await open();try{
- for(const skin of ["now","ledger","tech","pixel","luxe"]){await p.evaluate(s=>document.documentElement.dataset.skin=s,skin);
+ for(const mode of ["light","dark"]){await p.evaluate(m=>document.documentElement.dataset.mode=m,mode);
   const colors=await p.locator("#follow .ant-tag").evaluateAll(es=>es.map(e=>getComputedStyle(e).color));expect(colors[0]).toBe(colors[1]);
  }
- await p.evaluate(()=>document.documentElement.dataset.skin="ledger");
- const colors=await p.evaluate(()=>{const c=getComputedStyle(document.documentElement);return [c.getPropertyValue("--danger").trim(),c.getPropertyValue("--seal").trim()]});
- expect(colors).toEqual(["#8b4513","#c8321e"]);
  }finally{await p.close()}
 });
