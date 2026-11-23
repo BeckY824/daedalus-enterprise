@@ -6,6 +6,7 @@
  *   ProjectNodeLog 这类没有正文的表不动，靠批次号对到 AuditLog（detail「对应行」记下那一行的表和 id）。
  * 和客户目录草稿里的 共用-日志前缀.cjs 逐字同一套（前缀写法、依据格式、加键顺序、核本批口径）。
  * 用法（脚本里）：
+ *   核参数(argv, ["--dry-run", "--write"], ["--basis", "--操作人", "--log"]);  // 最先调：不认识的参数直接退出（exit 2）
  *   const 依据号 = 取依据(argv);              // --basis E-218 或 E-220/E-223，必填，没传 / 格式不对就退出（exit 2）
  *   const 操作人id = 取操作人(argv);          // --操作人 <userId>，必填，没传就退出（exit 2）
  *   summary = 加前缀(批次, 依据号, 原summary)
@@ -37,6 +38,32 @@ export function 取操作人(argv: readonly string[]): string {
     process.exit(2);
   }
   return v.trim();
+}
+
+/**
+ * 参数逐个核（3704 实操 r64 第 6 条：e218 带 --undo 不报错、被当成空跑）：认的只有 开关、带值（后面跟一个值）和一个库路径；
+ * 别的（拼错的、脚本没有的模式、多出来的路径、带值的缺值、同一个参数给两遍）一律报错、退出码 2，库都不打开、什么都不写。
+ * 要在脚本最前面、读任何参数之前调
+ */
+export function 核参数(argv: readonly string[], 开关: readonly string[], 带值: readonly string[]): void {
+  const 错 = (m: string): never => { console.error(`${m}，不跑（什么都没写）`); process.exit(2); };
+  const 见过 = new Set<string>();
+  let 路径数 = 0;
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a.startsWith("-")) {
+      if (!开关.includes(a) && !带值.includes(a)) 错(`不认识的参数「${a}」（这个脚本只认：${[...开关, ...带值.map((k) => `${k} <值>`)].join(" ")}）`);
+      if (见过.has(a)) 错(`参数「${a}」给了两遍`);
+      见过.add(a);
+      if (带值.includes(a)) {
+        const v = argv[i + 1];
+        if (v == null || v.startsWith("--")) 错(`参数「${a}」后面缺值`);
+        i += 1;
+      }
+      continue;
+    }
+    if (++路径数 > 1) 错(`多出来的参数「${a}」（只要一个库路径）`);
+  }
 }
 
 export function 前缀(批次: string, 依据: string): string {

@@ -93,8 +93,10 @@ function 旧规则算客户状态(项目们: readonly 旧项目[]): 序号 | nul
 
 /* ---------- 参数 ---------- */
 const argv = process.argv.slice(2);
-const 取 = (k: string) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
 const 带值 = new Set(["--log", "--操作人", "--batch", "--set", "--undo", "--basis"]);
+// 不认识的参数（拼错的、多出来的路径）直接退出码 2，库都不打开（3704 实操 r64 第 6 条，同 e218）
+前缀件.核参数(argv, ["--plan", "--dry-run", "--write"], [...带值]);
+const 取 = (k: string) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
 const 库 = argv.find((a, i) => !a.startsWith("--") && !(i > 0 && 带值.has(argv[i - 1])));
 const 看计划 = argv.includes("--plan");
 const 空跑 = argv.includes("--dry-run");

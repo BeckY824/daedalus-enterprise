@@ -39,7 +39,7 @@ import { 规整沟通, type 规整好的沟通 } from "@/lib/project/wizard";
 import { 落到渠道, 新数据渠道不行 } from "@/lib/enterprise/channel-main";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { 查重领取记沟通, 查重领取建线索项目, 认对接人, 落对接人, 撞上的联系人, 查重领取作废, 查重领取换人, 查重领取理由, 候选挑不到为什么, type 认好的对接人 } from "@/lib/enterprise/dedupe-claim";
-import { 出口C可用, 出口C的线, 出口C作废, 出口C作废话, 负责人到上限话, 负责人到上限为什么, 负责人到上限预告话, 出口C项目名, 出口C防重分钟, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C没人接话, 出口C没人接预告话, 出口C没人接收件人, 交销售候选, type 出口C没人接 } from "@/lib/enterprise/repeat-inquiry";
+import { 出口C可用, 出口C的线, 出口C作废, 出口C作废话, 负责人到上限话, 负责人到上限为什么, 负责人到上限预告话, 出口C项目名, 出口C防重分钟, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C没人接话, 出口C没人接预告话, 出口C没人接收件人, 交销售候选, 待补建没写成话, 待补建没写成交的人话, type 出口C没人接 } from "@/lib/enterprise/repeat-inquiry";
 import type { 查重领取候选 } from "@/lib/enterprise/dedupe-claim";
 import { 企划线索计数key, 月份, 计不计数, 挑接手人, 挑的理由, 本月已分, 配额of, 满了 } from "@/lib/enterprise/lead-assign";
 import { 本月分配行, 读挑人底子, 读线部门 } from "@/lib/enterprise/assign-eta";
@@ -51,7 +51,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 import { 分配通知 } from "@/lib/enterprise/notice-sources";
-import { 号码撞上, 没人接结果, 记未建线索, type 未建线索记录 } from "@/lib/enterprise/dupe-ledger";
+import { 号码撞上, 没建记台账, type 未建线索记录 } from "@/lib/enterprise/dupe-ledger";
 import { notify } from "@/lib/enterprise/notify";
 import { 客户编号显示 } from "@/lib/customer-no";
 import { FOLLOW_TYPE_MAP } from "@/lib/constants";
@@ -289,8 +289,10 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
 
 /**
  * 整笔没建的收尾（P-转-38 提醒能分配的人，机制总表 P-转-38 / P-公海-15）：交销售挑不到人（类 没人接），或主路径客户负责人到持有上限（类 到上限，用户 11-23 定照挑不到人处理）。
- * 撞号台账这一行记「没人接：原因」（查号码时记的「拦截」那一行 10 分钟内并进去，不计入预警次数），同一行存「未建线索」待补建记录
- *（记未建线索：客户编号、渠道、对接人、沟通方式 / 时间 / 内容、没建原因、通知了谁、交的人和时间，不写客户名；补建按钮之后做）；
+ * 撞号台账这一行记「没人接：原因」（查号码时记的「拦截」那一行 10 分钟内并进去，不计入预警次数），同一次写入存「未建线索」待补建记录
+ *（没建记台账：客户编号、渠道、对接人、沟通方式 / 时间 / 内容、没建原因、通知了谁、交的人和时间，不写客户名；补建按钮之后做；
+ * 同一人 10 分钟内再交 = 追加在同一行，不盖掉前一次）。待补建没写成（库出错）= 不悄悄丢：记一条操作日志（整份记录在 detail 里）、
+ * 通知不说「已留在撞号台账」、改说「待补建记录没写成，请按本通知内容手动建」并带沟通全文，回给交的人的话也说一声；
  * 这条线的销售管理和系统管理员各收一条站内通知（飞书照通知开关推；规则「线索分配」关着只发系统管理员，发起人自己不收，出口C没人接收件人），
  * 带客户编号、这次的渠道、沟通摘要，不带客户名（收件人不一定看得到这位客户）、不带号码（notify 兜底打码）。从不写项目、分配、沟通。
  * 回 { ok: true, 没建: true }：这一笔该做的（记台账、发通知）都做了，界面不当失败
@@ -300,38 +302,50 @@ async function 没人接收尾(
   没: 出口C没人接 & { 类: 未建线索记录["类"]; 负责人: string; 负责人名: string }, 渠道: string, 好: 规整好的沟通, 对接人: 认好的对接人,
 ): Promise<出口C结果> {
   const 到上限 = 没.类 === "到上限";
-  await 号码撞上(me.id, await 读的我(defaultClient), 号, 没人接结果(没.为什么));
   const { 人们, 通知, 开着 } = await 出口C没人接收件人(org, 没.线, me.id);
   const 编号 = 客户编号显示(客户);
   const 渠道名 = (await prisma.channel.findUnique({ where: { id: 渠道 }, select: { name: true } }))?.name ?? "—";
   const 摘要 = 好.content.replace(/\s+/g, " ").trim();
   const 方式 = 好.method || FOLLOW_TYPE_MAP[好.type]?.label || 好.type;
   const 交的时间 = new Date(Date.now());
-  // 待补建记录（P-公海-15 后半）：先记，通知发不出去也留得下来
+  // 待补建记录（P-公海-15 后半）：先记（和撞号台账那一行同一次写入），通知发不出去也留得下来
   const 收件人名 = new Map((人们.length ? await prisma.user.findMany({ where: { id: { in: 人们 } }, select: { id: true, name: true } }) : []).map((u) => [u.id, u.name]));
-  await 记未建线索({ userId: me.id, keyType: 号.类型, keyValue: 号.值, customerId: 客户.id, ownerId: 没.负责人 }, {
+  const 记录: 未建线索记录 = {
     状态: "待补建", 类: 没.类, 客户编号: 编号, 渠道: { id: 渠道, 名: 渠道名 },
     对接人: "挂" in 对接人 ? { 撞上的联系人: 对接人.挂 } : { 新建: { 名字: 对接人.建.name, 职务: 对接人.建.position } },
     沟通: { 方式: 好.method || FOLLOW_TYPE_MAP[好.type]?.label || null, 类型: 好.type, 发起方: 好.initiator, 时间: 好.occurredAt.toISOString(), 内容: 好.content },
     没建原因: 没.为什么, 线: 没.线, 客户负责人: { id: 没.负责人, 名: 没.负责人名 },
     通知了: { 类别: 通知, 人: 人们.map((id) => ({ id, 名: 收件人名.get(id) ?? id })) },
     交的人: { id: me.id, 名: me.name }, 交的时间: 交的时间.toISOString(),
-  });
-  const 沟通句 = `渠道：${渠道名}；沟通（${方式}）：${摘要.length > 120 ? `${摘要.slice(0, 120)}…` : 摘要}。`;
-  // key 按 客户 + 发起人 + 10 分钟一格（同撞号台账 10 分钟并一行）：同一人隔一两分钟再交一次，不再重复提醒（默认键只挡同一分钟）
+  };
+  const 记上 = !!(await 没建记台账(me.id, await 读的我(defaultClient), 号, 客户.id, 没.负责人, 记录));
+  if (!记上) {
+    // 没写成（dupe-ledger 已记服务端错误日志）：操作日志里留一份整的，补建时照它
+    await recordAudit({
+      user: me, action: "unbuilt_failed", entity: "Customer", entityId: 客户.id,
+      summary: `出口 C 没建（${到上限 ? "负责人到持有上限" : "没人接"}）：客户 ${编号} 的待补建记录没写成，${人们.length ? `已在通知里请${通知}按通知内容手动建` : "也没有能通知的人"}`,
+      detail: { 出口C: true, 客户: 客户.id, 待补建: 记录 },
+    });
+  }
+  // 待补建没写成：通知里带沟通全文（不截 120 字），按通知就能手动建
+  const 沟通句 = `渠道：${渠道名}；沟通（${方式}）：${记上 && 摘要.length > 120 ? `${摘要.slice(0, 120)}…` : 摘要}。`;
+  const 留痕句 = 记上 ? "已留在撞号台账（待补建）。" : 待补建没写成话;
+  // key 按 客户 + 发起人 + 10 分钟一格（同撞号台账 10 分钟并一行）：同一人隔一两分钟再交一次，不再重复提醒（默认键只挡同一分钟）。
+  // 待补建没写成的那次不并：通知是唯一留下来的，照发（key 带这一刻）
   if (人们.length) await notify(人们, {
     kind: "待分配",
-    key: `repeat-no-taker:${客户.id}:${me.id}:${Math.floor(交的时间.getTime() / 600_000)}`,
+    key: `repeat-no-taker:${客户.id}:${me.id}:${记上 ? Math.floor(交的时间.getTime() / 600_000) : `没写成:${交的时间.getTime()}`}`,
     title: 到上限 ? `老客户重复咨询没建（负责人到持有上限）：${编号}` : `老客户重复咨询没人接：${编号}`,
     body: 到上限
       ? `${me.name} 查号码撞上客户 ${编号}，想在客户负责人 ${没.负责人名} 名下新建一条线索，但他名下线索 / 商机阶段的项目已到持有上限，这次没建。`
-        + `${沟通句}已留在撞号台账（待补建）。请调整持有上限、让 ${没.负责人名} 推进或放回一些项目，或找 ${me.name} 另行安排`
+        + `${沟通句}${留痕句}请调整持有上限、让 ${没.负责人名} 推进或放回一些项目，或找 ${me.name} 另行安排`
       : `${me.name} 查号码撞上客户 ${编号}（客户负责人接不了新线索），想新建一条交销售的线索，但${没.线 ? `${没.线}线` : "这条线"}没有能接的销售（${没.为什么}），这次没建。`
-        + `${沟通句}已留在撞号台账（待补建）。${开着 ? `请调配额、恢复参与分配，或找 ${me.name} 另行安排` : "请在组织规则里打开线索分配，或手动处理"}`,
+        + `${沟通句}${留痕句}${开着 ? `请调配额、恢复参与分配，或找 ${me.name} 另行安排` : "请在组织规则里打开线索分配，或手动处理"}`,
     link: null,
   });
   // 不是失败：台账记了、通知发了（同一人 10 分钟内再交按 key 不再记，照样算通知到了）；收件人去掉发起人自己后一个不剩 = 「请找销售管理」
-  return { ok: true, 没建: true, 提示: 到上限 ? 负责人到上限话(没.负责人名, 通知) : 出口C没人接话(没.为什么, 通知) };
+  const 话 = 到上限 ? 负责人到上限话(没.负责人名, 通知) : 出口C没人接话(没.为什么, 通知);
+  return { ok: true, 没建: true, 提示: 记上 ? 话 : `${话}${待补建没写成交的人话(人们.length > 0)}` };
 }
 
 /** 序号撞了 (repeatOfCustomerId, repeatSeq) 的唯一索引（Prisma P2002）：出口C建线索 重来一次 */

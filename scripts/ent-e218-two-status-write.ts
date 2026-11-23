@@ -20,6 +20,8 @@
  * 用法（本机，代码副本根目录）：
  *   npx tsx scripts/ent-e218-two-status-write.ts <crm.db> --dry-run --basis E-218 --操作人 <userId> [--log <文件>]
  *   CONFIRM=yes npx tsx scripts/ent-e218-two-status-write.ts <crm.db> --write --basis E-218 --操作人 <userId> [--log <文件>]
+ *   npx tsx scripts/ent-e218-two-status-write.ts <crm.db> --undo <批次号> --dry-run | --write（写要带 CONFIRM=yes）--basis E-218 --操作人 <userId> [--log <文件>]
+ * 不认识的参数（拼错的、脚本没有的模式、多出来的路径）一律报错、退出码 2，库都不打开（3704 实操 r64 第 6 条：原来带 --undo 被当成空跑）。
  * 服务器上（没有 tsx）：本机先打成一个 cjs，scp 过去用服务器自带 node 跑（只依赖 node:sqlite，Node ≥ 22.13）：
  *   npx esbuild scripts/ent-e218-two-status-write.ts --bundle --platform=node --format=cjs --target=node22 --outfile=<目录>/e218-two-status.cjs
  *   CONFIRM=yes /opt/crm-enterprise/node/bin/node --no-warnings e218-two-status.cjs /opt/crm-enterprise/data/crm.db --write --basis E-218 --操作人 <userId> --log <文件>
@@ -31,7 +33,12 @@
  * 已经是目标值的那家计「已完成」、不写；两家都已完成 = 0 行、退出码 0（可重复跑）。
  *
  * 输出逐行日志（北京时间、客户编号、字段、改前、改后、原因），不含客户名。
- * 撤回（客户要撤时）：按日志里的批次，把两家 custStatus 改回「改前」（17535 改前是空就写 NULL），并各补一条 AuditLog；或按写前备份处理。
+ * 撤回（--undo <批次号>，照 ent-e220-status-backfill.ts 的撤回）：按该批次 AuditLog 记下的改前值（detail.旧.custStatus，空就写回 NULL）逐行恢复，
+ *   同一个 BEGIN IMMEDIATE 事务里先逐行核：现在的值仍等于该批次写入的新值（detail.新.custStatus）——有一行不等（写后被系统 / 人改过）就整批不写、
+ *   报出是哪一行、退出码 1（空跑同样报出、退出码 1）。updatedAt 顶成撤回这一刻（同写入，Prisma @updatedAt 的口径；改前改后都记在日志里）。
+ *   撤回另起批次「原批次-undo-xxxx」，每改一格记一条 AuditLog（类 = 撤回、撤的批次），正文同样带「[批次 … · 执行：Becky（服务商）· 依据 <E-编号>]」前缀、
+ *   detail 带 批次 / 执行 / 依据 / 对应行；事务里回读值、日志条数、逐条核前缀和四个键，不对整批回滚。已撤回过的批次不再撤（退出码 0）。
+ *   兜底：按写前备份恢复。
  */
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes } from "node:crypto";
@@ -54,18 +61,27 @@ const 两家: readonly 目标[] = [
   { 客户编号: 17535, 允许改前: [null, "流失"], 预期: "潜在", 原因: "在推优先：名下有流失线索，另有在推线索，已结束的流失不再压过在推项目（库里原没存，详情按旧公式现算显示流失）" },
 ];
 
+/** 本脚本的 AuditLog 都在这之后（北京 2026-11-23 00:00，同 e220 留痕起点），按 AuditLog_at_idx 找，不扫全表 */
+const 留痕起点 = 1795363200000;
+/** 本脚本写入的批次号：e218-<北京年月日时分秒>-<6 位 hex>（撤回只认这种，撤回批次「…-undo-xxxx」不能再撤） */
+const 批次式 = /^e218-\d{14}-[0-9a-f]{6}$/;
+
 /* ---------- 参数 ---------- */
 const argv = process.argv.slice(2);
+const 带值 = new Set(["--log", "--操作人", "--basis", "--undo"]);
+// 最先核：不认识的参数直接退出码 2，库都不打开
+前缀件.核参数(argv, ["--dry-run", "--write"], [...带值]);
 const 取 = (k: string) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
-const 带值 = new Set(["--log", "--操作人", "--basis"]);
 const 库 = argv.find((a, i) => !a.startsWith("--") && !(i > 0 && 带值.has(argv[i - 1])));
 const 空跑 = argv.includes("--dry-run");
 const 要写 = argv.includes("--write");
 const 日志文件 = 取("--log");
+const 撤参 = 取("--undo");
 if (!库 || 空跑 === 要写) {
-  console.error("用法：<crm.db> --dry-run | --write（写要带 CONFIRM=yes） --basis <E-编号，如 E-218> --操作人 <userId> [--log <文件>]");
+  console.error("用法：<crm.db> [--undo <批次号>] --dry-run | --write（写要带 CONFIRM=yes） --basis <E-编号，如 E-218> --操作人 <userId> [--log <文件>]");
   process.exit(2);
 }
+if (撤参 != null && !批次式.test(撤参)) { console.error(`--undo 要填本脚本写入的批次号（e218-<14 位时间>-<6 位>，写入输出和日志里有），「${撤参}」不是`); process.exit(2); }
 if (要写 && process.env.CONFIRM !== "yes") { console.error("写库要带 CONFIRM=yes"); process.exit(2); }
 const 依据号 = 前缀件.取依据(argv);
 const 操作人id = 前缀件.取操作人(argv);
@@ -137,8 +153,91 @@ function 计划(): 计划行[] {
   });
 }
 
+/* ---------- 撤回 ---------- */
+type 写过 = { 日志id: string; 客户id: string; 客户编号: number; 旧: string | null; 新: string };
+const 新日志id = (T: number) => "c" + (T.toString(36) + randomBytes(10).toString("hex")).slice(0, 24);
+/** 撤回：整批照 AuditLog 改回改前值；有一行现在不是写入的新值 = 整批不写（停，退出码 1）。返回撤了几行 */
+function 撤(批次号: string): number {
+  记(`# ${件名} · 撤回 ${批次号} · ${要写 ? "写" : "空跑（只读）"} · 北京 ${北京(现在)} · 库 ${库} · 操作人 ${OP!.name}（执行：${前缀件.执行}）· 依据 ${依据号}`);
+  const 本脚本的 = (批: string, 键: "批次" | "撤的批次") => 全(
+    `SELECT id, entityId, detail FROM AuditLog WHERE at >= ? AND entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.脚本') = ? AND json_extract(detail, '$.${键}') = ?`,
+    留痕起点, 脚本, 批,
+  );
+  const 跑 = (): number => {
+    const 这批: 写过[] = 本脚本的(批次号, "批次").flatMap((r) => {
+      const d = JSON.parse(String(r.detail)) as { 类?: string; 客户编号: number; 旧?: { custStatus?: string | null }; 新?: { custStatus?: string } };
+      return d.类 === "撤回" ? [] : [{ 日志id: String(r.id), 客户id: String(r.entityId), 客户编号: Number(d.客户编号), 旧: d.旧?.custStatus ?? null, 新: String(d.新?.custStatus) }];
+    }).sort((a, b) => a.客户编号 - b.客户编号);
+    if (!这批.length) throw new Error(`AuditLog 里没有批次 ${批次号} 的写入`);
+    const 撤过 = 本脚本的(批次号, "撤的批次");
+    if (撤过.length) {
+      记(`批次 ${批次号} 已撤回过（${[...new Set(撤过.map((r) => String(JSON.parse(String(r.detail)).批次)))].join("、")}），不再撤`);
+      return 0;
+    }
+    const 撤号 = `${批次号}-undo-${randomBytes(2).toString("hex")}`;
+    记(`日志前缀${要写 ? "" : "（写时）"}：${前缀件.前缀(撤号, 依据号)}`);
+    记("北京时间\t客户编号\t字段\t现在\t改回\t结果");
+    // 先逐行核：现在仍是该批写入的新值。有不等的整批不写，全部报出来
+    const 现们 = 这批.map((w) => {
+      const c = 一("SELECT custStatus, updatedAt, deletedAt FROM Customer WHERE id = ?", w.客户id);
+      return { w, 在: !!c, 删了: c?.deletedAt != null, 现: (c?.custStatus as string | null) ?? null, updatedAt: Number(c?.updatedAt) };
+    });
+    const 不对 = 现们.filter((x) => !x.在 || x.删了 || x.现 !== x.w.新);
+    if (不对.length) {
+      for (const x of 不对) 记(`${北京(Date.now())}\tNO.${x.w.客户编号}\tcustStatus（客户状态）\t${x.在 ? 显(x.现) : "（客户不在了）"}\t${显(x.w.旧)}\t不对：${!x.在 ? "找不到这位客户" : x.删了 ? "客户在回收站" : `写后已被改成「${显(x.现)}」，不是本批写入的「${x.w.新}」`}`);
+      throw new Error(`${不对.length} 行现在的值不是本批写入的新值（${不对.map((x) => `NO.${x.w.客户编号}`).join("、")}），整批不撤`);
+    }
+    const T = Date.now();
+    const 改 = db.prepare("UPDATE Customer SET custStatus = ?, updatedAt = ? WHERE id = ? AND custStatus IS ? AND deletedAt IS NULL");
+    const 写日志 = db.prepare("INSERT INTO AuditLog (id, at, userId, userName, action, entity, entityId, summary, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+    let 撤了 = 0;
+    for (const { w, 现, updatedAt } of 现们) {
+      if (要写) {
+        if (Number((改.run(w.旧, T, w.客户id, w.新) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${w.客户编号} 撤回改动不是 1 行`);
+        写日志.run(新日志id(T), T, OP!.id, OP!.name, "update", "Customer", w.客户id,
+          前缀件.加前缀(撤号, 依据号, `[${件名} 撤回 ${批次号} NO.${w.客户编号}] 客户状态：custStatus ${w.新} → ${显(w.旧)}`),
+          JSON.stringify(前缀件.加键({ 脚本, 类: "撤回", 批次: 撤号, 撤的批次: 批次号, 撤的日志: w.日志id, 编号: `NO.${w.客户编号}`, 客户编号: w.客户编号, 表: "Customer", 键列: "id",
+            格: "客户状态（撤回在推优先重算）", 操作: "update", 列: ["custStatus", "updatedAt"],
+            旧: { custStatus: 现, updatedAt }, 新: { custStatus: w.旧, updatedAt: T }, 原因: `整批撤回 ${批次号}，改回写入前的值`, 依据 }, 撤号, 依据号, { Customer: w.客户id })));
+      }
+      撤了 += 1;
+      记(`${北京(T)}\tNO.${w.客户编号}\tcustStatus（客户状态）\t${w.新}\t${显(w.旧)}\t${要写 ? "已撤" : "将撤（空跑）"}`);
+    }
+    if (要写) {
+      // 事务里回读：值对、日志条数 = 撤的行数、逐条核前缀和四个键
+      for (const { w } of 现们) {
+        const x = 一("SELECT custStatus FROM Customer WHERE id = ?", w.客户id);
+        if (((x?.custStatus as string | null) ?? null) !== w.旧) throw new Error(`回读 NO.${w.客户编号} 是「${显((x?.custStatus as string | null) ?? null)}」，应为「${显(w.旧)}」`);
+      }
+      const 核 = 前缀件.核本批(db, 撤号, 依据号, T);
+      if (核.条数 !== 撤了 || 核.错) throw new Error(`撤回日志 ${核.条数} 条（应 ${撤了}），前缀 / 批次·执行·依据 不对 ${核.错} 条`);
+    }
+    记(`${要写 ? "已撤" : "空跑：将撤"} ${撤了} 行${要写 ? `，撤回批次号 ${撤号}，操作日志 ${撤了} 条` : "，一行没写"}`);
+    return 撤了;
+  };
+  if (!要写) {
+    try { return 跑(); } catch (e) { return 停(`${(e as Error).message}`); }
+  }
+  db.exec("BEGIN IMMEDIATE");
+  try {
+    const n = 跑();
+    db.exec("COMMIT");
+    return n;
+  } catch (e) {
+    try { db.exec("ROLLBACK"); } catch { /* 已回滚 */ }
+    return 停(`出错，已回滚，库不变：${(e as Error).message}`);
+  }
+}
+
 /* ---------- 主流程 ---------- */
 const 开始 = performance.now();
+if (撤参 != null) {
+  撤(撤参);
+  记(`耗时 ${Math.round(performance.now() - 开始)} ms`);
+  落盘();
+  db.close();
+  process.exit(0);
+}
 记(`# ${件名} · ${要写 ? "写" : "空跑（只读）"} · 北京 ${北京(现在)} · 库 ${库} · 操作人 ${OP!.name}（执行：${前缀件.执行}）· 依据 ${依据号}${要写 ? ` · 批次 ${批次}` : ""}`);
 记(`日志前缀${要写 ? "" : "（写时）"}：${前缀件.前缀(批次, 依据号)}`);
 记("北京时间\t客户编号\t字段\t改前\t改后\t原因");
@@ -186,6 +285,6 @@ if (!要写) {
   }
 }
 const 耗时 = Math.round(performance.now() - 开始);
-记(要写 ? `已写：${写了} 行，操作日志（AuditLog，批次 ${批次}）${写了} 条；耗时 ${耗时} ms` : `空跑结束，一行没写；耗时 ${耗时} ms`);
+记(要写 ? `已写：${写了} 行，操作日志（AuditLog，批次 ${批次}）${写了} 条；耗时 ${耗时} ms${写了 ? `。撤回：--undo ${批次}` : ""}` : `空跑结束，一行没写；耗时 ${耗时} ms`);
 落盘();
 db.close();

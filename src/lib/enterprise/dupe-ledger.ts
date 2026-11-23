@@ -131,55 +131,106 @@ export type 未建线索记录 = {
 };
 
 /**
- * 记「未建线索」：落在这次撞号那一行上（号码撞上 刚记 / 合并的那一行：同一人、同一客户、同一键、10 分钟内最新的）；
- * 找不到（同组的人、台账没记上）就补一行（结果 = 没人接：原因）。同一人 10 分钟内再交 = 同一行，记录换成最新这次。从不抛：没记上不挡回话
+ * 读台账一行的待补建记录：一次没建 = 一个对象（迁移 165 起的写法）；同一人 10 分钟内再交（并在同一行）= 数组，按交的先后。
+ * 读的地方都走这里（两种都认）；空 / 解析不了 = []
+ */
+export function 读未建线索(unbuilt: string | null | undefined): 未建线索记录[] {
+  if (!unbuilt) return [];
+  try {
+    const v = JSON.parse(unbuilt) as unknown;
+    if (Array.isArray(v)) return v.filter((x): x is 未建线索记录 => !!x && typeof x === "object");
+    return v && typeof v === "object" ? [v as 未建线索记录] : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 往一行上记待补建：原来没有 = 存成一个对象；已有 = 追加成数组（不盖掉前一次，同一人 10 分钟内再交两次都留得下） */
+function 追加未建(原: string | null | undefined, 记录: 未建线索记录): string {
+  const 已有 = 读未建线索(原);
+  // 原来有字却读不出（不该有）：原样包进数组留着，不丢
+  if (原 && !已有.length) return JSON.stringify([原, 记录]);
+  return JSON.stringify(已有.length ? [...已有, 记录] : 记录);
+}
+
+/**
+ * 记「未建线索」（兜底那一路）：落在这次撞号那一行上（同一人、同一客户、同一键、10 分钟内最新的）；
+ * 找不到（这一刻撞不上：客户刚进公海、负责人是占位）就补一行（结果 = 没人接：原因）。那一行已有待补建 = 追加，不盖掉。
+ * 平常走 没建记台账（和撞号那一次写在一起），它没写成才来这里。从不抛：没记上回 null、记错误日志，调用方要让人知道
  */
 export async function 记未建线索(
   d: { userId: string; keyType: string; keyValue: string; customerId: string; ownerId: string }, 记录: 未建线索记录,
 ): Promise<string | null> {
   try {
-    const unbuilt = JSON.stringify(记录);
-    const 有 = await prisma.entDupeHit.findFirst({
-      where: { userId: d.userId, customerId: d.customerId, keyType: d.keyType, keyValue: d.keyValue.slice(0, 200), createdAt: { gte: new Date(Date.now() - 撞号预警.合并分钟 * 60_000) } },
-      orderBy: { createdAt: "desc" },
-      select: { id: true },
+    return await prisma.$transaction(async (tx) => {
+      const 有 = await tx.entDupeHit.findFirst({
+        where: { userId: d.userId, customerId: d.customerId, keyType: d.keyType, keyValue: d.keyValue.slice(0, 200), createdAt: { gte: new Date(Date.now() - 撞号预警.合并分钟 * 60_000) } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, unbuilt: true },
+      });
+      if (有) {
+        await tx.entDupeHit.update({ where: { id: 有.id }, data: { unbuilt: 追加未建(有.unbuilt, 记录) } });
+        return 有.id;
+      }
+      const 行 = await tx.entDupeHit.create({
+        data: { userId: d.userId, keyType: d.keyType, keyValue: d.keyValue.slice(0, 200), customerId: d.customerId, ownerId: d.ownerId, result: 没人接结果(记录.没建原因), unbuilt: JSON.stringify(记录) },
+        select: { id: true },
+      });
+      return 行.id;
     });
-    if (有) {
-      await prisma.entDupeHit.update({ where: { id: 有.id }, data: { unbuilt } });
-      return 有.id;
-    }
-    const 行 = await prisma.entDupeHit.create({
-      data: { userId: d.userId, keyType: d.keyType, keyValue: d.keyValue.slice(0, 200), customerId: d.customerId, ownerId: d.ownerId, result: 没人接结果(记录.没建原因), unbuilt },
-      select: { id: true },
-    });
-    return 行.id;
   } catch (e) {
-    console.warn("[撞号台账] 未建线索没记上：", e instanceof Error ? e.message : e);
+    console.error("[撞号台账] 未建线索没记上：", e instanceof Error ? e.message : e);
     return null;
   }
 }
 
-/** 记一行（10 分钟内同一人同一客户同一键的并进上一行），新记的看要不要预警。从不抛：台账没记上不挡查重 */
-async function 记撞号(d: 台账行): Promise<{ id: string; action: string | null } | null> {
+/**
+ * 出口 C 整笔没建（交销售没人接 / 主路径负责人到持有上限）：撞号台账这一行记「没人接：原因」，待补建记录在同一次写入里一起存
+ *（查号码时记的那一行 10 分钟内并进去；那一行已有待补建 = 追加成数组）。这一刻撞不上（客户刚进公海、负责人是占位）、
+ * 或这一次没写成 = 走 记未建线索 再补一行。返回存了待补建的台账行 id；都没写成 = null（调用方让人知道，不能悄悄丢）
+ */
+export async function 没建记台账(我: string, 读的我: 谁 | null, 号: 验好的号, customerId: string, ownerId: string, 记录: 未建线索记录): Promise<string | null> {
+  if (企业版() && ["手机号", "邮箱", "微信", "旺旺ID"].includes(号.类型)) {
+    const r = await 撞上客户记(我, 读的我, 号.类型 as 撞号键类型, 号.值, customerId, 没人接结果(记录.没建原因), 记录);
+    if (r.行?.未建记上) return r.行.id;
+  }
+  return 记未建线索({ userId: 我, keyType: 号.类型, keyValue: 号.值, customerId, ownerId }, 记录);
+}
+
+/**
+ * 记一行（10 分钟内同一人同一客户同一键的并进上一行），新记的看要不要预警。带 未建 = 同一次写入存待补建记录（并进的那一行已有 = 追加）。
+ * 从不抛：台账没记上不挡查重（回 null）；预警没发出去不算没记上
+ */
+async function 记撞号(d: 台账行, 未建?: 未建线索记录): Promise<{ id: string; action: string | null; 未建记上: boolean } | null> {
+  let 行: { id: string; action: string | null; 新: boolean };
   try {
     const 近 = new Date(Date.now() - 撞号预警.合并分钟 * 60_000);
-    const 有 = await prisma.entDupeHit.findFirst({
-      where: { userId: d.userId, customerId: d.customerId, keyType: d.keyType, keyValue: d.keyValue, createdAt: { gte: 近 } },
-      orderBy: { createdAt: "desc" },
-      select: { id: true, action: true, result: true },
-    });
-    if (有) {
-      // 查重按钮记的「拦截」，保存时写进了现有项目 / 新建了线索：改成后者
-      if (d.result !== "拦截" && 有.result !== d.result) await prisma.entDupeHit.update({ where: { id: 有.id }, data: { result: d.result } });
-      return { id: 有.id, action: 有.action };
-    }
-    const 行 = await prisma.entDupeHit.create({ data: d, select: { id: true, action: true } });
-    if (!d.sameGroup) await 看预警(行.id, d);
-    return 行;
+    const 写 = async (tx: Pick<typeof prisma, "entDupeHit">) => {
+      const 有 = await tx.entDupeHit.findFirst({
+        where: { userId: d.userId, customerId: d.customerId, keyType: d.keyType, keyValue: d.keyValue, createdAt: { gte: 近 } },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, action: true, result: true, unbuilt: true },
+      });
+      if (有) {
+        // 查重按钮记的「拦截」，保存时写进了现有项目 / 新建了线索：改成后者
+        const data = {
+          ...(d.result !== "拦截" && 有.result !== d.result ? { result: d.result } : {}),
+          ...(未建 ? { unbuilt: 追加未建(有.unbuilt, 未建) } : {}),
+        };
+        if (Object.keys(data).length) await tx.entDupeHit.update({ where: { id: 有.id }, data });
+        return { id: 有.id, action: 有.action, 新: false };
+      }
+      const 建 = await tx.entDupeHit.create({ data: { ...d, ...(未建 ? { unbuilt: JSON.stringify(未建) } : {}) }, select: { id: true, action: true } });
+      return { ...建, 新: true };
+    };
+    // 带待补建：找那一行和改它放一个事务里（两次几乎同时交，不让后一次读到旧值盖掉前一次）
+    行 = 未建 ? await prisma.$transaction((tx) => 写(tx)) : await 写(prisma);
   } catch (e) {
     console.warn("[撞号台账] 没记上：", e instanceof Error ? e.message : e);
     return null;
   }
+  if (行.新 && !d.sameGroup) await 看预警(行.id, d).catch((e) => console.warn("[撞号台账] 预警没发出去：", e instanceof Error ? e.message : e));
+  return { id: 行.id, action: 行.action, 未建记上: !!未建 };
 }
 
 /**
@@ -239,21 +290,29 @@ async function 看预警(行id: string, d: 台账行): Promise<void> {
 export async function 撞上客户(
   我: string, 读的我: 谁 | null, 键类型: 撞号键类型, 键值: string, customerId: string, 结果: Exclude<撞号结果, "同组提示"> = "拦截",
 ): Promise<撞号露出 | null> {
-  if (!企业版()) return null;
+  return (await 撞上客户记(我, 读的我, 键类型, 键值, customerId, 结果)).露;
+}
+
+/** 撞上客户 的本体；带 未建 = 台账这一行同一次写入存待补建记录（没建记台账 用），行 = 台账写下的那一行（没撞上 / 没记上 = null） */
+async function 撞上客户记(
+  我: string, 读的我: 谁 | null, 键类型: 撞号键类型, 键值: string, customerId: string, 结果: Exclude<撞号结果, "同组提示">, 未建?: 未建线索记录,
+): Promise<{ 露: 撞号露出 | null; 行: { id: string; 未建记上: boolean } | null }> {
+  const 无 = { 露: null, 行: null };
+  if (!企业版()) return 无;
   const c = await 看全部(() => prisma.customer.findUnique({
     where: { id: customerId },
     select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } },
   }));
-  if (!c || c.pool || !c.salesOwnerId || c.salesOwnerId === 我) return null;
+  if (!c || c.pool || !c.salesOwnerId || c.salesOwnerId === 我) return 无;
   const 负责人 = await 露出负责人(c.salesOwnerId);
-  if (!负责人) return null;
+  if (!负责人) return 无;
   const 组 = await 同组(c.id, 我);
   const 行 = await 记撞号({
     userId: 我, keyType: 键类型, keyValue: 键值.slice(0, 200), customerId: c.id, ownerId: c.salesOwnerId,
     sameGroup: !!组, result: 组 ? "同组提示" : 结果,
-  });
+  }, 未建);
   const 看得见 = 看得到(c, 读的我);
-  return {
+  const 露: 撞号露出 = {
     撞号id: 组 ? null : 行?.id ?? null,
     键类型,
     客户id: 看得见 ? c.id : null,
@@ -263,6 +322,7 @@ export async function 撞上客户(
     ...(组 ? { 同组: 组 } : {}),
     ...(行?.action === "申请挂靠" ? { 已申请: true as const } : {}),
   };
+  return { 露, 行: 行 ? { id: 行.id, 未建记上: 行.未建记上 } : null };
 }
 
 /** 号码撞了（查号结论「重复」）：认首条（同 撞号结论），露出 + 记台账 */

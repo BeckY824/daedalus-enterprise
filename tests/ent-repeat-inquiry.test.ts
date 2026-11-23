@@ -63,7 +63,7 @@ import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 查号码 } from "@/app/(app)/customers/number-actions";
 import { 出口C建线索, 出口C框数据 } from "@/app/(app)/customers/repeat-inquiry-actions";
 import type { 查重领取沟通 } from "@/app/(app)/customers/pool-actions";
-import { 不是市场成员出口C话, 出口C作废话, 负责人到上限话, 负责人到上限预告话, 负责人到上限为什么, 客户其他在推项目, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C项目名, 重复咨询原始客户, 出口C没人接话, 出口C没人接预告话, 规则关着为什么 } from "@/lib/enterprise/repeat-inquiry";
+import { 不是市场成员出口C话, 出口C作废话, 负责人到上限话, 负责人到上限预告话, 负责人到上限为什么, 客户其他在推项目, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C项目名, 重复咨询原始客户, 出口C没人接话, 出口C没人接预告话, 规则关着为什么, 待补建没写成话, 待补建没写成交的人话 } from "@/lib/enterprise/repeat-inquiry";
 import { 查重领取 } from "@/app/(app)/customers/pool-actions";
 import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
 import { 分配谁能用key, 分配方式id } from "@/lib/enterprise/assign-use";
@@ -78,7 +78,7 @@ import path from "node:path";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 重复咨询来源 } from "@/lib/project/system-created";
 import { 看成客户编号, 看成客户编号严 } from "@/lib/customer-no";
-import type { 未建线索记录 } from "@/lib/enterprise/dupe-ledger";
+import { 读未建线索, type 未建线索记录 } from "@/lib/enterprise/dupe-ledger";
 import { 默认三态规则 } from "@/lib/project/org-rules";
 import { 三态夜扫 } from "@/lib/enterprise/tri-state-db";
 import { 读一位三态 } from "@/lib/enterprise/tri-state-hold";
@@ -751,7 +751,7 @@ describe("命名加序与只读来源字段（E-218）", () => {
 });
 
 describe("交销售挑不到人：提醒能分配的人（P-转-38）；事务里满额顺延、判无效补发", () => {
-  const 交 = (c: { 号: string }, 负责人名: string) => 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名 });
+  const 交 = (c: { 号: string }, 负责人名: string, 这次 = 沟通()) => 出口C建线索("手机号", c.号, 这次, { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名 });
   /** 一条算数的分配记录（本月已分 +1） */
   const 记一条 = (u: 人) => prisma.entLeadAssign.create({ data: { toUserId: u.id, fromUserId: 总管.id, byUserId: 总管.id, line: "内贸", kind: "营销", counted: true, month: 月份(), way: "自动分配" } });
   const 设配额 = (u: 人, quota: number) => prisma.entLeadQuota.create({ data: { userId: u.id, quota, setById: 总管.id } });
@@ -827,8 +827,15 @@ describe("交销售挑不到人：提醒能分配的人（P-转-38）；事务�
       expect(await 交(c, 外贸甲.name)).toEqual(话);
       // 同一格、隔了 3 分钟（默认按内容 + 当前分钟的键挡不住这一下）
       钟.mockReturnValue(格 + 181_000);
-      expect(await 交(c, 外贸甲.name)).toEqual(话);
+      expect(await 交(c, 外贸甲.name, 沟通({ content: "第二次来电：改要两台" }))).toEqual(话);
       expect(await prisma.entNotice.count({ where: { kind: "待分配" } })).toBe(1);
+      // 待补建记录：两次都留下（并在同一行、追加成数组，不盖掉第一次），按交的先后
+      const 账 = await prisma.entDupeHit.findMany({ where: { customerId: c.id } });
+      expect(账).toHaveLength(1);
+      expect(JSON.parse(账[0].unbuilt!)).toHaveLength(2);
+      const 两次 = 读未建线索(账[0].unbuilt);
+      expect(两次.map((x) => x.沟通.内容)).toEqual(["老客户来电问新一期报价", "第二次来电：改要两台"]);
+      expect(两次.map((x) => new Date(x.交的时间).getTime())).toEqual([格 + 1_000, 格 + 181_000]);
       // 下一格：算新的一次，再提醒一遍
       钟.mockReturnValue(格 + 601_000);
       expect(await 交(c, 外贸甲.name)).toEqual(话);
@@ -838,6 +845,68 @@ describe("交销售挑不到人：提醒能分配的人（P-转-38）；事务�
     }
     expect((await prisma.entNotice.findMany({ where: { kind: "待分配" } })).map((x) => x.userId)).toEqual([总管.id, 总管.id]);
     await 没动(c.id);
+  });
+
+  it("待补建记录没写成（库出错）：不悄悄丢——通知不说「已留在撞号台账」、改说按通知手动建并带沟通全文，回话也说，操作日志留整份；下一次照发不并", async () => {
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [外贸甲.id]: "暂停", [乙.id]: "暂停" });
+    invalidateSettingsCache();
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    await 查号码("手机号", c.号);
+    // 库里挡住写待补建（插入、改都挡）：合在撞号那一次的写入、兜底补一行，两路都写不成
+    await prisma.$executeRawUnsafe(`CREATE TRIGGER 挡未建1 BEFORE UPDATE OF unbuilt ON EntDupeHit WHEN NEW.unbuilt IS NOT NULL BEGIN SELECT RAISE(ABORT, '模拟写失败'); END`);
+    await prisma.$executeRawUnsafe(`CREATE TRIGGER 挡未建2 BEFORE INSERT ON EntDupeHit WHEN NEW.unbuilt IS NOT NULL BEGIN SELECT RAISE(ABORT, '模拟写失败'); END`);
+    const 错 = vi.spyOn(console, "error").mockImplementation(() => {});
+    const 长 = `老客户来电问新一期报价，${"要两台、含安装调试、开专票、".repeat(10)}月底前到货`;
+    try {
+      const 为什么 = "能接的销售都暂停或禁止了自动分配";
+      expect(await 交(c, 外贸甲.name, 沟通({ content: 长 }))).toEqual({ ok: true, 没建: true, 提示: `${出口C没人接话(为什么, "系统管理员")}${待补建没写成交的人话(true)}` });
+      // 服务端错误日志
+      expect(错.mock.calls.some((x) => String(x[0]).includes("未建线索没记上"))).toBe(true);
+      // 台账没有待补建（这一行的结果改动跟着一起回滚了，还是查号码时的「拦截」）
+      const 账 = await prisma.entDupeHit.findMany({ where: { customerId: c.id } });
+      expect(账.map((x) => [x.result, x.unbuilt])).toEqual([["拦截", null]]);
+      // 通知：不说已留在台账，说没写成、按通知手动建；沟通全文（不截 120 字）
+      const 通 = await prisma.entNotice.findMany({ where: { kind: "待分配" } });
+      expect(通.map((x) => x.userId)).toEqual([总管.id]);
+      expect(通[0].body).not.toContain("已留在撞号台账");
+      expect(通[0].body).toContain(待补建没写成话);
+      expect(通[0].body).toContain(长);
+      // 操作日志留整份待补建记录（补建时照它）
+      const 日志 = await prisma.auditLog.findMany({ where: { action: "unbuilt_failed" } });
+      expect(日志).toHaveLength(1);
+      expect([日志[0].userId, 日志[0].entity, 日志[0].entityId]).toEqual([市场.id, "Customer", c.id]);
+      expect(日志[0].summary).not.toContain(`老客户${序}`);
+      const d = JSON.parse(日志[0].detail!) as { 待补建: 未建线索记录 };
+      expect(d.待补建).toMatchObject({ 状态: "待补建", 类: "没人接", 没建原因: 为什么, 沟通: { 内容: 长 }, 交的人: { id: 市场.id } });
+      // 同一人马上再交（同一个 10 分钟格）：没写成的那次照发，不按 10 分钟并掉
+      await 交(c, 外贸甲.name);
+      expect(await prisma.entNotice.count({ where: { kind: "待分配" } })).toBe(2);
+    } finally {
+      错.mockRestore();
+      await prisma.$executeRawUnsafe("DROP TRIGGER IF EXISTS 挡未建1");
+      await prisma.$executeRawUnsafe("DROP TRIGGER IF EXISTS 挡未建2");
+    }
+    await 没动(c.id);
+  });
+
+  it("负责人没人接、没查号码直接交两次（台账原来没这一行）：第一次新建一行、第二次追加，两次的待补建都在", async () => {
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [外贸甲.id]: "暂停", [乙.id]: "暂停" });
+    invalidateSettingsCache();
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    await 交(c, 外贸甲.name);
+    let 账 = await prisma.entDupeHit.findMany({ where: { customerId: c.id } });
+    expect(账).toHaveLength(1);
+    // 第一次：一个对象（迁移 165 起的写法），读的地方两种都认
+    expect(Array.isArray(JSON.parse(账[0].unbuilt!))).toBe(false);
+    expect(读未建线索(账[0].unbuilt)).toHaveLength(1);
+    await 交(c, 外贸甲.name, 沟通({ content: "又来电" }));
+    账 = await prisma.entDupeHit.findMany({ where: { customerId: c.id } });
+    expect(账).toHaveLength(1);
+    expect(读未建线索(账[0].unbuilt).map((x) => x.沟通.内容)).toEqual(["老客户来电问新一期报价", "又来电"]);
+    expect(读未建线索(null)).toEqual([]);
+    expect(读未建线索("坏")).toEqual([]);
   });
 
   it("线判不出（客户没区域、没电话，发起人没事业部）：两条线的销售管理 + 系统管理员都收", async () => {
@@ -939,7 +1008,8 @@ describe("交销售挑不到人：提醒能分配的人（P-转-38）；事务�
     } finally {
       spy.mockRestore();
     }
-    expect(第几笔).toBe(1);
+    // 出口 C 的事务只开了一笔（没重挑）；第 2 笔是收尾时撞号台账记「没人接」+ 待补建（同一次写入的小事务）
+    expect(第几笔).toBe(2);
     await 没动(c.id);
     expect((await prisma.entDupeHit.findFirstOrThrow({ where: { customerId: c.id } })).result).toBe(`没人接：${为什么}`);
     expect((await prisma.entNotice.findMany({ where: { kind: "待分配" } })).map((x) => x.userId)).toEqual([总管.id]);
