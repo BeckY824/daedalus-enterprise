@@ -2141,6 +2141,20 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 /* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */
 .member-table { overflow-x: auto; }
 .member-table .ant-table-thead th { white-space: nowrap; }
+/* 桌面（≥ 768）：格子左右内边距 8 → 4、标签内边距 9 → 4，和 MembersTab「列宽三档」配套，设置正文里整表不横滚（11-23）；勾选列照旧 */
+@media (min-width: 768px) {
+  .member-table.ant-table-wrapper .ant-table :is(.ant-table-thead > tr > th, .ant-table-tbody > tr > td):not(.ant-table-selection-column) { padding-inline: 4px; }
+  .member-table .ant-tag { padding-inline: 4px; }
+}
+/* 窄屏行尾动作只留字：按下停用 / 恢复 / 办离职时 antd 从 0 宽插进转圈（约 +20），会顶出格子、闪出横滚；
+   转圈改成盖在字上居中、字先藏起来，键的宽度不变。规则挂在转圈本身（.ant-btn-loading-icon）不挂 .ant-btn-loading：
+   恢复完成后 antd 先摘掉 .ant-btn-loading、转圈再用 200ms 收宽退场，挂在 loading 上那 200ms 转圈回到行内、又闪一下横滚；
+   width:auto !important 压住 antd 退场动画写在行内的 width */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .member-table .ant-btn.row-act:not(.ant-btn-icon-only) { position: relative; }
+  .member-table .ant-btn.row-act:not(.ant-btn-icon-only) > .ant-btn-loading-icon { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; width: auto !important; }
+  .member-table .ant-btn.row-act.ant-btn-loading:not(.ant-btn-icon-only) > :not(.ant-btn-icon) { visibility: hidden; }
+}
 /* 设置 · 操作日志：日期 / 时分秒两行，动作标签下面写对象 */
 .audit-at, .audit-act { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; white-space: nowrap; }
 .ant-table-thead > tr > th { font-size: var(--fs-note); font-weight: 500; letter-spacing: 0.01em; }
@@ -4164,7 +4178,10 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .member-roles > * { flex: none; }
 .member-roles > .member-roles-tags { flex: 0 1 auto; min-width: 0; display: inline-flex; align-items: center; gap: 4px; overflow: hidden; white-space: nowrap; }
 /* 角色标签（第一个角色 + 「+N」）：放不下自己出「…」 */
-.member-roles .member-role-tag { margin: 0; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-roles .member-role-tag { margin: 0; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-flex; align-items: center; gap: 3px; }
+/* 只截第一个角色名，「+N」不截（11-23）：窄格里也看得出还有别的角色，悬停角色名（TruncTip）或「+N」（原生提示）看全部 */
+.member-roles .member-role-main { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.member-roles .member-role-more { flex: none; }
 /* 成员管理角色格里的两个小图标（不加宽角色列）：系统管理员小盾牌（P-判定-06，实心 = 是，空心 = 只管本线）、不管设置齿轮（勾上 = 划掉的橙色齿轮） */
 .member-flag-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 4px; background: transparent; color: var(--text-muted); font-size: var(--ic); cursor: pointer; }
 .member-flag-btn:hover:not([aria-disabled="true"]) { background: var(--brand-bg); }
