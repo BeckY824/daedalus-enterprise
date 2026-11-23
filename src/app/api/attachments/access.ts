@@ -67,17 +67,21 @@ export async function 认父记录(挂在: 归属, 要改: boolean | "删"): Pro
   return { 叫法 };
 }
 
-/** 企业版商机 / 线索 / 联系人附件（11-02）：没业务角色不能动；删 = 客户负责人本人或系统管理员（V3.5.1）；传跟着改客户走（负责人，公海里先领） */
+/**
+ * 企业版商机 / 线索 / 联系人附件（11-02）：没业务角色不能动；传跟着改客户走（负责人，公海里先领）。
+ * 删和传同一个口径（P-删-04「能编辑这一行的人才能删附件」，11-23 改）：能传就能删；原来删按「能删除」判（客户负责人本人或系统管理员），
+ * 能改客户的其他人（比如身为负责人的管理）传得上删不掉。系统管理员照旧能删公海里客户的附件（#403 审查）
+ */
 async function 企业版改附件挡(要改: true | "删", 客户: string | null): Promise<string | null> {
   const 我 = await getCurrentUser();
   if (!我) return "请先登录";
   const org = await 权限组织();
   if (!org || 没设业务角色(org, 我.id)) return "你还没有业务角色，不能改数据，请找总管理设置";
   const c = 客户 ? await defaultClient.customer.findUnique({ where: { id: 客户 }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }) : null;
-  if (要改 === "删") return 能删除(我, org, c && !c.pool ? c.salesOwnerId : null) ? null : 只有总管理能删话;
+  if (要改 === "删" && 能删除(我, org, c && !c.pool ? c.salesOwnerId : null)) return null;
   if (!c) return null;
-  if (c.pool) return "这位客户在公海里，先领取再改";
-  return 能改客户(我, { salesOwnerId: c.salesOwnerId, 在公海: false }, org) ? null : "只有负责人能改附件";
+  if (c.pool) return 要改 === "删" ? 只有总管理能删话 : "这位客户在公海里，先领取再改";
+  return 能改客户(我, { salesOwnerId: c.salesOwnerId, 在公海: false }, org) ? null : 要改 === "删" ? "只有负责人能删附件" : "只有负责人能改附件";
 }
 
 /** 项目附件的权限：带限定的 prisma 取项目（看不到的项目当不在），再按 露客户 / 能管项目 挡 */

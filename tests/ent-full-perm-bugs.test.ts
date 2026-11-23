@@ -221,6 +221,22 @@ describe("【中】附件 认父记录：联系人 / 线索 / 商机三支不看
     expect("错" in r2, JSON.stringify(r2)).toBe(true);
   });
 
+  it("P-删-04（11-23）：删附件和传附件同一口径——能传就能删（项目运营角色的负责人原来传得上、删不掉）；别人的客户照拒", async () => {
+    await 开规则(true);
+    await raw.entMember.update({ where: { userId: 人.销售丙 }, data: { bizRole: "project_ops" } });
+    忘掉企业版范围();
+    const c = await raw.contact.create({ data: { name: "丙客户的联系人", customerId: 客户.丙的 } });
+    const 传 = await 作为("销售丙", () => 认父记录({ contactId: c.id }, true));
+    expect("错" in 传, JSON.stringify(传)).toBe(false);
+    const 删 = await 作为("销售丙", () => 认父记录({ contactId: c.id }, "删"));
+    expect("错" in 删, JSON.stringify(删)).toBe(false);
+    const 别人删 = await 作为("销售乙", () => 认父记录({ contactId: c.id }, "删"));
+    expect("错" in 别人删, JSON.stringify(别人删)).toBe(true);
+    // 公海客户的联系人附件：照旧只有系统管理员删得了
+    const g = await raw.contact.create({ data: { name: "公海客户的联系人", customerId: 客户.公海 } });
+    expect("错" in (await 作为("销售甲", () => 认父记录({ contactId: g.id }, "删")))).toBe(true);
+  });
+
   it("没设业务角色的人给公海客户的联系人传附件 → 应被拒", async () => {
     await 开规则(true);
     const c = await raw.contact.create({ data: { name: "公海客户的联系人", customerId: 客户.公海 } });
