@@ -94,9 +94,11 @@ type 台账行 = {
 
 /**
  * 台账「结果」：查重按钮、保存被拦 = 拦截；同号协同写进了现有项目（出口 A）= 写进现有项目；市场成员在负责人名下新建了线索（出口 C，重复咨询第一步）= 新建线索；
- * 查的人在同一个项目组 = 同组提示
+ * 出口 C 交销售挑不到人、整笔没建 = 没人接：原因（台账没有原因列，原因跟在结果后面，没人接结果 拼）；查的人在同一个项目组 = 同组提示
  */
-export type 撞号结果 = "拦截" | "写进现有项目" | "新建线索" | "同组提示";
+export type 撞号结果 = "拦截" | "写进现有项目" | "新建线索" | "同组提示" | `${typeof 没人接前缀}${string}`;
+export const 没人接前缀 = "没人接：";
+export const 没人接结果 = (为什么: string) => `${没人接前缀}${为什么}`.slice(0, 200) as `${typeof 没人接前缀}${string}`;
 
 /** 记一行（10 分钟内同一人同一客户同一键的并进上一行），新记的看要不要预警。从不抛：台账没记上不挡查重 */
 async function 记撞号(d: 台账行): Promise<{ id: string; action: string | null } | null> {
@@ -123,11 +125,11 @@ async function 记撞号(d: 台账行): Promise<{ id: string; action: string | n
 
 /**
  * 第一档、第二档：数够了就发，同一对象 7 天内同一档只发一次（按 warnTier 的位看发没发过）。
- * 结果是「新建线索」的不算次数（出口 C 是正常承接，不是试探；重复咨询研判 11-21 默认）
+ * 结果是「新建线索」「没人接：…」的不算次数（出口 C 是正常承接，没人接也是正常承接没接上，不是试探；重复咨询研判 11-21 默认）
  */
 async function 看预警(行id: string, d: 台账行): Promise<void> {
   const 起 = new Date(Date.now() - 撞号预警.天数 * 86_400_000);
-  const 不同组 = { customerId: d.customerId, sameGroup: false, createdAt: { gte: 起 }, result: { not: "新建线索" } };
+  const 不同组 = { customerId: d.customerId, sameGroup: false, createdAt: { gte: 起 }, NOT: [{ result: "新建线索" }, { result: { startsWith: 没人接前缀 } }] };
   const [org, 客户, 查的人] = await Promise.all([
     读组织(),
     看全部(() => prisma.customer.findUnique({ where: { id: d.customerId }, select: { id: true, name: true, shortName: true, customerNo: true } })),
@@ -173,7 +175,7 @@ async function 看预警(行id: string, d: 台账行): Promise<void> {
 
 /**
  * 撞上这位客户：露出负责人、记台账。公海 / 没负责人 / 占位负责人 / 我自己名下的 = null（不提示、不记）。
- * 结果 = 这次怎么处理的：查重按钮、保存被拦都是「拦截」，同号协同写进了现有项目是「写进现有项目」，出口 C 建了线索是「新建线索」
+ * 结果 = 这次怎么处理的：查重按钮、保存被拦都是「拦截」，同号协同写进了现有项目是「写进现有项目」，出口 C 建了线索是「新建线索」、交销售没人接是「没人接：原因」
  */
 export async function 撞上客户(
   我: string, 读的我: 谁 | null, 键类型: 撞号键类型, 键值: string, customerId: string, 结果: Exclude<撞号结果, "同组提示"> = "拦截",
