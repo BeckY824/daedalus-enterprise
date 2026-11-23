@@ -41,7 +41,7 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {建档弹窗} from '@/app/(app)/projects/new/ProjectWizard';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
-    const 数据={users:[{id:'u1',name:'我自己',email:'a'},{id:'u2',name:'同事乙',email:'b'},...(window.__多一位?[{id:'u3',name:'暂停的丙',email:'c'}]:[])],要下一步:false,企业:{渠道们:[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:!window.__市场,按区域:!!window.__市场,本人线:window.__本人线??null,客户只给自己:false,可指定:window.__可指定}};
+    const 数据={users:[{id:'u1',name:'我自己',email:'a'},{id:'u2',name:'同事乙',email:'b'},...(window.__多一位?[{id:'u3',name:'暂停的丙',email:'c'}]:[])],要下一步:false,企业:{渠道们:window.__渠道们??[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:!window.__市场,按区域:!!window.__市场,本人线:window.__本人线??null,客户只给自己:false,可指定:window.__可指定}};
     function 页(){const [开,set开]=React.useState(true);return <建档弹窗 open={开} 标题={window.__标题||'新增客户'} 项目={window.__开关||'关'} 数据={数据} onClose={()=>set开(false)}/>;}
     createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'u1',name:'我自己'}}><页/></我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"', "process.env.CRM_ENTERPRISE": '"1"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
@@ -127,6 +127,30 @@ it("按钮不变灰：空着点「建好」就地标红、写「还差 N 项」�
     await 框.getByLabel("号码", { exact: true }).fill("13905712266");
     expect(await 框.locator("[data-ge='号码'] [role=alert]").count()).toBe(0);
   } finally { await page.close(); }
+});
+
+it("空着点「保存」：焦点跳到第一处缺项「号码」（类型框不红就不落在类型上，E1 · D03，3703 实操 r63）；补一格再点，焦点跟到下一处缺项：渠道（级联）→ 业务线（下拉）（1280 / 390）", async () => {
+  for (const w of [1280, 390]) {
+    const page = await 开(w, { __渠道们: [{ id: "ch1", name: "广交会", attr: null, platform: "展会", active: true }] });
+    try {
+      const 框 = page.getByRole("dialog");
+      const 保存 = 框.getByRole("button", { name: /^保\s*存$/ });
+      const 焦点格 = () => page.evaluate(() => document.activeElement?.closest("[data-ge]")?.getAttribute("data-ge") ?? null);
+      await 保存.click();
+      await 框.getByRole("status").filter({ hasText: /还差 \d+ 项/ }).waitFor();
+      await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? null)).toBe("号码");
+      // 填了号码（联系人那条跟着过了）：下一处是渠道（antd 6 级联里的 input）
+      await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+      await 保存.click();
+      await expect.poll(焦点格).toBe("来源");
+      // 选了触点、渠道不卡了：下一处是业务线（antd 6 下拉没有 .ant-select-selector，落在它的 input 上）
+      await 选(page, "渠道触点", "公司资源");
+      await 保存.click();
+      await expect.poll(焦点格).toBe("业务线");
+      expect(await page.evaluate(() => document.activeElement?.matches("input.ant-select-input") ?? false)).toBe(true);
+      expect((await 调(page)).filter((x) => String(x[0]).startsWith("建档")).length).toBe(0);
+    } finally { await page.close(); }
+  }
 });
 
 it("客户名称选填（11-19 用户「客户名称设为不必填」）：名称空着照样建，不查客户名，交上去 name 是空串；1024 / 1280 / 1366 和手机 390 不横向溢出", async () => {

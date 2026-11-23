@@ -38,7 +38,7 @@ const 对照表: Record<string, 对照> = {
 
 /** 现在还差着的（11-22 盘点，11-23 跟 main 划掉已对上的卡片圆角），后面写为什么没并 */
 const 还许不同: Record<string, string> = {
-  "token.boxShadow ↔ --shadow-card": "CSS 多 0.5px 描边、扩散 3px 10px；antd 4px 16px。卡片投影以 CSS 为准，antd 这条只剩没接管的浮层在用",
+  "token.boxShadow ↔ --shadow-card": "D-55 起 CSS 只剩一层淡影（0 1px 2px，浓淡跟 --card-raise-a）、边走 --card-line；antd 两层 1px 2px + 4px 16px。卡片投影以 CSS 为准，antd 这条只剩 antd 内部没接管的少数地方在用",
   "token.boxShadowSecondary ↔ --shadow-pop": "CSS 多 0.5px 描边，其余一样",
   "Menu.iconSize ↔ --ic": "侧栏菜单图标 15，全站图标 16；并了侧栏图标大 1px",
 };

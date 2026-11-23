@@ -2439,7 +2439,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     if (!过时了 && 错们.some(([, 话]) => 话)) {
       set试过(true);
       const 第一处 = 错们.find(([, 话]) => 话)![0];
-      window.setTimeout(() => document.querySelector<HTMLElement>(`.follow-edit-modal [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), .ant-select-selector, [tabindex="0"])`)?.focus(), 0);
+      window.setTimeout(() => document.querySelector<HTMLElement>(`.follow-edit-modal [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), [tabindex="0"])`)?.focus(), 0);
       return;
     }
     set交中(true);
@@ -2680,7 +2680,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       set试过(true);
       // 焦点跳到第一处没填好的格子（等红字画出来再找）
       const 第一处 = 错们.find(([, 话]) => 话)![0];
-      window.setTimeout(() => document.querySelector<HTMLElement>(`.follow-modal [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), .ant-select-selector, [tabindex="0"])`)?.focus(), 0);
+      window.setTimeout(() => document.querySelector<HTMLElement>(`.follow-modal [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), [tabindex="0"])`)?.focus(), 0);
       return;
     }
     set交中(true);

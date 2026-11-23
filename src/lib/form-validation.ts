@@ -38,3 +38,17 @@ export function 跳到第一处(form: { focusField: (name: (string | number)[]) 
     return null;
   };
 }
+
+/** 格子里能接焦点的控件。antd 6 的下拉、日期框里面也是一个 input（.ant-select-selector 已经没了），自定义的按 tabindex=0 认 */
+export const 可聚焦控件 = ':is(textarea, input:not([type=hidden]):not(:disabled), [tabindex="0"])';
+
+/**
+ * 设计语言 E1（D03）：一格里该接焦点的那个控件——先找标红的（类型 + 号码拼在一格里、只有号码红时落到号码上），没有标红的取第一个。
+ * 不是 antd Form 的表单（自己算缺项、按格子容器标红的）用它：`格里该聚焦的(格子)?.focus()`
+ */
+export function 格里该聚焦的(格子: Element | null): HTMLElement | null {
+  if (!格子) return null;
+  const 红 = 格子.querySelector('[class*="-status-error"]');
+  const 红里的 = 红 && (红.matches(可聚焦控件) ? 红 : 红.querySelector(可聚焦控件));
+  return (红里的 ?? 格子.querySelector(可聚焦控件)) as HTMLElement | null;
+}

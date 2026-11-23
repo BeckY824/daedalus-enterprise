@@ -50,6 +50,8 @@ import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-ru
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { 格里该聚焦的 } from "@/lib/form-validation";
+import { 滚法 } from "@/lib/reduced-motion";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
 import { 回复晚于回收, 北京墙钟转时刻, 认定时分配, 分配晚于回复 } from "@/lib/project/time-fields";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
@@ -529,8 +531,12 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   // 销售选自动分配：分出去后就看不到这个项目了（A9）。就地黄条说后果、按钮写明「并分出去」，不再叠一层确认框（原型 cr.auto）
   const 自动分出去 = 带项目 && !!企业?.是销售 && d.项目.分配方式 === 1;
 
+  // 设计语言 E1（D03）：滚过去，焦点也跳到这一格（等红字画出来再挪；不让 focus 自己跳着滚，滚动照上面这一下）
+  //「号码类型」和号码拼在「联系方式」一格里（没有自己的 data-ge），滚到那一格、焦点落在标红的类型框上
   const 滚到 = (g: 格) => {
-    document.querySelector(`[data-ge="${g}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const 选 = `[data-ge="${g === "号码类型" ? "号码" : g}"]`;
+    document.querySelector(选)?.scrollIntoView({ block: "center", behavior: 滚法() });
+    window.setTimeout(() => 格里该聚焦的(document.querySelector(选))?.focus({ preventScroll: true }), 0);
   };
 
   // 手动「查重」：号码、客户名都查一遍

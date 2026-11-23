@@ -198,7 +198,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
     if (错们.some(([, 话]) => 话)) {
       set试过(true);
       const 第一处 = 错们.find(([, 话]) => 话)![0];
-      window.setTimeout(() => document.querySelector<HTMLElement>(`.done-plan [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), .ant-select-selector)`)?.focus(), 0);
+      window.setTimeout(() => document.querySelector<HTMLElement>(`.done-plan [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]))`)?.focus(), 0);
       return { ok: false, error: "有几项没填好，看标红的" };
     }
     if (要选项目 && !项目) return { ok: false, error: "请选一个关联项目" };
