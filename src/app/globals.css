@@ -1044,6 +1044,10 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   white-space: nowrap;
 }
 
+/* K1（设计语言 E6b）：深色提示框（antd Tooltip）里的链接——文字链按钮、Typography.Link 原来是品牌蓝压在深底上（3.94:1），看不清。
+   跟提示框的字同色（antd 给的浅色字，各主题、深色模式都配好了对比），靠下划线认出是链接 */
+.ant-tooltip :is(a, .ant-typography-link, .ant-btn-link) { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.ant-tooltip :is(a, .ant-typography-link, .ant-btn-link):hover { color: inherit; opacity: .85; }
 /* 截了就悬停看全文的浮层（TruncTip 挂在 body 上，盖过弹窗、抽屉） */
 .trunc-tip {
   position: fixed;
@@ -1614,11 +1618,7 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 .rec-composer-bar > .ant-btn { flex: none; }
 .rec-composer-hint + .ant-btn { margin-left: auto; }
 .rec-filters { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 16px 4px; }
-.rec-chip {
-  font-size: var(--fs-note); padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border);
-  color: var(--text-muted); cursor: pointer; background: var(--panel); transition: all var(--t-fast) var(--ease);
-}
-.rec-chip:hover { border-color: var(--brand-line); color: var(--ink); }
+/* .rec-chip 的底样式在下面「沟通框」那段（D20，设计语言 E6c：原来这里还有一份，每一项都被下面那份盖掉，删了外观不变） */
 .rec-chip-on { background: var(--brand-bg); border-color: var(--brand-line); color: var(--brand); }
 .rec-plan {
   margin: 12px 16px 0; padding: 10px 14px; border-radius: var(--r-card);
@@ -2302,7 +2302,8 @@ button.ais-hd-b { cursor: pointer; }
    11-21 去掉框上的 contain: size：原来框的高只认卡列、不认自己的内容，框顶上摆了待办（放弃、待复核、待分配……）就把输入框挤出白卡底边；
    现在框至少和卡列一样高，内容多了框跟着长（这一行跟着长），不越框、框里不出滚动条（tests/ent-home-frame-grow.test.ts） */
 .cli-empty .cli-ck-g { flex: none; }
-/* 11-01 用户要过「上下居中」；16a（11-11）改回顶上：居中时上面空一大块，框和四张卡的顶线贴着页边距，下面留白 */
+/* 上下居中（margin-block: auto）：11-01 用户要过「上下居中」；16a（11-11）一度改回贴顶，又按用户 11-11「首页按之前的设计，右侧模块整体居中」撤回（b18c1c3c）。
+   现在就是居中，别再按「贴顶」改回去（设计语言 E6 · D11：原注释还写着「改回顶上」，和代码对不上） */
 .cli-empty .cli-ck-g { margin-block: auto; }
 .cli-empty .home-cards { align-self: start; position: static; }
 /* 问过之后（10-31 改版 R1）：右边四张卡收起，对话铺满这一格——你的话贴着右边、回答占满，右侧不再空一大片（照 Codex / Claude Code）。
@@ -5859,21 +5860,23 @@ button.proj-miss-chip { cursor: pointer; }
   :root:root .cust-head-io > span:not(.ant-btn-icon) { display: none; }
   /* 筛选行三排：①「列表 | 看板」…「列」②搜索 + 重置 ③客户状态、负责人、更多筛选（阶段 / 进程收进更多筛选，同 1366，L-新5）。
      原来五排（列表 | 看板 / 搜索 / 状态 + 负责人 / 阶段 + 进程 / 更多筛选 + 重置）再单独一排「列」，表格从 y≈420 才开始。
-     市场管理的客户页（我分出去的，.cust-market）同一摆法：「客户列表 | 我分出去的」…「列」/ 搜索 + 重置 / 成员、创建人、更多筛选 */
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space { order: 1; flex-basis: 100%; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .list-bar-end { order: 2; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item { order: 2; min-width: 0; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-tag) { order: 0; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 200px; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { flex: 1 1 96px; }
-  :root:root :is(.cu-morph-wrap, .cust-market) .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
+     市场管理的客户页（我分出去的，.cust-market）同一摆法：「客户列表 | 我分出去的」…「列」/ 搜索 + 重置 / 成员、创建人、更多筛选；
+     项目页（.proj-page，设计语言 E2 · D31）同一摆法：「列表 | 看板」…「列」/ 搜索 + 重置 / 负责人等、更多筛选 */
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space { order: 1; flex-basis: 100%; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .list-bar-end { order: 2; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item { order: 2; min-width: 0; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item:has(> .ant-tag) { order: 0; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 200px; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { flex: 1 1 96px; }
+  :root:root :is(.cu-morph-wrap, .cust-market, .proj-page) .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
   /* 「全部客户状态」手机上换短写「全部状态」，一格放得下不截 */
   :root:root .ph-full { display: none; }
   :root:root .ph-short { display: inline; }
-  /* K9 市场管理的客户页（我分出去的）：标题块独占一行，按钮换到下一行，标题不再挤成「客…」、副标题不竖排 */
-  :root:root .cust-market > .page-head > :first-child { flex-basis: 100% !important; }
+  /* K9 市场管理的客户页（我分出去的）：标题块独占一行，按钮换到下一行，标题不再挤成「客…」、副标题不竖排；
+     项目页同（K3，设计语言 E2：带「离职交接」的角色 375 宽标题原来挤成一字一行） */
+  :root:root :is(.cust-market, .proj-page) > .page-head > :first-child { flex-basis: 100% !important; }
 }
 /* =====================================================================
    设计语言 H-A（11-21，首页骨架、顶部提示、输入框、指标卡；依据 现在-首页-20261121.md H0 / H4 / H6 / H7）。
@@ -6734,3 +6737,26 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root:root .proj-inline-edit > .ant-input-textarea-show-count { margin-bottom: 18px; }
 :root:root:root .proj-inline-edit > .ant-input-textarea-show-count .ant-input-data-count { bottom: -18px; font-size: var(--fs-min); line-height: 18px; }
 
+/* ---------- 设计语言 E3 · 新线索（11-22，结构改动在 ProjectsView.tsx：外层 .leads-page、行末两颗 .row-act） ---------- */
+/* D37 筛选行「全部成员」「全部进程」占位字墨色：原来是 faint（2.21:1，像禁用），同 L-A 客户页 */
+:root:root .leads-page .list-bar .ant-select-placeholder { color: var(--ink); }
+@media (max-width: 767px) {
+  /* D06 首屏多露行：页头副标题收起（原来在 390 折成六行，把「我分出去的」「新线索」挤到右下） */
+  :root:root .leads-page > .page-head > :first-child > p { display: none; }
+  /* 筛选两排（照 L-A 客户页的摆法）：①搜索 + 重置 …「列」②负责人、进程各占一半。
+     原来四排：搜索 / 两个下拉 / 「列」一个人一排，表格从 y≈390 才开始。筛选组拆开（display: contents），各格直接排进 .list-bar */
+  :root:root .leads-page .list-bar > .ant-space { display: contents; }
+  :root:root .leads-page .list-bar > .list-bar-gap { display: none; }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item { min-width: 0; }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item:has(> .ant-input-affix-wrapper) { order: 0; flex: 1 1 160px; }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 100% !important; }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item:has(> .list-reset) { order: 1; flex: none; }
+  :root:root .leads-page .list-bar > :is(.ant-btn, .ant-dropdown-trigger) { order: 2; flex: none; }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item:has(> .ant-select) { order: 3; flex: 1 1 calc(50% - var(--s1)); }
+  :root:root .leads-page .list-bar > .ant-space > .ant-space-item > .ant-select { width: 100% !important; }
+}
+
+/* ---------- 设计语言 E2 · 项目页、项目详情独有部分（11-22，结构改动在 ProjectsView.tsx：外层 .proj-page、
+   「列表 | 看板」挪进筛选行；手机宽筛选摆法、K3 页头标题独占一行并进上面 L-A 那两段的选择器） ---------- */
+/* K5 补填框：挂在「完成节点」下面那 4px 间距从浮层偏移挪进外框（ProjectDetail 补填框不偏移）——浮层库往屏里挪时把它也算进去，外框下沿不再出屏 3–4px */
+:root:root .pd-fill-pop.ant-popover:is(.ant-popover-placement-bottom, .ant-popover-placement-bottomLeft, .ant-popover-placement-bottomRight) { padding-top: 4px; }

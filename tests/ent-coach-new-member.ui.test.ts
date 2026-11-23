@@ -73,6 +73,22 @@ it("系统管理员新增：能选销售教练；选了教练销售类灰掉并�
   } finally { await page.close(); }
 }, 慢);
 
+it("设计语言 E1（D03）：空着点「保存」——各格下面报红、焦点到第一处没填的「姓名」，不交", async () => {
+  const { page, errors } = await open(true);
+  try {
+    await page.getByRole("button", { name: /新增成员/ }).click();
+    const 框 = page.getByRole("dialog");
+    await 框.getByLabel("姓名").waitFor();
+    await 框.getByRole("button", { name: /保\s*存/ }).focus();
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await 框.locator(".ant-form-item-explain-error").first().waitFor();
+    expect(await 框.locator(".ant-form-item-explain-error").allInnerTexts()).toEqual(expect.arrayContaining(["请填写姓名"]));
+    await expect.poll(() => page.evaluate(() => document.activeElement?.id ?? "")).toMatch(/name$/);
+    expect((await 调用们(page)).filter(([n]) => n === "saveUser").length).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 慢);
+
 it("先选了销售成员：销售教练灰掉", async () => {
   const { page, errors } = await open(true);
   try {

@@ -17,7 +17,7 @@ import { PlusOutlined, SearchOutlined } from "@ant-design/icons";
 import { saveMainChannel, toggleMainChannel, deleteMainChannel } from "./actions";
 import SaveButton from "@/components/SaveButton";
 import InlineConfirm from "@/components/InlineConfirm";
-import { isFormValidationError } from "@/lib/form-validation";
+import { isFormValidationError, 跳到第一处 } from "@/lib/form-validation";
 import { 主渠道名上限, 分类文字, type 主渠道行 } from "@/lib/enterprise/channel-main-core";
 import { 成员选项, type 可选成员 } from "@/lib/utils";
 
@@ -52,7 +52,7 @@ export function MainChannelEdit({ 编辑, users = [], 属性选项 = [], 子渠�
     try {
       v = await form.validateFields();
     } catch (e) {
-      if (isFormValidationError(e)) return { ok: false as const, error: "还有必填项没填" };
+      if (isFormValidationError(e)) { 跳到第一处(form)(e); return { ok: false as const, error: "还有必填项没填" }; }
       throw e;
     }
     const res = await saveMainChannel({

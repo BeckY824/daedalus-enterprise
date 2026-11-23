@@ -36,7 +36,7 @@ const plugin: Plugin = { name: "project-feed-edit-boundaries", setup(b) {
 
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
-    import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
+    import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import FollowAttachments from '@/components/FollowAttachments';import AttachmentsPanel from '@/components/AttachmentsPanel';
     import {切换视图Provider} from '@/components/ViewAsContext';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     const root=createRoot(document.getElementById('root'));
@@ -50,7 +50,9 @@ beforeAll(async () => {
       followUps:[{id:'f1',type:'PHONE',method:null,initiator:null,content:'沟通内容'+字,occurredAt:'2026-10-03T02:00:00.000Z',who:'组长甲',node:'方案报价',code:'FUL0001',提醒:null,版本:'v1',我记的:true,附件:[]}],
       members:[],删前清点:{留痕:0,组员:0,沟通:1},企业版:true,能记沟通:true,可改沟通:true,可删沟通:true,提成:null,level:'A',成交钱,项目新字段:{painPoints:'痛点'+字,contractStatus:'起草中'},所在地:{addrCountry:'中国',addrProvince:'广东省',addrCity:'深圳市',addrDistrict:'南山区',location:''},项目来源:{name:'渠道',跟客户:true},channelId:null,已立项天数:3,渠道们:[],aiEnabled:false};
     const 包=(x)=><ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>{x}</BusinessProvider></App></ConfigProvider>;
-    window.__详情=(x,能改=true)=>root.render(包(<ProjectDetail p={{...基,...x}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={null}/>));
+    // flushSync：__详情 一回来就画完（模拟 router.refresh 带回新 props 已经落地）。不同步的话，用例紧接着按 Ctrl+Enter 时新 props 可能还没提交，
+    // 乐观值记在旧值上、新 props 晚到又把乐观值清掉，格子显示成刷新带回的旧字（E2 K7 之后约一半的跑次撞上，11-22 查明）
+    window.__详情=(x,能改=true)=>flushSync(()=>root.render(包(<ProjectDetail p={{...基,...x}} 能改={能改} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={null}/>)));
     window.__视图详情=(x)=>root.render(包(<切换视图Provider value={true}><ProjectDetail p={{...基,...x}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={null}/></切换视图Provider>));
     const 附=(id,mime='application/pdf')=>({id,name:id+'.pdf',mime,size:10,有文件:true,createdAt:'2026-10-01'});
     window.__附=附;

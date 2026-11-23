@@ -156,6 +156,19 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
 
   const 下次日 = 下次 === "none" ? null : 下次 === "pick" ? 日子?.format("YYYY-MM-DD") ?? null : dayjs().add(Number(下次), "day").format("YYYY-MM-DD");
   const 可存 = 只完成 || (项目们 !== undefined && hasVisibleText(字) && (下次 !== "pick" || !!日子) && (!要选项目 || !!项目));
+  /*
+    设计语言 E1（D03，同 D4 新建沟通框）：「保存并完成」一直能点（项目还在取的那一下除外）；点了还缺的在各自格子下面报红、
+    焦点跳到第一处，* 在标签前。原来键灰着，不说缺什么
+  */
+  const [试过, set试过] = useState(false);
+  const 错们: [格: string, 话: string | null][] = 只完成 || 项目们 === undefined ? [] : [
+    ["项目", 要选项目 && !项目 ? "请选一个关联项目" : null],
+    ["一句话", !hasVisibleText(字) ? "请写一句这次聊了什么" : null],
+    ["下次", 下次 === "pick" && !日子 ? "请选下次跟进的日子" : null],
+  ];
+  const 格错 = (格: string) => (试过 ? 错们.find(([k]) => k === 格)?.[1] ?? null : null);
+  const 错行 = (格: string) => 格错(格) && <div className="fm-err" role="alert">{格错(格)}</div>;
+  const 星 = (名: string) => <span className="done-plan-k"><span className="fm-req" aria-hidden>*</span>{名}</span>;
 
   /** 这笔不算有效沟通（C12）：框里就地说一句（role=status），对勾放完再关框 */
   const [短话, set短话] = useState<string | null>(null);
@@ -181,6 +194,12 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
       守.存好了();
       set已存(true);
       return { ok: true };
+    }
+    if (错们.some(([, 话]) => 话)) {
+      set试过(true);
+      const 第一处 = 错们.find(([, 话]) => 话)![0];
+      window.setTimeout(() => document.querySelector<HTMLElement>(`.done-plan [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]))`)?.focus(), 0);
+      return { ok: false, error: "有几项没填好，看标红的" };
     }
     if (要选项目 && !项目) return { ok: false, error: "请选一个关联项目" };
     if (!可存) return { ok: false, error: "先写一句这次聊了什么" };
@@ -239,7 +258,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
             </Button>
           )}
           <span ref={保存键}>
-            <SaveButton 做={保存} disabled={!可存} 已保存="已完成" 成了={交出去}>
+            <SaveButton 做={保存} disabled={项目们 === undefined} 已保存="已完成" 成了={交出去}>
               {只完成 ? "完成计划" : "保存并完成"}
             </SaveButton>
           </span>
@@ -256,10 +275,13 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
             <div role="note" className="done-plan-note">这位客户还没有在推的项目：只把计划标为完成，不另记沟通</div>
           ) : <>
           {项目们 && 项目们.length > 0 && (
-            <div className="done-plan-row">
-              <span className="done-plan-k">项目</span>
+            <div className="done-plan-row" data-fk="项目">
+              {要选项目 ? 星("项目") : <span className="done-plan-k">项目</span>}
               {要选项目 ? (
-                <Select aria-label="关联项目" className="done-plan-pick" placeholder="选择关联项目" value={项目 ?? undefined} onChange={(v: string) => set项目(v)} options={项目们.map((x) => ({ value: x.id, label: x.name }))} />
+                <div className="done-plan-v">
+                  <Select aria-label="关联项目" className="done-plan-pick" placeholder="选择关联项目" status={格错("项目") ? "error" : undefined} value={项目 ?? undefined} onChange={(v: string) => set项目(v)} options={项目们.map((x) => ({ value: x.id, label: x.name }))} />
+                  {错行("项目")}
+                </div>
               ) : (
                 <span className="done-plan-proj">{项目们[0].name}</span>
               )}
@@ -276,8 +298,9 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
               onChange={(v) => { 人改了方式(); set类型(v.type); set方式(v.method); }}
             />
           </div>
-          <div className="done-plan-row">
-            <span className="done-plan-k">一句话</span>
+          <div className="done-plan-row" data-fk="一句话">
+            {星("一句话")}
+            <div className="done-plan-v">
             <Input.TextArea
               aria-label="这次聊了什么"
               autoSize={{ minRows: 2, maxRows: 5 }}
@@ -286,10 +309,14 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
               onChange={(e) => { set字(e.target.value); 守.改了(); }}
               onPressEnter={(e) => { if (e.metaKey || e.ctrlKey) 保存键.current?.querySelector("button")?.click(); }}
               placeholder="聊了什么、结果怎样，比如：客户要了新报价，下周回"
+              status={格错("一句话") ? "error" : undefined}
             />
+            {错行("一句话")}
+            </div>
           </div>
-          <div className="done-plan-row">
+          <div className="done-plan-row" data-fk="下次">
             <span className="done-plan-k">下次</span>
+            <div className="done-plan-v">
             <Space wrap size={8}>
               <Segmented<下次>
                 aria-label="下次跟进"
@@ -304,9 +331,12 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
                   onChange={(d) => set日子(d)}
                   disabledDate={(d) => d.isBefore(dayjs().startOf("day"))}
                   allowClear={false}
+                  status={格错("下次") ? "error" : undefined}
                 />
               )}
             </Space>
+            {错行("下次")}
+            </div>
           </div>
           {短话 && <div role="status" className="rec-plan-said">{短话}</div>}
           {下次日 && <div className="done-plan-tip">{`会排一条 ${dayjs(下次日).format("M 月 D 日")}的计划：${下次主题(字)}`}</div>}

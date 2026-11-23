@@ -76,7 +76,7 @@ test("新建客户时可以就地建渠道，建完自动选中并同步到渠�
   await 渠道弹窗.getByLabel("渠道姓名").fill(渠道名);
   await 渠道弹窗.getByLabel("渠道负责人").click();
   await 下拉选项(page, "quickChannel_channelOwnerId_list").first().click();
-  await 渠道弹窗.getByRole("button", { name: /创\s*建/ }).click();
+  await 渠道弹窗.getByRole("button", { name: /^保\s*存$/ }).click();
 
   // 建完必须已经选上，否则等于没省事
   await expect(渠道弹窗).toBeHidden();
@@ -117,7 +117,7 @@ test("就地建渠道时重名会被挡住，且弹窗留在原地让人改", as
   await 渠道弹窗.getByLabel("渠道姓名").fill(渠道名); // 上一条用例已经建过
   await 渠道弹窗.getByLabel("渠道负责人").click();
   await 下拉选项(page, "quickChannel_channelOwnerId_list").first().click();
-  await 渠道弹窗.getByRole("button", { name: /创\s*建/ }).click();
+  await 渠道弹窗.getByRole("button", { name: /^保\s*存$/ }).click();
 
   await expect(page.getByText(`渠道「${渠道名}」已存在`)).toBeVisible();
   // 关掉就等于让用户重填一遍，必须留在原地

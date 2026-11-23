@@ -187,6 +187,11 @@ export default function ProjectsView({
   const 字典 = 字典of(企业版, 出口叫法);
   const b = useBusiness();
   const 新线索 = 阶段 === "线索";
+  /*
+    D31（设计语言 E2）：项目页「列表 | 看板」挪到筛选行最左、顺序同客户页（原来在页头右上、「看板 | 列表」）；
+    阶段、进程同客户页带「挤」：筛选行放不下时收进「更多筛选」（多了一颗切换，1024 宽不折成两排）
+  */
+  const 切换进筛选 = !新线索 && !客户页 && !换回客户列表;
   // 企业版项目页阶段筛到「线索」：分配入口也摆在这儿（11-01 会议 §5「分配入口搬进项目列表但不看配额」）。
   // 只是多一处入口、不显示配额字样；分不分得出去、配额拦不拦照旧由服务端定
   const 项目页分 = 企业版 && !新线索 && filters.phase === "线索";
@@ -432,6 +437,8 @@ export default function ProjectsView({
 
   // 单格没填（含导入占位的 "-"）一律写「—」（11-01 用户定，lib/empty-value.ts）
   const 无 = <span style={{ color: "var(--empty-fg)" }}>{空值符}</span>;
+  // 行末「分配」「自动分配」的按钮款：L-B 定的行内款 .row-act（D09）
+  const 行钮 = { className: "row-act", size: "small" } as const;
   // 企业版默认只摆 7 列（项目、客户、进程、下一步时间、金额、负责人、回公海日），其余收在「列」里（默认: false）；1366 宽不横向滚
   const 收起 = 企业版 ? { 默认: false } : {};
   const 普通列表: 列<项目行>[] = [
@@ -474,12 +481,14 @@ export default function ProjectsView({
       // 客户公海里的项目跟客户走，不单独分（线索公海的 pooled 也是真，所以不看 pooled；服务端也拦）；
       // 例外：销售管理 / 总管理能「分配」，客户整包出公海（P-公海-10），不摆自动分配。
       // 线索公海的行（客户不在公海）：服务端按「能管公海」拦（P-转-02），市场管理这类管不了公海的不摆两颗键（审核 11-18 分配 P0-3 界面余项）
+      // 两颗用 L-B 定的行内款 .row-act（D09，设计语言 E3 · 新线索）——蓝字、不带框、悬停浅蓝底，和公海「领取」、渠道「录投入」一个样；
+      // 谁看得见、点了做什么都不变
       render: (_: unknown, r: 项目行) => (分配果们[r.id] ? <分配果标 果={分配果们[r.id]} /> : r.result ? null : r.客户在公海 ? (能分公海客户项目 ? (
-        <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
+        <Button aria-label={`分配 ${r.name}`} {...行钮} onClick={() => set分配中(r)}>分配</Button>
       ) : null) : r.pooled && !能分公海客户项目 ? null : (
         <Space size={2}>
-          <Button aria-label={`分配 ${r.name}`} type="link" size="small" onClick={() => set分配中(r)}>分配</Button>
-          <Button aria-label={`自动分配 ${r.name}`} type="link" size="small" onClick={() => void 自动分(r)}>自动分配</Button>
+          <Button aria-label={`分配 ${r.name}`} {...行钮} onClick={() => set分配中(r)}>分配</Button>
+          <Button aria-label={`自动分配 ${r.name}`} {...行钮} onClick={() => void 自动分(r)}>自动分配</Button>
         </Space>
       )),
     }] : []),
@@ -537,14 +546,14 @@ export default function ProjectsView({
       ...(!新线索
         ? [{
             // 市场管理的客户页（我分出去的）：阶段 / 进程同客户页带「挤」——一行放不下先收进「更多筛选」，手机上一律收（设计语言 L-A · L-新5 / D06）
-            键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 挤: 换回客户列表, 有值: !!f.phase,
+            键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 挤: 换回客户列表 || 切换进筛选, 有值: !!f.phase,
             渲染: (style: CSSProperties) => (
               <Select style={style} aria-label="阶段" value={f.phase || ""} onChange={(v: string) => apply({ phase: v, node: "" })} options={[{ value: "", label: "全部阶段" }, ...阶段们.map((s) => ({ value: s, label: s }))]} />
             ),
           }]
         : []),
       {
-        键: "node", 名: "进程", 宽: 130, 默认外露: true, 挤: 换回客户列表, 有值: !!f.node,
+        键: "node", 名: "进程", 宽: 130, 默认外露: true, 挤: 换回客户列表 || 切换进筛选, 有值: !!f.node,
         渲染: (style: CSSProperties) => (
           <Select style={style} aria-label="进程" placeholder="全部进程" allowClear value={f.node || undefined} onChange={(v?: string | null) => apply({ node: v ?? "" })} options={进程选项} popupMatchSelectWidth={false} />
         ),
@@ -598,6 +607,12 @@ export default function ProjectsView({
     ],
     { 停用: 新线索 },
   );
+  /*
+    市场管理的客户页（我分出去的）：页头和客户页同序（设计语言 L-A · L-新3 / D31）——「列表 | 看板」照客户页的先后，
+    离职交接排在主按钮左边，「新建 ▾」固定最右（原来离职交接在最左、切换是「看板 | 列表」）。谁看得见不变；项目页照原样
+  */
+  const 市场同序 = 换回客户列表;
+  const 看法钮 = <Segmented<"列表" | "看板"> key="view" aria-label="列表 / 看板" options={市场同序 || 切换进筛选 ? ["列表", "看板"] : ["看板", "列表"]} value={看法} onChange={换看法} />;
   /* 市场角色客户页的「我分出去的」视图（X-107）：和客户页同一颗切换、同一个位置——筛选行最左（11-12 用户：「列表｜看板 放到和筛选栏一行，最左边」），
      点「客户列表」记下并回客户列表。页头那颗「看板 / 列表」是原项目页自己的（这一视图内部两种形态），照原样留着；两颗字不一样，免得看成一回事 */
   const 换回切换 = 换回客户列表 ? (
@@ -607,6 +622,7 @@ export default function ProjectsView({
   ) : null;
   const 筛选 = (<>
     {换回切换}
+    {切换进筛选 && <div className="list-view-seg">{看法钮}</div>}
     <Space wrap size={[10, 10]}>
       <ListSearch
         width={240}
@@ -623,11 +639,6 @@ export default function ProjectsView({
   </>);
 
   const 有分出去钮 = (新线索 || 项目页分) && 线索分配开着;
-  /*
-    市场管理的客户页（我分出去的）：页头和客户页同序（设计语言 L-A · L-新3 / D31）——「列表 | 看板」照客户页的先后，
-    离职交接排在主按钮左边，「新建 ▾」固定最右（原来离职交接在最左、切换是「看板 | 列表」）。谁看得见不变；项目页照原样
-  */
-  const 市场同序 = 换回客户列表;
   const 离职交接钮 = !新线索 && !客户页 && 待交接 != null && <Link key="handover" href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>;
   /** 项目专用的几颗按钮：项目页在页头；客户页看板视图在筛选行右端（C17 / C4；11-12 起新增项目挪进客户页页头「新建 ▾」） */
   const 项目按钮 = (
@@ -635,7 +646,7 @@ export default function ProjectsView({
       {有分出去钮 && <AssignedOutButton />}
       {/* 客户页看板视图的离职交接在客户页页头（C15），这里不再摆一个 */}
       {!市场同序 && 离职交接钮}
-      {!新线索 && !客户页 && <Segmented<"列表" | "看板"> key="view" options={市场同序 ? ["列表", "看板"] : ["看板", "列表"]} value={看法} onChange={换看法} />}
+      {!新线索 && !客户页 && !切换进筛选 && 看法钮}
       {市场同序 && 离职交接钮}
       {/* 一个主按钮：新线索页叫「新线索」；企业版项目首页叫「新增项目」，点开先选新客户还是老客户（11-01 去掉旁边的下拉）。
           市场角色客户页的「我分出去的」：和客户页页头同一颗「新建 ▾」（新建客户 / 新建项目，11-12）。客户页看板视图不摆（在客户页页头） */}
@@ -645,7 +656,8 @@ export default function ProjectsView({
             // 新建项目同客户页：服务端按 能新建和领取 拒（没设业务角色、只读管理员），这里不摆；两样都没有整颗不摆
             ...(能新建 ? [{ key: "project", label: "新建项目", onClick: 新建 }] : []),
           ]} />
-        : (能新建 || !新线索) && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>)}
+        // D29（设计语言 E2）：项目页同新线索页、客户页看「能新建」——只读管理员、没设业务角色的不摆「新增项目」（服务端本来就拒）
+        : 能新建 && <Button type="primary" icon={<PlusOutlined />} onClick={新建}>{新线索 ? "新线索" : 企业版 ? "新增项目" : "新建项目"}</Button>)}
     </>
   );
 
@@ -671,7 +683,9 @@ export default function ProjectsView({
 
   return (
     // cust-market：市场管理的客户页（我分出去的），手机宽页头标题不挤（K9，globals.css）
-    <div className={换回客户列表 ? "cust-market" : undefined}>
+    // leads-page：新线索页（D37 占位字墨色、D06 手机宽筛选摆法，globals.css 设计语言 E3 · 新线索）
+    // proj-page：项目页（K3 手机宽页头标题不挤、筛选行同客户页摆法，globals.css 设计语言 E2 · 项目页）
+    <div className={换回客户列表 ? "cust-market" : 新线索 ? "leads-page" : !客户页 ? "proj-page" : undefined}>
       {进筛选行 ? (
         工具位 && createPortal(<>{回到看板}{项目按钮}</>, 工具位)
       ) : 客户页 ? (
@@ -700,6 +714,8 @@ export default function ProjectsView({
       )}
       {/* 列表一条都没有、也没在筛时筛选行不画（DataList 空库）：那颗「客户列表 / 我分出去的」照原来单独一行，不然回不去客户列表 */}
       {换回客户列表 && 看法 === "列表" && 总数 === 0 && !在筛 && <div className="cust-view-seg">{换回切换}</div>}
+      {/* 筛选行挪进「列表 | 看板」后（D31），列表空库时筛选行不画：那颗切换单独一行，不然回不到看板 */}
+      {切换进筛选 && 看法 === "列表" && 总数 === 0 && !在筛 && <div className="cust-view-seg">{看法钮}</div>}
       <InviteInbox 邀请们={邀请们} />
       <VerifyInbox 们={待复核们} />
       {新线索 && filters.f !== 待分配筛 && <AwaitAssignTodo 数据={待分配} />}
@@ -732,7 +748,7 @@ export default function ProjectsView({
               : {
                   title: "还没有项目",
                   hint: `项目是跟一位${b.customer}做的一件事：从线索培育一路走到交付。新建时会一起建好${b.customer}、联系人和第一次沟通。`,
-                  primary: { label: 企业版 ? "新增项目" : "新建第一个项目", onClick: 新建 },
+                  primary: 能新建 ? { label: 企业版 ? "新增项目" : "新建第一个项目", onClick: 新建 } : undefined,
                 }
           }
           筛选={客户页 ? undefined : 筛选}

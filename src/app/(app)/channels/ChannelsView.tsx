@@ -1,6 +1,6 @@
 "use client";
 
-import { isFormValidationError } from "@/lib/form-validation";
+import { isFormValidationError, 跳到第一处 } from "@/lib/form-validation";
 
 import { useMe, 默认负责人 } from "@/lib/me-client";
 import { useMemo, useRef, useState, type CSSProperties } from "react";
@@ -320,7 +320,7 @@ export default function ChannelsView({
       try {
         v = await form.validateFields();
       } catch (e) {
-        if (isFormValidationError(e)) return { ok: false, error: "还有必填项没填" };
+        if (isFormValidationError(e)) { 跳到第一处(form)(e); return { ok: false, error: "还有必填项没填" }; }
         throw e;
       }
       // 网断了 / 服务端抛错：同原来那句（结果不确定，先刷新确认再重试），写在保存键里
