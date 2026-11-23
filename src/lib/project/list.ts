@@ -27,7 +27,7 @@ import { 企业级别 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 创建时间段, 是日期 } from "@/lib/custom-date-range";
 import { 不算补建, 不算历史分析, 是重复咨询, 重复咨询来源 } from "./system-created";
-import { 看成客户编号 } from "@/lib/customer-no";
+import { 看成客户编号严 } from "@/lib/customer-no";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 读批次, 批次参数, 批次条件 } from "./import-batch";
 import { 指定回复文字, 短时刻 } from "./time-fields";
@@ -286,12 +286,12 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
 
 /**
  * 关键词里像客户编号的词 → 那位客户的 id（按编号精确比，客户编号唯一；回收站里的客户也认，重复咨询线索还挂着他）。
- * 只拿来比 Project.repeatOfCustomerId，不回客户的任何字段
+ * 只拿来比 Project.repeatOfCustomerId，不回客户的任何字段。判法用更严的 看成客户编号严（带 NO. 或够 5 位纯数字）：「2024」不触发
  */
 async function 编号对客户(词们: string[]): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   for (const w of 词们) {
-    const n = 看成客户编号(w);
+    const n = 看成客户编号严(w);
     if (!n) continue;
     const c = await 看全部(() => 看已删(() => prisma.customer.findUnique({ where: { customerNo: n }, select: { id: true } })));
     if (c) out.set(w, c.id);

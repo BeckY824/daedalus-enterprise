@@ -36,17 +36,27 @@ export function 客户编号文字(n: number | null | undefined): string | null 
 }
 
 /**
- * 关键词像一个客户编号（「NO.00123」「no 123」「00123」，全角也认）时给出编号数字，不像返回 null。
- * 带「NO.」前缀的几位都认；纯数字要够编号的位数（客户编号位数，页面上编号就写这么多位）才认：「00123」「29792」是编号，
- * 「123」「2024」这种短数字多半是年份、型号、号码片段，不当编号（11-23 复审：短数字会把同号的客户 / 重复咨询线索带出来）。
- * 纯数字和号码片段并行（都进 OR），编号是精确比，不会多搜出一片
+ * 关键词像一个客户编号（「NO.00123」「no 123」「00123」「123」，全角也认）时给出编号数字，不像返回 null。
+ * 纯数字也算：输编号的人常常只敲数字；和号码片段并行（都进 OR），编号是精确比，不会多搜出一片
  */
 export function 看成客户编号(k: string): number | null {
   // 全角的字母、数字、点（「ＮＯ．００１２」）先转半角
-  const m = /^(no\.?\s*)?(\d{1,9})$/i.exec(k.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).trim());
-  if (!m || (!m[1] && m[2].length < 客户编号位数)) return null;
-  const n = Number(m[2]);
+  const m = /^(?:no\.?\s*)?(\d{1,9})$/i.exec(k.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).trim());
+  if (!m) return null;
+  const n = Number(m[1]);
   return n > 0 ? n : null;
+}
+
+/**
+ * 更严的判法（11-23 复审）：带「NO.」前缀的几位都认，纯数字要够 客户编号位数 才认；不像返回 null。
+ * 只给项目列表「按原始客户编号命中重复咨询线索」那一支用（project/list.ts 编号对客户）：「2024」这种短数字多半是年份、型号，
+ * 不拿来比 repeatOfCustomerId。客户列表、公海的编号搜索照旧用 看成客户编号（员工习惯输「1478」找 NO.01478）
+ */
+export function 看成客户编号严(k: string): number | null {
+  const n = 看成客户编号(k);
+  if (n === null) return null;
+  const t = k.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).trim();
+  return /^no/i.test(t) || t.length >= 客户编号位数 ? n : null;
 }
 
 export const 取号SQL = `UPDATE "CustomerNoSeq" SET "n" = "n" + 1 WHERE "id" = 1 RETURNING "n"`;
