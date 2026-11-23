@@ -26,6 +26,7 @@ import { 挂靠超时小时, 挂靠页 } from "./attach-approval";
 import { 挂靠进公海状态 } from "@/lib/owner-log-db";
 import { 离职负责人找谁 } from "./departed-owner";
 import { 全公司查号, 首条撞的, type 验好的号 } from "./contact-dedupe";
+import { 读未建线索, type 未建线索记录 } from "./unbuilt-record";
 
 /** 台账的键类型：号码四种照 号码类型 的叫法，名字两种 */
 export type 撞号键类型 = "手机号" | "邮箱" | "微信" | "旺旺ID" | "客户名" | "公司名";
@@ -103,47 +104,9 @@ export const 没人接结果 = (为什么: string) => `${没人接前缀}${为�
 /**
  * 「未建线索」待补建记录（机制总表 P-公海-15 后半，客户 E-223「从第一天起挑不到人的咨询都留得下来」，迁移 165 EntDupeHit.unbuilt）：
  * 出口 C 整笔没建的两种——交销售挑不到人（没人接）、主路径客户负责人到持有上限（到上限，用户 11-23 定照挑不到人处理）——
- * 台账这一行存补建要用的字段。不写客户名（客户 id 在这一行的 customerId 上）；号码在这一行的 keyValue 上，这里不重复。
- * 补建按钮（销售管理手选接手人、不补建写原因、客户进公海自动关）之后做，状态先只有「待补建」
+ * 台账这一行存补建要用的字段。记录的样子和读写在 unbuilt-record.ts；「挂靠申请」页「重复咨询待补建」一栏、补建 / 不补建在 repeat-unbuilt.ts
  */
-export type 未建线索记录 = {
-  状态: "待补建";
-  /** 没人接 = 交销售挑不到人；到上限 = 主路径客户负责人到持有上限 */
-  类: "没人接" | "到上限";
-  /** 客户编号（显示用的 NO.xxxxx；没编号的老数据 = 「—」） */
-  客户编号: string;
-  /** 这次选的渠道（补建时的项目来源） */
-  渠道: { id: string; 名: string };
-  /** 对接人：挂号码撞上的那位客户联系人（id），或交的人填的新对接人（还没建，补建时再建） */
-  对接人: { 撞上的联系人: string } | { 新建: { 名字: string; 职务: string | null } };
-  /** 这次的沟通：方式（字典叫法）、类型、发起方、时间（ISO）、内容全文 */
-  沟通: { 方式: string | null; 类型: string; 发起方: string | null; 时间: string; 内容: string };
-  没建原因: string;
-  /** 这次定的线（判不出 = null） */
-  线: "内贸" | "外贸" | null;
-  /** 当时的客户负责人（主路径到上限时就是他；交销售时是接不了的那位） */
-  客户负责人: { id: string; 名: string };
-  /** 通知了谁：类别（销售管理 / 系统管理员 / 一个都没有）+ 收件人 */
-  通知了: { 类别: "销售管理" | "系统管理员" | null; 人: { id: string; 名: string }[] };
-  交的人: { id: string; 名: string };
-  /** 交的时刻（ISO） */
-  交的时间: string;
-};
-
-/**
- * 读台账一行的待补建记录：一次没建 = 一个对象（迁移 165 起的写法）；同一人 10 分钟内再交（并在同一行）= 数组，按交的先后。
- * 读的地方都走这里（两种都认）；空 / 解析不了 = []
- */
-export function 读未建线索(unbuilt: string | null | undefined): 未建线索记录[] {
-  if (!unbuilt) return [];
-  try {
-    const v = JSON.parse(unbuilt) as unknown;
-    if (Array.isArray(v)) return v.filter((x): x is 未建线索记录 => !!x && typeof x === "object");
-    return v && typeof v === "object" ? [v as 未建线索记录] : [];
-  } catch {
-    return [];
-  }
-}
+export { 读未建线索, type 未建线索记录 } from "./unbuilt-record";
 
 /** 往一行上记待补建：原来没有 = 存成一个对象；已有 = 追加成数组（不盖掉前一次，同一人 10 分钟内再交两次都留得下） */
 function 追加未建(原: string | null | undefined, 记录: 未建线索记录): string {
