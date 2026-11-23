@@ -2078,6 +2078,8 @@ model EntCoachTopic {
   body       String
   /// 填写人 = 发起的那一刻登录的人（Q5 锁定，不能代别人发）
   authorId   String
+  /// 发起身份（迁移 167）：销售教练 / 系统管理员 / 条线总管理 / 实线上级 / 虚线上级，署名按这一格；空 = 上线前的老主题，读时推断
+  authorRole String?
   /// 待回复 / 已回复 / 已关闭
   status     String          @default("待回复")
   /// 谁关的；空 + 已关闭 = 项目进公海时系统自动关
