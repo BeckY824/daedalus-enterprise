@@ -54,7 +54,7 @@ export default function AsrCard() {
 
   const 上次 = 概况.上次测试;
   return (
-    <div className="mcp-block" data-testid="asr-card">
+    <div className="mcp-block" data-testid="asr-card" data-set-find="录音点评 语音转文字">
       {提示条}
       <h4>
         语音转文字（录音点评）

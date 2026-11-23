@@ -124,7 +124,7 @@ function GiveUpBar({ projectId, 入口, 打开判无效, 落地 }: {
         title="这条是新分配给你的线索，实在跟不了可以放弃（豁免）"
         description={(
           <div className="giveup-body">
-            <div>每人每月 {每月放弃次数} 次。放弃后立即转给本线下一位同事，给你记 1 条待补（下一条自动分配先补给你）。线索无效请走判无效，不用放弃。</div>
+            <div>每人每月 {每月放弃次数} 次。放弃后立即转给本线内另一位同事（本月分得最少的先给），给你记 1 条待补（下一条自动分配先补给你）。线索无效请走判无效，不用放弃。</div>
             {!入口.可 && 入口.为什么 && <div className="giveup-why" data-testid="proj-giveup-why">{入口.为什么}</div>}
             <Button size="small" className="giveup-open" disabled={!入口.可} onClick={() => set开(true)} data-testid="proj-giveup-open">放弃（豁免）</Button>
           </div>
