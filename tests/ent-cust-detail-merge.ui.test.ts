@@ -88,7 +88,9 @@ beforeAll(async () => {
     const 名单=<aside className='pane pane-roster'><div className='pane-h'><span className='pane-t'>客户</span></div><div className='pane-rows'>{Array.from({length:20},(_,i)=><div key={i}>客户{i}</div>)}</div></aside>;
     window.__render=(o={})=>{
       window.__sp=o.地址||'';window.__换=undefined;
-      const 签=o.空?[]:o.多?(o.末?[...多页签.slice(1),多页签[0]]:多页签):o.单?[页签们[0]]:页签们;
+      const 签0=o.空?[]:o.多?(o.末?[...多页签.slice(1),多页签[0]]:多页签):o.单?[页签们[0]]:页签们;
+      // 11-23 合同号式项目名：按位置换掉页签的名字
+      const 签=o.名们?签0.map((t,i)=>({...t,name:o.名们[i]??t.name})):签0;
       const 当前=o.空?null:当前of(项目们[o.选||'p1'],!o.只读);
       if(当前&&o.只读) 当前.p={...当前.p,能记沟通:false,能放公海:false,能转让:false,能改节点:false,能删:false,关联:当前.p.关联};
       if(当前&&o.删) 当前.p={...当前.p,能删:true};
@@ -126,7 +128,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
+type 参 = { 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -172,9 +174,9 @@ it("页签切换后左栏「关键」跟着换：本项目主联系人排最前�
     if (await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').count()) await page.locator('.rec-contact-rest-btn[aria-expanded="false"]').click();
     // 李工在本项目里是使用方、支持
     expect(await page.locator(".rec-contact", { hasText: "李工" }).getByTestId("contact-project-role").innerText()).toMatch(/本项目\s*使用方 · 支持/);
-    // 页签是到客户详情 ?project= 的链接，当前那个标着
+    // 页签是到客户详情 ?project= 的链接，当前那个标着（11-23 起每颗至少放得下完整合同号，1366 三栏超长名放一颗，另一个收进「更多」）
     const 页签 = page.locator(".cd-pj-pills").getByRole("tab");
-    expect(await 页签.evaluateAll((ts: HTMLElement[]) => ts.map(t => [t.getAttribute("href"), t.getAttribute("aria-selected")]))).toEqual([["/customers/a?project=p1", "true"], ["/customers/a?project=p2", "false"]]);
+    expect((await 页签.evaluateAll((ts: HTMLElement[]) => ts.map(t => [t.getAttribute("href"), t.getAttribute("aria-selected")])))[0]).toEqual(["/customers/a?project=p1", "true"]);
     // 切到项目二（服务端按 ?project=p2 重画）：关键换成陈经理、排最前；王总变成其他联系人，不再是关键
     await 画(page, { 选: "p2" });
     expect(await 联系人们(page)).toEqual(["陈经理*", "王总", "李工"]);
@@ -233,7 +235,10 @@ it("同事项目只给带锁的个数：不是链接、不是按钮，不露项�
     expect(await 锁.getAttribute("aria-label")).toBe("同事项目 2 个");
     expect(await 锁.locator("svg").count()).toBe(1);
     expect(await 锁.evaluate(el => !!el.closest("a, button") || !!el.querySelector("a, button"))).toBe(false);
-    expect(await page.locator(".cd-pj-pills").getByRole("tab").count()).toBe(2);
+    // 两个项目：摆出来的胶囊 + 收进「更多 N 个 / +N」的 = 2（11-23 起每颗至少放得下完整合同号）
+    const 摆 = await page.locator(".cd-pj-pills").getByRole("tab").count();
+    const 收 = await page.locator(".cd-pj-pills .cd-pj-more").count() ? Number((await page.locator(".cd-pj-pills .cd-pj-more").getAttribute("aria-label") ?? await page.locator(".cd-pj-pills .cd-pj-more").innerText()).match(/\d+/)![0]) : 0;
+    expect(摆 + 收).toBe(2);
     await 画(page, { 空: true, 锁数: 1 });
     expect(await page.getByTestId("project-zone-empty").innerText()).toMatch(/没有你能看的项目/);
     expect(await page.locator(".cd-pj .cd-lock").count()).toBe(1);
@@ -241,7 +246,7 @@ it("同事项目只给带锁的个数：不是链接、不是按钮，不露项�
   } finally { await page.close(); }
 });
 
-it("1024 / 1280 / 1366：页签行一行不换行、右端不再有按钮；页头只有「更多操作 ▾」（项目、客户两组），项目各动作在菜单里、只作用于当前项目；超长项目名、超长公司名省略不撑出、不横滚", async () => {
+it("1024 / 1280 / 1366：页签行一行不换行（三栏窄放不下一颗完整合同号时折成两行，11-23）、右端不再有按钮；页头只有「更多操作 ▾」（项目、客户两组），项目各动作在菜单里、只作用于当前项目；超长项目名、超长公司名省略不撑出、不横滚", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await 开(w, { 锁数: 1, 公司名: "超长公司名有限责任公司".repeat(8) });
     try {
@@ -250,14 +255,17 @@ it("1024 / 1280 / 1366：页签行一行不换行、右端不再有按钮；页�
       expect(await page.locator(".rec-zone .proj-stage-tabs").count(), `宽 ${w}`).toBe(0);
       const 量 = await 行.evaluate((el) => {
         const 框 = el.getBoundingClientRect();
-        const 块 = [...el.querySelectorAll(".cd-pj-pills > *, .cd-lock, .proj-stage-acts button")].map(b => { const r = b.getBoundingClientRect(); return { 字: (b as HTMLElement).innerText.replace(/\s+/g, ""), 上: r.top, 下: r.bottom, 左: r.left, 右: r.right }; });
+        const 块 = [...el.querySelectorAll(".cd-pj-pills > *, .cd-lock, .proj-stage-acts button")].map(b => { const r = b.getBoundingClientRect(); return { 字: (b as HTMLElement).innerText.replace(/\s+/g, ""), 上: r.top, 下: r.bottom, 左: r.left, 右: r.right, 钮: !!b.closest(".proj-stage-acts") }; });
         const 页签 = [...el.querySelectorAll<HTMLElement>(".cd-pj-pills .cd-pj-pill[role=tab]")].map(t => { const n = t.querySelector<HTMLElement>(".cd-pj-nm")!; return { 截: n.scrollWidth > n.clientWidth, title: t.title, 名: n.textContent, 标: t.querySelector(".cd-pj-st")!.textContent }; });
         return { 框: { 左: 框.left, 右: 框.right, 高: 框.height }, 块, 页签, 溢出: el.scrollWidth > el.clientWidth + 1 };
       });
-      const 中 = 量.块.map(b => (b.上 + b.下) / 2);
+      // 11-23：胶囊至少放得下完整合同号，三栏窄（1024；1280 还带「同事项目」锁）放不下就折两行：项目切换一行、「完成节点」下一行；1366 照旧一行
+      const 折了 = await page.locator(".cd-proc .cd-pj[data-wrap]").count() > 0;
+      if (w === 1366) expect(折了, `宽 ${w}`).toBe(false);
+      const 中 = 量.块.filter(b => !折了 || !b.钮).map(b => (b.上 + b.下) / 2);
       expect(Math.max(...中) - Math.min(...中), `宽 ${w}`).toBeLessThanOrEqual(4);
       // 卡片改进（11-23）：这一行就是进程卡的 48 高卡头
-      expect(量.框.高, `宽 ${w}`).toBeLessThanOrEqual(48);
+      if (!折了) expect(量.框.高, `宽 ${w}`).toBeLessThanOrEqual(48);
       expect(量.溢出, `宽 ${w}`).toBe(false);
       expect(量.块.some(b => b.字 === "完成节点"), `宽 ${w}`).toBe(true);
       for (const b of 量.块) { expect(b.左, `宽 ${w} ${b.字}`).toBeGreaterThanOrEqual(量.框.左 - 1); expect(b.右, `宽 ${w} ${b.字}`).toBeLessThanOrEqual(量.框.右 + 1); }
@@ -622,7 +630,9 @@ it("项目多（8 个）、1024 / 1280 宽：放不下的胶囊收进「更多 N
       const 更多 = page.locator(".cd-pj-pills .cd-pj-more");
       await 更多.waitFor();
       const 见 = await 胶囊.count();
-      expect(await 更多.innerText(), `宽 ${w}`).toMatch(new RegExp(`更多 ${8 - 见} 个`));
+      // 放不下「更多 N 个」时是短的「+N」（11-23），读屏照念「更多 N 个」
+      expect(await 更多.innerText(), `宽 ${w}`).toMatch(new RegExp(`更多 ${8 - 见} 个|^\\+${8 - 见}`));
+      expect((await 更多.getAttribute("aria-label")) ?? (await 更多.innerText()), `宽 ${w}`).toMatch(new RegExp(`更多 ${8 - 见} 个`));
       expect(见, `宽 ${w}`).toBeGreaterThanOrEqual(1);
       // 选中的（排在最后的项目一）看得见、是可见的最后一颗
       expect(await 胶囊.last().getAttribute("aria-selected"), `宽 ${w}`).toBe("true");
@@ -694,8 +704,8 @@ it("页签变少（router.refresh 后项目删了 / 转走了）：上一轮量�
   const { page, errors } = await 开(1024, { 多: true, 末: true, 锁数: 3 });
   try {
     await page.locator(".cd-pj-pills .cd-pj-more").waitFor();
-    // 同一个根重画（状态留着）：8 个项目变回 2 个
-    await 画(page, {});
+    // 同一个根重画（状态留着）：8 个项目变回 2 个（短名字，两颗都放得下）
+    await 画(page, { 名们: ["项目一", "项目二"] });
     await expect.poll(() => page.locator(".cd-pj-pills").getByRole("tab").count()).toBe(2);
     expect(await page.locator(".cd-pj-pills .cd-pj-more").count()).toBe(0);
     expect(await page.locator(".cd-pj-pills").getByRole("tab", { selected: true }).getAttribute("href")).toBe("/customers/a?project=p1");
@@ -704,7 +714,7 @@ it("页签变少（router.refresh 后项目删了 / 转走了）：上一轮量�
 });
 
 it("有结局的项目胶囊写结局（同原页签），没有的写所在阶段带阶段色点", async () => {
-  const { page, errors } = await 开(1920, { 多: true });
+  const { page, errors } = await 开(1920, { 多: true, 名们: Array.from({ length: 8 }, (_, i) => `项目${i + 1}`) });
   try {
     const 标们 = await page.locator(".cd-pj-pills [role=tab]").evaluateAll((ts: HTMLElement[]) => ts.map(t => [t.querySelector(".cd-pj-st")!.textContent, !!t.querySelector(".cd-pj-dot")]));
     expect(标们[2]).toEqual(["丢单", false]);
@@ -1224,3 +1234,91 @@ for (const 色 of ["light", "dark"] as const) {
     }
   }, 60_000);
 }
+
+/** 11-23 合同号式项目名（XJKJ-20240716-006）：胶囊放得下完整合同号，更长的才省略；「更多」不出框；焦点框不被裁 */
+const 合同号们 = ["XJKJ-20240716-006", "XJKJ-20240716-007"];
+const 胶囊量 = (page: Page) => page.evaluate(() => {
+  const 框 = document.querySelector<HTMLElement>(".cd-pj-pills");
+  const 盒 = 框?.getBoundingClientRect();
+  const 名 = [...document.querySelectorAll<HTMLElement>(".cd-pj-pills .cd-pj-pill[role=tab] .cd-pj-nm, .cd-proc .cd-pj > .cd-pj-one > .cd-pj-nm")];
+  const 更多 = document.querySelector<HTMLElement>(".cd-pj-pills .cd-pj-more");
+  const 条 = document.querySelector<HTMLElement>(".cd-proc .proj-stage-bar.has-head")!.getBoundingClientRect();
+  const 钮 = document.querySelector<HTMLElement>(".cd-proc .proj-stage-acts")!.getBoundingClientRect();
+  const 卡 = document.querySelector<HTMLElement>(".cd-proc")!.getBoundingClientRect();
+  return {
+    名: 名.map(n => ({ 字: n.textContent, 截: n.scrollWidth > n.clientWidth + 1 })),
+    更多出框: !!更多 && !!盒 && 更多.getBoundingClientRect().right > 盒.right + 0.5,
+    钮出卡: 钮.right > 卡.right + 0.5,
+    头高: Math.round(条.height),
+    横滚: document.documentElement.scrollWidth > innerWidth + 1,
+  };
+});
+for (const 色 of ["light", "dark"] as const) {
+  it(`${色}：合同号式项目名——1280 / 1366 / 390 和 912–1024 三栏窄段，选中的胶囊（单项目的名字）完整写出合同号，「更多」不出框，卡头不溢出`, async () => {
+    for (const w of [390, 912, 950, 990, 1024, 1280, 1366, 1920]) {
+      for (const 单 of [false, true]) {
+        const { page, errors } = await 开(w, { 名们: 合同号们, 单 });
+        try {
+          if (色 === "dark") {
+            for (const f of ["antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+            await page.evaluate(() => { document.documentElement.dataset.mode = "dark"; });
+          }
+          await page.waitForTimeout(100);
+          const m = await 胶囊量(page);
+          const 标 = `${色} ${w}${单 ? " 单项目" : ""}`;
+          expect(m.名.length, 标).toBeGreaterThan(0);
+          expect(m.名[0], 标).toEqual({ 字: 合同号们[0], 截: false });
+          expect([m.更多出框, m.钮出卡, m.横滚], 标).toEqual([false, false, false]);
+          // 1280 / 1366 三栏：一行放得下（卡头照旧 48 高，和别的卡头齐）
+          if (w === 1280 || w === 1366) expect(m.头高, 标).toBe(48);
+          if (!单 && w >= 1920) expect(m.名.map(x => x.截), 标).toEqual([false, false]);
+          expect(errors).toEqual([]);
+        } finally { await page.close(); }
+      }
+    }
+  }, 120_000);
+}
+
+it("合同号胶囊：1280 放不下「更多 1 个」就换短的「+1」（读屏照念「更多 1 个」，点开照样能切）；更长的名字才省略、悬停看全", async () => {
+  const { page, errors } = await 开(1280, { 名们: 合同号们 });
+  try {
+    const 更多 = page.locator(".cd-pj-pills .cd-pj-more");
+    await expect.poll(() => 更多.innerText()).toMatch(/^\+1/);
+    expect(await 更多.getAttribute("aria-label")).toBe("更多 1 个");
+    await 更多.click();
+    await page.locator(".cd-pj-menu .cd-pj-mi").filter({ hasText: 合同号们[1] }).click();
+    expect(await page.evaluate(() => Reflect.get(window, "__换"))).toBe("/customers/a?project=p2");
+  } finally { await page.close(); }
+  // 名字比合同号长：照旧省略，title 带全名
+  const 长名 = "XJKJ-20240716-006-华东区域年度框架采购补充协议";
+  const x = await 开(1280, { 名们: [长名, 合同号们[1]] });
+  try {
+    await x.page.waitForTimeout(100);
+    const 胶 = x.page.locator(".cd-pj-pills .cd-pj-pill[role=tab]").first();
+    expect(await 胶.getAttribute("title")).toContain(长名);
+    expect(await 胶.locator(".cd-pj-nm").evaluate(n => n.scrollWidth > n.clientWidth)).toBe(true);
+    expect(await 胶.locator(".cd-pj-nm").evaluate(n => n.clientWidth)).toBeGreaterThan(120);
+    expect(x.errors).toEqual([]);
+  } finally { await x.page.close(); }
+  expect(errors).toEqual([]);
+});
+
+it("胶囊焦点框不被裁：键盘 Tab 到胶囊，2px 焦点框整圈都在胶囊组的裁切框里", async () => {
+  for (const w of [1280, 1366, 390]) {
+    const { page } = await 开(w, { 名们: 合同号们 });
+    try {
+      await page.locator(".cd-pj-pills .cd-pj-pill[role=tab]").first().focus();
+      await page.keyboard.press("Shift+Tab");
+      await page.keyboard.press("Tab");
+      const r = await page.evaluate(() => {
+        const 胶 = document.activeElement as HTMLElement;
+        const 组 = 胶.closest<HTMLElement>(".cd-pj-pills")!;
+        const s = getComputedStyle(胶), a = 胶.getBoundingClientRect(), b = 组.getBoundingClientRect();
+        const 伸 = parseFloat(s.outlineWidth) + parseFloat(s.outlineOffset);
+        return { 是胶囊: 胶.matches(".cd-pj-pill"), 可见: 胶.matches(":focus-visible"), 伸, 裁: [b.left - (a.left - 伸), (a.right + 伸) - b.right, b.top - (a.top - 伸), (a.bottom + 伸) - b.bottom].map(v => Math.max(0, Math.round(v * 10) / 10)) };
+      });
+      expect(r, `${w}`).toMatchObject({ 是胶囊: true, 可见: true, 裁: [0, 0, 0, 0] });
+      expect(r.伸, `${w}`).toBeGreaterThanOrEqual(2);
+    } finally { await page.close(); }
+  }
+});
