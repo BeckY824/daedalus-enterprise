@@ -857,7 +857,7 @@ export default function ProposalCard({
       {err && (
         <div className="prop-err">
           {err}
-          {在推个数 != null && <div className="prop-err-act">{查重提示.在推个数(在推个数)}</div>}
+          {在推个数 != null && <div className="prop-err-act prop-err-note">{查重提示.在推个数(在推个数)}</div>}
           {公海号 && (
             <div className="prop-err-act">
               <DedupeClaimKey 类型={公海号.类型} 值={公海号.值} 渠道={{ 名: 要提交的.kind === "add_lead" ? 要提交的.source : null }} 领了={() => router.refresh()} />
