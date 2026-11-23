@@ -24,6 +24,7 @@ import AppearanceTab from "./AppearanceTab";
 import ProjectSettingsTab, { type 项目设置 } from "./ProjectSettingsTab";
 import OrgTab, { type 组织架构 } from "./OrgTab";
 import RecycleTab, { type 客户回收设置 } from "./RecycleTab";
+import SwitchesTab from "./SwitchesTab";
 import LeadAssignCard from "./LeadAssignCard";
 import type { 分配情况 } from "../leads/assign-actions";
 import { 我能做什么, type 设置身份 } from "@/lib/enterprise/settings-scope";
@@ -54,6 +55,7 @@ const 说明表: Record<string, string> = {
   assign: "暂停 / 恢复销售参与自动分配",
   perm: "按你的身份，能做和不能做的",
   rules: "影响全公司的规则，只能看",
+  switches: "影响全公司的开关，一处看、一处改",
 };
 
 /**
@@ -80,6 +82,8 @@ const 搜词表: Record<string, string[]> = {
   assign: ["暂停", "恢复", "参与", "自动分配", "配额"],
   perm: ["权限", "能做什么"],
   rules: ["公海", "回收天数", "持有上限", "进程时限", "字段权限", "市场部门", "组织架构", "开通"],
+  // 开关总览（设置开关 N3）：老叫法、别名也搜得到
+  switches: ["开关", "进程推进", "节点推进", "三态", "客户回收", "进程时限", "超时回收", "录音", "飞书推送", "通讯录同步", "持有上限", "配额", "主动放弃", "豁免", "市场复核", "字段权限", "推进权限"],
 };
 
 /**
@@ -252,6 +256,18 @@ export default function SettingsView({
     ...(回收站 ? [{ key: "trash", label: "回收站", children: <TrashTab /> }] : []),
     ...(导出记录 ? [{ key: "exports", label: "导出记录", children: <AuditTab logs={导出记录} 导出 /> }] : []),
     { key: "audit", label: "操作日志", children: <AuditTab logs={logs} /> },
+    /*
+      开关总览（设置开关 N1，11-23）：只给系统管理员（P-全局-02，isAdmin = 能进设置；只个人的人下面那行过滤掉，带 ?tab=switches 落回第一栏）。
+      数据它自己读（switch-actions.ts，服务端再判一次）。放在数组最后：搜「节点推进」这类词时项目模式那张卡排在前面，分组看 分组表
+      「在 X 里看」= 切到那一栏、滚到那张卡亮一下（同搜索直达）
+    */
+    ...(企业版 && isAdmin && !只读 ? [{ key: "switches", label: "开关总览", children: (
+      <SwitchesTab 去卡={(key, 找) => {
+        待跳.current = { key, 词: 找, 闪: true };
+        window.history.replaceState(null, "", `${pathname}?tab=${key}`);
+        set跳次((n) => n + 1);
+      }} />
+    ) }] : []),
   ]
     .filter((x) => !只个人 || ["profile", "password", "keymap", "appearance", "perm", "quota", "assign", "rules", "trash"].includes(x.key))
     // 不是托管版没有「已登录的机器」这一块（机器 = null），说明别提它（D1-2）
@@ -273,7 +289,7 @@ export default function SettingsView({
       ]
     : [
         ["我自己", ["profile", "password", "keymap", "appearance", "perm"]],
-        ["团队与权限", ["members", "org"]],
+        ["团队与权限", ["switches", "members", "org"]],
         ["线索和公海", ["recycle", "project"]],
         ["业务与 AI", ["business", "ai"]],
         ["数据", ["imports", "enterprise", "exports", "trash", "audit"]],
