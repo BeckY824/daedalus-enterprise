@@ -4518,7 +4518,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .proj-stage-bar.has-head > .proj-stage-acts { flex: none; flex-wrap: nowrap; }
 .proj-stage-head { flex: 1 1 auto; min-width: 0; padding-bottom: 6px; }
 .cd-pj { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
-.cd-pj-pills { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 2px; margin: -2px; }
+/* 内边距 2 给焦点框留地方（overflow 裁掉的那层）；只收上下（11-23：原来四边 -2，左右伸出所在格 2px） */
+.cd-pj-pills { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 2px; margin: -2px 0; }
 .cd-pj-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 210px; padding: 0 11px; box-sizing: border-box;
   border: 1px solid var(--line); border-radius: var(--r-tag); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-note);
   white-space: nowrap; text-decoration: none; cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
@@ -5572,7 +5573,8 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 :root:root .rec-page .rec-cg + #contact-rest > .rec-cg:first-child::before { content: ""; position: absolute; left: 8px; right: 8px; top: 0; height: 1px; background: var(--line-soft); }
 :root:root .rec-page .rec-contact-sub { margin: 12px 8px 0; padding-top: 10px; border-top: 1px solid var(--line-soft); }
 :root:root .rec-page .rec-contact-sub + .rec-cg { margin-top: 2px; padding-top: 6px; }
-:root:root .rec-page .rec-contact-acts { gap: 0; margin-right: -4px; }
+/* 右端不再 -4px 外边距（11-23：伸出联系人格 4px），和格子内容区右边齐 */
+:root:root .rec-page .rec-contact-acts { gap: 0; }
 :root:root .rec-page .rec-contact-acts > .ant-btn,
 :root:root .rec-page .rec-contact-acts .rec-contact-menu.ant-btn { width: var(--hit); min-width: var(--hit); height: var(--hit); color: var(--text-muted); }
 :root:root .rec-page .rec-contact-acts .ant-btn:not(:disabled):hover { background: var(--row-hover); color: var(--ink); }

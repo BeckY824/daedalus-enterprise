@@ -1190,3 +1190,35 @@ it("#402 复审：带 #field-xxx 进客户页，这一页上没有那一格时�
     expect(有.errors).toEqual([]);
   } finally { await 有.page.close(); }
 }, 30_000);
+
+/* 11-23 小修批（D55 整合注意第 11 条）：联系人组头右端「编辑 / ⋯」那组（.rec-contact-acts）原来 -4px 右外边距、多项目胶囊（.cd-pj-pills）-2px 外边距，
+   375 宽伸出所在格 4px / 2px。全宽（768–1536、390 / 375）浅深两色都量：两组的框左右都在外层内容区里（扣掉内边距），整页不横滚 */
+const 伸出们 = (page: Page) => page.evaluate(() => {
+  const 出 = (el: Element, 外: Element) => {
+    const r = el.getBoundingClientRect(), o = 外.getBoundingClientRect(), s = getComputedStyle(外);
+    return Math.max(0, Math.round(Math.max(r.right - (o.right - parseFloat(s.paddingRight)), (o.left + parseFloat(s.paddingLeft)) - r.left)));
+  };
+  return {
+    动作组: [...document.querySelectorAll(".rec-contact-acts")].filter(el => (el as HTMLElement).offsetWidth > 0).map(el => 出(el, el.closest(".rec-contact")!)),
+    胶囊: [...document.querySelectorAll(".cd-pj-pills")].map(el => 出(el, el.parentElement!)),
+    横滚: document.documentElement.scrollWidth > window.innerWidth + 1,
+  };
+});
+for (const 色 of ["light", "dark"] as const) {
+  it(`${色}：联系人组头动作组、多项目胶囊左右不伸出所在格，各宽度整页不横滚`, async () => {
+    for (const w of [375, 390, 768, 1024, 1199, 1200, 1240, 1280, 1440, 1536]) {
+      const { page, errors } = await 开(w, { 多: true, 八人: true }, 900);
+      try {
+        if (色 === "dark") {
+          for (const f of ["antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+          await page.evaluate(() => { document.documentElement.dataset.mode = "dark"; });
+        }
+        await page.locator(".cd-pj-pills").first().waitFor();
+        const m = await 伸出们(page);
+        expect(m.动作组.length, `${w}`).toBeGreaterThan(0);
+        expect(m, `${色} ${w} 宽`).toEqual({ 动作组: m.动作组.map(() => 0), 胶囊: [0], 横滚: false });
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  }, 60_000);
+}

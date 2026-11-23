@@ -55,7 +55,7 @@ export const 教练发起标签 = "教练发起";
 export type 主题项目 = 权限项目 & { deletedAt?: Date | null; result?: string | null };
 export type 主题行 = { authorId: string; status: string; deletedAt?: Date | null };
 
-/** 发得出主题的身份（界面「填写人：张三（销售教练）」那一格、留痕都用这个） */
+/** 发得出主题的身份（判能不能发、留痕用；界面「填写人：张三（总管理）」那一格写主业务角色名，见 coach-topic-db.ts 角色叫法） */
 export type 发起身份 = "销售教练" | "系统管理员" | "条线总管理" | "实线上级" | "虚线上级";
 
 /** 项目进了公海、进了回收站：主题冻结成只读（不能发、回、关），不再提醒。进公海那一下没关的已自动关（进公海关主题）；项目从回收站恢复后照旧 */

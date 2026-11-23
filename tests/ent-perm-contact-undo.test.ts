@@ -86,6 +86,17 @@ describe("saveContact 要能改这位客户（P0-1，P-判定-02：能编辑 = �
     expect((await prisma.contact.findUniqueOrThrow({ where: { id: k } })).name).toBe("原名");
   });
 
+  // 11-23 小修批：客户详情公海客户联系人行不摆编辑笔（RecordView 联系人只读）——服务端对谁都不放行，原负责人、系统管理员也一样先领
+  it.each([["原负责人", () => 销售], ["系统管理员", () => 系管]] as const)("%s改、新建公海客户的联系人：也拒（先领才能改）", async (_, 谁) => {
+    const c = await 客户(销售, true);
+    const k = await 联系人(c, "原名");
+    当(谁());
+    expect(await saveContact({ id: k, customerId: c, name: "被改了", isPrimary: true, ...联系人表单 } as never)).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
+    expect(await saveContact({ customerId: c, name: "新来的", isPrimary: false, ...联系人表单 } as never)).toMatchObject({ ok: false, error: expect.stringContaining("公海") });
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: k } })).name).toBe("原名");
+    expect(await prisma.contact.count({ where: { customerId: c, name: "新来的" } })).toBe(0);
+  });
+
   it("对照：负责人本人新建、改自己客户的联系人照常", async () => {
     const c = await 客户(下属);
     当(下属);

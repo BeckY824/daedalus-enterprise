@@ -426,6 +426,18 @@ describe("不是沟通记录：发、回、关之后什么都不动", () => {
 });
 
 describe("读给界面", () => {
+  // 11-23 小修批：写点评框「填写人：某某（系统管理员）」、发出后「（总管理）」对不上 → 三处都写主业务角色名（dept-policy.ts 角色名）
+  it.each([["老板", "总管理"], ["线总", "总管理"], ["组长", "销售管理"], ["虚管", "销售管理"], ["教练", "销售教练"]] as [谁, string][])(
+    "%s：写点评框里的填写人身份 = 发出后主题上的 = 复盘列表发起人后面的（%s）", async (r, 叫法) => {
+      const 前 = await 读项目主题(我(r), 项目);
+      expect(前?.填写人).toMatchObject({ id: 人[r], 身份: 叫法 });
+      expect((await 发(r)).ok).toBe(true);
+      const 后 = await 读项目主题(我(r), 项目);
+      expect(后?.们[0].作者).toMatchObject({ id: 人[r], 身份: 叫法 });
+      expect(后?.填写人?.身份).toBe(叫法);
+      expect((await 复盘主题of(我(r), undefined, { 范围: "mine" })).行[0]).toMatchObject({ 身份: 叫法 });
+    });
+
   it("负责人看到能回、不能关；教练看到能回能关；组员拿不到这一块", async () => {
     await 发("教练");
     const 甲看 = await 读项目主题(我("甲"), 项目);
