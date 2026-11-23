@@ -57,6 +57,8 @@
 .set-lock-d, .set-lock-who { font-size: var(--fs-min); overflow-wrap: anywhere; }
 .set-lock-tag { flex: none; margin: 0; }
 .set-lock-sent { flex: none; color: var(--success); font-size: var(--fs-note); animation: set-pop var(--t) var(--ease-spring); }
+/* D16（设计语言 E4）：13 号小字用 --success（3.30:1）不过线，现状主题换 --success-text；换皮主题照原样 */
+:root:is(:not([data-skin]), [data-skin="now"]) .set-lock-sent { color: var(--success-text); }
 .set-lock-err { flex-basis: 100%; color: var(--danger); font-size: var(--fs-min); }
 .set-ro { margin-bottom: var(--s3, 12px); padding: 8px 12px; border-radius: 10px; background: var(--hover); color: var(--text-muted); font-size: var(--fs-note); }
 .set-flash { animation: set-flash 1.6s var(--ease); }
@@ -100,6 +102,87 @@
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--t); animation-timing-function: var(--ease); }
 .set-advance-since { margin-bottom: var(--s3, 12px); color: var(--text-muted); overflow-wrap: anywhere; }
 .set-advance-scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2, 8px); margin-bottom: var(--s2, 8px); }
+/* 父开关关着的子开关（设置开关 11-23）：只拦「打开」，一句橙字说明 */
+.org-rule-lock { color: var(--warning-text); font-size: var(--fs-note); }
+
+/* ---- 开关总览（SwitchesTab.tsx，设置开关 N1，11-23）：所有卡左边对齐，子开关靠卡头「属于：…」小标签认，不缩进 ---- */
+.sw { display: grid; gap: var(--s3); min-width: 0; }
+.sw-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s2) var(--s3); flex-wrap: wrap; }
+.sw-head h2 { margin: 0; font-size: var(--fs-title); font-weight: 600; }
+.sw-sum { color: var(--text-muted); font-size: var(--fs-note); }
+.sw-sum b { color: var(--ink); font-weight: 600; }
+.sw-muted { color: var(--text-muted); }
+.sw-n { color: var(--text-muted); font-size: var(--fs-min); margin-left: 2px; }
+.sw-tools { display: flex; gap: var(--s2); align-items: center; flex-wrap: wrap; }
+.sw-search { flex: 1 1 240px; min-width: 0; max-width: 420px; }
+.sw-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.sw-chip { height: var(--ctl-h-sm); padding: 0 10px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink-soft); font-size: var(--fs-note); white-space: nowrap; cursor: pointer; }
+.sw-chip:hover { background: var(--row-hover); }
+.sw-chip[aria-pressed="true"] { background: var(--brand-bg); border-color: var(--brand-line); color: var(--brand-deep); }
+.sw-chip[aria-pressed="true"] .sw-n { color: inherit; }
+.sw-ptr { display: grid; gap: 6px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: var(--r-card); font-size: var(--fs-note); }
+.sw-ptr-i { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; min-width: 0; }
+.sw-ptr-t { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.sw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: var(--s3); }
+.sw-ov { min-width: 0; padding: 10px 6px 6px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); box-shadow: var(--shadow-card); }
+.sw-ov-h { display: flex; align-items: baseline; gap: 8px; padding: 0 8px 6px; }
+.sw-ov-h b { font-size: var(--fs-section); font-weight: 600; }
+.sw-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 0 8px; border: 0; border-radius: var(--r-ctl); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.sw-row:hover { background: var(--row-hover); }
+.sw-row:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.sw-row-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sw-chg { flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--brand); }
+.sw-val { flex: none; max-width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-note); }
+.sw-val.sw-on { color: var(--ink); font-weight: 500; }
+.sw-empty { padding: var(--s5) var(--s4); text-align: center; color: var(--text-muted); font-size: var(--fs-note); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); }
+.sw-grp { display: grid; gap: var(--s2); margin-top: var(--s3); min-width: 0; }
+.sw-grp-h { display: flex; align-items: baseline; gap: 8px; }
+.sw-grp-h h3 { margin: 0; font-size: var(--fs-section); font-weight: 600; }
+.sw-cards { display: grid; gap: var(--s3); min-width: 0; }
+.sw-card { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); box-shadow: var(--shadow-card); scroll-margin-top: var(--s4); }
+.sw-top { display: flex; align-items: flex-start; gap: var(--s3); min-width: 0; }
+.sw-titles { flex: 1 1 auto; min-width: 0; }
+.sw-name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0; font-size: var(--fs-section); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+.sw-tag { display: inline-block; padding: 0 6px; border-radius: var(--r-tag); background: var(--hover); color: var(--ink-soft); font-size: var(--fs-min); font-weight: 500; line-height: 18px; white-space: nowrap; }
+.sw-titles > .sw-tag { margin-bottom: 4px; }
+.sw-tag-blue { background: var(--brand-bg); color: var(--brand-deep); }
+.sw-what { margin: 4px 0 0; color: var(--ink-soft); overflow-wrap: anywhere; }
+.sw-sub { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 10px; padding: 8px 10px; border-radius: var(--r-ctl); background: var(--workbench); font-size: var(--fs-note); min-width: 0; }
+.sw-sub > .sw-muted { min-width: 0; overflow-wrap: anywhere; }
+.sw-push { margin-left: auto; }
+.sw-full { flex-basis: 100%; }
+.sw-risk, .sw-info, .sw-lock { display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding: 8px 10px; border-radius: var(--r-ctl); font-size: var(--fs-note); min-width: 0; overflow-wrap: anywhere; }
+.sw-risk { background: var(--danger-bg); color: var(--danger-text); }
+.sw-info { background: var(--hover); color: var(--ink-soft); }
+.sw-lock { background: var(--warning-bg); color: var(--warning-text); }
+.sw-risk > i, .sw-info > i, .sw-lock > i, .sw-dep > i { flex: none; width: 16px; height: 16px; border-radius: 50%; display: inline-grid; place-items: center; font-style: normal; font-size: var(--fs-min); font-weight: 700; }
+.sw-risk > i { background: var(--danger); color: var(--on-ink); }
+.sw-info > i { background: var(--text-muted); color: var(--on-ink); }
+.sw-lock > i { background: var(--warning); color: var(--on-ink); }
+.sw-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 16px; margin: 10px 0 0; padding-top: 10px; border-top: 1px solid var(--line-soft); font-size: var(--fs-note); }
+.sw-meta dt { color: var(--text-muted); font-size: var(--fs-min); }
+.sw-meta dd { margin: 0; color: var(--ink); overflow-wrap: anywhere; }
+.sw-deps { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: var(--fs-note); }
+.sw-dep { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; min-width: 0; overflow-wrap: anywhere; }
+.sw-dep.sw-ok > i { background: var(--success-bg); color: var(--success-text); }
+.sw-dep.sw-no { color: var(--warning-text); }
+.sw-dep.sw-no > i { background: var(--warning-bg); color: var(--warning-text); }
+.sw-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 12px; margin-top: 10px; color: var(--text-muted); font-size: var(--fs-min); min-width: 0; }
+.sw-foot > span { min-width: 0; overflow-wrap: anywhere; }
+.sw-link { padding: 0; border: 0; background: none; color: var(--brand); font: inherit; cursor: pointer; white-space: nowrap; }
+.sw-link:hover { text-decoration: underline; }
+.sw-lock .sw-link, .sw-dep .sw-link { margin-left: 6px; }
+.sw-link:focus-visible { outline: none; border-radius: 4px; box-shadow: var(--focus-ring); }
+.sw-card.set-hit { border-color: var(--brand); }
+@container (max-width: 560px) {
+  .sw-meta { grid-template-columns: minmax(0, 1fr); }
+  .sw-push { margin-left: 0; }
+}
+@media (max-width: 767px) {
+  .sw-meta { grid-template-columns: minmax(0, 1fr); }
+  .sw-card { padding: 12px; }
+  .sw-search { max-width: none; flex-basis: 100%; }
+}
 /* 必填拦截记录导出（11-23）：天数下拉 */
 .set-block-days { width: 96px; }
 /* 导出超上限只导了最新的那些：就在按钮旁说清 */

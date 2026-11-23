@@ -1,6 +1,7 @@
 "use client";
 
 import { useSettingsNote } from "./InlineNote";
+import { useIsNowSkin } from "@/lib/use-skin";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, Alert, Typography, Grid, Popover, Tooltip } from "antd";
@@ -55,6 +56,8 @@ const 业务角色色: Record<业务角色, string | undefined> = {
   director: "red", admin: "red", coach: "purple", sales_mgr: "blue", marketing_mgr: "blue",
   sales: undefined, channel_ops: undefined, project_ops: undefined,
 };
+/** 设计语言 E4（D1 实测）：红只给出问题，「总管理」「管理员」不是出了问题——现状主题这两个改默认灰，别的颜色不动；换皮主题照原样 */
+const 角色色of = (角色: 业务角色, 新样: boolean) => { const c = 业务角色色[角色]; return 新样 && c === "red" ? undefined : c; };
 
 export default function MembersTab({
   users,
@@ -86,6 +89,7 @@ export default function MembersTab({
   const [刚解绑, set刚解绑] = useState<string | null>(null);
   const [恢复中, set恢复中] = useState<string | null>(null);
   const [form] = Form.useForm();
+  const 新样 = useIsNowSkin(); // 设计语言 E4：行尾动作图标 + 字、角色标签灰只挂现状主题
   const 按业务角色 = users.some((u) => u.业务角色);
   /** 企业版新增成员：当场选业务角色（编辑已有成员的角色在「组织架构」里改） */
   const 新建带角色 = 企业版 && 按业务角色 && !editing;
@@ -327,13 +331,16 @@ export default function MembersTab({
   }
 
   const 屏 = Grid.useBreakpoint();
+  /** 行尾动作：现状主题「图标 + 字」（D09，.row-act 文字款），换皮主题照原样只有图标（type="text"） */
+  const 行钮 = (字: string) => (新样 ? { className: "row-act", size: "small" as const, children: 字 } : { type: "text" as const, className: "row-act", size: "small" as const });
   const columns: ColumnsType<Row> = [
     // 姓名这一列只放姓名（11-01 用户：「系统清除掉小字。只留姓名即可」）：权限只看「角色」那一栏，
     // 职位、登录名这些小字容易被误当成权限。登录名在编辑弹窗里看；职位数据不动，只是不显示
     {
       title: "姓名",
       dataIndex: "name",
-      width: 190,
+      // 现状主题行尾动作带字（D09），操作列宽 44、姓名列让出 44，合计不变（1366 设置正文里不横滚）
+      width: 新样 ? 146 : 190,
       render: (v) => <UserCell name={v} size={30} />,
     },
     按业务角色
@@ -349,7 +356,7 @@ export default function MembersTab({
               {/* 悬停全文走全站的 TruncTip（截了才浮、显示 title）；没截但有「+N」时浏览器原生提示也是全部角色 */}
               {(r.业务角色 ?? []).length > 0 && (
                 <span className="member-roles-tags">
-                  <Tag color={业务角色色[r.业务角色![0]]} className="member-role-tag" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>
+                  <Tag color={角色色of(r.业务角色![0], 新样)} className="member-role-tag" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>
                     {角色名[r.业务角色![0]]}{r.业务角色!.length > 1 ? ` +${r.业务角色!.length - 1}` : ""}
                   </Tag>
                 </span>
@@ -440,14 +447,13 @@ export default function MembersTab({
       key: "act",
       // 两个图标按钮（手机上各撑到 44，globals.css .row-act）；120 时 1366 宽下整张表比设置页宽，最右这列被截（10-30 交互规则 G）。
       // 手机宽（< md）两颗 44 加间距要 96、再加格子内边距放不下 96，伸出格子（11-17 手机排版闸门 2H）：手机上给 128，表本来就横滚
-      width: 屏.md === false ? 128 : 96,
+      // 设计语言 E4（D09）：现状主题「图标 + 字」（L-B 的 .row-act 款：蓝字、不带框），两颗 + 间距 + 格子内边距要 132，CI（Linux 字体）实测伸出 4px，给到 140；手机宽各撑到 44 高要 136
+      width: 屏.md === false ? (新样 ? 136 : 128) : 新样 ? 140 : 96,
       // 行上不标红（10-30 交互规则 D）：停用要先清点、再在弹窗里确认，红色留给弹窗
       render: (_, r) =>
         !isAdmin && 能停(r) ? (
           <Button
-            type="text"
-            className="row-act"
-            size="small"
+            {...行钮("办离职")}
             icon={<StopOutlined />}
             aria-label={`给 ${r.name} 办离职`}
             loading={清点中 === r.id}
@@ -456,9 +462,7 @@ export default function MembersTab({
         ) : isAdmin ? (
           <Space size={2}>
             <Button
-              type="text"
-              className="row-act"
-              size="small"
+              {...行钮("编辑")}
               icon={<EditOutlined />}
               aria-label={`编辑 ${r.name}`}
               onClick={() => {
@@ -468,9 +472,7 @@ export default function MembersTab({
             />
             {r.active ? (
               <Button
-                type="text"
-                className="row-act"
-                size="small"
+                {...行钮("停用")}
                 icon={<StopOutlined />}
                 aria-label={`停用成员 ${r.name}`}
                 disabled={r.id === me.id}
@@ -479,9 +481,7 @@ export default function MembersTab({
               />
             ) : (
               <Button
-                type="text"
-                className="row-act"
-                size="small"
+                {...行钮("恢复")}
                 icon={<UndoOutlined />}
                 aria-label={`恢复成员 ${r.name}`}
                 loading={恢复中 === r.id}

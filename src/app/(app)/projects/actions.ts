@@ -29,7 +29,8 @@ import { 补潜客培育 } from "@/lib/project/nurture";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 读必填数据, 有效沟通差of, 补全期不给, 往前推不给, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, 补回收起点留痕, 能管项目, type 交付项 } from "@/lib/project/db";
-import { 合上改动, 是不限, 三态改动摘要, 负责人可推, type 规则改动, type 组织规则 } from "@/lib/project/org-rules";
+import { 合上改动, 三态改动摘要, 负责人可推, type 规则改动 } from "@/lib/project/org-rules";
+import { 组织规则改动摘要 } from "@/lib/project/org-rules-diff";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 不能新建项目话 } from "@/lib/enterprise/permissions";
@@ -47,8 +48,7 @@ import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通�
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
-import { 项目按必填走, 只管新建之后, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
-import { dayjs } from "@/lib/utils";
+import { 项目按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
 import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 读团队 } from "@/lib/sync/client";
@@ -796,12 +796,6 @@ const 项目字段名: Record<string, string> = {
   replyStartAt: "指定回复时间", replyEndAt: "指定回复时间",
 };
 
-/** 操作日志里节点推进管哪些项目（客户 11-19：默认存量、新建都管；设置成只管新建的写上从哪一刻起） */
-function 推进范围话(r: 组织规则): string {
-  const 起 = 只管新建之后(r);
-  return 起 ? `只管 ${dayjs(起).format("YYYY-MM-DD HH:mm")} 之后新建的项目` : r.节点推进.范围 === "新建" ? "只管开启之后新建的项目" : "存量和新建的项目都管";
-}
-
 /** 编辑项目：名称、负责人、金额、币种、备注、主联系人；企业版还有预计成交日期、项目来源、项目级别、项目标签、所在地、需求描述、合同金额、定金金额、痛点标注、合同状态、备货状态、物流状态、物流单号、业务线（改了不重新自动分配） */
 export async function 编辑项目(projectId: string, patch: 编辑项目改动, 带待办?: boolean) {
   try {
@@ -1035,21 +1029,9 @@ export async function 改组织规则(改: 规则改动) {
     const 新 = 合上改动(旧, 改);
     if ("error" in 新) return { ok: false as const, error: 新.error };
     await 存组织规则(新);
-    const g = 新.公海, t = 新.超时回收;
-    const 推 = 新.节点推进;
-    const 说 = 改.三态 !== undefined
-      ? 三态改动摘要(旧.三态, 新.三态)
-      : 改.阶段 !== undefined
-      ? 改.阶段.培育计划上限 !== undefined || 改.阶段.无效原因上限 !== undefined
-        ? `组织规则：培育计划字数上限 ${新.阶段.培育计划上限 ?? "不设"}，无效原因字数上限 ${新.阶段.无效原因上限 ?? "不设"}`
-        : `组织规则：往前推权限 ${新.阶段.推进权限}，改了 ${Object.keys(新.阶段.出口叫法).length} 个阶段的结束状态叫法`
-      : 改.节点推进 !== undefined
-      ? 推.开 ? `组织规则：节点推进开，${Object.keys(推.必填).length} 个进程配了必填，${推进范围话(新)}` : `组织规则：节点推进关${改.节点推进.范围 !== undefined ? `，${推进范围话(新)}` : ""}`
-      : 改.超时回收 !== undefined
-      ? (t.开 ? `组织规则：超时回收开，设了 ${Object.keys(t.节点天数).length} 个进程的处理时长${Object.keys(t.外贸节点天数 ?? {}).length ? `（外贸单设 ${Object.keys(t.外贸节点天数 ?? {}).length} 个）` : ""}` : "组织规则：超时回收关") + (改.超时回收.起算日 !== undefined ? `，起算日 ${t.起算日 ?? "不设"}` : "")
-      : 改.公海?.多项目客户 !== undefined
-      ? `组织规则：多项目客户公海走法 ${g.多项目客户}`
-      : g.持有上限开 ? `组织规则：项目持有上限开，默认 ${是不限(g.默认上限) ? "不限" : `${g.默认上限} 个`}，单独设了 ${Object.keys(g.每人上限).length} 人` : "组织规则：项目持有上限关";
+    // 摘要写「哪项从什么变成什么」（设置开关 N9，11-23）：原来按交了哪一块拼，改阶段开关时写成「往前推权限 X，改了 N 个阶段的结束状态叫法」；
+    // 三态照旧用自己那套（每个天数都带改前 → 改后，M-公海-31）。detail 照旧存改后整份，开关总览拿相邻两行比
+    const 说 = 改.三态 !== undefined ? 三态改动摘要(旧.三态, 新.三态) : 组织规则改动摘要(旧, 新);
     await recordAudit({ user: me, action: "update", entity: "Setting", entityId: "orgRules", summary: 说, detail: 新 });
     // 改了时长当场按新的扫一遍（老板保存前已经看过会回收几个）
     const 收回 = 改.超时回收 !== undefined ? await 公海超时收回(me) : 0;
