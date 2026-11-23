@@ -94,6 +94,8 @@ beforeAll(async () => {
       const 当前=o.空?null:当前of(项目们[o.选||'p1'],!o.只读);
       if(当前&&o.只读) 当前.p={...当前.p,能记沟通:false,能放公海:false,能转让:false,能改节点:false,能删:false,关联:当前.p.关联};
       if(当前&&o.删) 当前.p={...当前.p,能删:true};
+      // 11-23 项目组卡：一位已邀请没选角色的、一位进了组有角色的；在职里还有两位能邀请
+      if(当前&&o.组员){当前.p={...当前.p,members:[{id:'m1',userId:'u3',name:'刘琛',roleId:null,inviteStatus:'INVITED'},{id:'m2',userId:'u4',name:'欧阳超长名字某某某',roleId:'r1',inviteStatus:'JOINED'}],ownerName:'杜文富'};当前.在职=[{id:'u5',name:'赵六',email:'z@x'},{id:'u6',name:'钱七',email:'q@x'}];当前.角色们=[{id:'r1',name:'技术支持工程师',active:true},{id:'r2',name:'商务',active:true}];if(o.组员==='只看')当前.能改=false;}
       // D4 审查：缺项小块各条落点——项目上的覆盖（必填、线索验证等）+ 画像卡
       if(当前&&o.项目改) 当前.p={...当前.p,...o.项目改,...(o.项目改.带画像?{画像:{项们:项目画像项.map(x=>({键:x.键,名:字典定义[x.种类].名,多选:x.多选,选项:[...字典定义[x.种类].默认]})),值:{}}}:{})};
       if(当前&&o.领不了) 当前.p={...当前.p,能领取:false,领取不给:'你是原负责人，不能领回'};
@@ -128,7 +130,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
+type 参 = { 组员?: boolean | "只看"; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -1321,4 +1323,94 @@ it("胶囊焦点框不被裁：键盘 Tab 到胶囊，2px 焦点框整圈都在�
       expect(r.伸, `${w}`).toBeGreaterThanOrEqual(2);
     } finally { await page.close(); }
   }
+});
+
+/* ---------- 11-23 右栏项目组卡、左栏联系人卡排版：左边缘和「客户资料」字段名齐；项目组不出空下拉、占位不截 ---------- */
+/** 把标题带这个名字的收着的卡打开（钮可能在 AI 球底下：直接 click()） */
+const 展开卡 = (page: Page, 名: string) => page.locator(".proj-fold-btn[aria-expanded=false]").evaluateAll((bs: HTMLElement[], 名) => bs.filter(b => (b.closest(".proj-fold")?.textContent ?? "").includes(名) && (b.getAttribute("aria-label") ?? b.textContent ?? "").includes(名)).forEach(b => b.click()), 名);
+const 排版量 = (page: Page) => page.evaluate(() => {
+  const 卡of = (e: Element) => e.closest(".ant-card, .rec-sec")!;
+  const 离卡左 = (e: Element) => Math.round((e.getBoundingClientRect().left - 卡of(e).getBoundingClientRect().left) * 2) / 2;
+  const 看得见 = (e: Element) => e.getBoundingClientRect().width > 0;
+  const 资料名 = [...document.querySelectorAll(".rec-rail .rec-field-k")].filter(看得见);
+  const 资料值 = [...document.querySelectorAll(".rec-rail .rec-field:not(:has(.copy-val)) > .rec-field-k + *")].filter(看得见);
+  const 组卡 = document.querySelector("[data-testid=project-team]") ?? document.querySelector(".pd-team-row")?.closest(".ant-card");
+  const 截 = (e: Element) => (e as HTMLElement).scrollWidth > (e as HTMLElement).clientWidth + 1;
+  const 组 = 组卡 ? {
+    名左: [...组卡.querySelectorAll(".pd-team-row .pd-team-name")].map(离卡左),
+    名截: [...组卡.querySelectorAll(".pd-team-row .pd-team-name")].filter(截).map(e => e.textContent),
+    行高: [...组卡.querySelectorAll(".pd-team-row")].map(e => Math.round(e.getBoundingClientRect().height)),
+    // 每个下拉：要么有选中的字，要么有占位字；占位整句露出
+    空框: [...组卡.querySelectorAll(".ant-select")].filter(x => !((x.querySelector(".ant-select-content")?.textContent ?? "") + (x.querySelector(".ant-select-placeholder")?.textContent ?? "")).trim()).map(x => x.outerHTML.slice(0, 300)),
+    占位: [...组卡.querySelectorAll(".ant-select-placeholder")].map(x => ({ 字: x.textContent, 截: 截(x) })),
+    // 操作不压名字、不出卡
+    压: [...组卡.querySelectorAll(".pd-team-row")].filter(r => {
+      const 谁 = r.querySelector(".pd-team-who")!.getBoundingClientRect(), 操 = r.querySelector(".pd-team-ops")?.getBoundingClientRect();
+      const 体 = 组卡.querySelector(".ant-card-body")!.getBoundingClientRect();
+      return !!操 && ((操.top < 谁.bottom - 1 && 操.left < 谁.right - 0.5) || 操.right > 体.right + 0.5);
+    }).length,
+    折行: [...组卡.querySelectorAll(".pd-team-row")].filter(r => { const 操 = r.querySelector(".pd-team-ops"); return !!操 && 操.getBoundingClientRect().top >= r.querySelector(".pd-team-who")!.getBoundingClientRect().bottom - 1; }).map(r => r.querySelector(".pd-team-name")!.textContent),
+    选人: (() => { const 选 = 组卡.querySelector(".pd-team-add-who"), 区 = 组卡.querySelector(".pd-team-add"); return 选 && 区 ? { 满宽: Math.abs(选.getBoundingClientRect().width - 区.getBoundingClientRect().width) < 1, 下一行: 组卡.querySelector(".pd-team-add-row")!.getBoundingClientRect().top >= 选.getBoundingClientRect().bottom } : null; })(),
+  } : null;
+  const 人行 = [...document.querySelectorAll(".rec-rail .rec-cg .rec-contact-line > .rec-contact-k")].filter(看得见);
+  return {
+    资料名左: [...new Set(资料名.map(离卡左))],
+    资料值左: [...new Set(资料值.map(离卡左))],
+    组,
+    人名左: [...new Set(人行.map(离卡左))],
+    人名宽: [...new Set(人行.map(e => Math.round(e.getBoundingClientRect().width)))],
+    人值左: [...new Set(人行.map(e => 离卡左(e.nextElementSibling!)))],
+    人行字: 人行.map(e => e.textContent),
+    // 号码保护：在值那一列，不回到字段名底下
+    保护左: [...new Set([...document.querySelectorAll(".rec-rail .rec-cg .rec-contact-guard")].map(离卡左))],
+    横滚: document.documentElement.scrollWidth > innerWidth + 1,
+  };
+});
+const 上色 = async (page: Page, 色: "light" | "dark") => {
+  if (色 !== "dark") return;
+  for (const f of ["antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+  await page.evaluate(() => { document.documentElement.dataset.mode = "dark"; });
+};
+for (const 色 of ["light", "dark"] as const) {
+  it(`${色}：项目组卡（1280 / 1366 / 1920 / 390）——组长、组员名字左边缘和「客户资料」字段名齐；没有空下拉、占位整句露出；放不下操作落到名字下一行；邀请区两行`, async () => {
+    for (const w of [1280, 1366, 1920, 390]) {
+      const { page, errors } = await 开(w, { 组员: true }, 2400);
+      try {
+        await 上色(page, 色);
+        await 展开卡(page, "项目组");
+        await page.locator(".pd-team-add-who").waitFor();
+        await page.waitForTimeout(150);
+        const m = await 排版量(page);
+        const 标 = `${色} ${w}`;
+        expect(m.资料名左.length, `${标} ${JSON.stringify(m)}`).toBe(1);
+        const 齐 = m.资料名左[0];
+        // 组长 + 两位组员，三行名字同一个左边缘 = 客户资料字段名左边缘；名字不截；行高同项目资料字段行
+        expect(m.组!.名左, 标).toEqual([齐, 齐, 齐]);
+        expect(m.组!.名截, 标).toEqual([]);
+        for (const h of m.组!.行高) expect(h, 标).toBeGreaterThanOrEqual(32);
+        expect(m.组!.空框, 标).toEqual([]);
+        expect(m.组!.占位.map(x => x.字).sort(), 标).toEqual(["角色", "选择同事", "选角色"]);
+        expect(m.组!.占位.filter(x => x.截), 标).toEqual([]);
+        expect(m.组!.压, 标).toBe(0);
+        expect(m.组!.选人, 标).toEqual({ 满宽: true, 下一行: true });
+        // 这套桩 1280 带名单，右栏约 245 宽：超长名字那一行操作落到下一行；1920 短名字那行一行放得下
+        if (w === 1280) expect(m.组!.折行, 标).toContain("欧阳超长名字某某某");
+        if (w === 1920) expect(m.组!.折行, 标).not.toContain("刘琛");
+        expect(m.横滚, 标).toBe(false);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  }, 120_000);
+}
+
+it("项目组卡改不了的人：不摆角色下拉（没有空框）、没有「移出」，有角色的写角色名", async () => {
+  const { page, errors } = await 开(1280, { 组员: "只看" }, 2400);
+  try {
+    await 展开卡(page, "项目组");
+    await page.locator(".pd-team-row").first().waitFor();
+    expect(await page.locator(".pd-team-row .ant-select").count()).toBe(0);
+    expect(await page.locator(".pd-team-row .pd-team-role-t").allInnerTexts()).toEqual(["技术支持工程师"]);
+    expect(await page.locator(".pd-team-row").getByRole("button", { name: "移出" }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });

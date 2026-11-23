@@ -5056,10 +5056,22 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
   .att-ring-fg { animation-duration: calc(var(--t-morph) * 8); }
 }
 /* 项目组 / 提成分配（dt.team，项目详情）：刚邀请的先摆一行、分配条边输边变 */
-.pd-team-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; min-width: 0; }
-/* 组员名、角色下拉：原来的行内样式挪成 class（卡片改进第三阶段改成 68 列），值一字不差 */
-.pd-team-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pd-team-role { width: 140px; flex: 0 0 auto; }
+/* 项目组卡（11-23 排版）：组长、组员同一种行；名字 + 状态标签靠左，操作（角色、移出）靠右，
+   一行放不下时操作整组落到名字下一行（flex 折行，名字按自身宽排，不被挤截；比整行还长才「…」、悬停看全） */
+.pd-team-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 2px; min-width: 0; }
+.pd-team-who { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.pd-team-who > .ant-tag { flex: none; margin-inline-end: 0; }
+.pd-team-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.pd-team-ops { display: flex; align-items: center; gap: 4px; flex: none; max-width: 100%; margin-left: auto; }
+/* 角色下拉定宽：「选角色」占位整句露出；角色名长了下拉里「…」，悬停看全（antd 选中项自带 title） */
+.pd-team-role { width: 112px; flex: none; }
+.pd-team-role-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-note); }
+/* 邀请区两行：选人占满宽；角色下拉 + 邀请 */
+.pd-team-add { display: grid; gap: 8px; margin-top: 8px; }
+.pd-team-add-who { width: 100%; min-width: 0; }
+.pd-team-add-row { display: flex; gap: 8px; min-width: 0; }
+.pd-team-add-role { flex: 1 1 auto; min-width: 0; }
+.pd-team-add-row > .ant-btn { flex: none; }
 /* 提成卡的行、字段名（ProjectCommission.tsx）：卡片改进第三阶段对齐到 68 / 92（标签列 68 + 隔 8，值离卡左 92；原来行内 64 + 隔 12），
    只剩一套外观后和底子合成一条（11-23）。字段名 13 灰一行省略，值不许把行撑宽 */
 .pd-cm-row { display: flex; column-gap: 8px; align-items: baseline; margin-bottom: 8px; min-width: 0; flex-wrap: nowrap; }
@@ -6733,11 +6745,10 @@ button.proj-miss-chip { cursor: pointer; }
 /* 提成卡 .pd-cm-row 的 68 / 92 已经合进底子那条（「项目组 / 提成分配」那段） */
 :root:root:root :is(.rec-page, .proj-wrap) .proj-rel-field { grid-template-columns: 68px minmax(0, 1fr); }
 :root:root:root :is(.rec-page, .proj-wrap) .proj-rel-key { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row { column-gap: 8px; }
-:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row > .pd-team-name { flex: 0 0 68px; }
-:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row > .pd-team-role { flex: 1 1 auto; width: auto; min-width: 0; }
-/* 组长、当前回款、交付三行用项目资料那套 .proj-info-row / .proj-info-k；卡里最上面那行不往上让 */
-:root:root:root :is(.rec-page, .proj-wrap) :is(.pd-team-lead, .pd-pay-sum) { display: flex; align-items: center; min-width: 0; margin-bottom: 4px; }
+/* 项目组（11-23 改排版）：组长、组员行都用 .proj-info-row 的行高和左右留白，名字左边缘 = 字段名列左边缘；行可折（操作落到下一行） */
+:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row { flex-wrap: wrap; row-gap: 2px; }
+/* 当前回款、交付三行用项目资料那套 .proj-info-row / .proj-info-k；卡里最上面那行不往上让 */
+:root:root:root :is(.rec-page, .proj-wrap) .pd-pay-sum { display: flex; align-items: center; min-width: 0; margin-bottom: 4px; }
 
 /* 14 没有项目区的客户页 */
 :root:root:root .rec-page.ui-v2 > .rec:has(> .rec-col-blocks) { gap: var(--card-gap); }
