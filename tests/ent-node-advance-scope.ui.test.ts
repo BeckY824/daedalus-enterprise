@@ -15,7 +15,7 @@ beforeAll(async () => {
   bundle = await 打包(`
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import T from '@/app/(app)/settings/ProjectSettingsTab';import {默认组织规则} from '@/lib/project/org-rules';
-    let root;window.__render=({__能导出=true,...p})=>(root??=createRoot(document.getElementById('root'))).render(<ConfigProvider locale={zhCN}><App><T 成员={[]} value={{角色们:[],类别们:[],企业选项:null,持有:{},提成比例:null,能改提成比例:false,能导出拦截:__能导出,
+    let root;window.__render=({__能导出=true,...p})=>(root??=createRoot(document.getElementById('root'))).render(<ConfigProvider locale={zhCN}><App><T 成员={[]} value={{角色们:[],类别们:[],企业选项:null,持有:{},提成比例:null,能改提成比例:false,导出拦截:__能导出?((...a)=>window.__act?.('导出必填拦截Action',...a)??{ok:true}):undefined,
       挡:{字典:null,持有上限:null,节点时限:null,必填字段:null,阶段规则:null},组织规则:{...默认组织规则,节点推进:{...默认组织规则.节点推进,...p}}}}/></App></ConfigProvider>);`);
   browser = await chromium.launch();
 }, 120_000);
