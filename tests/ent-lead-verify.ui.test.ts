@@ -157,8 +157,8 @@ it("D04：「放回公海」是后果框——标题带项目名、后果分条�
     const 字 = await 框.innerText();
     expect(字).toContain("把「样例项目」退回线索公海");
     expect(字).toContain("领不回");
-    expect(字).toContain("你自己不能再领回来");
-    expect(字).toContain("客户不动");
+    expect(字).toContain("你不能再领回来，也看不到这个项目了");
+    expect(字).toContain("客户和客户负责人不动");
     expect(字).toContain("算你主动退回");
     expect(await page.locator(".ant-popover").filter({ hasText: "退回线索公海？" }).count()).toBe(0);
     await 框.getByRole("button", { name: /^取\s*消$/ }).click();
