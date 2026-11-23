@@ -323,6 +323,27 @@ describe("谁看得到、谁点得了", () => {
     expect(JSON.stringify(我后)).not.toContain(`老客户${序}`);
   });
 
+  it("已补建那行：补成的线索名带链接（最终地址）只给进得了那条项目的人；进不了、删了的只有字、不给地址", async () => {
+    const c = await 到上限留一条();
+    const { 键 } = await 待补建of(c.id);
+    await 上限({});
+    当(外销管);
+    expect((await 补建待补建(键)).ok).toBe(true);
+    const p = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, source: 重复咨询来源 } });
+    const 结果 = async (u: 人) => (await 读待补建栏(u)).管!.find((x) => x.键 === 键)!.结果!;
+    // 系统管理员（没设线的总管理）进得了这条项目：给地址（看得到客户 = 直接落客户页项目页签），话照旧
+    const 有 = await 结果(总管);
+    expect(有.线索).toEqual({ 名: p.name, 链接: expect.stringContaining(p.id) });
+    expect(有.话.startsWith(`补成线索「${p.name}」`)).toBe(true);
+    // 这条线的销售管理管得了这一行，但接手的销售不是他下属、他看不到那条项目：只有字，不给地址（话、名照旧）
+    const 没 = await 结果(外销管);
+    expect(没).toMatchObject({ 话: 有.话, 线索: { 名: p.name, 链接: null } });
+    expect(JSON.stringify(没)).not.toContain(p.id);
+    // 删了（回收站）：总管也只有字
+    await prisma.project.update({ where: { id: p.id }, data: { deletedAt: new Date() } });
+    expect((await 结果(总管)).线索).toEqual({ 名: p.name, 链接: null });
+  });
+
   it("键乱写、找不到：回找不到，不抛", async () => {
     当(外销管);
     expect(await 补建待补建("乱写")).toMatchObject({ ok: false, 刷新: true });

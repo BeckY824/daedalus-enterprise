@@ -46,7 +46,13 @@ const 行 = (键: string, 状态: string, 补: object = {}) => ({
 });
 
 beforeAll(async () => {
-  const 管 = [行("h1:0", "待补建"), 行("h2:0", "已补建", { 结果: { 话: "补成线索「重复咨询-NO.000123」，交给 小王 跟进", 谁: "销管某", 时间: "2026-11-23T05:00:00.000Z" } })];
+  const 管 = [
+    行("h1:0", "待补建"),
+    // 已补建、看的人进得了那条线索：服务端给了最终地址
+    行("h2:0", "已补建", { 结果: { 话: "补成线索「重复咨询-NO.000123」，交给 小王 跟进", 谁: "销管某", 时间: "2026-11-23T05:00:00.000Z", 线索: { 名: "重复咨询-NO.000123", 链接: "/customers/c1?p=p1#proj" } } }),
+    // 已补建、看的人进不了：链接 null，只有字
+    行("h3:0", "已补建", { 客户编号: "NO.000456", 结果: { 话: "补成线索「重复咨询-NO.000456」，按区域自动分配给 小李 跟进", 谁: "销管某", 时间: "2026-11-23T04:00:00.000Z", 线索: { 名: "重复咨询-NO.000456", 链接: null } } }),
+  ];
   包.管 = await 打包(`function Test(){return <AttachView 待批={[]} 我的={[]} 待补建={{管:${JSON.stringify(管)},我交的:[]}}/>}`);
   const 我交的 = [{ 键: "h1:0", 客户编号: "NO.000123", 交的时间: "2026-11-23T03:00:00.000Z", 状态: "已关闭", 结果: { 话: "不补建：客户只是问问价", 谁: "销管某", 时间: "2026-11-23T05:00:00.000Z" } }];
   包.市场 = await 打包(`function Test(){return <AttachView 待批={[]} 我的={[]} 待补建={{管:null,我交的:${JSON.stringify(我交的)}}}/>}`);
@@ -70,6 +76,78 @@ const 栏 = (page: Page) => page.locator("#repeat-unbuilt");
 /** antd 两个汉字的键会自动插空格（「补 建」）；「不补建」三个字不插，免得被当成「补建」 */
 const 补建键 = /^补\s?建$/;
 
+/** 卡片、表格可视区、某个元素的框（横向） */
+const 框of = (page: Page, sel: string) => page.locator(sel).first().evaluate((e) => { const r = e.getBoundingClientRect(); return { 左: r.left, 右: r.right, 上: r.top, 下: r.bottom }; });
+
+// 1280 宽：真页面左栏占掉一截，卡内约 982（3703 实操量的），这里把根节点收到 1010 宽照着摆；别的宽度照视口
+for (const [宽, 根宽] of [[1280, 1010], [1366, 0], [1920, 0], [390, 0]] as const) {
+  it(`${宽} 宽：「补建 / 不补建」钉在右边、不横滑就在卡片可视范围里，往右滑时左边有分隔；页面不横滚；已补建行进得了的有链接、进不了的没有`, async () => {
+    const { page, errors } = await 开(包.管, 宽);
+    try {
+      if (根宽) await page.evaluate((w) => { document.getElementById("root")!.style.width = `${w}px`; }, 根宽);
+      await 栏(page).locator(".ant-table-tbody tr").first().waitFor();
+      expect(await 不横滚(page)).toBe(true);
+      const 卡 = await 框of(page, "#repeat-unbuilt .ant-card-body");
+      const 可视 = await 框of(page, "#repeat-unbuilt .ant-table-content");
+      const 待 = 栏(page).locator(".ant-table-tbody tr").filter({ hasText: "待补建" }).first();
+      for (const 名 of [补建键, "不补建"]) {
+        const b = await 待.getByRole("button", { name: 名 }).evaluate((e) => { const r = e.getBoundingClientRect(); const td = e.closest("td")!.getBoundingClientRect(); return { 左: r.left, 右: r.right, 格左: td.left, 格右: td.right }; });
+        // 在卡片里、在表格可视区里（不用横滑），也没被操作格自己截掉
+        expect(b.左).toBeGreaterThanOrEqual(Math.max(卡.左, 可视.左) - 0.5);
+        expect(b.右).toBeLessThanOrEqual(Math.min(卡.右, 可视.右, 宽) + 0.5);
+        expect(b.左).toBeGreaterThanOrEqual(b.格左);
+        expect(b.右).toBeLessThanOrEqual(b.格右);
+      }
+      const 量 = await page.locator("#repeat-unbuilt .ant-table-content").evaluate((e) => ({ 要滑: e.scrollWidth > e.clientWidth + 1 }));
+      const 操作格 = 待.locator("td").last();
+      expect(await 操作格.getAttribute("class")).toContain("ant-table-cell-fix-end");
+      if (量.要滑) {
+        // 还能往右滑：操作列左边那道分隔亮着；滑到最右收起、键还在原处
+        await expect.poll(() => 操作格.evaluate((e) => getComputedStyle(e, "::after").opacity)).toBe("1");
+        const 前 = await 待.getByRole("button", { name: "不补建" }).evaluate((e) => e.getBoundingClientRect().left);
+        await page.locator("#repeat-unbuilt .ant-table-content").evaluate((e) => { e.scrollLeft = e.scrollWidth; });
+        await expect.poll(() => 操作格.evaluate((e) => getComputedStyle(e, "::after").opacity)).toBe("0");
+        expect(await 待.getByRole("button", { name: "不补建" }).evaluate((e) => e.getBoundingClientRect().left)).toBeCloseTo(前, 0);
+        await page.locator("#repeat-unbuilt .ant-table-content").evaluate((e) => { e.scrollLeft = 0; });
+      }
+      // 已补建：进得了的那行，线索名是链接（最终地址），整格照旧一行 + 悬停看全文；进不了的那行没有链接
+      const 有 = 栏(page).locator(".ant-table-tbody tr").filter({ hasText: "重复咨询-NO.000123" });
+      const 链 = 有.locator("a.ls-ub-lead");
+      expect(await 链.count()).toBe(1);
+      expect(await 链.getAttribute("href")).toBe("/customers/c1?p=p1#proj");
+      expect(await 链.innerText()).toBe("重复咨询-NO.000123");
+      const 格 = 有.locator(".ls-ub-one[title*='补成线索']");
+      expect(await 格.getAttribute("title")).toMatch(/^补成线索「重复咨询-NO.000123」，交给 小王 跟进；销管某 2026-11-23 \d\d:00$/);
+      expect(await 格.evaluate((e) => getComputedStyle(e).whiteSpace)).toBe("nowrap");
+      const 没 = 栏(page).locator(".ant-table-tbody tr").filter({ hasText: "重复咨询-NO.000456" });
+      expect(await 没.locator("a").count()).toBe(0);
+      expect(await 没.locator(".ls-ub-one[title*='补成线索']").innerText()).toContain("重复咨询-NO.000456");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 60_000);
+}
+
+it("操作列左边的分隔：浅色、深色都跟着面板底色走（不是写死的白）", async () => {
+  const 底色 = async (深: boolean) => {
+    const { page } = await 开(包.管, 1280);
+    try {
+      if (深) {
+        await page.evaluate(() => document.documentElement.setAttribute("data-mode", "dark"));
+        for (const f of ["antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+      }
+      await page.evaluate(() => { document.getElementById("root")!.style.width = "1010px"; });
+      const 格 = 栏(page).locator(".ant-table-tbody tr").filter({ hasText: "待补建" }).first().locator("td").last();
+      await 格.waitFor();
+      return await 格.evaluate((e) => ({ 图: getComputedStyle(e, "::after").backgroundImage, 面板: getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() }));
+    } finally { await page.close(); }
+  };
+  const 浅 = await 底色(false), 深 = await 底色(true);
+  expect(浅.图).toContain("linear-gradient");
+  expect(深.图).toContain("linear-gradient");
+  expect(深.面板).not.toBe(浅.面板);
+  expect(深.图).not.toBe(浅.图);
+}, 60_000);
+
 for (const 宽 of [1280, 390]) {
   it(`${宽} 宽：一行 + 省略号、悬停看全文、页面不横滚；补建就地确认才调，成了顶上一句结果`, async () => {
     const { page, errors } = await 开(包.管, 宽);
@@ -87,7 +165,7 @@ for (const 宽 of [1280, 390]) {
       // 已补建那一行没有键，处理结果写着
       const 已 = 栏(page).locator(".ant-table-tbody tr").filter({ hasText: "已补建" });
       expect(await 已.getByRole("button").count()).toBe(0);
-      expect(await 已.locator(".ls-ub-one[title*='补成线索']").count()).toBe(1);
+      expect(await 已.locator(".ls-ub-one[title*='补成线索']").count()).toBe(2);
       // 补建：先就地确认
       await 栏(page).getByRole("button", { name: 补建键 }).first().click();
       const 问 = page.locator(".inlc-ask").first();

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Alert, Button, Card, Empty, Input, Modal, Select, Space, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import InlineConfirm from "@/components/InlineConfirm";
+import { RowLink } from "@/components/ui";
 import { dayjs } from "@/lib/utils";
 import type { 待补建栏, 待补建行, 我交的待补建, 处理结果 } from "@/lib/enterprise/repeat-unbuilt";
 import type { 未建状态 } from "@/lib/enterprise/unbuilt-record";
@@ -19,6 +20,22 @@ const 省略 = { ellipsis: true } as const;
 const 一行 = (字: string) => <span className="ls-ub-one" title={字}>{字}</span>;
 const 状态签 = (v: 未建状态) => <Tag color={v === "已补建" ? "green" : v === "已关闭" ? "default" : "orange"}>{v}</Tag>;
 const 结果字 = (r: 处理结果 | null) => (r ? [r.话, [r.谁, 时刻(r.时间)].filter(Boolean).join(" ")].filter(Boolean).join("；") : "");
+/**
+ * 处理结果那一格：一行 + 省略号 + 悬停看全文；已补建、看的人进得了那条线索（服务端判了才给 链接）时，「补成线索「名」」里的名字链过去（最终地址）。
+ * 没给链接 = 只有字，和原来一样
+ */
+function 结果格({ r, 空话 }: { r: 处理结果 | null; 空话: string }) {
+  const 全 = 结果字(r) || 空话;
+  const 头 = r?.线索 ? `补成线索「${r.线索.名}」` : "";
+  if (!r?.线索?.链接 || !全.startsWith(头)) return 一行(全);
+  return (
+    <span className="ls-ub-one" title={全}>
+      补成线索「<RowLink href={r.线索.链接} className="ls-ub-lead">{r.线索.名}</RowLink>」{全.slice(头.length)}
+    </span>
+  );
+}
+/** 操作列宽：「补建」「不补建」两颗小键 + 格子内边距。钉在右边（1280 宽表格要横滑，键不能藏在可视区外；手机宽也钉，横滑的列更多、键更该在眼前） */
+const 操作宽 = 140;
 const 网断: { ok: false; error: string; 刷新?: true } = { ok: false, error: "没办成，网络可能断了，再点一次" };
 
 /**
@@ -85,9 +102,9 @@ export default function UnbuiltCard({ 栏 }: { 栏: 待补建栏 }) {
     { title: "通知了", dataIndex: "通知了", width: 170, ...省略, render: 一行 },
     { title: "交的人", key: "交", width: 190, ...省略, render: (_, r) => 一行(`${r.交的人} · ${时刻(r.交的时间)}`) },
     { title: "状态", dataIndex: "状态", width: 90, render: 状态签 },
-    { title: "处理结果", key: "结果", width: 220, ...省略, render: (_, r) => 一行(结果字(r.结果) || "—") },
+    { title: "处理结果", key: "结果", width: 220, ...省略, render: (_, r) => <结果格 r={r.结果} 空话="—" /> },
     {
-      title: "", key: "op", width: 210, render: (_, r) => r.状态 === "待补建" && (
+      title: "", key: "op", width: 操作宽, fixed: "right", render: (_, r) => r.状态 === "待补建" && (
         <div className="ls-at-op">
           <Space size={4}>
             <InlineConfirm 问="按此刻落人：负责人能接给他，否则按区域自动分配" 是="补建" 中性 做={() => 补(r.键)}>
@@ -104,7 +121,7 @@ export default function UnbuiltCard({ 栏 }: { 栏: 待补建栏 }) {
     { title: "客户编号", dataIndex: "客户编号", width: 120, ...省略, render: 一行 },
     { title: "交的时间", dataIndex: "交的时间", width: 150, render: (v: string) => 时刻(v) },
     { title: "状态", dataIndex: "状态", width: 90, render: 状态签 },
-    { title: "处理结果", key: "结果", width: 320, ...省略, render: (_, r) => 一行(结果字(r.结果) || "等销售管理处理") },
+    { title: "处理结果", key: "结果", width: 320, ...省略, render: (_, r) => <结果格 r={r.结果} 空话="等销售管理处理" /> },
   ];
   const 管宽 = 管列.reduce((s, c) => s + Number(c.width ?? 0), 0);
   const 待几条 = 栏.管?.filter((x) => x.状态 === "待补建").length ?? 0;
@@ -118,7 +135,7 @@ export default function UnbuiltCard({ 栏 }: { 栏: 待补建栏 }) {
           </p>
           {成了 && <Alert className="ls-ld-result" type="success" showIcon closable title={成了} onClose={() => set成了(null)} />}
           {栏.管.length
-            ? <Table rowKey="键" size="small" columns={管列} dataSource={栏.管} pagination={false} tableLayout="fixed" scroll={{ x: 管宽 }} />
+            ? <Table rowKey="键" size="small" className="ls-ub-tbl" columns={管列} dataSource={栏.管} pagination={false} tableLayout="fixed" scroll={{ x: 管宽 }} />
             : <Empty description="没有待补建的重复咨询" />}
         </Card>
       )}

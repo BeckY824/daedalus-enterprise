@@ -31,7 +31,9 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版 } from "./switch";
 import { 权限组织 } from "./org";
 import { 是系统管理员of, 管理员类别们of, type 组织 } from "./org-core";
-import { 能分配线索, 不能当负责人话, 只读角色, 只读话of } from "./permissions";
+import { 能分配线索, 不能当负责人话, 只读角色, 只读话of, 能看项目, 权限项目选, 带已加入 } from "./permissions";
+import { 市场进不了详情的 } from "./market-view-db";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 import { 分配方式叫法 } from "./dict";
 import { 可指定的人, 指定问题, 本月分配行, 读挑人底子, 读线部门 } from "./assign-eta";
 import { 企划线索计数key, 计不计数, 挑接手人, 本月已分, 配额of, 满了, 月份 } from "./lead-assign";
@@ -81,15 +83,34 @@ export function 能管待补建(org: 组织, userId: string, 线: "内贸" | "�
 /** 这一栏给不给他看（不看某一条的线）：系统管理员、条线总管理、能分配线索的销售管理 */
 export const 是待补建管理人 = (org: 组织, userId: string) => 能管待补建(org, userId, null);
 
-/** 处理结果写成一句（栏里两种人都看这一句；不带客户名） */
-export type 处理结果 = { 话: string; 谁: string | null; 时间: string };
-function 结果of(r: 未建线索记录): 处理结果 | null {
+/**
+ * 处理结果写成一句（栏里两种人都看这一句；不带客户名）。
+ * 已补建的带 线索：名 = 话里「补成线索「名」」那一段（界面把这段换成链接）；链接只在看的人进得了那条项目时给（服务端判，同 项目页去向：
+ * 市场没挡、能看项目、没删），给的是最终地址（看得到客户的直接落客户页项目页签，lib/project/customer-detail-direct.ts）；进不了的只有字、没有链接
+ */
+export type 处理结果 = { 话: string; 谁: string | null; 时间: string; 线索?: { 名: string; 链接: string | null } };
+const 补成线索头 = (名: string) => `补成线索「${名}」`;
+function 结果of(r: 未建线索记录, 链接们: ReadonlyMap<string, string>): 处理结果 | null {
   const h = r.处理;
   if (r.状态 === "待补建" || !h) return null;
-  const 话 = r.状态 === "已补建" && h.线索
-    ? `补成线索「${h.线索.名}」，${h.线索.落法 === "负责人" ? "建在客户负责人" : h.线索.落法 === "自动分配" ? "按区域自动分配给" : "交给"} ${h.线索.接手人.名}${h.线索.落法 === "负责人" ? " 名下" : " 跟进"}`
+  const 线索 = r.状态 === "已补建" ? h.线索 : undefined;
+  const 话 = 线索
+    ? `${补成线索头(线索.名)}，${线索.落法 === "负责人" ? "建在客户负责人" : 线索.落法 === "自动分配" ? "按区域自动分配给" : "交给"} ${线索.接手人.名}${线索.落法 === "负责人" ? " 名下" : " 跟进"}`
     : h.自动 ? 进公海关原因 : `不补建：${h.原因 ?? ""}`;
-  return { 话, 谁: h.谁?.名 ?? null, 时间: h.时间 };
+  return { 话, 谁: h.谁?.名 ?? null, 时间: h.时间, ...(线索 ? { 线索: { 名: 线索.名, 链接: 链接们.get(线索.id) ?? null } } : {}) };
+}
+
+/** 补成的线索里，这个人进得了的那几条 → 最终地址（进不了、删了的不在里面） */
+async function 进得了的线索(me: Pick<SessionUser, "id"> & { role?: string | null }, org: 组织, ids: string[]): Promise<Map<string, string>> {
+  if (!ids.length) return new Map();
+  const [行, 市场挡] = await Promise.all([
+    看全部(() => prisma.project.findMany({ where: { id: { in: ids }, deletedAt: null }, select: { id: true, ...权限项目选 } })),
+    市场进不了详情的(me.id, ids),
+  ]);
+  const 能进 = 行.filter((r) => !市场挡.has(r.id) && 能看项目(me, 带已加入(r), org)).map((r) => r.id);
+  if (!能进.length) return new Map();
+  const 地址 = await 项目链接们(me, 能进);
+  return new Map(能进.map((id) => [id, 地址.get(id) ?? `/projects/${encodeURIComponent(id)}`]));
 }
 
 export type 待补建行 = {
@@ -120,7 +141,7 @@ const 排 = <T extends { 状态: 未建状态; 交的时间: string; 结果: 处
     : a.状态 === "待补建" ? -1 : b.状态 === "待补建" ? 1 : (b.结果?.时间 ?? "").localeCompare(a.结果?.时间 ?? "");
 
 /** 页面那一栏的数据（挂靠申请页 page.tsx 调）：看不到 = 管 null；市场同事自己交的另给一份 */
-export async function 读待补建栏(me: Pick<SessionUser, "id">): Promise<待补建栏> {
+export async function 读待补建栏(me: Pick<SessionUser, "id"> & { role?: string | null }): Promise<待补建栏> {
   const 空: 待补建栏 = { 管: null, 我交的: [] };
   if (!企业版()) return 空;
   const org = await 权限组织();
@@ -131,10 +152,12 @@ export async function 读待补建栏(me: Pick<SessionUser, "id">): Promise<待�
   const 行们 = await 看全部(() => prisma.entDupeHit.findMany({ where: { unbuilt: { not: null } }, select: { id: true, unbuilt: true }, orderBy: { createdAt: "desc" } }));
   const 起 = Date.now() - 已处理留天 * 86_400_000;
   const 条们 = 行们.flatMap((行) => 未建条们(行.unbuilt).map((x) => ({ 键: 未建键(行.id, x.位), r: x.记录 }))).filter((x) => 留着(x.r, 起));
-  const 我交的 = 条们.filter((x) => x.r.交的人.id === me.id)
-    .map(({ 键, r }) => ({ 键, 客户编号: r.客户编号, 交的时间: r.交的时间, 状态: r.状态, 结果: 结果of(r) })).sort(排);
+  const 我交的条 = 条们.filter((x) => x.r.交的人.id === me.id);
+  const 我管的 = 管人 ? 条们.filter((x) => 能管待补建(org, me.id, x.r.线)) : [];
+  const 线索ids = [...new Set([...我交的条, ...我管的].flatMap((x) => (x.r.状态 === "已补建" && x.r.处理?.线索 ? [x.r.处理.线索.id] : [])))];
+  const 链接们 = await 进得了的线索(me, org, 线索ids);
+  const 我交的 = 我交的条.map(({ 键, r }) => ({ 键, 客户编号: r.客户编号, 交的时间: r.交的时间, 状态: r.状态, 结果: 结果of(r, 链接们) })).sort(排);
   if (!管人) return { 管: null, 我交的 };
-  const 我管的 = 条们.filter((x) => 能管待补建(org, me.id, x.r.线));
   // 号码撞上的那位联系人：名字现读（不是客户名；联系人删了就说删了）
   const 联系人ids = [...new Set(我管的.flatMap((x) => ("撞上的联系人" in x.r.对接人 ? [x.r.对接人.撞上的联系人] : [])))];
   const 联系人 = new Map((联系人ids.length ? await 看全部(() => prisma.contact.findMany({ where: { id: { in: 联系人ids }, deletedAt: null }, select: { id: true, name: true } })) : []).map((c) => [c.id, c.name]));
@@ -145,7 +168,7 @@ export async function 读待补建栏(me: Pick<SessionUser, "id">): Promise<待�
     return {
       键, 状态: r.状态, 类: r.类, 客户编号: r.客户编号, 渠道: r.渠道.名, 对接人, 沟通方式: 方式of(r), 沟通时间: r.沟通.时间, 沟通内容: r.沟通.内容,
       没建原因: r.没建原因, 通知了: r.通知了.人.length ? `${r.通知了.类别 ?? ""}：${r.通知了.人.map((x) => x.名).join("、")}` : "没有能通知的人",
-      交的人: r.交的人.名, 交的时间: r.交的时间, 结果: 结果of(r),
+      交的人: r.交的人.名, 交的时间: r.交的时间, 结果: 结果of(r, 链接们),
     };
   }).sort(排);
   return { 管, 我交的 };

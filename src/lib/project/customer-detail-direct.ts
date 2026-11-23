@@ -13,7 +13,7 @@ import { 仅项目客户们 } from "@/lib/enterprise/project-only-customers";
  * 拿不准的照旧给 /projects/<id>，让项目页自己判（projects/[id]/load.ts 项目页去向）。
  * 「确定」= 不在公海（公海有原负责人回避，留给项目页判）、市场没挡、能看项目、看得到客户（或仅项目里有这个项目）——和 项目页去向 跳客户页那条同一口径
  */
-export async function 项目链接们(me: SessionUser, ids: readonly string[]): Promise<Map<string, string>> {
+export async function 项目链接们(me: Pick<SessionUser, "id"> & { role?: string | null }, ids: readonly string[]): Promise<Map<string, string>> {
   const 原 = new Map(ids.map((id) => [id, `/projects/${encodeURIComponent(id)}`]));
   if (!企业版() || !ids.length) return 原;
   const 行 = await prisma.project.findMany({
