@@ -4,6 +4,7 @@ import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import { useContext, useEffect, useLayoutEffect, useRef, useState, useTransition, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { Button, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
@@ -182,6 +183,8 @@ export default function ProjectsView({
   /** 客户详情合并（11-12 第 2 批）：企业版看得到客户的，项目在客户详情的项目区里，直接去那儿停在这个项目的页签；客户看不到的照旧进项目详情 */
   const 项目地址 = (r: 看板卡片) => (企业版 && r.customerId && r.customerName != null && !r.进不了客户详情 ? 客户页项目地址(r.customerId, r.id) : `/projects/${r.id}`);
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const 预取 = useHoverPrefetch();
   const 问一起转 = useCarryConfirm();
   const 字典 = 字典of(企业版, 出口叫法);
@@ -331,7 +334,7 @@ export default function ProjectsView({
   // 看板拖动换进程（P-界面-45，原型 pr.drag / cu.board）：企业版进程列才有；规则全在服务端（board-drag.tsx）
   const 拖 = useBoardDrag({
     看板, 框: 看板框, 开: 企业版 && !新线索 && 看法 === "看板",
-    名of: (r) => r.name, 去补齐: (r) => router.push(项目地址(r)), 刷新: () => router.refresh(),
+    名of: (r) => r.name, 去补齐: (r) => 去页.push(项目地址(r)), 刷新: () => router.refresh(),
   });
   const 全部卡 = new Map<string, { 卡: 看板卡片; 列: string }>();
   for (const c of 看板) for (const r of [...c.行, ...(每列取数 ? (追加.们[c.列]?.行 ?? []) : [])]) 全部卡.set(r.id, { 卡: r, 列: c.列 });
@@ -792,7 +795,7 @@ export default function ProjectsView({
                       const 档 = 刚来 ? 新第++ : 序;
                       // 只看进度（市场角色、已分给圈外的人）：卡片照摆、点不进详情（P-看-06）
                       const 能进 = !r.只看进度;
-                      const 去 = () => 能进 && router.push(项目地址(r));
+                      const 去 = () => 能进 && 去页.push(项目地址(r));
                       const 卡拖 = 拖.卡片属性(r, c.列);
                       return (
                         <div

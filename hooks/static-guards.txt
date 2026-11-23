@@ -28,3 +28,4 @@ tests/release-guards.test.ts
 tests/use-server-exports.test.ts
 tests/utc-date-cap.test.ts
 tests/ent-channel-read-no-write.test.ts
+tests/nav-smooth-routes.test.ts

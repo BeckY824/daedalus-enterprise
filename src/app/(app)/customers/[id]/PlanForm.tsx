@@ -7,6 +7,7 @@ import { requiredText, isFormValidationError, 跳到第一处 } from "@/lib/form
 import OptionInput from "@/components/OptionInput";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Modal, Form, Input, Button, Checkbox, Typography } from "antd";
 import SaveButton from "@/components/SaveButton";
 import { showUndo } from "@/components/UndoBar";
@@ -54,6 +55,8 @@ export default function PlanForm({
 }) {
   const [form] = Form.useForm();
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const hasTime = Form.useWatch("hasTime", form) ?? true;
   const 计划时间 = Form.useWatch("plannedAt", form);
   const 挑人 = !customerId;
@@ -165,7 +168,7 @@ export default function PlanForm({
       showUndo({
         话: `已给${名}排上「${String(v.subject).trim()}」`,
         撤销: () => deletePlan(res.id),
-        另一个动作: { 话: `去${名}的记录页`, 做: () => router.push(`/customers/${谁}`) },
+        另一个动作: { 话: `去${名}的记录页`, 做: () => 去页.push(`/customers/${谁}`) },
         毫秒: 6000,
       });
     };

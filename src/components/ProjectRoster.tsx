@@ -4,7 +4,8 @@ import Shortcut from "./Shortcut";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Tag, Drawer } from "antd";
 import { SearchOutlined, TableOutlined } from "@ant-design/icons";
 import { 跟进方式名 } from "@/lib/follow-method";
@@ -24,7 +25,7 @@ const 叫 = "项目列表";
 
 /**
  * 企业版项目详情页的中栏名单（P11）：照客户记录页的 CustomerRoster——应用导航 | 这条名单 | 项目详情，三个竖条。
- * 只在 /projects/[id] 出现（@pane/projects/[id]），列表页 /projects 本身就是全宽的表，不挂。
+ * 只在 /projects/[id] 出现（@pane/projects/(detail)/layout.tsx），列表页 /projects 本身就是全宽的表，不挂。
  *
  * 范围和项目页一样（lib/project/list.ts 读名单项目）：业务员只看自己的 + 能看的，最多 项目上限 个。
  * 收起 / 抽屉 / ⌘\ / ⌘K 全走客户名单那套（lib/middle-pane.ts、lib/roster.ts），收起记在同一个开关上：
@@ -34,7 +35,8 @@ const 叫 = "项目列表";
  * 组头写阶段名和条数，可以折叠（记在这台电脑上）；每行右边写当前进程（阶段里的节点，有结局写结局）。
  */
 export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
-  const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const pathname = usePathname();
   const [q, setQ] = useState("");
   const 中栏 = useMiddlePane("roster");
@@ -156,7 +158,7 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
             if (!去) return;
             e.preventDefault();
             if (抽屉开着) 关名单();
-            router.push(去);
+            去页.push(去);
           }}
         />
         <kbd className="pane-kbd">

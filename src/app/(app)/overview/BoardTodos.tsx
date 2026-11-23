@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
 import { Checkbox, Input, Segmented, Table, Tooltip } from "antd";
 import { showUndo } from "@/components/UndoBar";
@@ -58,6 +59,8 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   只读?: boolean;
 }) {
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const sp = useSearchParams();
   // 设计语言 R-B（R1）：卡头写计数、到期用带钟点的 smartTime（同首页待办，dashboard/todo-time）、空态「还没有待办」
   const [刚完成, set刚完成] = useState<string[]>([]);
@@ -159,7 +162,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
     }, 600);
   }
 
-  const 去 = (x: 复盘待办行) => { if (x.去) router.push(x.去); };
+  const 去 = (x: 复盘待办行) => { if (x.去) 去页.push(x.去); };
 
   const cols = [
     ...(只读 ? [] : [{

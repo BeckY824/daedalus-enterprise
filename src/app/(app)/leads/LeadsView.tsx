@@ -9,6 +9,7 @@ import OptionInput from "@/components/OptionInput";
 import { useEffect, useRef, useState } from "react";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import { useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Input, Button, Space, Select, Tag, Modal, Form, Row, Col, App } from "antd";
 import {
   PlusOutlined,
@@ -93,6 +94,8 @@ export default function LeadsView({
   联系人附件?: boolean;
 }) {
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const { modal } = App.useApp();
   const [问后果, 后果框] = useConsequence();
   const b = useBusiness();
@@ -201,7 +204,7 @@ export default function LeadsView({
       做: async () => {
         const res = await mergeLeadInto(r.id, 到, 跟进);
         if (!res.ok) return res;
-        router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
+        去页.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
         return { ok: true };
       },
     });
@@ -226,7 +229,7 @@ export default function LeadsView({
       做: async () => {
         const res = await convertLead(r.id);
         if (res.ok) {
-          router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
+          去页.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
           return { ok: true };
         }
         if (res.撞号) {
@@ -518,7 +521,7 @@ export default function LeadsView({
             const res = await convertLead(r.id, 跟进);
             if (res.ok) {
               set转项目(null);
-              router.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
+              去页.push(res.projectId ? `/projects/${res.projectId}` : `/customers/${res.customerId}`);
               return true;
             }
             if (res.撞号) {

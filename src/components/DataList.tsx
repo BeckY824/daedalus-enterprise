@@ -3,6 +3,7 @@
 import { 登记页面行 } from "@/lib/page-rows";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { Table, Button, Dropdown, Checkbox, Grid } from "antd";
 import { SettingOutlined } from "@ant-design/icons";
@@ -192,6 +193,9 @@ export default function DataList<T extends { id: string }>({
   页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 浮起操作条 = false, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开, 回来还原 = false, 补宽列,
 }: Props<T>) {
   const router = useRouter();
+  /** 点一行进详情：等新页时顶上的条亮、这一行先高亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
+  const [去的行, set去的行] = useState<string | null>(null);
   const 预取 = useHoverPrefetch();
   /** 真的只取了一部分：库里的总数比取回来的多（本地筛掉的不算，见 截断.取回） */
   const 取回 = 截断?.取回 ?? 行.length;
@@ -594,7 +598,7 @@ export default function DataList<T extends { id: string }>({
         scroll={{ x }}
         expandable={展开}
         rowSelection={批量 ? { selectedRowKeys: 选中, onChange: (k) => set选中(k as string[]), fixed: true, ...勾选框标签 } : undefined}
-        rowClassName={(r) => [新来的.includes(r.id) || 亮?.includes(r.id) ? "row-fresh" : "", 行类?.(r) ?? ""].filter(Boolean).join(" ")}
+        rowClassName={(r) => [新来的.includes(r.id) || 亮?.includes(r.id) ? "row-fresh" : "", 去页.pending && 去的行 === r.id ? "row-going" : "", 行类?.(r) ?? ""].filter(Boolean).join(" ")}
         onRow={
           行链接 || 行点击
             ? (r) => {
@@ -609,7 +613,11 @@ export default function DataList<T extends { id: string }>({
                   // （11-03 B2-10：公海行「⋯ → 分配给…」点二级菜单标题跳了客户页）
                   if (!e.currentTarget.contains(e.target as Node)) return;
                   const 去 = 行链接?.(r);
-                  if (去) router.push(去);
+                  if (去) {
+                    // 点的那一行立刻高亮，新页没到之前顶上的条亮（跳转优化 PR-A，lib/nav-pending.ts）
+                    set去的行(r.id);
+                    去页.push(去);
+                  }
                   else 行点击?.(r);
                 },
                 // 停在哪一行就先把那一页整页取回来，点下去不用再等服务器（10-27，lib/prefetch-full）

@@ -4,6 +4,7 @@ import { 留落地话 } from "@/lib/landing-note";
 import { 公海领取文字 } from "@/lib/project/transfer-log-text";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
 import { CommentOutlined, DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps, type PopoverProps } from "antd";
@@ -581,6 +582,8 @@ export default function ProjectDetail({
   p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 教练主题 = null, 嵌入,
 }: 项目详情Props & { 嵌入?: 嵌在客户页 }) {
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   // 不弹顶部提示（原型 g.save / g.notice）：页面上做的事成没成写在正文底部的就地小条；弹框里的原因写在框里（跑 的 报错）
   const [就地, 回执条] = useDetailNote();
   const b = useBusiness();
@@ -948,7 +951,7 @@ export default function ProjectDetail({
             return;
           }
         } else if (p.customer && (p.客户入口 ?? "详情") === "详情") {
-          router.push(`/customers/${p.customer.id}#field-${客户资料格[键]}`);
+          去页.push(`/customers/${p.customer.id}#field-${客户资料格[键]}`);
           return;
         }
       }
@@ -2262,7 +2265,7 @@ export default function ProjectDetail({
   const 正文 = (
     <div className={p.企业版 ? "proj-wrap" : undefined} style={{ maxWidth: p.企业版 ? 1200 : 960 }}>
       {p.企业版 ? (
-        /* 企业版（P11）：项目名单在中栏（@pane/projects/[id]，components/ProjectRoster.tsx）。
+        /* 企业版（P11）：项目名单在中栏（@pane/projects/(detail)/layout.tsx，components/ProjectRoster.tsx）。
            它收起或收成抽屉时，标题最左边补一颗侧栏图标把它叫回来，和客户详情页同一颗（components/PaneToggle.tsx） */
         <>
         {/* 回到进来前那张列表（员工反馈 1A，components/BackToList.tsx）；企业版没有项目列表入口，没记过回客户列表 */}

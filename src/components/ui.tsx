@@ -19,6 +19,7 @@ import {
   EllipsisOutlined,
 } from "@ant-design/icons";
 import Link from "next/link";
+import { LinkPending } from "./NavProgress";
 import type { ComponentProps } from "react";
 import { avatarColor, companyInitial, initial, AVATAR_TEXT } from "@/lib/utils";
 import { FOLLOW_STATUS_COLOR, DECISION_STATUS_COLOR, OPP_STAGE_COLOR, FOLLOW_TYPE_MAP } from "@/lib/constants";
@@ -230,7 +231,7 @@ export function StageTag({ stage }: { stage: string }) {
  * 悬停停住那一行才整页预取（10-27，lib/prefetch-full）：人要点的就是这一行，点下去时页已经在本地，
  * 放到云上也不用再等一来回。
  */
-export function RowLink({ onMouseEnter, onMouseLeave, onFocus, onBlur, ...props }: ComponentProps<typeof Link>) {
+export function RowLink({ onMouseEnter, onMouseLeave, onFocus, onBlur, children, ...props }: ComponentProps<typeof Link>) {
   const 预取 = useHoverPrefetch();
   const 去 = typeof props.href === "string" ? props.href : null;
   return (
@@ -253,7 +254,11 @@ export function RowLink({ onMouseEnter, onMouseLeave, onFocus, onBlur, ...props 
         预取.出();
         onBlur?.(e);
       }}
-    />
+    >
+      {children}
+      {/* 点了、新页还没到：顶上的条亮，这一行 :has(> .nav-pend) 立刻高亮（跳转优化 PR-A，NavProgress.tsx） */}
+      <LinkPending />
+    </Link>
   );
 }
 

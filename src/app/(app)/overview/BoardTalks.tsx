@@ -2,6 +2,7 @@
 
 import { useOptimistic, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
 import { Pagination, Segmented, Select, Tooltip } from "antd";
 import { dayjs, fmtDateTime } from "@/lib/utils";
@@ -33,6 +34,8 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
   有主题?: boolean;
 }) {
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const sp = useSearchParams();
   // 设计语言 R-B（R3）：「沟通 / 主题」和时间段挪到卡外筛选条（最左是沟通 / 主题，R-新9），卡头「项目沟通（N）」+ 方式下拉；
   // 每条末行灰字「方式 · 发起 · 附件 · 记录人」，编号悬停看
@@ -66,7 +69,7 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
       router.replace(`/overview${t ? `?${t}` : ""}`, { scroll: false });
     });
   };
-  const 去 = (x: 复盘沟通行) => router.push(`/projects/${encodeURIComponent(x.projectId)}`);
+  const 去 = (x: 复盘沟通行) => 去页.push(`/projects/${encodeURIComponent(x.projectId)}`);
 
   const 方式下拉 = (
       <Select<沟通方式 | "">

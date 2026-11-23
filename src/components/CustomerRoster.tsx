@@ -4,7 +4,8 @@ import Shortcut from "./Shortcut";
 
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Tag, Drawer } from "antd";
 import { CloseOutlined, SearchOutlined, TableOutlined } from "@ant-design/icons";
 import { FOLLOW_STATUS_COLOR } from "@/lib/constants";
@@ -77,7 +78,8 @@ function 搜名单(xs: CustomerRosterData["rows"], q: string) {
  */
 export default function CustomerRoster({ data, 默认页签 = "全部" }: { data: CustomerRosterData; 默认页签?: "全部" | "我的" }) {
   const b = useBusiness();
-  const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const pathname = usePathname();
   const [q, setQ] = useState("");
   // 窗口太窄、或者人自己点了收起：名单收成抽屉（lib/middle-pane.ts）
@@ -278,7 +280,7 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
             if (!去) return;
             e.preventDefault();
             if (抽屉开着) 关名单();
-            router.push(去);
+            去页.push(去);
           }}
         />
         <kbd className="pane-kbd"><Shortcut>⌘K</Shortcut></kbd>
@@ -365,17 +367,18 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
 }
 
 /**
- * 名单还在路上时中栏摆的骨架（11-22 切页卡顿：@pane/customers/[id]/loading.tsx）。
+ * 名单还在路上时中栏摆的骨架（11-22 切页卡顿；跳转优化 PR-A 起名单挪进 @pane/customers/(detail)/layout.tsx，由那里的 Suspense 摆它）。
  * 名单原来不在任何 Suspense 里，点一位客户要等名单那几句查询算完整页才切过去，客户详情自己的骨架也出不来；
  * 有了它，切页在服务端吐出外壳时就提交，名单和详情各自晚到。
  * 和 CustomerRoster 同一个判法：名单收在抽屉里（窄窗、人自己收起、手机底部抽屉）时什么都不摆，只在整栏露着时摆同宽的一栏——
  * 栏的底色和边线立刻就有（正文不左右跳），里面的灰条照 --skel-delay 晚 180ms 才淡入，快的看不见
  */
-export function CustomerRosterSkeleton() {
+export function CustomerRosterSkeleton({ 项目 = false }: { 项目?: boolean }) {
   const 中栏 = useMiddlePane("roster");
   if (!中栏.露着) return null;
+  // 项目名单（项目详情的中栏，跳转优化 PR-A 起也在 layout 里自包 Suspense）同一副骨架，栏的类名照 ProjectRoster
   return (
-    <aside className="pane pane-roster pane-roster-cust" aria-busy="true" aria-label="正在载入名单">
+    <aside className={项目 ? "pane pane-roster" : "pane pane-roster pane-roster-cust"} aria-busy="true" aria-label="正在载入名单">
       <div className="roster-skel" data-testid="roster-skeleton">
         <div className="skel-bar roster-skel-h" />
         {Array.from({ length: 8 }, (_, i) => (
