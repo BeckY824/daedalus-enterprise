@@ -1146,6 +1146,30 @@ it("本人限时改（审核中-1 / 低-2）：下一步两格人没动就不交
   } finally { await page.close(); }
 });
 
+it("设计语言 E1（D03）：修改这条沟通——保存一直能点，清空内容 / 下一步再点，各格下面报红、焦点到第一处，不交；* 在标签前", async () => {
+  const { page, errors } = await 覆盖(1280, { 可改沟通: false, 可删沟通: false, 要下一步: true, followUps: [本人行("f1", Date.now() + 10 * 60_000, { content: "短内容", occurredAt: "2026-10-03T00:00:42.000Z", 下一步: { 文字: "周五前发报价单", 时间: null } })] });
+  try {
+    await page.waitForFunction(() => !!document.querySelector("[aria-label=这条沟通的更多操作]"));
+    await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
+    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText(/^修改（/).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "修改这条沟通" });
+    await 窗.waitFor();
+    expect(await 窗.locator(".fm-label:has(.fm-req)").allInnerTexts()).toEqual(["*沟通方式", "*沟通内容", "*下一步计划", "*下一步时间"]);
+    await 窗.getByLabel("沟通内容").fill("");
+    await 窗.getByLabel("下一步计划").fill("");
+    const 存 = 窗.getByRole("button", { name: /保\s*存/ });
+    expect(await 存.isDisabled()).toBe(false);
+    await 存.click();
+    expect(await 窗.locator(".fm-err").allInnerTexts()).toEqual(["请填写这次沟通的内容", "请写下一步计划", "请填下一步时间"]);
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("沟通内容");
+    expect(await page.evaluate(() => (Reflect.get(window, "__改沟通") as unknown[] | undefined)?.length ?? 0)).toBe(0);
+    // 填上一格，那格红字当场消失
+    await 窗.getByLabel("沟通内容").fill("补上内容");
+    expect(await 窗.locator(".fm-err").allInnerTexts()).toEqual(["请写下一步计划", "请填下一步时间"]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("本人限时改（低-1）：按服务器钟算——本机钟快了 20 分钟，服务器说还能改就照样出「修改」", async () => {
   const 服务器 = Date.now() - 20 * 60_000;
   const { page, errors } = await 覆盖(1280, { 可改沟通: false, 可删沟通: false, 服务器现在: new Date(服务器).toISOString(), followUps: [本人行("f1", 服务器 + 10 * 60_000)] });
@@ -2299,7 +2323,10 @@ it("手机 390 / 360 宽：「完成节点」补填框不出屏（贴左右各 8
         // 宽屏照旧：右边和按钮右边对齐（右下对齐，箭头关着），框在按钮下面
         expect(Math.abs(框位.right - 钮位.right), `宽 ${w}`).toBeLessThanOrEqual(1);
       }
-      expect(框位.top, `宽 ${w}`).toBeGreaterThanOrEqual(钮位.bottom);
+      // K5（设计语言 E2）起 4px 间距在外框上边留白里、偏移归零：外框贴着按钮（浮层库取整，差不到 1px），看得见的卡在按钮下面 4px
+      expect(框位.top, `宽 ${w}`).toBeGreaterThanOrEqual(钮位.bottom - 1);
+      const 卡顶 = await 框.locator(".ant-popover-container, .ant-popover-inner").first().evaluate((e) => e.getBoundingClientRect().top);
+      expect(卡顶, `宽 ${w}`).toBeGreaterThanOrEqual(钮位.bottom + 3);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
@@ -2333,6 +2360,32 @@ it.each([[375, 623], [375, 667], [375, 812], [390, 844], [360, 640], [1024, 680]
     expect(m.框顶, JSON.stringify(m)).toBeGreaterThanOrEqual(0);
     expect(m.点得到, JSON.stringify(m)).toBe(true);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/*
+  K5（设计语言 E2，29K⑥）：补填框外框下沿超屏 3–4px——上面那条量的是框里的卡（.ant-popover-container），外面那层 .pd-fill-pop
+  （带给手机底部安全区的留白）和卡的阴影要一起在屏里。缺得多、框长到最高，几种手机高度和电脑宽都量
+*/
+it.each([[375, 623], [375, 667], [390, 844], [360, 640], [1024, 680], [1366, 680]])("K5 %i×%i：补填框外框（含外层留白）下沿不出屏", async (w, h) => {
+  const { page, errors } = await open(true, w);
+  try {
+    await page.setViewportSize({ width: w, height: h });
+    const 缺 = ["金额", "预计成交日期", "项目方案", "客户等级", "主联系人", "需求描述", "项目名称", "项目来源", "项目所在地", "项目级别", "项目标签", "合同已生效"];
+    await page.evaluate((x) => (window as unknown as { __over: (x: unknown) => void }).__over(x), { phase: "商机", node: "方案敲定", 必填: { 配了: 缺, 还差: 缺 } });
+    const 钮 = page.locator(".proj-stage-acts").getByRole("button", { name: "完成节点" });
+    await 钮.scrollIntoViewIfNeeded();
+    await 钮.click();
+    await page.locator(".pd-fill-pop .pd-fill-pop-body").waitFor();
+    await page.waitForTimeout(400);
+    const m = await page.evaluate(() => {
+      const 外 = document.querySelector(".pd-fill-pop")!.getBoundingClientRect();
+      const 卡 = document.querySelector(".pd-fill-pop .ant-popover-container, .pd-fill-pop .ant-popover-inner")!.getBoundingClientRect();
+      return { 外底: 外.bottom, 外顶: 外.top, 卡底: 卡.bottom, 屏高: window.innerHeight };
+    });
+    expect(m.外底, JSON.stringify(m)).toBeLessThanOrEqual(m.屏高);
+    expect(m.外顶, JSON.stringify(m)).toBeGreaterThanOrEqual(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

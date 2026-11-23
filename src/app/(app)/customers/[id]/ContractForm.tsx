@@ -2,7 +2,7 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 
-import { isFormValidationError } from "@/lib/form-validation";
+import { isFormValidationError, 跳到第一处 } from "@/lib/form-validation";
 
 import { cloneElement, useEffect, useRef, useState, type ReactElement, type MouseEventHandler } from "react";
 import { Modal, Form, InputNumber, Input, Checkbox, Space, Button } from "antd";
@@ -152,7 +152,7 @@ function Inner({
     // Picker 的失焦提交可能晚于保存按钮；有效手输日期也要先明确写回 Form。
     const text = 日期原文.current;
     if (text !== null && dayjs.utc(text, "YYYY-MM-DD", true).isValid()) form.setFieldValue("signedAt", dayjs(text));
-    const v = await form.validateFields();
+    const v = await form.validateFields().catch((e) => { 跳到第一处(form)(e); throw e; });
     return saveContract({
       id: editing?.id,
       customerId,

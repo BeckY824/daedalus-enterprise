@@ -73,7 +73,7 @@ it("P1-2 新客户填客户地址（美国 / 洛杉矶）：国外不摆省；�
     await 选(page, "渠道触点", "公司资源");
     await 框.getByLabel("项目名称").fill("示例美国公司-一期");
     await 框.getByLabel("沟通内容").fill("客户要报价");
-    await 框.getByRole("button", { name: /^建\s*好/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 客户: Record<string, unknown> };
     expect(交.客户.企业资料).toEqual({ addrCountry: "美国", addrProvince: null, addrCity: "洛杉矶" });
@@ -94,7 +94,7 @@ it("P1-2 对照：国家空着填省市（浙江省 / 杭州市）交省市、�
     await 选(page, "渠道触点", "公司资源");
     await 框.getByLabel("项目名称").fill("示例杭州公司-一期");
     await 框.getByLabel("沟通内容").fill("客户要报价");
-    await 框.getByRole("button", { name: /^建\s*好/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 客户: Record<string, unknown> };
     expect(交.客户.企业资料).toEqual({ addrCountry: null, addrProvince: "浙江省", addrCity: "杭州市" });
@@ -108,7 +108,7 @@ it("P1-2 对照：国家空着填省市（浙江省 / 杭州市）交省市、�
     await 选(二, "渠道触点", "公司资源");
     await 选(二, "业务线", "内贸");
     await 框.getByLabel("沟通内容").fill("先建客户");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(二)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(二)).find((x) => x[0] === "建档只建客户")![1] as { 客户: Record<string, unknown> };
     expect(交.客户.企业资料).toEqual({ bizLine: "内贸" });
@@ -127,7 +127,7 @@ it("P1-1 挑了老客户：摆「项目渠道」、默认是这位客户的来�
     expect(await 框.getByText("默认跟客户的渠道").count()).toBe(1);
     await 框.getByLabel("项目名称").fill("华东展具-二期");
     await 框.getByLabel("沟通内容").fill("老客户要加一套");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "给客户建项目")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "给客户建项目")![1] as { 项目: Record<string, unknown> };
     expect(交.项目.channelId).toBeUndefined();

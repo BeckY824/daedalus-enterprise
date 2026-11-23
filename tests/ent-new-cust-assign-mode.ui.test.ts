@@ -80,7 +80,7 @@ const 填齐 = async (page: Page) => {
   await 框.getByLabel("沟通内容").fill("客户要报价");
 };
 const 交的客户 = async (page: Page) => {
-  await page.getByRole("dialog").getByRole("button", { name: /^建\s*好$/ }).click();
+  await page.getByRole("dialog").getByRole("button", { name: /^保\s*存$/ }).click();
   await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
   return ((await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 客户: Record<string, unknown> }).客户;
 };

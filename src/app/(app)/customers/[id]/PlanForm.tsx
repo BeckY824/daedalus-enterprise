@@ -2,7 +2,7 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 
-import { requiredText, isFormValidationError } from "@/lib/form-validation";
+import { requiredText, isFormValidationError, 跳到第一处 } from "@/lib/form-validation";
 
 import OptionInput from "@/components/OptionInput";
 import { useEffect, useRef, useState } from "react";
@@ -138,7 +138,7 @@ export default function PlanForm({
   }
 
   async function onOk(): Promise<{ ok: boolean; error?: string }> {
-    const v = await form.validateFields();
+    const v = await form.validateFields().catch((e) => { 跳到第一处(form)(e); throw e; });
     const 谁 = customerId ?? (v.customerId as string);
     const res = await savePlan({
       id: record?.id,

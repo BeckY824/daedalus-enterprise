@@ -28,7 +28,7 @@ const plugin: Plugin = { name: "ent-create-modal", setup(b) {
   // 建档两个 server action：记下交了什么，回成功
   stub(/^\.\.\/actions$/, "export const 建档向导=async(x)=>{(window.__调||=[]).push(['建档向导',x]);return window.__回??{ok:true,customerId:'c1',projectId:'p1'}};export const 建档只建客户=async(x)=>{(window.__调||=[]).push(['建档只建客户',x]);return window.__回只客户??{ok:true,customerId:'c2',projectId:null}};");
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
-  stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return {ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
+  stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);if(window.__查号慢)await new Promise(r=>setTimeout(r,400));return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return {ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
   stub(/customers\/RepeatInquiryKey$/, "export default function R(){return null}");
   stub(/customers\/DedupeClaimKey$/, "export default function D(){return null}");
   // 老客户新增项目（cr.old）：搜得到一位老客户；给客户建项目记下交了什么
@@ -42,7 +42,7 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import {建档弹窗} from '@/app/(app)/projects/new/ProjectWizard';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
-    const 数据={users:[{id:'u1',name:'我自己',email:'a'},{id:'u2',name:'同事乙',email:'b'},...(window.__多一位?[{id:'u3',name:'暂停的丙',email:'c'}]:[])],要下一步:false,企业:{渠道们:[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:!window.__市场,按区域:!!window.__市场,本人线:window.__本人线??null,客户只给自己:false,可指定:window.__可指定}};
+    const 数据={users:[{id:'u1',name:'我自己',email:'a'},{id:'u2',name:'同事乙',email:'b'},...(window.__多一位?[{id:'u3',name:'暂停的丙',email:'c'}]:[])],要下一步:false,企业:{渠道们:window.__渠道们??[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:!window.__市场,按区域:!!window.__市场,本人线:window.__本人线??null,客户只给自己:false,可指定:window.__可指定}};
     function 页(){const [开,set开]=React.useState(true);return <建档弹窗 open={开} 标题={window.__标题||'新增客户'} 项目={window.__开关||'关'} 数据={数据} onClose={()=>set开(false)}/>;}
     createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'u1',name:'我自己'}}><页/></我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"', "process.env.CRM_ENTERPRISE": '"1"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
@@ -108,7 +108,7 @@ it("按钮不变灰：空着点「建好」就地标红、写「还差 N 项」�
   const page = await 开(1280);
   try {
     const 框 = page.getByRole("dialog");
-    const 建好 = 框.getByRole("button", { name: /^建\s*好$/ });
+    const 建好 = 框.getByRole("button", { name: /^保\s*存$/ });
     expect(await 建好.isDisabled()).toBe(false);
     await 建好.click();
     await 框.getByRole("status").filter({ hasText: /还差 \d+ 项/ }).waitFor();
@@ -130,6 +130,30 @@ it("按钮不变灰：空着点「建好」就地标红、写「还差 N 项」�
   } finally { await page.close(); }
 });
 
+it("空着点「保存」：焦点跳到第一处缺项「号码」（类型框不红就不落在类型上，E1 · D03，3703 实操 r63）；补一格再点，焦点跟到下一处缺项：渠道（级联）→ 业务线（下拉）（1280 / 390）", async () => {
+  for (const w of [1280, 390]) {
+    const page = await 开(w, { __渠道们: [{ id: "ch1", name: "广交会", attr: null, platform: "展会", active: true }] });
+    try {
+      const 框 = page.getByRole("dialog");
+      const 保存 = 框.getByRole("button", { name: /^保\s*存$/ });
+      const 焦点格 = () => page.evaluate(() => document.activeElement?.closest("[data-ge]")?.getAttribute("data-ge") ?? null);
+      await 保存.click();
+      await 框.getByRole("status").filter({ hasText: /还差 \d+ 项/ }).waitFor();
+      await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? null)).toBe("号码");
+      // 填了号码（联系人那条跟着过了）：下一处是渠道（antd 6 级联里的 input）
+      await 框.getByLabel("号码", { exact: true }).fill("13905712266");
+      await 保存.click();
+      await expect.poll(焦点格).toBe("来源");
+      // 选了触点、渠道不卡了：下一处是业务线（antd 6 下拉没有 .ant-select-selector，落在它的 input 上）
+      await 选(page, "渠道触点", "公司资源");
+      await 保存.click();
+      await expect.poll(焦点格).toBe("业务线");
+      expect(await page.evaluate(() => document.activeElement?.matches("input.ant-select-input") ?? false)).toBe(true);
+      expect((await 调(page)).filter((x) => String(x[0]).startsWith("建档")).length).toBe(0);
+    } finally { await page.close(); }
+  }
+});
+
 it("客户名称选填（11-19 用户「客户名称设为不必填」）：名称空着照样建，不查客户名，交上去 name 是空串；1024 / 1280 / 1366 和手机 390 不横向溢出", async () => {
   for (const w of [1024, 1280, 1366, 390]) {
     const page = await 开(w);
@@ -149,7 +173,7 @@ it("客户名称选填（11-19 用户「客户名称设为不必填」）：名�
       await 选(page, "渠道触点", "公司资源");
       await 选(page, "业务线", "内贸");
       await 框.getByLabel("沟通内容").fill("客户要 3 套方案报价");
-      await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+      await 框.getByRole("button", { name: /^保\s*存$/ }).click();
       await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
       const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 客户: Record<string, unknown> };
       expect(交.客户.name).toBe("");
@@ -174,7 +198,7 @@ it("没开项目：号码、客户名离开输入框自动查重；建好走「�
     await 选(page, "渠道触点", "公司资源");
     await 选(page, "业务线", "内贸");
     await 框.getByLabel("沟通内容").fill("客户要 3 套方案报价");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 客户: Record<string, unknown>; 跟进: Record<string, unknown>; 项目?: unknown };
     expect(交.项目).toBeUndefined();
@@ -197,7 +221,7 @@ it("新线索进来：项目开关开着并锁住；销售选自动分配就地�
     await 选(page, "分配方式", "自动分配");
     await 框.getByTestId("wizard-auto-warn").waitFor();
     expect(await 框.getByTestId("wizard-auto-warn").innerText()).toContain("分出去后你将看不到这个项目");
-    await 框.getByRole("button", { name: "建好并分出去" }).waitFor();
+    await 框.getByRole("button", { name: "保存并分出去" }).waitFor();
     expect(await page.getByRole("dialog").count()).toBe(1);
   } finally { await page.close(); }
 });
@@ -223,7 +247,7 @@ it("老客户新增项目（cr.old）：客户名直接搜到老客户，挑中�
     await expect.poll(() => 框.locator("[data-ge='业务线']").innerText()).toContain("外贸");
     await 框.getByLabel("项目名称").fill("华东展具-二期");
     await 框.getByLabel("沟通内容").fill("老客户要加一套");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "给客户建项目")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "给客户建项目")![1] as { customerId: string; 项目: Record<string, unknown>; 跟进: Record<string, unknown> };
     expect(交).toMatchObject({ customerId: "c9", 项目: { name: "华东展具-二期", ownerId: "u1", 业务线: "外贸" }, 跟进: { content: "老客户要加一套", 节点: "潜客培育" } });
@@ -252,7 +276,7 @@ it.each([1024, 1280, 1366])("Windows %ipx + 超长客户名：弹窗里不横向
     const 长 = "某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域采购中心第二分部";
     await 框.getByLabel("客户名称").fill(长);
     await 框.getByLabel("项目名称").fill(长.slice(0, 60));
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     const 量 = await page.evaluate(() => {
       const s = document.querySelector(".cr-sheet") as HTMLElement;
       const body = document.querySelector(".ant-modal-body") as HTMLElement;
@@ -297,7 +321,7 @@ it("多个号码：加一行类型默认跟第一行、能改类型、能去掉�
     await 选(page, "渠道触点", "公司资源");
     await 选(page, "业务线", "内贸");
     await 框.getByLabel("沟通内容").fill("客户留了两个手机一个微信");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 客户: Record<string, unknown>; 联系人: Record<string, unknown> };
     // 第一行照旧是 企业号码（默认手机号）；多加的跟着联系人交，空行、去掉的不在里面
@@ -324,7 +348,7 @@ it("多个号码：只填第一行时不带 号码们；连第一行 20 行后�
     await 选(page, "渠道触点", "公司资源");
     await 选(page, "业务线", "内贸");
     await 框.getByLabel("沟通内容").fill("只留了一个号");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 联系人: Record<string, unknown> };
     expect("号码们" in 交.联系人).toBe(false);
@@ -396,7 +420,7 @@ it("市场成员选自动分配：没改分配方向 = 不交（服务端按默�
       await 选(page, "渠道触点", "公司资源");
       await 框.getByLabel("项目名称").fill("华东展具-一期");
       await 框.getByLabel("沟通内容").fill("客户要报价");
-      await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+      await 框.getByRole("button", { name: /^保\s*存$/ }).click();
       await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
       const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 项目: Record<string, unknown> };
       expect(交.项目).toMatchObject({ 分配方式: 1, 业务线: null, 分配方向: "外贸" });
@@ -415,7 +439,7 @@ it("市场成员选自动分配：没选业务线也能建，交的业务线是 
     await 框.getByLabel("项目名称").fill("华东展具-一期");
     await 选(page, "分配方式", "自动分配");
     await 框.getByLabel("沟通内容").fill("客户要报价");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 项目: Record<string, unknown> };
     expect(交.项目).toMatchObject({ 分配方式: 1, 业务线: null, 分配方向: null });
@@ -433,7 +457,7 @@ it("市场成员给有地址的老客户新增项目、选自动分配：只读�
     await expect.poll(() => 框.getByTestId("wizard-direction-why").innerText()).toContain("按客户区域：内贸");
     await 框.getByLabel("项目名称").fill("华东展具-二期");
     await 框.getByLabel("沟通内容").fill("老客户要加一套");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "给客户建项目")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "给客户建项目")![1] as { 项目: Record<string, unknown> };
     expect(交.项目).toMatchObject({ 分配方式: 1, 业务线: null });
@@ -441,6 +465,31 @@ it("市场成员给有地址的老客户新增项目、选自动分配：只读�
 });
 
 // 联系人姓名企业版选填（11-17「联系人姓名不一定知道」，同服务端 联系人姓名问题）：姓名和联系方式至少一项
+it("填了号码不离开输入框直接点「保存」：查重照常触发，缺项按刚填的号码算——联系人那条不报红，焦点落渠道（3703 补点 ad2883cd；1280 / 390）", async () => {
+  for (const w of [1280, 390]) {
+    const page = await 开(w, { __渠道们: [{ id: "ch1", name: "广交会", attr: null, platform: "展会", active: true }] });
+    try {
+      const 框 = page.getByRole("dialog");
+      // 查重晚回来（真服务端要走一趟网络）：点保存那一下联系人电话还没被号码带上
+      await page.evaluate(() => { (window as unknown as { __查号慢: boolean }).__查号慢 = true; });
+      const 号码 = 框.getByLabel("号码", { exact: true });
+      await 号码.fill("13905712266");
+      expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? null)).toBe("号码");
+      await 框.getByRole("button", { name: /^保\s*存$/ }).click();
+      await 框.getByRole("status").filter({ hasText: /还差 \d+ 项/ }).waitFor();
+      // 这一下：联系人那格不红、焦点在渠道那格
+      expect(await 框.locator("[data-ge='联系人'] [role=alert]").count()).toBe(0);
+      expect(await 框.getByText("联系人姓名和联系方式至少填一项").count()).toBe(0);
+      await expect.poll(() => page.evaluate(() => document.activeElement?.closest("[data-ge]")?.getAttribute("data-ge") ?? null)).toBe("来源");
+      // 失焦查重照常发了一次，回来后号码带进联系人电话
+      expect((await 调(page)).filter((x) => x[0] === "查号码")).toEqual([["查号码", "手机号", "13905712266"]]);
+      await expect.poll(() => 框.getByLabel("联系人电话").inputValue()).toBe("13905712266");
+      expect(await 框.locator("[data-ge='联系人'] [role=alert]").count()).toBe(0);
+      expect((await 调(page)).filter((x) => String(x[0]).startsWith("建档")).length).toBe(0);
+    } finally { await page.close(); }
+  }
+});
+
 it("企业版联系人姓名选填：空名 + 联系人电话能交（姓名交空串）；姓名和联系人号码全空就地拦「联系人姓名和联系方式至少填一项」", async () => {
   const page = await 开(1280);
   try {
@@ -452,12 +501,12 @@ it("企业版联系人姓名选填：空名 + 联系人电话能交（姓名交�
     await 框.getByLabel("沟通内容").fill("只知道电话");
     // 全空：联系人电话清掉、姓名不填，点建好就地标红那句，不交
     await 框.getByLabel("联系人电话").fill("");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await 框.getByText("联系人姓名和联系方式至少填一项").first().waitFor();
     expect((await 调(page)).find((x) => x[0] === "建档只建客户")).toBeUndefined();
     // 填上联系人电话、姓名还空着：能交，姓名是空串
     await 框.getByLabel("联系人电话").fill("13905712266");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 联系人: Record<string, unknown> };
     expect(交.联系人).toMatchObject({ name: "", phone: "13905712266" });
@@ -477,7 +526,7 @@ it("企业版联系人姓名选填：空名 + 只有多加的号码也能交", a
     await 框.getByRole("button", { name: "加一个号码" }).click();
     await 选(page, "第 2 个号码类型", "微信");
     await 框.getByLabel("第 2 个号码", { exact: true }).fill("wx_buyer01");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 联系人: Record<string, unknown> };
     expect(交.联系人).toMatchObject({ name: "", 号码们: [{ kind: "wechat", value: "wx_buyer01" }] });
@@ -497,7 +546,7 @@ it("首条沟通的方式按个人习惯默认（11-18），建好交的就是�
     await 选(page, "渠道触点", "公司资源");
     await 选(page, "业务线", "内贸");
     await 框.getByLabel("沟通内容").fill("微信上要了报价");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 跟进: Record<string, unknown> };
     expect(交.跟进).toMatchObject({ type: "WECHAT", content: "微信上要了报价" });
@@ -551,7 +600,7 @@ it.each([1024, 1280, 1366])("Windows %ipx 项目开关关着：也摆「指定�
     await 框.getByLabel("项目名称").fill("展台项目");
     await 选(page, "业务线", "内贸");
     await 框.getByLabel("沟通内容").fill("客户要求周四下午回电");
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 项目: Record<string, unknown> };
     expect(交.项目).toMatchObject({ 指定回复开始: "2026-11-20 15:00", 指定回复结束: null });
@@ -614,7 +663,7 @@ it.each([1024, 1280, 1366])("Windows %ipx 首条沟通下「截图 / 附件」�
     expect(量, `${w}`).toEqual({ 表: 0, 体: 0, 页: 0, 出格: 0 });
     if (w !== 1280) return;
     await 填好新客户(page, true);
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档向导")).toBeTruthy();
     const 交 = (await 调(page)).find((x) => x[0] === "建档向导")![1] as { 要传附件?: boolean };
     expect(交.要传附件).toBe(true);
@@ -631,7 +680,7 @@ it("截图没传上：建好照旧，底栏写清几个没传上、点「知道�
     const 框 = page.getByRole("dialog");
     await 框.getByTestId("wizard-attachments").locator("input[type=file]").setInputFiles({ name: "需求.png", mimeType: "image/png", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47]) });
     await 填好新客户(page, true);
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     // 先出「正在传」再变失败提示；等最终那句，负载高时不会读到中间态
     const 话 = 框.getByRole("status").filter({ hasText: /只有项目负责人能传附件/ });
     await 话.waitFor();
@@ -642,7 +691,7 @@ it("截图没传上：建好照旧，底栏写清几个没传上、点「知道�
   try {
     const 收到 = await 接上传(二);
     await 填好新客户(二, true);
-    await 二.getByRole("dialog").getByRole("button", { name: /^建\s*好$/ }).click();
+    await 二.getByRole("dialog").getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(二)).find((x) => x[0] === "建档向导")).toBeTruthy();
     expect(((await 调(二)).find((x) => x[0] === "建档向导")![1] as { 要传附件?: boolean }).要传附件).toBeFalsy();
     await 二.waitForTimeout(300);
@@ -672,7 +721,7 @@ it.each([1024, 1280, 1366])("Windows %ipx 没开项目（只建客户）：照�
     expect(量, `${w}`).toEqual({ 表: 0, 体: 0, 页: 0, 出格: 0 });
     if (w !== 1280) return;
     await 填好新客户(page, false);
-    await 框.getByRole("button", { name: /^建\s*好$/ }).click();
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
     await expect.poll(async () => (await 调(page)).find((x) => x[0] === "建档只建客户")).toBeTruthy();
     expect(((await 调(page)).find((x) => x[0] === "建档只建客户")![1] as { 要传附件?: boolean }).要传附件).toBe(true);
     await expect.poll(() => 收到.length).toBe(1);

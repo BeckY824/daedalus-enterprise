@@ -12,8 +12,9 @@ import type { 线索验证 } from "@/lib/project/lead-verify";
 import { 线索验证依据 } from "@/lib/project/lead-verify-basis";
 import type { 必填项 } from "@/lib/project/required";
 import { 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action, 撤回验证Action } from "../actions";
-import { 框里原因, type 跑法 } from "./detail-note";
+import { 框里原因, 跑给按钮, type 跑法 } from "./detail-note";
 import { useFormDraft } from "@/components/FormDraft";
+import { useConsequence } from "@/components/ConsequenceDialog";
 
 
 // 11-01：显示客户定的六个叫法（v.叫法），颜色和项目卡那一行一样
@@ -55,8 +56,11 @@ export default function LeadVerifyPanel({
   沟通半句 = "",
   on去填,
   重复线索名,
+  项目名,
 }: {
   projectId: string;
+  /** 后果框标题里写的那条线索（「把「X」退回线索公海」）；没给写「这条线索」 */
+  项目名?: string;
   v: 线索验证;
   无效原因选项: string[];
   /** 培育计划、无效原因的字数上限（M-节点-03，组织规则）：null / 没给 = 不设，输入框不限字数 */
@@ -88,6 +92,23 @@ export default function LeadVerifyPanel({
    */
   const [错, set错] = useState<string | null>(null);
   const 跑这: 跑法 = (f, 成了) => 跑(f, 成了, { 报错: set错 });
+  /*
+    D04（设计语言 E2）：「放回公海」照 P-界面-40 走后果框（原来是 antd 气泡确认「退回线索公海？」，漏网的一处）——
+    标题写「把「项目名」退回线索公海」，后果分条（只退它 / 领不回 / 记作主动退回），确认键写「退回公海」；没退成原因写在框里、框不关。
+    后果照项目详情「项目退回公海」那个框的口径（原负责人领不回，公海规则 原负责人能领回 = false；项目层动作不碰客户）
+  */
+  const [问后果, 后果框] = useConsequence();
+  const 退回问 = () => void 问后果({
+    题: <>把「{项目名 || "这条线索"}」退回线索公海</>,
+    后果: [
+      { 标: "只退它", 话: "只退这个项目，客户和客户负责人不动" },
+      { 标: "领不回", 话: "退回去以后同事都能领，你不能再领回来，也看不到这个项目了", 级: "危" },
+      { 标: "待办", 话: "你在这个项目上没做完的待办会自动关闭" },
+      { 标: "记作", 话: "算你主动退回（公海里按「主动退回」归类）" },
+    ],
+    是: "退回公海",
+    做: () => 跑给按钮(跑, () => 销售认领Action(projectId, false), "已退回线索公海"),
+  });
   // 判定框里打了没交的字留草稿（复盘第 1 类）：按项目 + 哪个框分；判成了、点取消就删。无效原因、日期跟着字一起带回
   const 稿 = useFormDraft({
     键: 框 ? `线索验证:${projectId}:${框}` : null,
@@ -222,6 +243,7 @@ export default function LeadVerifyPanel({
 
   return (
     <div data-testid="lead-verify">
+      {后果框}
       <div className="lead-verify-basis" data-testid="lead-verify-basis">
         <div className="lead-verify-basis-h">判定依据</div>
         <ul>
@@ -255,9 +277,7 @@ export default function LeadVerifyPanel({
           {v.我能 === "销售认领" && (
             <>
               {推按钮("认领继续", () => void 跑这(() => 销售认领Action(projectId, true), "已认领，推到线索推进"), "lead-verify-claim")}
-              <Popconfirm title="退回线索公海？" description="算你主动退回，别人可以领走" okText="退回" cancelText="再想想" onConfirm={() => void 跑这(() => 销售认领Action(projectId, false), "已退回线索公海")}>
-                <Button size="small" disabled={忙} data-testid="lead-verify-return">放回公海</Button>
-              </Popconfirm>
+              <Button size="small" disabled={忙} onClick={退回问} data-testid="lead-verify-return">放回公海</Button>
             </>
           )}
           {复核步 && (

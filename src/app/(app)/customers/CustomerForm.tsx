@@ -3,7 +3,7 @@
 import DatePicker from "@/components/BusinessDatePicker";
 
 import { isCalendarDate } from "@/lib/schedule-date";
-import { requiredText, 电话格验 } from "@/lib/form-validation";
+import { requiredText, 电话格验, 跳到第一处 } from "@/lib/form-validation";
 
 import OptionInput from "@/components/OptionInput";
 import { useEffect, useRef, useState } from "react";
@@ -308,7 +308,7 @@ function CustomerFormInner({
   }
   async function onOk(): Promise<{ ok: boolean; error?: string }> {
     // 校验没过 antd 自己把错标在格子下面；键上再说一句
-    const v = await form.validateFields().catch(() => null);
+    const v = await form.validateFields().catch(跳到第一处(form));
     if (!v) return { ok: false, error: "有几项没填好，看标红的" };
     // 编辑时换了销售负责人：客户名下的项目跟着走（企业版同事负责的留下，P-转-07），先列出来问一句（D-36）；取消 = 留在表单里
     if (editing && v.salesOwnerId && v.salesOwnerId !== editing.salesOwnerId && !(await 先问转走的项目([editing.id], v.salesOwnerId))) return { ok: false, error: "没存：负责人没换" };
@@ -1068,7 +1068,7 @@ function QuickChannelModal({
     else 守.要关();
   }
   async function onOk(): Promise<{ ok: boolean; error?: string }> {
-    const v = await form.validateFields().catch(() => null);
+    const v = await form.validateFields().catch(跳到第一处(form));
     if (!v) return { ok: false, error: "有几项没填好，看标红的" };
     setSaving(true);
     try {
@@ -1100,7 +1100,8 @@ function QuickChannelModal({
       onCancel={关或收尾}
       footer={[
         <Button key="取消" onClick={关或收尾}>取消</Button>,
-        <SaveButton key="存" 做={onOk} 已保存="已创建" 没保存="没建上" 成了={关或收尾}>创建</SaveButton>,
+        // 设计语言 E1（D14）：提交键统一「保存」（原「创建」）
+        <SaveButton key="存" 做={onOk} 已保存="已保存" 没保存="没存上" 成了={关或收尾}>保存</SaveButton>,
       ]}
       width={460}
       destroyOnHidden

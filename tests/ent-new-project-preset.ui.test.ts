@@ -62,7 +62,7 @@ async function 开(设: Record<string, unknown> = {}, w = 1024): Promise<Page> {
 }
 const 窗of = (page: Page) => page.evaluate(() => { const w = window as unknown as 窗; return { 建: w.__建 ?? null, 跳: w.__跳 ?? [], 刷新: w.__刷新 ?? 0, 预览: w.__预览 ?? [], 调: w.__调 ?? [] }; });
 const 填沟通 = async (page: Page) => { await page.getByRole("dialog").getByLabel("沟通内容").fill("第一次电话，聊了需求"); };
-const 建好键 = (page: Page) => page.getByRole("dialog").getByRole("button", { name: /^建\s*好$|^建好并分出去$/ });
+const 建好键 = (page: Page) => page.getByRole("dialog").getByRole("button", { name: /^保\s*存$|^保存并分出去$/ });
 
 it("cr.old：客户段收成这一位、不能换、不摆号码和联系人姓名；项目名默认客户简称，负责人默认客户负责人，联系人默认主要", async () => {
   const page = await 开();
@@ -92,7 +92,7 @@ it("11-01 §6 + cr.submit：填完点建好，键里 ✓「已建好」，框收
     expect(await 框.getByText("明确回复了", { exact: true }).count()).toBe(0);
     await 框.getByLabel("下一步计划").fill("发报价单");
     await 建好键(page).click();
-    await 框.getByRole("button", { name: "已建好" }).waitFor();
+    await 框.getByRole("button", { name: "已保存" }).waitFor();
     expect(await page.locator(".ant-message-notice").count()).toBe(0);
     await expect.poll(() => page.getByRole("dialog").count(), { timeout: 5000 }).toBe(0);
     const 记 = await 窗of(page);
@@ -145,8 +145,8 @@ it("cr.auto：销售选自动分配——就地黄条写后果、键写「建好
     const 框 = page.getByRole("dialog");
     expect(await 框.getByTestId("wizard-auto-warn").innerText()).toContain("分出去后你将看不到这个项目");
     await 填沟通(page);
-    await 框.getByRole("button", { name: "建好并分出去" }).click();
-    await 框.getByRole("button", { name: "已建好" }).waitFor();
+    await 框.getByRole("button", { name: "保存并分出去" }).click();
+    await 框.getByRole("button", { name: "已保存" }).waitFor();
     expect(await page.getByRole("dialog").count()).toBe(1);
     expect((await 窗of(page)).建).toMatchObject({ 项目: { 分配方式: 1 } });
   } finally { await page.close(); }
@@ -175,7 +175,7 @@ it("P-转-07：有项目一起转时先列出来，同事在推的只给个数�
     await 建好键(page).click();
     await 问.getByText(确认标题).first().waitFor();
     await 问.getByRole("button", { name: "一起转" }).click();
-    await 框.getByRole("button", { name: "已建好" }).waitFor();
+    await 框.getByRole("button", { name: "已保存" }).waitFor();
     expect((await 窗of(page)).建).toMatchObject({ 项目: { 分配方式: 0 } });
   } finally { await page.close(); }
 });
@@ -185,7 +185,7 @@ it("P-转-07：没有要转的不弹，直接建；问的时候带上这次的�
   try {
     await 填沟通(page);
     await 建好键(page).click();
-    await page.getByRole("button", { name: "已建好" }).waitFor();
+    await page.getByRole("button", { name: "已保存" }).waitFor();
     expect(await page.getByRole("dialog").filter({ hasText: "会一起转走" }).count()).toBe(0);
     const 预览 = (await 窗of(page)).预览;
     expect(预览).toHaveLength(1);
@@ -199,7 +199,7 @@ it("P-转-07：取预览失败不拦着建（断网时服务端照常查）", as
   try {
     await 填沟通(page);
     await 建好键(page).click();
-    await page.getByRole("button", { name: "已建好" }).waitFor();
+    await page.getByRole("button", { name: "已保存" }).waitFor();
     expect(await page.getByRole("dialog").filter({ hasText: "会一起转走" }).count()).toBe(0);
   } finally { await page.close(); }
 });

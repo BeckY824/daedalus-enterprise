@@ -35,11 +35,13 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 开查重(width: number, 手机: boolean) {
+async function 开查重(width: number, 手机: boolean, 暗 = false) {
   const page = await browser.newPage({ viewport: { width, height: 760 }, isMobile: 手机, hasTouch: 手机 }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
-  await page.route("http://pop.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><meta name='viewport' content='width=device-width'><div id='root' style='padding:16px'></div>" }));
-  await page.goto("http://pop.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+  await page.route("http://pop.test/**", r => r.fulfill({ contentType: "text/html", body: `<html data-mode='${暗 ? "dark" : "light"}'><meta charset='utf-8'><meta name='viewport' content='width=device-width'><div id='root' style='padding:16px'></div></html>` }));
+  await page.goto("http://pop.test");
+  for (const f of 暗 ? ["globals.css", "antd-dark.css", "dark.css"] : ["globals.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+  await page.addScriptTag({ content: bundle });
   await page.evaluate((x) => (window as unknown as { __render: (x: boolean) => void }).__render(x), 手机);
   await page.locator("button[aria-label='更多入口']").click();
   await page.waitForFunction(() => [...document.querySelectorAll(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu-item")].some(e => e.textContent?.includes("查重")));
@@ -59,8 +61,8 @@ const 框边 = (page: import("playwright").Page) => page.evaluate(() => {
   return { 左: Math.round(左), 右: Math.round(右), 宽: window.innerWidth, 横滚: document.documentElement.scrollWidth > window.innerWidth };
 });
 
-it.each([375, 390])("手机 %i 宽：查重小框左右都在屏里、各留至少 8px，整页不横滚；查出长结果也不出屏", async (w) => {
-  const { page, errors } = await 开查重(w, true);
+it.each([[375, false], [390, false], [375, true], [390, true]] as const)("手机 %i 宽（暗 %s）：查重小框左右都在屏里、各留至少 8px，整页不横滚；查出长结果也不出屏", async (w, 暗) => {
+  const { page, errors } = await 开查重(w, true, 暗);
   try {
     let b = await 框边(page);
     expect(b.左, JSON.stringify(b)).toBeGreaterThanOrEqual(8);
@@ -85,6 +87,26 @@ it("电脑 1280 宽：小框照旧在「+」旁边（左边不离开「+」太�
     const 加 = await page.locator("button[aria-label='更多入口']").evaluate(e => Math.round(e.getBoundingClientRect().left));
     expect(Math.abs(b.左 - 加), JSON.stringify({ b, 加 })).toBeLessThanOrEqual(48);
     expect(b.右).toBeLessThanOrEqual(1280);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// 11-23 小修批：溢出类全宽扫一遍（浅深两色）——电脑 / 平板宽小框照旧往上开、左右都在屏里，查出长结果也不出屏、整页不横滚
+it.each([768, 1024, 1199, 1200, 1240, 1440, 1536].flatMap((w) => [[w, false], [w, true]] as const))("%i 宽（暗 %s）：查重小框不出屏、整页不横滚", async (w, 暗) => {
+  const { page, errors } = await 开查重(w, false, 暗);
+  try {
+    for (const 查了 of [false, true]) {
+      if (查了) {
+        await page.getByRole("textbox", { name: "要查的号码" }).fill("13800001111");
+        await page.getByRole("button", { name: "查" }).click();
+        await page.locator(".home-dedupe .ant-alert").waitFor();
+        await page.waitForTimeout(150);
+      }
+      const b = await 框边(page);
+      expect(b.左, JSON.stringify(b)).toBeGreaterThanOrEqual(0);
+      expect(b.右, JSON.stringify(b)).toBeLessThanOrEqual(w);
+      expect(b.横滚).toBe(false);
+    }
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
