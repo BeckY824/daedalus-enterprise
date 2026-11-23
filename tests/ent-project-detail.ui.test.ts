@@ -1845,7 +1845,7 @@ it("F-项目-18：项目附件合一块，最后一格收沟通上的附件、�
 
 describe("F-042：项目方案、合同附件分两格各带提示；点黄框里的附件类必填定位到那一格", () => {
   const 缺附件 = { 必填: { 配了: ["项目方案", "合同附件", "项目级别"], 还差: ["项目方案", "合同附件", "项目级别"] }, 项目附件: { 合同: 0, 方案: 0, 其它: 0, 只读: false } };
-  const 方案提示 = "方案敲定要求这里至少一份", 合同提示 = "合同、补充协议放这里；方案请放上面的「项目方案」";
+  const 方案提示 = "节点要求的方案放这里", 合同提示 = "放合同、补充协议；方案放上一格";
   const 进视口 = (page: import("playwright").Page, sel: string) => page.evaluate((sel) => { const r = document.querySelector(sel)!.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; }, sel);
 
   it.each([["now", 1366], ["now", 390], ["ledger", 1280]] as const)("%s %ipx：两格各自一个框、小标题下一句提示（一行），方案在上；点「项目方案」「合同附件」各落到自己那一格亮一圈，不开完成节点框", async (皮, w) => {

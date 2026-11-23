@@ -50,6 +50,9 @@ export const 附件必填格: Partial<Record<string, string>> = { 项目方案: 
  * 滚到「项目附件」里那一格并亮一圈（F-042，借提醒点进来那一圈 rec-ring，只动阴影不动尺寸）：卡收着先展开、等卡身长出来再滚；
  * 开了「减弱动态」直接跳过去不滑。这页上没有那一格（看不到附件、不在项目页）= false，外面照原来的走
  */
+/** 连点保护：上一次高亮的摘除定时器、卡正在展开 */
+let 亮计时 = 0;
+let 正在展开 = false;
 export function 定位到附件格(项: string): boolean {
   const 格名 = 附件必填格[项];
   const 壳 = document.getElementById("project-attachments-fold");
@@ -57,7 +60,9 @@ export function 定位到附件格(项: string): boolean {
   if (!壳 || !找()) return false;
   // 等框关掉（解除滚动锁）再滚，同 定位到模块
   window.setTimeout(() => {
-    const 收着 = 壳.classList.contains("is-closed");
+    // 卡收着时 60ms 内连点两下：第二下别再点一次展开钮（会把卡又收回去）
+    const 收着 = 壳.classList.contains("is-closed") && !正在展开;
+    if (收着) { 正在展开 = true; window.setTimeout(() => (正在展开 = false), 400); }
     if (收着) 壳.querySelector<HTMLButtonElement>(":scope > .proj-fold-btn")?.click();
     window.setTimeout(() => {
       const 格 = 找();
@@ -67,8 +72,9 @@ export function 定位到附件格(项: string): boolean {
       格.classList.remove("rec-tl-item-flash");
       void 格.offsetWidth;
       格.classList.add("rec-tl-item-flash");
-      window.setTimeout(() => 格.classList.remove("rec-tl-item-flash"), 1600);
-    }, 收着 && !少动() ? 320 : 0);
+      window.clearTimeout(亮计时);
+      亮计时 = window.setTimeout(() => 格.classList.remove("rec-tl-item-flash"), 1600);
+    }, (收着 || 正在展开) && !少动() ? 320 : 0);
   }, 60);
   return true;
 }
