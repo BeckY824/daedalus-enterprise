@@ -343,3 +343,24 @@ it.each([375, 1280])("%ipx：项目卡就地改的钱格（.proj-inline-money，
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+/*
+  K7（设计语言 E2，29O）：就地改金额敲了认不出的字回车——存的那一下框是灰的，焦点掉到页面上：Esc 没人接、还原不了，
+  「认不出」浮层也一直挂着。现在没存上之后焦点回到金额框：浮层跟着焦点走，Esc 还原成原值、收起、浮层消失
+*/
+it.each([375, 1366])("K7 %ipx：就地改金额敲「约5万」回车没存上，焦点留在金额框；Esc 还原原值、收起，「认不出」浮层不挂着", async (w) => {
+  const { page, errors } = await open("__就地", { 数: 20000, 币: "CNY" }, w);
+  try {
+    await 开格(page);
+    await 框(page).fill("约5万");
+    await 框(page).press("Enter");
+    await expect.poll(() => page.locator(".proj-inline-err").innerText()).toContain("金额认不出");
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? document.activeElement?.tagName)).toBe("金额");
+    await page.keyboard.press("Escape");
+    await expect.poll(() => page.locator(".proj-inline-money").count()).toBe(0);
+    expect(await page.locator(".proj-inline-val").innerText()).toContain("20,000");
+    await expect.poll(() => 浮层(page).count()).toBe(0);
+    expect(await 交了(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

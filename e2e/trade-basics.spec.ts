@@ -191,7 +191,10 @@ test("端到端：计划页点完成 → 小框记一笔（WhatsApp、7 天后�
   await expect(框).toBeVisible();
   await expect(框.locator(".done-plan-row", { hasText: "方式" }).first()).toContainText("WhatsApp");
   const 保存 = page.getByRole("button", { name: "保存并完成" });
-  await expect(保存).toBeDisabled();
+  // 设计语言 E1（D03）：保存一直能点，空着点在「一句话」下面报红
+  await expect(保存).toBeEnabled();
+  await 保存.click();
+  await expect(框.locator(".fm-err")).toHaveText("请写一句这次聊了什么");
   await 框.getByLabel("这次聊了什么").fill("新报价发了，客户说周五回复");
   await expect(框).toContainText("会排一条");
   await 保存.click();

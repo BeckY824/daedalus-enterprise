@@ -97,7 +97,20 @@ function NewTopicModal({ 数据, projectId, 关 }: { 数据: 项目主题们; pr
   // 打了没发的字留草稿（复盘第 1 类：刷新、发版后重开带回）；发出去了、点取消就删
   const 稿 = useFormDraft({ 键: `教练主题:${projectId}`, 值: { title, body }, 带回: (v) => { if (v.title !== undefined) setTitle(v.title); if (v.body !== undefined) setBody(v.body); } });
   const 不要了 = () => { 稿.丢掉(); 关(); };
+  /*
+    设计语言 E1（D03 / D14，同 D4 新建沟通框）：提交键「保存」一直能点，点了还缺的在格子下面报红、焦点跳到第一处，
+    * 在标签前（原来「发出」灰着，不说缺什么）
+  */
+  const [试过, set试过] = useState(false);
+  const 错们: [格: string, 话: string | null][] = [["主题", !title.trim() ? "请写一句主题" : null], ["内容", !body.trim() ? "请写点评或建议" : null]];
+  const 格错 = (格: string) => (试过 ? 错们.find(([k]) => k === 格)?.[1] ?? null : null);
   const 发 = async () => {
+    if (错们.some(([, 话]) => 话)) {
+      set试过(true);
+      const 第一处 = 错们.find(([, 话]) => 话)![0];
+      window.setTimeout(() => document.querySelector<HTMLElement>(`.cth-form [data-fk="${第一处}"] :is(input, textarea)`)?.focus(), 0);
+      return;
+    }
     set忙(true);
     set错(null);
     const r = await 发主题动作(projectId, { title, body }).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没发出去，请重试") }));
@@ -107,21 +120,24 @@ function NewTopicModal({ 数据, projectId, 关 }: { 数据: 项目主题们; pr
     关();
     router.refresh();
   };
-  const 行 = (名: string, 值: ReactNode) => (
-    <div className="cth-form-row"><span className="cth-form-k">{名}</span><span className="cth-form-v">{值}</span></div>
+  const 行 = (名: string, 值: ReactNode, 必填 = false) => (
+    <div className="cth-form-row" data-fk={必填 ? 名 : undefined}>
+      <span className="cth-form-k">{必填 && <span className="fm-req" aria-hidden>*</span>}{名}</span>
+      <span className="cth-form-v">{值}{必填 && 格错(名) && <div className="fm-err" role="alert">{格错(名)}</div>}</span>
+    </div>
   );
   return (
     <Modal open title="写点评" onCancel={不要了} destroyOnHidden width={520}
       footer={[
         <Button key="c" onClick={不要了} disabled={忙}>取消</Button>,
-        <Button key="ok" type="primary" loading={忙} disabled={!title.trim() || !body.trim()} onClick={() => void 发()} data-testid="coach-topic-send">发出</Button>,
+        <Button key="ok" type="primary" loading={忙} onClick={() => void 发()} data-testid="coach-topic-send">保存</Button>,
       ]}>
       {稿.提示}
       <div className="cth-form">
         {行("关联项目", <span className="cth-ellipsis" title={数据.项目名}>{数据.项目名}（当前项目）</span>)}
         {行("关联节点", <span>{数据.当前节点 || "—"}（当前节点）</span>)}
-        {行("主题", <Input aria-label="主题" maxLength={主题标题上限} showCount placeholder="一句话" value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />)}
-        {行("内容", <Input.TextArea aria-label="内容" maxLength={主题内容上限} autoSize={{ minRows: 3, maxRows: 10 }} placeholder="点评或建议" value={body} onChange={(e) => setBody(e.target.value)} />)}
+        {行("主题", <Input aria-label="主题" aria-required maxLength={主题标题上限} showCount placeholder="一句话" status={格错("主题") ? "error" : undefined} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus />, true)}
+        {行("内容", <Input.TextArea aria-label="内容" aria-required maxLength={主题内容上限} autoSize={{ minRows: 3, maxRows: 10 }} placeholder="点评或建议" status={格错("内容") ? "error" : undefined} value={body} onChange={(e) => setBody(e.target.value)} />, true)}
         {行("填写人", <span>{数据.填写人 ? `${数据.填写人.name}（${数据.填写人.身份}）` : "—"}</span>)}
         {行("会通知", <span>{数据.负责人 ? `项目负责人 · ${数据.负责人.name}` : "—"}</span>)}
       </div>

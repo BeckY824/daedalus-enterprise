@@ -26,3 +26,29 @@ export function 电话格验(v: string | null | undefined, 原?: string | null):
   const r = 录入电话(s, { 必填: false });
   return r.ok ? Promise.resolve() : Promise.reject(new Error(r.error));
 }
+
+/**
+ * 设计语言 E1（D03，同 D4 新建沟通 / 待办 / 卡点）：antd 表单校验没过——红字在各格下面，再把焦点挪到第一处没填好的格
+ * （等红字画出来再挪）。用法：`form.validateFields().catch(跳到第一处(form))`，没过回 null
+ */
+export function 跳到第一处(form: { focusField: (name: (string | number)[]) => void }) {
+  return (e: unknown): null => {
+    const 名 = isFormValidationError(e) ? (e as { errorFields: { name: (string | number)[] }[] }).errorFields[0]?.name : undefined;
+    if (名) window.setTimeout(() => form.focusField(名), 0);
+    return null;
+  };
+}
+
+/** 格子里能接焦点的控件。antd 6 的下拉、日期框里面也是一个 input（.ant-select-selector 已经没了），自定义的按 tabindex=0 认 */
+export const 可聚焦控件 = ':is(textarea, input:not([type=hidden]):not(:disabled), [tabindex="0"])';
+
+/**
+ * 设计语言 E1（D03）：一格里该接焦点的那个控件——先找标红的（类型 + 号码拼在一格里、只有号码红时落到号码上），没有标红的取第一个。
+ * 不是 antd Form 的表单（自己算缺项、按格子容器标红的）用它：`格里该聚焦的(格子)?.focus()`
+ */
+export function 格里该聚焦的(格子: Element | null): HTMLElement | null {
+  if (!格子) return null;
+  const 红 = 格子.querySelector('[class*="-status-error"]');
+  const 红里的 = 红 && (红.matches(可聚焦控件) ? 红 : 红.querySelector(可聚焦控件));
+  return (红里的 ?? 格子.querySelector(可聚焦控件)) as HTMLElement | null;
+}

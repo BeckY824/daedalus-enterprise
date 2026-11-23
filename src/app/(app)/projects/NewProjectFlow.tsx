@@ -156,7 +156,7 @@ export function useNewProjectFlow({ 建档: 给的 = null, 起手开着 = false 
               />
               <div className="pj-old-res" ref={老结果} onKeyDown={结果键} aria-busy={老们 === null} aria-label={`搜到的${b.customer}`}>
                 {老们 === null ? <div className="pj-old-none" role="status">正在搜…</div>
-                  : !老们.length ? <div className="pj-old-none" role="status">{老词.trim() ? `没搜到这位${b.customer}，换个字再搜，或者建新${b.customer}` : `还没有${b.customer}，建新${b.customer}吧`}</div>
+                  : !老们.length ? <div className="pj-old-none" role="status">{老词.trim() ? `没有对得上「${老词.trim()}」的${b.customer}，换个字再搜，或者建新${b.customer}` : `还没有${b.customer}，建新${b.customer}吧`}</div>
                   : 老们.map((c) => (
                     <button key={c.id} type="button" className="pj-old-it" disabled={取档中} onClick={() => void 开建档("新增项目", undefined, c)}>
                       <span className="pj-old-name" title={c.name}>{c.name}</span>
