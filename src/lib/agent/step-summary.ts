@@ -28,6 +28,7 @@ export const 工具口语: Record<string, (次: number, 客户: string) => strin
     这一句是折叠起来时的那行摘要，不该把整条查询再抄一遍。
   */
   query_records: (n) => `按条件查了 ${n} 次`,
+  say_read_only: () => "说明了只读",
   // 建议卡那几个：过程条上另有卡片，这里只说一声
   propose_status_change: () => "拟了一张建议卡",
   propose_followup: () => "拟了一张建议卡",
@@ -88,6 +89,7 @@ export const 单步口语: Record<string, { 在做: (客户: string) => string; 
   list_projects: { 在做: () => "正在查项目", 做完: () => "查了项目" },
   list_contracts: { 在做: () => "正在查成交记录", 做完: () => "查了成交记录" },
   list_users: { 在做: () => "正在查账号名单", 做完: () => "查了账号名单" },
+  say_read_only: { 在做: () => "这个账号只读，不记录、不修改", 做完: () => "这个账号只读，没有记录或修改" },
   search_followups: { 在做: () => "正在搜跟进记录", 做完: () => "搜了跟进记录" },
   query_records: { 在做: () => "正在按条件查", 做完: () => "按条件查了一次" },
   propose_status_change: { 在做: () => "正在拟改状态的建议", 做完: () => "拟了改状态的建议" },

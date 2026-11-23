@@ -17,6 +17,7 @@ import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { missingFields } from "@/lib/agent/proposals";
 import { 收名片卡们, 名片要查, 名片提示词 } from "@/lib/card-scan/agent-prompt";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { AI流错误码 } from "@/lib/ai-stream-codes";
 
 /** 一个问题最多多长。300 太短，一句完整的业务问题经常就写不下 */
 const 问题上限 = 1000;
@@ -138,7 +139,14 @@ export async function POST(req: Request) {
                 `AI 对话：「${question.trim().slice(0, 60)}」（${r.steps} 次工具调用${model ? `，${model}` : ""}${files ? `，带了 ${files.map((f) => f.name).join("、")}` : ""}）`,
               );
               // 只读的人（批次 20c）：名片识别的卡也不摆——摆出来点确认只会报错
-              return { ok: true as const, answer: { text: r.text, records: r.records, customers: r.customers, proposals: r.写不了 ? [] : (名片 ?? r.proposals) } };
+              /*
+                只读（HC-2b）：写不了 = 这个账号只读（界面据此不给写的追问）；拒了写 = 这一轮要 AI 记 / 改 / 删被拒了（界面出一行带锁的说明）。
+                两个都是服务端定的固定标记，不靠模型那段原话
+              */
+              return {
+                ok: true as const,
+                answer: { text: r.text, records: r.records, customers: r.customers, proposals: r.写不了 ? [] : (名片 ?? r.proposals), ...(r.写不了 ? { 写不了: r.写不了 } : {}), ...(r.拒了写 ? { 拒了写: true } : {}) },
+              };
             },
             { 中断: req.signal },
           );
@@ -161,10 +169,15 @@ export async function POST(req: Request) {
       } catch (e) {
         // 次数该退的已经在 带额度 里退过了，这里只管把错误说成人话
         // requireUser 未登录时会 redirect()，在路由里表现为抛错
+        /**
+         * 超时另带一个 code（设计语言 HC-2b）：界面写「等了 N 秒没回来」只认它，不再看这句话里有没有「超时」——
+         * 文案哪天改了，界面照样认得出
+         */
+        const 超时 = e instanceof Error && e.name === "TimeoutError";
         const msg =
           e instanceof Error && /NEXT_REDIRECT/.test(e.message)
             ? "登录已失效，请刷新页面"
-            : e instanceof Error && e.name === "TimeoutError"
+            : 超时
               ? // 原来摆的是英文「The operation was aborted due to timeout」（2026-10-02）
                 "AI 这次超时没回音，稍后再问一次试试"
               : e instanceof Error && e.name === "AbortError"
@@ -172,7 +185,7 @@ export async function POST(req: Request) {
                 : e instanceof Error
                   ? e.message
                   : "生成失败";
-        send({ type: "result", ok: false, error: msg });
+        send({ type: "result", ok: false, error: msg, ...(超时 ? { code: AI流错误码.超时 } : {}) });
       } finally {
         controller.close();
       }

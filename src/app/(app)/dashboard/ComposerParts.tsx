@@ -15,6 +15,7 @@ import { 邮件摘要 } from "@/components/research/MailPaste";
 import type { 背调价目 } from "@/lib/research/actions";
 import type { 邮件信号 } from "@/lib/research/verify/mail";
 import type { Suggestion } from "./HomeChat";
+import type { Turn } from "@/lib/home-thread";
 
 export function ComposerTools({ 宽, 摆背调键, 背调模式, on切背调, files, setFiles, 在跑, 邮件, on开邮件, 摆粘贴键, on粘贴, on预载, 附件字, 摆附件键 = true }: {
   宽: boolean;
@@ -174,6 +175,28 @@ export function ComposerTop({ 客户, 背调模式, 邮件, on去掉邮件, 提�
   return null;
 }
 
+/**
+ * 排队的问题（设计语言 HC-3，用户 11-22 选 C9-A）：从对话流挪到输入框上方一枚小签
+ * 「排队 N 条：下一条 取消」。取消的是排在最前、下一个要发的那条（原来每条排队的下面各一个「取消」，动作不变、挪位置）；
+ * 全部几条悬停看。390 一行省略，「取消」不换行。
+ */
+export function QueueChip({ 排队, on取消 }: { 排队: Turn[]; on取消: (id: string) => void }) {
+  if (!排队.length) return null;
+  const 下一条 = 排队[0];
+  return (
+    <div className="cli-queue" role="status">
+      <div className="cli-queue-c">
+        <span className="cli-queue-t" title={排队.map((t, i) => `${i + 1}. ${t.question}`).join("\n")}>
+          排队 {排队.length} 条：{下一条.question}
+        </span>
+        <button type="button" className="cli-link cli-queue-x" onClick={() => on取消(下一条.id)} aria-label={`取消排队的「${下一条.question}」`}>
+          取消
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export function SendKey({ 在跑, onStop, canSend, on发 }: { 在跑: boolean; onStop: () => void; canSend: boolean; on发: (排队: boolean) => void }) {
   if (在跑)
     return (
@@ -202,8 +225,13 @@ export function SendKey({ 在跑, onStop, canSend, on发 }: { 在跑: boolean; o
   );
 }
 
-export function ComposerFoot({ 摆建议, 示例槽, suggestions, suggIdx, 空, 在跑, 背调模式, 背调价, AI已用完, on问 }: {
+export function ComposerFoot({ 摆建议, 示例槽, suggestions, suggIdx, 空, 在跑, 背调模式, 背调价, AI已用完, on问, 只留额度 = false }: {
   摆建议: boolean;
+  /**
+   * 设计语言 HC-3（C10-A，首页问过之后）：输入框下不放键盘提示、三条快捷问题；
+   * 只留额度 / 背调价目那一句（要计次的人才有，企业版自部署一般不出）
+   */
+  只留额度?: boolean;
   /** 企业版驾驶舱有外框时（10-31）：示例不摆在框底下，画到欢迎语下面那一格（每条一行）；null = 那一格还没挂上。不给 = 照旧摆在框底下 */
   示例槽?: HTMLElement | null;
   suggestions: Suggestion[];
@@ -229,6 +257,10 @@ export function ComposerFoot({ 摆建议, 示例槽, suggestions, suggIdx, 空, 
       ))}
     </div>
   ) : null;
+  if (只留额度)
+    return (
+      <div className="cli-hints cli-hints-quota">{背调模式 ? <ResearchModeLine 价={背调价} /> : <AiRemaining />}</div>
+    );
   return (
     <>
       {示例槽 === undefined ? 示例 : 示例槽 && 示例 ? createPortal(示例, 示例槽) : null}

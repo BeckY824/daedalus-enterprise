@@ -357,4 +357,12 @@ export const 建议SCHEMAS: Record<string, Schema> = {
   },
 };
 
-export const SCHEMAS: Record<string, Schema> = { ...只读SCHEMAS, ...建议SCHEMAS };
+/**
+ * 只给写不了的人的那一个（设计语言 HC-2b，tools.ts 的 say_read_only）：不查数、不出卡，
+ * 只让服务端在回答里带「拒了写」的标记。不进 只读SCHEMAS——MCP 不开它
+ */
+export const 只读说明SCHEMAS: Record<string, Schema> = {
+  say_read_only: { type: "object", properties: {}, additionalProperties: false },
+};
+
+export const SCHEMAS: Record<string, Schema> = { ...只读SCHEMAS, ...建议SCHEMAS, ...只读说明SCHEMAS };

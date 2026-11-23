@@ -118,10 +118,14 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
 }) {
   const b = useBusiness();
   const model = useModel(models);
-  const 屏 = useHomeTurns({ 会话, scope, model, 模式, 上下文提示, 上下文范围, 标题前缀 });
-  const { turns } = 屏;
-  /** 刚发出去的那一问。只有它会在挂载时把自己滚到视口顶部，翻历史不该乱跳 */
+  /**
+   * 刚发出去的那一问。只有它会在挂载时把自己滚到视口顶部，翻历史不该乱跳。
+   * 排队的那一问不算（#441 审查 1）：它先不画，「刚发的」要是换成它，正在答的那一轮就丢了 cli-turn-new、
+   * 下面那一框高的留白答到一半被收掉，滚动位置一跳。轮到它出队开跑时（useHomeTurns 的 on出队）才记成刚发的
+   */
   const [刚发的, set刚发的] = useState<string | null>(null);
+  const 屏 = useHomeTurns({ 会话, scope, model, 模式, 上下文提示, 上下文范围, 标题前缀, on出队: set刚发的 });
+  const { turns } = 屏;
   const composerRef = useRef<ComposerHandle>(null);
 
   /*
@@ -144,7 +148,8 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
   const 驾驶舱 = !!指标卡 && !窄;
   /*
     驾驶舱左边那一列套一个外框（10-31 首页改版）：框里左上问候、「欢迎使用 {产品名}」、三条示例各占一行，框底是输入框；
-    问过之后右边卡收起、框铺满这一格。空库的「开始」卡自己就是一张卡，那一屏不再套框
+    问过之后右边卡收起、框铺满这一格；这一格宽 ≥1340 时卡不收、和问之前同一个 2:1（HC-5，P-界面-60）——HomeCards 一直渲染着，收不收只看 globals.css。
+    空库的「开始」卡自己就是一张卡，那一屏不再套框
   */
   const 外框 = 驾驶舱 && !(empty && 空库);
   /** 外框里欢迎语下面那一格：示例的状态（↑↓ 选中哪条、点了填进输入框）还在 Composer 里，只是画到这儿来 */
@@ -204,7 +209,7 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
       ) : empty ? (
         <Welcome userName={userName} 信号={信号} context={context} 欢迎={驾驶舱 ? `欢迎使用 ${产品名 ?? 默认产品名}` : undefined} 示例槽={外框 ? set示例槽 : undefined} />
       ) : (
-        <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} 企业版={企业版} />
+        <TurnLog turns={turns} 刚发的={刚发的} scope={scope} 动作={动作} />
       )}
       {/*
         换对话按这一屏装着的对话 id 重挂（不按地址上的 会话：地址先变、库里那段要等 useHomeTurns 的效果装进来，

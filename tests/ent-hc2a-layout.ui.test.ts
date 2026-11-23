@@ -126,7 +126,8 @@ for (const 宽 of [1366, 1024]) {
       const 基 = await 字左(page, ".cli-turn:nth-child(1) .cli-a");
       const 各 = {
         圆点: await 盒左(page, ".cli-turn:nth-child(1) .ais-dot"),
-        涉及客户: await 盒左(page, ".cli-turn:nth-child(1) .cli-card"),
+        // HC-2b：「涉及 N 位客户」缩成一行（.cli-inv）
+        涉及客户: await 盒左(page, ".cli-turn:nth-child(1) .cli-inv"),
         追问: await 盒左(page, ".cli-turn:nth-child(1) .cli-next"),
         操作行图标: await 字左(page, ".cli-turn:nth-child(1) .cli-bar .cli-ic"),
         确认卡: await 盒左(page, ".cli-turn:nth-child(2) .prop"),

@@ -17,7 +17,7 @@ import { 落一轮 } from "./threads";
  * 打一个字整屏的对话记录都跟着重渲。现在输入框的状态归 Composer，
  * 这里只在「换了一轮 / 有一轮开跑或停了」时才变。
  */
-export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, 上下文范围, 标题前缀 }: {
+export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, 上下文范围, 标题前缀, on出队 }: {
   会话: { id: string; title: string; messages: 历史消息[] } | null;
   scope: string;
   model: string;
@@ -25,6 +25,8 @@ export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, �
   上下文提示?: string;
   上下文范围?: 页面范围;
   标题前缀?: string;
+  /** 排队的那一问出队开跑了：HomeChat 这时才把它记成「刚发的」（#441 审查 1，排队时不记） */
+  on出队?: (id: string) => void;
 }) {
   const AI已用完 = useAiOutOfCredits();
   const router = useRouter();
@@ -70,7 +72,14 @@ export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, �
           ms: job.value?.ms ?? null,
           steps: job.value?.steps,
           // 建议卡不存：它是一件当时就处理完的事，翻历史不该再摆回来。背调的整份报告存着：翻历史还是那张卡
-          refs: { records: job.value?.answer?.records ?? [], customers: job.value?.answer?.customers ?? [], ...(job.value?.answer?.research ? { research: job.value.answer.research } : {}) },
+          refs: {
+            records: job.value?.answer?.records ?? [],
+            customers: job.value?.answer?.customers ?? [],
+            ...(job.value?.answer?.research ? { research: job.value.answer.research } : {}),
+            // 只读标记（HC-2b）也存下：翻回这段对话，带锁那行和「不给写的追问」照旧
+            ...(job.value?.answer?.写不了 ? { 写不了: job.value.answer.写不了 } : {}),
+            ...(job.value?.answer?.拒了写 ? { 拒了写: true } : {}),
+          },
           标题前缀: 标题前缀,
           // 新建那条对话时记下「在哪一页问的」。标题前缀是给人看的，这个才是键
           scope,
@@ -129,6 +138,7 @@ export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, �
   */
   const 发排队的 = useEffectEvent((t: Turn) => {
     dequeueTurn(scope, t.id);
+    on出队?.(t.id);
     start(t);
   });
   useEffect(() => {
