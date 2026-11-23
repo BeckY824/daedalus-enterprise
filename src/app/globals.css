@@ -228,12 +228,13 @@
 .appr-opt:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 /* 小样：左边一条左栏、右边一张卡 */
 .appr-mini { display: flex; gap: 6px; width: 100%; height: 64px; padding: 6px; margin-bottom: 4px; border-radius: var(--r-ctl); border: 1px solid var(--line-soft); }
-/* 明暗那一行的小样：挂着 data-mode-preview，读 dark.css 里那份暗底或明亮小样那份浅底；「跟随系统」左右各半 */
-.appr-mini-mode { background: var(--workbench); }
+/* 明暗那一行的小样：挂着 data-mode-preview，读 dark.css 里那份暗底或明亮小样那份浅底；「跟随系统」左右各半。
+   和实际外观一致（11-23）：白页面（--panel）+ 贴左边的浅灰左栏条（--workbench）+ 白卡（--field-line 边，同 --card-line）；深色读深色那几个值 */
+.appr-mini-mode { padding: 0; overflow: hidden; background: var(--panel); }
 .appr-mini-split { padding: 0; gap: 0; overflow: hidden; }
-.appr-mini-half { flex: 1; display: flex; gap: 6px; padding: 6px; background: var(--workbench); }
-.appr-mini-rail { width: 22%; border-radius: 4px; background: color-mix(in srgb, var(--line) 60%, transparent); }
-.appr-mini-card { flex: 1; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); }
+.appr-mini-half { flex: 1; display: flex; gap: 6px; background: var(--panel); }
+.appr-mini-rail { width: 22%; background: var(--workbench); border-right: 1px solid var(--line-soft); }
+.appr-mini-card { flex: 1; margin: 6px 6px 6px 0; border-radius: 4px; background: var(--panel); border: 1px solid var(--field-line); }
 
 /* ---------- 登录 / 找回的门（login/LoginForm.tsx、AuthShell.tsx）：左边一句话，右边一个表单 ---------- */
 .auth { position: relative; min-height: 100vh; display: grid; grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.15fr); background: var(--page-bg); }
@@ -4283,6 +4284,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 :is(.home-card, .btodo-list, .rkpi, .chan-dash-kpi, .chan-dash-cell, .chan-block, .set-body, .start, .auth-solo .auth-form, .rec-card:not(.rec-rail-blocks, .rec-col-blocks), .bill-plan, .bill-pay, .cli-card, .cli-ck .cli-frame) {
   border-color: var(--card-line); box-shadow: var(--shadow-card); border-radius: var(--r-mod);
 }
+/* 设置页大卡（.set-body）里再套的卡（antd 卡片、开关总览 / 开关卡）：两层都是 --field-line + 影会出两道深线（11-23 审查）——
+   里层退回行线 --line、不带影，大卡外框照旧 --card-line；定位高亮（.set-hit 蓝框 / 减弱动态下的光圈）不让 */
+.set-body :is(.ant-card.ant-card-bordered, .sw-ov, .sw-card):not(.set-hit) { border-color: var(--line); box-shadow: none; }
 
 /* ---------- 浮层：弹窗、抽屉、下拉、气泡、选择框面板，同一个阴影、圆角 14（圆角在 lib/theme.ts） ----------
    弹窗外壳 antd 6 叫 .ant-modal-container（5 里叫 -content），两个都认——原来只写了 -content，弹窗这一项一直没吃到 */

@@ -31,14 +31,17 @@
   --card-raise-a: 0.3;
   --shadow-card: 0 1px 2px rgb(0 0 0 / var(--card-raise-a));
   --card-line: var(--field-line);
-  --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
+  /* 浮层（弹窗、下拉、气泡、Select 面板、⌘K）：页面底就是 --panel，浮层同色没边认不出来——抬亮一档并加一圈 1px --line；手机顶栏底线用浅的那档 */
+  --pop-bg: #1d2026;
+  --mod-line: var(--line-soft);
+  --shadow-pop: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.5);
   --page-pattern: none;
 }
 
 /* 明暗那一行「浅色」的小样：暗黑下也要画成浅的，值和 :root 那块一样（守卫比对） */
 [data-mode-preview="light"] {
   color-scheme: light;
-  --workbench: #f5f5f7; --panel: #ffffff; --line: #e3e3e8; --line-soft: #ededf0;
+  --workbench: #f5f5f7; --panel: #ffffff; --line: #e3e3e8; --line-soft: #ededf0; --field-line: #c7c7cc;
 }
 
 /* 蓝主色提亮；八个分类色换成暗底上的亮一档 */

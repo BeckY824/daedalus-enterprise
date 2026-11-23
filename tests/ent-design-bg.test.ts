@@ -104,11 +104,40 @@ describe("D-1 底子：去卡影、圆角 10、看板列、390 顶栏", () => {
   });
 });
 
+describe("设置页套卡、外观小样（11-23 审查）", () => {
+  it("设置大卡 .set-body 里套的卡退回 --line、不带影（不出两道深线），定位高亮 .set-hit 不让", () => {
+    有规则(".set-body :is(.ant-card.ant-card-bordered, .sw-ov, .sw-card):not(.set-hit)", "border-color: var(--line); box-shadow: none;");
+  });
+
+  it("外观明暗小样和实际一致：白页面 + 浅灰左栏条 + 白卡（--field-line 边）；浅色小样那份也给 --field-line", () => {
+    有规则(".appr-mini-mode", "padding: 0; overflow: hidden; background: var(--panel);");
+    有规则(".appr-mini-half", "flex: 1; display: flex; gap: 6px; background: var(--panel);");
+    有规则(".appr-mini-rail", "width: 22%; background: var(--workbench);");
+    有规则(".appr-mini-card", "background: var(--panel); border: 1px solid var(--field-line);");
+    const 暗 = 去注释(fs.readFileSync(path.join(源, "app/dark.css"), "utf8"));
+    const i = 暗.indexOf('[data-mode-preview="light"] {');
+    expect(暗.slice(i, 暗.indexOf("}", i))).toContain("--field-line: #c7c7cc");
+  });
+});
+
 describe("暗黑下的 antd 浮层和分段、页签", () => {
   const 共 = 去注释(fs.readFileSync(path.join(源, "app/antd-dark.css"), "utf8"));
 
   it("antd 浮层底读 --pop-bg", () => {
     for (const 片 of ["--ant-color-bg-elevated: var(--pop-bg)", "--ant-modal-content-bg: var(--pop-bg)", "--ant-modal-header-bg: var(--pop-bg)"]) expect(共).toContain(片);
+  });
+
+  it("暗黑：浮层抬亮到 #1D2026 并加 1px 线、模块线用浅的那档，写在 :root[data-mode=\"dark\"] 块里无条件生效（页面底 = --panel，浮层同色没边认不出）", () => {
+    const 暗 = 去注释(fs.readFileSync(path.join(源, "app/dark.css"), "utf8"));
+    const i = 暗.indexOf(':root[data-mode="dark"],');
+    expect(i, "暗黑主块").toBeGreaterThan(-1);
+    const 块 = 暗.slice(i, 暗.indexOf("}", i));
+    expect(块).toContain("--mod-line: var(--line-soft)");
+    expect(块).toContain("--pop-bg: #1d2026");
+    expect(块).toContain("--shadow-pop: 0 0 0 1px var(--line), 0 8px 24px rgba(0, 0, 0, 0.5)");
+    expect(块, "浮层底不能和页面底同色").not.toContain("--pop-bg: #171a1f");
+    // 不能再挂在 data-skin / data-paper 条件上（那两个开关已删，挂上就永远不生效）
+    expect(暗).not.toMatch(/data-(skin|paper)/);
   });
 
   it("分段控件选中字、页签未选中字跟着 --ink（theme.ts 写死的是浅色墨色）", () => {
