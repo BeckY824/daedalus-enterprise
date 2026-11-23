@@ -568,18 +568,27 @@ export async function 看板推进预检(projectId: string, 到: 位置): Promis
     const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
     const [规则, org] = await Promise.all([生效组织规则(), 权限组织()]);
-    if (!能改节点(me, p, org) && !上级只推(me, p, await 直属才推(org), 规则)) {
+    const 推的组织 = await 直属才推(org);
+    const 自己能 = 能改节点(me, p, org);
+    if (!自己能 && !上级只推(me, p, 推的组织, 规则)) {
       return { ok: false, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
     }
     const 字典 = 字典of(企业版(), 企业版() ? 规则.阶段.出口叫法 : null);
-    const 往前 = !p.result && 节点序号(本套位置({ ...到, result: null }, 字典), 字典) > 节点序号(本套位置(p, 字典), 字典);
+    // 旧名（企业版 10-31 改名）先对到新名：记的节点和 改节点、记完成节点被拦 一样是新名，同一节点不记两行、统计不拆两名
+    const 现 = 本套位置(p, 字典);
+    const 去 = 本套位置({ ...到, result: null }, 字典);
+    const 往前 = !p.result && 节点序号(去, 字典) > 节点序号(现, 字典);
     // 节点推进管不管这个项目（默认全部项目都管，客户 11-19；设置成只管新建的时存量不拦）：和 改节点 同一个判断
     if (!往前 || !项目按必填走(规则, p)) return { ok: true, 还差: [] };
     const 差 = 必填还差(规则, await 读必填数据(prisma, p, 规则));
-    // 缺着必填拖不过去 = 被拦一次（必填拦截记录，客户 11-23）；卡片弹回、就地补填。补齐后真推再被拦，10 分钟内不重复记
-    if (差.length) {
-      const 代推 = !能改节点(me, p, org);
-      await 记必填拦截(prisma, { userId: me.id, p, 到: { phase: 到.phase, node: 到.node }, 种: "节点必填", 缺: 差.map(必填叫法), 入口: "看板拖动", 代推 });
+    // 缺着必填拖不过去 = 被拦一次（必填拦截记录，客户 11-23）；卡片弹回、就地补填。补齐后真推再被拦，10 分钟内不重复记。
+    // 和 记完成节点被拦 同一套排除：待分配占位、补全期、往前推不给（「仅上级推」时负责人本人往前推）是没权限，真推也推不动，不记
+    const 没权限 = 待分配占位(me, p) || (企业版() && 补全期不给(me, org, 规则)) || 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则));
+    if (差.length && !没权限) {
+      await 记必填拦截(prisma, {
+        userId: me.id, p: { id: p.id, customerId: p.customerId, phase: 现.phase, node: 现.node }, 到: { phase: 去.phase, node: 去.node },
+        种: "节点必填", 缺: 差.map(必填叫法), 入口: "看板拖动", 代推: !自己能,
+      });
     }
     return { ok: true, 还差: 差.map(必填叫法) };
   } catch (e) { return 不在了(e); }

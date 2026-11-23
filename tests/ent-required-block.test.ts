@@ -22,6 +22,8 @@ import { 改节点 } from "@/lib/project/db";
 import { 缺有效沟通还差, 缺本节点沟通 } from "@/lib/project/stage-gates";
 import { 记必填拦截, 读拦截导出, 汇拦截导出, 认入口, type 拦截关联 } from "@/lib/project/required-block";
 import { 记完成节点被拦, 看板推进预检, 改项目节点 } from "@/app/(app)/projects/actions";
+import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 规则 as 开关 } from "@/lib/enterprise/rules";
 
 let 乙: { id: string; name: string; role: string };
 let 丙: { id: string; name: string; role: string };
@@ -155,6 +157,41 @@ describe("界面上拦下（不经服务端推进）也记", () => {
     await 改节点(乙, p.id, { phase: "线索", node: "线索验证" }, undefined, { 入口: "看板拖动" });
     const 行 = await 记录();
     expect(行.map((x) => x.entry)).toEqual(["看板拖动"]);
+  });
+
+  it("看板拖动预检：库里存着旧名的项目记新名，随后真推去重成一行（不再旧名、新名各记一行）", async () => {
+    await 规则({ 节点推进: { 开: true, 必填: { 痛点挖掘: ["项目级别"] } } });
+    // 「明确需求」是 10-31 改名前的旧名（今叫 痛点挖掘），想推到的也交旧名「共识方案」（今叫 方案敲定）
+    const p = await 项目({ phase: "商机", node: "明确需求" });
+    expect(await 看板推进预检(p.id, { phase: "商机", node: "共识方案", result: null })).toEqual({ ok: true, 还差: ["项目级别"] });
+    await 改节点(乙, p.id, { phase: "商机", node: "方案敲定" }, undefined, { 入口: "看板拖动" });
+    const 行 = await 记录();
+    expect(行.map((x) => [x.phase, x.node, x.toPhase, x.toNode])).toEqual([["商机", "痛点挖掘", "商机", "方案敲定"]]);
+  });
+
+  it("看板拖动预检：待分配占位、补全期、「仅上级推」时负责人本人往前推都是没权限，照回还差、不记", async () => {
+    await 规则({ 节点推进: { 开: true, 必填: { 潜客培育: ["项目级别"] } } });
+    // 待分配占位：占着负责人一格的建的人
+    const a = await 项目({ name: "待分配的", awaitAssignAt: new Date() });
+    expect(await 看板推进预检(a.id, { phase: "线索", node: "线索验证", result: null })).toEqual({ ok: true, 还差: ["项目级别"] });
+    // 补全期：销售推不动
+    await 规则({ 节点推进: { 开: true, 必填: { 潜客培育: ["项目级别"] } }, 阶段: { 需求补全期: true } });
+    const b = await 项目({ name: "补全期的" });
+    expect(await 看板推进预检(b.id, { phase: "线索", node: "线索验证", result: null })).toEqual({ ok: true, 还差: ["项目级别"] });
+    expect(await 记录()).toEqual([]);
+    // 仅上级推：负责人本人推不动、不记；直属上级代推照记（代推）
+    await 规则({ 节点推进: { 开: true, 必填: { 潜客培育: ["项目级别"] } }, 阶段: { 推进权限: "仅上级推" } });
+    await setSetting(开关.按组织看客户.key, true);
+    await prisma.entMember.update({ where: { userId: 丙.id }, data: { bizRole: "sales_mgr" } });
+    await prisma.entMember.update({ where: { userId: 乙.id }, data: { managerId: 丙.id } });
+    忘掉企业版范围();
+    const c = await 项目({ name: "仅上级推的" });
+    expect(await 以谁的身份(乙.id, () => 看板推进预检(c.id, { phase: "线索", node: "线索验证", result: null }))).toEqual({ ok: true, 还差: ["项目级别"] });
+    expect(await 记录()).toEqual([]);
+    mocks.user = { ...mocks.user, id: 丙.id };
+    忘掉企业版范围();
+    expect(await 以谁的身份(丙.id, () => 看板推进预检(c.id, { phase: "线索", node: "线索验证", result: null }))).toEqual({ ok: true, 还差: ["项目级别"] });
+    expect((await 记录()).map((x) => [x.userId, x.projectId, x.onBehalf])).toEqual([[丙.id, c.id, true]]);
   });
 });
 
