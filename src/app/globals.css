@@ -2266,6 +2266,10 @@ a.rkpi-i:hover { background: var(--hover); color: inherit; }
 /* 手机宽度放不下就在表里左右拖，不把整页撑宽（10-27：去掉 scroll.x 以后 390 宽溢出 14px） */
 .member-table { overflow-x: auto; }
 .member-table .ant-table-thead th { white-space: nowrap; }
+/* 窄屏 768–1199（Windows 1024 设置正文约 460–494）：格子左右内边距 8 → 4，和 MembersTab 这一档收窄的列宽配套，整表不横滚（11-23）；勾选列照旧 */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .member-table.ant-table-wrapper .ant-table :is(.ant-table-thead > tr > th, .ant-table-tbody > tr > td):not(.ant-table-selection-column) { padding-inline: 4px; }
+}
 /* 设置 · 操作日志：日期 / 时分秒两行，动作标签下面写对象 */
 .audit-at, .audit-act { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; white-space: nowrap; }
 .ant-table-thead > tr > th { font-size: var(--fs-note); font-weight: 500; letter-spacing: 0.01em; }
