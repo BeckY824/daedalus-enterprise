@@ -170,7 +170,8 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
         const d = await 调(`/api/coach-rec/${id}/drop`).catch(() => null);
         if (d?.ok) set录((d.体.录音 as 录音给界面 | null) ?? null);
         set阶("空");
-        set提示({ 话: `${错}；这一段没留，前面录的还在`, 坏: true });
+        // 录音的说法（跟进 11-22）：先说这段没传上、前面的还在，原因放括号里（「这一段……」开头的去掉重复的「这一段」）
+        set提示({ 话: `这一段录音没传上，前面录的还在（${错.replace(/^这一段/, "")}）`, 坏: true });
         router.refresh();
         return;
       }

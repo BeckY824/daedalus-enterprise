@@ -407,7 +407,10 @@ describe("开关开着：传、传完、续传、放弃", () => {
     当("教练");
     const id = ((await 开一条(项目, { sourceKind: "网页录" })).体.录音 as { id: string }).id;
     expect((await 片(id, 0, 字节(100))).status).toBe(200);
-    expect((await 片(id, 0, 字节(100, new Uint8Array(Buffer.from("<html>"))), "2")).status).toBe(415);
+    const 认不出 = await 片(id, 0, 字节(100, new Uint8Array(Buffer.from("<html>"))), "2");
+    expect(认不出.status).toBe(415);
+    // 网页录说录音的话，不说「文件」（跟进 11-22）
+    expect(认不出.体.error).toBe("这一段录音的格式认不出来");
     const 不一样 = await 片(id, 0, 字节(100, new Uint8Array(Buffer.from("OggS"))), "2");
     expect(不一样.status).toBe(415);
     expect(不一样.体.error).toContain("格式不一样");

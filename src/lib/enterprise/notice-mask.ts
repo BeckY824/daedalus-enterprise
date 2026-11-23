@@ -90,6 +90,29 @@ export function 打码还原(提交: string, 原文们: readonly (string | null 
   });
 }
 
+// 打码后的样子（maskPhone 出来的：11 位以上留头 3 尾 4，7–10 位留头 2 尾 2）
+const 打码样子 = /(?<![\d*])(?:\d{3}\*{4}\d{4}|\d{2}\*{4}\d{2})(?![\d*])/g;
+
+/** 存回去之前（录音点评跟进 11-22，3703 实操）：确认框开着时这条在别处重新整理过、原号码没了，打码段就换不回去——这时别把打码的样子存进库 */
+export const 内容变了话 = "内容已在别处更新，请重新打开";
+
+/**
+ * 还原以后还剩打码段、原文里又找不到这个样子（原文本身就带星号的不算）：打码段对不上原号码，返回 true；调用方再看 版本变了，两样都是才拒存（412 + 内容变了话）。
+ * 原文们同 打码还原：现在库里的主题、要点、转写
+ */
+/** 打开确认框时带上的 更新于 和库里的不一样（没带也算变了：老页面） */
+export function 版本变了(版本: unknown, 库里: Date): boolean {
+  return typeof 版本 !== "string" || 版本 !== 库里.toISOString();
+}
+
+export function 有对不上的码(还原后: unknown, 原文们: readonly (string | null | undefined)[]): boolean {
+  if (typeof 还原后 !== "string" || !还原后.includes("*")) return false;
+  const 码们 = 还原后.match(打码样子);
+  if (!码们) return false;
+  const 原 = 原文们.filter(Boolean).join("\n");
+  return 码们.some((k) => !原.includes(k));
+}
+
 /** 标题、正文里像号码的数字串都打码；没有号码原样返回 */
 export function 通知文字打码(s: string): string {
   if (!s || !/\d|[０-９]/.test(s)) return s;

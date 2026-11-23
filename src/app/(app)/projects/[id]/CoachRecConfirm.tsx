@@ -30,6 +30,8 @@ export function CoachRecConfirm({ 录, 数据, 可整理, 关 }: { 录: 录音�
   const [问, set问] = useState<"弃" | "重整" | null>(null);
   const [忙, set忙] = useState<"发" | "存" | "弃" | "重整" | null>(null);
   const [错, set错] = useState<string | null>(null);
+  // 这条在别处重新整理过（存、发回 412）：框里留着提示好让人抄走自己改的字，再点 × / Esc 直接关掉刷新，不再存（3703 实操跟进）
+  const [变了, set变了] = useState(false);
   const 改过 = title !== (录.确认?.主题 ?? "") || body !== (录.确认?.要点 ?? "");
   const AI起草 = !!录.确认?.主题 || !!录.确认?.要点;
 
@@ -38,6 +40,11 @@ export function CoachRecConfirm({ 录, 数据, 可整理, 关 }: { 录: 录音�
     set错(null);
     const r = await 做().catch(() => null);
     set忙(null);
+    if (r && r.status === 412) {
+      set变了(true);
+      set错(话(r, "内容已在别处更新，请重新打开"));
+      return false;
+    }
     // 点 × / Esc 关框时存草稿：这条已经在别处发出、删掉、变了（409、404）就不拦着，关掉框刷新（PR5 审查）
     if (关着 && r && (r.status === 409 || r.status === 404)) {
       关();
@@ -52,9 +59,9 @@ export function CoachRecConfirm({ 录, 数据, 可整理, 关 }: { 录: 录音�
     router.refresh();
     return true;
   };
-  const 发 = () => 跑("发", () => 调(`/api/coach-rec/${录.id}/send`, { title, body }), "没发出去，请重试");
+  const 发 = () => 跑("发", () => 调(`/api/coach-rec/${录.id}/send`, { title, body, 版本: 录.更新于 }), "没发出去，请重试");
   // 稍后再发 / 点 ×：没改过就直接关（不白写一次库）
-  const 存 = (关着 = false) => (改过 ? 跑("存", () => 调(`/api/coach-rec/${录.id}/draft`, { title, body }), "草稿没存上，请重试", 关着) : (关(), Promise.resolve(true)));
+  const 存 = (关着 = false) => (变了 && 关着 ? (关(), router.refresh(), Promise.resolve(true)) : 改过 ? 跑("存", () => 调(`/api/coach-rec/${录.id}/draft`, { title, body, 版本: 录.更新于 }), "草稿没存上，请重试", 关着) : (关(), Promise.resolve(true)));
   const 弃 = () => 跑("弃", () => 调(`/api/coach-rec/${录.id}/abandon`), "没删掉，请重试");
   const 重整 = () => 跑("重整", () => 调(`/api/coach-rec/${录.id}/retry`), "没交上，请重试");
 
