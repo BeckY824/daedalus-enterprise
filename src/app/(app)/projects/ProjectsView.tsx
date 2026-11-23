@@ -5,7 +5,6 @@ import { useContext, useEffect, useLayoutEffect, useRef, useState, useTransition
 import { createPortal } from "react-dom";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
 import { Button, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
 import { CloseOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
@@ -187,8 +186,6 @@ export default function ProjectsView({
   const 问一起转 = useCarryConfirm();
   const 字典 = 字典of(企业版, 出口叫法);
   const b = useBusiness();
-  /** 现状主题（默认）：设计语言 L-A 市场管理客户页的页头同序只在这里出（换皮主题照原样，lib/use-skin.ts） */
-  const 新样 = useIsNowSkin();
   const 新线索 = 阶段 === "线索";
   // 企业版项目页阶段筛到「线索」：分配入口也摆在这儿（11-01 会议 §5「分配入口搬进项目列表但不看配额」）。
   // 只是多一处入口、不显示配额字样；分不分得出去、配额拦不拦照旧由服务端定
@@ -539,7 +536,7 @@ export default function ProjectsView({
         : []),
       ...(!新线索
         ? [{
-            // 市场管理的客户页（我分出去的）：阶段 / 进程同客户页带「挤」——一行放不下先收进「更多筛选」，现状主题手机上一律收（设计语言 L-A · L-新5 / D06）
+            // 市场管理的客户页（我分出去的）：阶段 / 进程同客户页带「挤」——一行放不下先收进「更多筛选」，手机上一律收（设计语言 L-A · L-新5 / D06）
             键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 挤: 换回客户列表, 有值: !!f.phase,
             渲染: (style: CSSProperties) => (
               <Select style={style} aria-label="阶段" value={f.phase || ""} onChange={(v: string) => apply({ phase: v, node: "" })} options={[{ value: "", label: "全部阶段" }, ...阶段们.map((s) => ({ value: s, label: s }))]} />
@@ -627,10 +624,10 @@ export default function ProjectsView({
 
   const 有分出去钮 = (新线索 || 项目页分) && 线索分配开着;
   /*
-    市场管理的客户页（我分出去的，现状主题）：页头和客户页同序（设计语言 L-A · L-新3 / D31）——「列表 | 看板」照客户页的先后，
-    离职交接排在主按钮左边，「新建 ▾」固定最右（原来离职交接在最左、切换是「看板 | 列表」）。谁看得见不变；项目页、换皮主题照原样
+    市场管理的客户页（我分出去的）：页头和客户页同序（设计语言 L-A · L-新3 / D31）——「列表 | 看板」照客户页的先后，
+    离职交接排在主按钮左边，「新建 ▾」固定最右（原来离职交接在最左、切换是「看板 | 列表」）。谁看得见不变；项目页照原样
   */
-  const 市场同序 = 新样 && 换回客户列表;
+  const 市场同序 = 换回客户列表;
   const 离职交接钮 = !新线索 && !客户页 && 待交接 != null && <Link key="handover" href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>;
   /** 项目专用的几颗按钮：项目页在页头；客户页看板视图在筛选行右端（C17 / C4；11-12 起新增项目挪进客户页页头「新建 ▾」） */
   const 项目按钮 = (
@@ -771,7 +768,7 @@ export default function ProjectsView({
                     </div>
                     <div className="pipe-bar" style={{ background: 列色[c.色] }} />
                     {/* 等筛选回包：卡片原地留着、整块变淡（见上面 筛前），不再整列换成骨架卡 */}
-                    {这列卡.length === 0 && <div className="pipe-empty">{在筛 ? (新样 ? "这一列没有对得上的项目" : "这一列没有对上的") : c.空态}</div>}
+                    {这列卡.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对得上的项目" : c.空态}</div>}
                     {这列卡.map((r, 序) => {
                       const 异常 = r.result === "异常状态";
                       const 小字 = 卡片小字(r, 字典);
@@ -820,8 +817,8 @@ export default function ProjectsView({
                                 <div className="pipe-card-t pipe-card-full" style={r.customerName == null ? { color: "var(--text-muted)" } : undefined}>{r.customerName ?? 领了再看(r)}</div>
                               );
                             })()}
-                            {/* L-新12（现状主题）：项目名和客户名一字不差时第二行不再写一遍（两行的摆法 P-界面-43 不变，只是不重复） */}
-                            {!(新样 && r.customerName != null && r.customerName.trim() === r.name.trim()) && (
+                            {/* L-新12：项目名和客户名一字不差时第二行不再写一遍（两行的摆法 P-界面-43 不变，只是不重复） */}
+                            {!(r.customerName != null && r.customerName.trim() === r.name.trim()) && (
                               <div className="pipe-card-m">
                                 <span className="pipe-card-o pipe-card-full">{r.name}</span>
                               </div>

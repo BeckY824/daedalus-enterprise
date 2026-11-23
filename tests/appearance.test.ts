@@ -6,7 +6,7 @@ import { describe, it, expect } from "vitest";
 import vm from "node:vm";
 import fs from "node:fs";
 import path from "node:path";
-import { 读外观, 外观预设脚本, 外观键, 默认外观, 网页玻璃键, 解明暗, 明暗表, 底色表, 存外观值, 底色版 } from "@/lib/appearance";
+import { 读外观, 外观预设脚本, 外观键, 默认外观, 解明暗, 明暗表 } from "@/lib/appearance";
 
 const MAC = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
 const WIN = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
@@ -24,157 +24,83 @@ function 跑(存的: string | null, ua = MAC, 系统暗?: boolean) {
   return { dataset, 类 };
 }
 
-/** 脚本认出来的外观；mode 是存的值，挂上去的是解出来的 light / dark，另看 dataset.mode */
-function 跑脚本(存的: string | null) {
-  const { dataset } = 跑(存的);
-  const v = 读外观(存的);
-  // 没有 matchMedia 时 system 解成亮色：和 解明暗(…, false) 一致
-  expect(dataset.mode).toBe(解明暗(v.mode, false));
-  return { paper: dataset.paper, skin: dataset.skin, mode: v.mode };
-}
-
-const 网页 = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36";
-const 桌面端 = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Electron/38.0.0 Safari/537.36";
-
-/** 跑一遍首次绘制前的脚本，看 <html> 上挂了哪些类 */
-function 跑玻璃(存的: string | null, ua: string, 少透明 = false) {
-  const 类 = new Set<string>();
-  const dataset: Record<string, string> = {};
-  vm.runInNewContext(外观预设脚本, {
-    localStorage: { getItem: (k: string) => (k === 网页玻璃键 ? 存的 : null) },
-    navigator: { userAgent: ua },
-    matchMedia: (q: string) => ({ matches: 少透明 && q.includes("reduced-transparency") }),
-    document: { documentElement: { dataset, classList: { add: (c: string) => 类.add(c) } } },
-  });
-  return [...类].sort();
-}
-
 describe("外观", () => {
-  it("没存过、坏 JSON、认不出的值，一律回到默认（白底、现状、浅色）", () => {
-    for (const raw of [null, "", "{", '"white"', '{"paper":"pink","skin":"neon"}']) {
+  it("没存过、坏 JSON、认不出的值，一律回到默认（浅色）；<html> 上只挂 data-mode", () => {
+    for (const raw of [null, "", "{", '"white"', "null", "3", '{"mode":"night"}']) {
       expect(读外观(raw)).toEqual(默认外观);
-      expect(跑脚本(raw)).toEqual(默认外观);
+      expect(跑(raw).dataset).toEqual({ mode: "light" });
     }
-  });
-
-  it("存了白底：设置页和首次绘制前的脚本认出来的一样", () => {
-    const raw = JSON.stringify({ paper: "white", skin: "now" });
-    expect(读外观(raw)).toEqual({ paper: "white", skin: "now", mode: "light" });
-    expect(跑脚本(raw)).toEqual(读外观(raw));
-  });
-
-  it("五套主题（现状、像素、科技、高级、账簿）两边都认，底色和主题任意组合", async () => {
-    const { 主题表 } = await import("@/lib/appearance");
-    expect(主题表.map((x) => x.key)).toEqual(["now", "pixel", "tech", "luxe", "ledger"]);
-    for (const { key } of 主题表)
-      for (const paper of ["tone", "white"]) {
-        const raw = JSON.stringify({ paper, skin: key, paperV: 底色版 });
-        expect(读外观(raw)).toEqual({ paper, skin: key, mode: "light" });
-        expect(跑脚本(raw)).toEqual(读外观(raw));
-      }
   });
 
   it("明暗：三档两边认法一样，跟随系统按 prefers-color-scheme 解，挂上去的只有 light / dark", () => {
     expect(明暗表.map((x) => x.key)).toEqual(["light", "dark", "system"]);
-    expect(默认外观.mode).toBe("light");
+    expect(默认外观).toEqual({ mode: "light" });
     for (const mode of ["light", "dark", "system"] as const)
       for (const 系统暗 of [false, true]) {
-        const raw = JSON.stringify({ paper: "white", skin: "pixel", mode });
-        expect(读外观(raw)).toEqual({ paper: "white", skin: "pixel", mode });
+        const raw = JSON.stringify({ mode });
+        expect(读外观(raw)).toEqual({ mode });
         const 该挂 = mode === "system" ? (系统暗 ? "dark" : "light") : mode;
         expect(解明暗(mode, 系统暗)).toBe(该挂);
-        expect(跑(raw, MAC, 系统暗).dataset).toEqual({ paper: "white", skin: "pixel", mode: 该挂 });
+        expect(跑(raw, MAC, 系统暗).dataset).toEqual({ mode: 该挂 });
       }
-    // 认不出的明暗回到亮色，不连累另外两项
+    // 没有 matchMedia 时 system 解成亮色：和 解明暗(…, false) 一致
+    expect(跑(JSON.stringify({ mode: "system" })).dataset).toEqual({ mode: "light" });
     for (const mode of ["night", 1, null, "DARK"]) {
-      const raw = JSON.stringify({ paper: "white", skin: "luxe", mode });
-      expect(读外观(raw)).toEqual({ paper: "white", skin: "luxe", mode: "light" });
-      expect(跑(raw, MAC, true).dataset).toEqual({ paper: "white", skin: "luxe", mode: "light" });
+      const raw = JSON.stringify({ mode });
+      expect(读外观(raw)).toEqual({ mode: "light" });
+      expect(跑(raw, MAC, true).dataset).toEqual({ mode: "light" });
     }
-    // matchMedia 抛错也不能拖垮整段脚本（paper / skin 照挂）
+    // matchMedia 抛错也不能拖垮整段脚本
     const dataset: Record<string, string> = {};
     vm.runInNewContext(外观预设脚本, {
-      localStorage: { getItem: () => JSON.stringify({ skin: "tech", mode: "system" }) },
+      localStorage: { getItem: () => JSON.stringify({ mode: "system" }) },
       navigator: { userAgent: MAC },
       matchMedia: () => {
         throw new Error("x");
       },
       document: { documentElement: { dataset, classList: { add: () => {} } } },
     });
-    expect(dataset).toEqual({ paper: "white", skin: "tech", mode: "light" });
+    expect(dataset).toEqual({ mode: "light" });
   });
 
-  it("设计语言 D-2（11-22）：默认是白底；现状主题下 D-2 以前存下的「原底」当没选过、按白底，换皮主题的照旧；D-2 起在设置页选的「原底」照它", () => {
-    expect(默认外观.paper).toBe("white");
-    // 没存过（新电脑、清过本地）：白底
-    expect(读外观(null).paper).toBe("white");
-    expect(跑(null).dataset.paper).toBe("white");
-    // 存过整份外观但没有 paper 这一项（更早的版本）：白底
-    expect(跑(JSON.stringify({ skin: "now", mode: "dark" })).dataset).toEqual({ paper: "white", skin: "now", mode: "dark" });
-    // 现状主题下 D-2 以前存下的「原底」（没有底色版，或版本不对；没存主题也算现状）：当没选过，白底；明暗、主题照旧
-    for (const 旧 of [{ paper: "tone", skin: "now", mode: "dark" }, { paper: "tone", skin: "now", mode: "dark", paperV: 1 }, { paper: "tone", mode: "dark" }]) {
+  it("11-23 外观只留一套：以前存的主题、底色、底色版、网页毛玻璃一律不认，不报错，明暗照旧；两边认出来的一样（不闪）", () => {
+    for (const 旧 of [
+      { paper: "tone", skin: "ledger", mode: "dark", paperV: 2 },
+      { paper: "white", skin: "tech", mode: "system" },
+      { paper: "tone", mode: "light", paperV: 1 },
+      { skin: "pixel" },
+    ]) {
       const raw = JSON.stringify(旧);
-      expect(读外观(raw)).toEqual({ paper: "white", skin: "now", mode: "dark" });
-      expect(跑(raw).dataset).toEqual({ paper: "white", skin: "now", mode: "dark" });
+      const v = 读外观(raw);
+      expect(v).toEqual({ mode: 旧.mode ?? "light" });
+      expect(跑(raw, MAC, false).dataset, raw).toEqual({ mode: 解明暗(v.mode, false) });
     }
-    // 方案 A 只改现状皮肤（11-22 用户定）：换皮主题以前存的「原底」不看底色版，照旧原底
-    for (const skin of ["pixel", "luxe", "ledger", "tech"] as const) {
-      for (const 旧 of [{ paper: "tone", skin, mode: "dark" }, { paper: "tone", skin, mode: "dark", paperV: 1 }]) {
-        const raw = JSON.stringify(旧);
-        expect(读外观(raw), `${skin} ${raw}`).toEqual({ paper: "tone", skin, mode: "dark" });
-        expect(跑(raw).dataset, `${skin} ${raw}`).toEqual({ paper: "tone", skin, mode: "dark" });
-      }
-    }
-    // D-2 起在设置页选的「原底」（存外观值 带上底色版）：照它
-    const 存 = 存外观值({ paper: "tone", skin: "now", mode: "light" });
-    expect(存).toEqual({ paper: "tone", skin: "now", mode: "light", paperV: 底色版 });
-    const 原底 = JSON.stringify(存);
-    expect(读外观(原底).paper).toBe("tone");
-    expect(跑(原底).dataset).toEqual({ paper: "tone", skin: "now", mode: "light" });
-    // 白底不看底色版：旧存的白底照旧白底
-    expect(读外观(JSON.stringify({ paper: "white", skin: "now" })).paper).toBe("white");
-    // 设置页存的时候一律经 存外观值（不然这之后选的「原底」也会被当成旧值）
+    // 网页毛玻璃存在另一个键里：存着 true 也不挂 glass / web-glass
+    const 类 = new Set<string>();
+    vm.runInNewContext(外观预设脚本, {
+      localStorage: { getItem: (k: string) => (k === "daedalus.webGlass" ? "true" : null) },
+      navigator: { userAgent: MAC },
+      matchMedia: () => ({ matches: false }),
+      document: { documentElement: { dataset: {}, classList: { add: (c: string) => 类.add(c) } } },
+    });
+    expect([...类]).toEqual([]);
+    // 脚本里不再碰 data-skin / data-paper / 毛玻璃
+    expect(外观预设脚本).not.toMatch(/skin|paper|glass/);
+    // 设置页存的就是认出来的那份（整份重存，旧的主题、底色一并丢掉）
     const 页 = fs.readFileSync(path.join(process.cwd(), "src/app/(app)/settings/AppearanceTab.tsx"), "utf8");
-    expect(页).toContain("存(存外观值(a))");
-    expect(页).not.toMatch(/存\(a\)/);
-    // 设置页「底色」一行白底排在前面
-    expect(底色表.map((x) => x.key)).toEqual(["white", "tone"]);
+    expect(页).toContain("存(a)");
+    expect(页).not.toMatch(/appr-paper|appr-skin|appr-glass/);
   });
 
-  it("白底只换地面，不许在 :root 之外写色值", () => {
-    const css = fs.readFileSync(path.resolve(__dirname, "../src/app/globals.css"), "utf8");
-    const 块 = /:root\[data-paper="white"\]\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(块).toContain("--page-bg");
-    expect(块).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-  });
-
-  it("网页版毛玻璃：默认关，存了 true 才在首次绘制前挂上 glass + web-glass", () => {
-    for (const raw of [null, "", "false", "1", '"true"', "{"]) expect(跑玻璃(raw, 网页)).toEqual([]);
-    expect(跑玻璃("true", 网页)).toEqual(["glass", "web-glass"]);
-  });
-
-  it("网页版毛玻璃：系统开了「减少透明度」不挂；桌面端由壳挂，脚本不碰", () => {
-    expect(跑玻璃("true", 网页, true)).toEqual([]);
-    expect(跑玻璃("true", 桌面端)).toEqual([]);
-  });
-
-  it("网页版那层底图只挂在 web-glass 上，颜色只用 token", () => {
-    const css = fs.readFileSync(path.resolve(__dirname, "../src/app/globals.css"), "utf8");
-    const 块 = /html\.glass\.web-glass\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
-    expect(块).toContain("var(--workbench)");
-    expect(块).not.toMatch(/#[0-9a-f]{3,8}\b/i);
-  });
-
-  it("Windows 上（网页也算）首次绘制前挂 os-win，默认主题的浅灰字和桌面端一样压深；Mac 不挂", () => {
+  it("Windows 上（网页也算）首次绘制前挂 os-win，浅灰字和桌面端一样压深；Mac 不挂", () => {
     expect(跑(null, WIN).类.has("os-win")).toBe(true);
     expect(跑(null, `${WIN.replace(" Safari/", " daedalus-crm/0.46.27 Electron/38.2.0 Safari/")}`).类.has("os-win")).toBe(true);
     expect(跑(null, MAC).类.has("os-win")).toBe(false);
     // 挂 os-win 不影响认外观
-    const raw = JSON.stringify({ paper: "white", skin: "luxe" });
-    expect(跑(raw, WIN).dataset).toMatchObject({ paper: "white", skin: "luxe" });
+    expect(跑(JSON.stringify({ mode: "dark" }), WIN).dataset).toEqual({ mode: "dark" });
   });
 
-  it("低配机（≤4 核或 ≤4GB，报得出来才算）首次绘制前挂 lite-fx（⌘K 毛玻璃退回实色）；报不出来按正常机器", () => {
+  it("D-55（11-23）毛玻璃全删：低配机不再挂 lite-fx；所有样式表（含行内 style）不留 backdrop-filter", () => {
     const 机 = (nav: Record<string, unknown>) => {
       const 类 = new Set<string>();
       vm.runInNewContext(外观预设脚本, {
@@ -182,15 +108,14 @@ describe("外观", () => {
         navigator: { userAgent: MAC, ...nav },
         document: { documentElement: { dataset: {}, classList: { add: (c: string) => 类.add(c) } } },
       });
-      return 类.has("lite-fx");
+      return 类;
     };
-    expect(机({ hardwareConcurrency: 4 })).toBe(true);
-    expect(机({ hardwareConcurrency: 12, deviceMemory: 4 })).toBe(true);
-    expect(机({ hardwareConcurrency: 8, deviceMemory: 8 })).toBe(false);
-    expect(机({})).toBe(false);
-    const css = fs.readFileSync(path.resolve(__dirname, "../src/app/globals.css"), "utf8");
-    // 毛玻璃那几条都排除了 lite-fx
-    for (const m of css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]*\.cmdk-root[^{}]*)\{[^{}]*backdrop-filter:\s*(?!none)[^;]*;/g)) expect(m[1]).toContain(":not(.lite-fx)");
+    expect(机({ hardwareConcurrency: 4, deviceMemory: 2 }).has("lite-fx")).toBe(false);
+    expect(外观预设脚本).not.toMatch(/lite-fx|hardwareConcurrency|deviceMemory/);
+    const 源 = path.resolve(__dirname, "../src");
+    const 文件 = (fs.readdirSync(源, { recursive: true }) as string[]).filter((f) => /\.(css|tsx?)$/.test(f));
+    const 残 = 文件.filter((f) => /backdrop-?filter|backdropFilter/i.test(fs.readFileSync(path.join(源, f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "")));
+    expect(残).toEqual([]);
   });
 
   it("os-win 在网页上只改字色：其余 os-win 规则都得限在 .shell-desktop 里", () => {
@@ -205,7 +130,7 @@ describe("外观", () => {
     for (const [, sel, body] of 选择器)
       for (const 一个 of sel.split(",").map((x) => x.trim()).filter(是它))
         if (!一个.includes(".shell-desktop")) {
-          expect(一个).toBe('html.os-win[data-skin="now"]');
+          expect(一个).toBe("html.os-win[data-mode]");
           expect(body.replace(/--text-(muted|faint)\s*:[^;]*;?/g, "").trim()).toBe("");
         }
   });

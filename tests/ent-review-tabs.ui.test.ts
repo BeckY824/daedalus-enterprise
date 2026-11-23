@@ -3,7 +3,7 @@
  *
  *   卡点：11-01 卡点页签换成卡点 v2 三栏看板（待接受 / 处理中 / 已解决，见 BoardBlockers），这里只量三栏摆得出、筛选写地址、窄屏不溢出
  *   沟通：方式下拉写 m=、时间分段写 t=（自定义再摆日期段，写 tf= tt=）、时间线卡片（发起 / 附件 / 编号有才摆）、点一条去项目页、空态、旁边「还没沟通过的项目」和它的空态
- *   数据：六格 KPI（3 天内回公海没开 = —）、卡点摘要（R-B；账簿主题照旧卡点分布）、超时预警和两种空
+ *   数据：六格 KPI（3 天内回公海没开 = —）、卡点摘要（R-B）、超时预警和两种空
  *   Windows 1024：不横向溢出、长名字单行省略
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
@@ -58,13 +58,12 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 打开(o: Record<string, unknown>, width = 1280, 地址 = "/overview", skin?: string): Promise<{ page: Page; errors: string[] }> {
+async function 打开(o: Record<string, unknown>, width = 1280, 地址 = "/overview"): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto(`http://ent.test${地址}`);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
-  if (skin) await page.evaluate((k) => { document.documentElement.dataset.skin = k; }, skin);
   await page.addScriptTag({ content: bundle });
   await page.evaluate((x) => (window as unknown as { __画: (o: unknown) => void }).__画(x), o);
   await page.locator("main > *").first().waitFor();
@@ -83,7 +82,7 @@ async function 单行省略(page: Page, sel: string, 卡: string) {
 
 const 分布 = { 总数: 9, 按主体: [{ 主体: "客户", 数: 5 }, { 主体: "某个特别长特别长特别长特别长特别长的阻碍主体", 数: 3 }, { 主体: "没填", 数: 1 }], 按状态: [{ 状态: "待接受", 数: 4 }, { 状态: "处理中", 数: 5 }] };
 
-it("卡点（现状主题，R-A）：筛选条 / 概况卡 / 三栏各一块；点原因行写 br=、回第一页、ownerId 照带；范围三档", async () => {
+it("卡点（R-A）：筛选条 / 概况卡 / 三栏各一块；点原因行写 br=、回第一页、ownerId 照带；范围三档", async () => {
   const { page, errors } = await 打开({ 页: "block" }, 1280, "/overview?tab=block&ownerId=u1&p=2");
   expect(await page.locator(".rbk-col").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))).toEqual(["待接受的卡点", "处理中的卡点", "已解决的卡点"]);
   // 栏头写「待接受（2）」，不再用状态胶囊
@@ -113,7 +112,7 @@ it("卡点（现状主题，R-A）：筛选条 / 概况卡 / 三栏各一块；�
   await 己.page.close();
 });
 
-it("卡点（现状主题）：换范围一次写好 bo / bm（另一个清掉）；有筛才出「重置」", async () => {
+it("卡点：换范围一次写好 bo / bm（另一个清掉）；有筛才出「重置」", async () => {
   const { page } = await 打开({ 页: "block", 筛: { 只看自己: true } }, 1280, "/overview?tab=block&bo=1");
   expect(await page.getByLabel("看哪些卡点").locator(".ant-segmented-item-selected").innerText()).toBe("只看自己");
   expect(await page.getByRole("button", { name: /^重\s*置$/ }).count()).toBe(1);
@@ -127,29 +126,11 @@ it("卡点（现状主题）：换范围一次写好 bo / bm（另一个清掉�
   await 无.page.close();
 });
 
-it("卡点（换皮主题·账簿）：照旧一张卡里标题 + 筛选 + 统计、三栏胶囊头", async () => {
-  const { page, errors } = await 打开({ 页: "block" }, 1280, "/overview?tab=block", "ledger");
-  expect(await page.locator(".rblk-col").count()).toBe(3);
-  expect(await page.getByLabel("全部或我的认领").count()).toBe(1);
-  expect(await page.locator(".rblk-reason").last().innerText()).toContain("（待审核）");
-  expect(errors).toEqual([]); await page.close();
-});
-
-it("数据页签卡点分布超过 8 种主体（账簿主题；现状主题 R-B 收成摘要）：前 7 种 + 「其他」", async () => {
-  const 多 = { 总数: 10, 按主体: Array.from({ length: 10 }, (_, i) => ({ 主体: `主体${i}`, 数: 1 })), 按状态: [{ 状态: "待接受", 数: 10 }] };
-  const { page } = await 打开({ 页: "data", 分布: 多 }, 1280, "/overview", "ledger");
-  const k = await page.locator('section[aria-label="卡点分布"] .btodo-rc-k').allInnerTexts();
-  expect(k).toHaveLength(8);
-  expect(k.at(-1)).toBe("其他");
-  expect(await page.locator('section[aria-label="卡点分布"] .btodo-rc-v').last().innerText()).toBe("3");
-  await page.close();
-});
-
 it("沟通：时间线卡片；发起 / 附件 / 编号有才摆；标题和内容一样只摆一次；点一条去项目页", async () => {
   const { page, errors } = await 打开({ 页: "talk", 缺: 7 });
   expect(await page.locator("ol.rtalk-tl > li.rtalk-i").count()).toBe(4);
   const 二 = page.locator(".rtalk-k").nth(1);
-  // 现状主题（R-B）：末行一行灰字「方式 · 发起 · 附件 · 记录人」，编号悬停看
+  // R-B：末行一行灰字「方式 · 发起 · 附件 · 记录人」，编号悬停看
   expect(await 二.locator(".rtalk-foot").innerText()).toBe("线下拜访 · 客户主动 · 附件 3 个 · 记录人1");
   expect(await 二.locator(".rtalk-foot").getAttribute("title")).toBe("编号 FUL0001");
   expect(await page.locator(".rtalk-k").nth(2).locator(".rtalk-foot").innerText()).toBe("线下拜访 · 记录人2");
@@ -184,7 +165,7 @@ it("沟通 · 自定义：日期段摆在分段后面、回显两头；挑一段
   const 区间 = { from: "2026-10-01", to: "2026-10-31" };
   const { page, errors } = await 打开({ 页: "talk", 段: "custom", 区间 }, 1280, "/overview?tab=talk&ownerId=u1&t=custom&tf=2026-10-01&tt=2026-10-31&p=2");
   expect(await page.locator('[aria-label="时间范围"] .ant-segmented-item-selected').innerText()).toBe("自定义");
-  // 现状主题（R-B）：时间段在卡外筛选条
+  // R-B：时间段在卡外筛选条
   const 框 = page.locator(".rtalk-bar .custom-range input");
   expect(await 框.evaluateAll((els) => els.map((e) => (e as HTMLInputElement).value))).toEqual(["2026-10-01", "2026-10-31"]);
   // 没有清空按钮
@@ -224,7 +205,7 @@ it("数据 · 现在：六格 KPI、链接、逾期有数标红；卡点摘要 +
   expect(await 格.locator(".rkpi-k").allInnerTexts()).toEqual(["在跟项目", "逾期任务", "未解决卡点", "已回款", "待回款", "3 天内回公海"]);
   const 值 = await 格.locator(".rkpi-v").allInnerTexts();
   expect(值[0]).toBe("12"); expect(值[1]).toBe("3"); expect(值[5]).toBe("2");
-  // 现状主题（R-B，D39）：金额窄格缩写，全值在悬停
+  // R-B（D39）：金额窄格缩写，全值在悬停
   expect(值[3]).toMatch(/12\.3 万/);
   expect(await 格.nth(1).getAttribute("href")).toBe("/overview?tab=todo&f=overdue");
   expect(await 格.nth(5).getAttribute("href")).toBe("/projects?f=due-soon");
@@ -262,11 +243,11 @@ it.each([1024, 1366])("Windows %ipx + 超长名字：三个页签都不横向溢
   expect(await 不溢出(谈.page)).toBe(true);
   await 单行省略(谈.page, ".rtalk-t", ".rtalk-k");
   await 单行省略(谈.page, ".rtalk-miss-n", ".rtalk-side");
-  // 现状主题（R-B）：时间分段在卡外筛选条，一行
+  // R-B：时间分段在卡外筛选条，一行
   const ys = await 谈.page.locator(".rtalk-bar").first().evaluate((e) => [...e.children].map((c) => Math.round(c.getBoundingClientRect().top + c.getBoundingClientRect().height / 2)));
   expect(new Set(ys).size).toBe(1);
   await 谈.page.close();
-  // 选了自定义：分段、日期段还是同一行，不溢出（现状主题在卡外筛选条，R-B）
+  // 选了自定义：分段、日期段还是同一行，不溢出（在卡外筛选条，R-B）
   const 自 = await 打开({ 页: "talk", 缺: 3, 段: "custom", 区间: { from: "2026-10-01", to: "2026-11-04" } }, w);
   await 自.page.waitForTimeout(150);
   expect(await 不溢出(自.page)).toBe(true);

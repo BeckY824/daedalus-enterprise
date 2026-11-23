@@ -50,12 +50,8 @@ it("跑着：一个状态条，不铺 .cli-step；出错停在第几步、重试
   await 画(page, { status: "loading", startedAt: 起, value: { steps: [步(0, "search_customers(张三)", "done", "1 位"), 步(1, "get_customer(c1)", "running")] } });
   expect(await page.locator(".cli-step").count()).toBe(0);
   expect(await page.locator(".ais-tt").innerText()).toBe("正在读客户的记录…");
-  // 设计语言 HC-2a（C7-A）：现状主题不写「Esc 打断」（停止在输入框）；换皮主题照旧
+  // 设计语言 HC-2a（C7-A）：不写「Esc 打断」（停止在输入框）
   expect(await page.locator(".ais-mt").innerText()).not.toContain("Esc 打断");
-  await page.evaluate(() => { document.documentElement.dataset.skin = "ledger"; });
-  await 画(page, { status: "loading", startedAt: 起, value: { steps: [步(0, "search_customers(张三)", "done", "1 位"), 步(1, "get_customer(c1)", "running")] } });
-  expect(await page.locator(".ais-mt").innerText()).toContain("Esc 打断");
-  await page.evaluate(() => { delete document.documentElement.dataset.skin; });
 
   await 画(page, { status: "error", error: "网络断了", startedAt: 起, value: { steps: [步(0, "search_customers(张三)", "done", "1 位"), 步(1, "get_customer(c1)", "running")] } });
   expect(await page.locator(".ais-tt").innerText()).toBe("停在第 2 步：网络断了");

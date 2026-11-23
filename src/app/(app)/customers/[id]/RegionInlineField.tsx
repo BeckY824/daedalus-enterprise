@@ -7,7 +7,6 @@ import AddressInput from "@/components/AddressInput";
 import { 拼地址, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 有值, 空值符 } from "@/lib/empty-value";
 import { 只读上下文, 只能看的格上下文, 资料改挡上下文 } from "./read-only";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { patchCustomerRegion } from "../actions";
 import { 动作出错话 } from "@/lib/stale-deploy";
 
@@ -30,7 +29,6 @@ export default function RegionInlineField({ customerId, value, 空时横线 = fa
   const 权限挡 = useContext(只能看的格上下文).includes("addrCountry");
   const 改挡 = useContext(资料改挡上下文)?.话 ?? null;
   const 只读 = useContext(只读上下文) || 权限挡 || !!改挡;
-  const 新样 = useIsNowSkin();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<客户地址>(value);
   const [saving, setSaving] = useState(false);
@@ -98,7 +96,7 @@ export default function RegionInlineField({ customerId, value, 空时横线 = fa
         <div className={`rec-field-v is-line${有值(文字) ? "" : " rec-field-empty"}${saving ? " rec-field-saving" : ""}`} title={!有值(文字) && 空时横线 && !只读 ? "点击填写" : undefined}>
           {有值(文字) ? 文字 : 只读 || 空时横线 ? 空值符 : "点击填写"}
         </div>
-        {!只读 && 新样 && <EditOutlined className="rec-field-pen" aria-hidden />}
+        {!只读 && <EditOutlined className="rec-field-pen" aria-hidden />}
         {错 && <div className="cd-task-err" role="alert">{错}</div>}
       </div>
     );

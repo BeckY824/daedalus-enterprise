@@ -126,7 +126,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 皮?: string; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
+type 参 = { hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -151,10 +151,6 @@ async function 开(width: number, o: 参 = {}, height = 800) {
   page.on("pageerror", e => errors.push(e.message));
   await page.route("http://cust-merge.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
   await page.goto("http://cust-merge.test/customers/a" + (o.hash ?? "")); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
-  if (o.皮) {
-    await page.evaluate(k => document.documentElement.setAttribute("data-skin", k), o.皮);
-    for (const f of ["src/app/skins/shared.css", `src/app/skins/${o.皮}.css`]) await page.addStyleTag({ path: path.resolve(f) });
-  }
   await page.addScriptTag({ content: bundle });
   await 画(page, o);
   return { page, errors };
@@ -260,7 +256,8 @@ it("1024 / 1280 / 1366：页签行一行不换行、右端不再有按钮；页�
       });
       const 中 = 量.块.map(b => (b.上 + b.下) / 2);
       expect(Math.max(...中) - Math.min(...中), `宽 ${w}`).toBeLessThanOrEqual(4);
-      expect(量.框.高, `宽 ${w}`).toBeLessThanOrEqual(44);
+      // 卡片改进（11-23）：这一行就是进程卡的 48 高卡头
+      expect(量.框.高, `宽 ${w}`).toBeLessThanOrEqual(48);
       expect(量.溢出, `宽 ${w}`).toBe(false);
       expect(量.块.some(b => b.字 === "完成节点"), `宽 ${w}`).toBe(true);
       for (const b of 量.块) { expect(b.左, `宽 ${w} ${b.字}`).toBeGreaterThanOrEqual(量.框.左 - 1); expect(b.右, `宽 ${w} ${b.字}`).toBeLessThanOrEqual(量.框.右 + 1); }
@@ -268,8 +265,8 @@ it("1024 / 1280 / 1366：页签行一行不换行、右端不再有按钮；页�
       expect(量.页签.every(t => t.标 === "商机"), `宽 ${w}`).toBe(true);
       expect(量.页签.some(t => t.截), `宽 ${w}`).toBe(true);
       for (const t of 量.页签) expect(t.title.startsWith(t.名!)).toBe(true);
-      // 右栏卡头带当前项目名
-      expect(await page.locator(".cd-side .ant-card-head-title").first().innerText()).toMatch(/^项目资料 · 项目一/);
+      // 卡片改进（11-23）：项目名已经在进程卡卡头的胶囊里，右栏卡头只写「项目资料」
+      expect(await page.locator(".cd-side .ant-card-head-title").first().innerText()).toBe("项目资料");
       // 页头：下拉和客户名同一行、不折行；没有「AI」按钮（11-21 PR1 去掉，AI 从浮标 / ⌘J 进）
       expect(await 头按钮(page)).toEqual(["更多操作"]);
       const [名, 排] = await Promise.all([page.locator(".rec-head-id").boundingBox(), page.locator(".rec-head-acts").boundingBox()]);
@@ -337,10 +334,10 @@ it.each([1280, 1366, 1440])("提醒条 %ipx：在项目区中栏、进程卡正�
     // 不在客户名下面通栏，在项目区那张网格里
     expect(await 条.evaluate(el => !!el.closest(".rec-zone .cd-zb > .cd-alert"))).toBe(true);
     const [框, 中栏, 右栏, 进程卡] = await Promise.all([条.boundingBox(), page.locator(".cd-mid").boundingBox(), page.locator(".cd-side").boundingBox(), page.locator(".cd-mid > .ant-card").first().boundingBox()]);
-    // 落在中栏那一列：设计语言 D-2 方案 A（11-22）起模块不画卡、栏与栏之间一根竖线，提醒条两边各让 16，和模块里的字对齐、不贴着栏线
-    expect(Math.abs(框!.x - (进程卡!.x + 16))).toBeLessThanOrEqual(1);
-    expect(Math.abs(框!.width - (进程卡!.width - 32))).toBeLessThanOrEqual(1);
-    expect(Math.abs(框!.x - (中栏!.x + 16))).toBeLessThanOrEqual(1);
+    // 和中栏那一列同宽（量进程卡：D2 起中栏是一扇自己滚的窗，左右各让 4px 给卡片阴影，栏框比列宽 8px）
+    expect(Math.abs(框!.x - 进程卡!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(框!.width - 进程卡!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(框!.x - 中栏!.x)).toBeLessThanOrEqual(5);
     expect(框!.y + 框!.height).toBeLessThanOrEqual(进程卡!.y + 1);
     expect(Math.abs(右栏!.y - 中栏!.y)).toBeLessThanOrEqual(1);
     expect(await page.locator(".rec-head + [data-testid=tri-state-bar]").count()).toBe(0);
@@ -364,7 +361,8 @@ it("项目区里：中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目
     // 卡点默认收着（同项目详情）
     expect(中.filter(x => /^(收起|展开)/.test(x)).map(x => x.replace(/^(收起|展开)/, ""))).toEqual(["沟通记录", "所有待办", "当前卡点"]);
     expect(中[0]).toMatch(/ant-card/);
-    expect(await page.locator(".cd-side .ant-card-head-title").first().innerText()).toMatch(/^项目资料 · 项目一/);
+    // 卡片改进（11-23）：项目名已经在进程卡卡头的胶囊里，右栏卡头只写「项目资料」
+    expect(await page.locator(".cd-side .ant-card-head-title").first().innerText()).toBe("项目资料");
     const 卡 = page.locator(".cd-comm");
     expect(await 卡.getByRole("button", { name: "本项目" }).getAttribute("aria-pressed")).toBe("true");
     expect(await 卡.getByText(/挂在项目一.*上的沟通/).count()).toBe(1);
@@ -373,7 +371,8 @@ it("项目区里：中栏 阶段 → 沟通 → 待办 → 卡点，右栏项目
     expect(await 卡.locator(".ant-card-extra").getByRole("button", { name: /新建沟通/ }).evaluate(el => el.classList.contains("ant-btn-primary"))).toBe(true);
     await 卡.getByRole("button", { name: "这位客户全部" }).click();
     expect(await 卡.getByText(/客户全部里的沟通/).count()).toBe(5);
-    expect(await 卡.locator(".ant-card-head-title").innerText()).toMatch(/沟通记录（5）/);
+    // 卡片改进（11-23）：计数拆成 .mod-cnt，innerText 会在两段之间插换行，取 textContent
+    expect(await 卡.locator(".ant-card-head-title").textContent()).toMatch(/沟通记录（5）/);
     await 卡.getByRole("button", { name: "本项目" }).click();
     expect(await 卡.getByText(/客户全部里的沟通/).count()).toBe(0);
     expect(errors).toEqual([]);
@@ -674,7 +673,7 @@ it.each([[1024, false], [1280, false], [1366, false], [1280, true], [1366, true]
   } finally { await page.close(); }
 });
 
-it("卡头行首「项目」两个字和项目名同色（单项目、多项目都是），字号字重照旧", async () => {
+it("卡头行首「项目」两个字：卡片改进（11-23 原型）起 13 灰常规字重，项目名 15 · 600 才是卡头标题（单项目、多项目都是）", async () => {
   for (const o of [{ 单: true }, {}]) {
     const { page, errors } = await 开(1280, o);
     try {
@@ -683,9 +682,9 @@ it("卡头行首「项目」两个字和项目名同色（单项目、多项目�
         const s = getComputedStyle(el);
         return [s.color, getComputedStyle(名 ?? document.body).color, s.fontSize, s.fontWeight];
       });
-      if (o.单) expect(字色, "单项目").toBe(名色);
-      expect(字色).toBe(await page.evaluate(() => { const d = document.createElement("i"); d.style.color = "var(--ink)"; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }));
-      expect([号, 重]).toEqual(["12px", "500"]);
+      if (o.单) expect(字色, "单项目：「项目」比项目名淡一档").not.toBe(名色);
+      expect(字色).toBe(await page.evaluate(() => { const d = document.createElement("i"); d.style.color = "var(--text-muted)"; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }));
+      expect([号, 重]).toEqual(["13px", "400"]);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
@@ -734,7 +733,7 @@ it("嵌入版的项目资料卡：收藏星在卡头（只管当前项目），�
   const { page, errors } = await 开(1366);
   try {
     const 卡 = page.locator(".cd-side .ant-card").first();
-    expect(await 卡.locator(".ant-card-head-title").innerText()).toMatch(/^项目资料 · 项目一/);
+    expect(await 卡.locator(".ant-card-head-title").innerText()).toBe("项目资料");
     expect(await 卡.locator(".ant-card-extra").getByRole("button", { name: /收藏/ }).count()).toBe(1);
     expect(await 卡.getByTestId("project-owner-row").innerText()).toMatch(/负责人\s*QA/);
     expect(await 卡.getByTestId("project-creator-row").innerText()).toMatch(/创建人\s*QA/);
@@ -1140,18 +1139,6 @@ it("[D3 · M5-a] 空态字 --text-muted、句式「还没有 X」；左栏卡头
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
-});
-
-it("[D3] 换皮主题（tech）不动：空态照旧 --text-faint、联系人照旧第一位摊开 + 其余手风琴（没有组、没有细线）、复制键 20", async () => {
-  const { page, errors } = await 开(1366, { 八人: true, 皮: "tech" });
-  try {
-    expect(await page.locator(".rec-rail .rec-empty").first().evaluate(e => getComputedStyle(e).color)).toBe(await 取色(page, "--text-faint"));
-    // 结构按主题分开渲染（lib/use-skin.ts）：换皮主题不出 D3 的「每人一组」
-    expect(await page.locator(".rec-cg").count()).toBe(0);
-    expect(await page.locator(".rec-contact-fold").count()).toBe(7);
-    expect(Math.round((await page.locator(".rec-contact .copy-val-b").first().boundingBox())!.width)).toBe(20);
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
 });
 
 it("[D4 审查] 客户页项目区：缺项小块点了都有落点——右栏那一格、画像卡、线索验证框、新建沟通框；「国家」滚到左栏客户资料那一格（联系人多到有「展开其余」也不点错）；企业版「来源」就地说", async () => {

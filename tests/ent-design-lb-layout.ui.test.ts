@@ -6,7 +6,6 @@
  *   L-新11 390「仅项目」小表：标题不折、列头收起、每位两排；客户名那列不再被挤成 0 宽（3703 实操 F-040）、点一下不冒黑气泡
  *   L-新12 看板卡项目名 = 客户名时只写一遍（两行摆法 P-界面-43 不变）；D30 看板卡悬停只换底色；D21 空态句式；D20 筛选胶囊同控件高
  *   D40 滚到底末行「⋮」、看板最后一张卡不在 AI 球底下（壳的 .has-ai-fab 留白）
- *   换皮主题（像素、账簿、奢华、科技）外观不动（用户 11-21）：末尾对照
  *   排版门槛：Windows 1024 / 1280 / 1366（左栏 220）+ 手机 390，超长客户名 / 号码；页面不横滚、关键按钮 elementFromPoint 点得中
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -95,14 +94,13 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 开参 = { 包: string; 等: string; 主题?: string; 参?: Record<string, unknown>; 前置?: string };
+type 开参 = { 包: string; 等: string; 参?: Record<string, unknown>; 前置?: string };
 async function 开(w: number, o: 开参): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: w, height: w < 768 ? 800 : 900 }, ...(w < 768 ? { isMobile: true, hasTouch: true } : {}) });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
-  await page.route("http://design-lb.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><html${o.主题 ? ` data-skin="${o.主题}"` : ""}><style>body{margin:0}</style>${壳}</html>` }));
+  await page.route("http://design-lb.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><html><style>body{margin:0}</style>${壳}</html>` }));
   await page.goto("http://design-lb.test/customers");
-  if (o.主题) await page.evaluate((t) => document.documentElement.setAttribute("data-skin", t), o.主题);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ path: path.resolve("src/app/(app)/tri-state-ui.css") });
   // 正文的留白在壳的 .app-content 上（手机宽 globals.css 给 14px 12px）；电脑宽左边让出左栏 220
@@ -111,11 +109,11 @@ async function 开(w: number, o: 开参): Promise<{ page: Page; errors: string[]
   await page.addScriptTag({ content: o.包 });
   await page.evaluate((x) => (window as unknown as { __render: (x: object) => void }).__render(x), o.参 ?? {});
   await page.locator(o.等).first().waitFor();
-  if (process.env.LB_SHOT) await page.screenshot({ path: `${process.env.LB_SHOT}/lb-${w}-${o.主题 ?? "now"}-${o.等.replace(/\W+/g, "")}-${Object.keys(o.参 ?? {}).join("_") || "base"}.png` });
+  if (process.env.LB_SHOT) await page.screenshot({ path: `${process.env.LB_SHOT}/lb-${w}-${o.等.replace(/\W+/g, "")}-${Object.keys(o.参 ?? {}).join("_") || "base"}.png` });
   return { page, errors };
 }
-const 开列表 = (w: number, 参: Record<string, unknown> = {}, 主题?: string) => 开(w, { 包: 列表包, 等: 参.空 ? ".list-none" : "tr.ant-table-row", 参, 主题 });
-const 开看板 = (w: number, 参: Record<string, unknown> = {}, 主题?: string) => 开(w, { 包: 看板包, 等: 参.空 ? ".pipe-empty" : ".pipe-card", 参, 主题, 前置: "try{localStorage.setItem('projects-view',JSON.stringify('看板'))}catch{}" });
+const 开列表 = (w: number, 参: Record<string, unknown> = {}) => 开(w, { 包: 列表包, 等: 参.空 ? ".list-none" : "tr.ant-table-row", 参 });
+const 开看板 = (w: number, 参: Record<string, unknown> = {}) => 开(w, { 包: 看板包, 等: 参.空 ? ".pipe-empty" : ".pipe-card", 参, 前置: "try{localStorage.setItem('projects-view',JSON.stringify('看板'))}catch{}" });
 
 const 页横滚 = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
 /** 元素中心点下面是不是它自己（没被钉住列、AI 球、别的层盖住），在不在屏内 */
@@ -346,24 +344,4 @@ it("D40：看板滚到底，最后一张卡的金额不在 AI 球底下（390 �
     expect(金额下).toBeLessThanOrEqual((await 球框(page)).上);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
-});
-
-it("换皮主题（像素）外观不动：删除照旧普通项、没有分隔线；号码列照旧 150；看板卡照旧两行；仅项目小表照旧十列", async () => {
-  const { page, errors } = await 开列表(1366, { 仅项目: true }, "pixel");
-  try {
-    await page.getByRole("button", { name: /^更多操作 / }).first().click();
-    const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
-    await 菜单.waitFor();
-    expect(await 菜单.locator(".ant-dropdown-menu-item-divider, .ant-dropdown-menu-item-danger").count()).toBe(0);
-    // 号码列宽照旧（150，不按号码长短给）：最长那个号码照旧省略
-    expect(await page.locator("tr.ant-table-row .copy-val-t").first().evaluate((x) => x.scrollWidth > x.clientWidth + 1)).toBe(true);
-    expect(await page.getByTestId("project-only-block").locator(".cust-ponly-head").getByText("负责人").isVisible()).toBe(true);
-    expect(await page.locator(".cust-ponly-unit").count()).toBe(0);
-    await page.close();
-    const 板 = await 开看板(1280, {}, "pixel");
-    expect((await 板.page.locator(".pipe-card").first().locator(".pipe-card-t, .pipe-card-o.pipe-card-full").allInnerTexts()).length).toBe(2);
-    expect(板.errors).toEqual([]);
-    await 板.page.close();
-    expect(errors).toEqual([]);
-  } finally { if (!page.isClosed()) await page.close(); }
 });

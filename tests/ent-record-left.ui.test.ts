@@ -151,7 +151,7 @@ it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通
     expect(await page.locator(".rec-head-acts").getByRole("button", { name: /沟通/ }).count()).toBe(0);
     expect(await page.getByText("记录跟进").count()).toBe(0);
     expect(await page.locator("textarea").count()).toBe(0);
-    expect(await 沟通卡头.locator(".ant-card-head-title").innerText()).toMatch(/^沟通记录（\d+\+?）$/);
+    expect(await 沟通卡头.locator(".ant-card-head-title").textContent()).toMatch(/^沟通记录（\d+\+?）$/);
     // 照图 04（10-31）：灰底方式 + 时间一行，下面内容、蓝色「项目：名」
     expect(await page.locator(".rec-sum-item .rec-sum-type").count()).toBeGreaterThan(0);
     const 项目链 = page.locator(".rec-sum-proj");

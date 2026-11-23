@@ -8,23 +8,10 @@ import { 外观预设脚本, 默认外观 } from "@/lib/appearance";
 import { 旧浏览器提示脚本 } from "@/lib/old-browser";
 import "./globals.css";
 import { 自定产品名 } from "@/lib/enterprise/brand";
-/* 主题（设置 → 外观 → 主题）。每套只在 <html data-skin="x"> 时生效，现状下这几份一条都不命中。
-   字体只登记 @font-face、不预加载：浏览器只在某段字真用上这个字体时才去下载，所以不选这套主题就一个字节都不下。
-   只取拉丁子集——中文走系统字（宋体 / 苹方），不打包中文字体 */
-import "./skins/shared.css";
-import "./skins/pixel.css";
-import "./skins/tech.css";
-import "./skins/luxe.css";
-import "./skins/ledger.css";
-/* 暗色（设置 → 外观 → 明暗）：一层中性 token 叠在上面几套主题上，必须排在所有主题之后（tests/dark-mode.test.ts） */
+/* 暗色（设置 → 外观 → 明暗）：一层中性 token 叠在 globals.css 的 :root 上；antd-dark.css 把 antd 的变量接到这些 token 上。
+   dark.css 必须排在最后（tests/dark-mode.test.ts） */
+import "./antd-dark.css";
 import "./dark.css";
-import "@fontsource/pixelify-sans/latin-500.css";
-import "@fontsource/pixelify-sans/latin-700.css";
-import "@fontsource/silkscreen/latin-400.css";
-import "@fontsource/jetbrains-mono/latin-400.css";
-import "@fontsource/jetbrains-mono/latin-500.css";
-import "@fontsource/jetbrains-mono/latin-700.css";
-import "@fontsource/instrument-serif/latin-400.css";
 
 /** 企业版可换产品名（CRM_PRODUCT_NAME，lib/enterprise/brand.ts）；别的版本照旧 */
 export function generateMetadata(): Metadata {
@@ -38,9 +25,9 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    /* data-paper / data-skin / data-mode 是外观（lib/appearance.ts）。服务端先按默认渲染，
+    /* data-mode 是外观（lib/appearance.ts）。服务端先按默认渲染，
        <head> 里那段在第一次绘制前换成这台电脑存的——所以 html 上这几个属性和服务端对不上是预期的 */
-    <html lang="zh-CN" data-paper={默认外观.paper} data-skin={默认外观.skin} data-mode={默认外观.mode} suppressHydrationWarning>
+    <html lang="zh-CN" data-mode={默认外观.mode} suppressHydrationWarning>
       <head>
         {/* 浏览器低于 Next 16 下限（Safari 16.4 等）时整页盖一块提示；新浏览器上什么也不做（lib/old-browser.ts） */}
         <script dangerouslySetInnerHTML={{ __html: 旧浏览器提示脚本 }} />
@@ -51,8 +38,7 @@ export default function RootLayout({
         <AntdRegistry>
           {/* 中文、主题、按钮不插空格：在浏览器端组件里配（components/AntdConfig.tsx），这两个对象不进每页的 RSC 负载 */}
           <AntdConfig>
-            {/* 动效的两条全局约定（减弱动态时 motion 不动、默认过渡用全站那条曲线）挂在 MotionTheme 里，
-                值跟着当前主题读——见 components/MotionTheme.tsx */}
+            {/* 动效的两条全局约定（减弱动态时 motion 不动、默认过渡用全站那条曲线）挂在 MotionTheme 里——见 components/MotionTheme.tsx */}
             <MotionTheme>
               <AntdApp>{children}</AntdApp>
             </MotionTheme>

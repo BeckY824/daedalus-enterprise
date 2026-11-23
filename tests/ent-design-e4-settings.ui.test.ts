@@ -4,8 +4,7 @@
  *   D09 成员表行内动作「图标 + 字」（编辑、停用、恢复、办离职），用 L-B 定的 .row-act 款；行上不标红；1024 / 1366 设置正文里不横滚、点得中；390 点击区 ≥44
  *   「总管理」角色标签红 → 灰（红按规则只给出问题；D1 实测）
  *   D19 设置卡片里的小节标题（Title 5）和卡头同号 15；D16 设置锁「已发给…」、首页模型备注的小字绿用 --success-text
- *   D22 浮层层级：设置浮层（.setm）在 antd 弹框（1000）之下、看板闸门（.board-gate）在下拉（1050）之下——所有主题
- *   换皮主题（账簿）外观不动：成员表照旧只有图标、角色标签照旧红、小节标题照旧 16
+ *   D22 浮层层级：设置浮层（.setm）在 antd 弹框（1000）之下、看板闸门（.board-gate）在下拉（1050）之下
  * 宽度：设置正文 1024 宽时 494、1366 宽时约 784（.set 1040 − 左栏 200 − 间距 − 卡片内边距），手机 390 约 358
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -31,9 +30,8 @@ beforeAll(async () => {
 afterAll(async () => { await browser?.close(); });
 
 const 正文宽 = (w: number) => (w >= 1366 ? 784 : w >= 1024 ? 494 : w - 32);
-async function 开(页: "回收站" | "成员" | "零件", w: number, 主题?: string, isAdmin = true) {
+async function 开(页: "回收站" | "成员" | "零件", w: number, isAdmin = true) {
   const r = await 开页(browser, bundle, { 页, 宽: 正文宽(w), isAdmin }, w);
-  if (主题) await r.page.evaluate((t) => document.documentElement.setAttribute("data-skin", t), 主题);
   await r.page.locator(页 === "零件" ? ".set-lock-sent" : 页 === "回收站" ? "tr.ant-table-row" : ".member-table tr.ant-table-row").first().waitFor();
   return r;
 }
@@ -78,7 +76,7 @@ it("D09 成员表（系统管理员）：行内动作「编辑」「停用」「
 });
 
 it("D09 成员表（直属上级，不是系统管理员）：「办离职」图标 + 字", async () => {
-  const { page, errors } = await 开("成员", 1366, undefined, false);
+  const { page, errors } = await 开("成员", 1366, false);
   try {
     const b = page.getByRole("button", { name: "给 销售甲 办离职", exact: true });
     expect((await b.innerText()).trim()).toBe("办离职");
@@ -133,17 +131,6 @@ it("「总管理」「管理员」角色标签灰（不再红）；销售标签�
   } finally { await page.close(); }
 });
 
-it("换皮主题（账簿）外观不动：成员表照旧只有图标、「总管理」照旧红", async () => {
-  const { page, errors } = await 开("成员", 1366, "ledger");
-  try {
-    const b = page.getByRole("button", { name: "编辑 销售甲", exact: true });
-    expect((await b.innerText()).trim()).toBe("");
-    const 总 = page.locator(".member-role-tag").filter({ hasText: "总管理" });
-    expect(await 总.getAttribute("class")).toMatch(/red/);
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
-});
-
 const 色 = (page: Page, v: string) => page.evaluate((x) => { const d = document.createElement("i"); d.style.color = `var(${x})`; document.body.append(d); const c = getComputedStyle(d).color; d.remove(); return c; }, v);
 const 算 = (page: Page, sel: string, k: string) => page.locator(sel).first().evaluate((el, kk) => getComputedStyle(el).getPropertyValue(kk), k);
 
@@ -158,33 +145,14 @@ it("D19 / D16：设置小节标题 15（同卡头）；「已发给…」、模�
   } finally { await page.close(); }
 });
 
-it("D22：设置浮层在 antd 弹框之下（990 < 1000），里面开的下拉在它上面；看板闸门同气泡层（1030 < 下拉 1050）——账簿主题一样", async () => {
-  for (const 主题 of [undefined, "ledger"]) {
-    const { page, errors } = await 开("零件", 1366, 主题);
-    try {
-      expect(Number(await 算(page, "[data-k=setm]", "z-index")), 主题).toBe(990);
-      expect(Number(await 算(page, "[data-k=gate]", "z-index")), 主题).toBe(1030);
-      const 下拉 = page.locator(".ant-select-dropdown").first();
-      await 下拉.waitFor();
-      expect(Number(await 下拉.evaluate((el) => getComputedStyle(el).zIndex)), 主题).toBeGreaterThan(990);
-      expect(errors).toEqual([]);
-    } finally { await page.close(); }
-  }
-});
-
-it("换皮主题（账簿）：小节标题照旧 16、小字绿照旧 --success", async () => {
-  const { page, errors } = await 开("零件", 1366, "ledger");
+it("D22：设置浮层在 antd 弹框之下（990 < 1000），里面开的下拉在它上面；看板闸门同气泡层（1030 < 下拉 1050）", async () => {
+  const { page, errors } = await 开("零件", 1366);
   try {
-    expect(await 算(page, ".set-body h5.ant-typography", "font-size")).toBe("16px");
-    expect(await 算(page, ".set-lock-sent", "color")).toBe(await 色(page, "--success"));
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
-});
-
-it("K6 换皮主题（账簿）同样修：回收站 1024 宽正文不横向溢出（bug 修复所有主题都生效）", async () => {
-  const { page, errors } = await 开("回收站", 1024, "ledger");
-  try {
-    expect(await 伸出(page)).toEqual({ 正文: 0, 表: 0 });
+    expect(Number(await 算(page, "[data-k=setm]", "z-index"))).toBe(990);
+    expect(Number(await 算(page, "[data-k=gate]", "z-index"))).toBe(1030);
+    const 下拉 = page.locator(".ant-select-dropdown").first();
+    await 下拉.waitFor();
+    expect(Number(await 下拉.evaluate((el) => getComputedStyle(el).zIndex))).toBeGreaterThan(990);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

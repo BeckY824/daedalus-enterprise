@@ -214,11 +214,11 @@ describe("左栏（g.nav）：Windows 常见宽度不溢出", () => {
         expect(量.点不到, `${宽}`).toEqual([]);
         expect(量.栏横滚, `${宽}`).toBe(false);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-        // 选中底块就一块，压在「客户」那一项里；现状明亮下是白块，浮在浅灰左栏上。设计语言 D-2 方案 A（11-22 用户定）：白底下不带阴影（薄阴影只留给「原底」）
+        // 选中底块就一块，压在「客户」那一项里；明亮下是白块 + 一层很薄的阴影，浮在浅灰左栏上（11-23 底色开关删了，回到原样）
         expect(await 栏.evaluate((nav) => [...nav.querySelectorAll(".rail-on-bg")].map((x) => x.parentElement?.getAttribute("aria-label")?.split("，")[0]))).toEqual(["客户"]);
         const 底块 = await 栏.evaluate((nav) => { const cs = getComputedStyle(nav.querySelector(".rail-on-bg")!); return { 底: cs.backgroundColor, 影: cs.boxShadow }; });
         expect(底块.底).toBe("rgb(255, 255, 255)");
-        expect(底块.影).toBe("none");
+        expect(底块.影).not.toBe("none");
         expect(errors).toEqual([]);
       } finally { await page.context().close(); }
     });
@@ -265,7 +265,7 @@ describe("⌘K（g.cmdk）", () => {
     } finally { await page.context().close(); }
   });
 
-  it("弹窗毛玻璃：平时半透明 + 背后模糊；系统减少透明度、低配机（lite-fx）退回实色、不模糊", async () => {
+  it("⌘K 弹窗实底（D-55 · 11-23 删了毛玻璃）：面板 --pop-bg 白、不模糊，遮罩也不模糊", async () => {
     const { page, errors } = await 开(壳包, { 宽: 1280 });
     try {
       await 开单(page);
@@ -275,18 +275,10 @@ describe("⌘K（g.cmdk）", () => {
         let el: HTMLElement | null = document.querySelector(".cmdk");
         while (el && getComputedStyle(el).backgroundColor === "rgba(0, 0, 0, 0)") el = el.parentElement;
         const cs = getComputedStyle(el!);
-        return { 底: cs.backgroundColor, 糊: cs.backdropFilter };
+        const 罩 = document.querySelector(".cmdk-root .ant-modal-mask");
+        return { 底: cs.backgroundColor, 糊: cs.backdropFilter, 罩糊: 罩 ? getComputedStyle(罩).backdropFilter : "none" };
       });
-      const 平时 = await 面板();
-      expect(平时.糊).toContain("blur(20px)");
-      expect(平时.底).toMatch(/^(rgba\(255, 255, 255, 0\.8|color\(srgb 1 1 1 \/ 0\.8)/);
-      const cdp = await page.context().newCDPSession(page);
-      await cdp.send("Emulation.setEmulatedMedia", { features: [{ name: "prefers-reduced-transparency", value: "reduce" }] });
-      expect(await 面板()).toEqual({ 底: "rgb(255, 255, 255)", 糊: "none" });
-      await cdp.send("Emulation.setEmulatedMedia", { features: [] });
-      expect((await 面板()).糊).toContain("blur(20px)");
-      await page.evaluate(() => document.documentElement.classList.add("lite-fx"));
-      expect(await 面板()).toEqual({ 底: "rgb(255, 255, 255)", 糊: "none" });
+      expect(await 面板()).toEqual({ 底: "rgb(255, 255, 255)", 糊: "none", 罩糊: "none" });
       expect(errors).toEqual([]);
     } finally { await page.context().close(); }
   });

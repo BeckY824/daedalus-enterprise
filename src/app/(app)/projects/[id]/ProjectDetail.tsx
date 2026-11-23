@@ -18,8 +18,7 @@ import { 其他没写好, 不填项, 去不填, 未选占位 } from "@/lib/enter
 import { 有值, 空值符, 空显 } from "@/lib/empty-value";
 import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 必填叫法, 必填项们, type 必填项 } from "@/lib/project/required";
-import { PageHead, CustomerLink, FollowTypeCell, FOLLOW_TYPE_ICON } from "@/components/ui";
-import { useIsNowSkin } from "@/lib/use-skin";
+import { PageHead, CustomerLink, FOLLOW_TYPE_ICON } from "@/components/ui";
 import { 跟进方式名 } from "@/lib/follow-method";
 import { useBusiness } from "@/lib/business-client";
 import { dayjs, fmtDateTime, smartTime, 成员选项 } from "@/lib/utils";
@@ -40,7 +39,7 @@ import LeadVerifyPanel from "./LeadVerifyPanel";
 import GiveUpBanner from "./GiveUpBanner";
 import type { 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
 import { useDetailNote, 框里原因, type 跑法, type 就地回执 } from "./detail-note";
-import { FoldSplit, ProjectFold, 模块钮色, 连体箭头 } from "./ProjectFold";
+import { FoldSplit, ProjectFold, 模块钮色, 连体箭头, 计数题 } from "./ProjectFold";
 import { 卡名Provider, 客户详情卡点, 项目卡名 } from "./card-names";
 import { ProjectFillRequired, 定位到模块, 定位到附件格, 附件必填格 } from "./ProjectFillRequired";
 import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
@@ -266,17 +265,18 @@ const 定时行样: React.CSSProperties = { ...行样, flexWrap: "wrap", rowGap:
 const 可折行样: React.CSSProperties = { whiteSpace: "normal", overflowWrap: "anywhere" };
 const 满宽: React.CSSProperties = { width: "100%" };
 // 四个字的键（来源线索 / 预计成交）在 14px 下要 ~56px，48px 会折成两行（10-27）
-const 键样: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var(--dt-label)", flex: "0 0 4.3em", whiteSpace: "nowrap" }; // 字段名 13（16a 同客户详情）
 // 多行的格子（需求描述、痛点、备注；前两个 11-04 起平时一行）：键和第一行对齐，不居中到一大段字的中间
 const 多行行样: React.CSSProperties = { ...行样, alignItems: "flex-start" };
 /**
- * 现状主题项目资料卡的行（设计语言 D5 · M10，#403 审查）：行距、负边距、悬停底、对齐都交给 globals.css 的 .proj-info-row，
- * 行内样式去掉 marginBottom / alignItems（不然 CSS 要 !important 才压得过）；多行的那种挂 is-top 顶对齐
+ * 项目资料卡的行（设计语言 D5 · M10，#403 审查）：行距、负边距、悬停底、对齐都交给 globals.css 的 .proj-info-row，
+ * 行内样式去掉 marginBottom / alignItems / gap（不然 CSS 要 !important 才压得过）；多行的那种挂 is-top 顶对齐
  */
 const 现资料样 = new Map<React.CSSProperties, React.CSSProperties>([行样, 多行行样, 定时行样].map((样) => {
   const 余 = { ...样 };
   delete 余.marginBottom;
   delete 余.alignItems;
+  // 字段名和值之间的 12 也交给 .proj-info-row（卡片改进要收成 8、和左栏客户资料同一列宽）
+  delete 余.gap;
   return [样, 余];
 }));
 
@@ -388,8 +388,7 @@ const 待填 = (名: string) => <span style={{ color: "var(--empty-fg)" }} title
 const 占位确认 = (名: string) => <span style={{ color: "var(--empty-fg)" }} title={`必填：${名}，填齐后自动往前推`} data-empty={名} data-required="">{空值符}</span>;
 
 /**
- * 设计语言 D5 · M10-b：金额不用省略号截断——几种币用「 · 」连，放不下就在「 · 」处换到下一行，每段数字本身不拆（.proj-money-seg nowrap）。
- * 只在现状主题用（换皮主题照 D5 之前一行、放不下省略）
+ * 设计语言 D5 · M10-b：金额不用省略号截断——几种币用「 · 」连，放不下就在「 · 」处换到下一行，每段数字本身不拆（.proj-money-seg nowrap）
  */
 function 钱字(话: string) {
   return (
@@ -463,24 +462,11 @@ export type 项目卡点 = { 们: 卡点卡[]; 能发: boolean; 默认: 卡点�
 
 /** 「项目画像」模块壳的落点 id（F-017「去填」需求状态滚过去）：独立页、嵌在客户页两处画像卡挂同一个 */
 const 画像落点 = "project-profile-fold";
-/*
-  换皮主题保持 D4 之前的样子（用户 11-21「换皮主题不动」，lib/use-skin.ts）：旧结构用到的样式写在组件外，行内样式计数不涨
-*/
-const 旧齐话样 = (还差: boolean) => ({ marginTop: 12, color: 还差 ? "var(--text-muted)" : "var(--success-text)", overflowWrap: "anywhere" as const });
-const 旧沟通头样 = { display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" as const };
-const 旧沟通时样 = { color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" };
-const 旧靠右样 = { marginLeft: "auto" };
-const 旧标签样 = { marginBottom: 4 };
-const 旧星样 = { color: "var(--danger-text)" };
-const 旧注样 = { color: "var(--text-muted)" };
-const 旧差样 = { color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" };
 /**
- * 弹框里一格的标签。现状主题（D4 · M7-b / M9-a）：* 在前、说明挪到格子下面（fm-help）；
- * 换皮主题照 D4 之前：「名 *」或「名（说明）」写在一行
+ * 弹框里一格的标签（D4 · M7-b / M9-a）：* 在前、说明挪到格子下面（fm-help）
  */
-function 格标签({ 新样, 名, 必填, 注 }: { 新样: boolean; 名: string; 必填?: boolean; 注?: string }) {
-  if (新样) return <div className="fm-label">{必填 && <span className="fm-req" aria-hidden>*</span>}{名}</div>;
-  return <div style={旧标签样}>{名}{必填 && <span style={旧星样}> *</span>}{注 && <span style={旧注样}>（{注}）</span>}</div>;
+function 格标签({ 名, 必填 }: { 名: string; 必填?: boolean }) {
+  return <div className="fm-label">{必填 && <span className="fm-req" aria-hidden>*</span>}{名}</div>;
 }
 /** 必填键 → 右栏就地改那一格的名字（ProjectInlineField 名），一样的不列 */
 const 右栏格名: Record<string, string> = { 项目级别: "级别", 主联系人: "联系人", 合同已生效: "合同状态", 已备货: "备货状态", 已签收: "物流状态", 预计成交日期: "预计成交", 项目所在地: "区域" };
@@ -564,8 +550,6 @@ export type 项目详情Props = {
 export type 嵌在客户页 = {
   /** 项目切换（客户页给，11-12 方案一）：摆在进程卡卡头左边，「完成节点」在同一行右边；进程卡不再摆三个阶段页签 */
   页签行: ReactNode;
-  /** 这位客户有 2 个以上项目：右栏卡头写「项目资料 · 项目名」，看得出右栏跟着切 */
-  多项目?: boolean;
   /** 客户三态提醒条（客户页给，有才摆）：只占中栏宽、在进程卡正上方 */
   提醒?: ReactNode;
   /** 客户页「更多操作 ▾」点了哪项：这里把处理函数挂给客户页（卸载时挂 null），客户页调它 */
@@ -598,11 +582,10 @@ export default function ProjectDetail({
   const [忙, set忙] = useState(false);
   /** 后果框（PR5a）：判无效（dt.invalid）、删回款（dt.pay） */
   const [问后果, 后果框] = useConsequence();
-  /** 设计语言 D4 的结构、文案改动只在现状主题出；换皮主题照 D4 之前（use-skin.ts） */
-  const 新样 = useIsNowSkin();
-  const 钱显 = (话: string) => (新样 ? 钱字(话) : 话);
-  /** 项目资料卡一行的 class / style：现状主题挂 .proj-info-row，换皮照旧行内样式 */
-  const 资料行 = (样: React.CSSProperties = 行样) => (新样 ? { className: 样 === 多行行样 ? "proj-info-row is-top" : "proj-info-row", style: 现资料样.get(样) } : { style: 样 });
+  /** 项目资料卡一行的 class / style：挂 .proj-info-row */
+  const 资料行 = (样: React.CSSProperties = 行样) => ({ className: 样 === 多行行样 ? "proj-info-row is-top" : "proj-info-row", style: 现资料样.get(样) });
+  /** 资料行的字段名挂 .proj-info-k（宽度、省略交给 globals.css，卡片改进统一成 68 列，和左栏客户资料同一列宽） */
+  const 键 = { className: "proj-info-k" };
   /** 删沟通没删成：原因写在那条沟通下面（就地，不弹顶部提示） */
   const [删沟通错, set删沟通错] = useState<{ id: string; 话: string } | null>(null);
   const [异常框, set异常框] = useState<位置 | null>(null);
@@ -673,12 +656,9 @@ export default function ProjectDetail({
   const 沟通半句 = p.线索验证缺沟通 ? `，并在「${有效线索节点}」记一条沟通` : "";
   const 缺有效沟通话 = 没有效沟通 ? 缺有效沟通还差(p.有效沟通差) + 沟通半句 : null;
   const 卡有效沟通 = 没有效沟通 && !!下 && 节点序号(下, 字典) > 节点序号({ phase: "线索", node: 有效线索节点 }, 字典);
-  // F-017：补填提示只在下一步要越过线索验证时出（停在线索验证或更后）；潜客培育往下推到线索验证不拦，不出（客户 11-19 第 31a 题）。
-  // 需求状态在右栏「项目画像」卡上（不在「项目资料」卡里），提示写明位置，「去填」滚过去
+  // F-017：要推过线索验证的缺项只在下一步要越过线索验证时出（卡有效沟通：停在线索验证或更后）；潜客培育往下推到线索验证不拦，不出（客户 11-19 第 31a 题）。
+  // 需求状态在右栏「项目画像」卡上（不在「项目资料」卡里），缺项说明写明位置
   const 缺需求 = p.有效沟通差.includes(必填叫法("需求"));
-  const 补填提示 = !卡有效沟通 ? null
-    : p.有效沟通差.length === 1 && 缺需求 ? `要推过线索验证：在「项目画像」选「需求状态」${沟通半句}`
-    : `要推过线索验证，还要填：${p.有效沟通差.join("、")}${缺需求 ? "（需求状态在「项目画像」里选）" : ""}${沟通半句}`;
   // 企业版线索阶段不显示交付（QA #5）：只有订单阶段才有尾款、验收
   const 显示交付 = !p.企业版 || p.phase === "订单";
   // 线索在等复核：服务端这时不给改进程、点结局、放回公海（lib/project/lead-verify-guard.ts），界面直接灰着说清在等谁
@@ -879,11 +859,11 @@ export default function ProjectDetail({
   const 灰在不给推 = !!p.不给推 && 完成不了 === p.不给推;
   const 谁能推 = p.不给推谁能推 || "上级";
   /*
-    设计语言 D4 · M6-a：缺项小块。节点缺 = 这个节点配的必填还差的；验证缺 = 要推过线索验证还要的（原来那段补填提示出的时候才算，条件不变）。
+    设计语言 D4 · M6-a：缺项小块。节点缺 = 这个节点配的必填还差的；验证缺 = 要推过线索验证还要的（卡有效沟通时才算，条件不变）。
     两边合成一份去重，判「有效」也要的打 •
   */
   const 节点缺 = p.必填 && !p.result ? p.必填.还差 : [];
-  const 显示验证缺 = !!补填提示 && !p.线索验证?.我能 && !(p.必填 && p.node === 有效线索节点);
+  const 显示验证缺 = 卡有效沟通 && !p.线索验证?.我能 && !(p.必填 && p.node === 有效线索节点);
   const 叫法到键 = (叫: string) => 必填项们.find((x) => 必填叫法(x.key) === 叫)?.key ?? 叫;
   const 缺项们: { 键: string; 叫: string; 判有效: boolean }[] = [];
   for (const 键 of [...节点缺, ...(显示验证缺 ? p.有效沟通差.map(叫法到键) : [])]) {
@@ -977,8 +957,8 @@ export default function ProjectDetail({
     }
     if ((法?.控件 === "画像单选" || 法?.控件 === "画像多选" || 键 === "需求") && document.getElementById(画像落点)) {
       定位到模块(画像落点);
-      // 现状主题画像是「看 → 点了改」（D5 · M11）：滚过去后直接打开那一行的下拉（换皮主题下拉本来就常开）
-      const 项名 = 新样 && 法 && (法.控件 === "画像单选" || 法.控件 === "画像多选") ? p.画像?.项们.find((x) => (法.控件 === "画像多选" ? x.多选 : x.键 === 法.键))?.名 : undefined;
+      // 画像是「看 → 点了改」（D5 · M11）：滚过去后直接打开那一行的下拉
+      const 项名 = 法 && (法.控件 === "画像单选" || 法.控件 === "画像多选") ? p.画像?.项们.find((x) => (法.控件 === "画像多选" ? x.多选 : x.键 === 法.键))?.名 : undefined;
       if (项名) window.setTimeout(() => document.querySelector<HTMLElement>(`#${画像落点} [data-inline-field="${项名}"] .proj-inline-pen`)?.click(), 120);
       return;
     }
@@ -1218,7 +1198,8 @@ export default function ProjectDetail({
     </>
   );
   const 节点卡 = (
-    <Card style={p.企业版 ? undefined : { marginBottom: 16 }}>
+    // 嵌在客户页：进程卡挂 .cd-proc，卡片改进下项目切换那一行就是这张卡的 48 高卡头（globals.css）
+    <Card className={嵌入 ? "cd-proc" : undefined} style={p.企业版 ? undefined : { marginBottom: 16 }}>
       {!嵌入 && 顶块}
       {/* 企业版：三个阶段页签 + 完成节点 ▼ / 新增沟通（M-节点-04）；别的版本照旧一条进度条 */}
       {p.企业版 ? (
@@ -1257,7 +1238,7 @@ export default function ProjectDetail({
         设计语言 D4 · M6-a（D36）：原来两段灰字（「要推过线索验证，还要填：…」「这个节点还差必填：…」）列的项还不一样，合成一块「还差 N 项」+ 缺项小块：
         带 • 的是判「有效」也要的；小块保留括号别名、「暂无」「-」不算填了照留；点一块直接去填（完成节点框里那一格 / 右栏那一格 / 画像卡 / 线索验证框）
       */}
-      {新样 && 缺项们.length > 0 && (
+      {缺项们.length > 0 && (
         <div className="proj-miss" data-testid={显示验证缺 ? "lead-gate-hint" : "node-required-miss"}>
           <div className="proj-miss-t">{节点缺.length ? `完成这个节点还差 ${缺项们.length} 项` : `要推过线索验证还差 ${缺项们.length} 项`}</div>
           <div className="proj-miss-chips">
@@ -1281,30 +1262,19 @@ export default function ProjectDetail({
           </div>
         </div>
       )}
-      {新样 && p.必填 && !p.result && !p.必填.还差.length && (
+      {p.必填 && !p.result && !p.必填.还差.length && (
         <div className="proj-miss is-ok">
           <div className="proj-miss-t">{齐话}</div>
-        </div>
-      )}
-      {/* 换皮主题：D4 之前的两段灰字 */}
-      {!新样 && 补填提示 && !p.线索验证?.我能 && !(p.必填 && p.node === 有效线索节点) && (
-        <div className="proj-gate-hint" data-testid="lead-gate-hint">
-          <span className="proj-gate-hint-t">{补填提示}</span>
-          {缺需求 && p.画像 && 可改 && <Button size="small" onClick={() => 定位到模块(画像落点)}>去填</Button>}
-        </div>
-      )}
-      {!新样 && p.必填 && !p.result && (
-        <div style={旧齐话样(p.必填.还差.length > 0)}>
-          {p.必填.还差.length ? `这个节点还差必填：${p.必填.还差.map(必填叫法).join("、")}（「暂无」「-」这类占位不算填了）` : 齐话}
         </div>
       )}
     </Card>
   );
   const 项目卡 = (
     <Card
-      // 设计语言 D5 · M10：现状主题下行距 34、悬停整行浅底 + 行尾铅笔、改的时候标签顶对齐、卡头图标点击区 28 / 44（globals.css .proj-info，只挂现状主题）
-      className={新样 ? "proj-info" : undefined}
-      title={嵌入 ? (嵌入.多项目 ? <span className="cd-info-t" title={`项目资料 · ${p.name}`}>项目资料 · {p.name}</span> : "项目资料") : "项目"}
+      // 设计语言 D5 · M10：行距 34、悬停整行浅底 + 行尾铅笔、改的时候标签顶对齐、卡头图标点击区 28 / 44（globals.css .proj-info）
+      className="proj-info"
+      // 卡片改进（11-23 原型）：嵌在客户页时右栏卡头只写「项目资料」（项目名已经在进程卡卡头的胶囊里）
+      title={嵌入 ? "项目资料" : "项目"}
       // U-项目-05：企业版改项目的入口挪到项目卡右上角一个笔（页头不再摆「编辑项目」），点开还是同一个编辑框；别的版本照旧「编辑」
       extra={嵌入 ? (
         // 嵌在客户页：项目收藏星挪到这张卡头（审查 #2，页签行 1024 宽已经很挤），只管当前页签这个项目；编辑笔照旧在最右
@@ -1318,7 +1288,7 @@ export default function ProjectDetail({
     >
       {p.线索验证 && (
         <div {...资料行()}>
-          <span style={键样}>线索验证</span>
+          <span {...键}>线索验证</span>
           <Button type="text" size="small" style={{ paddingInline: 4, marginInlineStart: -4, height: "auto" }} onClick={() => set验证开着(true)} aria-label={`线索验证：${p.线索验证.叫法}，点开查看和操作`} data-testid="lead-verify-row">
             {/* 11-01 会议 §6：结果写成纯字、不套灰框（和下面各行的写法一致） */}
             <span style={{ marginInlineEnd: 4 }} data-testid="lead-verify-result">{p.线索验证.叫法}</span>
@@ -1327,16 +1297,16 @@ export default function ProjectDetail({
           </Button>
         </div>
       )}
-      <div {...资料行()}><span style={键样}>{b.customer}</span>{p.客户入口 === "只读卡" && p.客户卡名 ? <CustomerReadonlyCard projectId={p.id} name={p.客户卡名.name} company={p.客户卡名.school} /> : p.customer ? <CustomerLink id={p.客户入口 === "文字" ? null : p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
+      <div {...资料行()}><span {...键}>{b.customer}</span>{p.客户入口 === "只读卡" && p.客户卡名 ? <CustomerReadonlyCard projectId={p.id} name={p.客户卡名.name} company={p.客户卡名.school} /> : p.customer ? <CustomerLink id={p.客户入口 === "文字" ? null : p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
       {p.来源线索 && (
-        <div {...资料行()}><span style={键样}>来源线索</span><span className="proj-one">{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
+        <div {...资料行()}><span {...键}>来源线索</span><span className="proj-one">{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}
       {/* 联系人名字、职位可能很长：在 1024 宽的项目卡里折行，不顶出卡片 */}
       {/* 11-04：企业版就地改联系人（下拉选本客户的联系人，可清空）；不是企业版照旧只读。
           可清空的就地下拉第一项都是「—」：误点了能选回没填（11-04 用户） */}
       {p.企业版 && 能就地改 && p.customer ? (
         <div {...资料行()}>
-          <span style={键样}>联系人</span>
+          <span {...键}>联系人</span>
           <ProjectInlineField<string | null>
             名="联系人"
             值={p.contact?.id ?? null}
@@ -1344,7 +1314,7 @@ export default function ProjectDetail({
             显示={(id) => {
               const c = id === (p.contact?.id ?? null) ? p.contact : 联系人们.find((x) => x.id === id) ?? null;
               if (!c) return 待填("联系人");
-              return 新样 ? 联系人字(c) : <span className="proj-one">{空显(c.name)}{c.position ? ` · ${c.position}` : ""}</span>;
+              return 联系人字(c);
             }}
             存={(v) => 存项目项({ contactId: v })}
             编辑器={({ 草稿, 提交, 忙 }) => (
@@ -1353,15 +1323,15 @@ export default function ProjectDetail({
           />
         </div>
       ) : (
-        // 现状主题（D5 遗留）：只能看的人也摆这一行，没挂联系人写「—」；换皮主题照旧有才摆
-        新样 && p.企业版
-          ? <div {...资料行()}><span style={键样}>联系人</span>{p.contact ? 联系人字(p.contact) : 待填("联系人")}</div>
-          : p.contact && <div {...资料行()}><span style={键样}>联系人</span><span className="proj-one">{空显(p.contact.name)}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
+        // D5 遗留：企业版只能看的人也摆这一行，没挂联系人写「—」
+        p.企业版
+          ? <div {...资料行()}><span {...键}>联系人</span>{p.contact ? 联系人字(p.contact) : 待填("联系人")}</div>
+          : p.contact && <div {...资料行()}><span {...键}>联系人</span><span className="proj-one">{空显(p.contact.name)}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
       )}
-      {p.contact && p.联系人附件 && <div {...资料行()}><span style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
+      {p.contact && p.联系人附件 && <div {...资料行()}><span {...键}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
       {p.企业版 && p.level !== undefined && (
         <div {...资料行()}>
-          <span style={键样}>级别</span>
+          <span {...键}>级别</span>
           <ProjectInlineField<string | null>
             名="级别"
             值={p.level}
@@ -1377,7 +1347,7 @@ export default function ProjectDetail({
       {/* 项目标签（F-项目-14）：和级别各一格、各自填，互不带动 */}
       {p.企业版 && p.项目标签 && (
         <div {...资料行()}>
-          <span style={键样}>项目标签</span>
+          <span {...键}>项目标签</span>
           <ProjectInlineField<string | null>
             名="项目标签"
             值={p.项目标签.值}
@@ -1391,14 +1361,14 @@ export default function ProjectDetail({
         </div>
       )}
       <div {...资料行()}>
-        <span style={键样}>金额</span>
+        <span {...键}>金额</span>
         <ProjectInlineField<钱格值>
           名="金额"
           值={{ 数: p.amount || null, 币: p.currency }}
           能改={字段能改("商机金额")}
           回车存
           // 必填占位只对库里那个值说话：刚改过（乐观值）就直接显示新值
-          显示={(v) => (v.数 === (p.amount || null) && p.必填?.还差.includes("金额") ? 占位确认("金额") : v.数 ? 钱显(金额(v.数, v.币)) : 待填("金额"))}
+          显示={(v) => (v.数 === (p.amount || null) && p.必填?.还差.includes("金额") ? 占位确认("金额") : v.数 ? 钱字(金额(v.数, v.币)) : 待填("金额"))}
           存={(v) => 存钱格("金额", v)}
           编辑器={钱编辑器("金额")}
         />
@@ -1406,32 +1376,32 @@ export default function ProjectDetail({
       {p.企业版 && p.成交钱 && (
         <>
           <div {...资料行()}>
-            <span style={键样}>定金金额</span>
+            <span {...键}>定金金额</span>
             <ProjectInlineField<钱格值>
               名="定金金额"
               值={{ 数: p.成交钱.depositAmount, 币: p.成交钱.depositCurrency ?? 默认币种 }}
               能改={字段能改("商机金额")}
               回车存
-              显示={(v) => (v.数 !== null ? 钱显(金额(v.数, v.币)) : 待填("定金金额"))}
+              显示={(v) => (v.数 !== null ? 钱字(金额(v.数, v.币)) : 待填("定金金额"))}
               存={(v) => 存钱格("定金金额", v)}
               编辑器={钱编辑器("定金金额")}
             />
           </div>
           <div {...资料行()}>
-            <span style={键样}>合同金额</span>
+            <span {...键}>合同金额</span>
             <ProjectInlineField<钱格值>
               名="合同金额"
               值={{ 数: p.成交钱.contractAmount, 币: p.成交钱.contractCurrency ?? 默认币种 }}
               能改={字段能改("商机金额")}
               回车存
-              显示={(v) => (v.数 !== null ? 钱显(金额(v.数, v.币)) : 待填("合同金额"))}
+              显示={(v) => (v.数 !== null ? 钱字(金额(v.数, v.币)) : 待填("合同金额"))}
               存={(v) => 存钱格("合同金额", v)}
               编辑器={钱编辑器("合同金额")}
             />
           </div>
           {p.项目新字段?.contractStatus !== undefined && (
             <div {...资料行()}>
-              <span style={键样}>合同状态</span>
+              <span {...键}>合同状态</span>
               <ProjectInlineField<string | null>
                 名="合同状态"
                 值={p.项目新字段.contractStatus}
@@ -1444,9 +1414,9 @@ export default function ProjectDetail({
               />
             </div>
           )}
-          {p.回款们 && <div {...资料行()}><span style={键样}>当前回款</span>{新样 && p.回款们.length ? 钱字(合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency))) : <span className="proj-one">{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span>}</div>}
+          {p.回款们 && <div {...资料行()}><span {...键}>当前回款</span>{p.回款们.length ? 钱字(合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency))) : <span className="proj-one">{待填("当前回款")}</span>}</div>}
           <div {...资料行(多行行样)}>
-            <span style={键样}>需求描述</span>
+            <span {...键}>需求描述</span>
             <ProjectInlineField<string>
               名="需求描述"
               规整={(v) => v.trim()}
@@ -1461,7 +1431,7 @@ export default function ProjectDetail({
           </div>
           {p.项目新字段 && "painPoints" in p.项目新字段 && (
             <div {...资料行(多行行样)}>
-              <span style={键样}>痛点标注</span>
+              <span {...键}>痛点标注</span>
               <ProjectInlineField<string>
                 名="痛点标注"
                 规整={(v) => v.trim()}
@@ -1479,7 +1449,7 @@ export default function ProjectDetail({
       )}
       {p.企业版 && (
         <div {...资料行()}>
-          <span style={键样}>预计成交</span>
+          <span {...键}>预计成交</span>
           <ProjectInlineField<string | null>
             名="预计成交"
             值={p.expectedDealAt ?? null}
@@ -1495,7 +1465,7 @@ export default function ProjectDetail({
       {/* 指定回复时间（11-17）：客户要求的联系时间点 / 时间段，两格选填；没填「—」 */}
       {p.指定回复 && (
         <div {...资料行()}>
-          <span style={键样}>指定回复</span>
+          <span {...键}>指定回复</span>
           <ProjectInlineField<回复两格>
             名="指定回复"
             值={p.指定回复}
@@ -1513,7 +1483,7 @@ export default function ProjectDetail({
       {/* 指定分配时间（11-17 PR3）：还在待分配、到点由后台分；录入人和能分配的人能改时间、改成现在分配、取消定时 */}
       {p.定时分配 && (
         <div {...资料行(定时行样)} data-testid="project-schedule-row">
-          <span style={键样}>定时分配</span>
+          <span {...键}>定时分配</span>
           <ProjectInlineField<string>
             名="定时分配"
             值={p.定时分配.时间}
@@ -1542,16 +1512,16 @@ export default function ProjectDetail({
       {/* 嵌在客户页没有项目页头（审查 #2）：页头副标题里的负责人、创建人、创建时间挪到这张卡上 */}
       {嵌入 && (
         <>
-          <div {...资料行()} data-testid="project-owner-row"><span style={键样}>负责人</span><span className="proj-one" title={负责人说法(p)}>{负责人说法(p)}</span></div>
-          <div {...资料行()} data-testid="project-creator-row"><span style={键样}>创建人</span><span className="proj-one">{p.creatorName || 空值符}</span></div>
-          <div {...资料行()} data-testid="project-created-row"><span style={键样}>创建于</span><span className="proj-one">{fmtDateTime(p.createdAt)}</span></div>
+          <div {...资料行()} data-testid="project-owner-row"><span {...键}>负责人</span><span className="proj-one" title={负责人说法(p)}>{负责人说法(p)}</span></div>
+          <div {...资料行()} data-testid="project-creator-row"><span {...键}>创建人</span><span className="proj-one">{p.creatorName || 空值符}</span></div>
+          <div {...资料行()} data-testid="project-created-row"><span {...键}>创建于</span><span className="proj-one">{fmtDateTime(p.createdAt)}</span></div>
         </>
       )}
-      {p.企业版 && p.数据来源 && <div {...资料行()} data-testid="project-data-source-row"><span style={键样}>数据来源</span><span className="proj-one"><Tag bordered={false} color="purple">{p.数据来源}</Tag></span></div>}
-      {p.企业版 && p.已立项天数 !== undefined && <div {...资料行()}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
+      {p.企业版 && p.数据来源 && <div {...资料行()} data-testid="project-data-source-row"><span {...键}>数据来源</span><span className="proj-one"><Tag bordered={false} color="purple">{p.数据来源}</Tag></span></div>}
+      {p.企业版 && p.已立项天数 !== undefined && <div {...资料行()}><span {...键}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
         <div {...资料行()}>
-          <span style={键样}>项目来源</span>
+          <span {...键}>项目来源</span>
           {/*
             项目来源（P-删-03，11-10 起同客户来源）：项目自己的来源有值就锁，这里只读；空着（跟客户来源走）的可以就地补一次，
             补了就锁、不给清空。服务端 改项目 同样拒换、拒清空，这里只是辅助。显示等 refresh 带回服务端拼好的名字
@@ -1570,7 +1540,7 @@ export default function ProjectDetail({
       )}
       {p.企业版 && p.bizLine !== undefined && (
         <div {...资料行()}>
-          <span style={键样}>业务线</span>
+          <span {...键}>业务线</span>
           {/* 11-04 就地改：三选一，不能清空（新建必填）；改线不换负责人 */}
           <ProjectInlineField<string | null>
             名="业务线"
@@ -1588,7 +1558,7 @@ export default function ProjectDetail({
         <>
           {/* 11-04 就地改：区域四格 + 详细地址一起改、一起存（和新建项目同一个地址组件）；地址看像别的业务线时提示一句，不自动改线 */}
           <div {...资料行()}>
-            <span style={键样}>区域</span>
+            <span {...键}>区域</span>
             <ProjectInlineField<客户地址 & { location: string | null }>
               名="区域"
               值={p.所在地}
@@ -1616,11 +1586,11 @@ export default function ProjectDetail({
         </>
       )}
       {p.historyOwners.length > 0 && (
-        <div {...资料行()}><span style={键样}>历史</span><span className="proj-one" title={`历史负责人（把这个项目放回过公海的人）：${p.historyOwners.join("、")}`}>{p.historyOwners.join("、")}</span></div>
+        <div {...资料行()}><span {...键}>历史</span><span className="proj-one" title={`历史负责人（把这个项目放回过公海的人）：${p.historyOwners.join("、")}`}>{p.historyOwners.join("、")}</span></div>
       )}
       {(p.nextStepText || p.nextStepAt) && !p.pooled && (
         <div {...资料行()}>
-          <span style={键样}>下一步</span>
+          <span {...键}>下一步</span>
           <span className="proj-one">
             {p.nextStepText}
             {p.nextStepText && p.nextStepAt && <span style={{ color: "var(--text-muted)" }}> · </span>}
@@ -1630,7 +1600,7 @@ export default function ProjectDetail({
       )}
       {能就地改 ? (
         <div {...资料行(多行行样)}>
-          <span style={键样}>备注</span>
+          <span {...键}>备注</span>
           <ProjectInlineField<string>
             名="备注"
             规整={(v) => v.trim()}
@@ -1648,14 +1618,16 @@ export default function ProjectDetail({
   // 客户详情嵌入版的叫法（11-12，card-names.tsx）：右栏卡名补「项目」、卡点写「当前卡点」；项目详情页原样
   const 卡名 = (名: string) => (嵌入 ? 项目卡名(名) : 名);
   const 卡点名 = 嵌入 ? 客户详情卡点 : "卡点";
+  /** 交付卡备货 / 物流三行：和项目资料同一套字段行（标签 68 列、值离卡左 92） */
+  const 交付行 = 资料行();
   const 交付卡 = 显示交付 && (
     <Card title={卡名("交付")}>
       {/* 备货状态（生产备货）、物流状态 + 物流单号（物流运输）：迁移 154，客户 11-19。交付卡只在订单阶段出现，这三格跟着它；
           缺着的必填在「完成节点」框里也能当场填 */}
       {p.企业版 && 备货物流 && (
         <div className="proj-stock-rows">
-          <div style={行样}>
-            <span style={键样}>备货状态</span>
+          <div {...交付行}>
+            <span {...键}>备货状态</span>
             <ProjectInlineField<string | null>
               名="备货状态"
               值={备货物流.备货状态}
@@ -1667,8 +1639,8 @@ export default function ProjectDetail({
               )}
             />
           </div>
-          <div style={行样}>
-            <span style={键样}>物流状态</span>
+          <div {...交付行}>
+            <span {...键}>物流状态</span>
             <ProjectInlineField<string | null>
               名="物流状态"
               值={备货物流.物流状态.值}
@@ -1680,8 +1652,8 @@ export default function ProjectDetail({
               )}
             />
           </div>
-          <div style={行样}>
-            <span style={键样}>物流单号</span>
+          <div {...交付行}>
+            <span {...键}>物流单号</span>
             <ProjectInlineField<string>
               名="物流单号"
               规整={(v) => v.trim()}
@@ -1734,8 +1706,8 @@ export default function ProjectDetail({
   const 项目组卡 = <ProjectTeamCard projectId={p.id} 组员们={p.members} 角色们={角色们} 在职={在职} 能改={可改 || !!p.能改组员} 能加={!!p.能加组员 || 可改} 忙={忙} 跑={跑} 企业版={p.企业版} 组长={p.ownerName} />;
   const 提成区 = p.提成 && <ProjectCommissionCard key={`${p.提成.项目底价}-${p.提成.实际?.固定于 ?? ""}`} projectId={p.id} t={p.提成} 忙={忙} 跑={跑}  />;
   const 变更卡 = (
-    // 设计语言 D5 · M11-a：折叠的卡都写条数（现状主题；换皮主题照旧只有名字）
-    <Card title={新样 ? `${卡名("进程变更")}（${p.logs.length}）` : 卡名("进程变更")}>
+    // 设计语言 D5 · M11-a：折叠的卡都写条数（卡片改进：条数灰字，ProjectFold 计数题）
+    <Card title={计数题(卡名("进程变更"), p.logs.length)}>
       <Timeline
         items={p.logs.map((l) => ({
           color: l.kind !== "node" ? "gray" : l.to.result === "异常状态" ? "red" : 是交付(l.to.result) ? "green" : "blue",
@@ -1783,31 +1755,21 @@ export default function ProjectDetail({
               设计语言 D4 · M7-a：开头一颗方式图标（没写方式的不再是「···」）；谁 · 方式 · 发起写成一行灰字，只留阶段一个小块；
               时间和列表同一套（今天 13:13 / 昨天 / 3 天前 / 11 月 18 日，悬停看完整时刻）
             */}
-            <div className={新样 ? "proj-fu-m" : undefined} style={新样 ? undefined : 旧沟通头样}>
-              {新样 ? (
-                // 左边这一段（谁 · 方式 · 发起、阶段、提醒）窄了自己折行让位，右边时间和 ⋮ 不折（#402 实操：1024 宽时间和 ⋮ 掉到第二行）
-                <span className="proj-fu-l">
-                  <span className="proj-fu-i" aria-hidden>{f.type === "OTHER" ? <CommentOutlined /> : (FOLLOW_TYPE_ICON[f.type] ?? <CommentOutlined />)}</span>
-                  <span className="proj-fu-who">{f.who}</span>
-                  <span aria-hidden>·</span><span>{跟进方式名(f, "其他方式")}</span>
-                  {f.initiator && <><span aria-hidden>·</span><span>{f.initiator}</span></>}
-                  <Tag variant="filled" className="proj-fu-stage">{f.node}</Tag>
-                  {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
-                </span>
-              ) : (<>
-                {/* 换皮主题：D4 之前的方式小块 + 发起 / 阶段两个标签，谁 · 完整时刻 */}
-                <FollowTypeCell type={f.type} method={f.method} />
-                {f.initiator && <Tag variant="filled">{f.initiator}</Tag>}
-                <Tag>{f.node}</Tag>
+            <div className="proj-fu-m">
+              {/* 左边这一段（谁 · 方式 · 发起、阶段、提醒）窄了自己折行让位，右边时间和 ⋮ 不折（#402 实操：1024 宽时间和 ⋮ 掉到第二行） */}
+              <span className="proj-fu-l">
+                <span className="proj-fu-i" aria-hidden>{f.type === "OTHER" ? <CommentOutlined /> : (FOLLOW_TYPE_ICON[f.type] ?? <CommentOutlined />)}</span>
+                <span className="proj-fu-who">{f.who}</span>
+                <span aria-hidden>·</span><span>{跟进方式名(f, "其他方式")}</span>
+                {f.initiator && <><span aria-hidden>·</span><span>{f.initiator}</span></>}
+                <Tag variant="filled" className="proj-fu-stage">{f.node}</Tag>
                 {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
-              </>)}
-              {新样
-                ? <span className="proj-fu-t" title={fmtDateTime(f.occurredAt)}>{smartTime(f.occurredAt)}</span>
-                : <span style={旧沟通时样}>{f.who} · {fmtDateTime(f.occurredAt)}</span>}
+              </span>
+              <span className="proj-fu-t" title={fmtDateTime(f.occurredAt)}>{smartTime(f.occurredAt)}</span>
               {f.已修改 && <span data-testid="follow-edited" title="这条沟通提交后改过，改了什么见操作日志" className="proj-fu-edited">已修改</span>}
               {(能改这条(f) || p.可删沟通 || 卡点?.能发) && (
                 // 「…」放在这一行最右（时间已经靠右顶过来，这里不再 auto）：发卡点、修改、删除（10-30 发卡点从行上收进来）；删除 = 这一条下面长出确认条（dt.talkdel），见 删沟通条
-                <span className={新样 ? "proj-fu-kb" : undefined} style={新样 ? undefined : 旧靠右样}>
+                <span className="proj-fu-kb">
                     <Dropdown
                       trigger={["click"]}
                       placement="bottomRight"
@@ -1818,7 +1780,7 @@ export default function ProjectDetail({
                           // 本人限时改的写清改到几点（原本就能改的不写）
                           ...(能改这条(f) ? [{ key: "edit", label: !p.可改沟通 && f.本人可改到 ? `修改（${dayjs(f.本人可改到).format("HH:mm")} 前可改）` : "修改" }] : []),
                           // ⋮ 里「删除」前一道分隔线（D4 · M7-c），和上面的常用动作隔开
-                          ...(p.可删沟通 ? [...(新样 && (卡点?.能发 || 能改这条(f)) ? [{ type: "divider" as const }] : []), { key: "delete", label: "删除", danger: true }] : []),
+                          ...(p.可删沟通 ? [...(卡点?.能发 || 能改这条(f) ? [{ type: "divider" as const }] : []), { key: "delete", label: "删除", danger: true }] : []),
                         ],
                         // 键盘回车选中菜单项时 rc-menu 不拦回车的默认动作：不拦的话这一下回车会落到刚弹出来的确认条按钮上，直接删掉（#402 复审）
                         onClick: ({ key, domEvent }) => {
@@ -1863,7 +1825,7 @@ export default function ProjectDetail({
   const 沟通卡 = 嵌入 ? (
     <Card
       className="cd-comm"
-      title={<span className="cd-comm-t"><span>沟通记录（{看全部沟通 ? 嵌入.全部沟通数 : 沟通数字}）</span>{沟通范围钮}</span>}
+      title={<span className="cd-comm-t">{计数题("沟通记录", 看全部沟通 ? 嵌入.全部沟通数 : 沟通数字)}</span>}
       extra={(
         <Space size={8} className="proj-follow-acts">
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
@@ -1873,13 +1835,14 @@ export default function ProjectDetail({
         </Space>
       )}
     >
+      {沟通范围钮 && <div className="cd-comm-bar">{沟通范围钮}</div>}
       {看全部沟通 ? 嵌入.全部沟通 : 沟通身()}
     </Card>
   ) : (
     <Card
       // 客户页「跟进」菜单跳过来的落点（/projects/<id>#project-follow，P14 第 3 条）
       // 企业版的落点 id 在外面那层模块壳上（ProjectFold）
-      {...(p.企业版 ? { title: `沟通（${沟通数字}）` } : { id: "project-follow", title: "沟通" })}
+      {...(p.企业版 ? { title: 计数题("沟通", 沟通数字) } : { id: "project-follow", title: "沟通" })}
       extra={
         p.企业版 ? (
           // 企业版：「新增沟通」在这块卡头（「AI 录入」11-12 收进弹窗顶上的切换；11-01 页头只留转让、退回公海）；11-01 会议 §5：右侧写「新增沟通」、走弹窗。
@@ -1901,7 +1864,7 @@ export default function ProjectDetail({
   // 企业版原叫「卡点与任务」（U-项目-01）；这一版只有卡点、没有任务数据，界面上就叫「卡点」
   const 卡点区 = 卡点 && (
     <Card
-      title={p.企业版 ? `${卡点名}（${搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length}）` : `卡点（${卡点.们.length}）`}
+      title={p.企业版 ? 计数题(卡点名, 搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length) : `卡点（${卡点.们.length}）`}
       // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）；企业版 11-01 从页头回到这块卡头，没沟通时灰着、悬停说为什么
       extra={p.企业版 ? (
         // 11-12 连体按钮：左半「新建卡点」（11-12 用户看 3702 由「发卡点」改名；没沟通时灰着、悬停说为什么），右半收起 / 展开；不能发只剩右半
@@ -1915,7 +1878,7 @@ export default function ProjectDetail({
     >
       <div id="project-blockers-body" className={p.企业版 ? "proj-mod-body" : undefined}>
         {/* 搜着时（不管有没有卡点）空态都写「没有对得上…」，不说「还没有卡点」（D4 · M7-d） */}
-        <BlockerList 们={列卡点} 空={搜着 && (新样 || 卡点.们.length) ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
+        <BlockerList 们={列卡点} 空={搜着 ? `没有对得上「${搜.trim()}」的卡点` : "还没有卡点"} />
       </div>
     </Card>
   );
@@ -2085,7 +2048,7 @@ export default function ProjectDetail({
       {p.线索验证 && (
         <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
           <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} 线索验证必填={p.线索验证必填 ?? []}
-            有效还差={新样 && 没有效沟通 ? p.有效沟通差 : []}
+            有效还差={没有效沟通 ? p.有效沟通差 : []}
             沟通半句={沟通半句}
             on去填={能去填 ? (叫) => { set验证开着(false); window.setTimeout(() => 去填(叫法到键(叫)), 80); } : undefined}
           />
@@ -2244,7 +2207,7 @@ export default function ProjectDetail({
         allowClear
         prefix={<SearchOutlined aria-hidden />}
         // 「这位客户全部」时框淡着点不了：占位字直接写为什么（D4 · M7-d），不让人以为坏了
-        placeholder={新样 && 看全部沟通 ? "切回「本项目」才能搜" : "搜这个项目的沟通、卡点"}
+        placeholder={看全部沟通 ? "切回「本项目」才能搜" : "搜这个项目的沟通、卡点"}
         aria-label="搜这个项目的沟通、卡点"
         value={搜}
         onChange={(e) => set搜(e.target.value)}
@@ -2533,9 +2496,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   回执: 就地回执;
 }) {
   const 能选类型 = 跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
-  /** D4 · M7-b 的「保存一直能点、格子下报红」、标签和文案只在现状主题；换皮主题照旧「记下」灰着 + 右下一行原因 */
-  const 新样 = useIsNowSkin();
-  const 记下叫 = 新样 ? "保存" : "记下";
+  /** D4 · M7-b：「保存」一直能点、格子下报红 */
   const [type, setType] = useState<string>(能选类型[0]?.value ?? "PHONE");
   const [method, setMethod] = useState<string | null>(null);
   // 11-01 客户答复 #2：沟通方式默认「微信沟通」、发起主体默认「我方发起」，都必填；字典里停用了就不默认、让人选
@@ -2630,7 +2591,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     if (填.下一步) set下一步文字(填.下一步);
     if (填.下一步时间) set下一步时间(填.下一步时间);
     const 摘要 = [填.type && "方式", 填.occurredAt && "时间", 填.content && "内容", 填.下一步 && "下一步", 填.下一步时间 && "下一步时间"].filter(Boolean);
-    set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再${记下叫}` : "没认出能填的，手动填吧" });
+    set解析({ 起, 结果: 摘要.length ? `已预填：${摘要.join(" · ")}，核对无误再保存` : "没认出能填的，手动填吧" });
   };
   /*
     打了没交的留草稿（11-17，components/FormDraft.tsx）：刷新、发版后重开「记一条沟通」接着填；截图录音存不进来，带回时说要重选。
@@ -2667,17 +2628,14 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     ["下一步计划", !p.组员记沟通 && !下一步文字.trim() ? "请写下一步计划" : null],
     ["下一步时间", !p.组员记沟通 && p.要下一步 && !下一步时间 ? "请填下一步时间" : null],
   ];
-  // 换皮主题照 D4 之前的先后（内容在发起主体前），「记下」旁那句不变（PR #402 审查）
-  const 旧序 = ["沟通内容", "发起主体", "卡点原因", "下一步计划", "下一步时间"];
-  const 差 = (新样 ? 错们 : 旧序.map((k) => 错们.find(([格]) => 格 === k)!)).find(([, 话]) => 话)?.[1] ?? "";
+  const 差 = 错们.find(([, 话]) => 话)?.[1] ?? "";
   const [试过, set试过] = useState(false);
-  const 格错 = (格: string) => (试过 && 新样 ? 错们.find(([k]) => k === 格)?.[1] ?? null : null);
+  const 格错 = (格: string) => (试过 ? 错们.find(([k]) => k === 格)?.[1] ?? null : null);
   const 错行 = (格: string) => 格错(格) && <div className="fm-err" role="alert">{格错(格)}</div>;
   // 选了下一步时间就预演回收日（10-30 P0-2）：和服务端同一个算法，算不准（没底子）就不写
   const 预演 = 预演回收日(p.回收预演, dayjs(occurredAt, 沟通时间格式).format("YYYY-MM-DD"), 下一步时间);
 
   const 交 = async () => {
-    if (差 && !新样) return; // 换皮主题「记下」本来就灰着
     if (差) {
       set试过(true);
       // 焦点跳到第一处没填好的格子（等红字画出来再找）
@@ -2743,15 +2701,13 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     <Modal
       open
       // 设计语言 D4 · M7-b（D14）：标题和卡头同一个词「新建沟通」，提交键「保存」（原「记一条沟通」「记下」）
-      title={新样 ? "新建沟通" : "记一条沟通"}
-      okText={记下叫}
+      title="新建沟通"
+      okText="保存"
       rootClassName="follow-modal"
-      okButtonProps={新样 ? { loading: 交中 } : { disabled: !!差, loading: 交中, title: 差 || undefined }}
+      okButtonProps={{ loading: 交中 }}
       footer={(按钮) => (
         <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
           {交错 && <span className="pd-modal-err pd-modal-err-inline" role="alert">{交错}</span>}
-          {/* 换皮主题：还差哪一格写在「记下」旁边（D4 之前） */}
-          {!新样 && 差 && <span style={旧差样}>{差}</span>}
           <span>{按钮}</span>
         </div>
       )}
@@ -2793,7 +2749,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             <div style={{ marginTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 {解析 ? <AiWait 在做="从这段话里认出沟通方式、内容和下一步时间" 起={解析.起} 结果={解析.结果} 出错={解析.出错} />
-                  : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填下面的格子，核对无误再{记下叫}</span>}
+                  : <span style={{ color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>只是预填下面的格子，核对无误再保存</span>}
               </div>
               <Button size="small" type="primary" ghost icon={<ThunderboltOutlined />} disabled={解析中 || AI已用完} onClick={() => void AI解析()}>
                 {解析?.结果 ? "重新解析" : "AI 解析填表"}
@@ -2806,25 +2762,25 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         {/* 11-01 客户答复 #2：沟通方式、发起主体都必填，摆在表面不收进「更多」 */}
         <div className="follow-pick-row">
           <div data-fk="沟通方式">
-            <格标签 新样={新样} 名="沟通方式" 必填 />
+            <格标签 名="沟通方式" 必填 />
             <FollowMethodSelect aria-label="沟通方式" style={{ width: "100%" }} type={type} method={method} 类型们={能选类型} onChange={(v) => { setType(v.type); setMethod(v.method); 人改过方式.current = true; }} />
           </div>
           {主体们 && (
             <div data-fk="发起主体">
-              <格标签 新样={新样} 名="发起主体" 必填 />
+              <格标签 名="发起主体" 必填 />
               <InitiatorSelect 们={主体们} style={{ width: "100%" }} status={格错("发起主体") ? "error" : undefined} value={发起} onChange={set发起} />
               {错行("发起主体")}
             </div>
           )}
         </div>
         <div data-fk="沟通内容">
-          <格标签 新样={新样} 名="沟通内容" 必填 />
+          <格标签 名="沟通内容" 必填 />
           <Input.TextArea aria-label="沟通内容" rows={4} status={格错("沟通内容") ? "error" : undefined} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
           {错行("沟通内容")}
         </div>
         {卡点默认 && (
           <div className="follow-blocker" data-fk="卡点原因">
-            <格标签 新样={新样} 名="卡点" 注="选「暂无卡点」不生成；选了其他类型，记下时生成一个卡点" />
+            <格标签 名="卡点" />
             {/* 11-19：「暂无卡点」只摆类型一格，不带出影响、原因；选了类型才出影响（默认值照旧）和阻碍原因（必填，能直接打字新增） */}
             <div className="follow-blocker-row">
               <Select aria-label="卡点类型" value={卡点类型} onChange={(v: string) => { set卡点类型(v); if (v === "暂无卡点") { set卡点原因([]); set卡点影响(null); } }} options={卡点类型们.map((v) => ({ value: v, label: v }))} />
@@ -2833,12 +2789,12 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             {卡点类型 !== "暂无卡点" && <div style={{ marginTop: 8 }}><原因选择 原因们={卡点原因们} 值={卡点原因} on改={set卡点原因} 错={!!格错("卡点原因")} /></div>}
             {错行("卡点原因")}
             {/* 括号里的说明挪到格子下面（M7-b · D03） */}
-            {新样 && <div className="fm-help">选「暂无卡点」不生成；选了其他类型，保存时生成一个卡点</div>}
+            <div className="fm-help">选「暂无卡点」不生成；选了其他类型，保存时生成一个卡点</div>
           </div>
         )}
         {!p.组员记沟通 && (<>
         <div data-fk="下一步计划">
-          <格标签 新样={新样} 名="下一步计划" 必填 />
+          <格标签 名="下一步计划" 必填 />
           <Input
             aria-label="下一步计划"
             status={格错("下一步计划") ? "error" : undefined}
@@ -2851,7 +2807,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
           {错行("下一步计划")}
         </div>
         <div data-fk="下一步时间">
-          <格标签 新样={新样} 名="下一步时间" 必填={p.要下一步} 注={p.要下一步 ? undefined : "可不填"} />
+          <格标签 名="下一步时间" 必填={p.要下一步} />
           <DatePicker
             aria-label="下一步时间"
             status={格错("下一步时间") ? "error" : undefined}
@@ -2867,7 +2823,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             })}
           </Space>
           {错行("下一步时间")}
-          {新样 && !p.要下一步 && <div className="fm-help">可不填</div>}
+          {!p.要下一步 && <div className="fm-help">可不填</div>}
           {预演 ? (
             <div style={{ marginTop: 4, fontSize: "var(--dt-aux, 12px)", color: 回公海颜色[回公海文案(预演).级别] ?? "var(--text-muted)" }}>记完这条 → 回收日变为 {dayjs(预演).format("MM-DD")}</div>
           ) : p.要下一步 && <div style={{ marginTop: 4, color: "var(--text-muted)", fontSize: "var(--dt-aux, 12px)" }}>到那天还没人跟进，项目会自动回到线索公海</div>}
@@ -2875,9 +2831,9 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         </>)}
         {p.企业版 && (
           <div>
-            <格标签 新样={新样} 名="截图 / 录音" 注="可不传，记下后挂在这条沟通上；也可以直接粘贴截图" />
+            <格标签 名="截图 / 录音" />
             <选沟通附件框 文件们={附件们} on改={set附件们} />
-            {新样 && <div className="fm-help">可不传，保存后挂在这条沟通上；也可以直接粘贴截图</div>}
+            <div className="fm-help">可不传，保存后挂在这条沟通上；也可以直接粘贴截图</div>
           </div>
         )}
         <div>
@@ -2888,7 +2844,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
         {更多开 && (
           <div className="follow-more">
             <div>
-              <格标签 新样={新样} 名="沟通时间" />
+              <格标签 名="沟通时间" />
               <DatePicker
                 aria-label="沟通时间"
                 showTime={{ format: "HH:mm" }}
@@ -2902,9 +2858,9 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             </div>
             {p.企业版 && (
               <div>
-                <格标签 新样={新样} 名="项目阶段" 注="记在项目现在的阶段上" />
+                <格标签 名="项目阶段" />
                 <Select aria-label="项目阶段" style={{ width: "100%" }} value={p.phase} disabled options={[{ value: p.phase, label: p.phase }]} />
-                {新样 && <div className="fm-help">记在项目现在的阶段上</div>}
+                <div className="fm-help">记在项目现在的阶段上</div>
               </div>
             )}
           </div>
@@ -2925,16 +2881,16 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
  * 读屏、键盘用户要多久就给多久，WCAG 2.2.1；PR #402 审查）。触屏点一下不算悬停，不重新计时。
  * 鼠标点开时 autoFocus 那一下不算键盘焦点（:focus-visible 不中），照样 3 秒收起
  */
-function useAutoCollapse(条: React.RefObject<HTMLDivElement | null>, 取消: () => void, 忙: boolean, 开 = true) {
+function useAutoCollapse(条: React.RefObject<HTMLDivElement | null>, 取消: () => void, 忙: boolean) {
   const [悬停, set悬停] = useState(false);
   const [键盘在里, set键盘在里] = useState(false);
   const 取消们 = useRef(取消);
   useEffect(() => { 取消们.current = 取消; }, [取消]);
   useEffect(() => {
-    if (!开 || 忙 || 悬停 || 键盘在里) return;
+    if (忙 || 悬停 || 键盘在里) return;
     const t = window.setTimeout(() => 取消们.current(), 3000);
     return () => window.clearTimeout(t);
-  }, [开, 忙, 悬停, 键盘在里]);
+  }, [忙, 悬停, 键盘在里]);
   return {
     onPointerEnter: (e: React.PointerEvent) => { if (e.pointerType === "mouse") set悬停(true); },
     onPointerLeave: (e: React.PointerEvent) => { if (e.pointerType === "mouse") set悬停(false); },
@@ -2957,8 +2913,8 @@ function FollowDeleteBand({ 忙, 取消, 删 }: { 忙: boolean; 取消: () => vo
     取消();
     if (要还) window.setTimeout(() => 行?.querySelector<HTMLElement>('[aria-label="这条沟通的更多操作"]')?.focus(), 0);
   };
-  // 3 秒自己收起是 D4 · M7-c 的新规矩，只在现状主题；换皮主题照旧等人点（use-skin.ts）
-  const 停住 = useAutoCollapse(条, 收, 忙, useIsNowSkin());
+  // 3 秒自己收起（D4 · M7-c）
+  const 停住 = useAutoCollapse(条, 收, 忙);
   return (
     <div
       ref={条}

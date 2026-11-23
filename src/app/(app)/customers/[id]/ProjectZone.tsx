@@ -280,7 +280,6 @@ export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据
       {...当前}
       嵌入={{
         页签行: <ProjectSwitch 数据={数据} 当前id={当前.p.id} />,
-        多项目: 数据.页签们.length >= 2,
         提醒: 槽.提醒,
         挂动作,
         报忙,

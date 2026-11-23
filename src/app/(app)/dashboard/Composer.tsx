@@ -37,7 +37,6 @@ import { 是免费邮箱 } from "@/lib/research/verify/domain";
 import { ComposerFoot, ComposerTools, ComposerTop, SendKey } from "./ComposerParts";
 import ComposerPlus from "./ComposerPlus";
 import { useNarrow } from "@/lib/roster";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { 加引用, 引用事件 } from "./TurnMenu";
 import type { Suggestion } from "./HomeChat";
 import type { 这一屏 } from "./useHomeTurns";
@@ -230,8 +229,6 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
     紧凑: true,
   });
   const [cmdIdx, setCmdIdx] = useState(0);
-  /** 设计语言 H-A（11-21）只改现状主题：命令表浮出、悬停跟着挪选中（H-新3 / H-新4）；换皮主题照旧 */
-  const 现状 = useIsNowSkin();
   /** 输入框空着时，↑↓ 在下面那排建议问题里选，回车就发。-1 = 没选 */
   const [suggIdx, setSuggIdx] = useState(-1);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -406,7 +403,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
         if (!ta) return;
         ta.focus();
         ta.setSelectionRange(x.question.length, x.question.length);
-        // 设计语言 HC-1（C5-A）：框亮一下，人知道填到哪了（样式只挂现状主题，globals.css .cli-input.is-filled）
+        // 设计语言 HC-1（C5-A）：框亮一下，人知道填到哪了（globals.css .cli-input.is-filled）
         const 框 = ta.closest(".cli-input");
         if (框) {
           框.classList.remove("is-filled");
@@ -522,8 +519,9 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
               cmdMatches={cmdMatches}
               cmdIdx={cmdIdx}
               on选命令={(c) => submit(c)}
-              浮={现状 && 示例槽 !== undefined}
-              on指命令={现状 ? setCmdIdx : undefined}
+              // 设计语言 H-A（11-21）：命令表浮出、悬停跟着挪选中（H-新3 / H-新4）
+              浮={示例槽 !== undefined}
+              on指命令={setCmdIdx}
             />
           }
           发送={<SendKey 在跑={running != null} onStop={stop} canSend={canSend} on发={(排队) => submit(q, { queue: 排队 })} />}

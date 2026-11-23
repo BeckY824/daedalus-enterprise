@@ -10,7 +10,6 @@ import { 新起一屏, 当前对话, 首页屏, useThread, useConversationId } f
 import { 占位标题 } from "./home-look";
 import { 重命名对话, type 对话概要 } from "./threads";
 import { useDeleteChat } from "./use-delete-chat";
-import { useIsNowSkin } from "@/lib/use-skin";
 import WidthHandle, { 对话列表把手 } from "@/components/WidthHandle";
 import PaneToggle from "@/components/PaneToggle";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
@@ -80,10 +79,9 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
   const 组 = 分组(rows);
   /*
     设计语言 HC-1（用户 11-22 选 C1：同名的列表里带时间）：标题取第一句前 18 字，同一句问几次就几条同名；
-    同名的行尾带上次问的时间（今天 / 昨天写钟点，更早写月-日），不多调模型起名。只现状主题，换皮主题照旧
+    同名的行尾带上次问的时间（今天 / 昨天写钟点，更早写月-日），不多调模型起名
   */
-  const 现状 = useIsNowSkin();
-  const 同名 = 现状 ? 重名(rows) : null;
+  const 同名 = 重名(rows);
   /** 切换视图：服务端已回空（threads.ts），这里说一句为什么是空的 */
   const 视图中 = useViewAs();
 
@@ -121,7 +119,7 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
                 {条目.map((c) => (
                   <div key={c.id} className={`chat-row${c.id === 选中 ? " on" : ""}`}>
                     <button type="button" className="chat-row-b" onClick={() => 打开(c.id)} title={c.title}>
-                      {同名?.has(c.title) ? (
+                      {同名.has(c.title) ? (
                         <>
                           <span className="chat-row-n">{c.title}</span>
                           <span className="chat-row-tm">{短时间(c.lastAskedAt)}</span>

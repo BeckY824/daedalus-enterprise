@@ -6,7 +6,6 @@
  *   （对话区的 H-新6 / 9 / 16 留给首页对话新方案，本批不做）
  * 左栏、顶栏全站共用：首页、客户列表、客户详情（窄栏）、项目页 × 1024 / 1280 / 1366 / 390 各看一眼不挡：
  *   scrollWidth ≤ innerWidth、顶栏钮都在屏内、elementFromPoint 命中自己。
- * 换皮主题（账簿、科技）结构和文案照旧（用户 11-21「主题不动」，lib/use-skin.ts）。
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -48,20 +47,15 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 皮 = "now" | "ledger" | "tech";
-const 网页 = (skin: 皮) => `<!doctype html><html${skin === "now" ? "" : ` data-skin="${skin}" data-paper="tone" data-mode="light"`}><meta charset='utf-8'><div id='root'></div></html>`;
-async function 挂样式(page: Page, skin: 皮) {
-  for (const f of ["globals.css", ...(skin === "now" ? [] : ["skins/shared.css", `skins/${skin}.css`])]) await page.addStyleTag({ path: path.resolve("src/app", f) });
-}
+const 网页 = "<!doctype html><html><meta charset='utf-8'><div id='root'></div></html>";
 
-async function 开壳(址: string, 宽: number, o: { 未读?: number; skin?: 皮 } = {}): Promise<{ page: Page; errors: string[] }> {
+async function 开壳(址: string, 宽: number, o: { 未读?: number } = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: 宽, height: 820 }, reducedMotion: "reduce" });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
-  const skin = o.skin ?? "now";
-  await page.route("http://hb.test/**", (r) => r.fulfill({ contentType: "text/html", body: 网页(skin) }));
+  await page.route("http://hb.test/**", (r) => r.fulfill({ contentType: "text/html", body: 网页 }));
   await page.goto(`http://hb.test${址}`);
-  await 挂样式(page, skin);
+  await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: 壳包 });
   await page.evaluate((n) => (window as unknown as { __render: (n: number) => void }).__render(n), o.未读 ?? 128);
   await (宽 < 768 ? page.getByRole("button", { name: "打开导航菜单" }) : page.getByRole("navigation", { name: "主导航" })).waitFor();
@@ -174,24 +168,4 @@ it("D28 手机：点「搜索」开跳转单，搜得到客户 / 项目，浮层
     await expect.poll(() => page.evaluate(() => (window as unknown as { __route: string }).__route)).toBe("/projects/p1");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
-});
-
-it("换皮主题（账簿 / 科技）：铃铛照旧（原生 title、无提示类）、⌘K 底部长句照旧、手机顶栏不加搜索", async () => {
-  for (const skin of ["ledger", "tech"] as const) {
-    const 电脑 = await 开壳("/customers", 1280, { skin });
-    try {
-      expect(await 电脑.page.locator(".notice-bell-badge").count(), skin).toBe(0);
-      expect(await 电脑.page.locator(".notice-bell").getAttribute("title"), skin).toBe("通知，128 条未读");
-      await 电脑.page.locator(".rail-search").click();
-      await 电脑.page.locator(".cmdk-foot").waitFor();
-      expect(await 电脑.page.locator(".cmdk-foot").innerText(), skin).toMatch(/其余页面打开跳转单/);
-      expect(电脑.errors).toEqual([]);
-    } finally { await 电脑.page.close(); }
-    const 手机 = await 开壳("/dashboard", 390, { skin });
-    try {
-      const 头 = 手机.page.locator(".ant-layout-header");
-      expect(await 头.getByRole("button", { name: "搜索" }).count(), skin).toBe(0);
-      expect(手机.errors).toEqual([]);
-    } finally { await 手机.page.close(); }
-  }
 });

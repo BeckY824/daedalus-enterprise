@@ -10,7 +10,6 @@ import ResearchPerson from "@/components/research/ResearchPerson";
 import { useResearchEntry } from "@/components/research/ResearchEntry";
 import type { Turn } from "@/lib/home-thread";
 import { dayjs } from "@/lib/utils";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { 最近背调, 背调价目 } from "@/lib/research/actions";
 import { 客户背调对象, 对象说明, type 客户档案 } from "@/lib/research/subject";
 import type { 最近背调结果 } from "@/lib/research/latest";
@@ -190,8 +189,6 @@ const 背调状态色: Record<背调状态, string | undefined> = { 已有: "gre
 export function CustomerResearchTag(props: { customerId: string; customerName: string; 显示名?: string; 档案?: Omit<客户档案, "name">; on记跟进?: () => void; 卡?: boolean; 上次初值?: 最近背调结果 }) {
   const { 按钮, 区, 能发起, 有上次, 状态 } = useCustomerResearch(props);
   const [开着, set开着] = useState(false);
-  /** 设计语言 D3 · M5-a「无」不挂标签只在现状主题；换皮主题照旧挂（use-skin.ts） */
-  const 新样 = useIsNowSkin();
   const 标签 = (
         <Tag
           className="rec-research-tag"
@@ -225,9 +222,9 @@ export function CustomerResearchTag(props: { customerId: string; customerName: s
     return (
       <Card className="rec-mod rec-research-card" title="客户背调" aria-label="客户背调">
         {/* 设计语言 D3 · M5-a：没有背调时不挂「无」小标签，只写「还没有背调记录」；已有 / 进行中照旧挂 */}
-        {(状态 !== "无" || 按钮 || !新样) && (
+        {(状态 !== "无" || 按钮) && (
           <div className="rec-research-head">
-            {(状态 !== "无" || !新样) && <Tag className="rec-research-tag" color={背调状态色[状态]} aria-label={`背调状态：${状态}`}>{状态}</Tag>}
+            {状态 !== "无" && <Tag className="rec-research-tag" color={背调状态色[状态]} aria-label={`背调状态：${状态}`}>{状态}</Tag>}
             {按钮}
           </div>
         )}

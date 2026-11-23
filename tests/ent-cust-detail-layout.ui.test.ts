@@ -75,9 +75,6 @@ const 模块们 = (page: Page) => page.evaluate(() => [...document.querySelector
     名: (f.querySelector(":scope > .proj-fold-btn, :scope > .ant-card > .ant-card-head .split-caret")?.getAttribute("aria-label") ?? "").replace(/^(收起|展开)/, ""),
     栏: 栏?.classList.contains("rec-col") ? "中" : 栏?.classList.contains("rec-right") ? "右" : "左",
     左: r.left, 右: r.right, 上: r.top, 下: r.bottom,
-    // 方案 A 模块之间的那根线和模块标题的上沿：量「贴死」用。线可能画在模块自己或包着它、和它顶边齐的外层上（比如待办外面那层）
-    线: (() => { let 粗 = 0; for (let e: Element | null = f; e && e !== 栏; e = e.parentElement) { if (Math.abs(e.getBoundingClientRect().top - r.top) > 1) break; 粗 = Math.max(粗, parseFloat(getComputedStyle(e).borderTopWidth) || 0); } return 粗; })(),
-    题上: (f.querySelector(":scope > .ant-card > .ant-card-head .ant-card-head-title") ?? f).getBoundingClientRect().top,
   };
 }));
 
@@ -196,19 +193,15 @@ it("1024 / 1280 / 1366：不横滚、卡不出栏、模块互不重叠", async (
         const 叠 = Math.min(a.右, c.右) - Math.max(a.左, c.左) > 1 && Math.min(a.下, c.下) - Math.max(a.上, c.上) > 1;
         expect(叠, `${w} ${a.名} × ${c.名}`).toBe(false);
       }
-      // 同一栏的模块上下排开、不叠，也不许「贴死」。设计语言 D-2 方案 A（11-22）的模块（左栏）不画卡、之间不留缝，靠一根 --mod-line 分开：
-      // 下一个模块顶上得有那根线（≥ 1px），标题离上一个模块底边 ≥ 8（实际：线 1 + 40 高卡头里标题上下居中 = 10.8）；
-      // 还没改方案 A 的白卡（这份样例里的中栏）照旧卡与卡留缝 ≥ 10（实际 14）
+      // 同一栏的模块上下排开、不叠，也不许「贴死」：白卡之间留缝 ≥ 10（实际 14）。
+      // 11-23 D-2 方案 A「不画卡、靠线分开」删了，左栏中栏都是白卡
       for (const 栏 of ["左", "中"]) {
         const 列 = 有.filter(m => m.栏 === 栏).sort((a, c) => a.上 - c.上);
         for (let i = 1; i < 列.length; i++) {
           const 名 = `${w} ${列[i - 1].名} → ${列[i].名}`, 缝 = 列[i].上 - 列[i - 1].下;
           expect(缝, 名).toBeGreaterThanOrEqual(-0.5);
-          if (列[i].线 >= 1) expect(列[i].题上 - 列[i - 1].下, `${名}（有线）标题离线`).toBeGreaterThanOrEqual(8);
-          else expect(缝, `${名}（没线）卡与卡的缝`).toBeGreaterThanOrEqual(10);
+          expect(缝, `${名} 卡与卡的缝`).toBeGreaterThanOrEqual(10);
         }
-        // 这份样例左栏是方案 A：每段之间都该是线，不是缝（防方案 A 规则失效、退回白卡还照样过）
-        if (栏 === "左") expect(列.slice(1).every(m => m.线 >= 1), `${w} 左栏模块之间是线`).toBe(true);
       }
       expect(errors).toEqual([]);
     } finally { await page.close(); }

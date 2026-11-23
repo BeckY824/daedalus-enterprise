@@ -8,7 +8,6 @@
  *   低效渠道：普通卡 + 橙圆点，不整块黄底（P-渠道-22）；进公海：创建人下拉写「全部创建人」，数字列右对齐
  *   390：分布 / 三层 / TOP5 / 进公海 默认收成卡头一行，「展开」点得中；漏斗、低效渠道照开
  *   抽屉：三块卡头（编辑在基本信息卡头），标签无冒号、不折行，空值「—」，投入空态句、无插图
- *   换皮主题（账簿）：照旧
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -51,7 +50,7 @@ beforeAll(async () => {
 afterAll(async () => { await browser?.close(); });
 
 /** 内容区按真实页面算：≥768 左边留 232 侧栏 + 24 页边距；390 没侧栏、16 边距 */
-async function 打开(width: number, o: Record<string, unknown> = {}, skin?: string, 触屏 = false): Promise<{ page: Page; errors: string[] }> {
+async function 打开(width: number, o: Record<string, unknown> = {}, 触屏 = false): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: 触屏, isMobile: 触屏 }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const 窄 = width < 768;
@@ -59,7 +58,6 @@ async function 打开(width: number, o: Record<string, unknown> = {}, skin?: str
   await page.route("http://ca1.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><div id='root' style='${壳}'></div>` }));
   await page.goto("http://ca1.test/channels");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
-  if (skin) await page.evaluate((k) => { document.documentElement.dataset.skin = k; }, skin);
   await page.evaluate((x) => { (window as unknown as { __能录: boolean }).__能录 = x; }, o.能录 !== false);
   await page.addScriptTag({ content: bundle });
   await page.evaluate((x) => (window as unknown as { __画: (o: unknown) => void }).__画(x), o);
@@ -267,26 +265,7 @@ it.each([1366, 390])("抽屉 %ipx：基本信息卡头有「编辑」、标签�
   } finally { await page.close(); }
 });
 
-it("换皮主题（账簿）：页头照旧挂口径切换，看板头没有「总览」，投入待录入还是虚线条", async () => {
-  const { page, errors } = await 打开(1366, {}, "ledger");
-  try {
-    expect(await page.locator(".page-head [aria-label='统计口径']").count()).toBe(1);
-    expect(await page.locator(".chan-dash-bar h2").count()).toBe(0);
-    expect(await page.locator(".chan-dash-empty").count()).toBe(1);
-    expect(await page.locator(".page-count").count()).toBe(0);
-    // TOP5 条宽照原样（行内样式按比例，不按 5% 取整）
-    const 第二条 = page.getByTestId("chan-dash-top").locator(".chan-dash-top-bar i").nth(1);
-    expect(await 第二条.getAttribute("style")).toMatch(/width:\s*98\.8/);
-    expect(await 第二条.getAttribute("class")).toBeNull();
-    // 切到按主渠道：账簿照旧，不加「看板按子渠道算」灰字
-    await page.locator(".page-head [aria-label='统计口径']").getByText("按主渠道").click();
-    await expect.poll(() => page.locator(".page-head [aria-label='统计口径'] .ant-segmented-item-selected").innerText()).toBe("按主渠道");
-    expect(await page.locator(".chan-dash-basis").count()).toBe(0);
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
-});
-
-it("页头计数跟当前视图走：按子渠道写渠道个数，切「按主渠道」写主渠道个数；现状主题 TOP5 条宽按 5% 一档给类", async () => {
+it("页头计数跟当前视图走：按子渠道写渠道个数，切「按主渠道」写主渠道个数；TOP5 条宽按 5% 一档给类", async () => {
   const { page, errors } = await 打开(1366);
   try {
     expect(await page.locator(".page-count").innerText()).toBe("50");
@@ -309,7 +288,7 @@ it("页头计数跟当前视图走：按子渠道写渠道个数，切「按主�
 });
 
 it("390 触屏：点按 KPI 缩写金额出全值；抽屉里「投入产出比 —」点按出原因", async () => {
-  const { page, errors } = await 打开(390, {}, undefined, true);
+  const { page, errors } = await 打开(390, {}, true);
   try {
     const 成交 = page.locator(".chan-dash-k").filter({ hasText: "成交额" }).locator(".chan-dash-kv");
     await 成交.scrollIntoViewIfNeeded();

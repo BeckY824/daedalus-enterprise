@@ -57,8 +57,8 @@
 .set-lock-d, .set-lock-who { font-size: var(--fs-min); overflow-wrap: anywhere; }
 .set-lock-tag { flex: none; margin: 0; }
 .set-lock-sent { flex: none; color: var(--success); font-size: var(--fs-note); animation: set-pop var(--t) var(--ease-spring); }
-/* D16（设计语言 E4）：13 号小字用 --success（3.30:1）不过线，现状主题换 --success-text；换皮主题照原样 */
-:root:is(:not([data-skin]), [data-skin="now"]) .set-lock-sent { color: var(--success-text); }
+/* D16（设计语言 E4）：13 号小字用 --success（3.30:1）不过线，换 --success-text */
+:root:root .set-lock-sent { color: var(--success-text); }
 .set-lock-err { flex-basis: 100%; color: var(--danger); font-size: var(--fs-min); }
 .set-ro { margin-bottom: var(--s3, 12px); padding: 8px 12px; border-radius: 10px; background: var(--hover); color: var(--text-muted); font-size: var(--fs-note); }
 .set-flash { animation: set-flash 1.6s var(--ease); }
@@ -98,7 +98,7 @@
 /* 设置浮层骨架（st.open） */
 .set-skel { padding: 4px 0; }
 .set-skel-nav, .set-skel-body { width: 100%; }
-/* 换主题整屏交叉淡化（st.theme）：0.2 秒附近，用 --t 令牌 */
+/* 换明暗整屏交叉淡化（st.theme）：0.2 秒附近，用 --t 令牌 */
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--t); animation-timing-function: var(--ease); }
 .set-advance-since { margin-bottom: var(--s3, 12px); color: var(--text-muted); overflow-wrap: anywhere; }
 .set-advance-scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2, 8px); margin-bottom: var(--s2, 8px); }
@@ -124,7 +124,7 @@
 .sw-ptr-i { display: flex; align-items: center; gap: 6px 12px; flex-wrap: wrap; min-width: 0; }
 .sw-ptr-t { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
 .sw-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); gap: var(--s3); }
-.sw-ov { min-width: 0; padding: 10px 6px 6px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); box-shadow: var(--shadow-card); }
+.sw-ov { min-width: 0; padding: 10px 6px 6px; border: 1px solid var(--card-line); border-radius: var(--r-card); background: var(--panel); box-shadow: var(--shadow-card); }
 .sw-ov-h { display: flex; align-items: baseline; gap: 8px; padding: 0 8px 6px; }
 .sw-ov-h b { font-size: var(--fs-section); font-weight: 600; }
 .sw-row { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 34px; padding: 0 8px; border: 0; border-radius: var(--r-ctl); background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; min-width: 0; }
@@ -139,7 +139,7 @@
 .sw-grp-h { display: flex; align-items: baseline; gap: 8px; }
 .sw-grp-h h3 { margin: 0; font-size: var(--fs-section); font-weight: 600; }
 .sw-cards { display: grid; gap: var(--s3); min-width: 0; }
-.sw-card { min-width: 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--panel); box-shadow: var(--shadow-card); scroll-margin-top: var(--s4); }
+.sw-card { min-width: 0; padding: 14px 16px; border: 1px solid var(--card-line); border-radius: var(--r-card); background: var(--panel); box-shadow: var(--shadow-card); scroll-margin-top: var(--s4); }
 .sw-top { display: flex; align-items: flex-start; gap: var(--s3); min-width: 0; }
 .sw-titles { flex: 1 1 auto; min-width: 0; }
 .sw-name { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: 0; font-size: var(--fs-section); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }

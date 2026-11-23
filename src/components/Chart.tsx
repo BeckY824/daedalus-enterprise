@@ -108,7 +108,7 @@ export default function Chart({
     };
     apply(true);
     const observer = new MutationObserver(() => apply(false));
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-skin", "data-paper", "data-mode"] });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode"] });
     return () => observer.disconnect();
   }, [option]);
 

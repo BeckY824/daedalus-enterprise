@@ -18,10 +18,10 @@ export const BRAND = palette.brand;
 
 /**
  * antd 的 CSS 变量挂在哪个类上。antd 6 默认就是 CSS 变量模式，但 key 取自 React 的 useId（`css-var-_R_2lb_` 这种），
- * 换个组件树就变——主题样式表（src/app/skins/）要按类名覆盖 `--ant-*`，所以钉死成一个固定的 key。
+ * 换个组件树就变——暗黑样式表（src/app/antd-dark.css）要按类名覆盖 `--ant-*`，所以钉死成一个固定的 key。
  * 给了 key 之后 antd 直接拿它当类名（不再加 css-var- 前缀），所以 key 本身写成 `css-var-dd`。
- * 固定之后服务端和浏览器算出来的也是同一个，SSR 不会对不上。改名要同步 skins/shared.css 里的 `.css-var-dd`
- * （tests/skins.test.ts 钉着）
+ * 固定之后服务端和浏览器算出来的也是同一个，SSR 不会对不上。改名要同步 antd-dark.css 里的 `.css-var-dd`
+ * （tests/antd-dark.test.ts 钉着）
  */
 export const ANTD_CSS_VAR_KEY = "css-var-dd";
 
@@ -57,13 +57,13 @@ export const themeConfig: ThemeConfig = {
     /* --text-faint：placeholder、禁用、装饰。不许当正文 */
     colorTextTertiary: palette.textFaint,
     /* 全局框色仍是 --line：按钮、分页、卡片靠它。输入框（--field-line）、复选 / 单选框（--ctl-line）在 globals.css 里
-       按控件单独换（D1 · 设计语言 11-21，D17），换皮主题不挂 */
+       按控件单独换（D1 · 设计语言 11-21，D17） */
     colorBorder: palette.line,
     colorBorderSecondary: palette.lineSoft,
     colorBgLayout: palette.workbench,
     colorBgContainer: palette.panel,
     colorFillTertiary: palette.hover,
-    /* antd 自己的两档阴影：boxShadow 只剩 antd 内部少数地方在用（现状的内容卡 D-1 起无影，:root --shadow-card 是 none，卡边靠 1px --card-line）；
+    /* antd 自己的两档阴影：boxShadow 只剩 antd 内部少数地方在用（内容卡的边和影走 globals.css 的 --card-line / --shadow-card：D-55 起 --field-line + 很淡的一层影）；
        boxShadowSecondary 给下拉、气泡等浮层，和 :root --shadow-pop 后两层一样（--shadow-pop 另多一圈 0.5px 发丝） */
     boxShadow: "0 1px 2px rgba(0, 0, 0, 0.04), 0 4px 16px rgba(0, 0, 0, 0.05)",
     boxShadowSecondary: "0 2px 6px rgba(0, 0, 0, 0.04), 0 12px 32px rgba(0, 0, 0, 0.10)",
@@ -97,7 +97,7 @@ export const themeConfig: ThemeConfig = {
     },
     Card: {
       /* 卡片外壳圆角 = --r-mod（现状 10；设计语言 D-1 11-22 起，原来借浮层的 14）。边和影在 globals.css .ant-card 接 --card-line / --shadow-card。
-         换皮、暗黑走 skins/shared.css 的 --ant-border-radius-lg（= --r-card），不读这里 */
+         暗黑走 antd-dark.css 的 --ant-border-radius-lg（= --r-card），不读这里 */
       borderRadiusLG: 10,
       paddingLG: 16,
       /* = --card-head-h */
@@ -134,15 +134,14 @@ export const themeConfig: ThemeConfig = {
       defaultHoverBorderColor: palette.fieldLine,
       defaultHoverColor: palette.ink,
     },
-    /* antd 主题全站只有一套：这里保持原值，不写现状主题的悬停框 / 光晕——写了会连带改到换皮主题（用户 11-21：换皮主题不动）。
-       现状主题的白底 + --field-line、悬停 --field-line-hover、聚焦 --focus-ring、报错 --error-ring 都在 globals.css「输入框、搜索框」那段，
-       只挂在现状主题上（D1 · 设计语言 11-21） */
+    /* 输入框的白底 + --field-line、悬停 --field-line-hover、聚焦 --focus-ring、报错 --error-ring 都在 globals.css「输入框、搜索框」那段
+       （D1 · 设计语言 11-21），这里保持 antd 原值 */
     Input: { activeShadow: `0 0 0 3px ${alpha(palette.brand, 0.14)}` },
     Statistic: { contentFontSize: 26, titleFontSize: 13 },
     Tabs: { titleFontSize: 14, horizontalItemPadding: "10px 0", inkBarColor: palette.ink, itemSelectedColor: palette.ink, itemHoverColor: palette.ink },
     /* 未选中那几段的字用次一级正文 inkSoft（照苹果分段控件：没选中的字也是正文色，选中靠白滑块区分）。
        默认 colorTextLabel = textMuted #6e6e73，压在 hover #ececee 的轨道上只有 4.30:1，过不了说明文字 4.5 的线；
-       inkSoft #424245 是 8.49:1。其他主题在 skins/shared.css 同一条里跟着换 */
+       inkSoft #424245 是 8.49:1。暗黑在 antd-dark.css 同一条里跟着换 */
     Segmented: { trackPadding: 2, trackBg: palette.hover, itemColor: palette.inkSoft },
     Tag: { fontSizeSM: 12, borderRadiusSM: 999 },
     Modal: { titleFontSize: 15, borderRadiusLG: 14 },

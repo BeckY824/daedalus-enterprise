@@ -51,8 +51,6 @@ import type { 全局搜索结果 } from "@/app/(app)/global-search";
 import Shortcut, { useModifierKey } from "./Shortcut";
 import { useBusiness } from "@/lib/business-client";
 import { DockOpenContext, useNarrow, usePageOwnsCmdK } from "@/lib/roster";
-import { useIsNowSkin } from "@/lib/use-skin";
-import { useMotionTheme } from "@/components/MotionTheme";
 import { 默认过渡, 跟随过渡 } from "@/lib/motion";
 import NoticeBell from "@/components/NoticeBell";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
@@ -186,7 +184,6 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   // 列表记的勾选、筛选、地址按人分（lib/list-return.ts，#381）：子组件渲染前先报现在是谁；幂等，换人后下一次渲染就换键
   // 只在浏览器里报：服务端渲染时这是整个进程共用的模块变量，各请求会串
   if (typeof window !== "undefined") 设列表主人(user.id);
-  const 动效值 = useMotionTheme();
   const b = useBusiness();
   const modifier = useModifierKey();
   const router = useRouter();
@@ -201,7 +198,6 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
    * 顶部一条栏 + 一个菜单按钮，正文占满。
    */
   const 小屏 = useNarrow(手机宽);
-  const 现状 = useIsNowSkin();
   /**
    * AI 面板开着没有。壳要知道，因为 antd 的响应式断点看的是**视口**，
    * 而面板一开正文就只剩 1440 - 220 - 380 ≈ 840——断点还以为自己有 1440，
@@ -471,7 +467,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           PR2 外壳（原型 g.nav）：滑动改 snap 那档不回弹弹簧（P-界面-38），比原来的 180ms 曲线跟手。
           系统开了「减弱动态效果」就按 0 秒，等于原来的瞬切。 */}
       {亮项 === n.key && (
-        <motion.span layoutId="rail-on" className="rail-on-bg" transition={少动 ? { duration: 0 } : 跟随过渡(动效值)} />
+        <motion.span layoutId="rail-on" className="rail-on-bg" transition={少动 ? { duration: 0 } : 跟随过渡} />
       )}
       {n.icon}
       <b>{n.label}</b>
@@ -645,7 +641,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       <Layout className={显示浮标 ? "has-ai-fab" : undefined} style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
         {视图条}
         {挑人框}
-        {/* 底线和底色在 globals.css .m-top（设计语言 D-1：现状顶栏白底 + 一根 --line，换皮主题照旧 --line-soft） */}
+        {/* 底线和底色在 globals.css .m-top（设计语言 D-1：顶栏白底 + 一根 --line） */}
         <Header className="m-top" style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", position: "sticky", top: 0, zIndex: 10, height: 48 }}>
           <Dropdown
             trigger={["click"]}
@@ -663,9 +659,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           </Link>
           <span style={{ flex: 1 }} />
           {/* 设计语言 H-B · D28：手机顶栏一颗搜索，开的是和电脑左栏搜索框同一张跳转单（CommandBar，搜得到的范围不变） */}
-          {现状 && (
-            <Button type="text" icon={<SearchOutlined />} aria-label="搜索" onClick={() => window.dispatchEvent(new Event("cmdbar:open"))} />
-          )}
+          <Button type="text" icon={<SearchOutlined />} aria-label="搜索" onClick={() => window.dispatchEvent(new Event("cmdbar:open"))} />
           {/* 手机上也要能说一句：用得别扭的时刻多半就发生在手机上（在路上翻学员的时候） */}
           {反馈去向 !== "none" && <FeedbackButton 去向={反馈去向} />}
           {通知未读 !== undefined && <NoticeBell 初始未读={通知未读} 手机 />}
@@ -690,10 +684,10 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         {/* 设计语言 D2 · M2-c（K8）：客户详情页头那颗「显示客户名单」在手机上开底部抽屉——名单得挂上才开得出来。
             只挂客户详情这一处（槽位在手机上是一只关着的抽屉，不占地方）；别的页的中栏手机上照旧不挂 */}
         {/^\/customers\/[^/]+$/.test(pathname) && pane}
-        {/* 设计语言 HC-1（C13-A）：首页对话栏左边那颗「对话列表」在手机上开左抽屉——列表得挂上才开得出来（关着不占地方）。只现状主题 */}
-        {现状 && pathname === "/dashboard" && pane}
-        {/* D28：跳转单挂上，顶栏搜索才开得出来（只现状主题，换皮主题手机顶栏不变） */}
-        {现状 && <CommandBar 有AI={Boolean(ai)} 企业版项目={企业版项目} 全局搜索={全局搜索} />}
+        {/* 设计语言 HC-1（C13-A）：首页对话栏左边那颗「对话列表」在手机上开左抽屉——列表得挂上才开得出来（关着不占地方） */}
+        {pathname === "/dashboard" && pane}
+        {/* D28：跳转单挂上，顶栏搜索才开得出来 */}
+        <CommandBar 有AI={Boolean(ai)} 企业版项目={企业版项目} 全局搜索={全局搜索} />
       </Layout>
       </切换视图Provider>
     );
@@ -842,7 +836,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           key={底下那页}
           initial={{ opacity: 0, y: 少动 ? 0 : 4 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={默认过渡(动效值)}
+          transition={默认过渡}
           style={{ maxWidth: 1720, margin: "0 auto" }}
         >
           <我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider>

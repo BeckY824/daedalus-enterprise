@@ -7,6 +7,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { useCardName } from "./card-names";
+import { 计数题 } from "./ProjectFold";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button, Card, Select, Space, Tag } from "antd";
@@ -131,7 +132,7 @@ function RelateCustomers({ projectId, 关联, 能改, 起手, 不摆加 }: { pro
 
   return (
     <Card
-      title={`${卡名("关联客户")}（${关联.客户们.length}）`}
+      title={计数题(卡名("关联客户"), 关联.客户们.length)}
       extra={能改 && !加着 && !不摆加 && 非主 < 关联.上限 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一家客户">关联</Button> : null}
     >
       <div className="proj-rel">
@@ -235,7 +236,7 @@ function RelateContacts({ projectId, 关联, 能改, 起手, 不摆加 }: { proj
 
   return (
     <Card
-      title={`${卡名("关联联系人")}（${关联.联系人们.length}）`}
+      title={计数题(卡名("关联联系人"), 关联.联系人们.length)}
       extra={能改 && !加着 && !不摆加 && 非主 < 关联.上限 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label="关联一位联系人">关联</Button> : null}
     >
       <div className="proj-rel">

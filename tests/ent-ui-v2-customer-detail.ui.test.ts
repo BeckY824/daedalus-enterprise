@@ -131,14 +131,15 @@ it("1024 / 1366：备注上下排、一行至少 12 个字宽；超过 4 行收�
       const 一行 = await 值.evaluate(e => e.getBoundingClientRect().width / parseFloat(getComputedStyle(e).fontSize));
       expect(一行, `${w} 一行几个字`).toBeGreaterThanOrEqual(12);
       const 收着高 = await 值.evaluate(e => e.getBoundingClientRect().height);
-      expect(收着高, `${w} 收着最多 4 行`).toBeLessThanOrEqual(4 * 22 + 1);
+      // 卡片改进（11-23）：字段值行高 24
+      expect(收着高, `${w} 收着最多 4 行`).toBeLessThanOrEqual(4 * 24 + 1);
       const 展开 = 格.getByRole("button", { name: "展开" });
       expect(await 展开.count(), `${w}`).toBe(1);
       await 展开.click();
       expect(await 格.locator("textarea").count(), `${w} 点展开不进编辑`).toBe(0);
       expect(await 值.evaluate(e => e.getBoundingClientRect().height), `${w}`).toBeGreaterThan(收着高 + 22);
       await 格.getByRole("button", { name: "收起" }).click();
-      expect(await 值.evaluate(e => e.getBoundingClientRect().height), `${w}`).toBeLessThanOrEqual(4 * 22 + 1);
+      expect(await 值.evaluate(e => e.getBoundingClientRect().height), `${w}`).toBeLessThanOrEqual(4 * 24 + 1);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
