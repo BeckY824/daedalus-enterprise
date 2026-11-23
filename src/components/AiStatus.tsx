@@ -38,6 +38,7 @@ export default function AiStatus({
   ms,
   客户,
   原因,
+  超时 = false,
   写着 = false,
   等确认 = 0,
   附注,
@@ -54,6 +55,8 @@ export default function AiStatus({
   客户: string;
   /** 出错时的那句原因 */
   原因?: string;
+  /** 这次出错是不是超时：服务端结果事件带 code = timeout（lib/ai-stream-codes.ts）才算，不看原因文案。是才写「等了 N 秒没回来」 */
+  超时?: boolean;
   /** 工具都跑完了、正在写回答 */
   写着?: boolean;
   /** 还没处理的建议卡几张（态 = wait 时用） */
@@ -88,10 +91,10 @@ export default function AiStatus({
     标题 = 当前 ? `${一步人话(当前, true, 客户)}…` : 写着 ? "正在写回答…" : 步们.length ? "正在想下一步…" : "正在想…";
     尾 = [`第 ${当前 || 写着 ? Math.max(1, 步们.length) : 步们.length + 1} 步`, `${秒数(now - (开始 ?? now))} 秒`, 附注].filter(Boolean).join(" · ");
   } else if (态 === "error") {
-    /* 超时（服务端说「超时没回音」）：说等了多久——调用方给了 ms（起到停）就用它，没给就数到现在 */
+    /* 超时（服务端带 code = timeout）：说等了多久——调用方给了 ms（起到停）就用它，没给就数到现在 */
     const 等了 = ms !== undefined ? 秒数(ms) : 开始 !== undefined ? 秒数(now - 开始) : undefined;
     标题 =
-      原因 && /超时/.test(原因) && 等了 !== undefined && 等了 > 1
+      超时 && 等了 !== undefined && 等了 > 1
         ? `等了 ${等了} 秒没回来`
         : 出错步 >= 0
           ? `停在第 ${出错步 + 1} 步：${原因 || "出错了"}`

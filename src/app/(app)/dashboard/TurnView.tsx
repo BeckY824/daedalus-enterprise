@@ -1,20 +1,24 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { LinkPending } from "@/components/NavProgress";
 import { Tooltip } from "antd";
 import { useCopy } from "@/lib/clipboard";
-import { CopyOutlined, ReloadOutlined, RightOutlined } from "@ant-design/icons";
+import { CopyOutlined, ReloadOutlined, LockOutlined } from "@ant-design/icons";
 import ProposalCard, { type 卡况 } from "@/components/ProposalCard";
 import ProposalBatch from "@/components/ProposalBatch";
 import { 对话截图 } from "@/lib/card-scan/originals";
 import AiStatus, { type AiStatus态 } from "@/components/AiStatus";
+import { AI流错误码 } from "@/lib/ai-stream-codes";
 import dynamic from "next/dynamic";
 import StreamMarkdown from "@/components/StreamMarkdown";
+import { 实体链Context } from "@/components/Markdown";
+import RecordPeek from "@/components/RecordPeek";
+import { useNarrow } from "@/lib/roster";
+import { 找实体, type 链段 } from "@/lib/ai-entity-link";
 import type { BriefRecord } from "@/lib/ai-draft";
 import { useBusiness } from "@/lib/business-client";
-import { statusLabel, 外贸精简 } from "@/lib/business-config";
+import { statusLabel } from "@/lib/business-config";
 import { clearJob, useJob } from "@/lib/ai-jobs";
 import type { StreamJob } from "@/lib/ai-stream";
 import type { Turn } from "@/lib/home-thread";
@@ -23,7 +27,7 @@ import type { 提到的客户 } from "@/lib/agent/run";
 import { 认死胡同 } from "@/lib/ask-dead-end";
 import type { StepEvent } from "@/lib/ai-steps";
 import { dayjs } from "@/lib/utils";
-import { 起草, 草稿键, useCopyDraft, type 草稿类 } from "@/lib/draft-jobs";
+import { 起草, 草稿键, useCopyDraft } from "@/lib/draft-jobs";
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import ResearchRun, { ResearchPick } from "@/components/research/ResearchRun";
 import ResearchPerson from "@/components/research/ResearchPerson";
@@ -132,7 +136,6 @@ export default function TurnView({
   on选定,
   on改,
   scrollOnMount,
-  企业版 = false,
 }: {
   turn: Turn;
   onRetry: () => void;
@@ -143,8 +146,6 @@ export default function TurnView({
   /** 只有人名 + 电话那一轮：点选了候选公司（接着背调）/「其实是公司名」 */
   on改?: (patch: Partial<Turn>) => void;
   scrollOnMount: boolean;
-  /** 企业版（服务端读开关，经 HomeChat → TurnLog 传下来）：和外贸一样不摆「起草转介绍邀请」 */
-  企业版?: boolean;
 }) {
   const b = useBusiness();
   const 复制 = useCopy();
@@ -192,11 +193,13 @@ export default function TurnView({
   };
   // 刚发出的这一问（或刚点了重答的这一轮）：把问题滚到视口顶部，答案往下面的空白里生成。
   // 不能用 block:"end"——那会把它顶到输入框后面，人看不见自己刚发的话。
-  // 只在「变成刚发的」那一刻（挂上时、或重答时）顶一次；翻历史不乱跳
+  // 只在「变成刚发的」那一刻（挂上时、或重答时、或排队的那一轮露出来时）顶一次；翻历史不乱跳
+  // 设计语言 HC-3：排队的那一轮先不画（挪到输入框上方的小签），轮到它开跑时才露出来——那时再滚
+  const 排队藏着 = !!turn.queued;
   useEffect(() => {
-    if (!scrollOnMount) return;
+    if (!scrollOnMount || 排队藏着) return;
     滚到(ref.current, "start");
-  }, [scrollOnMount, 重答次]);
+  }, [scrollOnMount, 重答次, 排队藏着]);
 
   /*
     流式跟随。整页滚动（首页）时沿用老判据「离底部够近就跟」；
@@ -217,7 +220,8 @@ export default function TurnView({
       容器.removeEventListener("wheel", on);
       容器.removeEventListener("touchmove", on);
     };
-  }, []);
+    // 排队藏着的那一轮还没画（ref 是空的）：露出来时再认一次滚动容器
+  }, [排队藏着]);
   const 跟一下 = useCallback(() => {
     const 容器 = 滚动容器(ref.current);
     if (首页框里(容器)) return;
@@ -263,13 +267,47 @@ export default function TurnView({
   const 态: AiStatus态 = !done ? "running" : interrupted ? "interrupted" : job?.status === "error" ? "error" : 待确认 > 0 ? "wait" : "done";
   /* 答完了、一个工具都没调、也没卡要确认：状态条只会写一句「没查数据」，不摆（和原来没步骤就不出摘要一样） */
   const 摆状态条 = Boolean(job) && (!done || steps.length > 0 || 态 === "error" || 态 === "interrupted" || 态 === "wait");
-  /** 这一轮答完之后能接着问什么。最多三条，全部由这次回答提到的人生成 */
+  /**
+   * 这一轮答完之后能接着问什么。最多三条，全部由这次回答提到的人生成。
+   * 只读账号（服务端标的 写不了，HC-2b / P-全局-04）不给「排一次跟进」这种写的——点了也写不了
+   */
   const 追问 = !answer
     ? []
     : [
         ...answer.customers.slice(0, 2).map((c) => `${c.name}这边下一步该做什么`),
-        ...(answer.customers.length > 0 && answer.proposals.length === 0 ? [`帮我给${answer.customers[0].name}排一次跟进`] : []),
+        ...(answer.customers.length > 0 && answer.proposals.length === 0 && !answer.写不了 ? [`帮我给${answer.customers[0].name}排一次跟进`] : []),
       ].slice(0, 3);
+  /*
+    只读被拒（HC-2b，C11-A）：服务端的固定标记（answer.拒了写），流着的时候看步骤里有没有 say_read_only 那一步——
+    答案一出来那行就在，不等答完才跳出来。说法统一一句，不靠模型自己那段话
+  */
+  const 只读被拒 = Boolean(answer?.拒了写) || (job?.value?.steps ?? []).some((s) => s.label.startsWith("say_read_only"));
+  /*
+    回答里的客户名变链接（HC-2b，C6-A）：答完以后，只认这一轮 answer.customers 里带 id 的名字（lib/ai-entity-link.ts）。
+    还在流的时候不链（名单要等结果事件才到），答完一次性链上
+  */
+  const 链客户 = answer ? answer.customers : null;
+  // 偏移按屏上画的那份字算（StreamMarkdown 画的是 text，去掉 \r），不按 answer.text：两者偶尔不一样（服务端最后换过一句）
+  const 答文 = answer ? text : undefined;
+  const 实体链 = useMemo(() => {
+    if (!链客户?.length || !答文) return null;
+    const 段们 = 找实体(答文.replace(/\r/g, ""), 链客户);
+    if (!段们.length) return null;
+    const 按id = new Map(链客户.map((c) => [c.id, c]));
+    return {
+      段们,
+      画: (段: 链段, 字: React.ReactNode) => {
+        const c = 按id.get(段.id)!;
+        return (
+          <RecordPeek 客户={c} 状态={c.followStatus ? statusLabel(b, c.followStatus) : undefined} 客户叫={b.customer} 回答时={turn.历史}>
+            {字}
+          </RecordPeek>
+        );
+      },
+    };
+  }, [链客户, 答文, b, turn.历史]);
+
+  if (排队藏着) return null;
 
   if (移走中) {
     return (
@@ -357,15 +395,25 @@ export default function TurnView({
           ms={ms ?? (job.status === "error" && job.endedAt ? job.endedAt - job.startedAt : undefined)}
           客户={b.customer}
           原因={job.status === "error" ? job.error : undefined}
+          超时={job.status === "error" && job.code === AI流错误码.超时}
           写着={writing}
           等确认={待确认}
           onRetry={重答}
         />
       )}
 
+      {只读被拒 && (
+        <div className="cli-ro" role="note">
+          <LockOutlined />
+          只读账号能问，不能让 AI 记录或修改
+        </div>
+      )}
+
       {text && (
         <div className="cli-a">
-          <StreamMarkdown text={text} records={answer?.records ?? job?.value?.answer?.records ?? 没有引用} 流着={!done} 出字了={跟一下} />
+          <实体链Context.Provider value={实体链}>
+            <StreamMarkdown text={text} records={answer?.records ?? job?.value?.answer?.records ?? 没有引用} 流着={!done} 出字了={跟一下} />
+          </实体链Context.Provider>
           {!done && <span className="cli-caret" />}
         </div>
       )}
@@ -413,16 +461,8 @@ export default function TurnView({
         </div>
       )}
 
-      {answer && answer.customers.length > 0 && (
-        <div className="cli-card">
-          <div className="cli-card-h">
-            涉及 {answer.customers.length} 位{b.customer}
-          </div>
-          {answer.customers.slice(0, 5).map((c) => (
-            <CustomerRow key={c.id} customer={c} 企业版={企业版} />
-          ))}
-        </div>
-      )}
+      {/* 涉及 N 位客户（HC-2b，页首第 4 件默认「留，缩成一行」）：一行名字，名字是链接、悬停小卡里能起草 */}
+      {answer && answer.customers.length > 0 && <InvolvedLine customers={answer.customers.slice(0, 5)} 总数={answer.customers.length} 回答时={turn.历史} />}
 
       {/*
         回答后面跟着下一步（照 eigent 那条：结果 → 简报 → 建议的后续）。
@@ -467,62 +507,81 @@ export default function TurnView({
   );
 }
 
-/** 卡片里的一行：客户名、状态、动作；草稿就地展开，与记录页、盯盘、雷达共用同一份 */
-function CustomerRow({ customer, 企业版 }: { customer: 提到的客户; 企业版: boolean }) {
-  const AI已用完 = useAiOutOfCredits();
-  const 复制 = useCopyDraft();
-  const wakeup = useJob<string>(草稿键("wakeup", customer.id));
-  const invite = useJob<string>(草稿键("invite", customer.id));
-  const run = (kind: 草稿类) => 起草(kind, customer.id, "从首页发起");
+/**
+ * 「涉及 N 位客户：A · B · C」一行（HC-2b）。名字是链接、悬停出小卡（负责人、状态、上次跟进），
+ * 小卡底下「起草跟进话术」；起草好的话术照旧在这一行下面就地展开（和原来卡片里一样，复制 / 收起）
+ */
+function InvolvedLine({ customers, 总数, 回答时 }: { customers: 提到的客户[]; 总数: number; 回答时?: boolean }) {
   const b = useBusiness();
-  /*
-    状态可能是存储值（「已签约」，有的工具这么给），也可能已经是显示名：都按这家的叫法摆。
-    外贸不摆转介绍（推荐那一套外贸藏了，F.3）；企业版也不摆：转介绍分佣链是教培那一套，企业版没有
-  */
-  const 已签 = customer.followStatus === "已签约" || customer.followStatus === statusLabel(b, "已签约");
+  const AI已用完 = useAiOutOfCredits();
+  /* 触屏没有悬停、小卡出不来：每个名字后面直接摆一颗「起草」（点击区 44），起草入口不丢（11-22 定） */
+  const 触屏 = useNarrow("(hover: none)");
   return (
-    <div className="cli-card-row">
-      <div className="cli-card-main">
-        <span className="cli-card-name">{customer.name}</span>
-        {customer.followStatus && <span className="cli-card-st">{statusLabel(b, customer.followStatus)}</span>}
-        <span style={{ flex: 1 }} />
-        <button type="button" className="cli-link" onClick={() => run("wakeup")} disabled={wakeup?.status === "loading" || AI已用完}>
-          {wakeup?.status === "loading" ? "起草中…" : "起草跟进话术"}
-          {wakeup?.status !== "loading" && <AiCost />}
-        </button>
-        {已签 && !外贸精简(b) && !企业版 && (
-          <button type="button" className="cli-link" onClick={() => run("invite")} disabled={invite?.status === "loading" || AI已用完}>
-            {invite?.status === "loading" ? "起草中…" : "起草转介绍邀请"}
-            {invite?.status !== "loading" && <AiCost />}
-          </button>
-        )}
-        <Link href={`/customers/${customer.id}`} className="cli-link cli-card-open">
-          打开 <RightOutlined style={{ fontSize: 10 }} />
-          <LinkPending />
-        </Link>
+    <div className="cli-inv-w">
+      <div className="cli-inv">
+        <span className="cli-inv-h">
+          涉及 {总数} 位{b.customer}：
+        </span>
+        {customers.map((c, i) => (
+          <span key={c.id} className="cli-inv-i">
+            <RecordPeek
+              客户={c}
+              状态={c.followStatus ? statusLabel(b, c.followStatus) : undefined}
+              客户叫={b.customer}
+              回答时={回答时}
+              动作={<DraftButton id={c.id} disabled={AI已用完} />}
+            >
+              {c.name}
+            </RecordPeek>
+            {触屏 && <DraftButton id={c.id} disabled={AI已用完} 短名={c.name} />}
+            {/* 间隔点挂在前一个名字后面：折行时下一行从名字起头，不从一个点起头 */}
+            {i < customers.length - 1 && <span className="cli-inv-sep" aria-hidden="true">·</span>}
+          </span>
+        ))}
       </div>
-      {[
-        { kind: "wakeup" as const, job: wakeup },
-        { kind: "invite" as const, job: invite },
-      ].map(({ kind, job }) =>
-        job?.status === "done" && job.value ? (
-          <div key={kind} className="cli-draft">
-            <div>{job.value}</div>
-            <div>
-              <button type="button" className="cli-link" onClick={() => 复制(job.value!)}>
-                复制
-              </button>
-              <button type="button" className="cli-link" onClick={() => clearJob(草稿键(kind, customer.id))}>
-                收起
-              </button>
-            </div>
-          </div>
-        ) : job?.status === "error" ? (
-          <div key={kind} className="cli-err">
-            {job.error}
-          </div>
-        ) : null,
-      )}
+      {customers.map((c) => (
+        <Drafts key={c.id} id={c.id} />
+      ))}
     </div>
   );
+}
+
+/** 起草跟进话术。给了 短名 = 触屏那一行名字后面的小钮：只写「起草」、点击区 44，读屏念全称 */
+function DraftButton({ id, disabled, 短名 }: { id: string; disabled: boolean; 短名?: string }) {
+  const job = useJob<string>(草稿键("wakeup", id));
+  const 在起 = job?.status === "loading";
+  return (
+    <button
+      type="button"
+      className={短名 ? "cli-link cli-inv-draft" : "cli-link"}
+      aria-label={短名 ? `起草跟进话术：${短名}` : undefined}
+      onClick={() => 起草("wakeup", id, "从首页发起")}
+      disabled={在起 || disabled}
+    >
+      {在起 ? "起草中…" : 短名 ? "起草" : "起草跟进话术"}
+      {!在起 && <AiCost />}
+    </button>
+  );
+}
+
+/** 起草好的话术（或出错那句）：和卡片里那一份同一个样子 */
+function Drafts({ id }: { id: string }) {
+  const 复制 = useCopyDraft();
+  const job = useJob<string>(草稿键("wakeup", id));
+  if (job?.status === "done" && job.value)
+    return (
+      <div className="cli-draft">
+        <div>{job.value}</div>
+        <div>
+          <button type="button" className="cli-link" onClick={() => 复制(job.value!)}>
+            复制
+          </button>
+          <button type="button" className="cli-link" onClick={() => clearJob(草稿键("wakeup", id))}>
+            收起
+          </button>
+        </div>
+      </div>
+    );
+  if (job?.status === "error") return <div className="cli-err">{job.error}</div>;
+  return null;
 }

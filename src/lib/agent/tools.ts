@@ -71,6 +71,8 @@ export type ToolContext = {
   recordOffset: number;
   /** 这一轮攒下的写入提议。工具只往里放，落库要人在卡片上点确认 */
   proposals: Proposal[];
+  /** 只读的人这一轮要 AI 记 / 改 / 删，模型调了 say_read_only（设计语言 HC-2b）：回答里带一个固定标记，界面出一行带锁的说明 */
+  拒了写?: boolean;
   /**
    * 号码脱敏器。共享工作区打码，自部署原样返回（lib/shared-ws/current.ts）。
    *
@@ -87,7 +89,13 @@ export type ToolContext = {
 
 /** ctx 没带脱敏器时原样返回。自部署实例本来就该看见真号 */
 export const 脱敏 = (ctx: ToolContext) => ctx.号 ?? (<T extends string | null>(p: T): T => p);
-export type ToolResult = { summary: string; data: unknown; records?: BriefRecord[] };
+export type ToolResult = {
+  summary: string;
+  data: unknown;
+  records?: BriefRecord[];
+  /** get_customer：最近一次跟进的完整日期（YYYY-MM-DD）。不给模型，只给回答里客户名的小卡（records 的 date 是 MM-DD 不带年，#441 审查 3） */
+  上次跟进?: string;
+};
 
 export type Tool = {
   name: string;
@@ -465,7 +473,12 @@ export const TOOLS: Tool[] = [
         timeline: timeline || "（从未跟进过）",
         ...(只用项目 ? { 项目, ...(项目行.length > 项目最多 ? { 项目说明: `只列最近动过的 ${项目最多} 个，更早的用 list_projects 按客户名查` } : {}) } : {}),
       };
-      return { summary: `${客户显名(c)}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length - 回填个} 个项目${项目行.length <= 项目最多 && 回填个 ? `（另有 ${回填个} 个历史分析回填的，不计入）` : ""}` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
+      return {
+        summary: `${客户显名(c)}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length - 回填个} 个项目${项目行.length <= 项目最多 && 回填个 ? `（另有 ${回填个} 个历史分析回填的，不计入）` : ""}` : ""}${c.plans[0] ? "、1 条计划" : ""}`,
+        data,
+        records,
+        ...(c.followUps[0] ? { 上次跟进: dayjs(c.followUps[0].occurredAt).format("YYYY-MM-DD") } : {}),
+      };
     },
   },
   {
@@ -1228,6 +1241,23 @@ export const TOOLS: Tool[] = [
   ),
   // 项目类建议卡（全页面 AI 写入）：只在企业版只用项目时给模型，见 run.ts 这一家的工具
   ...项目写工具,
+  /*
+    只读的人（只读管理员、销售教练、只看某人、没设业务角色）要 AI 记 / 改 / 删时调的那一个（设计语言 HC-2b，P-全局-04）。
+    原来全靠模型自己说一段「这条跟进我记不了：这个账号只读」，样子和普通回答一样，看不出是账号权限（HC-19）。
+    现在它调这个工具，服务端在回答里带固定标记（拒了写），界面统一写一行带锁的说明；模型只管回答能查的部分。
+    只给写不了的人（run.ts 这一家的工具），别人的工具表里没有它
+  */
+  {
+    name: "say_read_only",
+    description:
+      "这个账号只读。人要记跟进、建线索、改资料、推进项目、排计划、删东西时**先调它**（不带参数），界面会统一写一行「只读账号能问，不能让 AI 记录或修改」；" +
+      "调完只回答这句话里能查的部分（比如这位客户最近怎样），没有能查的就一句话收尾。不要再自己解释只读，也不要提卡片、确认。",
+    args: "{}",
+    async run(_args, ctx) {
+      ctx.拒了写 = true;
+      return { summary: "只读：这次不记录、不修改", data: { 结论: "界面已经统一说明这个账号只读，你不要再重复；接着只回答能查的部分" } };
+    },
+  },
 ];
 
 /**

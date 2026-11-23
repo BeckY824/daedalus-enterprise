@@ -67,13 +67,16 @@ async function 走一遍排队(page: Page, 区域: Locator) {
   await 框.fill("排队用例第一问");
   await 框.press("Enter");
   await expect.poll(() => 收到.length).toBe(1);
-  await expect(框).toHaveAttribute("placeholder", /再问会排队/);
+  // 设计语言 HC-3（C9-A）：占位改成「可以接着打字，回车后排在这一条后面」
+  await expect(框).toHaveAttribute("placeholder", /排在这一条后面/);
 
   await 框.fill("排队用例第二问");
   await 框.press("Enter");
   // 正在答：第二句只排上队，不并发打后端
   await page.waitForTimeout(800);
   expect(收到).toEqual(["排队用例第一问"]);
+  // 排着的那句不在对话流里，在输入框上方的小签上（HC-3）
+  await expect(区域.locator(".cli-queue")).toContainText("排队 1 条：排队用例第二问");
 
   放开();
   await expect(区域).toContainText("答：排队用例第一问");

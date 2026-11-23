@@ -13,7 +13,7 @@ import { useDeleteChat } from "./use-delete-chat";
 import WidthHandle, { 对话列表把手 } from "@/components/WidthHandle";
 import PaneToggle from "@/components/PaneToggle";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
-import { 设抽屉 } from "@/lib/roster";
+import { 设抽屉, useNarrow } from "@/lib/roster";
 import { useViewAs } from "@/components/ViewAsContext";
 import { 视图AI对话话 } from "@/lib/enterprise/view-as-words";
 
@@ -82,6 +82,11 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
     同名的行尾带上次问的时间（今天 / 昨天写钟点，更早写月-日），不多调模型起名
   */
   const 同名 = 重名(rows);
+  /*
+    设计语言 HC-4（C13-A）：手机首页对话栏左边那颗开的是这只左抽屉——82% 宽、行 44 高、⋯ 常显（触屏没有悬停）。
+    电脑上中栏收起 / 太窄时那只抽屉照旧 280
+  */
+  const 手机抽屉 = useNarrow("(max-width: 767px)");
   /** 切换视图：服务端已回空（threads.ts），这里说一句为什么是空的 */
   const 视图中 = useViewAs();
 
@@ -181,8 +186,8 @@ export default function ConversationList({ rows }: { rows: 对话概要[] }) {
         open={中栏.抽屉开着}
         onClose={关抽屉}
         closable={false}
-        styles={{ wrapper: { width: 280 }, body: { padding: 0, display: "flex", flexDirection: "column" } }}
-        rootClassName="pane-drawer pane-drawer-chat"
+        styles={{ wrapper: { width: 手机抽屉 ? "82%" : 280 }, body: { padding: 0, display: "flex", flexDirection: "column" } }}
+        rootClassName={`pane-drawer pane-drawer-chat${手机抽屉 ? " pane-drawer-phone" : ""}`}
       >
         {内容}
       </Drawer>

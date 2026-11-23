@@ -9,6 +9,7 @@ import { useBusiness } from "@/lib/business-client";
 import { useJob, setJobValue, clearJob, getJob } from "@/lib/ai-jobs";
 import { runStream, type StreamJob } from "@/lib/ai-stream";
 import AiStatus from "@/components/AiStatus";
+import { AI流错误码 } from "@/lib/ai-stream-codes";
 import AiWait from "@/components/AiWait";
 import BriefBody from "./BriefBody";
 import AiCost, { useAiMeter, useAiOutOfCredits } from "@/components/AiCost";
@@ -186,6 +187,7 @@ export default function AiPanel({
           ms={shown?.value?.ms ?? (shown?.status === "error" && shown.endedAt ? shown.endedAt - shown.startedAt : undefined)}
           客户={b.customer}
           原因={调用错 ?? undefined}
+          超时={shown?.status === "error" && shown.code === AI流错误码.超时}
           onRetry={AI已用完 ? undefined : 重试}
           compact
         />

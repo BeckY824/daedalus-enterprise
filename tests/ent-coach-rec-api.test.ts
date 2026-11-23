@@ -602,7 +602,7 @@ describe("腾讯云取文件（签名地址）", () => {
     const r = await 取(url);
     expect(r.status).toBe(200);
     expect(Buffer.from(await r.arrayBuffer()).length).toBe(100);
-    expect((await 取(url.replace(/sig=./, "sig=A"))).status).toBe(404);
+    expect((await 取(url.replace(/sig=(.)/, (_m, c: string) => `sig=${c === "A" ? "B" : "A"}`))).status).toBe(404); // 首字符一定换成别的（原写法签名本就 A 开头时等于没改，约 1/64 偶发 200）
     expect((await 取(url.replace(/exp=\d+/, (m) => `exp=${Number(m.slice(4)) + 1}`))).status).toBe(404);
     expect((await 取(签取文件地址(id, new Date(Date.now() - 31 * 60 * 1000)))).status).toBe(404);
     const 别的 = await 传好一条("老板");
