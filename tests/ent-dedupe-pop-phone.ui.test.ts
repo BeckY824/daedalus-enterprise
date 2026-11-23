@@ -14,6 +14,7 @@ const plugin: Plugin = { name: "dedupe-pop-phone", setup(b) {
   stub(/(^|\/)CardScanKey$/, "export default function C(){return null}");
   stub(/(^|\/)RescueKey$/, "export default function R(){return null}");
   stub(/(^|\/)DedupeClaimKey$/, "export default function K(){return null}");
+  stub(/customers\/RepeatInquiryKey$/, "export default function R(){return null}");
   stub(/number-actions$/, "export const 查号码=async()=>({ok:true,状态:'已有',值:'13800001111',提示:'这个号码已经在一位客户名下了，看看是不是同一个人再决定要不要建',撞:{id:'c1',name:'很长很长的一位客户名字用来量会不会把小框撑出屏幕右边',school:'广东省深圳市',salesOwnerName:'某某某'},归属地:'广东 深圳'});");
   stub(/^next\/link$/, "export default function L({children,href,...p}){return <a href={href} {...p}>{children}</a>}");
   stub(/^@\/lib\/ask-image$/, "export const 图片后缀=[];export const 图片类型=[];export const 是图片文件=()=>false;export const 认图成文本=async()=>({text:''});");
