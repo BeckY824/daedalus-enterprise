@@ -6,7 +6,6 @@ import { CheckCircleOutlined, ExclamationCircleOutlined, MinusCircleOutlined, Sy
 import { Tooltip } from "antd";
 import { 收起任务, useAiTasks } from "@/lib/ai-jobs";
 import { 挑一条, 类名 as 态类名, 该自动消, 通知文案, 自动消毫秒 } from "@/lib/ai-task-bar";
-import { useIsNowSkin } from "@/lib/use-skin";
 
 declare global {
   interface Window {
@@ -32,10 +31,8 @@ declare global {
  */
 export default function AiTasks({ 窄 = false }: { 窄?: boolean }) {
   const 任务 = useAiTasks();
-  const 现状 = useIsNowSkin();
-  const 挑的 = 挑一条(任务);
-  /* 人自己点停的那条：现状主题写「已停下」（设计语言 HC-2a，C11-A）；换皮主题照旧写「没答上来」 */
-  const 条 = 挑的 && 挑的.态 === "停下" && !现状 ? { ...挑的, 态: "失败" as const, 说明: "没答上来" } : 挑的;
+  /* 人自己点停的那条写「已停下」（设计语言 HC-2a，C11-A） */
+  const 条 = 挑一条(任务);
 
   /*
     答完的自己走。计时表用 ref 按 key 记：任务表一有风吹草动这个 effect 就会重跑

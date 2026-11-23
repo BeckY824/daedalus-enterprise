@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useCardName } from "./card-names";
+import { 计数题 } from "./ProjectFold";
 import { useRouter } from "next/navigation";
 import { Button, Card, Select, Space } from "antd";
 import AmountInput, { 金额认不出 } from "@/components/AmountInput";
@@ -19,7 +20,6 @@ import type { 回款 } from "@/lib/project/payment-db";
 import { 还应收, 回款少于应收, type 应收依据 } from "@/lib/project/payment-hint";
 import { 改项目画像Action } from "../actions";
 import ProjectInlineField from "./ProjectInlineField";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { 记回款, 删回款 } from "../payment-actions";
 import { 动作出错话 } from "@/lib/stale-deploy";
 
@@ -47,7 +47,6 @@ const 空 = <span className="unconfirmed" style={{ color: "var(--empty-fg)" }}>{
 export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: string; 画像: 项目画像; 能改: boolean }) {
   const router = useRouter();
   const [值, set值] = useState(画像.值);
-  const [忙, set忙] = useState(false);
   // 存的结果写在卡底下（原型 g.notice：不弹顶部提示）：没存上的原因（alert）、或这次存完自动推进到哪（status）
   const [话, set话] = useState<{ 错: boolean; 字: string } | null>(null);
   // 服务端刷新后（别人改了、自己存完 router.refresh）跟着新值走；渲染时比上一次的，不用 effect
@@ -57,170 +56,89 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
     set值(画像.值);
   }
 
-  const 存 = async (patch: Parameters<typeof 改项目画像Action>[1], 回退: () => void) => {
-    set忙(true);
+  /*
+    设计语言 D5 · M11（用户 11-21 按推荐定）：画像和项目资料一样「看 → 点了改」——平时一行字（没填「—」），
+    点一行（或行尾铅笔）就地展开下拉（defaultOpen，点的次数和原来常开下拉一样），单选选了就存、多选点别处存、Esc 还原；
+    卡头写「已填 N / 12」
+  */
+  const 存一项 = async (patch: Parameters<typeof 改项目画像Action>[1]): Promise<string | null> => {
     set话(null);
     try {
       const r = await 改项目画像Action(projectId, patch);
-      if (!r.ok) {
-        set话({ 错: true, 字: r.error });
-        回退();
-      } else {
-        if ("自动推到" in r && r.自动推到?.length) set话({ 错: false, 字: `必填齐了，自动推进到 ${r.自动推到.join(" → ")}` });
-        router.refresh();
-      }
+      if (!r.ok) return r.error;
+      if ("自动推到" in r && r.自动推到?.length) set话({ 错: false, 字: `必填齐了，自动推进到 ${r.自动推到.join(" → ")}` });
+      router.refresh();
+      return null;
     } catch (出错) {
-      set话({ 错: true, 字: 动作出错话(出错, "没存上，请稍后再试") });
-      回退();
-    } finally {
-      set忙(false);
+      return 动作出错话(出错, "没存上，请稍后再试");
     }
   };
-
-  /*
-    设计语言 D5 · M11（用户 11-21 按推荐定）：现状主题下画像和项目资料一样「看 → 点了改」——平时一行字（没填「—」），
-    点一行（或行尾铅笔）就地展开下拉（defaultOpen，点的次数和原来常开下拉一样），单选选了就存、多选点别处存、Esc 还原；
-    卡头写「已填 N / 12」。换皮主题照 D5 之前 12 个常开下拉（use-skin.ts）
-  */
-  const 新样 = useIsNowSkin();
-  if (新样) {
-    const 存一项 = async (patch: Parameters<typeof 改项目画像Action>[1]): Promise<string | null> => {
-      set话(null);
-      try {
-        const r = await 改项目画像Action(projectId, patch);
-        if (!r.ok) return r.error;
-        if ("自动推到" in r && r.自动推到?.length) set话({ 错: false, 字: `必填齐了，自动推进到 ${r.自动推到.join(" → ")}` });
-        router.refresh();
-        return null;
-      } catch (出错) {
-        return 动作出错话(出错, "没存上，请稍后再试");
-      }
-    };
-    const 字 = (v: string): ReactNode => <span className="proj-one" title={v}>{v}</span>;
-    return (
-      <Card title={<span className="card-t-count">项目画像<span className="card-count" data-testid="profile-count">已填 {画像已填(画像, 值)} / {画像.项们.length}</span></span>}>
-        <div className="proj-profile is-look">
-          {画像.项们.map((项) => (
-            <div key={项.键} className="proj-profile-row">
-              <span className="proj-profile-key">{项.名}</span>
-              {项.多选 ? (
-                <ProjectInlineField<string[]>
-                  名={项.名}
-                  值={值.productNeeds ?? []}
-                  能改={能改}
-                  显示={(v) => (v.length ? 字(v.join("、")) : 空)}
-                  存={async (v) => {
-                    const 话 = await 存一项({ productNeeds: v });
-                    if (!话) set值((s) => ({ ...s, productNeeds: v }));
-                    return 话;
-                  }}
-                  编辑器={({ 草稿, set草稿, 忙: 存着 }) => (
-                    <Select
-                      mode="multiple"
-                      aria-label={项.名}
-                      autoFocus
-                      defaultOpen
-                      style={满宽样}
-                      placeholder={未选占位}
-                      allowClear
-                      disabled={存着}
-                      value={草稿}
-                      // 第一项「—」：勾了就全清空，回到没填（11-04）
-                      options={[不填项, ...项.选项.map((x) => ({ value: x, label: x }))]}
-                      onChange={(选: string[]) => set草稿(去多选不填(选))}
-                    />
-                  )}
-                />
-              ) : (
-                <ProjectInlineField<string | null>
-                  名={项.名}
-                  值={值[项.键 as 单选画像键] ?? null}
-                  能改={能改}
-                  显示={(v) => (v ? 字(v) : 空)}
-                  存={async (v) => {
-                    const k = 项.键 as 单选画像键;
-                    const 话 = await 存一项({ [k]: v });
-                    if (!话) set值((s) => ({ ...s, [k]: v }));
-                    return 话;
-                  }}
-                  编辑器={({ 草稿, 提交, 忙: 存着 }) => (
-                    <Select
-                      aria-label={项.名}
-                      autoFocus
-                      defaultOpen
-                      style={满宽样}
-                      placeholder={未选占位}
-                      allowClear
-                      showSearch
-                      optionFilterProp="label"
-                      disabled={存着}
-                      value={草稿 ?? undefined}
-                      // 第一项「—」：选了就清空，回到没填
-                      options={[不填项, ...项.选项.map((x) => ({ value: x, label: x }))]}
-                      onChange={(选?: string) => 提交(去不填(选))}
-                    />
-                  )}
-                />
-              )}
-            </div>
-          ))}
-        </div>
-        {话 && (话.错 ? <div role="alert" className="cd-task-err">{话.字}</div> : <div role="status" className="cd-transfer-sent">{话.字}</div>)}
-      </Card>
-    );
-  }
-
+  const 字 = (v: string): ReactNode => <span className="proj-one" title={v}>{v}</span>;
   return (
-    <Card title="项目画像">
-      <div className="proj-profile">
+    <Card title={<span className="card-t-count">项目画像<span className="card-count" data-testid="profile-count">已填 {画像已填(画像, 值)} / {画像.项们.length}</span></span>}>
+      <div className="proj-profile is-look">
         {画像.项们.map((项) => (
           <div key={项.键} className="proj-profile-row">
             <span className="proj-profile-key">{项.名}</span>
-            <div className="proj-profile-val">
-              {!能改 ? (
-                项.多选 ? (值.productNeeds.length ? 值.productNeeds.join("、") : 空) : (值[项.键 as Exclude<项目画像键, "productNeeds">] || 空)
-              ) : 项.多选 ? (
-                <Select
-                  mode="multiple"
-                  aria-label={项.名}
-                  style={{ width: "100%" }}
-                  placeholder={未选占位}
-                  allowClear
-                  disabled={忙}
-                  value={值.productNeeds}
-                  // 第一项「—」：勾了就全清空，回到没填（11-04，防误点之后回不去；同 allowClear 的叉）
-                  options={[不填项, ...项.选项.map((x) => ({ value: x, label: x }))]}
-                  onChange={(选: string[]) => {
-                    const v = 去多选不填(选);
-                    const 原 = 值.productNeeds;
-                    if (!v.length && !原.length) return;
-                    set值({ ...值, productNeeds: v });
-                    void 存({ productNeeds: v }, () => set值((s) => ({ ...s, productNeeds: 原 })));
-                  }}
-                />
-              ) : (
-                <Select
-                  aria-label={项.名}
-                  style={{ width: "100%" }}
-                  placeholder={未选占位}
-                  allowClear
-                  showSearch
-                  optionFilterProp="label"
-                  disabled={忙}
-                  value={值[项.键 as Exclude<项目画像键, "productNeeds">] || undefined}
-                  // 第一项「—」：选了就清空，回到没填（同 allowClear 的叉）
-                  options={[不填项, ...项.选项.map((x) => ({ value: x, label: x }))]}
-                  onChange={(选?: string) => {
-                    const k = 项.键 as Exclude<项目画像键, "productNeeds">;
-                    const v = 去不填(选);
-                    const 原 = 值[k] ?? null;
-                    if (v === 原) return;
-                    set值({ ...值, [k]: v });
-                    void 存({ [k]: v }, () => set值((s) => ({ ...s, [k]: 原 })));
-                  }}
-                />
-              )}
-            </div>
+            {项.多选 ? (
+              <ProjectInlineField<string[]>
+                名={项.名}
+                值={值.productNeeds ?? []}
+                能改={能改}
+                显示={(v) => (v.length ? 字(v.join("、")) : 空)}
+                存={async (v) => {
+                  const 话 = await 存一项({ productNeeds: v });
+                  if (!话) set值((s) => ({ ...s, productNeeds: v }));
+                  return 话;
+                }}
+                编辑器={({ 草稿, set草稿, 忙: 存着 }) => (
+                  <Select
+                    mode="multiple"
+                    aria-label={项.名}
+                    autoFocus
+                    defaultOpen
+                    style={满宽样}
+                    placeholder={未选占位}
+                    allowClear
+                    disabled={存着}
+                    value={草稿}
+                    // 第一项「—」：勾了就全清空，回到没填（11-04）
+                    options={[不填项, ...项.选项.map((x) => ({ value: x, label: x }))]}
+                    onChange={(选: string[]) => set草稿(去多选不填(选))}
+                  />
+                )}
+              />
+            ) : (
+              <ProjectInlineField<string | null>
+                名={项.名}
+                值={值[项.键 as 单选画像键] ?? null}
+                能改={能改}
+                显示={(v) => (v ? 字(v) : 空)}
+                存={async (v) => {
+                  const k = 项.键 as 单选画像键;
+                  const 话 = await 存一项({ [k]: v });
+                  if (!话) set值((s) => ({ ...s, [k]: v }));
+                  return 话;
+                }}
+                编辑器={({ 草稿, 提交, 忙: 存着 }) => (
+                  <Select
+                    aria-label={项.名}
+                    autoFocus
+                    defaultOpen
+                    style={满宽样}
+                    placeholder={未选占位}
+                    allowClear
+                    showSearch
+                    optionFilterProp="label"
+                    disabled={存着}
+                    value={草稿 ?? undefined}
+                    // 第一项「—」：选了就清空，回到没填
+                    options={[不填项, ...项.选项.map((x) => ({ value: x, label: x }))]}
+                    onChange={(选?: string) => 提交(去不填(选))}
+                  />
+                )}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -262,16 +180,13 @@ export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通
   );
   const 沟通个数 = 沟通们.reduce((n, g) => n + g.附件.length, 0);
   const 合计 = 个数.合同 + 个数.方案 + 个数.验收报告 + 个数.其它 + 沟通个数;
-  // 设计语言 D5 · M11-b：现状主题「上传」挪到各格小标题右边、「单个最多 20 MB」整卡写一次、每格能拖进来；换皮主题照 D5 之前（use-skin.ts）
-  const 新样 = useIsNowSkin();
+  // 设计语言 D5 · M11-b：「上传」挪到各格小标题右边、「单个最多 20 MB」整卡写一次、每格能拖进来
   return (
-    <Card title={`项目附件（${合计}）`} className="proj-att-card" data-testid="project-attachments">
-      {新样 && !只读 && <div className="att-card-hint" data-testid="att-card-hint">单个最多 {读大小(附件上限字节)}；能拖进各格，也可以直接粘贴截图</div>}
+    <Card title={计数题("项目附件", 合计)} className="proj-att-card" data-testid="project-attachments">
+      {!只读 && <div className="att-card-hint" data-testid="att-card-hint">单个最多 {读大小(附件上限字节)}；能拖进各格，也可以直接粘贴截图</div>}
       {附件格们.map(([k, 名, 提示]) => (
         <section key={k} className={`proj-att-sec${提示 ? " is-box" : ""}`} aria-label={名} data-paste-scope="" data-att-cell={k}>
-          {!新样 && <div className="proj-att-h">{名}（{个数[k]}）</div>}
-          {!新样 && 提示 && <div className="proj-att-tip">{提示}</div>}
-          <AttachmentsPanel 归属={{ projectId }} 分类={k} 只读={只读} on个数={记个数[k]} 紧凑 on变了={() => router.refresh()} 小标题={新样 ? `${名}（${个数[k]}）` : undefined} 提示={新样 ? 提示 : undefined} />
+          <AttachmentsPanel 归属={{ projectId }} 分类={k} 只读={只读} on个数={记个数[k]} 紧凑 on变了={() => router.refresh()} 小标题={`${名}（${个数[k]}）`} 提示={提示} />
         </section>
       ))}
       <section className="proj-att-sec" aria-label="沟通附件">
@@ -346,11 +261,15 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
     });
   }
 
+  const 合计字 = (
+    <b className="pd-pay-total" style={{ overflowWrap: "anywhere" }}>{单币
+      ? <CountUp 值={单币.合计} 记号={`pay:${projectId}:${单币.币种}`} 只滚变化 格式={(n) => 金额(Number.isInteger(单币.合计) ? Math.round(n) : Math.round(n * 100) / 100, 单币.币种)} />
+      : 合计}</b>
+  );
   return (
-    <Card title={`${卡名("回款")}（${回款们.length}）`}>
-      <div style={{ marginBottom: 8 }}>当前回款：<b className="pd-pay-total" style={{ overflowWrap: "anywhere" }}>{单币
-        ? <CountUp 值={单币.合计} 记号={`pay:${projectId}:${单币.币种}`} 只滚变化 格式={(n) => 金额(Number.isInteger(单币.合计) ? Math.round(n) : Math.round(n * 100) / 100, 单币.币种)} />
-        : 合计}</b></div>
+    <Card title={计数题(卡名("回款"), 回款们.length)}>
+      {/* 卡片改进：「当前回款」和项目资料同一套字段行（标签 68 列、值离卡左 92） */}
+      <div className="proj-info-row pd-pay-sum"><span className="proj-info-k">当前回款</span>{合计字}</div>
       {回款们.map((x) => (
         <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "4px 0", borderTop: "1px solid var(--line-soft)" }}>
           <span style={{ color: "var(--text-muted)" }}>{dayjs(x.paidAt).format("YYYY-MM-DD")}</span>

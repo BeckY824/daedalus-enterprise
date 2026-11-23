@@ -4,10 +4,9 @@ import path from "node:path";
 import { chromium, type Browser } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
 /* D5 · 设计语言 11-21（规范 M10–M12）：项目资料、画像、附件、折叠卡计数、金额不截断、加载骨架、找不到按句断行。
-   结构和文案改动只在现状主题出，换皮主题保持 D5 之前（用户 11-21「主题不动」，lib/use-skin.ts）。
-   打包和桩照 ent-design-d4-skins.ui.test.ts（同一个 ProjectDetail），另带加载页和 StatePage */
+   打包和桩照 ent-design-d4.ui.test.ts（同一个 ProjectDetail），另带加载页和 StatePage */
 let browser: Browser, bundle: string;
-const plugin: Plugin = { name: "d5-skins-boundaries", setup(b) {
+const plugin: Plugin = { name: "d5-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   // 教练主题（11-17）的动作：服务端那串（prisma、通知）进不了浏览器包
   stub(/coach-topic-actions$/, "const f=async()=>({ok:true});export const 发主题动作=f,回复主题动作=f,关闭主题动作=f,删主题动作=f;");
@@ -86,17 +85,16 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-type 皮 = "now" | "ledger" | "tech";
-async function 开(skin: 皮, x: Record<string, unknown> = {}, o: { width?: number; 能改?: boolean; 画?: "d5" | "加载" | "找不到" } = {}) {
+async function 开(x: Record<string, unknown> = {}, o: { width?: number; 能改?: boolean; 画?: "d5" | "加载" | "找不到" } = {}) {
   const page = await browser.newPage({ viewport: { width: o.width ?? 1366, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
-  await page.route("http://d5skins.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html data-skin="${skin}" data-paper="tone" data-mode="light"><meta charset='utf-8'><div id='root'></div></html>` }));
+  await page.route("http://d5.test/**", r => r.fulfill({ contentType: "text/html", body: "<!doctype html><html data-mode='light'><meta charset='utf-8'><div id='root'></div></html>" }));
   // 附件列表：空的（AttachmentsPanel 进来就读一遍）；传（POST）一律回「没传上」，测试里不真传
-  await page.route("http://d5skins.test/api/attachments**", r => r.request().method() === "POST"
+  await page.route("http://d5.test/api/attachments**", r => r.request().method() === "POST"
     ? r.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "测试里不真传" }) })
     : r.fulfill({ contentType: "application/json", body: JSON.stringify({ 附件: [] }) }));
-  await page.goto("http://d5skins.test");
-  for (const f of ["globals.css", "skins/shared.css", "skins/ledger.css", "skins/tech.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+  await page.goto("http://d5.test");
+  for (const f of ["globals.css", "antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
   await page.addScriptTag({ content: bundle });
   const 画 = o.画 ?? "d5";
   if (画 === "d5") {
@@ -111,18 +109,20 @@ const 无名联系人 = { contact: { id: "k1", name: "", position: "采购" } };
 const 两币回款 = { 成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, 回款们: [
   { id: "r1", paidAt: "2026-10-01", currency: "CNY", amount: 12800000, userId: null, createdAt: "2026-10-01T00:00:00.000Z" },
   { id: "r2", paidAt: "2026-10-02", currency: "USD", amount: 1500000, userId: null, createdAt: "2026-10-02T00:00:00.000Z" },
-  // 第三种币：右栏里一定折成两三行（3704 实操：标签要和第一行顶对齐）
+  // 第三、四种币：右栏里一定折成两三行（3704 实操：标签要和第一行顶对齐）。
+  // 只三种币时 390 宽差 3px 才折（Mac 字体），CI 的 Linux 字体一行放得下、没折（PR #437 单测 6/8 红），加第四种拉开余量
   { id: "r3", paidAt: "2026-10-03", currency: "EUR", amount: 2300000, userId: null, createdAt: "2026-10-03T00:00:00.000Z" },
+  { id: "r4", paidAt: "2026-10-04", currency: "GBP", amount: 9870000, userId: null, createdAt: "2026-10-04T00:00:00.000Z" },
 ] };
 
-describe("现状主题：D5 新样子", () => {
-  it("项目资料：行距 34、悬停整行浅底 + 行尾铅笔；无名联系人的「—」和别的空值同色；卡头图标点击区 28", async () => {
-    const { page, errors } = await 开("now", 无名联系人);
+describe("D5 新样子", () => {
+  it("项目资料：行距 32（卡片改进 11-23 原型，原 34）、悬停整行浅底 + 行尾铅笔；无名联系人的「—」和别的空值同色；卡头图标点击区 28", async () => {
+    const { page, errors } = await 开(无名联系人);
     try {
       const 卡 = page.locator(".proj-info");
       await 卡.waitFor();
       const 行 = 卡.locator(".proj-info-row").filter({ has: page.locator('[data-inline-field="级别"]') });
-      expect((await 行.boundingBox())!.height).toBeGreaterThanOrEqual(34);
+      expect((await 行.boundingBox())!.height).toBeGreaterThanOrEqual(32);
       // #403 审查：样式只管资料行（.proj-info-row），行与行之间不再靠 !important 压行内 marginBottom
       expect(await 行.evaluate(e => [getComputedStyle(e).marginBottom, getComputedStyle(e).marginLeft, e.getAttribute("style")?.includes("margin") ?? false])).toEqual(["0px", "-8px", false]);
       await 行.hover();
@@ -144,7 +144,7 @@ describe("现状主题：D5 新样子", () => {
   });
 
   it("改级别时标签和下拉顶对齐；下拉里的「—」选项用 --empty-fg", async () => {
-    const { page, errors } = await 开("now");
+    const { page, errors } = await 开();
     try {
       const 行 = page.locator(".proj-info-row").filter({ has: page.locator('[data-inline-field="级别"]') });
       await 行.locator(".proj-inline-pen").click({ force: true });
@@ -161,7 +161,7 @@ describe("现状主题：D5 新样子", () => {
 
   for (const w of [1024, 1280, 1366, 390])
     it(`${w}px：多币种长金额「¥ 12,800,000 · $ 1,500,000」不出省略号、每段数字不拆`, async () => {
-      const { page, errors } = await 开("now", 两币回款, { width: w });
+      const { page, errors } = await 开(两币回款, { width: w });
       try {
         const 钱 = page.locator(".proj-info-row").filter({ hasText: /^当前回款/ }).locator(".proj-money");
         await 钱.waitFor();
@@ -174,16 +174,35 @@ describe("现状主题：D5 新样子", () => {
         expect(await 钱.evaluate(e => e.scrollWidth <= e.clientWidth + 1 || getComputedStyle(e).display === "inline")).toBe(true);
         // 3704 实操：金额折成两三行时「当前回款」标签和第一行顶对齐（不垂直居中）——比的是两个盒子的顶，不看字体高
         const 键盒 = (await 钱.evaluate(e => e.parentElement!.firstElementChild!.getBoundingClientRect().height));
-        expect((await 钱.boundingBox())!.height, "三种币要折成多行").toBeGreaterThan(键盒 * 1.5);
+        expect((await 钱.boundingBox())!.height, "四种币要折成多行").toBeGreaterThan(键盒 * 1.5);
         expect(await 钱.evaluate(e => Math.abs(e.parentElement!.firstElementChild!.getBoundingClientRect().top - e.getBoundingClientRect().top))).toBeLessThanOrEqual(1);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        // 一段自己都放不下一行（排版闸门：右栏 300 宽、Linux 字体下「US$ 12,345,678.90」伸出 8px）：只在符号和数字之间折，
+        // 数字不拆（每段最多两行）、不伸出资料行。把这行压到只比最长那段的数字宽一点来量
+        const 窄 = await 钱.evaluate(e => {
+          const 行 = e.closest(".proj-info-row") as HTMLElement, 键 = 行.firstElementChild as HTMLElement;
+          const 段们 = Array.from(e.querySelectorAll<HTMLElement>(".proj-money-seg"));
+          const 量 = document.createElement("span"); 量.style.whiteSpace = "nowrap"; 量.style.position = "absolute"; e.appendChild(量);
+          const 数宽 = Math.max(...段们.map(s => { 量.textContent = s.textContent!.split(" ").pop()!; return 量.getBoundingClientRect().width; }));
+          const 段宽 = Math.max(...段们.map(s => { 量.textContent = s.textContent!; return 量.getBoundingClientRect().width; }));
+          量.remove();
+          const 行边 = parseFloat(getComputedStyle(行).paddingLeft) + parseFloat(getComputedStyle(行).paddingRight) + 键.getBoundingClientRect().width + parseFloat(getComputedStyle(行).columnGap);
+          行.style.width = `${Math.ceil(行边 + 数宽 + 4)}px`; 行.style.flex = "none";
+          const 右 = 行.getBoundingClientRect().right - parseFloat(getComputedStyle(行).paddingRight);
+          return { 数宽, 段宽, 段们: 段们.map(s => ({ 高: Math.round(s.getBoundingClientRect().height), 出: Math.round(s.getBoundingClientRect().right - 右) })), 行高: parseFloat(getComputedStyle(e).lineHeight) };
+        });
+        expect(窄.段宽, "压窄后最长那段一行放不下（不然这段量不到折行）").toBeGreaterThan(窄.数宽 + 4);
+        for (const d of 窄.段们) {
+          expect(d.高, "数字不拆：一段最多两行（符号一行、数字一行）").toBeLessThanOrEqual(窄.行高 * 2 + 1);
+          expect(d.出, "不伸出资料行").toBeLessThanOrEqual(1);
+        }
         expect(errors).toEqual([]);
       } finally { await page.close(); }
     });
 
   for (const 能改 of [false, true])
     it(`375px · 画像看态不横向溢出（${能改 ? "能改" : "只读，同受限客户详情"}）：E2E「受限客户详情排版」那把尺——没有元素 scrollWidth 超过 clientWidth、也不出卡`, async () => {
-      const { page, errors } = await 开("now", {}, { width: 375, 能改 });
+      const { page, errors } = await 开({}, { width: 375, 能改 });
       try {
         const 卡 = page.locator(".ant-card").filter({ has: page.locator(".proj-profile.is-look") });
         await 卡.waitFor();
@@ -207,7 +226,7 @@ describe("现状主题：D5 新样子", () => {
     });
 
   it("画像：平时一行字（没填「—」），卡头「已填 N / 12」；点一行展开下拉，选了就存；多选的下拉占位也是「—」", async () => {
-    const { page, errors } = await 开("now");
+    const { page, errors } = await 开();
     try {
       const 卡 = page.locator(".ant-card").filter({ has: page.locator(".proj-profile") });
       await 卡.waitFor();
@@ -236,7 +255,7 @@ describe("现状主题：D5 新样子", () => {
   });
 
   it("只读看画像：没有笔、没有下拉，值照写", async () => {
-    const { page, errors } = await 开("now", {}, { 能改: false });
+    const { page, errors } = await 开({}, { 能改: false });
     try {
       const 卡 = page.locator(".ant-card").filter({ has: page.locator(".proj-profile") });
       await 卡.waitFor();
@@ -248,7 +267,7 @@ describe("现状主题：D5 新样子", () => {
   });
 
   it("项目附件：「单个最多 20 MB」整卡一次，「上传」在各格小标题右边，空态「还没有附件」；拖文件进一格就开始传", async () => {
-    const { page, errors } = await 开("now");
+    const { page, errors } = await 开();
     try {
       const 卡 = page.getByTestId("project-attachments");
       await 卡.waitFor();
@@ -273,7 +292,7 @@ describe("现状主题：D5 新样子", () => {
   });
 
   it("折叠的卡都写条数：项目组、提成、进程变更", async () => {
-    const { page, errors } = await 开("now");
+    const { page, errors } = await 开();
     try {
       for (const 题 of [/^项目组（2）$/, /^提成（2）$/, /^进程变更（1）$/]) expect(await page.locator(".ant-card-head-title").filter({ hasText: 题 }).count(), String(题)).toBe(1);
       expect(errors).toEqual([]);
@@ -281,7 +300,7 @@ describe("现状主题：D5 新样子", () => {
   });
 
   it("只能看的人：项目资料里没挂联系人也摆一行「—」", async () => {
-    const { page, errors } = await 开("now", { contact: null }, { 能改: false });
+    const { page, errors } = await 开({ contact: null }, { 能改: false });
     try {
       const 行 = page.locator(".proj-info-row").filter({ hasText: /^联系人/ });
       expect((await 行.innerText()).replace(/\s+/g, "")).toBe("联系人—");
@@ -291,11 +310,11 @@ describe("现状主题：D5 新样子", () => {
   });
 
   it("加载：同形骨架（页头 + 三栏卡），--skel-delay 后才出；减弱动态下灰条不扫光", async () => {
-    const { page, errors } = await 开("now", {}, { 画: "加载" });
+    const { page, errors } = await 开({}, { 画: "加载" });
     try {
       const 骨 = page.getByTestId("customer-skeleton");
       await 骨.waitFor();
-      expect(await page.locator(".cd-ld-old").evaluate(e => getComputedStyle(e).display)).toBe("none");
+      expect(await page.locator(".cd-ld-old").count()).toBe(0);
       expect(await 骨.locator(".cd-skel-col").count()).toBe(3);
       expect(await 骨.evaluate(e => getComputedStyle(e).animationDelay)).toBe("0.18s");
       expect(await 骨.locator(".skel-bar").first().evaluate(e => getComputedStyle(e).animationName)).toBe("skel-sweep");
@@ -309,7 +328,7 @@ describe("现状主题：D5 新样子", () => {
      真页面按同一宽度摆一份只带类名的空架子（.rec-page.ui-v2 > .rec.rec-cd > 左栏 + .rec-zone > .cd-zb > 中栏 + 右栏），用的是同一份 globals.css */
   for (const [窗, 宽] of [[1366, 1038], [1024, 916], [390, 358]] as const)
     it(`${窗}px（容器 ${宽}）：加载骨架和真页面的栏数一样`, async () => {
-      const { page, errors } = await 开("now", {}, { 画: "加载", width: 窗 });
+      const { page, errors } = await 开({}, { 画: "加载", width: 窗 });
       try {
         await page.getByTestId("customer-skeleton").waitFor();
         const r = await page.evaluate((w) => {
@@ -332,7 +351,7 @@ describe("现状主题：D5 新样子", () => {
     });
 
   it("390 找不到：说明一句一行，「不正确」不拆到两行", async () => {
-    const { page, errors } = await 开("now", {}, { 画: "找不到", width: 390 });
+    const { page, errors } = await 开({}, { 画: "找不到", width: 390 });
     try {
       const 句 = page.locator(".sp-sent");
       await 句.first().waitFor();
@@ -351,35 +370,3 @@ describe("现状主题：D5 新样子", () => {
     } finally { await page.close(); }
   });
 });
-
-for (const skin of ["ledger", "tech"] as const)
-  describe(`${skin}：D5 之前的样子`, () => {
-    it("项目资料不挂新行样；画像还是 12 个常开下拉、卡头不写计数；折叠卡不写条数；附件每格各写一遍上限", async () => {
-      const { page, errors } = await 开(skin, 无名联系人);
-      try {
-        expect(await page.locator(".proj-info, .proj-info-row").count()).toBe(0);
-        const 画像卡 = page.locator(".ant-card").filter({ has: page.locator(".proj-profile") });
-        expect(await 画像卡.locator(".ant-select").count()).toBe(12);
-        expect(await 画像卡.locator(".ant-card-head-title").innerText()).toBe("项目画像");
-        for (const 题 of ["项目组", "提成", "进程变更"]) expect(await page.locator(".ant-card-head-title").filter({ hasText: new RegExp(`^${题}$`) }).count(), 题).toBe(1);
-        const 附件 = page.getByTestId("project-attachments");
-        await 附件.getByText("还没有附件。").first().waitFor();
-        expect(await 附件.getByText(/单个最多/).count()).toBe(4);
-        expect(await 附件.locator(".att-h-row").count()).toBe(0);
-        expect(errors).toEqual([]);
-      } finally { await page.close(); }
-    });
-
-    it("加载用全站那一份（不出客户详情同形骨架）；找不到说明不按句断行", async () => {
-      const 载 = await 开(skin, {}, { 画: "加载" });
-      try {
-        expect(await 载.page.getByTestId("customer-skeleton").evaluate(e => getComputedStyle(e).display)).toBe("none");
-        expect(await 载.page.locator(".cd-ld-old").evaluate(e => getComputedStyle(e).display)).not.toBe("none");
-      } finally { await 载.page.close(); }
-      const 找 = await 开(skin, {}, { 画: "找不到", width: 390 });
-      try {
-        await 找.page.locator(".sp-sent").first().waitFor();
-        expect(await 找.page.locator(".sp-sent").first().evaluate(e => getComputedStyle(e).display)).toBe("inline");
-      } finally { await 找.page.close(); }
-    });
-  });

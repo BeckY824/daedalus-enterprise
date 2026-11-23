@@ -15,7 +15,6 @@ import { 邮件摘要 } from "@/components/research/MailPaste";
 import type { 背调价目 } from "@/lib/research/actions";
 import type { 邮件信号 } from "@/lib/research/verify/mail";
 import type { Suggestion } from "./HomeChat";
-import { useIsNowSkin } from "@/lib/use-skin";
 
 export function ComposerTools({ 宽, 摆背调键, 背调模式, on切背调, files, setFiles, 在跑, 邮件, on开邮件, 摆粘贴键, on粘贴, on预载, 附件字, 摆附件键 = true }: {
   宽: boolean;
@@ -106,7 +105,7 @@ export function ComposerTop({ 客户, 背调模式, 邮件, on去掉邮件, 提�
   on选命令: (cmd: string) => void;
   /**
    * 设计语言 H-A（11-21，H-新4）：命令表做成从输入框上沿向上浮出的浮层，不占高度——首页驾驶舱是上下居中的，
-   * 命令表撑高问答卡会让整块（连右边指标卡）跟着往上跳。只有现状主题、首页外框里给 true；别处照旧接在框上
+   * 命令表撑高问答卡会让整块（连右边指标卡）跟着往上跳。只有首页外框里给 true；别处照旧接在框上
    */
   浮?: boolean;
   /** 鼠标指到哪一行就把选中挪到哪一行（H-新3：键盘选中和鼠标悬停只亮一行）。不给 = 照旧悬停各亮各的 */
@@ -219,9 +218,8 @@ export function ComposerFoot({ 摆建议, 示例槽, suggestions, suggIdx, 空, 
 }) {
   /* 4–6 个能直接点的具体问题，就摆在输入框底下——人的视线落在框上。
      ↑↓ 在这里面走，回车发选中的那条。企业版驾驶舱（10-31）搬到欢迎语下面、每条一行，点了照旧只填进输入框 */
-  const 现状 = useIsNowSkin();
-  /* 设计语言 HC-1（C5-A，原 H-新9）：「帮我记一条：…」读着像被截断——现状主题去掉末尾的「：…」，点了照旧填「帮我记一条：」 */
-  const 叫 = (x: Suggestion) => (现状 ? x.label.replace(/[:：]\s*…$/, "") : x.label);
+  /* 设计语言 HC-1（C5-A，原 H-新9）：「帮我记一条：…」读着像被截断——去掉末尾的「：…」，点了照旧填「帮我记一条：」 */
+  const 叫 = (x: Suggestion) => x.label.replace(/[:：]\s*…$/, "");
   const 示例 = 摆建议 ? (
     <div className="cli-welcome-q">
       {suggestions.map((x, i) => (
@@ -236,7 +234,7 @@ export function ComposerFoot({ 摆建议, 示例槽, suggestions, suggIdx, 空, 
       {示例槽 === undefined ? 示例 : 示例槽 && 示例 ? createPortal(示例, 示例槽) : null}
 
       <div className="cli-hints">
-        {/* 键盘提示：现状主题手机上不写（D38，触屏没有这几个键，globals.css .cli-hints-keys） */}
+        {/* 键盘提示：手机上不写（D38，触屏没有这几个键，globals.css .cli-hints-keys） */}
         <span className="cli-hints-keys">
           <kbd>Enter</kbd> 发送 · <kbd>Shift+Enter</kbd> 换行 · <kbd>/</kbd> 命令
           {在跑 && (

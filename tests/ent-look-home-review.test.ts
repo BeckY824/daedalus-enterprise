@@ -63,10 +63,12 @@ describe("复盘 · 数据", () => {
     expect(css).toMatch(/@keyframes pfun-grow \{ from \{ clip-path: inset\(0 100% 0 0/);
   });
 
-  it("卡点页签上人员选择留在原地，只变淡（页头不跳）", () => {
-    const 体 = 规则(".data-shell-bar-who.is-na");
-    expect(体).toMatch(/opacity:\s*0\.4/);
+  it("人员选择在页签行右端；卡点页签不跟人员选择，右端空着、页签行不撤（页头不跳）", () => {
+    // 11-23 外观只留一套：页签上面那一行「变淡的人员选择」（.is-na）是换皮主题的样子，跟着删了
     expect(规则(".data-shell-bar-who")).toMatch(/transition:\s*opacity var\(--t\) var\(--ease\)/);
+    const 壳 = readFileSync("src/app/(app)/overview/DataShell.tsx", "utf8");
+    expect(壳).toMatch(/right: 人不适用 \? null :/);
+    expect(壳).not.toContain("is-na");
   });
 });
 

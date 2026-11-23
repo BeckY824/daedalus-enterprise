@@ -142,7 +142,7 @@ export default function CustomerWorldMap({ 全部国家, 出错 }: { 全部国�
         const ro = new ResizeObserver(() => c.resize());
         ro.observe(ref.current);
         const mo = new MutationObserver(() => 画(false));
-        mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-skin", "data-paper", "data-mode"] });
+        mo.observe(document.documentElement, { attributes: true, attributeFilter: ["data-mode"] });
         清 = () => {
           ro.disconnect();
           mo.disconnect();

@@ -58,41 +58,19 @@ const 步 = (i: number, label: string, status: "running" | "done" | "error", det
 const 画 = (page: Page, p: Record<string, unknown>) => page.evaluate((p) => (window as unknown as { __status: (p: unknown) => void }).__status(p), p);
 const 头 = (page: Page) => page.locator(".ais-tt").innerText();
 
-const 换皮 = (page: Page, 名: string | null) => page.evaluate((名) => { if (名) document.documentElement.dataset.skin = 名; else delete document.documentElement.dataset.skin; }, 名);
-
-it("进行中（换皮主题照旧）：头部写人话、不写工具名，只露最近 3 步，更早的收起", async () => {
+it("进行中：工具都做完、还没定下一步写「正在想下一步…」，回答写着的时候写「正在写回答…」", async () => {
   const { page, errors } = await open();
-  await 换皮(page, "ledger");
-  const steps = [
-    步(0, "search_customers(张三)", "done", "3 位"),
-    步(1, "get_customer(c1)", "done", "6 条跟进"),
-    步(2, "get_customer(c2)", "done", "2 条跟进"),
-    步(3, "list_projects()", "done", "4 个"),
-    步(4, "query_records(项目)", "done", "7 条"),
-    步(5, "get_customer(c3)", "running"),
-  ];
-  await 画(page, { steps, 态: "running", 起, 附注: "Esc 打断" });
-  expect(await 头(page)).toBe("正在读客户的记录…");
-  expect(await page.locator(".ais-mt").first().innerText()).toMatch(/^第 6 步 · \d+ 秒 · Esc 打断$/);
-  expect(await page.locator(".ais-row").count()).toBe(3);
-  expect(await page.locator(".ais-more").innerText()).toBe("前面还有 2 步");
-  const 全文 = await page.locator(".ais").innerText();
-  expect(全文).not.toMatch(/get_customer|query_records|list_projects|\(c\d\)/);
-  expect(全文).toContain("查了项目 · 4 个");
-  await page.locator(".ais-more").click();
-  expect(await page.locator(".ais-row").count()).toBe(5);
-  // 工具都做完、还没定下一步：已经是第 6 步了
-  await 画(page, { steps: steps.slice(0, 5), 态: "running", 起 });
+  const steps = [步(0, "search_customers(张三)", "done", "3 位"), 步(1, "list_projects()", "done", "4 个")];
+  await 画(page, { steps, 态: "running", 起 });
   expect(await 头(page)).toBe("正在想下一步…");
-  expect(await page.locator(".ais-mt").first().innerText()).toMatch(/^第 6 步 · /);
-  // 回答写着的时候
-  await 画(page, { steps: steps.map((s) => ({ ...s, status: "done" })), 态: "running", 起, 写着: true });
+  expect(await page.locator(".ais-mt").first().innerText()).toMatch(/^第 3 步 · /);
+  await 画(page, { steps, 态: "running", 起, 写着: true });
   expect(await 头(page)).toBe("正在写回答…");
   expect(errors).toEqual([]);
   await page.close();
 });
 
-it("进行中（现状主题，设计语言 HC-2a C7-A）：一行不带框，点 › 才竖排最近 3 步；不写「Esc 打断」由调用方管", async () => {
+it("进行中（设计语言 HC-2a C7-A）：一行不带框，点 › 才竖排最近 3 步；不写「Esc 打断」由调用方管", async () => {
   const { page, errors } = await open();
   const steps = [
     步(0, "search_customers(张三)", "done", "3 位"),
@@ -143,36 +121,20 @@ it("做完收成一行「用了 X 秒 · N 步」，点开看每步：人话 + �
   await page.close();
 });
 
-it("出错（换皮主题照旧）：「停在第 N 步：原因」，前面做完的留着，有重试；被打断写「已打断」", async () => {
+it("出错：没有重发机制就不摆「重试」；一步都没走到写「出错了：原因」；还有没处理的卡写「等你确认 N 项」", async () => {
   const { page } = await open();
-  await 换皮(page, "ledger");
   const steps = [步(0, "search_customers(北岸)", "done", "2 位重名"), 步(1, "list_contracts(p9)", "error")];
-  await 画(page, { steps, 态: "error", 起, 原因: "这个项目还没建合同" });
-  expect(await 头(page)).toBe("停在第 2 步：这个项目还没建合同");
-  expect(await page.locator(".ais").getAttribute("data-state")).toBe("error");
-  expect(await page.locator(".ais-row").count()).toBe(2);
-  expect(await page.locator(".ais-row").first().innerText()).toContain("搜了客户 · 2 位重名");
-  await page.getByRole("button", { name: "重试" }).click();
-  expect(await page.evaluate(() => (window as unknown as { __重试: number }).__重试)).toBe(1);
-  // 没有重发机制就不摆按钮
   await 画(page, { steps, 态: "error", 起, 原因: "x", 无重试: true });
   expect(await page.getByRole("button", { name: "重试" }).count()).toBe(0);
-  // 一步都没走到就出错
   await 画(page, { steps: [], 态: "error", 起, 原因: "模型没响应" });
   expect(await 头(page)).toBe("出错了：模型没响应");
-  // 打断：调用方把跑着的那步标成完成、写「被打断」
-  await 画(page, { steps: [步(0, "search_customers(x)", "done", "1 位"), 步(1, "get_customer(c)", "done", "被打断")], 态: "interrupted", 起 });
-  expect(await 头(page)).toBe("已打断 · 做了 2 步");
-  await page.locator(".ais-hd-b").click();
-  expect(await page.locator(".ais-line").nth(1).innerText()).toBe("✓读了客户的记录 · 被打断");
-  // 等你确认
   await 画(page, { steps, 态: "wait", 起, ms: 3000, 等确认: 3 });
   expect(await 头(page)).toBe("等你确认 3 项");
   expect(await page.locator(".ais").getAttribute("data-state")).toBe("wait");
   await page.close();
 });
 
-it("出错 / 打断（现状主题，设计语言 HC-2a C11-A）：打断灰点「已停下 · 第 N 步」+ 重新回答；超时写「等了 N 秒没回来」", async () => {
+it("出错 / 打断（设计语言 HC-2a C11-A）：打断灰点「已停下 · 第 N 步」+ 重新回答；超时写「等了 N 秒没回来」", async () => {
   const { page } = await open();
   const steps = [步(0, "search_customers(北岸)", "done", "2 位重名"), 步(1, "list_contracts(p9)", "error")];
   await 画(page, { steps, 态: "error", 起, 原因: "这个项目还没建合同" });
@@ -200,7 +162,7 @@ it("出错 / 打断（现状主题，设计语言 HC-2a C11-A）：打断灰点�
   await page.close();
 });
 
-it("触屏 / 390（现状主题，#420 审查挡合 2）：展开钮、「重新回答 / 重试」点击区 ≥ 44，那一行不变高（普通、紧凑都不变）；1280 不撑", async () => {
+it("触屏 / 390（#420 审查挡合 2）：展开钮、「重新回答 / 重试」点击区 ≥ 44，那一行不变高（普通、紧凑都不变）；1280 不撑", async () => {
   const 量 = async (page: Page) => page.locator(".ais-hd").evaluate((e) => {
     const h = (s: string) => { const x = e.querySelector(s); return x ? Math.round(x.getBoundingClientRect().height * 2) / 2 : null; };
     return { 行: Math.round(e.getBoundingClientRect().height * 2) / 2, 钮: h("button.ais-hd-b"), 重: h(".ais-retry") };

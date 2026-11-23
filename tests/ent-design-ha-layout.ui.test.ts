@@ -5,7 +5,6 @@
  *   H-新7 / 12 / 13 / 14 顶部提示同一种行、量词「N 条」、smartTime、时间不掉行不截；H-新8 自动分配不整句加粗
  *   H-新1 / 2 / 15 指标卡悬停只换底色、橙数不变蓝、右上 ›；390 展开「看这 N 个项目 ›」不截、「收起」不竖折
  * 排版门槛：Windows 1024 / 1280 / 1366 + 手机 390，超长数据；scrollWidth ≤ innerWidth、关键按钮 elementFromPoint 命中自己。
- * 换皮主题（账簿、科技）结构和文案照旧（用户 11-21「主题不动」，lib/use-skin.ts）。
  *
  * 外面的结构照 HomeChat 驾驶舱那一支摆（HomeChat / Composer 连着对话流、路由、背调，单拎出来画不了；同 ent-home-frame.ui.test.ts），
  * 钉住居中用 HomeChat 同一个 usePinCenter
@@ -38,7 +37,6 @@ beforeAll(async () => {
     import AssignEtaLine from '@/app/(app)/dashboard/AssignEtaLine';
     import VerifyInbox from '@/app/(app)/projects/VerifyInbox';
     import { usePinCenter } from '@/app/(app)/dashboard/use-pin-center';
-    import { useIsNowSkin } from '@/lib/use-skin';
     import { configureBrowserBusinessTimeZone } from '@/lib/business-clock';
     // 企业版浏览器端业务钟 = 北京（app/(app)/layout.tsx 的 BusinessProvider 传 timeZone）；页面本身开在伦敦时区，时间仍按北京写
     configureBrowserBusinessTimeZone('Asia/Shanghai');
@@ -69,9 +67,8 @@ beforeAll(async () => {
       const [槽, set槽] = useState(null);
       const [q, setQ] = useState("");
       const [idx, setIdx] = useState(0);
-      const 现状 = useIsNowSkin();
       const 网格 = useRef(null);
-      usePinCenter(网格, 现状);
+      usePinCenter(网格, true);
       const 开命令 = q.startsWith('/');
       return (
         <><div className="cli cli-empty"><div className="cli-ck"><div className="cli-ck-g" ref={网格}>
@@ -90,7 +87,7 @@ beforeAll(async () => {
             <div className="cli-composer">
               <ComposerTop 客户="客户" 背调模式={false} 邮件={null} on去掉邮件={() => {}} 提示粘贴={null} on切={() => {}} on不切={() => {}}
                 没这个命令={false} q={q} cmdMatches={开命令 ? 命令们 : []} cmdIdx={idx} on选命令={() => {}}
-                浮={现状} on指命令={现状 ? setIdx : undefined} />
+                浮 on指命令={setIdx} />
               <div className="cli-input cli-input-rich">
                 <textarea rows={1} value={q} onChange={(e) => { setQ(e.target.value); setIdx(0); }} onKeyDown={(e) => { if (开命令 && e.key === 'ArrowDown') { e.preventDefault(); setIdx((i) => (i + 1) % 命令们.length); } }} />
                 <div className="cli-bar2"><div className="cli-bar2-l" /><div className="cli-bar2-r"><SendKey 在跑={false} onStop={() => {}} canSend={!!q.trim()} on发={() => {}} /></div></div>
@@ -114,16 +111,14 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 皮 = "now" | "ledger" | "tech";
 const 卡数 = { "month-new": 591, key: 123, "no-follow": 4802, "due-soon": 0 };
-async function 开(o: { 宽: number; 高?: number; 待办?: boolean | 1 | 2; skin?: 皮; 壳?: boolean; 短名?: boolean; 晚到?: boolean; 进场?: boolean }): Promise<{ page: Page; errors: string[] }> {
+async function 开(o: { 宽: number; 高?: number; 待办?: boolean | 1 | 2; 壳?: boolean; 短名?: boolean; 晚到?: boolean; 进场?: boolean }): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: o.宽, height: o.高 ?? 900 }, reducedMotion: "reduce", timezoneId: "Europe/London" });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
-  const skin = o.skin ?? "now";
-  await page.route("http://ha.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${skin === "now" ? "" : ` data-skin="${skin}" data-paper="tone" data-mode="light"`}><meta charset='utf-8'><body style='margin:0'>${o.壳 ? "<div class='shell'><nav style='width:220px;flex:none'></nav><main class='main app-content' style='padding:22px 26px'><div id='above'></div><div id='wrap' style='max-width:1720px;margin:0 auto" + (o.进场 ? ";transform:translateY(4px)" : "") + "'><div id='root'></div></div></main></div>" : "<main style='padding:24px'><div id='root'></div></main>"}</body></html>` }));
+  await page.route("http://ha.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html><meta charset='utf-8'><body style='margin:0'>${o.壳 ? "<div class='shell'><nav style='width:220px;flex:none'></nav><main class='main app-content' style='padding:22px 26px'><div id='above'></div><div id='wrap' style='max-width:1720px;margin:0 auto" + (o.进场 ? ";transform:translateY(4px)" : "") + "'><div id='root'></div></div></main></div>" : "<main style='padding:24px'><div id='root'></div></main>"}</body></html>` }));
   await page.goto("http://ha.test/dashboard");
-  for (const f of ["globals.css", ...(skin === "now" ? [] : ["skins/shared.css", `skins/${skin}.css`])]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+  await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: bundle });
   await page.evaluate(([待办, 数, 短名, 晚到]) => (window as unknown as { __画: (a: unknown, b: unknown, c: unknown, d: unknown) => void }).__画(待办, 数, 短名, 晚到), [o.待办 ?? true, 卡数, !!o.短名, !!o.晚到] as const);
   await page.locator(".cli-frame .cli-input").waitFor();
@@ -183,30 +178,19 @@ for (const 宽 of [1024, 1280, 1366, 390]) {
   });
 }
 
-/* 设计语言 D-2 · 方案 A（3703 补点 11-22）：手机白底下问答框和右栏指标都铺满全宽、框里内容左右对称；原底照旧左右各留 12。
-   框本身 width: 100%，光给负外边距只左移不撑宽（390 量到框 0→366、内容 17→349 偏左） */
-it.each([390, 375])("D-2 %ipx（照 AppShell 外壳）：白底问答框、指标铺满全宽，框里内容左右对称；原底左右各留 12", async (宽) => {
+/* 手机（照 AppShell 外壳）：问答框左右各留 12，框里内容左右对称，不横滚（D-2「一张纸」铺满全宽 11-23 随白底一起删了，回到原样） */
+it.each([390, 375])("%ipx（照 AppShell 外壳）：问答框左右各留 12、框里内容左右对称、不横滚", async (宽) => {
   const { page, errors } = await 开({ 宽, 壳: true });
   try {
     await page.evaluate(() => { (document.querySelector(".shell > nav") as HTMLElement).style.display = "none"; });
-    const 量 = () => page.evaluate(() => {
+    const 原 = await page.evaluate(() => {
       const 框 = document.querySelector(".cli-ck .cli-frame")!.getBoundingClientRect();
       const 行 = document.querySelector(".cli-frame .home-cth-todo")!.getBoundingClientRect();
-      const 指标 = document.querySelector(".home-cards")!.getBoundingClientRect();
-      return { 框左: 框.left, 框右: 框.right, 行左距: 行.left - 框.left, 行右距: 框.right - 行.right, 指标左: 指标.left, 指标右: 指标.right, 页宽: document.documentElement.clientWidth, 横滚: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+      return { 框左: 框.left, 框右: 框.right, 行左距: 行.left - 框.left, 行右距: 框.right - 行.right, 页宽: document.documentElement.clientWidth, 横滚: document.documentElement.scrollWidth - document.documentElement.clientWidth };
     });
-    const 白 = await 量();
-    expect(白.框左, JSON.stringify(白)).toBeCloseTo(0, 0);
-    expect(白.框右, JSON.stringify(白)).toBeCloseTo(白.页宽, 0);
-    expect(白.行左距, JSON.stringify(白)).toBeGreaterThanOrEqual(12);
-    expect(Math.abs(白.行左距 - 白.行右距), JSON.stringify(白)).toBeLessThanOrEqual(1);
-    expect([白.指标左, 白.指标右], JSON.stringify(白)).toEqual([白.框左, 白.框右]);
-    expect(白.横滚).toBeLessThanOrEqual(0);
-    await page.evaluate(() => { document.documentElement.dataset.paper = "tone"; });
-    await page.waitForTimeout(100); // 减弱动态下 transition 还有 0.01ms，改完属性等一帧再量
-    const 原 = await 量();
     expect(原.框左, JSON.stringify(原)).toBeCloseTo(12, 0);
     expect(原.框右, JSON.stringify(原)).toBeCloseTo(原.页宽 - 12, 0);
+    expect(Math.abs(原.行左距 - 原.行右距), JSON.stringify(原)).toBeLessThanOrEqual(1);
     expect(原.横滚).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -265,7 +249,7 @@ it("H-新1 / 新2 / 新4（1366）：指标卡悬停只换底色、不上浮、�
   try {
     const 卡 = page.locator(".home-kpi-card").nth(2);
     expect(await 卡.locator(".home-kpi-chev").textContent()).toBe("›");
-    const 前 = await 卡.evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, top: e.getBoundingClientRect().top }));
+    const 前 = await 卡.evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, top: e.getBoundingClientRect().top, 影: getComputedStyle(e).boxShadow }));
     const 组顶 = await 顶(page, ".cli-ck-g");
     await 卡.locator(".home-kpi-head").hover();
     await page.waitForTimeout(300);
@@ -273,7 +257,8 @@ it("H-新1 / 新2 / 新4（1366）：指标卡悬停只换底色、不上浮、�
     expect(后.bg).not.toBe(前.bg);
     expect(后.bg).toBe("rgb(245, 245, 247)");
     expect(后.top).toBeCloseTo(前.top, 0);
-    expect(后.影).toBe("none");
+    // 卡片改进（11-23）：白卡平时带一层很淡的影（--card-raise-a），悬停不加深、不换——还是「不浮起」
+    expect(后.影).toBe(前.影);
     expect(后.数).toBe("rgb(217, 119, 6)");
     // 没着色的卡悬停数字也不变蓝
     await page.locator(".home-kpi-card").first().locator(".home-kpi-head").hover();
@@ -303,26 +288,6 @@ it("H-新15（390）：指标卡展开「看这 N 个项目 ›」不截、「�
     expect(await 不横滚(page)).toBe(true);
   } finally { await page.close(); }
 });
-
-for (const skin of ["ledger", "tech"] as const) {
-  it(`换皮主题（${skin}）结构和文案照旧：待复核是卡、自动分配原句、量词时间原样、没有 ›、命令表不浮、发送钮不改色`, async () => {
-    const { page, errors } = await 开({ 宽: 1366, skin });
-    try {
-      expect(await page.locator("[data-testid=verify-inbox].ant-card").count()).toBe(1);
-      expect(await page.locator(".home-eta-t").textContent()).toBe("自动分配：按现在的数，前面约 128 条轮到你（判无效待补 1 条、放弃记的待补 1 条，优先补给你）");
-      expect(await page.getByTestId("home-reply-due").textContent()).toMatch(/^待回复客户 8（超时 3）/);
-      expect(await page.getByTestId("home-await-assign").textContent()).toMatch(/最早 \d{2}-\d{2} 09:30/);
-      expect(await page.locator(".home-kpi-chev").count()).toBe(0);
-      await page.locator(".cli-frame textarea").fill("/");
-      await page.locator(".cli-cmds").waitFor();
-      expect(await page.locator(".cli-cmds-float").count()).toBe(0);
-      expect(await page.locator(".cli-cmds-one").count()).toBe(0);
-      expect(await page.locator(".cli-frame .cli-send").evaluate((e) => getComputedStyle(e).backgroundColor)).not.toBe("rgb(10, 102, 216)");
-      expect(await 不横滚(page)).toBe(true);
-      expect(errors).toEqual([]);
-    } finally { await page.close(); }
-  });
-}
 
 /*
   3704 实操（11-22）挡下的：顶部两行待办（销售、销售管理、市场管理常见）时，多行输入把问答卡撑高、外层 .cli-ck 跟着过了 min-height，
@@ -373,9 +338,9 @@ it.each([[1, 1024, 768], [1, 1366, 900], [2, 1024, 768], [2, 1366, 900]] as cons
       await page.locator(".home-kpi-body").waitFor();
       await page.waitForTimeout(400);
       const 标 = `${行} 行 ${宽}×${高} ${点法}`;
-      // 设计语言 D-2 方案 A（11-22）：1366 下右栏指标拉满问答区那么高，展开一张在格里摆得下、这一组不变高；1024（右栏落到下面）才量得出变高
+      // 1024（右栏落到下面）展开一张这一组一定变高，量得出钉住生效
       if (行 === 1 && 宽 === 1024) expect(await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height), `${标} 这一组变高了`).toBeGreaterThan(组高 + 10);
-      // 1366 这一组不变高，就得量展开的那张真摆得下：卡底边不超出 .cli-ck-g（超出就是压到下面去、被截或盖住别的）
+      // 1366 量展开的那张真摆得下：卡底边不超出 .cli-ck-g（超出就是压到下面去、被截或盖住别的）
       if (宽 === 1366) {
         const 底 = await page.evaluate(() => ({ 卡: document.querySelectorAll(".home-kpi-card")[2].getBoundingClientRect().bottom, 组: document.querySelector(".cli-ck-g")!.getBoundingClientRect().bottom }));
         expect(底.卡, `${标} 展开的卡底边不出 .cli-ck-g`).toBeLessThanOrEqual(底.组 + 0.5);

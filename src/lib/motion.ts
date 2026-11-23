@@ -138,135 +138,28 @@ export const 打字 = { 起步: 0.5, 每字: 0.09, 收尾: 2.4 } as const;
  */
 export const 思考打字 = { 每字: 0.016 } as const;
 
-/* ---------- 主题换了曲线和时长，JS 这边跟着读 ----------
- * 设置 → 外观 → 主题可以换 --ease-* / --t-* 的值（像素是阶跃、高级更慢更柔……，规矩见 src/app/skins/）。
- * CSS 动的那一半自己就跟着变了；motion 读不了 CSS 变量，所以在浏览器里从 <html> 上把当前值读出来，
- * 经 components/MotionTheme.tsx 发给各处（useMotionTheme()）。**上面那几个常量是默认主题的值、也是读不到时的兜底**。
- *
- * 读的规矩和样式表一样严：只认 cubic-bezier(…)、linear(…) 和 steps(n[, 起止])，时长只认 ms/s；
- * 认不出的那一项回到默认的值，不让一个写坏的主题把动效整个弄没。
- * --ease 读出来就是 弹簧CSS 那一串（默认主题）时，是弹簧 = true：MotionConfig 的默认过渡走 弹簧.ui；
- * 主题自己换了曲线（像素的阶跃、高级的慢）就走 tween：那条曲线 + --t，主题的手感不丢。
+/**
+ * 各处 motion 组件拿的那一份（经 components/MotionTheme.tsx 的 useMotionTheme()）：就是上面这几个常量。
  */
 export type 缓动 = 贝塞尔 | ((t: number) => number);
 export type 动效 = {
   曲线: { ease: 缓动; spring: 缓动; morph: 缓动 };
   时长: { press: number; pop: number; fast: number; leave: number; base: number; morph: number; seal: number };
   间隔: number;
-  /** 当前主题的 --ease 就是默认那条弹簧 */
-  是弹簧: boolean;
 };
-export const 现状动效: 动效 = { 曲线, 时长, 间隔, 是弹簧: true };
-
-/** steps(n, jump-end) 那种阶跃，写成 motion 认的缓动函数 */
-function 阶跃(n: number, 起: string): (t: number) => number {
-  const 先跳 = 起 === "start" || 起 === "jump-start" || 起 === "jump-both";
-  return (t) => {
-    if (t >= 1) return 1;
-    const k = 先跳 ? Math.ceil(t * n) : Math.floor(t * n);
-    return Math.min(1, Math.max(0, k / n));
-  };
-}
+export const 现状动效: 动效 = { 曲线, 时长, 间隔 };
 
 /**
- * CSS 的 linear(…)：照规范读——每一站是「输出 [输入%] [输入%]」，没写输入的首站算 0%、末站算 100%，
- * 中间缺的在前后两站之间均分，输入比前面小的抬到前面那么大。读不懂返回 null。
- */
-function 读折线(内: string): ((t: number) => number) | null {
-  const 站: { 出: number; 入: number | null }[] = [];
-  for (const 段 of 内.split(",")) {
-    const m = /^\s*(-?[\d.]+)((?:\s+-?[\d.]+%){0,2})\s*$/.exec(段);
-    if (!m) return null;
-    const 出 = Number(m[1]);
-    if (!Number.isFinite(出)) return null;
-    const 入们 = [...m[2].matchAll(/(-?[\d.]+)%/g)].map((x) => Number(x[1]) / 100);
-    if (入们.some((x) => !Number.isFinite(x))) return null;
-    if (入们.length === 0) 站.push({ 出, 入: null });
-    else for (const 入 of 入们) 站.push({ 出, 入 });
-  }
-  if (站.length < 2) return null;
-  if (站[0].入 === null) 站[0].入 = 0;
-  if (站[站.length - 1].入 === null) 站[站.length - 1].入 = 1;
-  let 最大 = -Infinity;
-  for (const z of 站) if (z.入 !== null) { z.入 = Math.max(z.入, 最大); 最大 = z.入; }
-  for (let i = 1; i < 站.length; i++) {
-    if (站[i].入 !== null) continue;
-    let j = i;
-    while (站[j].入 === null) j++;
-    const 起 = 站[i - 1].入!, 止 = 站[j].入!;
-    for (let k = i; k < j; k++) 站[k].入 = 起 + ((止 - 起) * (k - i + 1)) / (j - i + 1);
-    i = j;
-  }
-  const 入 = 站.map((z) => z.入!), 出 = 站.map((z) => z.出);
-  return (t) => {
-    if (t <= 入[0]) return 出[0];
-    for (let i = 1; i < 入.length; i++)
-      if (t <= 入[i]) return 入[i] === 入[i - 1] ? 出[i] : 出[i - 1] + ((出[i] - 出[i - 1]) * (t - 入[i - 1])) / (入[i] - 入[i - 1]);
-    return 出[出.length - 1];
-  };
-}
-
-export function 读曲线(v: string | null | undefined, 兜底: 缓动): 缓动 {
-  const s = (v ?? "").trim();
-  const b = /^cubic-bezier\(\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*,\s*([-\d.]+)\s*\)$/.exec(s);
-  if (b) {
-    const 数 = b.slice(1, 5).map(Number);
-    if (数.every(Number.isFinite)) return 数 as unknown as 贝塞尔;
-  }
-  if (去空白(s) === 去空白(弹簧CSS)) return 弹簧缓动;
-  const li = /^linear\(([^()]*)\)$/.exec(s);
-  if (li) return 读折线(li[1]) ?? 兜底;
-  const st = /^steps\(\s*(\d+)\s*(?:,\s*([\w-]+)\s*)?\)$/.exec(s);
-  if (st && Number(st[1]) > 0) return 阶跃(Number(st[1]), st[2] ?? "end");
-  return 兜底;
-}
-
-const 去空白 = (s: string) => s.replace(/\s+/g, "");
-
-export function 读秒(v: string | null | undefined, 兜底: number): number {
-  const m = /^([\d.]+)(ms|s)$/.exec((v ?? "").trim());
-  if (!m) return 兜底;
-  const n = Number(m[1]) / (m[2] === "ms" ? 1000 : 1);
-  return Number.isFinite(n) ? n : 兜底;
-}
-
-/** 给一个「按名字取 CSS 变量」的函数（浏览器里是 getComputedStyle(html).getPropertyValue），读出当前主题的动效 */
-export function 从样式读动效(取: (name: string) => string): 动效 {
-  return {
-    曲线: {
-      ease: 读曲线(取("--ease"), 曲线.ease),
-      spring: 读曲线(取("--ease-spring"), 曲线.spring),
-      morph: 读曲线(取("--ease-morph"), 曲线.morph),
-    },
-    时长: {
-      press: 读秒(取("--t-press"), 时长.press),
-      pop: 读秒(取("--t-pop"), 时长.pop),
-      fast: 读秒(取("--t-fast"), 时长.fast),
-      leave: 读秒(取("--t-leave"), 时长.leave),
-      base: 读秒(取("--t"), 时长.base),
-      morph: 读秒(取("--t-morph"), 时长.morph),
-      seal: 读秒(取("--t-seal"), 时长.seal),
-    },
-    间隔: 读秒(取("--stagger"), 间隔),
-    是弹簧: 去空白(取("--ease") ?? "") === 去空白(弹簧CSS),
-  };
-}
-
-/**
- * MotionConfig 的默认过渡：默认主题走 ui 那档弹簧（不回弹）；主题换了曲线就照主题的曲线 + --t。
+ * MotionConfig 的默认过渡：ui 那档弹簧（不回弹）。
  * 系统开了「减弱动态」不在这里管——MotionTheme 上的 reducedMotion="user" 让 motion 把位移、缩放直接跳到位，只留透明度。
  */
-export function 默认过渡(m: 动效) {
-  return m.是弹簧 ? 弹簧.ui : { duration: m.时长.base, ease: m.曲线.ease };
-}
+export const 默认过渡 = 弹簧.ui;
 
 /**
  * 「选中跟着走」的过渡：左栏选中底块、⌘K 高亮块从一项滑到另一项（PR2 外壳，原型 g.nav / g.cmdk 的 S.snappy）。
- * 默认主题走 snap 那档弹簧——比 ui 快一档，手指到哪它就到哪；换了曲线的主题照它的曲线 + --t。
+ * 走 snap 那档弹簧——比 ui 快一档，手指到哪它就到哪。
  */
-export function 跟随过渡(m: 动效) {
-  return m.是弹簧 ? 弹簧.snap : { duration: m.时长.base, ease: m.曲线.ease };
-}
+export const 跟随过渡 = 弹簧.snap;
 
 /**
  * 列表重排（FLIP / motion 的 layout）最多带几行。超过就整批硬换、不做位移动画：
@@ -281,7 +174,7 @@ export const 重排上限 = 40;
  * 写变量就和 CSS 那边同一条——老浏览器不认 linear() 时也跟着 globals.css 的 @supports 退回 cubic-bezier，
  * 不会因为一条认不出的曲线让 antd 的进场动画整条作废（rc-motion 等不到 animationend，弹层就卡住）。
  * 两条 back 原本带过冲：out-back 接不过冲的 --ease-spring，in-back 接 --ease-morph（全站不回弹，P-界面-38）。
- * 换皮主题下 skins/shared.css 那几条 --ant-motion-* 也是同样的接法。
+ * 暗黑下 antd-dark.css 那几条 --ant-motion-* 也是同样的接法。
  */
 export const antd动效 = {
   motionDurationFast: `${时长.fast}s`,

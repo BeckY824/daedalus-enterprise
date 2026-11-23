@@ -67,10 +67,10 @@ describe("Windows 关了「显示动画」", () => {
 });
 
 describe("Windows 字色", () => {
-  it("只压深默认主题的两档浅灰，别的主题不替它们改", () => {
+  it("只压深两档浅灰；权重压得过暗黑块（暗黑下也压）", () => {
     const 规则 = [...去注释(css).matchAll(/html\.os-win(\[[^\]]*\])?\s*\{([^}]*)\}/g)];
     expect(规则.length).toBe(1);
-    expect(规则[0][1]).toBe('[data-skin="now"]');
+    expect(规则[0][1]).toBe("[data-mode]");
     expect(规则[0][2]).toContain("--text-muted");
     expect(规则[0][2]).toContain("--text-faint");
   });

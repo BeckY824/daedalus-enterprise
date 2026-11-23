@@ -1,25 +1,22 @@
 /*
- * 四套换皮主题共用的一层（设置 → 外观 → 主题，lib/appearance.ts）。「现状」不走这里——
- * 现状下 antd 用的仍是 lib/theme.ts 算出来的那套值，一个像素都不变。
+ * 暗黑下 antd 接到我们的 token 上（设置 → 外观 → 明暗，<html data-mode="dark">）。浅色不走这里——
+ * 浅色下 antd 用的是 lib/theme.ts 算出来的那套值。
  *
  * 为什么要这一层：antd 的组件色是它自己在 JS 里从 colorPrimary 派生出来的（hover 浅一档、active 深一档、
- * 选中底、描边……二十来个），写成 CSS 变量挂在 `.css-var-dd` 上（key 在 lib/theme.ts 钉死）。
- * 主题只换我们自己的 token（--brand、--ink……），不接这一层的话按钮、表格、分页、下拉还是那个蓝。
- * 所以这里把 antd 的变量全部接到我们的 token 上，派生色用 color-mix 从 token 现算：
- * 主题文件只管「我们的名字」，antd 自己跟着变。
+ * 选中底、描边……二十来个），写成 CSS 变量挂在 `.css-var-dd` 上（key 在 lib/theme.ts 钉死），
+ * 而且 lib/theme.ts 里是浅色的字面量。暗黑只换我们自己的 token（--panel、--ink……，dark.css），
+ * 不接这一层的话按钮、表格、分页、下拉还是浅色那一套。所以这里把 antd 的变量全部接到我们的 token 上，
+ * 派生色用 color-mix 从 token 现算。
  *
  * 规矩：
  *   - 这里不许有色值（tests/design-tokens.test.ts）；只许 var(--我们的 token) 和 color-mix
- *   - 覆盖的 --ant-* 名字必须是 antd 真有的（tests/skins.test.ts 对着 antd 的 token 表查，拼错就红）
+ *   - 覆盖的 --ant-* 名字必须是 antd 真有的（tests/antd-dark.test.ts 对着 antd 的 token 表查，拼错就红）
  *   - 选择器权重：antd 的全局变量在 `.css-var-dd`（0,1,0），组件变量在 `.css-var-dd:is(.ant-xxx, .ant-xxx-css-var)`（0,2,0）；
- *     这里前面多一个 :root[data-skin]:not(...)，总压得过它们
- *   - 暗黑（P10）：「现状」在暗黑下也得接这一层，不然 antd 还是 lib/theme.ts 那套浅色字面量。
- *     所以接色的块前缀是 :root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"])，权重和原来一样是 (0,3,0)；
- *     纯形状的（下拉圆角、下面两条头像/时间线）仍只给四套换皮，现状暗黑下形状不动
+ *     这里前面多一个 :root[data-mode="dark"]，总压得过它们
  */
 
 /* ---------- 全局：色、字、形、动 ---------- */
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd {
+:root[data-mode="dark"] .css-var-dd {
   --ant-color-primary: var(--brand);
   --ant-color-primary-hover: color-mix(in srgb, var(--brand) 80%, var(--panel));
   --ant-color-primary-active: var(--brand-deep);
@@ -99,7 +96,7 @@
 
   --ant-color-bg-base: var(--panel);
   --ant-color-bg-container: var(--panel);
-  --ant-color-bg-elevated: var(--pop-bg);   /* 浮层底：换皮主题 --pop-bg 就是它们的 --panel；现状暗黑抬亮一档（D-2） */
+  --ant-color-bg-elevated: var(--pop-bg);   /* 浮层底 */
   --ant-color-bg-layout: var(--workbench);
   --ant-color-bg-container-disabled: var(--hover);
   --ant-color-bg-spotlight: color-mix(in srgb, var(--ink) 88%, var(--panel));
@@ -138,8 +135,7 @@
   --ant-box-shadow: var(--shadow-card);
   --ant-box-shadow-secondary: var(--shadow-pop);
 
-  /* antd 自己的动效也跟着主题走：像素的阶跃、高级的慢、科技的利落，下拉和弹窗里一样看得出来。
-     两条「back」原本都带过冲（勾选框打勾、徽标进出、表单报错收起）：全站不回弹（P-界面-38）后
+  /* antd 自己的动效也接到我们的曲线和时长上。两条「back」原本都带过冲（勾选框打勾、徽标进出、表单报错收起）：全站不回弹（P-界面-38）后
      out-back 接到不过冲的 --ease-spring，in-back（离场前先往回缩一下）接到 --ease-morph */
   --ant-motion-ease-out: var(--ease);
   --ant-motion-ease-out-circ: var(--ease);
@@ -152,7 +148,7 @@
   --ant-motion-duration-mid: var(--t);
   --ant-motion-duration-slow: var(--t-morph);
 
-  /* 预设色（状态标签用 color="green" 这类）：各主题不要八个色相，只留好坏两级 + 主色 + 一档中性 */
+  /* 预设色（状态标签用 color="green" 这类）：只留好坏两级 + 主色 + 一档中性 */
   --ant-blue-1: var(--brand-bg); --ant-blue-3: var(--brand-line); --ant-blue-6: var(--brand); --ant-blue-7: var(--brand-deep);
   --ant-geekblue-1: var(--brand-bg); --ant-geekblue-3: var(--brand-line); --ant-geekblue-6: var(--brand); --ant-geekblue-7: var(--brand-deep);
   --ant-cyan-1: var(--brand-bg); --ant-cyan-3: var(--brand-line); --ant-cyan-6: var(--brand); --ant-cyan-7: var(--brand-deep);
@@ -169,7 +165,7 @@
 }
 
 /* ---------- 组件：lib/theme.ts 里单独给过值的那些（它们写成了字面量，不跟全局变量走） ---------- */
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-table, .ant-table-css-var) {
+:root[data-mode="dark"] .css-var-dd:is(.ant-table, .ant-table-css-var) {
   --ant-table-header-bg: var(--workbench);
   --ant-table-header-color: var(--text-muted);
   --ant-table-header-sort-active-bg: var(--hover);
@@ -192,7 +188,7 @@
   --ant-table-header-icon-hover-color: var(--ink);
   --ant-table-sticky-scroll-bar-bg: var(--text-faint);
 }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-input, .ant-input-css-var) {
+:root[data-mode="dark"] .css-var-dd:is(.ant-input, .ant-input-css-var) {
   --ant-input-active-border-color: var(--brand);
   --ant-input-hover-border-color: var(--field-line);
   --ant-input-active-shadow: 0 0 0 3px color-mix(in srgb, var(--brand) 14%, transparent);
@@ -200,7 +196,7 @@
   --ant-input-active-bg: var(--panel);
   --ant-input-addon-bg: var(--workbench);
 }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-select, .ant-select-css-var) {
+:root[data-mode="dark"] .css-var-dd:is(.ant-select, .ant-select-css-var) {
   --ant-select-option-selected-color: var(--ink);
   --ant-select-option-selected-bg: var(--brand-bg);
   --ant-select-option-active-bg: var(--hover);
@@ -212,18 +208,18 @@
   --ant-select-active-outline-color: color-mix(in srgb, var(--brand) 14%, transparent);
 }
 /* 顶上那条提示（message）：antd 把它的底色算成组件变量写死 #fff，全局的 --ant-color-bg-elevated 管不到它——
-   科技那种深色主题下就成了白底浅字，一个字都看不清（2026-09-29 查出来的，所有保存/撤销提示都是它） */
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-message, .ant-message-css-var) {
+   暗底下就成了白底浅字，一个字都看不清（所有保存/撤销提示都是它） */
+:root[data-mode="dark"] .css-var-dd:is(.ant-message, .ant-message-css-var) {
   --ant-message-content-bg: var(--panel);
 }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-modal, .ant-modal-css-var) {
+:root[data-mode="dark"] .css-var-dd:is(.ant-modal, .ant-modal-css-var) {
   --ant-modal-content-bg: var(--pop-bg);
   --ant-modal-header-bg: var(--pop-bg);
   --ant-modal-footer-bg: transparent;
   --ant-modal-title-color: var(--ink);
   --ant-border-radius-lg: var(--r-pop);   /* 组件里重设全局名：只在弹窗这一层生效 */
 }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-btn, .ant-btn-css-var) {
+:root[data-mode="dark"] .css-var-dd:is(.ant-btn, .ant-btn-css-var) {
   /* 按钮的组件变量叫 --ant-button-*（不是 --ant-btn-*，那一套是它每个按钮自己算的局部变量） */
   --ant-button-primary-color: var(--on-ink);
   --ant-button-danger-color: var(--on-ink);
@@ -249,7 +245,7 @@
   --ant-button-text-text-active-color: var(--ink);
   --ant-button-text-hover-bg: color-mix(in srgb, var(--ink) 6%, transparent);
 }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-pagination, .ant-pagination-css-var) {
+:root[data-mode="dark"] .css-var-dd:is(.ant-pagination, .ant-pagination-css-var) {
   --ant-pagination-item-bg: var(--panel);
   --ant-pagination-item-active-bg: var(--panel);
   --ant-pagination-item-active-color: var(--brand);
@@ -264,36 +260,28 @@
   --ant-pagination-hover-bg: var(--hover);
   --ant-pagination-active-bg: var(--panel);
 }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-skeleton, .ant-skeleton-css-var) {
+:root[data-mode="dark"] .css-var-dd:is(.ant-skeleton, .ant-skeleton-css-var) {
   --ant-skeleton-color: var(--hover);
   --ant-skeleton-color-gradient-end: color-mix(in srgb, var(--ink) 10%, var(--hover));
   --ant-skeleton-gradient-from-color: var(--hover);
   --ant-skeleton-gradient-to-color: color-mix(in srgb, var(--ink) 10%, var(--hover));
 }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-avatar, .ant-avatar-css-var) { --ant-avatar-group-border-color: var(--panel); }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-tabs, .ant-tabs-css-var) {
+:root[data-mode="dark"] .css-var-dd:is(.ant-avatar, .ant-avatar-css-var) { --ant-avatar-group-border-color: var(--panel); }
+:root[data-mode="dark"] .css-var-dd:is(.ant-tabs, .ant-tabs-css-var) {
   --ant-tabs-ink-bar-color: var(--ink);
   --ant-tabs-item-selected-color: var(--ink);
   --ant-tabs-item-hover-color: var(--ink);
-  /* 没选中的页签：antd 默认取 colorText，theme.ts 里是写死的浅色墨色 #1d1d1f，暗底上看不见；跟着本套 --ink 走（11-22） */
+  /* 没选中的页签：antd 默认取 colorText，theme.ts 里是写死的浅色墨色 #1d1d1f，暗底上看不见；跟着暗黑的 --ink 走（11-22） */
   --ant-tabs-item-color: var(--ink);
 }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-segmented, .ant-segmented-css-var) { --ant-segmented-track-bg: var(--hover); --ant-segmented-item-selected-bg: var(--panel); --ant-segmented-item-color: var(--ink-soft); --ant-segmented-item-selected-color: var(--ink); --ant-segmented-item-hover-color: var(--ink); }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-card, .ant-card-css-var) { --ant-color-border-secondary: var(--line); --ant-card-actions-bg: var(--panel); --ant-card-extra-color: var(--ink); }
-:root[data-skin]:not([data-skin="now"]) .css-var-dd:is(.ant-dropdown, .ant-dropdown-css-var) { --ant-border-radius-lg: var(--r-pop); }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-tag, .ant-tag-css-var) { --ant-tag-default-bg: var(--hover); --ant-tag-default-color: var(--ink-soft); --ant-tag-solid-text-color: var(--on-ink); }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-form, .ant-form-css-var) { --ant-form-label-color: var(--text-muted); }
-:root:is([data-skin]:not([data-skin="now"]), [data-mode="dark"]) .css-var-dd:is(.ant-menu, .ant-menu-css-var) {
+:root[data-mode="dark"] .css-var-dd:is(.ant-segmented, .ant-segmented-css-var) { --ant-segmented-track-bg: var(--hover); --ant-segmented-item-selected-bg: var(--panel); --ant-segmented-item-color: var(--ink-soft); --ant-segmented-item-selected-color: var(--ink); --ant-segmented-item-hover-color: var(--ink); }
+:root[data-mode="dark"] .css-var-dd:is(.ant-card, .ant-card-css-var) { --ant-color-border-secondary: var(--line); --ant-card-actions-bg: var(--panel); --ant-card-extra-color: var(--ink); }
+:root[data-mode="dark"] .css-var-dd:is(.ant-tag, .ant-tag-css-var) { --ant-tag-default-bg: var(--hover); --ant-tag-default-color: var(--ink-soft); --ant-tag-solid-text-color: var(--on-ink); }
+:root[data-mode="dark"] .css-var-dd:is(.ant-form, .ant-form-css-var) { --ant-form-label-color: var(--text-muted); }
+:root[data-mode="dark"] .css-var-dd:is(.ant-menu, .ant-menu-css-var) {
   --ant-menu-item-color: var(--ink-soft);
   --ant-menu-item-hover-bg: var(--hover);
   --ant-menu-item-hover-color: var(--ink);
   --ant-menu-item-selected-bg: var(--nav-on-bg);
   --ant-menu-item-selected-color: var(--nav-on-fg);
 }
-
-/* ---------- 四套共用的两条形状：分类色收起来 ----------
-   时间线的类型方块、头像底色是按类型 / 名字哈希从八个色相里挑的（lib/palette.ts，行内 style）。
-   现状要那份热闹；换皮的四套都是「一种强调色」的约束，八个色相一出来整页就回到了现状。
-   行内 style 只能靠 !important 压 */
-:root[data-skin]:not([data-skin="now"]) .rec-tl-dot { background: var(--hover) !important; color: var(--ink-soft); }
-:root[data-skin]:not([data-skin="now"]) :is(.ant-avatar, .roster-av) { background: var(--hover) !important; color: var(--ink-soft) !important; }

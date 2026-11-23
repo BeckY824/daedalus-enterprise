@@ -1,7 +1,6 @@
 "use client";
 
 import { useSettingsNote } from "./InlineNote";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, Alert, Typography, Grid, Popover, Tooltip } from "antd";
@@ -52,12 +51,11 @@ export type Row = {
 };
 
 /** 管人的红、带团队的蓝，其余默认灰——跟账号角色那套颜色同一个意思 */
+/** 设计语言 E4（D1 实测）：红只给出问题，「总管理」「管理员」不是出了问题——这两个用默认灰 */
 const 业务角色色: Record<业务角色, string | undefined> = {
-  director: "red", admin: "red", coach: "purple", sales_mgr: "blue", marketing_mgr: "blue",
+  director: undefined, admin: undefined, coach: "purple", sales_mgr: "blue", marketing_mgr: "blue",
   sales: undefined, channel_ops: undefined, project_ops: undefined,
 };
-/** 设计语言 E4（D1 实测）：红只给出问题，「总管理」「管理员」不是出了问题——现状主题这两个改默认灰，别的颜色不动；换皮主题照原样 */
-const 角色色of = (角色: 业务角色, 新样: boolean) => { const c = 业务角色色[角色]; return 新样 && c === "red" ? undefined : c; };
 
 export default function MembersTab({
   users,
@@ -89,7 +87,6 @@ export default function MembersTab({
   const [刚解绑, set刚解绑] = useState<string | null>(null);
   const [恢复中, set恢复中] = useState<string | null>(null);
   const [form] = Form.useForm();
-  const 新样 = useIsNowSkin(); // 设计语言 E4：行尾动作图标 + 字、角色标签灰只挂现状主题
   const 按业务角色 = users.some((u) => u.业务角色);
   /** 企业版新增成员：当场选业务角色（编辑已有成员的角色在「组织架构」里改） */
   const 新建带角色 = 企业版 && 按业务角色 && !editing;
@@ -339,18 +336,16 @@ export default function MembersTab({
   // 桌面两档格子左右内边距 4、标签内边距 4（globals.css .member-table 同一断点）
   const 手机 = 屏.md === false;
   const 窄 = 屏.md === true && !屏.xl;
-  /** 行尾动作：现状主题「图标 + 字」（D09，.row-act 文字款；窄屏只留字），换皮主题照原样只有图标（type="text"） */
-  const 行钮 = (字: string, 图标: ReactNode) => (新样
-    ? { className: "row-act", size: "small" as const, children: 字, icon: 窄 ? undefined : 图标 }
-    : { type: "text" as const, className: "row-act", size: "small" as const, icon: 图标 });
+  /** 行尾动作：「图标 + 字」（D09，.row-act 文字款；窄屏只留字） */
+  const 行钮 = (字: string, 图标: ReactNode) => ({ className: "row-act", size: "small" as const, children: 字, icon: 窄 ? undefined : 图标 });
   const columns: ColumnsType<Row> = [
     // 姓名这一列只放姓名（11-01 用户：「系统清除掉小字。只留姓名即可」）：权限只看「角色」那一栏，
     // 职位、登录名这些小字容易被误当成权限。登录名在编辑弹窗里看；职位数据不动，只是不显示
     {
       title: "姓名",
       dataIndex: "name",
-      // 手机照旧：现状主题行尾动作带字（D09），操作列宽 44、姓名列让出 44；桌面两档见上面「列宽三档」
-      width: 手机 ? (新样 ? 146 : 190) : 窄 ? 96 : 124,
+      // 手机照旧：行尾动作带字（D09），操作列宽 44、姓名列让出 44；桌面两档见上面「列宽三档」
+      width: 手机 ? 146 : 窄 ? 96 : 124,
       render: (v) => <UserCell name={v} size={30} />,
     },
     按业务角色
@@ -368,7 +363,7 @@ export default function MembersTab({
                 <span className="member-roles-tags">
                   {/* 「+N」单独一格不截（11-23 审查：窄格里「渠道运营 +1」的「+1」被截掉，看不出还有别的角色），只截第一个角色名；
                       title 挂在两小格上不挂标签：TruncTip 量到截了的是角色名那格，浮出它的 title（全部角色），不和标签的原生提示叠两层 */}
-                  <Tag color={角色色of(r.业务角色![0], 新样)} className="member-role-tag">
+                  <Tag color={业务角色色[r.业务角色![0]]} className="member-role-tag">
                     <span className="member-role-main" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>{角色名[r.业务角色![0]]}</span>
                     {r.业务角色!.length > 1 && <span className="member-role-more" title={(r.业务角色 ?? []).map((x) => 角色名[x]).join("、")}>+{r.业务角色!.length - 1}</span>}
                   </Tag>
@@ -461,10 +456,10 @@ export default function MembersTab({
       key: "act",
       // 两个图标按钮（手机上各撑到 44，globals.css .row-act）；120 时 1366 宽下整张表比设置页宽，最右这列被截（10-30 交互规则 G）。
       // 手机宽（< md）两颗 44 加间距要 96、再加格子内边距放不下 96，伸出格子（11-17 手机排版闸门 2H）：手机上给 128，表本来就横滚
-      // 设计语言 E4（D09）：现状主题「图标 + 字」（L-B 的 .row-act 款：蓝字、不带框），两颗 + 间距 + 格子内边距要 132，CI（Linux 字体）实测伸出 4px，给到 140；手机宽各撑到 44 高要 136
-      // 窄屏只留字：两颗「编辑」「停用」各 38、触屏各撑到 44（.row-act，换皮的图标键也是），加间距和 4+4 内边距要 98；
+      // 设计语言 E4（D09）：「图标 + 字」（L-B 的 .row-act 款：蓝字、不带框），两颗 + 间距 + 格子内边距要 132，CI（Linux 字体）实测伸出 4px，给到 140；手机宽各撑到 44 高要 136
+      // 窄屏只留字：两颗「编辑」「停用」各 38、触屏各撑到 44（.row-act），加间距和 4+4 内边距要 98；
       // 按下停用 / 恢复时转圈盖在字上、不加宽（globals.css），不会顶出格子。桌面「图标 + 字」各 60（转圈顶替图标，宽不变）+ 间距 + 内边距 130，给 132
-      width: 手机 ? (新样 ? 136 : 128) : 窄 ? 98 : 新样 ? 132 : 96,
+      width: 手机 ? 136 : 窄 ? 98 : 132,
       // 行上不标红（10-30 交互规则 D）：停用要先清点、再在弹窗里确认，红色留给弹窗
       render: (_, r) =>
         !isAdmin && 能停(r) ? (

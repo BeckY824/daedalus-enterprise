@@ -11,7 +11,6 @@ import { useEffect, useMemo, useState, useTransition, type ReactNode } from "rea
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Segmented, Select, Tooltip } from "antd";
 import { 合计文字, 合计缩写 } from "@/lib/currency";
-import { useIsNowSkin } from "@/lib/use-skin";
 import CustomRangePicker from "@/components/CustomRangePicker";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
 import { beijingDay } from "@/lib/business-clock";
@@ -83,18 +82,17 @@ export default function ChannelDash({
   筛了负责人: boolean;
   能录: boolean;
   看详情: (id: string, 录?: boolean) => void;
-  /** 现状主题：「按子渠道 / 按主渠道」口径切换摆进看板头（设计语言 C-A1 C-新1）；不给就不摆 */
+  /** 「按子渠道 / 按主渠道」口径切换摆进看板头（设计语言 C-A1 C-新1）；不给就不摆 */
   口径?: ReactNode;
 }) {
-  const 新样 = useIsNowSkin();
-  // 现状主题 · 窄屏（看板宽 ≤560）：次要卡默认收成卡头一行，把列表提上来（C-新4）；宽屏不收（钮也不出，见 globals.css）
+  // 窄屏（看板宽 ≤560）：次要卡默认收成卡头一行，把列表提上来（C-新4）；宽屏不收（钮也不出，见 globals.css）
   const [展开, set展开] = useState<Record<string, boolean>>({});
-  const 收类 = (名: string) => (新样 && !展开[名] ? " is-fold" : "");
-  const 收钮 = (名: string, 标: string) => (新样 ? (
+  const 收类 = (名: string) => (!展开[名] ? " is-fold" : "");
+  const 收钮 = (名: string, 标: string) => (
     <button type="button" className="chan-fold" aria-expanded={!!展开[名]} aria-label={`${展开[名] ? "收起" : "展开"}${标}`} onClick={() => set展开((x) => ({ ...x, [名]: !x[名] }))}>
       {展开[名] ? "收起" : "展开"}
     </button>
-  ) : null);
+  );
   const router = useRouter();
   const 路径 = usePathname();
   const 参数 = useSearchParams();
@@ -145,14 +143,14 @@ export default function ChannelDash({
   /** 卡片上「含公海 M 条」：带了名单才写数，没带只写口径 */
   const 含公海 = (m: number | undefined) => (m === undefined ? "含公海" : `含公海 ${数(m)} 条`);
 
-  // 现状主题：右侧写到这一层的转化率（P-渠道-19/20/21，和 KPI、三层转化率同一个数），流失率进悬停（C-新2）；比例算法不动
+  // 右侧写到这一层的转化率（P-渠道-19/20/21，和 KPI、三层转化率同一个数），流失率进悬停（C-新2）；比例算法不动
   const 漏斗 = [
     { 名: "总线索", 值: 数(k.线索), 旁: null as string | null, 说: null as string | null, 比: null as number | null },
     { 名: "有效线索", 值: k.已判定 ? 数(k.有效) : "—", 旁: `有效率 ${百分(k.有效率)}`, 说: `有效线索 ÷ 已判定（已判定 ${数(k.已判定)} 条）`, 比: k.已判定 ? k.有效率 : null },
     { 名: "商机", 值: 数(k.商机), 旁: 差(k.转商机.比例), 说: `按 ${转商机分母} 算，只看从线索起步的（导入时就是商机、订单的不算）`, 比: k.转商机.比例 },
     { 名: "订单", 值: 数(k.订单), 旁: 差(k.转订单), 说: "按 订单 ÷ 商机 算", 比: k.转订单 },
   ];
-  const 预警头数 = 新样 && k.预警.length ? <span className="chan-count">（{k.预警.length}）</span> : null;
+  const 预警头数 = k.预警.length ? <span className="chan-count">（{k.预警.length}）</span> : null;
   const 时段钮 = (
     <>
       <Segmented size="small" value={期} onChange={(v) => 换档(v as 档)} options={[...周期们, 自定义]} aria-label="统计周期" />
@@ -167,22 +165,15 @@ export default function ChannelDash({
 
   return (
     <section className={`chan-dash${换着 ? " chan-dash-busy" : ""}`} aria-label="渠道总览" aria-busy={换着 || undefined}>
-      {/* 现状主题：小节头一行「总览 · 口径 · 时段」+ 右侧「按筛选出的 N 个渠道算」（C2，C-新1）；换皮主题照旧 */}
-      {新样 ? (
-        <div className="chan-dash-bar">
-          <span className="chan-dash-when">
-            <h2 className="chan-dash-title">总览</h2>
-            {口径}
-            {时段钮}
-          </span>
-          {说明}
-        </div>
-      ) : (
-        <div className="chan-dash-bar">
-          {说明}
-          <span className="chan-dash-when">{时段钮}</span>
-        </div>
-      )}
+      {/* 小节头一行「总览 · 口径 · 时段」+ 右侧「按筛选出的 N 个渠道算」（C2，C-新1） */}
+      <div className="chan-dash-bar">
+        <span className="chan-dash-when">
+          <h2 className="chan-dash-title">总览</h2>
+          {口径}
+          {时段钮}
+        </span>
+        {说明}
+      </div>
 
       {/* ch.dash：自定义那一段还在路上（服务端现算）先出骨架，不拿旧数压暗了冒充；三个预设本来就在手上，切了直接滚 */}
       {等自定义 ? (
@@ -223,15 +214,15 @@ export default function ChannelDash({
         </div>
         <div className="chan-dash-k">
           <span className="chan-dash-kk">成交额</span>
-          {新样 ? 缩写格(k.成交) : <span className="chan-dash-kv" title={合计文字(k.成交)}>{合计文字(k.成交)}</span>}
+          {缩写格(k.成交)}
           <span className="chan-dash-ks">按进订单的时间</span>
         </div>
         <div className={`chan-dash-k${投入空 ? " chan-dash-k-empty" : ""}`}>
           <span className="chan-dash-kk">投入 / ROI</span>
-          {新样 && !投入空 ? 缩写格(k.投入) : <span className="chan-dash-kv" title={投入空 ? undefined : 合计文字(k.投入)}>{投入空 ? "—" : 合计文字(k.投入)}</span>}
+          {!投入空 ? 缩写格(k.投入) : <span className="chan-dash-kv">—</span>}
           <span className="chan-dash-ks">{投入空 ? "待录入" : k.产出比 !== null ? `ROI ${k.产出比}` : k.产出比说明}</span>
-          {/* 现状主题：「投入数据待录入」并进这一格（C2f），不再单占一条虚线框；「去补录 ›」只给能录的（P-渠道-16） */}
-          {新样 && k.未录投入 > 0 && (
+          {/* 「投入数据待录入」并进这一格（C2f），不再单占一条虚线框；「去补录 ›」只给能录的（P-渠道-16） */}
+          {k.未录投入 > 0 && (
             <span className="chan-dash-ks chan-dash-todo">
               {k.未录投入} 个渠道没录
               {能录 && k.首个未录 && (
@@ -252,15 +243,9 @@ export default function ChannelDash({
                   {x.名} <b>{x.值}</b>
                 </span>
                 {x.旁 && (
-                  新样 ? (
-                    <Tooltip trigger={["hover", "focus"]} title={x.比 == null ? x.说 : `${x.说}；流失 ${百分(Math.max(0, 1 - x.比))}`}>
-                      <span className="chan-dash-fun-side" tabIndex={0}>→ {百分(x.比)}</span>
-                    </Tooltip>
-                  ) : (
-                    <Tooltip title={x.说}>
-                      <span className="chan-dash-fun-side">{x.旁}</span>
-                    </Tooltip>
-                  )
+                  <Tooltip trigger={["hover", "focus"]} title={x.比 == null ? x.说 : `${x.说}；流失 ${百分(Math.max(0, 1 - x.比))}`}>
+                    <span className="chan-dash-fun-side" tabIndex={0}>→ {百分(x.比)}</span>
+                  </Tooltip>
                 )}
               </li>
             ))}
@@ -317,8 +302,8 @@ export default function ChannelDash({
             <ul className="chan-dash-warn">
               {k.预警.map((w) => (
                 <li key={w.id}>
-                  {/* 现状主题：普通卡 + 行首橙色圆点（要人处理），不再整块黄底（C-新3，P-渠道-22 门槛不变） */}
-                  {新样 && <i className="chan-dot is-warn" aria-hidden />}
+                  {/* 普通卡 + 行首橙色圆点（要人处理），不再整块黄底（C-新3，P-渠道-22 门槛不变） */}
+                  <i className="chan-dot is-warn" aria-hidden />
                   <button type="button" className="link-plain chan-dash-ell" title={w.name} onClick={() => 看详情(w.id)}>{w.name}</button>
                   <span className="chan-dash-warn-v">
                     {数(w.线索)} 线索 · {w.项.map((x) => `${x.指标} ${x.值}`).join(" · ")}
@@ -369,8 +354,8 @@ export default function ChannelDash({
                 return (
                   <li key={x.id}>
                     <button type="button" className="link-plain chan-dash-ell" title={x.name} onClick={() => 看详情(x.id)}>{x.name}</button>
-                    {/* 条宽：现状主题按 5% 一档给类；换皮主题照原样（用户 11-21「不动」） */}
-                    <span className="chan-dash-top-bar">{新样 ? <i className={宽类(榜顶 ? x.线索 / 榜顶 : 0)} /> : <i style={{ width: `${(x.线索 / 榜顶) * 100}%` }} />}</span>
+                    {/* 条宽：按 5% 一档给类 */}
+                    <span className="chan-dash-top-bar"><i className={宽类(榜顶 ? x.线索 / 榜顶 : 0)} /></span>
                     {名单段(x.线索, x.名单) ? <Tooltip title={<RosterNote 总数={x.线索} 名单={x.名单} channelId={x.id} 链={链} />}>{数字}</Tooltip> : 数字}
                   </li>
                 );
@@ -400,34 +385,19 @@ export default function ChannelDash({
             >
               <span className="chan-dash-q" tabIndex={0} aria-label="进公海怎么算">?</span>
             </Tooltip>
-            {进合计 > 0 && (新样 ? <span className="chan-count">（{数(进合计)}）</span> : <span className="chan-dash-pool-sum">共 {数(进合计)} 条</span>)}
+            {进合计 > 0 && <span className="chan-count">（{数(进合计)}）</span>}
             {公海.视角 === "市场管理" && (
-              新样 ? (
-                // D37：显示选中值「全部创建人」（墨色），不靠占位字
-                <Select
-                  size="small"
-                  className="chan-dash-pool-who"
-                  aria-label="创建人"
-                  showSearch={{ optionFilterProp: "label" }}
-                  value={创建人}
-                  onChange={(v: string) => set创建人(v ?? "")}
-                  options={[{ value: "", label: "全部创建人" }, ...公海.创建人们.map((u) => ({ value: u.id, label: u.name }))]}
-                  popupMatchSelectWidth={false}
-                />
-              ) : (
-                <Select
-                  size="small"
-                  className="chan-dash-pool-who"
-                  aria-label="创建人"
-                  placeholder="全部创建人"
-                  allowClear
-                  showSearch={{ optionFilterProp: "label" }}
-                  value={创建人 || undefined}
-                  onChange={(v?: string) => set创建人(v ?? "")}
-                  options={公海.创建人们.map((u) => ({ value: u.id, label: u.name }))}
-                  popupMatchSelectWidth={false}
-                />
-              )
+              // D37：显示选中值「全部创建人」（墨色），不靠占位字
+              <Select
+                size="small"
+                className="chan-dash-pool-who"
+                aria-label="创建人"
+                showSearch={{ optionFilterProp: "label" }}
+                value={创建人}
+                onChange={(v: string) => set创建人(v ?? "")}
+                options={[{ value: "", label: "全部创建人" }, ...公海.创建人们.map((u) => ({ value: u.id, label: u.name }))]}
+                popupMatchSelectWidth={false}
+              />
             )}
             {收钮("海", "进公海")}
           </div>
@@ -451,14 +421,6 @@ export default function ChannelDash({
         </div>
       )}
 
-      {!新样 && k.未录投入 > 0 && (
-        <div className="chan-dash-empty">
-          <span>投入数据待录入（{k.未录投入}/{k.渠道数}）</span>
-          {能录 && k.首个未录 && (
-            <button type="button" className="link-plain link-strong" onClick={() => 看详情(k.首个未录!, true)}>去补录 →</button>
-          )}
-        </div>
-      )}
     </section>
   );
 }

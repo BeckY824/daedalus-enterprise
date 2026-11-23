@@ -1,6 +1,5 @@
 "use client";
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { usePinCenter } from "./use-pin-center";
 import { motion } from "motion/react";
 import type { 页面范围 } from "@/lib/ai-context-page";
@@ -150,15 +149,14 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
   const 外框 = 驾驶舱 && !(empty && 空库);
   /** 外框里欢迎语下面那一格：示例的状态（↑↓ 选中哪条、点了填进输入框）还在 Composer 里，只是画到这儿来 */
   const [示例槽, set示例槽] = useState<HTMLDivElement | null>(null);
-  const 现状 = useIsNowSkin();
   const 网格 = useRef<HTMLDivElement>(null);
-  usePinCenter(网格, 现状 && 驾驶舱 && empty);
+  usePinCenter(网格, 驾驶舱 && empty);
   /*
-    设计语言 HC-1（用户 11-22 选 C0-A / C1-A / C2-A / C3-A / C12-A / C13-A）：现状主题、首页驾驶舱、问过之后，
+    设计语言 HC-1（用户 11-22 选 C0-A / C1-A / C2-A / C3-A / C12-A / C13-A）：首页驾驶舱、问过之后，
     对话框是「一张纸」——页面不滚、四边一律 24，框顶一行标题（ChatHead）、中间对话在框里滚、框底输入框；
-    对话一条 760 宽的列在框里居中；顶部待办收成标题行右边「待办 N」。换皮主题、右侧 AI 面板（窄）照旧
+    对话一条 760 宽的列在框里居中；顶部待办收成标题行右边「待办 N」。右侧 AI 面板（窄）照旧
   */
-  const 一张纸 = 现状 && 驾驶舱 && !empty;
+  const 一张纸 = 驾驶舱 && !empty;
   const 对话id = useConversationId(scope) ?? 会话?.id ?? null;
   const 刚发在屏 = turns.some((t) => t.id === 刚发的);
   /*

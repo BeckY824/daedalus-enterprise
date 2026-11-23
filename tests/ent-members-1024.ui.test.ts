@@ -31,9 +31,8 @@ afterAll(async () => { await browser?.close(); });
 
 /** .set-body 外框宽：整页 = min(1040, 窗 − 左栏 220 − 正文内边距 52) − 目录 200 − 间距 24；浮层 766；再减 Windows 滚动条 10 */
 const 正文宽 = (w: number) => (w < 768 ? w - 32 : w < 1200 ? 494 : Math.min(Math.min(1040, w - 272) - 224, 766) - 10);
-async function 开(w: number, 主题?: string, isAdmin = true, 宽 = 正文宽(w)) {
+async function 开(w: number, isAdmin = true, 宽 = 正文宽(w)) {
   const r = await 开页(browser, bundle, { 宽, isAdmin }, w);
-  if (主题) await r.page.evaluate((t) => document.documentElement.setAttribute("data-skin", t), 主题);
   await r.page.locator(".member-table tr.ant-table-row").first().waitFor();
   return r;
 }
@@ -59,9 +58,9 @@ const 点得中 = (page: Page, sel: string) => page.locator(sel).evaluateAll((el
 const 键 = '[aria-label="编辑 销售甲"], [aria-label="停用成员 销售甲"], [aria-label="恢复成员 走了的丙"]';
 const 全八列 = ["姓名", "角色", "负责客户", "项目数", "跟进数", "状态"];
 
-for (const [w, 主题] of [[1024], [1024, "ledger"], [1199], [1200], [1240], [1264], [1280], [1280, "ledger"], [1440], [1536]] as [number, string?][]) {
-  it(`${w} 宽${主题 ? "（换皮）" : ""}：成员表不横滚、列宽合计 ≤ 正文 − 8，格子里不伸出、动作点得中`, async () => {
-    const { page, errors } = await 开(w, 主题);
+for (const w of [1024, 1199, 1200, 1240, 1264, 1280, 1440, 1536]) {
+  it(`${w} 宽：成员表不横滚、列宽合计 ≤ 正文 − 8，格子里不伸出、动作点得中`, async () => {
+    const { page, errors } = await 开(w);
     try {
       const a = await 量(page);
       if (w < 1200) expect(a.cw, "1024 整页最窄的内容区").toBe(460);
@@ -74,8 +73,8 @@ for (const [w, 主题] of [[1024], [1024, "ledger"], [1199], [1200], [1240], [12
       expect(await 伸出格子(page)).toEqual([]);
       expect(await 点得中(page, 键)).toEqual([true, true, true]);
       const b = page.getByRole("button", { name: "编辑 销售甲", exact: true });
-      if (主题) { expect((await b.innerText()).trim()).toBe(""); expect(await b.locator(".anticon").count()).toBe(1); }
-      else { expect((await b.innerText()).trim()).toBe("编辑"); expect(await b.locator(".anticon").count()).toBe(w < 1200 ? 0 : 1); }
+      expect((await b.innerText()).trim()).toBe("编辑");
+      expect(await b.locator(".anticon").count()).toBe(w < 1200 ? 0 : 1);
       // 长名字一行，悬停有全名
       const 名 = page.locator(".member-table tr.ant-table-row").first().locator("td:not(.ant-table-selection-column)").first();
       expect(await 名.evaluate((el) => el.getBoundingClientRect().height)).toBeLessThan(60);
@@ -114,9 +113,10 @@ for (const w of [1024, 1280]) {
       const 前 = await page.locator(sel).evaluate((el) => el.getBoundingClientRect().width);
       await page.locator(sel).click();
       await page.locator(`${sel}.ant-btn-loading`).waitFor();
-      await page.waitForTimeout(400); // 转圈图标 antd 有展开动画，等它落定
-      const 后 = await page.locator(sel).evaluate((el) => ({ 宽: el.getBoundingClientRect().width, 圈: (el.querySelector(".ant-btn-loading-icon, .anticon-loading") as HTMLElement | null)?.getBoundingClientRect().width ?? 0 }));
-      expect(后.圈).toBeGreaterThan(0);
+      const 测 = () => page.locator(sel).evaluate((el) => ({ 宽: el.getBoundingClientRect().width, 圈: (el.querySelector(".ant-btn-loading-icon, .anticon-loading") as HTMLElement | null)?.getBoundingClientRect().width ?? 0 }));
+      // 转圈图标 antd 有展开动画：等它露出来再量
+      await expect.poll(async () => (await 测()).圈).toBeGreaterThan(0);
+      const 后 = await 测();
       expect(后.宽).toBeLessThanOrEqual(前 + 0.5);
       expect(await 伸出格子(page)).toEqual([]);
       const a = await 量(page);
@@ -127,7 +127,7 @@ for (const w of [1024, 1280]) {
 }
 
 it("1024 宽直属上级（不是系统管理员）：「办离职」只留字、在格子里", async () => {
-  const { page, errors } = await 开(1024, undefined, false);
+  const { page, errors } = await 开(1024, false);
   try {
     const a = await 量(page);
     expect(a.sw).toBeLessThanOrEqual(a.cw);
@@ -139,22 +139,20 @@ it("1024 宽直属上级（不是系统管理员）：「办离职」只留字�
   } finally { await page.close(); }
 });
 
-for (const 主题 of [undefined, "ledger"]) {
-  it(`1024 触屏${主题 ? "（换皮）" : ""}：动作键各撑到 44 照样在格子里、整表不横滚`, async () => {
-    const { page, errors } = await 开(1024, 主题);
-    try {
-      const cdp = await page.context().newCDPSession(page);
-      await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
-      expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
-      const 框们 = await page.locator('[aria-label="编辑 销售甲"], [aria-label="停用成员 销售甲"]').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON())) as DOMRect[];
-      expect(框们.every((r) => r.width >= 44 && r.height >= 44)).toBe(true);
-      expect(await 伸出格子(page)).toEqual([]);
-      const a = await 量(page);
-      expect(a.sw).toBeLessThanOrEqual(a.cw);
-      expect(errors).toEqual([]);
-    } finally { await page.close(); }
-  });
-}
+it("1024 触屏：动作键各撑到 44 照样在格子里、整表不横滚", async () => {
+  const { page, errors } = await 开(1024);
+  try {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+    expect(await page.evaluate(() => matchMedia("(pointer: coarse)").matches)).toBe(true);
+    const 框们 = await page.locator('[aria-label="编辑 销售甲"], [aria-label="停用成员 销售甲"]').evaluateAll((els) => els.map((el) => el.getBoundingClientRect().toJSON())) as DOMRect[];
+    expect(框们.every((r) => r.width >= 44 && r.height >= 44)).toBe(true);
+    expect(await 伸出格子(page)).toEqual([]);
+    const a = await 量(page);
+    expect(a.sw).toBeLessThanOrEqual(a.cw);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
 
 it("390 手机：成员表列宽、内边距、动作「图标 + 字」照旧", async () => {
   const { page, errors } = await 开(390);

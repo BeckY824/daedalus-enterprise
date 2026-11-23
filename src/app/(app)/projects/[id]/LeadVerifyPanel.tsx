@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { Button, Input, Modal, Popconfirm, Tag, Timeline, Tooltip } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
-import { useIsNowSkin } from "@/lib/use-skin";
 import DictSelect from "@/components/DictSelect";
 import { 其他没写好 } from "@/lib/enterprise/dict-kinds";
 import { dayjs, fmtDateTime } from "@/lib/utils";
@@ -79,8 +78,6 @@ export default function LeadVerifyPanel({
   重复线索名?: string;
 }) {
   const [框, set框] = useState<null | "无效" | "培育" | "异议" | "复核有效" | "复核无效">(null);
-  /** 缺项小块（D4 · M6-a）只在现状主题；换皮主题照旧一行灰字（调用方不传 有效还差 也一样，这里再兜一道） */
-  const 新样 = useIsNowSkin();
   const [无效原因, set无效原因] = useState<string | null>(null);
   const [说明, set说明] = useState("");
   const [培育日, set培育日] = useState<string | null>(null);
@@ -286,7 +283,8 @@ export default function LeadVerifyPanel({
       )}
       {!弹框 && <框里原因 话={错} />}
       {推不了 && (v.我能 === "初判" || v.我能 === "销售终验" || v.我能 === "销售认领") && (
-        新样 && 缺有效沟通话 && 有效还差.length ? (
+        // 缺项小块（D4 · M6-a）；调用方不传 有效还差 时一行灰字
+        缺有效沟通话 && 有效还差.length ? (
           <div className="proj-miss" data-testid="lead-verify-miss">
             <div className="proj-miss-t">判「有效」还差 {有效还差.length} 项</div>
             <div className="proj-miss-chips">

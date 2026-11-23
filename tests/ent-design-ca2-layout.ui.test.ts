@@ -6,7 +6,6 @@
  *   C3 说明并进表格卡头「渠道（50）· 统计：全部」+「?」（长说明在悬停），按主渠道写「主渠道（N）」
  *   C4 「录投入」文字按钮（不带框，D09）；「有效线索」表头「?」说清「—」和「0」（C-新5），「—」走 --empty-fg；
  *      末行留 --ai-safe（D40）；「⋯」菜单「删除」红字 + 分隔线（钉住列不压表头 C-新6 用 L-B 的 .list 渐隐修法，L-B 合后跟上 main 再量）
- *   换皮主题（账簿）：照旧（带框按钮、说明行、删除不红）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -49,7 +48,7 @@ beforeAll(async () => {
 afterAll(async () => { await browser?.close(); });
 
 /** 内容区按真实页面算：≥768 左边留 232 侧栏 + 24 页边距；390 没侧栏、16 边距 */
-async function 打开(width: number, o: Record<string, unknown> = {}, skin?: string, 触屏 = false): Promise<{ page: Page; errors: string[] }> {
+async function 打开(width: number, o: Record<string, unknown> = {}, 触屏 = false): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: 触屏, isMobile: 触屏 }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const 窄 = width < 768;
@@ -57,7 +56,6 @@ async function 打开(width: number, o: Record<string, unknown> = {}, skin?: str
   await page.route("http://ca2.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><div id='root' style='${壳}'></div>` }));
   await page.goto("http://ca2.test/channels");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
-  if (skin) await page.evaluate((k) => { document.documentElement.dataset.skin = k; }, skin);
   await page.evaluate((x) => { (window as unknown as { __能录: boolean }).__能录 = x; }, o.能录 !== false);
   await page.addScriptTag({ content: bundle });
   await page.evaluate((x) => (window as unknown as { __画: (o: unknown) => void }).__画(x), o);
@@ -174,7 +172,7 @@ it("「有效线索」表头「?」：悬停说清「—」和「0」，点了�
 });
 
 it("390 触屏：点按表格卡头「?」、「有效线索」表头「?」，说明出来留住不闪；点表头「?」不排序", async () => {
-  const { page, errors } = await 打开(390, {}, undefined, true);
+  const { page, errors } = await 打开(390, {}, true);
   try {
     await 指点(page, page.getByTestId("chan-period-note").locator(".chan-dash-q"));
     const 时段 = page.locator(".ant-tooltip:not(.ant-tooltip-hidden)", { hasText: "全部时间；在上方看板切换时段" });
@@ -244,23 +242,6 @@ it("按主渠道：卡头「主渠道（1）」，编辑是文字钮（.row-act 
   } finally { await page.close(); }
 });
 
-it("账簿主题：照旧（说明行、带框录投入、删除不红、没有「?」）", async () => {
-  const { page, errors } = await 打开(1366, {}, "ledger");
-  try {
-    expect(await page.getByTestId("chan-period-note").locator(".chan-period-label").innerText()).toBe("列表统计：全部");
-    expect(await page.locator(".chan-list .chan-th").count()).toBe(0);
-    const 钮 = page.locator(".chan-list .ant-table-tbody tr.ant-table-row").first().getByRole("button", { name: /录投入/ });
-    expect(await 钮.getAttribute("class")).not.toContain("ant-btn-link");
-    // 账簿照旧带框
-    expect(await 钮.evaluate((e) => getComputedStyle(e).borderTopColor)).not.toBe("rgba(0, 0, 0, 0)");
-    await page.locator(".chan-list .ant-table-tbody tr.ant-table-row").nth(3).getByRole("button", { name: /更多操作/ }).click();
-    const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu");
-    await 菜单.waitFor();
-    expect(await 菜单.locator(".ant-dropdown-menu-item-danger").count()).toBe(0);
-    expect(await 菜单.locator(".ant-dropdown-menu-item-divider").count()).toBe(0);
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
-});
 // 排版闸门「字溢出」量的是 nowrap 盒子的 scrollWidth：「?」的 ::after 点击区（28）伸出圈外 6px 也算，原来「有效线索?」字宽 79、盒子 73（PR #413 CI）
 for (const w of [1024, 1280, 1366]) it(`${w}：「有效线索」表头连「?」和它的点击区都在自己的盒子里，不压排序箭头`, async () => {
   const { page, errors } = await 打开(w);

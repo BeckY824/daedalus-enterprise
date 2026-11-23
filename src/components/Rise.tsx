@@ -8,7 +8,7 @@
  * 超过五六档就该让整组一起出来，那时排队只剩下拖沓。
  *
  * 2026-11 PR2 外壳（原型 g.empty，P-界面-38）：位移 16px 减到 6px、时长曲线换成 ui 那档不回弹弹簧
- * （lib/motion 的 默认过渡；换了曲线的主题照它的曲线 + --t）。16px 是在「托上来」，6px 只是「到位」——
+ * （lib/motion 的 默认过渡）。16px 是在「托上来」，6px 只是「到位」——
  * 空状态、出错页这种本来就让人等过一下的地方，再托一大截像在弹。
  * 空状态把标题、说明、按钮各包一层 Rise 依次排进来（EmptyState / StatePage）。
  *
@@ -42,7 +42,7 @@ export default function Rise({
       style={style}
       initial={{ opacity: 0, y: 少动 ? 0 : 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ ...默认过渡(动效值), delay: 少动 ? 0 : 第几个 * 动效值.间隔 }}
+      transition={{ ...默认过渡, delay: 少动 ? 0 : 第几个 * 动效值.间隔 }}
     >
       {children}
     </motion.div>

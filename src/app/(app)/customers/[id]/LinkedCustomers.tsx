@@ -15,6 +15,7 @@ import type { 关联一行 } from "@/lib/enterprise/customer-v2-db";
 import { 搜客户, type 可挑客户 } from "./pick";
 import { 关联客户, 改关联说明, 取消关联 } from "./link-actions";
 import { 客户详情左栏 } from "../../projects/[id]/card-names";
+import { 计数题 } from "../../projects/[id]/ProjectFold";
 
 /**
  * 起手：页头「关联客户」开的框里挂上时直接打开挑人那一行（10-31 R6）。
@@ -167,7 +168,7 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
     return (
       <Card
         className="rec-mod"
-        title={`${叫}（${关联们.length}）`}
+        title={计数题(叫, 关联们.length)}
         extra={!只读 && !加着 && !不摆加 ? <Button type="text" size="small" icon={<PlusOutlined />} onClick={开加} aria-label={关联钮名}>关联</Button> : undefined}
       >
         {身}

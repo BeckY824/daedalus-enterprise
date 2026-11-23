@@ -5,7 +5,6 @@ import { motion } from "motion/react";
 import type { StepEvent } from "@/lib/ai-steps";
 import { 一步人话, 是工具步 } from "@/lib/agent/step-summary";
 import { useMotionTheme } from "@/components/MotionTheme";
-import { useIsNowSkin } from "@/lib/use-skin";
 
 /**
  * 一条回答一个状态条（2026-11-15，照前端改版交互原型「AI 助手 · 改后」）。
@@ -21,7 +20,7 @@ import { useIsNowSkin } from "@/lib/use-skin";
  *
  * 首页 / 全局面板（TurnView）和客户页 AI 面板（AiPanel）共用这一个；原来的 AiTrace 和 .cli-step 那两套并进来了。
  *
- * 设计语言 HC-2a（用户 11-22 选 C7-A / C11-A；只现状主题，换皮主题照旧）：
+ * 设计语言 HC-2a（用户 11-22 选 C7-A / C11-A）：
  *   四种状态同一行、不带框：圆点 + 人话 +「第 N 步 · X 秒」+ ›；跑着也收成一行，点 › 才竖排最近 3 步
  *   打断写「已停下 · 第 N 步」（灰点）+「重新回答」；超时写「等了 N 秒没回来」；「Esc 打断」不写在条上（停止在输入框）
  */
@@ -65,8 +64,6 @@ export default function AiStatus({
   compact?: boolean;
 }) {
   const { 曲线, 时长 } = useMotionTheme();
-  /** 现状主题：一行样子（HC-2a） */
-  const 一行 = useIsNowSkin();
   const [展开, set展开] = useState(false);
   const [全露, set全露] = useState(false);
   const [now, setNow] = useState(() => Date.now());
@@ -94,13 +91,13 @@ export default function AiStatus({
     /* 超时（服务端说「超时没回音」）：说等了多久——调用方给了 ms（起到停）就用它，没给就数到现在 */
     const 等了 = ms !== undefined ? 秒数(ms) : 开始 !== undefined ? 秒数(now - 开始) : undefined;
     标题 =
-      一行 && 原因 && /超时/.test(原因) && 等了 !== undefined && 等了 > 1
+      原因 && /超时/.test(原因) && 等了 !== undefined && 等了 > 1
         ? `等了 ${等了} 秒没回来`
         : 出错步 >= 0
           ? `停在第 ${出错步 + 1} 步：${原因 || "出错了"}`
           : `出错了：${原因 || "没有拿到回答"}`;
   } else if (态 === "interrupted") {
-    标题 = 一行 ? (步们.length ? `已停下 · 第 ${步们.length} 步` : "已停下") : 步们.length ? `已打断 · 做了 ${步们.length} 步` : "已打断";
+    标题 = 步们.length ? `已停下 · 第 ${步们.length} 步` : "已停下";
   } else if (态 === "wait") {
     标题 = `等你确认 ${等确认} 项`;
     尾 = 用了;
@@ -109,13 +106,11 @@ export default function AiStatus({
   }
 
   /*
-    收着的时候露哪几步：跑着 / 出错时是「当前之前」做完的最近 3 步；完成态收成一行，一步都不露。
-    现状主题（HC-2a）：哪种状态都收成一行，点 › 才露——跑着时露最近 3 步（更早的「前面还有 K 步」），停了露全部
+    收着的时候露哪几步（HC-2a）：哪种状态都收成一行，点 › 才露——跑着时露最近 3 步（更早的「前面还有 K 步」），停了露全部
   */
-  const 能展开 = 一行 ? 步们.length > 0 : !跑着 && 步们.length > 0;
-  const 收着露 = 一行 ? [] : 跑着 || 态 === "error" ? 步们.filter((s) => s !== 当前) : [];
-  const 可露 = 展开 ? 步们 : 收着露;
-  const 限三步 = 一行 ? 跑着 : !展开;
+  const 能展开 = 步们.length > 0;
+  const 可露 = 展开 ? 步们 : [];
+  const 限三步 = 跑着;
   const 露的 = 全露 || !限三步 ? 可露 : 可露.slice(-露几步);
   const 藏了 = 可露.length - 露的.length;
 
@@ -126,12 +121,12 @@ export default function AiStatus({
         {标题}
       </span>
       {尾 && <span className="ais-mt">{尾}</span>}
-      {能展开 && (一行 ? <span className="ais-chev" aria-hidden>›</span> : <span className="ais-mt ais-tog-t">{展开 ? "收起" : "展开"}</span>)}
+      {能展开 && <span className="ais-chev" aria-hidden>›</span>}
     </>
   );
 
   return (
-    <div className={`ais ais-${态 === "interrupted" ? (一行 ? "stopped" : "done") : 态}${compact ? " ais-compact" : ""}`} data-state={态}>
+    <div className={`ais ais-${态 === "interrupted" ? "stopped" : 态}${compact ? " ais-compact" : ""}`} data-state={态}>
       <div className="ais-hd" role={跑着 ? "status" : undefined} aria-live={跑着 ? "polite" : undefined}>
         {能展开 ? (
           <button type="button" className="ais-hd-b" aria-expanded={展开} onClick={() => set展开((v) => !v)}>
@@ -142,7 +137,7 @@ export default function AiStatus({
         )}
         {(态 === "error" || 态 === "interrupted") && onRetry && (
           <button type="button" className="cli-link ais-retry" onClick={onRetry}>
-            {一行 && 态 === "interrupted" ? "重新回答" : "重试"}
+            {态 === "interrupted" ? "重新回答" : "重试"}
           </button>
         )}
       </div>
@@ -155,7 +150,7 @@ export default function AiStatus({
           )}
           {露的.map((s) => (
             <motion.div key={s.id} className={`ais-row ais-row-${s.status === "error" || s.detail === "工具出错" ? "error" : s.status}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 时长.base, ease: 曲线.ease }}>
-              <StepLine s={s} 客户={客户} 细={展开 && !(一行 && 跑着)} />
+              <StepLine s={s} 客户={客户} 细={展开 && !跑着} />
             </motion.div>
           ))}
         </div>

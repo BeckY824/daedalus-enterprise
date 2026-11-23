@@ -257,7 +257,7 @@ const 数字格 = /^[-+−]?\s*[¥$€£]?\s*\d[\d,，]*(\.\d+)?\s*(%|％|万|�
 
 /**
  * 表格里哪几列是数字列（设计语言 HC-2a，C6-A：数字右对齐、等宽）：这一列有字的格全是数字、且至少一格。
- * 只加一个 class（.md-num），样子只在现状主题里给（globals.css），换皮主题看不出差别。
+ * 只加一个 class（.md-num），样子在 globals.css。
  */
 export function 数字列(行们: string[][]): Set<number> {
   const 列: Set<number> = new Set();

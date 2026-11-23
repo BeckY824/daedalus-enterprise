@@ -14,7 +14,7 @@ export function 带释义(释义?: Record<string, string>, 一行 = false) {
   return function 渲染(o: { label?: ReactNode; value?: unknown }): ReactNode {
     const 释 = 释义[String(o.value)];
     if (!释) return o.label;
-    // 一行（设计语言 L-A · L-新7，客户列表筛选）：释义只占一行、放不下省略号，悬停看全；样子在 globals.css .dict-note-1l（只挂现状主题）
+    // 一行（设计语言 L-A · L-新7，客户列表筛选）：释义只占一行、放不下省略号，悬停看全；样子在 globals.css .dict-note-1l
     if (一行) return (
       <div data-testid="dict-note-option">
         <div>{o.label}</div>

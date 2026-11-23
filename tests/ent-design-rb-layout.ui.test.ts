@@ -1,5 +1,5 @@
 /**
- * 设计语言 R-B（11-22，落地计划-三页设计 R-B 节）：复盘「任务 / 沟通 / 数据」三页签的排版闸门。现状主题量新样，账簿主题量照旧。
+ * 设计语言 R-B（11-22，落地计划-三页设计 R-B 节）：复盘「任务 / 沟通 / 数据」三页签的排版闸门。
  *
  *   数据·现在：概况 6 格 + 阶段 4 格两排同款（同号 26、不带彩色图标）；待回款窄格缩写、悬停 / 点开看全值；
  *             漏斗个数在条外右侧一列、不压条；「已经结束的」在漏斗卡底；按负责人默认 10 行 +「展开全部 N 人」；
@@ -9,7 +9,6 @@
  *   主题：筛选条最左「沟通｜主题」（主题选中）；卡头「教练主题（N）」
  *   任务：卡头「全部待办（N）」、日期 smartTime（悬停全时间）、逾期 0 灰、卡悬停只换底
  *   各宽度 1024 / 1280 / 1366 / 390 + 长数据：不横滚、数字没被盖（elementFromPoint）、卡头 48
- *   账簿主题：阶段卡照旧 StatCard、「已经结束的」照旧在卡外、按负责人全摆、漏斗数字在条上
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -104,7 +103,7 @@ type 页 = "todo" | "talk" | "topic" | "data" | "month";
  * 壳（R-B 审查 11-22，同 G-A 布局测试 tests/ent-design-ga-layout.ui.test.ts）：正文在 main.app-content 里，电脑宽左边让出左栏 220、正文内边距 22 / 26，
  * 宽度才是真实宽度（原来只有 padding 16，1024 下每格多出五六十）。面板 = AI 面板开着：外层 .shell-dock-open、右边让出 380
  */
-async function 打开(页: 页, width = 1280, skin?: string, 布局?: "board", 面板 = false, 另?: { 只读?: boolean; 口径?: string }): Promise<{ page: Page; errors: string[] }> {
+async function 打开(页: 页, width = 1280, 布局?: "board", 面板 = false, 另?: { 只读?: boolean; 口径?: string }): Promise<{ page: Page; errors: string[] }> {
   const 手 = width < 768;
   const page = await browser.newPage({ viewport: { width, height: 900 }, hasTouch: 手 }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -113,7 +112,6 @@ async function 打开(页: 页, width = 1280, skin?: string, 布局?: "board", �
   await page.goto("http://ent.test/overview");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ content: 手 ? ".app-content{display:block}" : `.app-content{display:block;margin-left:220px;padding:22px 26px${面板 ? ";margin-right:380px" : ""}}` });
-  if (skin) await page.evaluate((k) => { document.documentElement.dataset.skin = k; }, skin);
   await page.addScriptTag({ content: bundle });
   await page.evaluate((x) => (window as unknown as { __画: (o: unknown) => void }).__画(x), { 页, 布局, ...另 });
   await page.locator(".data-shell-body").first().waitFor();
@@ -191,24 +189,21 @@ it("数据 1024：小字整句在悬停提示里（本月「没成」的另有�
   await d.page.close();
 });
 
-/** 设计语言 D-2 · 方案 A（3703 实操 11-22：复盘·数据这几块还是白卡）：默认白底不画卡，上面一根线；「原底」照旧白卡 */
-it.each(["data", "month"] as const)("数据 %s 1280：antd 卡（漏斗、瀑布、各进程、按负责人、走势）方案 A 不画卡；原底照旧白卡", async (页) => {
+/** 复盘·数据这几块 antd 卡是白卡：有边框、圆角（D-2 方案 A「不画卡」11-23 删了，回到原样） */
+it.each(["data", "month"] as const)("数据 %s 1280：antd 卡（漏斗、瀑布、各进程、按负责人、走势）照旧白卡", async (页) => {
   const { page, errors } = await 打开(页, 1280);
-  const 量 = () => page.evaluate(() => [...document.querySelectorAll(".data-shell-body .ant-card")].map((e) => {
-    const c = getComputedStyle(e), h = e.querySelector(":scope > .ant-card-head");
-    return { 名: (e.querySelector(".section-title")?.textContent ?? "").trim(), 左线: c.borderLeftWidth, 上线: c.borderTopWidth, 圆角: c.borderTopLeftRadius, 底: c.backgroundColor, 头线: h ? getComputedStyle(h).borderBottomWidth : "0px" };
+  const 卡们 = await page.evaluate(() => [...document.querySelectorAll(".data-shell-body .ant-card")].map((e) => {
+    const c = getComputedStyle(e);
+    return { 名: (e.querySelector(".section-title")?.textContent ?? "").trim(), 左线: c.borderLeftWidth, 圆角: c.borderTopLeftRadius };
   }));
-  const 卡们 = await 量();
   const 该有 = 页 === "data" ? ["全周期漏斗", "线索瀑布", "各进程的项目", "按负责人"] : ["项目走势", "按负责人"];
   for (const 名 of 该有) expect(卡们.some((k) => k.名.startsWith(名)), `${页} 有「${名}」`).toBe(true);
-  for (const k of 卡们) expect({ 名: k.名, 左线: k.左线, 上线: k.上线, 圆角: k.圆角, 底: k.底, 头线: k.头线 }, `${页} ${k.名}`).toEqual({ 名: k.名, 左线: "0px", 上线: "1px", 圆角: "0px", 底: "rgba(0, 0, 0, 0)", 头线: "0px" });
-  await page.evaluate(() => { document.documentElement.dataset.paper = "tone"; });
-  for (const k of await 量()) { expect(k.左线, `原底 ${页} ${k.名}`).toBe("1px"); expect(k.圆角, `原底 ${页} ${k.名}`).not.toBe("0px"); }
+  for (const k of 卡们) { expect(k.左线, `${页} ${k.名}`).toBe("1px"); expect(k.圆角, `${页} ${k.名}`).not.toBe("0px"); }
   expect(errors).toEqual([]); await page.close();
 });
 
 it("数据·现在 1440 + AI 面板开着：概况 6 格改三格一排，数字都露着", async () => {
-  const { page, errors } = await 打开("data", 1440, undefined, undefined, true);
+  const { page, errors } = await 打开("data", 1440, undefined, true);
   const 概况 = page.locator('section[aria-label="复盘概况"]');
   expect(await 概况.evaluate((e) => getComputedStyle(e).gridTemplateColumns.split(" ").length)).toBe(3);
   expect(await 数字都露着(page, 'section[aria-label="复盘概况"] .rkpi-v', ".rkpi-i")).toBe(6);
@@ -237,7 +232,7 @@ it.each([1024, 390])("数据 %ipx：小字金额整体不拆行（「¥」和数
   expect(await d.page.locator('section[aria-label="复盘概况"] .rkpi-v').first().innerText()).toBe("123,456");
   expect(await d.page.locator('section[aria-label="各阶段"] .rkpi-v').first().innerText()).toBe("12,345");
   await d.page.close();
-  const m = await 打开("month", w, undefined, undefined, false, { 口径: "2026-11-01 – 2026-11-22" });
+  const m = await 打开("month", w, undefined, false, { 口径: "2026-11-01 – 2026-11-22" });
   const 排 = m.page.locator('section[aria-label="这一段"]');
   expect(await 排.locator(".rkpi-i", { hasText: "新建项目" }).locator(".rkpi-s").innerText()).toBe("2026-11-01 – 2026-11-22 新建的，含已结束");
   const 交付 = 排.locator(".rkpi-i", { hasText: "交付结清" }).locator(".rkpi-s");
@@ -266,12 +261,12 @@ it.each([390, 1366])("数据 %ipx：按负责人展开后滚到底点「收起�
 });
 
 it.each(["list", "board"] as const)("只读角色 任务 %s：不摆行首的勾（点了服务端也拒）；非只读照旧有", async (布局) => {
-  const 只读 = await 打开("todo", 1280, undefined, 布局 === "board" ? "board" : undefined, false, { 只读: true });
+  const 只读 = await 打开("todo", 1280, 布局 === "board" ? "board" : undefined, false, { 只读: true });
   expect(await 只读.page.locator(".btodo-list .ant-checkbox, .btodo-board .ant-checkbox").count()).toBe(0);
   expect(await 只读.page.locator(".btodo-time").count()).toBeGreaterThan(0);
   expect(await 不横滚(只读.page)).toBe(true);
   expect(只读.errors).toEqual([]); await 只读.page.close();
-  const 平常 = await 打开("todo", 1280, undefined, 布局 === "board" ? "board" : undefined);
+  const 平常 = await 打开("todo", 1280, 布局 === "board" ? "board" : undefined);
   expect(await 平常.page.locator(".btodo-list .ant-checkbox, .btodo-board .ant-checkbox").count()).toBeGreaterThan(0);
   await 平常.page.close();
 });
@@ -364,13 +359,9 @@ it.each([1024, 1280, 1366, 390])("沟通 %ipx：「沟通｜主题」在筛选�
   expect(await page.locator(".btodo-list .btodo-head [data-testid=talk-kind]").count()).toBe(0);
   const 头 = page.locator('section[aria-label="沟通记录列表"] > .btodo-head');
   expect(字(await 头.locator(".section-title").innerText())).toBe("项目沟通（1,234）");
-  // 设计语言 D-2 · 方案 A（默认白底）：复盘不画卡，卡头和模块标题一样 40 高、不外伸、头下不画线；「原底」照旧是 R-B 的 48 卡头 + 细线
-  expect((await 头.boundingBox())!.height).toBeGreaterThanOrEqual(39.5);
-  expect(await 头.evaluate((e) => getComputedStyle(e).borderBottomWidth)).toBe("0px");
-  await page.evaluate(() => { document.documentElement.dataset.paper = "tone"; });
+  // R-B 的 48 卡头 + 头下细线
   expect((await 头.boundingBox())!.height).toBeGreaterThanOrEqual(47.5);
   expect(await 头.evaluate((e) => getComputedStyle(e).borderBottomWidth)).toBe("1px");
-  await page.evaluate(() => { delete document.documentElement.dataset.paper; });
   expect(字(await page.locator(".rtalk-foot").nth(1).innerText())).toBe(字("线下拜访 · 客户主动 · 附件 3 个 · 记录人1"));
   expect(await page.locator(".rblk-k-meta").count()).toBe(0);
   const 侧 = page.locator(".rtalk-side");
@@ -450,17 +441,11 @@ it.each([1024, 1280, 390])("任务 %ipx：只定了日子没定钟点的（明�
 });
 
 it("任务看板 1280：卡上的到期也带钟点（和表格同一写法）", async () => {
-  const { page, errors } = await 打开("todo", 1280, undefined, "board");
+  const { page, errors } = await 打开("todo", 1280, "board");
   const 时 = await page.locator(".btodo-k .btodo-time").allInnerTexts();
   expect(时.length).toBe(2);
   expect(时[0]).toMatch(/^3 天前 \d{2}:\d{2}$/);
   expect(时[1]).not.toMatch(/\d{2}:\d{2}/);
-  expect(errors).toEqual([]); await page.close();
-});
-
-it("账簿主题 任务 1280：到期照旧写完整日期时间", async () => {
-  const { page, errors } = await 打开("todo", 1280, "ledger");
-  expect(await page.locator(".btodo-time").first().innerText()).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$|\d+ 月 \d+ 日 \d{2}:\d{2}/);
   expect(errors).toEqual([]); await page.close();
 });
 
@@ -486,22 +471,4 @@ it("换筛选时整页淡不低于 0.7；末行留 --ai-safe", async () => {
   expect(r.淡).toBeGreaterThanOrEqual(0.7);
   expect(r.底).toBe("72px");
   await page.close();
-});
-
-it("账簿主题：阶段卡照旧 StatCard、「已经结束的」在卡外、按负责人全摆、漏斗数字在条上、沟通卡头照旧", async () => {
-  const { page, errors } = await 打开("data", 1280, "ledger");
-  expect(await page.locator('section[aria-label="各阶段"]').count()).toBe(0);
-  expect(await page.locator(".data-shell-body .stat-card").count()).toBe(4);
-  expect(await page.locator(".pfun-foot").count()).toBe(0);
-  expect(await page.locator("p.muted", { hasText: "已经结束的" }).count()).toBe(1);
-  expect(await page.locator(".pfun-bar .pfun-n").count()).toBe(4);
-  expect(await page.locator(".stat-more").count()).toBe(0);
-  expect(await page.locator(".ant-card", { hasText: "按负责人" }).locator(".ant-table-tbody > tr.ant-table-row:visible").count()).toBe(14);
-  expect(await page.locator('section[aria-label="卡点分布"]').count()).toBe(1);
-  expect(errors).toEqual([]); await page.close();
-  const t = await 打开("talk", 1280, "ledger");
-  expect(await t.page.locator(".rtalk-bar").count()).toBe(0);
-  expect(await t.page.locator(".rblk-k-meta").count()).toBeGreaterThan(0);
-  expect(await t.page.locator(".rtalk-side-n").count()).toBe(1);
-  await t.page.close();
 });

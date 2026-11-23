@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Card, Input, Modal, Space, Tag } from "antd";
 import { fmtDate, smartTime } from "@/lib/utils";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { 原因上限 } from "@/lib/project/nodes";
 import { 市场复核Action, 总管理终判Action } from "./actions";
 import { showUndo } from "@/components/UndoBar";
@@ -29,13 +28,12 @@ const 步叫法: Record<待复核行["步"], string> = { 市场复核: "等你�
 export default function VerifyInbox({ 们, 首页 = false }: {
   们: 待复核行[];
   /**
-   * 摆在首页顶部待办里（dashboard/page.tsx）。设计语言 H-A（11-21，H-新7 / 新12）：现状主题首页不再是带表头的卡，
+   * 摆在首页顶部待办里（dashboard/page.tsx）。设计语言 H-A（11-21，H-新7 / 新12）：首页不再是带表头的卡，
    * 每条一行，和「待回复客户」「待分配新线索」同一种行（home-cth-todo）：标签 + 项目名｜负责人 · smartTime · 附言｜判有效 / 判无效；
-   * 时间不掉行、不截（窄屏整句折行）。新线索页、项目页顶上和换皮主题照旧是卡
+   * 时间不掉行、不截（窄屏整句折行）。新线索页、项目页顶上照旧是卡
    */
   首页?: boolean;
 }) {
-  const 现状 = useIsNowSkin();
   const router = useRouter();
   const [忙, set忙] = useState(false);
   // 没判成的原因：一行一行写在那一行下面；说明框里的写在框里（原型 g.notice：不弹顶部提示）
@@ -129,7 +127,7 @@ export default function VerifyInbox({ 们, 首页 = false }: {
       {框错 && <div role="alert" className="csq-err">{框错}</div>}
     </Modal>
   );
-  if (首页 && 现状)
+  if (首页)
     return (
       <div className="home-verify" role="group" aria-label={`待复核的线索（${摆着.length}）`} data-testid="verify-inbox">
         {摆着.map((r) => {
