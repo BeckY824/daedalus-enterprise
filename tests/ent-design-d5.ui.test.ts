@@ -109,8 +109,10 @@ const 无名联系人 = { contact: { id: "k1", name: "", position: "采购" } };
 const 两币回款 = { 成交钱: { contractAmount: null, contractCurrency: null, depositAmount: null, depositCurrency: null, dealDemand: null }, 回款们: [
   { id: "r1", paidAt: "2026-10-01", currency: "CNY", amount: 12800000, userId: null, createdAt: "2026-10-01T00:00:00.000Z" },
   { id: "r2", paidAt: "2026-10-02", currency: "USD", amount: 1500000, userId: null, createdAt: "2026-10-02T00:00:00.000Z" },
-  // 第三种币：右栏里一定折成两三行（3704 实操：标签要和第一行顶对齐）
+  // 第三、四种币：右栏里一定折成两三行（3704 实操：标签要和第一行顶对齐）。
+  // 只三种币时 390 宽差 3px 才折（Mac 字体），CI 的 Linux 字体一行放得下、没折（PR #437 单测 6/8 红），加第四种拉开余量
   { id: "r3", paidAt: "2026-10-03", currency: "EUR", amount: 2300000, userId: null, createdAt: "2026-10-03T00:00:00.000Z" },
+  { id: "r4", paidAt: "2026-10-04", currency: "GBP", amount: 9870000, userId: null, createdAt: "2026-10-04T00:00:00.000Z" },
 ] };
 
 describe("D5 新样子", () => {
@@ -172,9 +174,28 @@ describe("D5 新样子", () => {
         expect(await 钱.evaluate(e => e.scrollWidth <= e.clientWidth + 1 || getComputedStyle(e).display === "inline")).toBe(true);
         // 3704 实操：金额折成两三行时「当前回款」标签和第一行顶对齐（不垂直居中）——比的是两个盒子的顶，不看字体高
         const 键盒 = (await 钱.evaluate(e => e.parentElement!.firstElementChild!.getBoundingClientRect().height));
-        expect((await 钱.boundingBox())!.height, "三种币要折成多行").toBeGreaterThan(键盒 * 1.5);
+        expect((await 钱.boundingBox())!.height, "四种币要折成多行").toBeGreaterThan(键盒 * 1.5);
         expect(await 钱.evaluate(e => Math.abs(e.parentElement!.firstElementChild!.getBoundingClientRect().top - e.getBoundingClientRect().top))).toBeLessThanOrEqual(1);
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        // 一段自己都放不下一行（排版闸门：右栏 300 宽、Linux 字体下「US$ 12,345,678.90」伸出 8px）：只在符号和数字之间折，
+        // 数字不拆（每段最多两行）、不伸出资料行。把这行压到只比最长那段的数字宽一点来量
+        const 窄 = await 钱.evaluate(e => {
+          const 行 = e.closest(".proj-info-row") as HTMLElement, 键 = 行.firstElementChild as HTMLElement;
+          const 段们 = Array.from(e.querySelectorAll<HTMLElement>(".proj-money-seg"));
+          const 量 = document.createElement("span"); 量.style.whiteSpace = "nowrap"; 量.style.position = "absolute"; e.appendChild(量);
+          const 数宽 = Math.max(...段们.map(s => { 量.textContent = s.textContent!.split(" ").pop()!; return 量.getBoundingClientRect().width; }));
+          const 段宽 = Math.max(...段们.map(s => { 量.textContent = s.textContent!; return 量.getBoundingClientRect().width; }));
+          量.remove();
+          const 行边 = parseFloat(getComputedStyle(行).paddingLeft) + parseFloat(getComputedStyle(行).paddingRight) + 键.getBoundingClientRect().width + parseFloat(getComputedStyle(行).columnGap);
+          行.style.width = `${Math.ceil(行边 + 数宽 + 4)}px`; 行.style.flex = "none";
+          const 右 = 行.getBoundingClientRect().right - parseFloat(getComputedStyle(行).paddingRight);
+          return { 数宽, 段宽, 段们: 段们.map(s => ({ 高: Math.round(s.getBoundingClientRect().height), 出: Math.round(s.getBoundingClientRect().right - 右) })), 行高: parseFloat(getComputedStyle(e).lineHeight) };
+        });
+        expect(窄.段宽, "压窄后最长那段一行放不下（不然这段量不到折行）").toBeGreaterThan(窄.数宽 + 4);
+        for (const d of 窄.段们) {
+          expect(d.高, "数字不拆：一段最多两行（符号一行、数字一行）").toBeLessThanOrEqual(窄.行高 * 2 + 1);
+          expect(d.出, "不伸出资料行").toBeLessThanOrEqual(1);
+        }
         expect(errors).toEqual([]);
       } finally { await page.close(); }
     });

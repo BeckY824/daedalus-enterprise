@@ -5704,7 +5704,9 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root .proj-info-row > .proj-money { flex: 1 1 auto; }
 /* 金额折成两三行时标签和第一行顶对齐（3704 实操），行内改的金额格也一样 */
 :root:root .proj-info-row:has(.proj-money) { align-items: flex-start; }
-:root:root .proj-money-seg { white-space: nowrap; }
+/* 每段是一个整块（inline-block）：先在「 · 」处换行；一段自己都放不下一行时（右栏 300 宽 + 字段名 68 列，Linux 字体下
+   「US$ 12,345,678.90」要伸出 8px，排版闸门量到过），段内只在币种符号和数字之间那个空格折，数字本身没有断点、不拆 */
+:root:root .proj-money-seg { display: inline-block; max-width: 100%; white-space: normal; overflow-wrap: normal; word-break: normal; }
 /* M10-a「—」同一个色：下拉菜单里的「—」选项、行内改 / 画像下拉的占位「—」 */
 :root:root .ant-select-item-option[title="—"] .ant-select-item-option-content { color: var(--empty-fg); }
 :root:root :is(.proj-inline-edit, .proj-profile) .ant-select-placeholder { color: var(--empty-fg); }
@@ -6594,7 +6596,10 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root:root :is(.rec-page, .proj-wrap) :is(.rec-rail-blocks, .cd-mid, .cd-side, .proj-main, .proj-side) > .proj-fold > .proj-fold-btn { top: calc(1px + (var(--card-head-h) - var(--ctl-h)) / 2); right: 9px; width: var(--ctl-h); height: var(--ctl-h); border: 0; border-radius: var(--r-ctl); background: transparent; }
 :root:root:root :is(.rec-page, .proj-wrap) :is(.rec-rail-blocks, .cd-mid, .cd-side, .proj-main, .proj-side) > .proj-fold > .proj-fold-btn:hover:not(:disabled) { background: var(--hover); color: var(--ink); }
 @media (max-width: 767px), (pointer: coarse) {
-  :root:root:root :is(.rec-page, .proj-wrap) :is(.rec-rail-blocks, .cd-mid, .cd-side, .proj-main, .proj-side) > .proj-fold > .proj-fold-btn::after { content: ""; position: absolute; inset: calc((var(--ctl-h) - var(--hit-touch)) / 2); }
+  /* 点击区 44：上下各让 6，横向 12 全往左让、右边不出钮——往右伸会把钮的 scrollWidth 撑大（E2E「受限客户详情 375 文字溢出」量到过）；
+     卡头右内边距跟着让到 52，让出来的点击区不压卡头里的字和按钮 */
+  :root:root:root :is(.rec-page, .proj-wrap) :is(.rec-rail-blocks, .cd-mid, .cd-side, .proj-main, .proj-side) > .proj-fold > .proj-fold-btn::after { content: ""; position: absolute; inset: calc((var(--ctl-h) - var(--hit-touch)) / 2) 0 calc((var(--ctl-h) - var(--hit-touch)) / 2) calc(var(--ctl-h) - var(--hit-touch)); }
+  :root:root:root :is(.rec-page, .proj-wrap) :is(.rec-rail-blocks, .cd-mid, .cd-side, .proj-main, .proj-side) > .proj-fold:not(.has-split) > .ant-card > .ant-card-head { padding-inline-end: calc(var(--hit-touch) + 8px); }
 }
 
 /* 卡身留白：中栏、右栏 12 / 16；资料卡（左栏、项目资料）顶上 8；左栏字段、联系人自己带 8 的左右内边距，卡身左右只留 8（背调卡没有，照旧 16） */
@@ -6618,7 +6623,9 @@ button.proj-miss-chip { cursor: pointer; }
 
 /* 6 进程卡：项目切换那一行就是卡头 */
 :root:root:root .rec-zone .cd-proc > .ant-card-body { padding: 0 var(--card-pad) var(--card-pad); }
-:root:root:root .rec-zone .cd-proc .proj-stages { margin-top: 0; gap: 12px; }
+/* 卡头那条横线要通到卡边：负外边距挂在 .proj-stages 上、再用内边距收回，卡头条照旧 -16 伸进这层内边距——
+   不然卡头条伸出 .proj-stages 16px，手机宽量到「自身溢出」（E2E 受限客户详情 375） */
+:root:root:root .rec-zone .cd-proc .proj-stages { margin-top: 0; gap: 12px; margin-inline: calc(-1 * var(--card-pad)); padding-inline: var(--card-pad); }
 :root:root:root .rec-zone .cd-proc .proj-stage-bar.has-head { flex-wrap: nowrap; gap: 8px; min-height: var(--card-head-h); margin-inline: calc(-1 * var(--card-pad)); padding-inline: var(--card-pad); border-bottom: 0; box-shadow: inset 0 -1px 0 var(--field-line); }
 :root:root:root .rec-zone .cd-proc .proj-stage-bar.has-head > .proj-stage-head { flex: 1 1 auto; padding-bottom: 0; }
 :root:root:root .rec-zone .cd-proc .proj-stage-bar.has-head > .proj-stage-acts { flex: none; flex-wrap: nowrap; margin-left: auto; padding: 0 0 0 4px; }

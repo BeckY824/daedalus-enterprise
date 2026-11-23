@@ -284,6 +284,8 @@ it("收起钮：卡头最右 32 纯图标（无框、无底），悬停才出 --
         await 钮.scrollIntoViewIfNeeded();
         const 中 = await 钮.evaluate(e => { const r = e.getBoundingClientRect(); const 到 = (x: number, y: number) => document.elementFromPoint(x, y)?.closest(".proj-fold-btn") === e; return [到(r.left - 5, r.top + r.height / 2), 到(r.left + r.width / 2, r.top - 5), 到(r.left + r.width / 2, r.bottom + 5)]; });
         expect(中).toEqual([true, true, true]);
+        // 点击区只往左、上、下伸，右边不出钮：往右伸会撑大钮的 scrollWidth（E2E「受限客户详情 375 文字溢出」那把尺，PR #437 红过）
+        expect(await page.locator(".proj-fold > .proj-fold-btn").evaluateAll(es => es.filter(e => e.scrollWidth > e.clientWidth + 1).length), "收起钮自身横向溢出").toBe(0);
       } else {
         await 钮.hover(); await page.waitForTimeout(250);
         expect(await 钮.evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 量变量(page, "--hover", "background-color"));
@@ -341,6 +343,10 @@ it("手机 390：进程卡卡头照 M6 ⑦ 两行（项目切换占满一行、�
       const [切, 钮] = await Promise.all([框(头.locator(".proj-stage-head")), 框(头.locator(".proj-stage-acts"))]);
       expect(钮.y).toBeGreaterThanOrEqual(切.y + 切.h);
       if (!单) expect(await 头.locator(".cd-pj-pills > .cd-pj-pill.on").evaluate(e => e.getBoundingClientRect().width), "选中的胶囊不被挤成一两个字").toBeGreaterThan(100);
+      // 卡头条 -16 伸到卡边，伸进 .proj-stages 自己的内边距，不伸出它（E2E 受限客户详情 375「自身溢出」，PR #437 红过）
+      expect(await page.locator(".cd-proc .proj-stages").evaluate(e => e.scrollWidth - e.clientWidth), ".proj-stages 自身横向溢出").toBeLessThanOrEqual(1);
+      const [卡框, 条框] = await Promise.all([框(page.locator(".cd-proc")), 框(头)]);
+      expect([条框.x, 条框.x + 条框.w], "卡头条照旧通到卡边（卡框 1px 以内）").toEqual([卡框.x + 1, 卡框.x + 卡框.w - 1]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(errors).toEqual([]);
     } finally { await close(); }
