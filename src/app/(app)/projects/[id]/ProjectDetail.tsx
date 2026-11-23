@@ -68,7 +68,7 @@ import ProjectInlineField, { type 编辑器参数 } from "./ProjectInlineField";
 import { 钱编辑器, 钱格存法 } from "./money-cell";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
-import { 改项目节点, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 编辑项目 } from "../actions";
+import { 改项目节点, 记完成节点被拦, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 编辑项目 } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, 原因选择, type 卡点卡 } from "../BlockerPanel";
@@ -773,7 +773,9 @@ export default function ProjectDetail({
   };
 
   /** 终止 = true：异常框 / 没成框 点确定走 终止项目进程（M-节点-04，审计写「终止进程」）；成了 = 改成了以后的提示 */
-  const 改到 = (到: 位置, 附: { 终止?: boolean; 成了?: string; 可撤?: boolean } = {}) => {
+  const 改到 = (到: 位置, 附: { 终止?: boolean; 成了?: string; 可撤?: boolean; 入口?: "完成节点" } = {}) => {
+    // 被缺必填拦下时服务端记哪个入口（必填拦截记录）：完成节点 / 别的改进程
+    const 入口 = 附.入口 ?? "改进程";
     set终止中(!!附.终止);
     if (到.result === "异常状态") {
       set原因("");
@@ -800,7 +802,7 @@ export default function ProjectDetail({
     if (附.可撤) {
       const 页上: 位置 = { phase: p.phase, node: p.node, result: p.result ?? null };
       const 回: { r?: Awaited<ReturnType<typeof 改项目节点>> } = {};
-      void 跑(async () => (回.r = await 改项目节点(p.id, 到))).then((ok) => {
+      void 跑(async () => (回.r = await 改项目节点(p.id, 到, null, null, 入口))).then((ok) => {
         if (!ok) return;
         const 原 = 回.r && "原" in 回.r && 回.r.原 ? 回.r.原 : null;
         const 回到: 位置 = 原 ? { phase: 原.phase, node: 原.node, result: 原.result } : 页上;
@@ -815,7 +817,7 @@ export default function ProjectDetail({
       });
       return;
     }
-    void 跑(() => 改项目节点(p.id, 到), 附.成了 ?? `已改到 ${位置文字(到, 字典)}`);
+    void 跑(() => 改项目节点(p.id, 到, null, null, 入口), 附.成了 ?? `已改到 ${位置文字(到, 字典)}`);
   };
 
   /**
@@ -996,11 +998,11 @@ export default function ProjectDetail({
         ],
         是: `进${到.phase}`,
         危: false,
-        做: () => 改到(到, { 成了: 完成到字 }),
+        做: () => 改到(到, { 成了: 完成到字, 入口: "完成节点" }),
       });
       return;
     }
-    改到(完成到, { 成了: 跨阶段 ? `${完成到字}` : `已推进到 ${完成到.node}`, 可撤: !跨阶段 });
+    改到(完成到, { 成了: 跨阶段 ? `${完成到字}` : `已推进到 ${完成到.node}`, 可撤: !跨阶段, 入口: "完成节点" });
   };
   /** 「终止进程」（M-节点-04）：按所在阶段落到 线索流失 / 丢单 / 异常状态；先确认，再到写原因 / 选类别的框 */
   const 终止到 = p.企业版 && !p.result ? 终止结局(当前, 字典) : null;
@@ -1112,8 +1114,13 @@ export default function ProjectDetail({
     </div>
   );
   const 进程钮 = (不在当前: string | undefined) => {
-    const 灰着 = (原因: string | undefined, 钮: ReactNode) => (原因 ? <Tooltip title={原因}><span className="proj-stage-tip">{钮}</span></Tooltip> : 钮);
+    const 灰着 = (原因: string | undefined, 钮: ReactNode, 点了?: () => void) => (原因 ? <Tooltip title={原因}><span className="proj-stage-tip" onClick={点了}>{钮}</span></Tooltip> : 钮);
     const 完成灰 = 不在当前 ?? 完成不了;
+    /*
+      灰着正是因为推过线索验证还缺几样（卡有效沟通，不是没权限、等复核）：点灰按钮 = 被拦一次，记下来（必填拦截记录，客户 11-23「点完成缺必填只提示不留记录是黑箱」）。
+      样子不变（照旧灰着、悬停写原因）；灰按钮本身不收点击，globals.css 让它不接鼠标、点击落到外面这层 span
+    */
+    const 点灰完成 = 完成灰 && !不在当前 && !p.不给推 && 卡有效沟通 && 完成灰 === 缺有效沟通话 && 节点可改 ? () => void 记完成节点被拦(p.id) : undefined;
     const 菜单: NonNullable<MenuProps["items"]> = [
       ...(终止到 ? [{ key: "stop", danger: true, disabled: !!(不在当前 ?? 动不了), label: 两行("终止进程", 不在当前 ?? 动不了 ?? `落到「${结局叫法(终止到, 字典)}」`) }] : []),
     ];
@@ -1136,12 +1143,16 @@ export default function ProjectDetail({
                   arrow={false}
                   destroyOnHidden
                   classNames={{ root: "pd-fill-pop" }}
-                  onOpenChange={(v) => set头部框(v ? "完成" : null)}
+                  onOpenChange={(v) => {
+                    set头部框(v ? "完成" : null);
+                    // 还差必填、补填框弹出来 = 被拦一次（必填拦截记录，服务端自己再算一遍还差什么）；只留痕，不等它
+                    if (v && p.企业版 && p.必填?.还差?.length) void 记完成节点被拦(p.id);
+                  }}
                   content={完成补填框}
                 >
                   <Button className="proj-done-btn" disabled={忙 || !!完成灰} aria-haspopup="dialog" aria-expanded={头部框 === "完成"}>完成节点</Button>
                 </Popover>
-              ) : <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => 完成()}>完成节点</Button>)}
+              ) : <Button className="proj-done-btn" disabled={忙 || !!完成灰} onClick={() => 完成()}>完成节点</Button>, 点灰完成)}
               {菜单.length > 0 && (
                 <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: 菜单, onClick: ({ key }) => { if (key === "stop") 开终止(); } }}>
                   <Button className="proj-done-btn split-caret" icon={连体箭头} aria-label="终止进程" />

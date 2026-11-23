@@ -100,3 +100,5 @@
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--t); animation-timing-function: var(--ease); }
 .set-advance-since { margin-bottom: var(--s3, 12px); color: var(--text-muted); overflow-wrap: anywhere; }
 .set-advance-scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2, 8px); margin-bottom: var(--s2, 8px); }
+/* 必填拦截记录导出（11-23）：天数下拉 */
+.set-block-days { width: 96px; }

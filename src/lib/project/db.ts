@@ -13,7 +13,8 @@ import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, �
 import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 节点推进管, 只管新建之后, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
-import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点 } from "./stage-gates";
+import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线索节点, 缺本节点沟通 } from "./stage-gates";
+import { 记必填拦截, type 拦截入口, type 拦截种类 } from "./required-block";
 import { 等复核拦, 复核判死拦, 验证中不能改派, 进公海清验证 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 同号标题问题 } from "@/lib/enterprise/same-number-mark";
@@ -327,6 +328,8 @@ export async function 改节点(
     恢复下一步?: { 文字?: string | null; 时间?: string | null } | null;
     /** 回 原（改之前在哪、下一步是什么）：项目页撤销条要（改项目节点 带上），别的调用方不要 */
     回原?: boolean;
+    /** 被缺必填拦下时记哪个入口（lib/project/required-block.ts）；不给记「其他」 */
+    入口?: 拦截入口;
   },
 ): Promise<结果 & { 变了?: boolean; 自动推到?: string[]; 原?: 推前 & { result: string | null } }> {
   const 规则 = await 生效组织规则();
@@ -376,9 +379,23 @@ export async function 改节点(
     }
     if (上级代推 && !往前) return { ok: false as const, error: 只有负责人改进程 };
     const 不给 = 往前
-      ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则)) ?? (await 企业版推进关(tx, p, 到, 规则, 有效沟通差of(tx, p, 规则)))
+      ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则))
       : null;
     if (不给) return { ok: false as const, error: 不给 };
+    // 缺必填被拦下记一行（必填拦截记录，客户 11-23）：入口、代推跟着记；没权限那几种上面已经回了，不记
+    const 记拦 = (种: 拦截种类, 缺: readonly string[]) =>
+      记必填拦截(tx, { userId: me.id, p: { id: p.id, customerId: p.customerId, phase: 现.phase, node: 现.node }, 到, 种, 缺, 入口: 选项?.入口 ?? "其他", 代推: 上级代推 });
+    if (往前) {
+      // 推进关要的「还差」读一遍留着：拦下时记缺哪几项，不再读第二遍
+      let 差记: string[] | null = null;
+      const 差fn = 有效沟通差of(tx, p, 规则);
+      const 关 = await 企业版推进关(tx, p, 到, 规则, async () => (差记 = await 差fn()));
+      if (关) {
+        const 节 = 现.node;
+        await (关 === 缺本节点沟通(节) ? 记拦("本节点沟通", [`${节}的沟通`]) : 记拦("线索验证", 差记 ?? ["需求状态"]));
+        return { ok: false as const, error: 关 };
+      }
+    }
     // 企业版节点必填（D-37）：配了必填的节点，缺着必填谁都不能往前推（客户 11-19 定稿「必须全员统一规则必须填齐」：
     // 原来总管理、销售管理能留空先推，去掉了；首页 AI、看板拖动、项目页都走这里）；填齐了（占位值不算填了）点「完成节点」照样能推（M-节点-05/09）
     // 节点推进管的项目才拦（项目按必填走）：默认全部项目，存量也要补齐（客户 11-19）；设置成只管新建的时，生效时刻之前建的照手动推
@@ -386,7 +403,10 @@ export async function 改节点(
       const 数据 = await 读必填数据(tx, p, 规则);
       // 线索核验判有效（lead-verify.ts 带 验证放行 进来）：先推进程、推成了才写判定，这一步的「线索验证结果」按判了有效算
       const 差 = 还差(规则, 选项?.验证放行 ? { ...数据, 线索验证: { verdict: 有效线索判定, finalResult: 有效线索判定, pending: null } } : 数据);
-      if (差.length) return { ok: false as const, error: `「${现.node}」还差必填：${差.map(必填叫法).join("、")}；补齐再推` };
+      if (差.length) {
+        await 记拦("节点必填", 差.map(必填叫法));
+        return { ok: false as const, error: `「${现.node}」还差必填：${差.map(必填叫法).join("、")}；补齐再推` };
+      }
     }
     let 类别: string | null = null;
     let 备注: string | null = null;

@@ -113,7 +113,7 @@ export function useBoardDrag({ 看板, 开, 名of, 去补齐, 刷新, 框 }: {
     改搬(r.id, 到.列);
     const 原 = { phase: r.phase, node: r.node, result: null };
     try {
-      const x = await 改项目节点(r.id, { phase: 到.phase, node: 到.node, result: null });
+      const x = await 改项目节点(r.id, { phase: 到.phase, node: 到.node, result: null }, null, null, "看板拖动");
       if (!x.ok) return 弹回去(r.id, x.error ?? "没推成，请稍后再试");
       const 名 = 名of(r);
       const 推到 = "自动推到" in x && x.自动推到?.length ? `，必填齐了又自动推到 ${x.自动推到.join(" → ")}` : "";

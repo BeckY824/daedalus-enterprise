@@ -10,6 +10,8 @@ import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
+import { 写xlsx } from "@/lib/xlsx-write";
+import { 导出必填拦截Action } from "./required-block-actions";
 import { dayjs } from "@/lib/utils";
 import { useBusinessTimeZone } from "@/lib/business-client";
 // 这两张卡（超时回收、节点推进）只在企业版出现（组织规则 只有企业版才读），节点按企业版字典列
@@ -586,6 +588,7 @@ function AdvanceCard({
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，给进程配上必填的几样，项目在这个进程上填齐了自动推到下一个进程（一次只推一格），进程变更里记一行「必填齐了，自动推进」。没填齐也能保存，项目页上会列出还差哪几样。配了必填的进程，没填齐谁都不能往前推，往后退照旧；没配的进程照原来手动推。改了清单以后，项目下次保存时按新清单走。默认关。
       </div>
+      <RequiredBlockExport 跑={跑} 忙={忙} />
       {规则.开 && (
         <>
           <div className="set-advance-scope">
@@ -634,6 +637,42 @@ function AdvanceCard({
         </>
       )}
     </Card>
+  );
+}
+
+/**
+ * 必填拦截记录导出（2026-11-23，lib/project/required-block.ts）：往前推被缺必填拦下的每一次都记着（开关关着也记线索验证那道），
+ * 这里导近 N 天的明细、按节点分布、卡超 24 小时的项目数。开关开不开都摆（关着也有线索验证的拦截）。导不导服务端再判一遍
+ */
+function RequiredBlockExport({ 跑, 忙 }: { 跑: (f: () => 结果, 成了?: string) => Promise<boolean>; 忙: boolean }) {
+  const [天, set天] = useState(30);
+  const 导 = () => 跑(async () => {
+    const r = await 导出必填拦截Action(天);
+    if (!r.ok) return r;
+    const d = r.数据;
+    const 汇总表 = {
+      名: "汇总", 表头: ["项", "值"],
+      行: [["起", d.汇总.起], ["止", d.汇总.止], ["被拦次数", String(d.汇总.次数)], ["涉及项目数", String(d.汇总.项目数)], ["卡超 24 小时的项目数", String(d.汇总.卡超24小时项目数)]],
+      列宽: [24, 24],
+    };
+    const bytes = 写xlsx([汇总表, { 名: "按节点", ...d.按节点 }, { 名: "拦截明细", ...d.明细 }]);
+    const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `必填拦截记录-近${天}天-${dayjs().format("YYYYMMDD")}.xlsx`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+    return { ok: true };
+  }, "已导出必填拦截记录");
+  return (
+    <div className="set-advance-scope" data-testid="必填拦截导出">
+      <span>必填拦截记录</span>
+      <Select
+        size="small" aria-label="导出近几天的必填拦截记录" value={天} onChange={set天} className="set-block-days"
+        options={[7, 30, 90, 365].map((n) => ({ value: n, label: `近 ${n} 天` }))}
+      />
+      <Button size="small" disabled={忙} onClick={() => void 导()}>导出</Button>
+    </div>
   );
 }
 
