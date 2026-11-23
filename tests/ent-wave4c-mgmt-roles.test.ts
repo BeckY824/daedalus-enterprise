@@ -189,13 +189,15 @@ describe("3–5. 新建计数、只建客户的「项目分配方式」、补建
 
 describe("6. 外贸指定候选：外贸事业部的销售含义乌档口、外贸销售管理（11-23）、参与正常", () => {
   it("候选表外贸含档口销售、外贸销售管理，不含暂停的；外贸销售管理不进内贸；内贸照旧", async () => {
-    // 兼管（条线总管理 + 销售管理 + 市场管理，外贸）也是销售管理：不想分给他靠参与状态，这里设禁止
+    // 兼管（条线总管理 + 销售管理 + 市场管理，外贸）：外贸线总管理不分（P-转-27），设不设禁止都不进外贸候选
     await setSetting(自动分配不参与key, { [外二]: "暂停", [兼管]: "禁止" });
     const 表 = await 指定方向候选表(await 读组织());
     expect(new Set(表.外贸)).toEqual(new Set([外一, 档口一, 外组长]));
     expect(表.内贸).toEqual([内一]);
     await setSetting(自动分配不参与key, { [外二]: "暂停" });
-    expect(await 指定方向候选表(await 读组织())).toMatchObject({ 外贸: expect.arrayContaining([兼管]), 内贸: [内一] });
+    const 表2 = await 指定方向候选表(await 读组织());
+    expect(表2.外贸).not.toContain(兼管);
+    expect(表2.内贸).toEqual([内一]);
   });
 
   it("市场成员按外贸方向指定给档口销售：放行", async () => {

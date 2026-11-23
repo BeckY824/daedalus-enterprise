@@ -159,6 +159,8 @@ export const 自动可接 = (org: Pick<组织, "成员" | "部门">, 人们: rea
   人们.filter((id) => {
     const 角色们 = org.成员.get(id)?.角色们 ?? [];
     if (角色们.includes("sales")) return true;
+    // 外贸线的总管理不分（P-转-27「总管理不分」）：兼着总管理的纯销售管理不进外贸池；内贸照 11-18 第 9 题 B 原样（改前内贸就放行）
+    if (line === "外贸" && 角色们.includes("director")) return false;
     return 角色们.includes("sales_mgr") && !!line && 本人事业部(org, 设, id) === line;
   });
 

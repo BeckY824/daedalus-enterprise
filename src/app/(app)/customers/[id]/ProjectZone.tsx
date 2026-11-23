@@ -283,7 +283,7 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
             }}
           >
             {短更多
-              ? <button type="button" className="cd-pj-pill cd-pj-more is-short" aria-label={`更多 ${收.length} 个`} title={`更多 ${收.length} 个项目`}>+{收.length} <DownOutlined aria-hidden /></button>
+              ? <button type="button" className="cd-pj-pill cd-pj-more is-short" aria-label={`+${收.length}，更多 ${收.length} 个项目`} title={`更多 ${收.length} 个项目`}>+{收.length} <DownOutlined aria-hidden /></button>
               : <button type="button" className="cd-pj-pill cd-pj-more">更多 {收.length} 个 <DownOutlined aria-hidden /></button>}
           </Dropdown>
         )}

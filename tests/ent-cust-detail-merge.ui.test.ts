@@ -1281,12 +1281,12 @@ for (const 色 of ["light", "dark"] as const) {
   }, 120_000);
 }
 
-it("合同号胶囊：1280 放不下「更多 1 个」就换短的「+1」（读屏照念「更多 1 个」，点开照样能切）；更长的名字才省略、悬停看全", async () => {
+it("合同号胶囊：1280 放不下「更多 1 个」就换短的「+1」（读屏念「+1，更多 1 个项目」，含看得见的字；点开照样能切）；更长的名字才省略、悬停看全", async () => {
   const { page, errors } = await 开(1280, { 名们: 合同号们 });
   try {
     const 更多 = page.locator(".cd-pj-pills .cd-pj-more");
     await expect.poll(() => 更多.innerText()).toMatch(/^\+1/);
-    expect(await 更多.getAttribute("aria-label")).toBe("更多 1 个");
+    expect(await 更多.getAttribute("aria-label")).toBe("+1，更多 1 个项目");
     await 更多.click();
     await page.locator(".cd-pj-menu .cd-pj-mi").filter({ hasText: 合同号们[1] }).click();
     expect(await page.evaluate(() => Reflect.get(window, "__换"))).toBe("/customers/a?project=p2");

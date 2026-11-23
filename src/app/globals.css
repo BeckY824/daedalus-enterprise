@@ -5066,6 +5066,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 /* 角色下拉定宽：「选角色」占位整句露出；角色名长了下拉里「…」，悬停看全（antd 选中项自带 title） */
 .pd-team-role { width: 112px; flex: none; }
 .pd-team-role-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-note); }
+/* 只读时角色名本身就是 .pd-team-ops：flex 容器上省略号不生效，改回块级、可缩，长角色名照样出「…」 */
+.pd-team-ops.pd-team-role-t { display: block; flex: 0 1 auto; }
 /* 邀请区两行：选人占满宽；角色下拉 + 邀请 */
 .pd-team-add { display: grid; gap: 8px; margin-top: 8px; }
 .pd-team-add-who { width: 100%; min-width: 0; }
