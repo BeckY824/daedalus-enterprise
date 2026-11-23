@@ -459,7 +459,7 @@ function RecycleProjectRow({ p, 只读 = false }: { p: 预警行; 只读?: boole
   return (
     <li className="ov-rc-p">
       <div className="ov-rc-prow">
-        <Link href={`/projects/${p.id}`} className="ov-rc-name" title={p.名}>{p.名}<LinkPending /></Link>
+        <Link href={p.项目去 ?? `/projects/${p.id}`} className="ov-rc-name" title={p.名}>{p.名}<LinkPending /></Link>
         <span className={`ov-rc-left${剩 <= 1 ? " is-late" : ""}`}>{剩 === 0 ? "今天收回" : `还剩 ${剩} 天`}</span>
         {!记 && !只读 && (
           <button type="button" className="ov-rc-log" onClick={() => { set推话(null); set记(true); }}>记一条沟通</button>

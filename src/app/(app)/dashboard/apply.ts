@@ -36,6 +36,7 @@ import { 做项目卡 } from "@/lib/agent/apply-project";
 import { 删回款 } from "../projects/payment-actions";
 import { 认渠道, 候选说明 } from "@/lib/enterprise/channel-match";
 import { 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 
 /**
  * 确认之后怎么撤回去。只给能**干净还原**的两种：记了一条跟进（删掉它）、改了一个状态（改回原值）。
@@ -67,7 +68,9 @@ export type 附件去处 = { contactId: string } | { leadId: string };
 export type 首条附件票 = { followUpId: string; 票: string };
 export type 确认选项 = { 首条附件?: boolean };
 /** 推进：写进去时顺带按必填把项目推了一格，推到哪（卡上落印下面那一行，不悄悄推，11-20） */
-export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string; 首条附件票?: 首条附件票; 推进?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string } };
+export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string; 首条附件票?: 首条附件票; 推进?: string;
+  /** 卡上「查看」去的项目：项目 id → 项目页会跳去的最终地址（只放跳客户页的，跳转优化 PR-A；ProposalCard 查看去处 用） */
+  直达?: Record<string, string> } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string } };
 
 /**
  * 确认一张 AI 建议卡，把它真的写进去。
@@ -259,6 +262,8 @@ export async function applyProposal(input: Proposal, 选项?: 确认选项): Pro
   let r: ApplyResult | undefined;
   try {
     r = await 做这张卡(input, me, 选项?.首条附件 === true);
+    // 算不出来不挡：写已经成了，「查看」照旧去项目页
+    if (r.ok) r = { ...r, ...(await 查看直达(me, input, r.项目).catch(() => ({}))) };
     return r;
   } finally {
     if (!r?.ok) 确认过的卡.delete(卡键);
@@ -267,6 +272,15 @@ export async function applyProposal(input: Proposal, 选项?: 确认选项): Pro
       凭据对应卡.set(凭据键(me.id, r.撤销), 卡键);
     }
   }
+}
+
+/** 卡上「查看」可能去的项目（建成的、卡上挂的、项目类卡的对象）：会跳客户页的给最终地址；一个都不跳 = 不带这一格 */
+async function 查看直达(me: { id: string; role: string }, p: Proposal, 建成?: string): Promise<{ 直达?: Record<string, string> }> {
+  const q = p as { projectId?: unknown; targetId?: unknown };
+  const ids = [建成, q.projectId, q.targetId].filter((x): x is string => typeof x === "string" && !!x);
+  if (!ids.length) return {};
+  const 直达 = Object.fromEntries([...(await 项目链接们(me, ids))].filter(([id, 到]) => !到.startsWith(`/projects/${encodeURIComponent(id)}`)));
+  return Object.keys(直达).length ? { 直达 } : {};
 }
 
 /**

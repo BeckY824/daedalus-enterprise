@@ -23,7 +23,7 @@ export default function ReplyDueTodo({ 数据 }: { 数据: 待回复客户数 | 
     <div className="home-cth-todo" role="status" data-testid="home-reply-due">
       <span className="home-cth-todo-t">待回复客户 {数据.条数} 条{数据.超时 ? <span data-testid="home-reply-overdue" className="home-cth-todo-warn">（超时 {数据.超时} 条）</span> : null}</span>
       <span className="home-cth-todo-s" title={`${时} · ${后}`}><span className="home-cth-todo-time">{时}</span> · {后}</span>
-      <Link className="link-strong home-cth-todo-a" href={`/projects/${encodeURIComponent(早.projectId)}`}>去联系 ›<LinkPending /></Link>
+      <Link className="link-strong home-cth-todo-a" href={早.项目去 ?? `/projects/${encodeURIComponent(早.projectId)}`}>去联系 ›<LinkPending /></Link>
     </div>
   );
 }

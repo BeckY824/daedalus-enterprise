@@ -15,6 +15,8 @@ import { useFormDraft } from "@/components/FormDraft";
 export type 待复核行 = {
   projectId: string; 项目: string; 负责人: string; 步: "市场复核" | "销售终验" | "总管理终判" | "销售认领";
   无效原因: string | null; 初判说明: string | null; 复核说明: string | null; 异议说明: string | null; 更新于: string;
+  /** 点了去哪：项目页会跳去的最终地址（lib/project/customer-detail-direct.ts 项目链接们，跳转优化 PR-A）；没给 = /projects/<id>，项目页自己判 */
+  项目去?: string;
 };
 
 // 只写这一步要你做什么，不露内部步骤名（终验、终判这类，规则 F）
@@ -138,7 +140,7 @@ export default function VerifyInbox({ 们, 首页 = false }: {
             <div key={r.projectId} className="home-cth-todo home-verify-row" data-testid={`verify-row-${r.projectId}`}>
               <span className="home-cth-todo-t home-verify-t">
                 <Tag color={复核 ? "orange" : "blue"}>{步叫法[r.步]}</Tag>
-                <Link href={`/projects/${r.projectId}`} className="home-verify-name">{r.项目}<LinkPending /></Link>
+                <Link href={r.项目去 ?? `/projects/${r.projectId}`} className="home-verify-name">{r.项目}<LinkPending /></Link>
               </span>
               <span className="home-cth-todo-s home-verify-s">
                 负责人 {r.负责人 || "已不在的成员"} · <span className="home-cth-todo-time">{smartTime(r.更新于)}</span>
@@ -151,7 +153,7 @@ export default function VerifyInbox({ 们, 首页 = false }: {
                     <Button type="link" danger size="small" disabled={忙} onClick={() => { 记错(r.projectId, null); set说明(""); set框错(""); set框({ r, 有效: false }); }}>判无效</Button>
                   </>
                 ) : (
-                  <Link className="link-strong" href={`/projects/${r.projectId}`}>去处理 ›<LinkPending /></Link>
+                  <Link className="link-strong" href={r.项目去 ?? `/projects/${r.projectId}`}>去处理 ›<LinkPending /></Link>
                 )}
               </span>
               {错[r.projectId] && <div role="alert" className="cd-task-err home-verify-err">{错[r.projectId]}</div>}
@@ -169,7 +171,7 @@ export default function VerifyInbox({ 们, 首页 = false }: {
         return (
           <div key={r.projectId} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }} data-testid={`verify-row-${r.projectId}`}>
             <span style={{ flex: "1 1 240px", minWidth: 0, overflowWrap: "anywhere" }}>
-              <Link href={`/projects/${r.projectId}`}><b>{r.项目}</b><LinkPending /></Link>
+              <Link href={r.项目去 ?? `/projects/${r.projectId}`}><b>{r.项目}</b><LinkPending /></Link>
               <Tag style={{ marginLeft: 8 }} color={复核 ? "orange" : "blue"}>{步叫法[r.步]}</Tag>
               <span style={{ color: "var(--text-muted)" }}>负责人 {r.负责人 || "已不在的成员"} · {fmtDate(r.更新于)}</span>
               {附 && <div style={{ color: "var(--text-muted)", fontSize: 12 }}>{附}</div>}
@@ -180,7 +182,7 @@ export default function VerifyInbox({ 们, 首页 = false }: {
                 <Button danger size="small" disabled={忙} onClick={() => { 记错(r.projectId, null); set说明(""); set框错(""); set框({ r, 有效: false }); }}>判无效</Button>
               </Space>
             ) : (
-              <Link href={`/projects/${r.projectId}`}><Button size="small">去处理</Button><LinkPending /></Link>
+              <Link href={r.项目去 ?? `/projects/${r.projectId}`}><Button size="small">去处理</Button><LinkPending /></Link>
             )}
             {错[r.projectId] && <div role="alert" className="cd-task-err">{错[r.projectId]}</div>}
           </div>

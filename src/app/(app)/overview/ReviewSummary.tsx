@@ -125,7 +125,7 @@ function ReviewAlertRow({ 分布, 预警, 将回公海, 不跟批次 = false }: 
           <ul className="rkpi-warn">
             {预警.map((p) => (
               <li key={p.id}>
-                <Link href={`/projects/${encodeURIComponent(p.id)}`} className="rkpi-warn-a">
+                <Link href={p.项目去 ?? `/projects/${encodeURIComponent(p.id)}`} className="rkpi-warn-a">
                   <Tooltip title={p.名} placement="topLeft" mouseEnterDelay={0.4}>
                     <span className="rkpi-warn-n">{p.名}</span>
                   </Tooltip>

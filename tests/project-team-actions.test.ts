@@ -175,7 +175,8 @@ describe("企业版项目组邀请（10-26）", () => {
     mocks.user = { ...mocks.user, id: 甲, role: "ADMIN" };
     expect(await 加项目组员(项目id, 乙, null)).toEqual({ ok: true });
     mocks.user = { ...mocks.user, id: 乙, role: "SALES" };
-    expect(await 回项目邀请(m.id, true)).toEqual({ ok: true });
+    // 同意了带上打开项目的最终地址（跳转优化 PR-A：项目页会跳客户页的直接给客户页）
+    expect(await 回项目邀请(m.id, true)).toMatchObject({ ok: true });
     expect((await 记录()).map((r) => r.summary)).toEqual([
       expect.stringContaining("邀请进"), expect.stringContaining("拒绝加入"),
       expect.stringContaining("邀请进"), expect.stringContaining("同意加入"),

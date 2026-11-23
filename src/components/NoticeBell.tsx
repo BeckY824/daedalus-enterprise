@@ -117,13 +117,14 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
     }
   };
   /** 正在放弃的那条（原地弹框）；放弃成了的：项目 id → 接手人 */
-  const [放的, set放的] = useState<{ 通知: string; 项目: string } | null>(null);
+  /** 去 = 这条通知的链接去掉 ?giveup=1（服务端已换成项目页会跳去的最终地址，notice-actions.ts 读我的通知） */
+  const [放的, set放的] = useState<{ 通知: string; 项目: string; 去: string | null } | null>(null);
   const [放成, set放成] = useState<Readonly<Record<string, string>>>({});
   /** 「放弃（豁免）」：标已读 + 原地弹放弃框 */
   const 点放弃 = (r: 通知行) => {
     if (!r.放弃项目) return;
     点({ ...r, link: null });
-    set放的({ 通知: r.id, 项目: r.放弃项目 });
+    set放的({ 通知: r.id, 项目: r.放弃项目, 去: r.link ? 去放弃参数(r.link) : null });
   };
 
   const 全读 = async () => {
@@ -220,7 +221,7 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
           key={放的.通知}
           projectId={放的.项目} 开 关={() => set放的(null)}
           // 铃铛里没有「线索验证」框：关抽屉去项目页判
-          打开判无效={() => { set开着(false); 去页.push(`/projects/${encodeURIComponent(放的.项目)}`); }}
+          打开判无效={() => { set开着(false); 去页.push(放的.去 ?? `/projects/${encodeURIComponent(放的.项目)}`); }}
           成={(接手人, 客户) => {
             set放成((原) => ({ ...原, [放的.项目]: 接手人 }));
             set放的(null);

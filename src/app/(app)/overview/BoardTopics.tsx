@@ -69,7 +69,7 @@ export default function BoardTopics({ 数, 范围, 状态 = "" }: { 数: 复盘�
     const t = q.toString();
     start(() => router.replace(`/overview${t ? `?${t}` : ""}`, { scroll: false }));
   };
-  const 去 = (x: 复盘主题行) => 去页.push(`/projects/${encodeURIComponent(x.projectId)}`);
+  const 去 = (x: 复盘主题行) => 去页.push(x.项目去 ?? `/projects/${encodeURIComponent(x.projectId)}`);
   const 状态下拉 = (
             <Select<主题状态筛 | "">
               size="small"

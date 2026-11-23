@@ -1579,7 +1579,7 @@ export default function RecordView({
           {/* 企业版项目关联（P17）：这位作为关联客户（不是主客户）参与的项目和身份。只读，身份在项目页「关联客户」里改 */}
           {参与项目们 && 参与项目们.some((x) => !x.主) && 节("参与的项目", 参与项目们.filter((x) => !x.主).length, null, <>
               {参与项目们.filter((x) => !x.主).map((x) => (
-                <RowLink key={x.projectId} href={`/projects/${encodeURIComponent(x.projectId)}`} className="rec-mini rec-mini-2">
+                <RowLink key={x.projectId} href={x.项目去 ?? `/projects/${encodeURIComponent(x.projectId)}`} className="rec-mini rec-mini-2">
                   <span className="rec-mini-n" title={x.名}>{x.名}</span>
                   <span className="rec-mini-sub">
                     {x.身份.length ? x.身份.map((t) => <Tag key={t} style={{ margin: 0 }}>{t}</Tag>) : <span className="rec-mini-m">没勾身份</span>}

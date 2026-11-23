@@ -251,7 +251,8 @@ export const 首页放弃最多 = 5;
  * 首页一条「有放弃资格的新分到我的线索」（lead-giveup.ts 我能放弃的）：线索名 + 离超时还剩多久。
  * 接手于 ISO；时限话 服务端算好（首页 force-dynamic，不在浏览器里再算，免得两边钟对不上）
  */
-export type 我能放弃的线索 = { projectId: string; name: string; 接手于: string; 时限话: string };
+/** 项目去：项目页会跳去的最终地址（首页服务端按 lib/project/customer-detail-direct.ts 算好，跳转优化 PR-A）；没给 = /projects/<id> */
+export type 我能放弃的线索 = { projectId: string; name: string; 接手于: string; 时限话: string; 项目去?: string };
 
 /** 剩多久（向上取整到分钟）：不到 1 分钟 / N 分钟 / H 小时 M 分钟 / D 天 H 小时 */
 export function 剩多久(毫秒: number): string {

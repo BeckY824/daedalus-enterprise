@@ -70,7 +70,7 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
       router.replace(`/overview${t ? `?${t}` : ""}`, { scroll: false });
     });
   };
-  const 去 = (x: 复盘沟通行) => 去页.push(`/projects/${encodeURIComponent(x.projectId)}`);
+  const 去 = (x: 复盘沟通行) => 去页.push(x.项目去 ?? `/projects/${encodeURIComponent(x.projectId)}`);
 
   const 方式下拉 = (
       <Select<沟通方式 | "">
@@ -201,7 +201,7 @@ function 缺沟通块({ 缺 }: { 缺: 缺沟通 }) {
         <ul className="rtalk-miss">
           {缺.行.map((p) => (
             <li key={p.id}>
-              <Link href={`/projects/${encodeURIComponent(p.id)}`} className="rtalk-miss-a">
+              <Link href={p.项目去 ?? `/projects/${encodeURIComponent(p.id)}`} className="rtalk-miss-a">
                 <Tooltip title={`${p.名} · ${p.客户}`} placement="topLeft" mouseEnterDelay={0.4}>
                   <span className="rtalk-miss-n">{p.名}</span>
                 </Tooltip>

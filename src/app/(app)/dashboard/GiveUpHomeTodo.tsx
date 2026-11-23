@@ -35,7 +35,7 @@ export default function GiveUpHomeTodo({ 们 }: { 们: readonly 我能放弃的�
             <div className="home-giveup-s" data-testid="home-giveup-left">{x.时限话} · 跟不了可以放弃（豁免），每月 1 次</div>
           </div>
           <div className="home-giveup-a">
-            <Button type="primary" size="large" className="home-giveup-btn" onClick={() => 去页.push(`/projects/${encodeURIComponent(x.projectId)}`)} data-testid="home-giveup-go">
+            <Button type="primary" size="large" className="home-giveup-btn" onClick={() => 去页.push(x.项目去 ?? `/projects/${encodeURIComponent(x.projectId)}`)} data-testid="home-giveup-go">
               去跟进
             </Button>
             <Button size="large" className="home-giveup-btn" onClick={() => { set成(null); set开(x.projectId); }} data-testid="home-giveup-open">放弃（豁免）</Button>
@@ -45,7 +45,7 @@ export default function GiveUpHomeTodo({ 们 }: { 们: readonly 我能放弃的�
       {正放 && (
         <GiveUpDialog
           key={正放.projectId}
-          projectId={正放.projectId} 开 关={() => set开(null)} 判无效去={`/projects/${encodeURIComponent(正放.projectId)}`}
+          projectId={正放.projectId} 开 关={() => set开(null)} 判无效去={正放.项目去 ?? `/projects/${encodeURIComponent(正放.projectId)}`}
           成={(接手人) => {
             set走了((原) => new Set([...原, 正放.projectId]));
             set开(null);

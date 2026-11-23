@@ -14,6 +14,7 @@ import { 持有上限of } from "@/lib/project/org-rules";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
 import PoolView from "./PoolView";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 import { 转走项目预览of } from "../customers/actions";
 import { 读公海页筛, 按名单 as 按名单of, type 公海页地址 } from "./filters";
 
@@ -74,9 +75,13 @@ export default async function PoolPage({
     const 部 = 部门 ? 权限org?.部门.get(部门) : undefined;
     return [u.id, { 组: 部?.name || "", 组序: 部?.sort ?? 0, 持有: 限 === null ? null : (候选持有[u.id] ?? 0), 上限: 限 }];
   }));
+  // 项目行直接链到项目页会跳去的地址（跳转优化 PR-A：不经过 /projects/<id> 的重定向那段空白；公海里的项目照样过原负责人回避）
+  const 链 = await 项目链接们(me, 平.flatMap((r) => (r.种 === "项目" && r.projectId ? [r.projectId] : [])));
+  const 带去 = <T extends { 种: string; projectId: string | null }>(r: T): T => (r.种 === "项目" && r.projectId && 链.has(r.projectId) ? { ...r, 项目去: 链.get(r.projectId) } : r);
   return (
     <PoolView
       {...d}
+      行={d.行.map((r) => (r.子 ? { ...r, 子: r.子.map(带去) } : 带去(r)))}
       pageSize={pageSize}
       filters={筛}
       三态开={规则.三态.开}

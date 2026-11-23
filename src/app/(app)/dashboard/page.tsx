@@ -35,6 +35,7 @@ import { 权限组织, 读组织 } from "@/lib/enterprise/org";
 import { 能改后台设置, 是管理层 } from "@/lib/enterprise/permissions";
 import { 我能放弃的 } from "@/lib/enterprise/lead-giveup";
 import GiveUpHomeTodo from "./GiveUpHomeTodo";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 export const dynamic = "force-dynamic";
@@ -78,18 +79,24 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // 企业版首页待办「待分配新线索 N 条」（11-21，替原来一事一张的黄色大卡）：能分配的人按能分的业务线现数，和 /leads?f=await-assign 同一个条件；读不出来不挡首页
   const 待分配 = 企业版() ? await 数待分配(user).catch((e) => { console.error("[待分配] 首页没数出来", e); return null; }) : null;
   // 企业版首页待办「待回复主题」（11-17，教练主题）：我负责的项目上等我回的
-  const 待回复主题 = 企业版() ? await 待回复主题of(user.id) : null;
+  const 待回复主题原 = 企业版() ? await 待回复主题of(user.id) : null;
   // 企业版首页待办「待回复客户」（11-17，指定回复时间）：客户要求的联系时间快到了、还没记沟通的
-  const 待回复客户 = 企业版() ? await 待回复客户of(user.id) : null;
+  const 待回复客户原 = 企业版() ? await 待回复客户of(user.id) : null;
   // 企业版首页一行「自动分配：前面约 N 条轮到你」（11-18）：参加自动分配的销售才有，首页加载时现算；算不出来不挡首页
   const 轮到 = 企业版() ? await 我的轮到(await 读组织(), user.id).catch((e) => { console.error("[快轮到] 首页没算出来", e); return null; }) : null;
   // 企业版首页待办「待我复核」（审核 11-18 节点 P2-3，P-线索-02 / 03）：和项目列表、客户页同一份数据（能拍板的人）；读不出来不挡首页
   const 待复核们 = 企业版() ? (await 待我复核的(user).catch((e) => { console.error("[待我复核] 首页没读出来", e); return []; })).map((r) => ({ ...r, 更新于: r.更新于.toISOString() })) : [];
   const 待复核 = 待复核们.length ? <VerifyInbox 们={待复核们} 首页 /> : undefined;
+  // 首页待办里去项目的（待回复主题 / 客户、新分到你的线索）：直接给项目页会跳去的地址，一次算（跳转优化 PR-A：不经过重定向那段空白；待复核的 待我复核的 自己带着）
+  const 能放弃原 = await 能放弃P;
+  const 直达 = 企业版() ? await 项目链接们(user, [待回复主题原?.最早?.projectId, 待回复客户原?.最早?.projectId, ...能放弃原.map((x) => x.projectId)]) : new Map<string, string>();
+  const 给 = <T extends { projectId: string }>(x: T): T & { 项目去?: string } => (直达.has(x.projectId) ? { ...x, 项目去: 直达.get(x.projectId) } : x);
+  const 待回复主题 = 待回复主题原?.最早 ? { ...待回复主题原, 最早: 给(待回复主题原.最早) } : 待回复主题原;
+  const 待回复客户 = 待回复客户原?.最早 ? { ...待回复客户原, 最早: 给(待回复客户原.最早) } : 待回复客户原;
   // 开关关 / 本月用过 / 没资格 = 空、不画（组件自己不画），出错不挡首页。
   // 企业版一直挂着、不按条数挂：放弃成了 router.refresh() 后本月次数用完、列表变空，组件不能被卸掉，
   // 不然「已放弃「X」，转给 某某」那句跟着一闪就没（3703 实操 11-21）
-  const 能放弃们 = await 能放弃P;
+  const 能放弃们 = 能放弃原.map(给);
   const 放弃条 = 企业版() ? <GiveUpHomeTodo 们={能放弃们} /> : undefined;
   // 企业版项目：首页是对话 + 右侧四张指标卡（10-29 首页改版），其余数据在「复盘」页
   const 只用项目 = await 企业版只用项目();

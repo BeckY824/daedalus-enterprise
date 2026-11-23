@@ -168,7 +168,7 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
     接手列<交接客户>("c"),
   ];
   const 项目列: ColumnsType<交接项目> = [
-    { title: "项目", dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={`/projects/${r.id}`} title={v} style={省略}>{v}<LinkPending /></Link> },
+    { title: "项目", dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={r.项目去 ?? `/projects/${r.id}`} title={v} style={省略}>{v}<LinkPending /></Link> },
     { title: b.customer, dataIndex: "客户", ellipsis: true, width: "28%", render: (v: string) => <span title={v} style={省略}>{v}</span> },
     接手列<交接项目>("p"),
   ];

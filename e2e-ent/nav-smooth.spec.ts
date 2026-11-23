@@ -230,6 +230,53 @@ test("390 手机：菜单换页（客户详情 → 公海），旧内容留到�
   expect(帧.slice(0, 新).some((f) => f.条), "等了 600ms，顶上该出等待条").toBe(true);
 });
 
+/** 旧内容没了、新内容还没好的帧数（正文空白），只数新内容出来之前的 */
+const 空帧数 = (帧: 帧[]) => { const 新 = 帧.findIndex((f) => f.新); return 帧.slice(0, 新 < 0 ? 帧.length : 新).filter((f) => !f.旧 && !f.新).length; };
+
+test("复盘看板 → 项目：链接直接是客户页项目地址，不经过 /projects/<id> 的重定向，正文不空", async ({ page }) => {
+  await 登录(page);
+  await page.goto("/overview?tab=talk");
+  // 「还没沟通过的项目」（BoardTalks 缺沟通，最近建的在前）：本文件建的项目都没记过沟通
+  const 链 = page.locator("main a.rtalk-miss-a", { hasText: `${前缀}-项目2` });
+  await 链.waitFor();
+  // 改前 href 是 /projects/<id>：服务端 redirect，Next 的 RedirectBoundary 接住时先渲染 null（正文空到客户页回来）
+  const 原href = await 链.getAttribute("href");
+  await 压慢(page);
+  await 开始记(page, "main .rtalk-miss", `${前缀}-1`);
+  await 链.click();
+  await expect.poll(async () => (await 帧们(page)).some((f) => f.新), { timeout: 20_000 }).toBe(true);
+  const 帧 = await 帧们(page);
+  console.log(`[复盘看板→项目] 空帧 ${空帧数(帧)} / 共 ${帧.findIndex((f) => f.新)} 帧`);
+  expect(空帧数(帧), "旧内容留到客户页就绪，中间不空").toBe(0);
+  expect(帧.slice(0, 帧.findIndex((f) => f.新)).filter((f) => f.骨架), "提交之前不出骨架").toEqual([]);
+  expect(原href, "入口直接链到客户页项目地址").toBe(`/customers/${ids[0]}?project=${项目们[1]}`);
+  await expect(page).toHaveURL(new RegExp(`/customers/${ids[0]}\\?project=${项目们[1]}`));
+});
+
+test("通知铃 → 项目：存的 /projects/<id> 链接服务端换成客户页地址，点了正文不空", async ({ page }) => {
+  const 老板 = await db.user.findFirstOrThrow({ where: { email: 账号.老板 } });
+  const 题 = `${前缀}-通知`;
+  await db.entNotice.create({ data: { userId: 老板.id, kind: "项目组", title: 题, body: "", link: `/projects/${项目们[0]}`, dedupeKey: `${前缀}-n1` } });
+  try {
+    await 登录(page);
+    await page.goto(`/customers?keyword=${encodeURIComponent(前缀)}`);
+    await page.getByRole("main").getByRole("link", { name: `${前缀}-3`, exact: true }).waitFor();
+    await page.getByRole("button", { name: /^通知/ }).first().click();
+    const 条 = page.getByRole("button", { name: new RegExp(题) });
+    await 条.waitFor();
+    await 压慢(page);
+    await 开始记(page, "main .ant-table", `${前缀}-1`);
+    await 条.click();
+    await expect.poll(async () => (await 帧们(page)).some((f) => f.新), { timeout: 20_000 }).toBe(true);
+    const 帧 = await 帧们(page);
+    console.log(`[通知铃→项目] 空帧 ${空帧数(帧)} / 共 ${帧.findIndex((f) => f.新)} 帧`);
+    expect(空帧数(帧), "旧内容留到客户页就绪，中间不空").toBe(0);
+    await expect(page).toHaveURL(new RegExp(`/customers/${ids[0]}\\?project=${项目们[0]}`));
+  } finally {
+    await db.entNotice.deleteMany({ where: { dedupeKey: `${前缀}-n1` } });
+  }
+});
+
 test("名单后台换新的接口：登录了回这个人的名单（和服务端名单同一个函数），没登录 401", async ({ page, playwright }) => {
   await 登录(page);
   const r = await page.request.get("/api/roster/customers");

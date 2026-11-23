@@ -246,7 +246,7 @@ export function BlockerList({ 们, 带项目 = false, 空 = "还没有卡点", �
             <article key={b.id} className={`bk-card${认领中 ? " is-claimed" : ""}`} data-status={状态} aria-label={`卡点 ${b.code}`}>
               <div className="bk-r1">
                 {带项目 ? (
-                  <Link href={`/projects/${b.projectId}`} className="bk-proj" title={b.项目}>{b.项目}<LinkPending /></Link>
+                  <Link href={b.项目去 ?? `/projects/${b.projectId}`} className="bk-proj" title={b.项目}>{b.项目}<LinkPending /></Link>
                 ) : null}
                 {!在分栏 && (
                   <span className="bk-st"><i className={`rblk-dot ${状态圆点[状态] ?? ""}`} aria-hidden />{状态}</span>

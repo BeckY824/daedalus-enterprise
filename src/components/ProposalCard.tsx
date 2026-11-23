@@ -92,7 +92,7 @@ export const 新线索企业 = createContext<新线索企业格 | null>(null);
 const 线索节点们 = 企业版字典.节点们.线索.slice(0, 企业版字典.节点们.线索.indexOf(有效线索节点) + 1 || undefined);
 
 /** 推进：写进去时顺带按必填把项目推了一格（apply 回的 推进），落印下面写一行（11-20） */
-type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string; 推进?: string };
+type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string; 推进?: string; 直达?: Record<string, string> };
 
 /**
  * 卡片报给外面的状态（2026-11-15）：首页那一轮靠它知道还有没有「等你确认」的，
@@ -274,7 +274,7 @@ export default function ProposalCard({
       return false;
     }
     if (r.ok) {
-      const 回执: 落印回执 = { at: dayjs().format("HH:mm"), 撤销: r.撤销, ...(r.项目 ? { 项目: r.项目 } : {}), ...(r.推进 ? { 推进: r.推进 } : {}) };
+      const 回执: 落印回执 = { at: dayjs().format("HH:mm"), 撤销: r.撤销, ...(r.项目 ? { 项目: r.项目 } : {}), ...(r.推进 ? { 推进: r.推进 } : {}), ...(r.直达 ? { 直达: r.直达 } : {}) };
       set落印(回执);
       if (记号) 记下回执(记号, 回执);
       set刚("落印");
@@ -1016,14 +1016,15 @@ function 现值文本(p: Proposal, field: string, b: BusinessConfig): string | u
 
 /** 确认之后「查看」去哪：新线索去建成的项目，项目类卡去那个项目，删客户回客户列表 */
 function 查看去处(p: Proposal, 落印: 落印回执 | null): string {
-  if (p.kind === "add_lead") return 落印?.项目 ? `/projects/${落印.项目}` : "/leads";
+  // 去项目的：服务端确认时算好的最终地址（落印.直达，跳转优化 PR-A：不经过 /projects/<id> 的重定向那段空白），没有的照旧给项目页
+  if (p.kind === "add_lead") return 落印?.项目 ? 落印.直达?.[落印.项目] ?? `/projects/${落印.项目}` : "/leads";
   if (p.kind === "update_channel") return "/channels";
   if (p.kind === "customer_delete") return "/customers";
   if (p.kind === "contact_update") return p.customerId ? `/customers/${p.customerId}` : "/customers";
   if (是项目卡(p.kind)) {
     const q = p as 项目卡;
     const id = 落印?.项目 || q.projectId || (q.kind === "project_node" || q.kind === "project_followup" || q.kind === "lead_verify" || q.kind === "payment_add" ? q.targetId : "");
-    return id ? `/projects/${id}` : "/projects";
+    return id ? 落印?.直达?.[id] ?? `/projects/${id}` : "/projects";
   }
   return `/customers/${p.customerId}`;
 }

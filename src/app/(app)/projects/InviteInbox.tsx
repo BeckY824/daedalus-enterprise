@@ -35,7 +35,7 @@ export default function InviteInbox({ 邀请们 }: { 邀请们: 邀请行[] }) {
       const x = await 回项目邀请(r.id, true);
       // 同意了直接打开项目，项目页本身就是「已加入」的回执，不再弹顶部提示
       if (!x.ok) 记错(r.id, x.error ?? "没回成，请稍后再试");
-      else 去页.push(`/projects/${r.projectId}`);
+      else 去页.push(("去" in x && x.去) || `/projects/${r.projectId}`);
     } catch (出错) {
       记错(r.id, 动作出错话(出错, "没回成，请稍后再试"));
     } finally {

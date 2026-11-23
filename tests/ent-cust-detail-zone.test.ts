@@ -99,7 +99,7 @@ describe("客户详情的项目区", () => {
     expect(await 打开项目(甲, 同事的)).toBe("NOT_FOUND");
   });
 
-  it("/projects/<id> 的轻判断（审查 #3）：跳不跳和读整份详情一个口径；站内列表能确定的直接给客户页地址，公海、看不了的照旧 /projects/<id>", async () => {
+  it("/projects/<id> 的轻判断（审查 #3）：跳不跳和读整份详情一个口径；站内列表能确定的直接给客户页地址，看不了的照旧 /projects/<id>", async () => {
     expect(await 以(甲, () => 项目页去向(甲 as never, 我的))).toEqual({ 种: "客户页", 到: `/customers/${客户}?project=${我的}` });
     expect(await 以(甲, () => 项目页去向(甲 as never, 我结束的))).toEqual({ 种: "客户页", 到: `/customers/${客户}?project=${我结束的}` });
     expect(await 以(甲, () => 项目页去向(甲 as never, 同事的))).toEqual({ 种: "无" });
@@ -108,7 +108,9 @@ describe("客户详情的项目区", () => {
     const 链 = await 以(甲, () => 项目链接们(甲 as never, [我的, 同事的, 公海的]));
     expect(链.get(我的)).toBe(`/customers/${客户}?project=${我的}`);
     expect(链.get(同事的)).toBe(`/projects/${同事的}`);
-    expect(链.get(公海的)).toBe(`/projects/${公海的}`);
+    // 公海里的（跳转优化 PR-A 起也算）：和项目页一个口径——这条乙放的、甲不是上一任，项目页跳客户页，链接也直接给客户页
+    const 公海去向 = await 以(甲, () => 项目页去向(甲 as never, 公海的));
+    expect(链.get(公海的)).toBe(公海去向.种 === "客户页" ? 公海去向.到 : `/projects/${公海的}`);
   });
 
   it("看得到项目、看不到客户的人（只负责项目、不负责客户）：11-12 起跳客户页（受限客户详情），列表链接也直接给客户页", async () => {

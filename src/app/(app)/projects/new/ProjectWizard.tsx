@@ -708,7 +708,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         if (转走) return void (弹窗 ? router.refresh() : router.push(新线索 ? "/leads" : "/projects"));
         // 弹窗里建的落到新客户页（企业版停在这个项目的页签，客户详情合并 11-12）；整页建档照旧进项目详情
         if (!r.projectId) return void 去页.push(`/customers/${r.customerId}`);
-        去页.push(弹窗 && 企业版 ? `/customers/${r.customerId}?project=${r.projectId}` : `/projects/${r.projectId}`);
+        // 整页建的：服务端给了项目页会跳去的地址（r.去）就直接去，不经过 /projects/<id> 的重定向
+        去页.push(弹窗 && 企业版 ? `/customers/${r.customerId}?project=${r.projectId}` : ("去" in r && r.去) || `/projects/${r.projectId}`);
       });
     } catch (出错) {
       set交错(动作出错话(出错, "没建成，请稍后再试；填过的还在"));
