@@ -17,7 +17,7 @@ import { 默认过渡 } from "@/lib/motion";
  * 而不是一个永远停在 0 的谎。滚动在挂载后的同一帧里接管（useLayoutEffect），所以看不见跳。
  *
  * 2026-11 PR2 外壳（原型 g.numbers「数字滚到位、等宽，不跳宽度」）：挂着的时候数变了（筛选、刷新），
- * 从**旧值**滚到新值（ui 那档不回弹弹簧，换了曲线的主题照它的曲线 + --t），不再硬换；
+ * 从**旧值**滚到新值（ui 那档不回弹弹簧），不再硬换；
  * `只滚变化` 的那种第一次不从 0 滚，直接是数——复盘、待办卡这类每次进来都看的数，从 0 滚是噪音，变了才值得动一下。
  * 等宽靠调用处的样式（font-variant-numeric: tabular-nums），滚的时候宽度不跳。
  */
@@ -41,15 +41,13 @@ export default function CountUp({
   /** 第一次直接显示、不从 0 滚；之后数变了才从旧值滚到新值 */
   只滚变化?: boolean;
 }) {
-  const 动效值 = useMotionTheme();
-  const { 曲线 } = 动效值;
+  const { 曲线 } = useMotionTheme();
   const 少动 = useReducedMotion();
   const [显示, set显示] = useState(值);
   /** 上一次落定的数：数变了从它滚起。null = 还没落定过（第一次挂上） */
   const 上次 = useRef<number | null>(null);
   /** 正在滚的那一段停在哪：半路又变了，从这里接着滚，不回头 */
   const 当前 = useRef(值);
-  const 变化过渡 = 默认过渡(动效值);
 
   useIsoLayoutEffect(() => {
     const 旧 = 上次.current;
@@ -69,7 +67,7 @@ export default function CountUp({
       }
       const 起 = 当前.current;
       const 控制 = animate(起, 值, {
-        ...变化过渡,
+        ...默认过渡,
         onUpdate: (n) => { 当前.current = n; set显示(n); },
         onComplete: () => { 当前.current = 值; set显示(值); },
       });
@@ -90,8 +88,7 @@ export default function CountUp({
       onComplete: () => { 当前.current = 值; set显示(值); },
     });
     return () => 控制.stop();
-    // 变化过渡 每次渲染是新对象，跟着主题的 是弹簧 / 曲线 走就够
-  }, [值, 记号, 少动, 时长, 曲线.ease, 只滚变化, 动效值.是弹簧]);
+  }, [值, 记号, 少动, 时长, 曲线.ease, 只滚变化]);
 
   return <>{格式(显示)}</>;
 }

@@ -58,7 +58,7 @@
 .set-lock-tag { flex: none; margin: 0; }
 .set-lock-sent { flex: none; color: var(--success); font-size: var(--fs-note); animation: set-pop var(--t) var(--ease-spring); }
 /* D16（设计语言 E4）：13 号小字用 --success（3.30:1）不过线，现状主题换 --success-text；换皮主题照原样 */
-:root:is(:not([data-skin]), [data-skin="now"]) .set-lock-sent { color: var(--success-text); }
+:root:root .set-lock-sent { color: var(--success-text); }
 .set-lock-err { flex-basis: 100%; color: var(--danger); font-size: var(--fs-min); }
 .set-ro { margin-bottom: var(--s3, 12px); padding: 8px 12px; border-radius: 10px; background: var(--hover); color: var(--text-muted); font-size: var(--fs-note); }
 .set-flash { animation: set-flash 1.6s var(--ease); }

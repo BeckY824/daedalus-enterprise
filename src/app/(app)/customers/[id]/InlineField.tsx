@@ -4,7 +4,6 @@ import DatePicker from "@/components/BusinessDatePicker";
 
 import { useContext, useEffect, useRef, useState } from "react";
 import { 只读上下文, 只能看的格上下文, 资料改挡上下文 } from "./read-only";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { 是空值, 有值, 空值符 } from "@/lib/empty-value";
 import { useRouter } from "next/navigation";
 import { AutoComplete, Input, Select } from "antd";
@@ -90,7 +89,6 @@ export default function InlineField({
   const 改挡 = useContext(资料改挡上下文);
   const 归属挡 = 改挡 && (field !== "salesOwnerId" || 改挡.公海) ? 改挡.话 : null;
   const 只读 = useContext(只读上下文) || 权限挡 || !!归属挡;
-  const 新样 = useIsNowSkin();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<string | null>(value);
   const [saving, setSaving] = useState(false);
@@ -203,8 +201,8 @@ export default function InlineField({
             display || (只读 || 空时横线 ? 空值符 : placeholder)
           )}
         </div>
-        {/* 能改的格行尾一支笔（规范 M3-b）：现状主题悬停才出、触屏常显；换皮主题不渲染（antd 图标自带 display 盖得掉 display:none，PR #401 实操） */}
-        {!只读 && 新样 && <EditOutlined className="rec-field-pen" aria-hidden />}
+        {/* 能改的格行尾一支笔（规范 M3-b）：悬停才出、触屏常显 */}
+        {!只读 && <EditOutlined className="rec-field-pen" aria-hidden />}
         {话行}
       </div>
     );

@@ -22,7 +22,6 @@ import SaveButton from "@/components/SaveButton";
 import { 跑给按钮, type 跑法 } from "./detail-note";
 import { useFormDraft } from "@/components/FormDraft";
 import { 动作出错话 } from "@/lib/stale-deploy";
-import { useIsNowSkin } from "@/lib/use-skin";
 
 export type 组员 = { id: string; userId: string; name: string; roleId: string | null; inviteStatus: string };
 export type 角色 = { id: string; name: string; active: boolean };
@@ -340,12 +339,11 @@ export function ProjectTeamCard({
   const 在组 = new Set([...组员们.filter((m) => !(企业版 && m.inviteStatus === "DECLINED")).map((m) => m.userId), ...还没回来.map((x) => x.userId)]);
   const 可加 = 在职.filter((u) => !在组.has(u.id));
   const 不能改 = 能改 ? undefined : 企业版 ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改";
-  const 新样 = useIsNowSkin();
 
   return (
-    // 设计语言 D5 · M11-a：折叠的卡都写条数（现状主题；换皮主题照旧只有名字）。口径和「提成（N）」一样 = 人数、含组长（#403 审查）：
+    // 设计语言 D5 · M11-a：折叠的卡都写条数。口径和「提成（N）」一样 = 人数、含组长（#403 审查）：
     // 在组的人（拒了邀请的不算，邀请中的算）+ 组长一位
-    <Card title={新样 ? `项目组（${在组.size + (企业版 && 组长 ? 1 : 0)}）` : "项目组"}>
+    <Card title={`项目组（${在组.size + (企业版 && 组长 ? 1 : 0)}）`}>
       {企业版 && 组长 && <div style={{ marginBottom: 8 }}>组长：{组长}</div>}
       {组员们.length === 0 && !还没回来.length && <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>还没有拉人进项目组</div>}
       {组员们.map((m) => (

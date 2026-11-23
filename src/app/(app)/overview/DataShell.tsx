@@ -6,7 +6,6 @@ import { useOptimistic, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button, Drawer, Segmented, Select, Tabs } from "antd";
 import { DownOutlined } from "@ant-design/icons";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { PageHead } from "@/components/ui";
 import Skeleton from "@/components/Skeleton";
 import { 视图们, type 视图 } from "./views";
@@ -69,8 +68,7 @@ export default function DataShell({
   // 点了「自定义」先亮起来、日期段先摆出来（默认本月 1 号到今天，同服务端），不等那一屏回来
   const [显视图, set显视图] = useOptimistic(view);
   const [显批, set显批] = useOptimistic(批次?.当前 ?? "");
-  /** 设计语言 R-A：现状主题把人员选择并进页签那一行右端；换皮主题照旧在页签上面 */
-  const 新样 = useIsNowSkin();
+  /** 设计语言 R-A：人员选择并进页签那一行右端；390 收成「看谁 ▾」底部面板 */
   const [看谁开, set看谁开] = useState(false);
 
   /** 在当前地址上改几个参数：页签、人、视图都保留另外几样（看着某个人切到「数据」还是那个人，回到「待办」筛选还在） */
@@ -166,21 +164,11 @@ export default function DataShell({
       <PageHead title={项目 ? "复盘" : "数据"} subtitle={项目 ? "项目现状与复盘" : `业务现状与${签约叫(b)}复盘`} />
       {页签 ? (
         <>
-          {/* 人员选择器在页签上面：四个页签共用，切页签不丢（沟通页签的「按负责人筛」就是它） */}
-          {/* 卡点按角色开关定能看谁、不跟人员选择：这一行不撤（撤了整页往上跳一截，ov.layout），留在原地变淡、点不了 */}
-          {!新样 && 选人 && (
-            <div
-              className={`data-shell-bar data-shell-bar-who${人不适用 ? " is-na" : ""}`}
-              title={人不适用 ? "卡点按角色定能看谁，不跟这里的人员选择" : undefined}
-            >
-              {我的团队()}{人下拉()}
-            </div>
-          )}
           <Tabs
-            className={`data-shell-tabs${新样 ? " data-shell-tabs-who" : ""}`}
+            className="data-shell-tabs data-shell-tabs-who"
             // R-A：人员选择在页签行右端（四个页签共用）；卡点页签不跟人员选择，右端空着、行高不变（页签顶不挪，ov.layout）。
             // 390：右端收成「看谁 ▾」，点开底部面板
-            tabBarExtraContent={新样 && 选人 ? {
+            tabBarExtraContent={选人 ? {
               right: 人不适用 ? null : (
                 <>
                   <div className="data-shell-bar-who data-shell-who-inline">{我的团队()}{人下拉()}</div>
@@ -198,7 +186,7 @@ export default function DataShell({
             animated={{ inkBar: true, tabPane: false }}
             items={复盘页签们.map((k) => ({ key: k, label: <span onMouseEnter={() => 预取(读页签(k))}>{复盘页签叫法[k]}</span> }))}
           />
-          {新样 && 选人 && (
+          {选人 && (
             <Drawer open={看谁开} placement="bottom" height="auto" title="看谁" className="data-shell-who-sheet" onClose={() => set看谁开(false)}>
               <div className="data-shell-who-sheet-body">{我的团队(() => set看谁开(false))}{人下拉(() => set看谁开(false))}</div>
             </Drawer>

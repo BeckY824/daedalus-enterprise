@@ -30,7 +30,6 @@ import { 子渠道名, 子渠道提示, 主渠道名上限, 按主渠道汇总, 
 import MainChannels, { MainChannelEdit, 主渠道编辑初值, type 主渠道编辑中 } from "./MainChannels";
 import ChannelDrawer from "./ChannelDrawer";
 import ChannelDash from "./ChannelDash";
-import { useIsNowSkin } from "@/lib/use-skin";
 import SaveButton from "@/components/SaveButton";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 筛渠道, 看板时段, 自定义, type 档, type 看板底数, type 看板公海 } from "@/lib/enterprise/channel-dash";
@@ -84,7 +83,7 @@ const 空转化: 转化 = { 分子: 0, 分母: 0, 比例: null };
 const 空统计: 渠道统计 = { 关联线索: 0, 有效线索: 0, 已判定: 0, 关联商机: 0, 关联订单: 0, 关联项目: 0, 累计成交: [], 当前投入: [], 产出比: null, 产出比说明: "还没录投入", 累计运营天数: 0, 线索转商机: 空转化, 商机转订单: 空转化 };
 type 有统计 = { 统计?: 渠道统计 };
 const 统计 = (r: 有统计) => r.统计 ?? 空统计;
-/** 没有数据（「—」）：现状主题走 --empty-fg（globals.css .chan-empty，C-新5：「—」= 没有数据、「0」= 有数据但为 0） */
+/** 没有数据（「—」）：走 --empty-fg（globals.css .chan-empty，C-新5：「—」= 没有数据、「0」= 有数据但为 0） */
 const 无 = <span className="muted chan-empty">—</span>;
 /** 眼下算不算启用：渠道启用（channel-main-core.ts）一个口径，列表、筛选、详情、来源下拉、服务端都调它 */
 const 启用着 = (r: Row) => 渠道启用(r);
@@ -197,7 +196,6 @@ export default function ChannelsView({
     行错计时.current = setTimeout(() => set行错(null), 5000);
   }
   const b = useBusiness();
-  const 新样 = useIsNowSkin();
   /*
     列表统计跟看板时间段（员工反馈第 2 批 2D）：档放这里、看板和列表共用一个，看板上切，列表、抽屉、按主渠道合计跟着换。
     默认同看板：地址栏带着自定义就是自定义，不然「全部」（= 原来的列表）。没有看板（不是企业版）就一直是全部
@@ -251,7 +249,7 @@ export default function ChannelsView({
     () => (两层 && 按主看 ? [...按主渠道汇总(rows, 主渠道们), ...只有主渠道的(主渠道们, new Set(子渠道数.keys()), { kw, attr, ownerId, active, creator, 主 })] : []),
     [两层, 按主看, rows, 主渠道们, 子渠道数, kw, attr, ownerId, active, creator, 主],
   );
-  /** 页头计数（现状主题）：跟当前视图走——按子渠道 = 渠道个数，按主渠道 = 主渠道个数；都不带筛选 */
+  /** 页头计数：跟当前视图走——按子渠道 = 渠道个数，按主渠道 = 主渠道个数；都不带筛选 */
   const 头计数 = useMemo(
     () => (两层 && 按主看
       ? 按主渠道汇总(全部行, 主渠道们).length + 只有主渠道的(主渠道们, new Set(子渠道数.keys()), { kw: "", attr: "", ownerId: "", active: "", creator: "", 主: "" }).length
@@ -353,8 +351,8 @@ export default function ChannelsView({
   type 数键 = "关联线索" | "有效线索" | "关联商机" | "关联订单" | "关联项目";
   // 列工厂对「按子渠道」「按主渠道」两种行都能用（只看 统计）
   const 数列 = <T extends 有统计,>(键: 数键, 说明: string, 标题: string = 键): 列<T> => ({
-    title: 新样 && 键 === "有效线索" ? (
-      // 现状主题（设计语言 C-A2 · C-新5）：「—」和「0」意思不同，表头写个「?」说清；点「?」、键盘在「?」上按 Enter / 空格都不触发排序
+    title: 键 === "有效线索" ? (
+      // 设计语言 C-A2 · C-新5：「—」和「0」意思不同，表头写个「?」说清；点「?」、键盘在「?」上按 Enter / 空格都不触发排序
       <span className="nowrap chan-th">
         {标题}
         {/* hover + focus 不用 click：触屏按下 pointerenter 延时开、抬起后 click 又切回关，闪一下就没（C-A1 3704 实操） */}
@@ -363,10 +361,10 @@ export default function ChannelsView({
             onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") e.stopPropagation(); }}>?</span>
         </Tooltip>
       </span>
-    ) : <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 新样 && 键 === "有效线索" ? 132 : 104, align: "right",
+    ) : <Tooltip title={说明}><span className="nowrap">{标题}</span></Tooltip>, key: 键, width: 键 === "有效线索" ? 132 : 104, align: "right",
     // 「有效线索」列 132：表头字 +「?」（16）+ 它点击区多出的 6 + 排序箭头 + 左右 14 内边距，Linux 字体下要 127（PR #413 排版闸门「字溢出」，原 120）
     // 带「?」的那列不要 antd 的「点击升序」提示：悬停时和「?」的说明叠成两个
-    ...(新样 && 键 === "有效线索" ? { showSorterTooltip: false } : {}),
+    ...(键 === "有效线索" ? { showSorterTooltip: false } : {}),
     // 有效线索没判过（「—」）排在判过、0 条有效的后面（同看板，有效线索显示）
     sorter: (a, b2) => (键 === "有效线索" ? (有效线索显示(统计(a)) ?? -1) - (有效线索显示(统计(b2)) ?? -1) : 统计(a)[键] - 统计(b2)[键]),
     render: (_: unknown, r: T) => {
@@ -547,7 +545,7 @@ export default function ChannelsView({
     { title: "备注", key: "remark", dataIndex: "remark", width: 200, 默认: false, 折行: true, render: (v: string | null) => v ?? 无 },
     {
       /* 行上只留一个带字的按钮（规则 D）：能录投入的是「录投入」，别人是「详情」；编辑、停用、删除收进「⋯」。
-         删除：换皮主题照旧不标红；现状主题（设计语言 C-A2，规则「确认」）删了找不回来，红字 + 前面一条分隔线，确认方式不变（P-界面-40） */
+         删除（设计语言 C-A2，规则「确认」）：删了找不回来，红字 + 前面一条分隔线，确认方式不变（P-界面-40） */
       title: "", key: "act", width: 124, 常驻: true, fixed: "right",
       render: (_, r) => {
         const 删因 = 删不了(r);
@@ -570,10 +568,10 @@ export default function ChannelsView({
                 label: r.active ? "停用" : "启用",
                 onClick: () => (r.active ? set问着({ id: r.id, 事: "停用" }) : void 切停用(r)),
               },
-          ...(新样 ? [{ type: "divider" as const }] : []),
+          { type: "divider" as const },
           {
             key: "delete",
-            danger: 新样,
+            danger: true,
             disabled: Boolean(删因),
             label: 删因 ? (
               <div>
@@ -589,7 +587,7 @@ export default function ChannelsView({
           <span className="ch-act">
           <Space size={2}>
             {能录 ? (
-              // 现状主题（D09）：行内动作一种样式——文字按钮、不带框，只靠 .row-act（L-B 定的款，globals.css），不自己设 type
+              // D09：行内动作一种样式——文字按钮、不带框，只靠 .row-act（L-B 定的款，globals.css），不自己设 type
               <Button className="row-act" aria-label={`给 ${r.name} 录投入`} size="small" onClick={() => 看详情(r.id, true)}>录投入</Button>
             ) : (
               <Button className="row-act" aria-label={`${r.name} 的详情`} size="small" onClick={() => 看详情(r.id)}>详情</Button>
@@ -702,7 +700,7 @@ export default function ChannelsView({
   const 口径钮 = 两层 ? (
     <Segmented
       aria-label="统计口径"
-      size={新样 ? "small" : undefined}
+      size="small"
       value={按主看 ? "主" : "子"}
       onChange={(v) => set按主看(v === "主")}
       options={[{ value: "子", label: "按子渠道" }, { value: "主", label: "按主渠道" }]}
@@ -710,8 +708,8 @@ export default function ChannelsView({
   ) : null;
   const 有看板 = Boolean(看板底数 && rows.length > 0);
   const 列表时段说明 = 有期 ? "项目、线索按这段时间新建的算；商机、订单、成交按到达该阶段的时间算（同看板），点开商机、订单看全部时间的；投入按投入日期；累计运营天数不分时段。在上方看板切换" : "全部时间；在上方看板切换时段";
-  /* 现状主题（设计语言 C-A1 C-新1）：口径切换和时段一样改的是下面所有数，挪进看板头；没看板（筛空了）时留在标题旁，免得切不回来 */
-  const 口径进看板 = 新样 && 有看板;
+  /* 设计语言 C-A1 C-新1：口径切换和时段一样改的是下面所有数，挪进看板头；没看板（筛空了）时留在标题旁，免得切不回来 */
+  const 口径进看板 = 有看板;
   /* 看板本身一直按子渠道算（TOP5、预警、「按筛选出的 N 个渠道算」都是子渠道）：切到「按主渠道」只换下面的表，开关旁灰字说清，不改口径 */
   const 看板口径 = (
     <>
@@ -723,22 +721,15 @@ export default function ChannelsView({
   const 看板块 = 看板底数 && rows.length > 0 ? (
     <>
       <ChannelDash 渠道们={rows} 底数={看板底数} 段={看板段} 期={期} 改期={set期} 改忙={set看板忙} 公海={公海} 筛了负责人={Boolean(ownerId)} 能录={能录} 看详情={看详情} 口径={口径进看板 ? 看板口径 : undefined} />
-      {新样 ? (
-        /* 现状主题（设计语言 C-A2 · C3）：统计说明并进表格卡头「渠道（N）· 统计：本月 · …」，时段换了跟着写；
-           按哪种时间算那句长话进「?」悬停（触屏点开） */
-        <div className="chan-period-note chan-list-head" data-testid="chan-period-note">
-          <b className="section-title">{两层 && 按主看 ? "主渠道" : "渠道"}<span className="card-count">（{(两层 && 按主看 ? 主行们.length : rows.length).toLocaleString("zh-CN")}）</span></b>
-          <span className="chan-period-label">· 统计：{时段字(期, 时段)}</span>
-          <Tooltip trigger={["hover", "focus"]} title={<span className="chan-period-hint">{列表时段说明}</span>}>
-            <span className="chan-dash-q" tabIndex={0} role="button" aria-label="列表按哪段时间算">?</span>
-          </Tooltip>
-        </div>
-      ) : (
-      <div className="chan-period-note" data-testid="chan-period-note">
-        <span className="chan-period-label">列表统计：{时段字(期, 时段)}</span>
-        <span className="chan-period-hint">{列表时段说明}</span>
+      {/* 设计语言 C-A2 · C3：统计说明并进表格卡头「渠道（N）· 统计：本月 · …」，时段换了跟着写；
+          按哪种时间算那句长话进「?」悬停（触屏点开） */}
+      <div className="chan-period-note chan-list-head" data-testid="chan-period-note">
+        <b className="section-title">{两层 && 按主看 ? "主渠道" : "渠道"}<span className="card-count">（{(两层 && 按主看 ? 主行们.length : rows.length).toLocaleString("zh-CN")}）</span></b>
+        <span className="chan-period-label">· 统计：{时段字(期, 时段)}</span>
+        <Tooltip trigger={["hover", "focus"]} title={<span className="chan-period-hint">{列表时段说明}</span>}>
+          <span className="chan-dash-q" tabIndex={0} role="button" aria-label="列表按哪段时间算">?</span>
+        </Tooltip>
       </div>
-      )}
     </>
   ) : undefined;
 
@@ -769,13 +760,11 @@ export default function ChannelsView({
           1024 宽 + AI 栏常驻时切换 + 「主渠道」+「新建渠道」一排会撑出页头；标题那块能折行，放不下就掉到标题下面
         */
         titleAside={
-          // 现状主题：标题后写渠道个数（--count-fg）；口径切换在看板头（见 口径进看板）
-          新样 ? (
-            <>
-              <span className="page-count" aria-label={两层 && 按主看 ? `共 ${头计数} 个主渠道` : `共 ${头计数} 个渠道`}>{头计数}</span>
-              {口径进看板 ? null : 口径钮}
-            </>
-          ) : 口径钮 ?? undefined
+          // 标题后写渠道个数（--count-fg）；口径切换在看板头（见 口径进看板）
+          <>
+            <span className="page-count" aria-label={两层 && 按主看 ? `共 ${头计数} 个主渠道` : `共 ${头计数} 个渠道`}>{头计数}</span>
+            {口径进看板 ? null : 口径钮}
+          </>
         }
         extra={
           能管 && (
@@ -793,8 +782,8 @@ export default function ChannelsView({
       {两层 && 按主看 ? (
         <DataList<主渠道汇总>
           页="channels-main"
-          // 现状主题：横滚停在最左时表头不被钉住的操作列压成半截（C-新6），多出来的宽给「渠道属性」
-          补宽列={新样 ? "属性" : undefined}
+          // 横滚停在最左时表头不被钉住的操作列压成半截（C-新6），多出来的宽给「渠道属性」
+          补宽列="属性"
           // 进详情再回来、刷新：第几页、横滚还原（29R 推广）
           回来还原
           空库={全部行.length === 0 && 主渠道们.length === 0}
@@ -809,8 +798,8 @@ export default function ChannelsView({
       ) : (
       <DataList<Row>
         页="channels"
-        // 现状主题：横滚停在最左时「关联订单」这类表头不被钉住的操作列和渐隐压成半截（C-新6），多出来的宽给「渠道属性」
-        补宽列={新样 ? "attr" : undefined}
+        // 横滚停在最左时「关联订单」这类表头不被钉住的操作列和渐隐压成半截（C-新6），多出来的宽给「渠道属性」
+        补宽列="attr"
         // 进详情再回来、刷新：第几页、勾选、横滚还原（29R 推广）
         回来还原
         空库={全部行.length === 0}

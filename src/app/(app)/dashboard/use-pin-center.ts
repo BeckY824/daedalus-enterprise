@@ -4,8 +4,8 @@ import { useLayoutEffect, type RefObject } from "react";
 /**
  * 设计语言 H-A（11-21，H-新4）：还没问时问答卡和指标卡这一组上下居中（11-11 用户定，照留）；之后问答卡变高——
  * 输入好几行、开命令表、展开一张指标卡——不再跟着重新居中（整块往上跳），顶边钉在刚进页时的位置、往下长。
- * 变矮（清空输入、收起）就回到原位；窗口尺寸变了按那时的位置重新钉。只挪 --ck-nudge（globals.css 现状主题那段 position: relative + top），
- * 不改布局，量的是网格相对外层 .cli-ck 的位置（去掉已挪的那段），滚动、外面整体挪都不影响。换皮主题、问过之后不钉。
+ * 变矮（清空输入、收起）就回到原位；窗口尺寸变了按那时的位置重新钉。只挪 --ck-nudge（globals.css 那段 position: relative + top），
+ * 不改布局，量的是网格相对外层 .cli-ck 的位置（去掉已挪的那段），滚动、外面整体挪都不影响。问过之后不钉。
  * 人第一次在这一组里按下（点、按键）之前照常居中：刚进页时示例画进槽里、字体到了这类自己长高的，不算「跳」，不钉
  */
 export function usePinCenter(网格: RefObject<HTMLDivElement | null>, 开: boolean) {

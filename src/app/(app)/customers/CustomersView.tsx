@@ -14,8 +14,6 @@ import { Button, Select, Space, Dropdown, Tag, Segmented, Tooltip, type MenuProp
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
   DownloadOutlined,
-  ExportOutlined,
-  ImportOutlined,
   UploadOutlined,
   UserSwitchOutlined,
   TagsOutlined,
@@ -27,7 +25,6 @@ import {
 import { FOLLOW_STATUSES, DECISION_STATUSES } from "@/lib/constants";
 import { 合计文字 } from "@/lib/currency";
 import { smartTime, fmtDate, 成员选项, 成员选项带部门, 可选成员 } from "@/lib/utils";
-import { useIsNowSkin } from "@/lib/use-skin";
 import ListSearch from "@/components/ListSearch";
 import { RowLink, FollowStatusTag, PageHead, UserCell, DecisionStatusTag } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
@@ -386,8 +383,6 @@ export default function CustomersView({
     return () => clearTimeout(t);
   }, [导出话]);
   const 视图中 = useViewAs();
-  /** 现状主题（默认）：设计语言 L-A 的页头顺序、导出提示那一行、筛选摆法只在这里出；换皮主题照原样（用户 11-21「不动」，lib/use-skin.ts） */
-  const 新样 = useIsNowSkin();
   const { 问删除 } = useDeleteCustomers((话) => 说(话, true));
   /** 确认框、按钮读屏名里叫这一行（11-19 企业版全称选填：空着兜简称 / 客户编号） */
   const 叫 = (r: CustomerRow) => (企业 ? 客户显名(r) : r.name);
@@ -686,12 +681,12 @@ export default function CustomersView({
           键: "custStatus", 名: "客户状态", 宽: 140, 默认外露: true, 有值: !!f.custStatus,
           渲染: (style: CSSProperties) => (
             <Select style={style} allowClear aria-label="客户状态"
-              /* 手机宽（390）这一格只有约 120 宽，「全部客户状态」会被截成「全部客户…」：现状主题手机上换成短写「全部状态」，
-                 悬停看全写、读屏照 aria-label「客户状态」（globals.css .ph-short / .ph-full）；换皮主题照原样 */
-              placeholder={新样 ? <><span className="ph-full">全部客户状态</span><span className="ph-short" title="全部客户状态">全部状态</span></> : "全部客户状态"}
+              /* 手机宽（390）这一格只有约 120 宽，「全部客户状态」会被截成「全部客户…」：手机上换成短写「全部状态」，
+                 悬停看全写、读屏照 aria-label「客户状态」（globals.css .ph-short / .ph-full） */
+              placeholder={<><span className="ph-full">全部客户状态</span><span className="ph-short" title="全部客户状态">全部状态</span></>}
               popupRender={(menu) => <>{下拉说明(字典定义.custStatus.说明)}{menu}</>} popupMatchSelectWidth={false}
               // 释义收成一行（L-新7）：原来每项两三行，一屏只露 4 项；放不下省略号、悬停看全
-              {...释义下拉(字典释义?.状态, undefined, 新样)}
+              {...释义下拉(字典释义?.状态, undefined, true)}
               value={f.custStatus || undefined} onChange={(v) => apply({ custStatus: v ?? "" })}
               options={[...new Set([...客户状态选项, ...(f.custStatus ? [f.custStatus] : [])])].map((s) => ({ value: s, label: s }))} />
           ),
@@ -747,7 +742,7 @@ export default function CustomersView({
               value={f.salesOwnerId || undefined}
               onChange={(v) => apply({ salesOwnerId: v ?? "" })}
               // 同名的带部门（L-新6）：两位同名同事原来只能靠登录名分；部门是看的人认得的
-              options={新样 ? 成员选项带部门(users) : 成员选项(users)} />
+              options={成员选项带部门(users)} />
           ),
         }]
       : []),
@@ -951,11 +946,10 @@ export default function CustomersView({
   */
   const 三态挤 = 企业 && !!三态标;
   const 宽 = (常: number, 三态开: number) => (三态挤 ? 三态开 : 常);
-  // D20（现状主题）：筛选行「只看…」胶囊同筛选控件一个高（32，.list-chip），不再各写各的内边距；换皮主题照旧
-  const 旧胶囊 = { margin: 0, padding: "3px 10px" } as const;
-  // L-新8（现状主题）：号码不再被省略号截掉——「联系电话」列宽按这一页最长的号码给（数字、+、空格按 0.62em，中文 1em；
-  // 加格子左右留白 16 + 复制键 22），150 起、260 封顶，再长的才省略、悬停看全。换皮主题照旧 150
-  const 电话宽 = 新样 ? Math.min(260, Math.max(150, Math.ceil(Math.max(0, ...rows.map((r) => [...(r.phone ?? "")].reduce((w, c) => w + (/[\u3000-\u9fff\uff00-\uffef]/.test(c) ? 14 : 8.7), 0)))) + 16 + 22 + 6)) : 150;
+  // D20：筛选行「只看…」胶囊同筛选控件一个高（32，.list-chip），不再各写各的内边距
+  // L-新8：号码不再被省略号截掉——「联系电话」列宽按这一页最长的号码给（数字、+、空格按 0.62em，中文 1em；
+  // 加格子左右留白 16 + 复制键 22），150 起、260 封顶，再长的才省略、悬停看全
+  const 电话宽 = Math.min(260, Math.max(150, Math.ceil(Math.max(0, ...rows.map((r) => [...(r.phone ?? "")].reduce((w, c) => w + (/[\u3000-\u9fff\uff00-\uffef]/.test(c) ? 14 : 8.7), 0)))) + 16 + 22 + 6));
   /** 这一页有公海里的：操作列多一颗「领取」、加宽到 132，手机宽照旧钉右 */
   const 有领取 = !不问归属 && rows.some((r) => r.pool);
   const 企业列: 列<CustomerRow>[] = [
@@ -1170,10 +1164,10 @@ export default function CustomersView({
           }] : []),
           { key: "edit", label: "编辑", onClick: () => 去编辑(r) },
           // 先数清会一起删掉什么再问（排查 B1，见 useDeleteCustomers）；点了照旧弹后果确认框（P-界面-40）
-          // L-新2（现状主题）：删除是危险项——红字、上面一道分隔线，和编辑隔开；换皮主题照旧
+          // L-新2：删除是危险项——红字、上面一道分隔线，和编辑隔开
           ...(能删 && !删不了.has(r.id) ? [
-            ...(新样 ? [{ type: "divider" as const, key: "delete-sep" }] : []),
-            { key: "delete", label: "删除", danger: 新样, onClick: () => void 问删除([{ id: r.id, name: 叫(r) }]) },
+            { type: "divider" as const, key: "delete-sep" },
+            { key: "delete", label: "删除", danger: true, onClick: () => void 问删除([{ id: r.id, name: 叫(r) }]) },
           ] : []),
         ];
         return (
@@ -1276,7 +1270,7 @@ export default function CustomersView({
   */
   const 导出范围名 = 客户范围 && filters.scope ? 客户范围名[filters.scope as 客户范围] : undefined;
   const 导出说明 = `按当前${[导出范围名 && `范围「${导出范围名}」`, 筛了 > 0 && "筛选"].filter(Boolean).join("和") || "条件"}导出 ${total.toLocaleString("zh-CN")} 位${b.customer}（含跟进记录）`;
-  /** 导出中旁边那颗「取消导出」：只有它 abort（离开页面不打断导出，D8-3）；现状主题摆在页头下一行，换皮主题照原样摆在导出键旁边 */
+  /** 导出中旁边那颗「取消导出」：只有它 abort（离开页面不打断导出，D8-3）；摆在页头下一行 */
   const 取消导出钮 = <Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button>;
   /** 离职交接（C15）：页头右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */
   const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>;
@@ -1349,9 +1343,9 @@ export default function CustomersView({
             ]}
           />
         ) : undefined}
-        extra={新样 ? (
+        extra={
           /*
-            现状主题（设计语言 L-A · L-新3 / D31）：主按钮「新建 ▾」固定最右，离职交接排在它左边（谁看得见不变，P-界面-18 / P-转-06）；
+            设计语言 L-A · L-新3 / D31：主按钮「新建 ▾」固定最右，离职交接排在它左边（谁看得见不变，P-界面-18 / P-转-06）；
             导入、导出是次动作排最左，图标分开（D35：导入 = 往上传、导出 = 往下载，原来两个都是方框加箭头）。
             手机宽导入、导出只留图标（字靠 aria-label / 悬停），四颗一排放得下，首屏多露几行（D06）。
             导出中 / 导完那句不再塞在这排按钮中间（L-新13：导完那句约 40 字，把按钮往左推约 440），写在页头下一行
@@ -1366,39 +1360,16 @@ export default function CustomersView({
             {离职交接钮}
             {新建钮}
           </Space>
-        ) : (
-          /* 主动作在页头右上角，全站六张列表页同一个位置（设计稿 11/PAGE）。
-             导出是次动作，排在它左边，空库时没什么可导，不出现 */
-          <Space wrap>
-            {/* 导入和导出都是次动作，排在主动作左边。导入空库时也要在——
-                第一次进来的人手上那份 Excel 正是他不想一条条录的原因 */}
-            {能导入导出 && <Button icon={<ImportOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined} onClick={去导入}>导入</Button>}
-            {能导入导出 && !空库 && (<>
-              <Button
-                icon={<ExportOutlined />}
-                loading={导出中}
-                disabled={视图中}
-                title={视图中 ? 视图外部话 : undefined}
-                onClick={导出做}
-              >
-                导出
-              </Button>
-              {导出中 && <Space><span role="status" style={{ fontSize: 12 }}>{导出进度}</span>{取消导出钮}</Space>}
-              {!导出中 && 导出话 && <span role={导出话.错 ? "alert" : "status"} className={导出话.错 ? "cu-said cu-said-err" : "cu-said"}>{导出话.话}</span>}
-            </>)}
-            {新建钮}
-            {离职交接钮}
-          </Space>
-        )}
+        }
       />
-      {/* 导出中 / 导完（现状主题，L-新13）：页头下一行，进度 + 「取消导出」、导完那句 8 秒后收；页头按钮不跟着挪 */}
-      {新样 && 能导入导出 && 导出中 && (
+      {/* 导出中 / 导完（L-新13）：页头下一行，进度 + 「取消导出」、导完那句 8 秒后收；页头按钮不跟着挪 */}
+      {能导入导出 && 导出中 && (
         <div role="status" className="cu-said cu-said-row cust-export-row">
           <span>{导出进度}</span>
           {取消导出钮}
         </div>
       )}
-      {新样 && !导出中 && 导出话 && <div role={导出话.错 ? "alert" : "status"} className={导出话.错 ? "cu-said cu-said-row cu-said-err" : "cu-said cu-said-row"}>{导出话.话}</div>}
+      {!导出中 && 导出话 && <div role={导出话.错 ? "alert" : "status"} className={导出话.错 ? "cu-said cu-said-row cu-said-err" : "cu-said cu-said-row"}>{导出话.话}</div>}
 
       {/* 市场角色空库也摆（另一边「我分出去的」不看客户多少）：空库时筛选行整条不画（DataList），只这一种情况照原来单独一行 */}
       {空库 && 看法切换 && <div className="cust-view-seg">{看法切换}</div>}
@@ -1422,7 +1393,7 @@ export default function CustomersView({
         没对上={
           公海里匹配 > 0 ? (
             <div className="list-none">
-              {新样 ? (f.keyword ? `没有对得上「${f.keyword}」的${b.customer}；` : `没有对得上这些筛选的${b.customer}；`) : "这里没有符合条件的；"}
+              {f.keyword ? `没有对得上「${f.keyword}」的${b.customer}；` : `没有对得上这些筛选的${b.customer}；`}
               <Button type="link" size="small" style={{ padding: 0 }} onClick={() => (统一公海
                 ? router.push(f.keyword ? `/pool?${new URLSearchParams({ keyword: f.keyword })}` : "/pool")
                 : apply({ pool: "1", salesOwnerId: "" }))}>
@@ -1431,10 +1402,10 @@ export default function CustomersView({
             </div>
           ) : 公海页 && !Object.entries(filters).some(([k, v]) => k !== "pool" && v) ? (
             <div className="list-none">公海里现在没有{b.customer}</div>
-          ) : 新样 ? (
-            // D21（现状主题）空态句式：搜索时「没有对得上「词」的客户」，只是筛了写「没有对得上这些筛选的客户」，后面指回「重置」；13 muted、不带句号
+          ) : (
+            // D21 空态句式：搜索时「没有对得上「词」的客户」，只是筛了写「没有对得上这些筛选的客户」，后面指回「重置」；13 muted、不带句号
             <div className="list-none">{f.keyword ? `没有对得上「${f.keyword}」的${b.customer}` : `没有对得上这些筛选的${b.customer}`}，换个条件或点「重置」看全部</div>
-          ) : undefined
+          )
         }
         列={列表}
         行={rows}
@@ -1459,23 +1430,23 @@ export default function CustomersView({
           {看法切换 && <div className="list-view-seg">{看法切换}</div>}
           <Space wrap size={[10, 10]}>
             {子集 && f.pool && (
-              <Tag closable onClose={() => apply({ pool: "" })} color="processing" className="list-chip" style={新样 ? undefined : 旧胶囊}>
+              <Tag closable onClose={() => apply({ pool: "" })} color="processing" className="list-chip">
                 只看公海里的
               </Tag>
             )}
             {/* 从「数据」页那张卡走进来的：说清这是一个子集，并给一条回到全部的路 */}
             {本月新增 && (
-              <Tag closable onClose={() => apply({ createdWithin: "" })} color="processing" className="list-chip" style={新样 ? undefined : 旧胶囊}>
+              <Tag closable onClose={() => apply({ createdWithin: "" })} color="processing" className="list-chip">
                 只看本月新增
               </Tag>
             )}
             {直接推荐 && (
-              <Tag closable onClose={() => apply({ directOf: "" })} color="processing" className="list-chip" style={新样 ? undefined : 旧胶囊}>
+              <Tag closable onClose={() => apply({ directOf: "" })} color="processing" className="list-chip">
                 只看「{直接推荐}」直接带来的 · {total} 位
               </Tag>
             )}
             {本批 && (
-              <Tag closable onClose={() => apply({ batch: "" })} color="processing" className="list-chip" style={新样 ? undefined : 旧胶囊}>
+              <Tag closable onClose={() => apply({ batch: "" })} color="processing" className="list-chip">
                 只看刚导入的这一批 · {本批.几位} 位
               </Tag>
             )}

@@ -9,7 +9,6 @@ import { 空值符 } from "@/lib/empty-value";
 import { 号码上限, 每人最多号码 } from "@/lib/enterprise/customer-v2";
 import { saveCustomerNumbers } from "../actions";
 import { 只读上下文, 只能看的格上下文, 资料改挡上下文 } from "./read-only";
-import { useIsNowSkin } from "@/lib/use-skin";
 
 type 一行 = { kind: string; value: string };
 /** 号码类的几种给复制键（同联系人卡：手机、座机；客户本身的号还常有 WhatsApp、传真） */
@@ -27,7 +26,6 @@ export default function CustomerNumbers({ customerId, 号码们, 号码种类 }:
   const 权限挡 = useContext(只能看的格上下文).includes("phone");
   const 改挡 = useContext(资料改挡上下文)?.话 ?? null;
   const 只读 = useContext(只读上下文) || 权限挡 || !!改挡;
-  const 新样 = useIsNowSkin();
   const [编辑, set编辑] = useState(false);
   const [草稿, set草稿] = useState<一行[]>([]);
   const [存着, set存着] = useState(false);
@@ -71,14 +69,14 @@ export default function CustomerNumbers({ customerId, 号码们, 号码种类 }:
                   </span>
                 ) : m.value}
               </div>
-              {!只读 && 新样 && <EditOutlined className="rec-field-pen" aria-hidden />}
+              {!只读 && <EditOutlined className="rec-field-pen" aria-hidden />}
             </div>
           ))
         ) : (
           <div data-field="numbers" {...行属性}>
             <div className="rec-field-k">号码</div>
             <div className="rec-field-v rec-field-empty is-line" title={只读 ? undefined : "点击添加座机、WhatsApp 等号码"}>{空值符}</div>
-            {!只读 && 新样 && <EditOutlined className="rec-field-pen" aria-hidden />}
+            {!只读 && <EditOutlined className="rec-field-pen" aria-hidden />}
           </div>
         )}
       </div>
