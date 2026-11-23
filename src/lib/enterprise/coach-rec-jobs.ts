@@ -17,6 +17,8 @@
  * 服务重启：交上了的（asrSubmittedAt 有值）接着轮询——超过 3 小时的那一轮就判失败（腾讯云结果只留 24 小时，3 小时以内都还在）；
  *   排队的（还没交）接着交；重试次数在内存里，重启后从头数（不自动重跑一串，最多多试 3 次）；整理中的（PR5）重启后再整理一次
  * 用量：转写成功记一条 ai_use（功能键 asr，「录音转写」，明细里带秒数），设置页按秒合计
+ * 只留一份（PR6）：转写成了就删原始段（seg-NN.*）和片、切段临时件，留规整件 asr.*（audioPath 指着它）；之后再交（重新转写）直接用规整件。
+ * 草稿起算（PR6）：进待确认、整理失败时记 endedAt（清掉 remindedAt），7 天没发出由 coach-rec-housekeep.ts 自动删。钟上每小时跑一轮清理
  */
 import path from "node:path";
 import fsp from "node:fs/promises";
@@ -26,13 +28,14 @@ import { recordAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { 录音点评开着 } from "./coach-rec-db";
 import { 时长上限毫秒 } from "./coach-rec";
-import { 录音根, 录音相对目录, 认录音文件 } from "./coach-rec-store";
+import { 录音根, 录音相对目录, 认录音文件, 只留规整件 } from "./coach-rec-store";
 import { 签取文件地址 } from "./coach-rec-sign";
 import { 站点源 } from "./feishu-jsapi";
 import { 录音没整理成通知, 录音整理好了通知 } from "./notice-sources";
 import { AI整理, 没听清话, 回的不对错 } from "./coach-rec-summary";
 import { 选通道, 通道错, 请求体上限字节, type 转写通道, type 转写句, type 交的音频 } from "./asr/channel";
-import { 规整, 切段, 采样档, ffmpeg自检 } from "./asr/ffmpeg";
+import { 规整, 切段, 采样档, ffmpeg自检, 读时长, type 规整结果 } from "./asr/ffmpeg";
+import { 清理一轮, 清理间隔毫秒 } from "./coach-rec-housekeep";
 
 /** 设置「大文件怎么交」（系统管理员在设置 → AI 接入 → 语音转文字里拨）：签名地址（默认）/ 切段 */
 export const 大文件交法键 = "enterprise.coachRec.asrBig";
@@ -59,7 +62,9 @@ type 行 = { id: string; projectId: string; authorId: string; status: string; fo
 
 type 内存 = { 退避: Map<string, { 次: number; 下次: number }>; 上次查: Map<string, number>; 在跑: boolean; 整理在跑: boolean; 钟?: ReturnType<typeof setInterval>;
   /** 整理好了但写库一直失败的（连 整理失败 也写不进）：到这个时刻以前不再拿出来整理（不每 5 秒重调一次模型，PR5 审查） */
-  整理别碰?: Map<string, number> };
+  整理别碰?: Map<string, number>;
+  /** 清理（PR6）：在跑没有、上次跑的时刻 */
+  清理在跑?: boolean; 上次清理?: number };
 const g = globalThis as unknown as { __录音转写?: 内存 };
 const 存: 内存 = (g.__录音转写 ??= { 退避: new Map(), 上次查: new Map(), 在跑: false, 整理在跑: false });
 const 整理别碰 = (): Map<string, number> => (存.整理别碰 ??= new Map());
@@ -98,7 +103,7 @@ export function 拼全文(句们: readonly 转写句[]): string {
 async function 失败(r: { id: string; projectId: string; authorId: string }, 话: string, 从: "转写中" | "整理中" = "转写中"): Promise<void> {
   存.退避.delete(r.id);
   存.上次查.delete(r.id);
-  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({ where: { id: r.id, status: 从, deletedAt: null }, data: { status: "整理失败", error: 话.slice(0, 300) } }));
+  const 改 = await 主题写(() => prisma.entCoachRecording.updateMany({ where: { id: r.id, status: 从, deletedAt: null }, data: { status: "整理失败", error: 话.slice(0, 300), endedAt: new Date(), remindedAt: null } }));
   if (改.count !== 1) return;
   console.warn(`[录音转写] ${r.id} 整理失败：${话.slice(0, 120)}`);
   await 录音没整理成通知(r.authorId, { id: r.id, projectId: r.projectId }, 话);
@@ -128,16 +133,21 @@ async function 交一条(r: 行, 通道: 转写通道 | null, 现在: number): P
   if (!通道) return 失败(r, "语音转文字还没配好（服务器没配密钥），请系统管理员到设置 → AI 接入 →「语音转文字」里看");
   const 检 = await ffmpeg自检();
   if (!检.ok) return 失败(r, `服务器上的录音处理工具不可用（${检.话}），请系统管理员处理`);
-  // 原始段：第一次交时 format 还是上传时认出的格式；重试时 audioPath 已经指向 asr.*，原始段还在，照样从原始段重做
+  // 原始段：第一次交时 format 还是上传时认出的格式；重试时 audioPath 已经指向 asr.*，原始段还在，照样从原始段重做。
+  // 转写成过一次、原始段已经删了（PR6 只留规整件）：直接用规整件再交，不再规整
   const 原 = await 原始段们(r);
-  if (!原) return 失败(r, "录音文件不在了，删掉这条重新传");
-  const 目录 = path.dirname(原[0]);
-  let 规: Awaited<ReturnType<typeof 规整>>;
-  try {
-    规 = await 规整(原, 目录);
-  } catch (e) {
-    console.warn(`[录音转写] ${r.id} 规整失败：${e instanceof Error ? e.message.slice(0, 200) : e}`);
-    return 失败(r, "录音文件处理不了（可能文件坏了或者不是录音），可以删掉重新传");
+  const 现成 = 原 ? null : await 现成规整件(r);
+  if (!原 && !现成) return 失败(r, "录音文件不在了，删掉这条重新传");
+  const 目录 = path.dirname(原 ? 原[0] : 现成!.文件);
+  let 规: 规整结果;
+  if (现成) 规 = 现成;
+  else {
+    try {
+      规 = await 规整(原!, 目录);
+    } catch (e) {
+      console.warn(`[录音转写] ${r.id} 规整失败：${e instanceof Error ? e.message.slice(0, 200) : e}`);
+      return 失败(r, "录音文件处理不了（可能文件坏了或者不是录音），可以删掉重新传");
+    }
   }
   if (规.时长毫秒 === null) return 失败(r, "读不出录音有多长（文件可能坏了），可以删掉重新传");
   if (规.时长毫秒 > 时长上限毫秒) return 失败(r, `录音超过 ${时长上限毫秒 / 3_600_000} 小时，转不了；可以用录音机 App 分成几段再传`);
@@ -202,6 +212,15 @@ async function 交一条(r: 行, 通道: 转写通道 | null, 现在: number): P
   }
 }
 
+/** 已经规整好的 asr.*（audioPath 指着、文件在）：原始段删了以后重新转写用 */
+async function 现成规整件(r: 行): Promise<规整结果 | null> {
+  const f = 认录音文件(r.audioPath);
+  if (!f || !/^asr\.[a-z0-9]{2,4}$/.test(path.basename(f)) || !r.format) return null;
+  if (!(await fsp.stat(f).then((x) => x.isFile() && x.size > 0, () => false))) return null;
+  const 时长毫秒 = r.durationMs ?? (await 读时长(f).catch(() => null));
+  return { 文件: f, 格式: r.format as 规整结果["格式"], 采样率: r.sampleRate, 时长毫秒, 重编码: false };
+}
+
 /** 原始段的路径：按 segCount 和上传时认出的格式（format 列被规整改过时，从目录里找 seg-NN.*） */
 async function 原始段们(r: 行): Promise<string[] | null> {
   const 直接 = 原段们(r);
@@ -253,6 +272,8 @@ async function 查一条(r: 行, 通道: 转写通道 | null, 现在: number): P
   }));
   存.上次查.delete(r.id);
   if (改.count !== 1) return;
+  // 只留一份（PR6）：转写成了，原始段和片删掉，留规整件（删不掉的清理一轮兜底再删）
+  await 只留规整件(r).catch((e) => console.warn(`[录音转写] ${r.id} 删原始段出错：${e instanceof Error ? e.message.slice(0, 200) : e}`));
   const 秒 = Math.round((r.durationMs ?? 时长) / 1000);
   const 作者 = await defaultClient.user.findUnique({ where: { id: r.authorId }, select: { id: true, name: true } });
   if (作者) await recordAudit({ user: 作者, action: "ai_use", entity: "Ai", entityId: "asr", summary: `录音转写 ${秒} 秒`, detail: { 对象: r.id, 秒 } });
@@ -301,9 +322,10 @@ export async function 整理一轮(opt: { 整理?: typeof AI整理; 现在?: num
   try {
     改 = await 主题写(() => prisma.entCoachRecording.updateMany({
       where: { id: r.id, status: "整理中", deletedAt: null },
+      // endedAt：草稿 7 天从这一刻算（PR6），提醒过的重新算
       data: 果.可总结
-        ? { status: "待确认", draftTitle: 果.主题, draftBody: 果.要点, error: null }
-        : { status: "待确认", draftTitle: null, draftBody: null, error: 没听清话 },
+        ? { status: "待确认", draftTitle: 果.主题, draftBody: 果.要点, error: null, endedAt: new Date(现在), remindedAt: null }
+        : { status: "待确认", draftTitle: null, draftBody: null, error: 没听清话, endedAt: new Date(现在), remindedAt: null },
     }));
   } catch (e) {
     // 写库失败（锁住、磁盘问题）：算一次失败，不留在整理中让下一轮再调模型（PR5 审查）；连失败也写不进的，这条 10 分钟内不再拿出来
@@ -345,10 +367,17 @@ export async function 转写一轮(opt: { 现在?: number; 通道?: 转写通道
   return 数;
 }
 
-/** 起钟（instrumentation.ts 跑后台任务时调）：每 5 秒一轮，转写、整理两条线各自跑，上一轮没跑完就跳过这一轮 */
+/** 起钟（instrumentation.ts 跑后台任务时调）：每 5 秒一轮，转写、整理两条线各自跑，上一轮没跑完就跳过这一轮；清理（PR6）每小时一轮 */
 export function 启动转写钟(间隔 = 钟间隔毫秒): void {
   if (存.钟) return;
   存.钟 = setInterval(() => {
+    if (!存.清理在跑 && Date.now() - (存.上次清理 ?? 0) >= 清理间隔毫秒) {
+      存.清理在跑 = true;
+      存.上次清理 = Date.now();
+      清理一轮()
+        .catch((e) => console.warn(`[录音清理] 这一轮出错：${e instanceof Error ? e.message.slice(0, 200) : e}`))
+        .finally(() => { 存.清理在跑 = false; });
+    }
     if (!存.在跑) {
       存.在跑 = true;
       转写一轮()

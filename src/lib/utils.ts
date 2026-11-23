@@ -90,7 +90,7 @@ export function maskPhone(p?: string | null): string {
  *     不带分隔符的只认手机号、0 开头的座机、400/800、+ 开头的号——纯数字的金额和编号不误伤
  */
 const 号码样 = /^(?:\+?86)?1[3-9]\d{9}$|^0\d{9,11}$|^[48]00\d{7}$/;
-const 日期样 = /^\d{4}[-./]\d{1,2}[-./]\d{1,2}$/;
+const 日期样 = /^\d{4}[-./_]\d{1,2}[-./_]\d{1,2}$/;
 // WhatsApp 也是号码（2026-10-05 外贸档案）：日志里「字段：WhatsApp」那一格照电话打码
 const 电话格名 = /电话|手机|号码|phone|mobile|tel|whatsapp/i;
 
@@ -101,9 +101,10 @@ function 打这一串(串: string): string {
 }
 
 function 文本里打码(s: string): string {
-  return 全角数字转半角(s).replace(/\+?\(?\d[\d\s\-.()（）]*\d/g, (m) => {
+  // 下划线也算分隔（11-22 录音点评 PR6：138_1234_5678）
+  return 全角数字转半角(s).replace(/\+?\(?\d[\d\s\-_.()（）]*\d/g, (m) => {
     const 数字 = m.replace(/\D/g, "");
-    const 有分隔 = /[\s\-.()（）]/.test(m.replace(/^\+/, ""));
+    const 有分隔 = /[\s\-_.()（）]/.test(m.replace(/^\+/, ""));
     if (日期样.test(m)) return m;
     if (有分隔 ? 数字.length >= 7 : m.startsWith("+") ? 数字.length >= 8 : 号码样.test(数字)) return 打这一串(m);
     return m;

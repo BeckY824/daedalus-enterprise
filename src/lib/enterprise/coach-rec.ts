@@ -85,6 +85,39 @@ export const 能补段 = (r: { status: string; sourceKind: string; segCount: num
 /** 正在转写、整理：放弃要等它跑完 */
 const 处理中状态: readonly 录音状态[] = ["转写中", "整理中"];
 
+/* ── PR6 清理（coach-rec-housekeep.ts 每小时一轮） ── */
+const 天毫秒 = 24 * 60 * 60 * 1000;
+/** 没发出的草稿（上传中 / 待提交 / 待确认 / 整理失败）放满几天自动删；前一天提醒 */
+export const 草稿保留天 = 7;
+export const 草稿提醒天 = 6;
+/** 音频放几天（从录的那天算）：到期删音频文件，转写、主题要点留着 */
+export const 音频保留天 = 180;
+/**
+ * 草稿从哪一刻算：上传中看最后一次动（updatedAt：开始、接着录、传第一段的片都会改）；
+ * 别的看进这个状态的时刻（endedAt：传完、丢段退回待提交、整理好了、整理失败时记）
+ */
+export function 草稿起点(r: { status: string; endedAt: Date | null; updatedAt: Date }): Date {
+  return r.status === "上传中" ? r.updatedAt : r.endedAt ?? r.updatedAt;
+}
+export const 草稿到期 = (r: { status: string; endedAt: Date | null; updatedAt: Date }): Date => new Date(草稿起点(r).getTime() + 草稿保留天 * 天毫秒);
+export const 草稿该提醒 = (r: { status: string; endedAt: Date | null; updatedAt: Date }, 现在: number): boolean => 现在 - 草稿起点(r).getTime() >= 草稿提醒天 * 天毫秒;
+export const 草稿该删 = (r: { status: string; endedAt: Date | null; updatedAt: Date }, 现在: number): boolean => 现在 - 草稿起点(r).getTime() >= 草稿保留天 * 天毫秒;
+export const 音频该删 = (r: { createdAt: Date }, 现在: number): boolean => 现在 - r.createdAt.getTime() >= 音频保留天 * 天毫秒;
+/** 系统自动删的（到期、项目进公海 / 回收站、成员停用）：error 带这个头，清理一轮删完文件按它给录的人发通知 */
+export const 自动删头 = "【自动删除】";
+export const 自动删话 = {
+  到期: `没发出的草稿放满 ${草稿保留天} 天，已自动删除`,
+  项目没了: "项目进了公海或被删除，没发出的录音已自动删除",
+  停用: "成员停用，没发出的录音已自动删除",
+} as const;
+/** 容量闸：录音目录超过 5GB 或者磁盘剩不到 3GB 就不让开始新的录音 / 传文件；磁盘剩不到 1GB 连正在传的片也不收 */
+export const 录音目录上限字节 = 5 * 1024 ** 3;
+export const 磁盘至少剩字节 = 3 * 1024 ** 3;
+export const 收片磁盘至少剩字节 = 1024 ** 3;
+export const 存储满了话 = "录音存储空间不够了，暂时不能录新的，请联系系统管理员";
+/** 每月转写超过这么多秒，提醒系统管理员（防密钥被刷） */
+export const 每月转写提醒秒 = 200 * 60 * 60;
+
 export const 录音来源 = ["上传", "网页录", "飞书原生录"] as const;
 export type 录音来源 = (typeof 录音来源)[number];
 
