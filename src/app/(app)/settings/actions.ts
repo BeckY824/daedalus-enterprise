@@ -4,6 +4,7 @@ import { 补来源 } from "@/lib/customer-extra-db";
 
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 停用成员录音 } from "@/lib/enterprise/coach-rec-db";
 import { beijingDay } from "@/lib/business-clock";
 import { 进公海挂靠通知 } from "@/lib/enterprise/attach-approval";
 import { 解绑飞书 } from "@/lib/enterprise/feishu-login";
@@ -471,6 +472,8 @@ async function 离职原地不动(me: Awaited<ReturnType<typeof requireUser>>, i
     throw e;
   }
   await 撤托管成员(id);
+  // 录音点评（PR6）：TA 没发出的录音（草稿、转写中、整理中）放弃、文件当场删；出错不挡停用，清理一轮兜底
+  await 停用成员录音(id).catch((e) => console.warn(`[录音清理] 停用成员录音出错：${e instanceof Error ? e.message.slice(0, 200) : e}`));
   const 项目 = (await getBusiness()).projectMode === true ? 分.项目.length : 0;
   await recordAudit({
     user: me, action: "deactivate", entity: "User", entityId: id,

@@ -21,7 +21,7 @@ import {
 } from "./coach-topic";
 import { 能看项目, 权限项目选, 是教练, type 谁 } from "./permissions";
 import { 打码还原, 还原超长话 } from "./notice-mask";
-import { 录音点评开着, 录音可用, 我的录音草稿, 没开放话, type 录音给界面 } from "./coach-rec-db";
+import { 录音点评开着, 录音可用, 我的录音草稿, 没开放话, 删主题的录音文件, type 录音给界面 } from "./coach-rec-db";
 import { 能听原声, 给人看的文字 } from "./coach-rec";
 import { 夹页, 复盘列表每页, type 主题范围, type 主题状态筛, type 复盘主题 } from "@/lib/project/review-tabs";
 
@@ -303,7 +303,9 @@ export async function 删主题(me: 人, topicId: string): Promise<结果> {
   if (!x || x.t.deletedAt) return 主题没了;
   if (!能删主题(me, await 读组织())) return { ok: false, error: "主题发出后不能删，只有系统管理员能删" };
   await 主题写(() => prisma.entCoachTopic.updateMany({ where: { id: x.t.id, deletedAt: null }, data: { deletedAt: new Date() } }));
-  await recordAudit({ user: me, action: "delete", entity: "EntCoachTopic", entityId: x.t.id, summary: `删除主题「${x.t.title}」（项目「${x.p.name}」）` });
+  // 录音点评（PR6）：系统管理员删主题，这个主题的录音文件连带删（转写、要点留在行上，主题删了谁也看不到）
+  const 删了 = await 删主题的录音文件(x.t.id).catch((e) => { console.warn(`[录音清理] 删主题的录音文件出错：${e instanceof Error ? e.message.slice(0, 200) : e}`); return 0; });
+  await recordAudit({ user: me, action: "delete", entity: "EntCoachTopic", entityId: x.t.id, summary: `删除主题「${x.t.title}」（项目「${x.p.name}」）${删了 ? "，连带删了录音文件" : ""}` });
   return { ok: true };
 }
 
