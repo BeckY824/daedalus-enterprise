@@ -1498,10 +1498,15 @@ html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
 .org-save-row { margin-top: 12px; }
 .org-len-input.ant-input-number, .org-len-input.ant-input-number-affix-wrapper { width: 120px; flex: none; }
 .org-len-save.ant-btn { margin-bottom: 16px; }
-/* 项目附件一块（F-项目-18）：合同附件 / 项目方案 / 验收报告 / 其它附件 / 沟通附件各一格，格与格之间一条细线 */
+/* 项目附件一块（F-项目-18）：项目方案 / 合同附件 / 验收报告 / 其它附件 / 沟通附件各一格，格与格之间一条细线 */
 .proj-att-sec { min-width: 0; }
 .proj-att-sec + .proj-att-sec { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .proj-att-h { font-weight: 600; margin-bottom: 8px; }
+/* F-042（P-界面-59）：项目方案、合同附件两格各自一个框、小标题下一行提示放什么（一行，放不下省略、悬停看全文）；后面的格照旧细线隔开 */
+.proj-att-sec.is-box { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-card); }
+.proj-att-sec.is-box + .proj-att-sec.is-box { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.proj-att-sec.is-box + .proj-att-sec:not(.is-box) { padding-top: 0; border-top: 0; }
+.proj-att-tip { margin: -4px 0 8px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-att-from { min-width: 0; }
 .proj-att-from + .proj-att-from { margin-top: 10px; }
 .proj-att-src { display: flex; align-items: center; min-width: 0; color: var(--text-muted); font-size: var(--fs-note, 12px); }
@@ -2364,8 +2369,9 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .cite:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .rec-tl-item-flash { animation: rec-flash 1.6s var(--ease); border-radius: var(--r-card); }
 @keyframes rec-flash { 0% { background: var(--brand-bg); } 100% { background: transparent; } }
-/* 到点提醒点进来要指出的那一条（计划块 / 待办行）：它们自己就带浅蓝底，再闪一层浅蓝看不出来——改成边上一圈，只动阴影不动尺寸 */
-.rec-plan.rec-tl-item-flash, .rec-task.rec-tl-item-flash { animation: rec-ring 1.6s var(--ease); }
+/* 到点提醒点进来要指出的那一条（计划块 / 待办行）：它们自己就带浅蓝底，再闪一层浅蓝看不出来——改成边上一圈，只动阴影不动尺寸。
+   项目附件那一格（F-042，黄框里点「项目方案」等定位过来）同样亮一圈 */
+.rec-plan.rec-tl-item-flash, .rec-task.rec-tl-item-flash, .proj-att-sec.rec-tl-item-flash { animation: rec-ring 1.6s var(--ease); }
 @keyframes rec-ring { 0%, 35% { box-shadow: 0 0 0 3px var(--brand-line); } 100% { box-shadow: 0 0 0 3px transparent; } }
 .brief-sec { margin-bottom: 14px; }
 

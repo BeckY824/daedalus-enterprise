@@ -42,7 +42,7 @@ import type { 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
 import { useDetailNote, 框里原因, type 跑法, type 就地回执 } from "./detail-note";
 import { FoldSplit, ProjectFold, 模块钮色, 连体箭头 } from "./ProjectFold";
 import { 卡名Provider, 客户详情卡点, 项目卡名 } from "./card-names";
-import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
+import { ProjectFillRequired, 定位到模块, 定位到附件格, 附件必填格 } from "./ProjectFillRequired";
 import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
 import { 填法表, 客户格, type 窗外去处, type 草稿们, type 已签收格 } from "@/lib/project/required-fill";
 import ProjectStages from "./ProjectStages";
@@ -915,6 +915,8 @@ export default function ProjectDetail({
   const 去填 = (键: string) => {
     const 叫 = 必填叫法(键);
     const 说在哪 = (话: string) => 就地.info(`「${叫}」：${话}`);
+    // 附件类（项目方案、合同附件、验收报告，F-042）：直接滚到「项目附件」里那一格亮一下，不开完成节点框（框里这一项也只是一颗「去项目附件」）
+    if (附件必填格[键] && 定位到附件格(键)) return;
     if (节点可改 && !完成不了 && !忙 && 要先补齐 && 节点缺.includes(键)) {
       set头部框("完成");
       /*
@@ -1076,11 +1078,11 @@ export default function ProjectDetail({
   /** 框里点了要换到别的框（推进 → 结局确认）：先关这个，焦点回到页头。「管理沟通」框 M-权限-09 去掉了，改、删在每条沟通的「…」里 */
   const 换框 = (f: () => void) => () => { set头部框(null); f(); };
   /** 「完成节点」框里填不了的必填：关框，打开或滚到能填的地方 */
-  const 去补必填 = (去: 窗外去处) => {
+  const 去补必填 = (去: 窗外去处, 项?: string) => {
     set头部框(null);
     if (去 === "沟通") set记一条开着(true);
     else if (去 === "线索验证") set验证开着(true);
-    else if (去 === "附件") 定位到模块("project-attachments-fold");
+    else if (去 === "附件") { if (!项 || !定位到附件格(项)) 定位到模块("project-attachments-fold"); }
     else if (去 === "回款") 定位到模块("project-payments-fold");
   };
   /** dt.stage 补填小框（挂在「完成节点」上的 Popover 里）：M-节点-05/09 先查这个节点的必填（占位值不算填了），缺了当场填（11-03 一窗填完），
@@ -1919,7 +1921,7 @@ export default function ProjectDetail({
   );
 
   const 画像卡 = p.画像 && <ProjectProfileCard projectId={p.id} 画像={p.画像} 能改={可改} />;
-  // 项目附件合成一块（F-项目-18）：合同附件、项目方案、验收报告、其它附件各一格（节点必填「合同附件」「项目方案」「验收报告」各看自己那一格；没分格的老附件算在「其它」里），
+  // 项目附件合成一块（F-项目-18）：项目方案、合同附件（这两格各自框起来带提示，F-042）、验收报告、其它附件各一格（节点必填「合同附件」「项目方案」「验收报告」各看自己那一格；没分格的老附件算在「其它」里），
   // 最后一格把挂在各条沟通上的截图、录音收过来，写明来自哪条沟通，点了跳到那条（在这里只看、下载，传和删回那条沟通上）
   const 沟通附件们: 沟通附件组[] = p.followUps
     .filter((f) => f.附件?.length)
