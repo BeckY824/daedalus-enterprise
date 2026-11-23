@@ -7,13 +7,16 @@
  */
 import { useImperativeHandle, useState } from "react";
 import Link from "next/link";
-import { Alert, Button, Input, Popover, Select, Space } from "antd";
+import { Alert, Button, Input, Popover, Select, Space, type PopoverProps } from "antd";
 import { FileSearchOutlined } from "@ant-design/icons";
 import { 查号码, type 查号码结果 } from "../customers/number-actions";
 import RescueKey from "../customers/RescueKey";
 import DedupeClaimKey from "../customers/DedupeClaimKey";
 import { 向导能选类型, 号码类型叫法, type 号码类型 } from "@/lib/enterprise/contact-format";
 import { 动作出错话 } from "@/lib/stale-deploy";
+
+/** 小框放不下：能翻就翻，左右放不下就整块挪进屏（放外面，每次渲染同一个对象） */
+const 挪进屏 = { adjustX: 1, adjustY: 1, shiftX: true } as Exclude<PopoverProps["autoAdjustOverflow"], boolean | undefined>;
 
 /** 不跟着「正在回答」变灰：查号码不碰这一轮对话，边等回答边查是常事 */
 export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
@@ -95,7 +98,8 @@ export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
   );
 
   return (
-    <Popover content={框} trigger="click" placement="topLeft" open={开} onOpenChange={set开}>
+    // 手机宽（11-22 实操 390 宽右边伸出视口约 26px）：放不下就整块往左挪进屏（shiftX），外框右边留一点页边见 globals.css .home-dedupe-pop
+    <Popover content={框} trigger="click" placement="topLeft" open={开} onOpenChange={set开} autoAdjustOverflow={挪进屏} classNames={{ root: "home-dedupe-pop" }}>
       {藏键 ? <span className="cli-anchor" aria-hidden="true" /> : <button
         type="button"
         className={`cli-tool${宽 ? " cli-tool-t" : ""}${开 ? " cli-tool-on" : ""}`}

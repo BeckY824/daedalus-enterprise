@@ -2440,6 +2440,8 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 @media (max-width: 767px) { .cli:has(.cli-ck) { min-height: 0; } }
 /* 输入框旁「查重」点开的小框 */
 .home-dedupe { display: flex; flex-direction: column; gap: var(--s3); width: 340px; max-width: calc(100vw - 64px); }
+/* 手机宽查重小框（11-23）：放不下时整块挪进屏（DedupeKey 挪进屏 shiftX）会贴住屏边（查出结果变高时可能贴左边），外框左右各垫 12px 透明边，看得到的那块离屏边 12px */
+@media (max-width: 480px) { .home-dedupe-pop { padding-inline: var(--s3, 12px); } }
 /* 问答贴着输入框往上长。原来是 flex:1 顶在上边，于是只问了一句、答案还在流的时候，
    过程条挂在页顶、输入框钉在页底，中间空一大片（2026-09-18 报上来的那张图）。
    往上长还有一个好处：新的一轮总是出现在眼睛已经在看的地方。 */
