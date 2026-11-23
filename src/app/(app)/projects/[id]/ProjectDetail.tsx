@@ -52,6 +52,7 @@ import { 两行, 等复核说法, 能项目转让, type 项目动作键 } from "
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
+import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import AddressInput from "@/components/AddressInput";
 import { 三种业务线, 建议业务线, 所在地提示 } from "@/lib/enterprise/assign-line";
@@ -2089,7 +2090,7 @@ export default function ProjectDetail({
       )}
 
       {后果框}
-      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} 回执={就地} />}
+      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} 回执={就地} 回处={嵌入 && p.customer ? 客户页项目地址(p.customer.id, p.id) : undefined} />}
 
       <Modal
         open={!!异常框}
@@ -2527,7 +2528,7 @@ function 存录入模式(v: 录入模式) {
   try { if (v === "AI") localStorage.setItem(录入模式键, "AI"); else localStorage.removeItem(录入模式键); } catch { /* 无痕、禁用：只这一次 */ }
 }
 
-function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑, 回执 }: {
+function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑, 回执, 回处 }: {
   p: 项目详情;
   外贸: boolean;
   /** 能发卡点才给（企业版）；null = 不摆卡点那一块 */
@@ -2538,6 +2539,8 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   跑: 跑法;
   /** 记完框就关：回执（短沟通、卡点生成 / 没生成、附件没传上）写在详情正文底部的就地小条 */
   回执: 就地回执;
+  /** AI 任务列表里点这条回哪：嵌在客户页时就是这一页（客户页 + ?project，跳转优化 PR-A：不经过 /projects/<id> 再跳）；不给 = /projects/<id> */
+  回处?: string;
 }) {
   const 能选类型 = 跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   /** D4 · M7-b：「保存」一直能点、格子下报红 */
@@ -2615,7 +2618,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     const 起 = Date.now();
     set解析({ 起 });
     const 请求 = parseFollowUpDraft({ customerId: p.customer.id, text: 原话 });
-    runJob<null>(任务键, () => 请求.then((r) => (r.ok ? { ok: true as const, value: null } : { ok: false as const, error: r.error })), undefined, { 名: "解析项目沟通", 去: `/projects/${p.id}` });
+    runJob<null>(任务键, () => 请求.then((r) => (r.ok ? { ok: true as const, value: null } : { ok: false as const, error: r.error })), undefined, { 名: "解析项目沟通", 去: 回处 ?? `/projects/${p.id}` });
     let r: Awaited<typeof 请求>;
     try {
       r = await 请求;

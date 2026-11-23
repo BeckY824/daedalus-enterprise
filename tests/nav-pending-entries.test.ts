@@ -215,7 +215,8 @@ describe("进详情的入口都有等待反馈", () => {
 
   it("没有裸 <a href> 进详情（整页重载）", () => {
     const 裸 = 文件们.flatMap(({ 相对, 文 }) =>
-      [...文.matchAll(/<a\s[^>]*href=\{?\s*(["'`])\/(customers|projects)\/[^>]*>/g)].filter((m) => !/target="_blank"/.test(m[0])).map((m) => `${相对}:${行号(文, m.index!)}`),
+      // href 是字面量去详情的；或者表达式里带着去详情的字面量兜底（`x.地址 ?? \`/projects/…\``，3703 实操补：计划页项目名这样漏过）
+      [...文.matchAll(/<a\s[^>]*href=(?:\{?\s*(["'`])|\{[^}>]*["'`])\/(customers|projects)\/[^>]*>/g)].filter((m) => !/target="_blank"/.test(m[0])).map((m) => `${相对}:${行号(文, m.index!)}`),
     );
     expect(裸, "换成 RowLink").toEqual([]);
   });

@@ -79,8 +79,8 @@ type Props = {
   workspace?: { name: string };
   /** 左栏「收藏的客户」（lib/favorites.ts）。没收藏过就整栏不出现 */
   收藏?: { id: string; name: string }[];
-  /** 左栏「收藏的项目」（11-02）。同上，没收藏过就没有这一栏 */
-  项目收藏?: { id: string; name: string }[];
+  /** 左栏「收藏的项目」（11-02）。同上，没收藏过就没有这一栏。去 = 点了去哪（lib/favorites.ts 读项目收藏：项目页会跳去的客户页地址；没给 = /projects/<id>） */
+  项目收藏?: { id: string; name: string; 去?: string }[];
   /** 导航项右边的数（2026-10-02 照毛玻璃原型）：客户总数、在谈的商机。只给有意义的那几项 */
   计数?: Partial<Record<string, number>>;
   /**
@@ -309,7 +309,19 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   // 选中项取最长匹配前缀，/customers/xxx 也算在客户管理下
   const 少动 = useReducedMotion();
   // 公海是客户页带 pool=1（P7 之前），只看路径分不出来；企业版项目模式才读
-  const pool = useSearchParams()?.get("pool") ?? null;
+  const 查询 = useSearchParams();
+  const pool = 查询?.get("pool") ?? null;
+  /**
+   * 左栏收藏这一行亮不亮：在它那页上。收藏的项目直达客户页（/customers/<客户>?project=<项目>，跳转优化 PR-A）：
+   * 路径对上、?project 也对上才亮——同一位客户的别的项目页签、客户本身那页不算这个项目
+   */
+  const 收藏亮 = (c: { id: string; 去?: string }, 路: string): boolean => {
+    if (pathname === `${路}/${c.id}`) return true;
+    if (!c.去) return false;
+    const [去路, 去查 = ""] = c.去.split("?");
+    const 要的项目 = new URLSearchParams(去查).get("project");
+    return !!要的项目 && pathname === 去路 && 查询?.get("project") === 要的项目;
+  };
   /**
    * 企业版项目模式右下角的 AI 浮标（定稿 #13 / #14，见 AiFab、lib/enterprise/ai-fab.ts）。
    * 看的是地址栏：设置浮层开着时地址是 /settings，浮标让开，不压在设置上面。
@@ -753,8 +765,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             ].filter((栏) => 栏.项.length > 0).map((栏) => (
               <div key={栏.路} className="rail-fav" aria-label={栏.标}>
                 <div className="rail-fav-h">{栏.名}</div>
-                {栏.项.map((c) => 带名(c.id, c.name, (
-                  <Link href={`${栏.路}/${c.id}`} className={`rail-fav-i${pathname === `${栏.路}/${c.id}` ? " on" : ""}`} aria-label={c.name}>
+                {栏.项.map((c: { id: string; name: string; 去?: string }) => 带名(c.id, c.name, (
+                  <Link href={c.去 ?? `${栏.路}/${c.id}`} className={`rail-fav-i${收藏亮(c, 栏.路) ? " on" : ""}`} aria-label={c.name}>
                     <span className="rail-fav-av" style={{ background: avatarColor(c.name), color: AVATAR_TEXT }}>
                       {initial(c.name)}
                     </span>

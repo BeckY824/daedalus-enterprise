@@ -10,6 +10,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import { getBusiness } from "@/lib/business";
 import { 读名单项目 } from "@/lib/project/list";
+import { 补项目去 } from "@/lib/project/customer-detail-direct";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 页面字典 } from "@/lib/enterprise/dict";
@@ -112,5 +113,7 @@ export async function 项目名单数据(): Promise<ProjectRosterData | null> {
   const me = await requireUser();
   if (!企业版() || (await getBusiness()).projectMode !== true) return null;
   const 规则 = await 生效组织规则();
-  return 读名单项目(me, 字典of(true, 规则.阶段.出口叫法));
+  const 名单 = await 读名单项目(me, 字典of(true, 规则.阶段.出口叫法));
+  // 点一行直接去项目页会跳去的客户页（跳转优化 PR-A 3703 实操补）：不经过 /projects/<id> 再 replace 那段空正文；拿不准的照旧 /projects/<id>
+  return { ...名单, rows: await 补项目去(me, 名单.rows, (r) => r.id) };
 }

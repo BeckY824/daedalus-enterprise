@@ -590,7 +590,7 @@ function 组块({
           <span className="plan-row-m">
             <span className="plan-row-t">{x.下一步 || "下一步"}</span>
             <span className="plan-row-s">
-              {x.进不了 ? <span style={客户名样式}>{x.项目名}</span> : <a href={x.地址 ?? `/projects/${x.id}`} style={客户名样式}>{x.项目名}</a>}
+              {x.进不了 ? <span style={客户名样式}>{x.项目名}</span> : <RowLink href={x.地址 ?? `/projects/${x.id}`} style={客户名样式}>{x.项目名}</RowLink>}
               <Tag style={{ margin: 0 }}>来自项目</Tag>
             </span>
           </span>

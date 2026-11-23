@@ -4,7 +4,8 @@
  * 钉的是：入口生成的地址 = 项目页那条重定向的落点，一种人、一种项目都不多露——
  *   - 项目链接们 逐个对拍 项目页去向 + 真打开 ProjectPage 抛出的 REDIRECT（自己的、同事的、没有的、公海里的、我是公海项目上一任的、只负责项目的、关联到别家客户的）
  *   - 改直达链接们（通知存着的链接）：?giveup=1 跟着带过去，别的参数照项目页那条跳转丢掉；不是项目页的链接原样
- *   - 各入口的取数真带上了：通知铃（读我的通知）、复盘「还没沟通过的项目」、待复核、首页待办的「新分到你的线索」
+ *   - 各入口的取数真带上了：通知铃（读我的通知）、复盘「还没沟通过的项目」、待复核、首页待办的「新分到你的线索」、
+ *     左栏「收藏的项目」（读项目收藏）、独立项目页中栏名单（项目名单数据）
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
@@ -36,6 +37,8 @@ import { 项目页去向 } from "@/app/(app)/projects/[id]/load";
 import { 项目链接们, 改直达链接们, 补项目去, 项目页地址 } from "@/lib/project/customer-detail-direct";
 import { 读我的通知 } from "@/app/(app)/notice-actions";
 import { 缺沟通of } from "@/lib/project/review-extras-db";
+import { 读项目收藏, 项目收藏键 } from "@/lib/favorites";
+import { 项目名单数据 } from "@/app/(app)/@pane/roster-data";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 const 造人 = async (key: string, bizRole: string, managerId?: string): Promise<人> => {
@@ -192,6 +195,56 @@ describe("各入口的取数带上了最终地址", () => {
     expect(我的行?.项目去).toBe(await 打开落点(甲, 项.我的));
     const 不带 = await 以(甲, () => 缺沟通of(甲.id));
     expect(不带.行.every((x) => !("项目去" in x))).toBe(true);
+  });
+
+  it("左栏「收藏的项目」（读项目收藏）：给项目页会跳去的客户页地址，和真打开项目页的落点一致", async () => {
+    await setSetting(项目收藏键(甲.id), [项.我的, 项.结束的]);
+    const 收 = await 以(甲, () => 读项目收藏(甲 as never));
+    expect(收).toEqual([
+      { id: 项.我的, name: "甲的项目", 去: `/customers/${客户}?project=${项.我的}` },
+      { id: 项.结束的, name: "甲结束的项目", 去: `/customers/${客户}?project=${项.结束的}` },
+    ]);
+    expect(收[0].去).toBe(await 打开落点(甲, 项.我的));
+    // 只负责项目、客户看不到的：受限客户详情，同项目页
+    await setSetting(项目收藏键(丙.id), [项.丙的]);
+    const 丙收 = await 以(丙, () => 读项目收藏(丙 as never));
+    expect(丙收.map((x) => x.去)).toEqual([await 打开落点(丙, 项.丙的)]);
+    expect(丙收[0].去).toBe(`/customers/${客户}?project=${项.丙的}`);
+  });
+
+  /** 实线上级看下属负责、挂在外组客户上的项目：项目看得到、客户看不到（只读卡，项目页「留」，同 ent-project-only-customer.test.ts）；外加下属自己客户上的一个（跳客户页） */
+  const 搭上级 = async () => {
+    const 管 = await 造人("guan", "sales_mgr");
+    const 下属 = await 造人("xia", "sales", 管.id);
+    const 下属客户 = (await prisma.customer.create({ data: { name: "下属的客户", phone: "13900000023", salesOwnerId: 下属.id } })).id;
+    const 建 = (name: string, customerId: string) => prisma.project.create({ data: { name, customerId, ownerId: 下属.id, creatorId: 下属.id, phase: "商机", node: "需求确认" } }).then((p) => p.id);
+    const 外组的 = await 建("下属在外组客户上的项目", 别家);
+    const 自家的 = await 建("下属自家客户的项目", 下属客户);
+    忘掉企业版范围();
+    return { 管, 外组的, 自家的, 下属客户 };
+  };
+
+  it("左栏「收藏的项目」：看得到项目、看不到客户的人照旧 /projects/<id>（项目页不跳，留在项目页）", async () => {
+    const { 管, 外组的, 自家的, 下属客户 } = await 搭上级();
+    await setSetting(项目收藏键(管.id), [外组的, 自家的]);
+    expect(await 以(管, () => 项目页去向(管 as never, 外组的))).toEqual({ 种: "留" });
+    const 收 = await 以(管, () => 读项目收藏(管 as never));
+    expect(收).toEqual([
+      { id: 外组的, name: "下属在外组客户上的项目", 去: `/projects/${外组的}` },
+      { id: 自家的, name: "下属自家客户的项目", 去: `/customers/${下属客户}?project=${自家的}` },
+    ]);
+    expect(await 打开落点(管, 外组的)).toBe(`/projects/${外组的}`);
+    expect(await 打开落点(管, 自家的)).toBe(收[1].去);
+  });
+
+  it("独立项目页的中栏名单（项目名单数据）：每行带 项目去，跳客户页的给客户页、留在项目页的照旧", async () => {
+    const { 管, 外组的, 自家的, 下属客户 } = await 搭上级();
+    const 名单 = await 以(管, () => 项目名单数据());
+    const 去 = Object.fromEntries((名单?.rows ?? []).map((r) => [r.id, r.项目去]));
+    expect(去[自家的]).toBe(`/customers/${下属客户}?project=${自家的}`);
+    expect(去[自家的]).toBe(await 打开落点(管, 自家的));
+    expect(去[外组的]).toBe(`/projects/${外组的}`);
+    expect(await 打开落点(管, 外组的)).toBe(`/projects/${外组的}`);
   });
 
   it("补项目去：只给跳客户页的补，拿不准的不补（界面退回 /projects/<id>）", async () => {

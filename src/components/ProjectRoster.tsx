@@ -97,7 +97,7 @@ export default function ProjectRoster({ data: 服务端给的 }: { data: Project
     const 方式 = r.lastType ? 跟进方式名({ type: r.lastType, method: r.lastMethod }, "") : null;
     const 进程 = r.结局 ?? r.进程;
     return (
-      <RowLink key={r.id} href={`/projects/${r.id}`} className={`roster-row${activeId === r.id ? " on" : ""}`} onClick={() => 抽屉开着 && 关名单()}>
+      <RowLink key={r.id} href={r.项目去 ?? `/projects/${r.id}`} className={`roster-row${activeId === r.id ? " on" : ""}`} onClick={() => 抽屉开着 && 关名单()}>
         <span className="roster-av" style={{ background: avatarColor(r.name), color: AVATAR_TEXT }}>
           {initial(r.name)}
         </span>
@@ -157,7 +157,8 @@ export default function ProjectRoster({ data: 服务端给的 }: { data: Project
           onKeyDown={(e) => {
             // 回车：搜出来的第一位直接进（11-03 C1-2）；名单里一位都没有的，去全量表格里搜（lib/cmdk.ts）
             if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-            const 去 = 名单回车去处(q, 页签里, rows.length, "/projects");
+            // 第一行服务端给了最终地址（项目去，跳转优化 PR-A）就直接去，不经过 /projects/<id> 再跳
+            const 去 = (q.trim() && 页签里[0]?.项目去) || 名单回车去处(q, 页签里, rows.length, "/projects");
             if (!去) return;
             e.preventDefault();
             if (抽屉开着) 关名单();
