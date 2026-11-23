@@ -28,6 +28,7 @@ import { 认首页卡, 首页卡口径 } from "@/lib/project/home-cards";
 import { 企业级别, 企业级别说明, 级别选项 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 级别星 } from "@/lib/enterprise/level-stars";
+import { 重复咨询来源, 来源字 } from "@/lib/project/system-created";
 import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import { 卡片小字, 未填标签, type 项目行, type 看板一列, type 看板卡片 } from "@/lib/project/board";
@@ -117,7 +118,7 @@ export default function ProjectsView({
   排序?: string;
   users: 可选成员[];
   /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），或首页待办「待分配新线索」点进来的 await-assign，页头标出来、能清掉 */
-  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; projTag?: string; createdFrom?: string; createdTo?: string; phone?: string;
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; projTag?: string; source?: string; createdFrom?: string; createdTo?: string; phone?: string;
     /** 导入批次（11-19，lib/project/import-batch.ts）：数据页卡片点进来带的，页头挂一枚能关掉的标签，不进筛选栏 */
     batch?: string };
   /** 摆不摆「手机号」筛选（电话藏着的人不摆）；不给 = 不摆 */
@@ -600,6 +601,14 @@ export default function ProjectsView({
                 <Select style={style} aria-label="项目标签" placeholder="全部标签" allowClear value={f.projTag || undefined} onChange={(v?: string) => apply({ projTag: v ?? "" })}
                   loading={标签取中} onOpenChange={(开) => { if (开) 取标签项(); }}
                   options={[...(标签项 ?? (f.projTag && f.projTag !== 未填标签 ? [f.projTag] : [])).map((x) => ({ value: x, label: x })), { value: 未填标签, label: "未填" }]} popupMatchSelectWidth={false} />
+              ),
+            },
+            {
+              // 数据来源（客户 E-218「检索、统计、复盘都读字段」）：只看「老客户重复咨询」的线索，读 Project.source，不认项目名
+              键: "source", 名: "数据来源", 宽: 150, 默认外露: false, 有值: !!f.source,
+              渲染: (style: CSSProperties) => (
+                <Select style={style} aria-label="数据来源" placeholder="全部来源" allowClear value={f.source || undefined} onChange={(v?: string) => apply({ source: v ?? "" })}
+                  options={[{ value: 重复咨询来源, label: 来源字(重复咨询来源) }]} popupMatchSelectWidth={false} />
               ),
             },
           ]

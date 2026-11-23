@@ -6,14 +6,15 @@
  *   - 线跟负责人走（E-213）：负责人是外贸，新线索、流转线、分配记录都是外贸
  *   - 撞号台账记「新建线索」，不计入预警
  *   - 不给的：不是市场成员、客户在公海；框打开后换了负责人 = 作废；负责人到持有上限 = 一行不写
- *   - 交销售（客户 E-213 第一节 2、3 问取 A，E-218 二②）：负责人接不了指定分配（暂停 / 禁止、停用离职、不是销售）= 线索按客户区域自动分给销售，
- *     记自动分配、计入本月已分、进线索验证；客户不动（负责人是市场成员的也不算市场转客户）；挑不到人 = 留在新线索待分配
+ *   - 交销售（客户 E-213 第一节 2、3 问取 A，E-218 二②）：负责人接不了指定分配（暂停 / 禁止、停用离职、不是销售）= 同一个事务里先挑人，
+ *     线索直接建在挑中的销售名下（不经过市场成员名下），记自动分配、计入本月已分、进线索验证；客户不动（负责人是市场成员的也不算市场转客户）；
+ *     不过「分配方式谁能用」（系统分）；挑不到人（都暂停 / 禁止、规则「线索分配」关着）= 整笔不建，市场成员看不到客户名、指派不了
  *   - 没有选人：交了 ownerId / 接手人之类的参数也不认，负责人由系统定（E-218 二①）
  *   - 命名加序（E-218）：同一位客户第 2 次起「-2」「-3」，序号读只读字段 repeatSeq（含回收站、已结束的），改名不影响；(原始客户, 序号) 唯一
  *   - 只读来源字段：编辑项目改不了 source / repeatOfCustomerId / repeatSeq；改了名标记还在；详情给「原始客户编号 + 第几次」
  *   - 对接人：挂号码撞上的那位（不改他）或新建一位（不设主联系人）
  *   - 同事客户的名称不露给市场成员：项目名「重复咨询-客户编号」、成功的话只说转给负责人跟进；项目列表里也看不到客户名
- *   - 防重复提交：同一客户、同一发起人 10 分钟内已建过就认那一条，不再建、不再计数
+ *   - 防重复提交：同一客户、同一发起人 10 分钟内已建过就认那一条，不再建、不再计数；只认出口 C 自己建的（之前查重领取建的同标记线索不算）
  *   - 详情「其他在推项目」不算回收站里的
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -35,7 +36,10 @@ import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 查号码 } from "@/app/(app)/customers/number-actions";
 import { 出口C建线索, 出口C框数据 } from "@/app/(app)/customers/repeat-inquiry-actions";
 import type { 查重领取沟通 } from "@/app/(app)/customers/pool-actions";
-import { 不是市场成员出口C话, 出口C作废话, 负责人到上限话, 客户其他在推项目, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C项目名, 重复咨询原始客户 } from "@/lib/enterprise/repeat-inquiry";
+import { 不是市场成员出口C话, 出口C作废话, 负责人到上限话, 客户其他在推项目, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C项目名, 重复咨询原始客户, 出口C没人接话 } from "@/lib/enterprise/repeat-inquiry";
+import { 查重领取 } from "@/app/(app)/customers/pool-actions";
+import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
+import { 分配谁能用key, 分配方式id } from "@/lib/enterprise/assign-use";
 import { 读项目列表 } from "@/lib/project/list";
 import { 分配线索, 项目分配线, 分配带走的项目 } from "@/app/(app)/leads/assign-actions";
 import { 公海项目市场转 } from "@/lib/enterprise/market-transfer";
@@ -195,6 +199,26 @@ describe("出口 C：在负责人名下新建线索", () => {
     expect(await 交()).toMatchObject({ ok: true });
     expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(3);
     expect(await 本月已分(外贸甲.id)).toBe(2);
+  });
+
+  it("防重复提交只认出口 C 自己建的：同一人 10 分钟内先查重领取了这位公海客户（同样带标记），再走出口 C 照建", async () => {
+    // 公海客户：原负责人外贸甲，领了按区域（139 → 内贸）自动分给乙
+    const c = await 同事客户(外贸甲.id);
+    await prisma.customerPool.create({ data: { customerId: c.id, userId: 外贸甲.id, reason: "手动" } });
+    当(市场);
+    const 领 = await 查重领取("手机号", c.号, 沟通(), c.id, { 渠道: 新渠道, 对接人: { 原id: c.王 } });
+    if (!领.ok) throw new Error(领.error);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(乙.id);
+    const 领的 = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, source: 重复咨询来源 } });
+    expect(领的).toMatchObject({ creatorId: 市场.id, ownerId: 乙.id, repeatSeq: 1 });
+    // 几分钟后同一号码又来咨询：客户在乙名下，出口 C 在乙名下新建（不当成重复提交）
+    const r = await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 乙.name });
+    expect(r).toEqual({ ok: true, 提示: 出口C已转话(乙.name), 负责人: 乙.name });
+    expect(await prisma.project.count({ where: { customerId: c.id, source: 重复咨询来源 } })).toBe(2);
+    expect(await prisma.project.findFirstOrThrow({ where: { customerId: c.id, repeatSeq: 2 } })).toMatchObject({ ownerId: 乙.id, name: 出口C项目名(序, 2) });
+    // 再交一次才是重复提交
+    expect(await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 乙.name })).toEqual({ ok: true, 提示: 出口C已转过话(乙.name, 10), 负责人: 乙.name });
+    expect(await prisma.project.count({ where: { customerId: c.id, source: 重复咨询来源 } })).toBe(2);
   });
 
   it("新的对接人：在客户下新建一位（不设主联系人），只挂在新线索上", async () => {
@@ -369,33 +393,100 @@ describe("交销售：客户负责人接不了指定分配，新线索按区域�
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(外贸甲.id);
   });
 
-  it("挑不到人（这条线的销售都暂停了）：按现有自动分配的兜底，留在新线索待分配（建的市场成员占着），客户不动", async () => {
+  it("挑不到人（这条线的销售都暂停了）：框打开就说，交了整笔不建（没有项目、没有分配记录、没有沟通）；市场成员名下什么都没有、看不到客户名", async () => {
     await setSetting(自动分配不参与key, { [总管.id]: "禁止", [外贸甲.id]: "暂停", [乙.id]: "暂停" });
     invalidateSettingsCache();
     const c = await 同事客户(外贸甲.id);
     当(市场);
-    const r = await 交(c, 外贸甲.name);
-    expect(r).toMatchObject({ ok: true, 提示: expect.stringContaining("待分配") });
-    const p = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, id: { not: c.旧 } } });
-    expect(p).toMatchObject({ ownerId: 市场.id, creatorId: 市场.id, source: 重复咨询来源, repeatSeq: 1 });
-    expect(p.awaitAssignAt).not.toBeNull();
-    expect(await prisma.entLeadAssign.count()).toBe(0);
+    const 话 = 出口C没人接话("能接的销售都暂停或禁止了自动分配");
+    expect(await 出口C框数据("手机号", c.号)).toEqual({ ok: false, error: 话 });
+    expect(await 交(c, 外贸甲.name)).toEqual({ ok: false, error: 话 });
+    await 没动(c.id);
+    expect(await prisma.project.count({ where: { ownerId: 市场.id } })).toBe(0);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(外贸甲.id);
-    expect(await prisma.followUp.count({ where: { customerId: c.id } })).toBe(1);
+    const me = { id: 市场.id, name: 市场.name, email: "mkt@x", role: "SALES", title: "" };
+    const 列表 = JSON.stringify(await 以谁的身份(市场.id, () => 读项目列表(me as never, { pageSize: "100" })));
+    expect(列表).not.toContain("老客户");
+    expect(列表).not.toContain("重复咨询-NO.");
+  });
+
+  it("挑不到人（这条线的销售都禁止分配）：同样整笔不建", async () => {
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [外贸甲.id]: "禁止", [乙.id]: "禁止" });
+    invalidateSettingsCache();
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    expect(await 查号码("手机号", c.号)).toMatchObject({ 出口C: { 负责人名: 外贸甲.name, 交销售: true } });
+    expect(await 交(c, 外贸甲.name)).toEqual({ ok: false, error: 出口C没人接话("能接的销售都暂停或禁止了自动分配") });
+    await 没动(c.id);
+  });
+
+  it("负责人禁止分配：交销售，按区域分给别的销售", async () => {
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [外贸甲.id]: "禁止" });
+    invalidateSettingsCache();
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    expect(await 交(c, 外贸甲.name)).toEqual({ ok: true, 提示: 出口C交销售已分话(乙.name, 外贸甲.name), 负责人: 外贸甲.name });
+    expect(await prisma.project.findFirstOrThrow({ where: { customerId: c.id, source: 重复咨询来源 } })).toMatchObject({ ownerId: 乙.id, creatorId: 市场.id, awaitAssignAt: null, node: "线索验证" });
+  });
+
+  it("规则「线索分配」关着：没有自动分配，交销售整笔不建（框打开就说）", async () => {
+    await setSetting(规则.线索分配.key, false);
+    invalidateSettingsCache();
+    const c = await 同事客户(外贸甲.id);
+    await prisma.user.update({ where: { id: 外贸甲.id }, data: { active: false } });
+    当(市场);
+    const 话 = 出口C没人接话("规则「线索分配」没开，没有自动分配");
+    expect(await 出口C框数据("手机号", c.号)).toEqual({ ok: false, error: 话 });
+    expect(await 交(c, 外贸甲.name)).toEqual({ ok: false, error: 话 });
+    await 没动(c.id);
+    expect(await prisma.project.count({ where: { ownerId: 市场.id } })).toBe(0);
+  });
+
+  it("是系统分、不过「分配方式谁能用」：市场成员的角色用不了自动分配，交销售照样分出去", async () => {
+    await setSetting(分配谁能用key, { [分配方式id.自动]: ["sales_mgr"] });
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [外贸甲.id]: "暂停" });
+    invalidateSettingsCache();
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    expect(await 交(c, 外贸甲.name)).toMatchObject({ ok: true, 提示: 出口C交销售已分话(乙.name, 外贸甲.name) });
+    expect(await prisma.project.findFirstOrThrow({ where: { customerId: c.id, source: 重复咨询来源 } })).toMatchObject({ ownerId: 乙.id, assignMode: "自动分配" });
+  });
+
+  it("交销售分出去以后：市场成员（按组织看客户开着）列表里没有客户名、详情不露客户和联系人、改不了负责人", async () => {
+    await setSetting(规则.按组织看客户.key, true);
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [外贸甲.id]: "暂停" });
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    expect(await 以谁的身份(市场.id, () => 交(c, 外贸甲.name))).toMatchObject({ ok: true });
+    const p = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, source: 重复咨询来源 } });
+    expect(p.ownerId).toBe(乙.id);
+    const me = { id: 市场.id, name: 市场.name, email: "mkt@x", role: "SALES", title: "" };
+    忘掉企业版范围();
+    const 列表 = await 以谁的身份(市场.id, () => 读项目列表(me as never, { pageSize: "100" }));
+    const 行 = 列表.行.find((x) => x.id === p.id);
+    expect(行).toBeTruthy();
+    expect(JSON.stringify(列表)).not.toContain("老客户");
+    忘掉企业版范围();
+    const 详 = await 以谁的身份(市场.id, () => 读项目详情(me as never, p.id));
+    if (详.种 === "有") expect(详.露).toBe(false);
+    expect(JSON.stringify(详)).not.toMatch(/老客户|王经理/);
+    // 改不了负责人：分配线索、编辑项目都不认
+    忘掉企业版范围();
+    expect(await 以谁的身份(市场.id, () => 分配线索({ projectId: p.id, toUserId: 外贸甲.id }))).toMatchObject({ ok: false });
+    await 以谁的身份(市场.id, () => 编辑项目(p.id, { ownerId: 市场.id } as never)).catch(() => undefined);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).ownerId).toBe(乙.id);
   });
 });
 
 describe("交销售之后的再分配：带标记的线索分给销售，客户仍不动", () => {
-  it("挑不到人留待分配后，总管理手动分给销售：客户还在市场管理名下；分配弹窗预看也不说客户会转走", async () => {
-    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [外贸甲.id]: "暂停", [乙.id]: "暂停" });
-    invalidateSettingsCache();
+  it("带标记的线索在新线索待分配（存量数据 / 之后被放回待分配的），总管理手动分给销售：客户还在市场管理名下；分配弹窗预看也不说客户会转走", async () => {
     const c = await 同事客户(市场管.id);
-    当(市场);
-    expect(await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 市场管.name })).toMatchObject({ ok: true });
-    const p = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, source: 重复咨询来源 } });
-    expect(p.awaitAssignAt).not.toBeNull();
-    await setSetting(自动分配不参与key, { [总管.id]: "禁止" });
-    invalidateSettingsCache();
+    const p = await prisma.project.create({ data: {
+      name: 出口C项目名(序), customerId: c.id, ownerId: 市场.id, creatorId: 市场.id, phase: "线索", node: "潜客培育", bizLine: "内贸",
+      source: 重复咨询来源, repeatOfCustomerId: c.id, repeatSeq: 1, awaitAssignAt: new Date(),
+    } });
     当(总管);
     expect(await 项目分配线(p.id)).toMatchObject({ 市场转客户: false });
     expect(await 分配带走的项目([p.id], 乙.id)).toMatchObject({ 项目数: 0 });
@@ -441,6 +532,25 @@ describe("命名加序与只读来源字段（E-218）", () => {
     expect(await prisma.project.findFirstOrThrow({ where: { customerId: d.id, source: 重复咨询来源 } })).toMatchObject({ name: 出口C项目名(序), repeatSeq: 1 });
   });
 
+  it("项目列表（检索读字段）：按数据来源「老客户重复咨询」筛；搜原始客户编号（NO.00001 或 00001）命中负责人改了名的那条", async () => {
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    expect(await 交(c)).toMatchObject({ ok: true });
+    const p = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, source: 重复咨询来源 } });
+    await prisma.project.update({ where: { id: p.id }, data: { name: "华东新一期" } });
+    当(总管);
+    const me = { id: 总管.id, name: 总管.name, email: "boss@x", role: "SALES", title: "" };
+    const ids = async (sp: object) => (await 以谁的身份(总管.id, () => 读项目列表(me as never, { pageSize: "100", ...sp }))).行.map((x) => x.id).sort();
+    expect(await ids({})).toEqual([c.旧, p.id].sort());
+    expect(await ids({ source: 重复咨询来源 })).toEqual([p.id]);
+    // 别的值当没筛
+    expect(await ids({ source: "history-analysis" })).toEqual([c.旧, p.id].sort());
+    const 号 = String(序).padStart(5, "0");
+    expect(await ids({ keyword: `NO.${号}` })).toEqual([p.id]);
+    expect(await ids({ keyword: 号 })).toEqual([p.id]);
+    expect(await ids({ keyword: "NO.99998" })).toEqual([]);
+  });
+
   it("同一位客户下序号唯一（库里的唯一索引兜底，两边同时交撞了号后到的那笔回滚）", async () => {
     const c = await 同事客户(外贸甲.id);
     const 建 = () => prisma.project.create({ data: { name: "x", customerId: c.id, ownerId: 外贸甲.id, creatorId: 市场.id, source: 重复咨询来源, repeatOfCustomerId: c.id, repeatSeq: 1 } });
@@ -475,6 +585,9 @@ describe("命名加序与只读来源字段（E-218）", () => {
       }
     };
     走(根);
-    expect(写的.sort()).toEqual(["lib/enterprise/dedupe-claim.ts"]);
+    // 只拿它当查询条件的（项目列表按原始客户编号搜：where 里比 repeatOfCustomerId），不写：另列，且那个文件里没有带它的 data
+    const 只读的 = ["lib/project/list.ts"];
+    expect(写的.filter((f) => !只读的.includes(f)).sort()).toEqual(["lib/enterprise/dedupe-claim.ts"]);
+    for (const f of 只读的) expect(readFileSync(path.join(根, f), "utf8")).not.toMatch(/data:\s*\{[^}]*\b(repeatOfCustomerId|repeatSeq)\b/);
   });
 });
