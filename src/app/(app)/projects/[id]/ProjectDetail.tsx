@@ -184,6 +184,8 @@ export type 项目详情 = {
   数据来源?: string;
   /** 老客户重复咨询（重复咨询第一步 · 出口 C 建的线索）：这位客户别的在推项目，我看得到的给名字、看不到的只给个数；重复线索名 = 字典现名（load.ts 现算） */
   重复咨询?: { 看得到: { id: string; name: string }[]; 看不到: number; 重复线索名: string };
+  /** 老客户重复咨询的只读来源（迁移 163，客户 E-218）：原始客户编号、第几次。只读一行，没有编辑入口 */
+  重复咨询来自?: { 客户编号: string; 第几次: number | null } | null;
   /**
    * 企业版（P11 定稿 -2 版，迁移 093）：项目级别 S / A / B / C（null = 没分级），显示成星；
    * 所在地 = 地址四格 + 详细地址，跟客户资料一样公海里同事客户的项目没领之前是 null（不摆）。不是企业版都不传
@@ -1537,6 +1539,12 @@ export default function ProjectDetail({
         </>
       )}
       {p.企业版 && p.数据来源 && <div {...资料行()} data-testid="project-data-source-row"><span style={键样}>数据来源</span><span className="proj-one"><Tag bordered={false} color="purple">{p.数据来源}</Tag></span></div>}
+      {p.企业版 && p.重复咨询来自 && (
+        <div {...资料行()} data-testid="project-repeat-origin-row">
+          <span style={键样}>原始客户编号</span>
+          <span className="proj-one">{p.重复咨询来自.客户编号}{p.重复咨询来自.第几次 ? <span className="muted">（第 {p.重复咨询来自.第几次} 次重复咨询）</span> : null}</span>
+        </div>
+      )}
       {p.企业版 && p.重复咨询 && (
         <div {...资料行()} data-testid="project-repeat-others-row">
           <span style={键样}>其他在推项目</span>

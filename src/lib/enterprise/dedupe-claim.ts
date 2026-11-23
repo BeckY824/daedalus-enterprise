@@ -23,6 +23,7 @@ import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 看全部 } from "@/lib/team-scope";
+import { 看已删 } from "./soft-delete-core";
 import { 企业版 } from "./switch";
 import { 是市场成员of, type 组织 } from "./org-core";
 import { 自动分配池, 读线部门, 读挑人底子, 补记销售管理起算 } from "./assign-eta";
@@ -266,23 +267,37 @@ export async function 落对接人(tx: Prisma.TransactionClient, customerId: str
  * 创建人 = 市场成员、分配方式 = 自动分配；业务线 = 这次的分配方向，判不出按接手人的线、再没有内贸（同 补潜客培育，X-86 A1）。记第一行节点变更。
  * 项目来源标记（Project.source）= 老客户重复咨询（重复咨询第一步：撞上公海客户另建的这条同样打标，客户 11-22）。
  * 「市场分给销售进线索验证」由调用方接着推（同新线索自动分配）。
- * 出口 C（repeat-inquiry.ts）也用它建：接手人 = 客户负责人、分配方式 = 指定分配、线 = 跟负责人走（调用方算好传进来）；
- * 项目名由调用方给：查重领取 = 客户全称（市场成员领了能看这位客户）；出口 C = 「重复咨询-客户编号」（同事的客户，名称不露给市场成员）
+ * 出口 C（repeat-inquiry.ts）也用它建：接手人 = 客户负责人（交销售那条路 = 发起的市场成员，提交后再自动分配）、分配方式 = 指定分配 / 自动分配、
+ * 线 = 调用方算好传进来；项目名由调用方给：查重领取 = 客户全称（市场成员领了能看这位客户）；出口 C = 「重复咨询-客户编号[-序号]」（同事的客户，名称不露给市场成员）。
+ * 只读来源字段（迁移 163，客户 E-218）：repeatOfCustomerId = 这位客户、repeatSeq = 他的第几次重复咨询（重复咨询下一序号），建时写、之后没有入口改
  */
 export async function 查重领取建线索项目(
   tx: Prisma.TransactionClient,
-  a: { customerId: string; 项目名: string; 接手人: string; 创建人: string; 渠道: string; 对接人: string | null; 线: "内贸" | "外贸" | null; 分配方式: string },
+  a: { customerId: string; 项目名: string | ((序: number) => string); 接手人: string; 创建人: string; 渠道: string; 对接人: string | null; 线: "内贸" | "外贸" | null; 分配方式: string },
 ): Promise<string> {
   const 接手人线 = a.线 ?? (await tx.entMember.findUnique({ where: { userId: a.接手人 }, select: { line: true } }))?.line ?? null;
+  const 序 = await 重复咨询下一序号(tx, a.customerId);
+  const 名 = typeof a.项目名 === "function" ? a.项目名(序) : a.项目名;
   const p = await tx.project.create({
     data: {
-      name: a.项目名.trim().slice(0, 项目名上限) || "新线索", customerId: a.customerId, contactId: a.对接人,
+      name: 名.trim().slice(0, 项目名上限) || "新线索", customerId: a.customerId, contactId: a.对接人,
       ownerId: a.接手人, creatorId: a.创建人, amount: 0, currency: 默认币种, bizLine: 接手人线 === "外贸" ? "外贸" : "内贸",
       phase: 第一个节点.phase, node: 第一个节点.node,
       ...新项目默认值(true, { 分配方式: a.分配方式, 项目来源: a.渠道 }),
-      source: 重复咨询来源,
+      source: 重复咨询来源, repeatOfCustomerId: a.customerId, repeatSeq: 序,
     },
   });
   await tx.projectNodeLog.create({ data: { projectId: p.id, userId: a.创建人, toPhase: 第一个节点.phase, toNode: 第一个节点.node } });
   return p.id;
+}
+
+/**
+ * 这位客户下一次重复咨询是第几次（迁移 163，客户 E-218）：已有的带这位原始客户的线索里 repeatSeq 最大的 + 1，第一次 = 1。
+ * 读字段、不解析项目名（负责人改了名照样对）；回收站里的、已结束的都算进去（看已删 + 看全部：同事名下的、删了的都要数到），保证不重号。
+ * 同一位客户下 (repeatOfCustomerId, repeatSeq) 有唯一索引兜底：两边同时交撞了号，后到的那笔抛唯一约束整笔回滚，调用方重来一次（出口C建线索）。
+ * 已知边界：回收站 30 天到期真删掉的那条不在库里了，它要是最大的那个号，下一次会再用一次这个号（那条线索已经不存在）
+ */
+export async function 重复咨询下一序号(tx: Prisma.TransactionClient, customerId: string): Promise<number> {
+  const r = await 看全部(() => 看已删(() => tx.project.aggregate({ where: { repeatOfCustomerId: customerId }, _max: { repeatSeq: true } })));
+  return (r._max.repeatSeq ?? 0) + 1;
 }

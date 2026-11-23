@@ -21,7 +21,7 @@ import { 恢复到停用负责人通知 } from "@/lib/enterprise/notice-sources"
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 企业号码查重, type 撞到的人 } from "@/lib/enterprise/contact-dedupe";
 import { 查重可领 } from "@/lib/enterprise/dedupe-claim";
-import { 出口C按钮给不给 } from "@/lib/enterprise/repeat-inquiry";
+import { 出口C按钮给不给, type 出口C按钮 } from "@/lib/enterprise/repeat-inquiry";
 import { 号码归属地 } from "@/lib/enterprise/phone-region";
 import { 同号协同情况, type 协同情况 } from "@/lib/enterprise/same-number-collab";
 import { 号码撞上, 客户名查重, 名撞说法, 申请挂靠 as 记申请挂靠, type 撞号露出, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
@@ -39,10 +39,10 @@ export type 查号码结果 =
    * 挂靠 = 「重复」时露出负责人（姓名 · 级别 · 状态）、台账那一行的 id（给「申请挂靠」）、是否同组（P-挂靠-01，lib/enterprise/dupe-ledger.ts）
    * 市场可领 = 「公海待捞」、我是市场成员（F-016）：给「领取并记沟通」（pool-actions.ts 查重领取，领了自动分给销售），不给「去领取」（公海页市场成员领不了）。
    *   原负责人是我的：我是客户创建人才给（用户 11-19「仅对创建人豁免，对其他人有效」），给了就不带 原负责人是我（两个不同时为真）
-   * 出口C = 「重复」、我是市场成员、客户负责人能接指定分配（重复咨询第一步，lib/enterprise/repeat-inquiry.ts）：给「在 X 名下新建线索」
-   *   （customers/repeat-inquiry-actions.ts 出口C建线索）；负责人接不了的不给，照旧挂靠 / 写进现有项目
+   * 出口C = 「重复」、我是市场成员、客户不在公海 / 交接中（重复咨询第一步，lib/enterprise/repeat-inquiry.ts）：给「在 X 名下新建线索」
+   *   （customers/repeat-inquiry-actions.ts 出口C建线索）；负责人接不了指定分配的带 交销售，键写「新建线索交销售」（按区域自动分给销售）
    */
-  | { ok: true; 状态: "首次录入" | "公海待捞" | "我的通讯录已有" | "重复" | "回收站里有"; 提示: string; 值: string; 撞: 撞到的人 | null; 归属地: string | null; 可协同?: true; 协同?: 协同情况; 原负责人是我?: true; 挂靠?: 撞号露出; 市场可领?: true; 出口C?: { 负责人名: string } };
+  | { ok: true; 状态: "首次录入" | "公海待捞" | "我的通讯录已有" | "重复" | "回收站里有"; 提示: string; 值: string; 撞: 撞到的人 | null; 归属地: string | null; 可协同?: true; 协同?: 协同情况; 原负责人是我?: true; 挂靠?: 撞号露出; 市场可领?: true; 出口C?: 出口C按钮 };
 
 export async function 查号码(类型: string, 值: string): Promise<查号码结果> {
   const me = await requireUser();

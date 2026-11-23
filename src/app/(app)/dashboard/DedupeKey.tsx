@@ -88,7 +88,7 @@ export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
                 {结果.撞?.id && 结果.归属地 ? " · " : ""}
                 {结果.归属地 ? `归属地：${结果.归属地}` : ""}
                 {/* 重复咨询第一步（出口 C）：市场成员撞上同事名下的客户，在负责人名下新建线索 */}
-                {结果.出口C && <span className="home-dedupe-act"><RepeatInquiryKey 类型={类型} 值={结果.值} 负责人名={结果.出口C.负责人名} /></span>}
+                {结果.出口C && <span className="home-dedupe-act"><RepeatInquiryKey 类型={类型} 值={结果.值} 负责人名={结果.出口C.负责人名} 交销售={!!结果.出口C.交销售} /></span>}
               </span>
             ) : undefined}
           />

@@ -192,7 +192,7 @@ export default function ProposalCard({
   /** 市场成员撞上公海里的客户（F-016）：错误旁边摆「领取并记沟通」 */
   const [公海号, set公海号] = useState<{ 类型: string; 值: string } | null>(null);
   /** 撞上同事名下的客户、我是市场成员、负责人能接指定分配（重复咨询第一步 · 出口 C）：卡上给「在 X 名下新建线索」 */
-  const [同事号, set同事号] = useState<{ 类型: string; 值: string; 负责人名: string } | null>(null);
+  const [同事号, set同事号] = useState<{ 类型: string; 值: string; 负责人名: string; 交销售?: true } | null>(null);
   /**
    * 确认之后的回执：几点写入、怎么撤、建成的项目（企业版新线索卡，「查看」直接打开它）。
    * 存在任务表里（lib/ai-jobs 的 落印回执），卡片重挂也还在，刷新页面才没
@@ -859,7 +859,7 @@ export default function ProposalCard({
           )}
           {同事号 && (
             <div className="prop-err-act">
-              <RepeatInquiryKey 类型={同事号.类型} 值={同事号.值} 负责人名={同事号.负责人名} 渠道={{ 名: 要提交的.kind === "add_lead" ? 要提交的.source : null }} 建了={() => router.refresh()} />
+              <RepeatInquiryKey 类型={同事号.类型} 值={同事号.值} 负责人名={同事号.负责人名} 交销售={!!同事号.交销售} 渠道={{ 名: 要提交的.kind === "add_lead" ? 要提交的.source : null }} 建了={() => router.refresh()} />
             </div>
           )}
           {回收站号 && (

@@ -11,7 +11,7 @@ import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
 import { 来源字, 人名显示, 是重复咨询 } from "@/lib/project/system-created";
-import { 客户其他在推项目 } from "@/lib/enterprise/repeat-inquiry";
+import { 客户其他在推项目, 重复咨询原始客户 } from "@/lib/enterprise/repeat-inquiry";
 import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选 } from "@/lib/enterprise/permissions";
@@ -311,6 +311,8 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     ...(p.source ? { 数据来源: 来源字(p.source) } : {}),
     // 老客户重复咨询（重复咨询第一步）：现算这位客户别的在推项目，给负责人判是不是同一需求；验证框里提示选「重复线索」
     ...(是重复咨询(p) ? { 重复咨询: await 客户其他在推项目(p.id, p.customerId) } : {}),
+    // 只读来源字段（迁移 163，客户 E-218）：原始客户编号 + 第几次；没有编辑入口，改项目的动作都不写这两列
+    ...(是重复咨询(p) && p.repeatOfCustomerId ? { 重复咨询来自: await 重复咨询原始客户(p) } : {}),
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
     aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,
