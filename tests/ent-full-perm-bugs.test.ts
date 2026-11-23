@@ -237,6 +237,39 @@ describe("【中】附件 认父记录：联系人 / 线索 / 商机三支不看
     expect("错" in (await 作为("销售甲", () => 认父记录({ contactId: g.id }, "删")))).toBe(true);
   });
 
+  it("P-删-04（11-23 审查）：没挂客户的线索附件——线索负责人、系统管理员能传能删；市场管理、只读角色看得到也不能传不能删", async () => {
+    await 开规则(true);
+    // 线索分配开着：市场管理看得到没分的线索（visibility.ts 线索全看）
+    await 存设置(规则.线索分配.key, true);
+    invalidateSettingsCache();
+    for (const [id, bizRole] of [["p_mkt", "marketing_mgr"], ["p_ro", "admin"]] as const) {
+      await raw.user.create({ data: { id, email: `${id}@x.com`, name: id, password: "x", role: "SALES", active: true } });
+      await raw.entMember.create({ data: { userId: id, bizRole } });
+    }
+    忘掉企业版范围();
+    const 甲的 = await raw.lead.create({ data: { name: "甲的散线索", ownerId: 人.销售甲 } });
+    const 没分的 = await raw.lead.create({ data: { name: "没分的散线索", ownerId: null } });
+    const 以 = async <R,>(id: string, f: () => Promise<R>): Promise<R> => {
+      临时.票 = await 签票(id);
+      忘掉企业版范围();
+      try { return await f(); } finally { 临时.票 = undefined; }
+    };
+    const 错 = (r: object) => "错" in r;
+    // 只读角色看得到甲的线索、市场管理看得到没分的线索（看那一关过），传、删都拒
+    for (const [id, l] of [["p_ro", 甲的], ["p_mkt", 没分的]] as const) {
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, false))), id).toBe(false);
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, true))), id).toBe(true);
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, "删"))), id).toBe(true);
+    }
+    // 负责人本人、系统管理员能传能删；没分的只有系统管理员
+    for (const [id, l] of [[人.销售甲, 甲的], [人.老板, 甲的], [人.老板, 没分的]] as const) {
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, true))), id).toBe(false);
+      expect(错(await 以(id, () => 认父记录({ leadId: l.id }, "删"))), id).toBe(false);
+    }
+    // 同组的别人照拒
+    expect(错(await 以(人.销售乙, () => 认父记录({ leadId: 甲的.id }, "删")))).toBe(true);
+  });
+
   it("没设业务角色的人给公海客户的联系人传附件 → 应被拒", async () => {
     await 开规则(true);
     const c = await raw.contact.create({ data: { name: "公海客户的联系人", customerId: 客户.公海 } });
