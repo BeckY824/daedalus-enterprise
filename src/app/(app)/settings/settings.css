@@ -102,3 +102,5 @@
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: var(--t); animation-timing-function: var(--ease); }
 .set-advance-since { margin-bottom: var(--s3, 12px); color: var(--text-muted); overflow-wrap: anywhere; }
 .set-advance-scope { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2, 8px); margin-bottom: var(--s2, 8px); }
+/* 父开关关着的子开关（设置开关 11-23）：只拦「打开」，一句橙字说明 */
+.org-rule-lock { color: var(--warning-text); font-size: var(--fs-note); }

@@ -48,7 +48,7 @@ export default function GiveUpDialog({ projectId, 开, 关, 成, 打开判无效
       okButtonProps={{ danger: true, loading: 忙, disabled: !原因 || (原因 === 其他原因 && !补充.trim()), ...{ "data-testid": "proj-giveup-ok" } }}
       onCancel={收} onOk={() => void 交()} destroyOnHidden
     >
-      <p className="giveup-lead">每人每月只能放弃 {每月放弃次数} 次。确认后这条线索立即转给本线下一位同事（接手人照记一次分配），你原来这条照算、不退名额，另给你记 1 条待补。转不出去时不扣次数。</p>
+      <p className="giveup-lead">每人每月只能放弃 {每月放弃次数} 次。确认后这条线索立即转给本线内另一位同事（本月分得最少的先给，接手人照记一次分配），你原来这条照算、不退名额，另给你记 1 条待补。转不出去时不扣次数。</p>
       <div className="giveup-label"><b>放弃原因</b>（必选）</div>
       <Radio.Group value={原因} onChange={(e) => { set原因(e.target.value as string); set补充(""); set错(null); }} data-testid="proj-giveup-reason">
         <Space orientation="vertical">
