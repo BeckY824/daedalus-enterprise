@@ -265,7 +265,7 @@ it("H-新1 / 新2 / 新4（1366）：指标卡悬停只换底色、不上浮、�
   try {
     const 卡 = page.locator(".home-kpi-card").nth(2);
     expect(await 卡.locator(".home-kpi-chev").textContent()).toBe("›");
-    const 前 = await 卡.evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, top: e.getBoundingClientRect().top }));
+    const 前 = await 卡.evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, top: e.getBoundingClientRect().top, 影: getComputedStyle(e).boxShadow }));
     const 组顶 = await 顶(page, ".cli-ck-g");
     await 卡.locator(".home-kpi-head").hover();
     await page.waitForTimeout(300);
@@ -273,7 +273,8 @@ it("H-新1 / 新2 / 新4（1366）：指标卡悬停只换底色、不上浮、�
     expect(后.bg).not.toBe(前.bg);
     expect(后.bg).toBe("rgb(245, 245, 247)");
     expect(后.top).toBeCloseTo(前.top, 0);
-    expect(后.影).toBe("none");
+    // 卡片改进（11-23）：白卡平时带一层很淡的影（--card-raise-a），悬停不加深、不换——还是「不浮起」
+    expect(后.影).toBe(前.影);
     expect(后.数).toBe("rgb(217, 119, 6)");
     // 没着色的卡悬停数字也不变蓝
     await page.locator(".home-kpi-card").first().locator(".home-kpi-head").hover();

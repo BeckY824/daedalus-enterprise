@@ -98,6 +98,15 @@ beforeAll(async () => {
       if(当前&&o.删) 当前.p={...当前.p,能删:true};
       // D4 审查：缺项小块各条落点——项目上的覆盖（必填、线索验证等）+ 画像卡
       if(当前&&o.项目改) 当前.p={...当前.p,...o.项目改,...(o.项目改.带画像?{画像:{项们:项目画像项.map(x=>({键:x.键,名:字典定义[x.种类].名,多选:x.多选,选项:[...字典定义[x.种类].默认]})),值:{}}}:{})};
+      // 卡片改进第三阶段：右栏其余卡（回款、交付、项目组、提成、进程变更、关联客户 / 联系人）都有内容
+      if(当前&&o.全) 当前.p={...当前.p,phase:'订单',node:'尾款结算',
+        备货物流:{备货状态:'已备货',物流状态:{值:'运输中',选项:['运输中','已签收']},物流单号:'SF1234567890'},
+        回款们:[{id:'pay1',paidAt:'2026-11-15',currency:'CNY',amount:300000,userId:'qa',createdAt:'2026-11-15T02:00:00.000Z'},{id:'pay2',paidAt:'2026-10-28',currency:'CNY',amount:124500,userId:'qa',createdAt:'2026-10-28T02:00:00.000Z'}],
+        members:[{id:'m1',userId:'u2',name:'同事乙',roleId:null,inviteStatus:'JOINED'}],
+        提成:{币种:'CNY',成交金额:860000,项目底价:600000,比例:{底价比例:2,溢价比例:30},范围:'不限',单设:null,预估:{成交金额:860000,项目底价:600000,项目溢价:260000,底价提成:12000,溢价提成:78000,合计:90000},实际:null,
+          每人:[{userId:'qa',比例:80,金额:72000,组长:true,name:'QA'},{userId:'u2',比例:20,金额:18000,组长:false,name:'同事乙'}],能改:true,能填底价:true,能更正:false,组员:[{userId:'u2',name:'同事乙'}],分配:{u2:20}},
+        logs:[{id:'l1',at:'2026-11-01T02:00:00.000Z',who:'QA',from:{phase:'商机',node:'方案报价',result:null},to:{phase:'订单',node:'尾款结算',result:null},reason:null,category:null,kind:'node',transfer:null}],
+        关联:{...当前.p.关联,客户们:[{customerId:'a',名:'客户A',全称:'客户A',身份:['最终用户'],主:true,看得到:true,能进详情:true},{customerId:'b',名:'客户B'+长,全称:'',身份:['渠道商','代理商'],主:false,看得到:true,能进详情:true}]}};
       if(当前&&o.领不了) 当前.p={...当前.p,能领取:false,领取不给:'你是原负责人，不能领回'};
       // 教练点评改版 PR1：当前项目的教练主题（能发 = 服务端按 P-教练-11/12/13 算好的），按角色给；只读管理员看得到主题但不能发
       if(当前&&o.点评!==undefined) 当前.教练主题={们:[],能发:o.点评,填写人:{id:'qa',name:'QA',身份:'销售教练'},负责人:{id:'u2',name:'同事乙'},项目名:当前.p.name,当前节点:'方案报价',待回复数:0,冻结:false};
@@ -109,7 +118,7 @@ beforeAll(async () => {
           跟进去处={[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null,下一步文字:null}]} 待办计划={[]} 能放公海 新建项目={{节点们:['线索验证'],要下一步:false}}
           只读={o.只读?'全':false} {...(o.不能转?{能转让客户:false}:{})} {...(o.不能放?{能放公海:false}:{})}
           三态条={o.提醒?{状态:'沉睡',文字:'满 90 天没有有效沟通，也可以用右上角「客户操作」转让或退回公海',悬停:'满 90 天没有有效沟通',旁注:null,按钮们:[{动作:'继续持有',字:'我还在跟',说明:'顺延 30 天',要理由:false,主:true}]}:null}
-          项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}
+          项目数据={o.无区?null:{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}
           {...(o.号码?{号码种类:[{名:'手机',kind:'phone',active:true},{名:'座机',kind:'landline',active:true},{名:'WhatsApp',kind:'whatsapp',active:true}],客户号码们:[{kind:'landline',value:'010-66001234'},{kind:'whatsapp',value:'+44 20 7946 0958'}]}:{})}/>
       </div></main></div></BusinessProvider></App></ConfigProvider>));
     };
@@ -130,7 +139,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 项目页?: boolean; 单?: boolean; 多?: boolean; 空?: boolean; 只读?: boolean; 公司名?: string; 皮?: string; 纸?: "tone" | "white" | null; 暗?: boolean };
+type 参 = { 无区?: boolean; 全?: boolean; 项目页?: boolean; 单?: boolean; 多?: boolean; 空?: boolean; 只读?: boolean; 公司名?: string; 皮?: string; 纸?: "tone" | "white" | null; 暗?: boolean };
 async function 开(width: number, o: 参 = {}, height = 900) {
   const 手机 = width < 768;
   const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: 手机 });
@@ -147,7 +156,7 @@ async function 开(width: number, o: 参 = {}, height = 900) {
   if (o.暗) await page.addStyleTag({ path: path.resolve("src/app/dark.css") });
   await page.addScriptTag({ content: bundle });
   if (o.项目页) { await page.evaluate(() => (window as unknown as { __renderP: () => void }).__renderP()); await page.locator(".proj-wrap").first().waitFor(); }
-  else { await page.evaluate(a => (window as unknown as { __render: (o: object) => void }).__render(a), o as object); await page.locator(".rec-zone").first().waitFor(); }
+  else { await page.evaluate(a => (window as unknown as { __render: (o: object) => void }).__render(a), o as object); await page.locator(o.无区 ? ".rec-col-blocks" : ".rec-zone").first().waitFor(); }
   await page.waitForTimeout(300);
   return { page, errors, close: () => ctx.close() };
 }
@@ -243,7 +252,7 @@ it("字号与对齐：卡头标题 15 · 600、计数 13 · 400 灰；字段名 
     expect(await 字(page, ".cd-side .proj-info-k")).toEqual({ 号: "13px", 重: "400", 色: 淡 });
     // 值起点：卡外框左边 + 1px 边 + 16 + 标签 68 + 隔 8（带复制键的电话整行展开，不算）
     const 左 = await 值起点(page, ".rec-rail .rec-field:not(:has(.copy-val)) > .rec-field-v");
-    const 右 = await 值起点(page, ".cd-side .proj-info-row > .proj-info-k + *");
+    const 右 = await 值起点(page, ".cd-side .proj-info .proj-info-row > .proj-info-k + *");
     expect(左.length).toBeGreaterThan(2);
     expect(右.length).toBeGreaterThan(5);
     expect(new Set([...左, ...右])).toEqual(new Set([93]));
@@ -387,6 +396,108 @@ it("项目详情独立页（共用 ProjectFold / ProjectDetail）：卡头 48、
       expect(new Set(await 值起点(page, ".proj-side .proj-info-row > .proj-info-k + *"))).toEqual(new Set([93]));
       expect(new Set(await 值起点(page, ".proj-side .proj-profile-row > .proj-profile-key + *"))).toEqual(new Set([93]));
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await close(); }
+  }
+});
+
+
+/* ---------- 第三阶段（11-23）：右栏其余卡、没有项目区的客户页、多行字段的字数 ---------- */
+/** 右栏收着的卡全打开（钮在 AI 球底下也点得到：直接 click()） */
+const 全展开 = (page: Page) => page.locator(".cd-side .proj-fold-btn[aria-expanded=false]").evaluateAll(es => es.forEach(e => (e as HTMLElement).click()));
+/** 每个标签后面那一段（元素或文字）离所在卡左边多少 */
+const 标签后起点 = (page: Page, sel: string) => page.locator(sel).evaluateAll(es => es.map(k => {
+  const 下 = k.nextSibling!; const r = document.createRange(); r.selectNode(下);
+  return Math.round(r.getBoundingClientRect().x - k.closest(".ant-card")!.getBoundingClientRect().x);
+}));
+
+it("右栏其余卡（1280 / 390）对齐到 68 / 92：回款「当前回款」、交付三行、项目组「组长」和组员、提成各行、关联客户 / 联系人；字段名 13 灰；底价框不被挤截；不横滚", async () => {
+  for (const w of [1280, 390]) {
+    const { page, errors, close } = await 开(w, { 全: true, 单: true }, 2400);
+    try {
+      await 全展开(page); await page.waitForTimeout(300);
+      const 灰 = await 量变量(page, "--text-muted");
+      const 起点: Record<string, number[]> = {
+        当前回款: await 标签后起点(page, ".cd-side .pd-pay-sum > .proj-info-k"),
+        交付: await 标签后起点(page, ".cd-side .proj-stock-rows .proj-info-row > .proj-info-k"),
+        组长: await 标签后起点(page, ".cd-side .pd-team-lead > .proj-info-k"),
+        组员: await 标签后起点(page, ".cd-side .pd-team-row > .pd-team-name"),
+        // 项目底价那一行在 1280 右栏放不下，整组落到下一行，不算
+        提成: await 标签后起点(page, ".cd-side .pd-cm-row:not(:has(> .ant-space-compact)) > .pd-cm-k"),
+        关联: await 标签后起点(page, ".cd-side .proj-rel-field > .proj-rel-key"),
+      };
+      for (const [k, v] of Object.entries(起点)) {
+        expect(v.length, `${k}：有行`).toBeGreaterThan(0);
+        expect(new Set(v), `宽 ${w}：${k} 值离卡左 92（+1 卡边）`).toEqual(new Set([93]));
+      }
+      expect(起点.交付.length).toBe(3);
+      expect(起点.关联.length).toBeGreaterThanOrEqual(5);
+      for (const sel of [".cd-side .pd-cm-k", ".cd-side .proj-rel-key", ".cd-side .pd-pay-sum > .proj-info-k", ".cd-side .pd-team-lead > .proj-info-k"])
+        expect(await 字(page, sel), sel).toEqual({ 号: "13px", 重: "400", 色: 灰 });
+      // 组员名落在 68 列里（长了省略、悬停看全），角色下拉从 92 起
+      expect((await 框(page.locator(".cd-side .pd-team-name").first())).w).toBe(68);
+      // 项目底价：数字不被挤截，框不出卡
+      const 底价 = page.locator(".cd-side .pd-cm-row input[aria-label=项目底价]");
+      expect(await 底价.evaluate(e => (e as HTMLInputElement).scrollWidth <= (e as HTMLInputElement).clientWidth), `宽 ${w}`).toBe(true);
+      const 提成卡 = await 框(page.locator(".cd-side .proj-fold > .ant-card:has(input[aria-label=项目底价])"));
+      const 存 = await 框(page.locator(".cd-side .pd-cm-row:has(input[aria-label=项目底价])").getByRole("button", { name: /保\s*存/ }));
+      expect(存.x + 存.w, `宽 ${w}：保存钮在卡里`).toBeLessThanOrEqual(提成卡.x + 提成卡.w - 16);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await close(); }
+  }
+});
+
+it("编辑多行字段：「0 / 500」字数单独一行靠右，不压「⌘↵ 或点别处保存」那行提示", async () => {
+  for (const w of [1280, 390]) {
+    const { page, errors, close } = await 开(w);
+    try {
+      await page.locator(".cd-side").getByRole("button", { name: "改备注" }).click();
+      const 行 = page.locator(".cd-side .proj-inline-edit");
+      const [框框, 数, 提示] = await Promise.all([框(行.locator("textarea")), 框(行.locator(".ant-input-data-count")), 框(行.locator(".proj-inline-hint"))]);
+      expect(await 行.locator(".ant-input-data-count").innerText()).toBe("0 / 500");
+      expect(数.y, `宽 ${w}：字数在框下面`).toBeGreaterThanOrEqual(框框.y + 框框.h);
+      expect(提示.y, `宽 ${w}：提示在字数下面一行`).toBeGreaterThanOrEqual(数.y + 数.h);
+      expect(Math.abs(数.x + 数.w - (框框.x + 框框.w)), "靠右").toBeLessThanOrEqual(1);
+      expect(errors).toEqual([]);
+    } finally { await close(); }
+  }
+});
+
+it("没有项目区的客户页（.rec-col-blocks）：卡四边 --field-line、卡头 48、卡距和栏距 12；390 不横滚", async () => {
+  for (const w of [1280, 390]) {
+    const { page, errors, close } = await 开(w, { 无区: true });
+    try {
+      const 线 = await 量变量(page, "--field-line", "border-top-color");
+      const 卡 = page.locator(".rec-col-blocks > .proj-fold");
+      expect(await 卡.count()).toBeGreaterThanOrEqual(2);
+      expect(new Set(await 卡.locator("> .ant-card").evaluateAll(es => es.map(e => getComputedStyle(e).borderTopColor)))).toEqual(new Set([线]));
+      expect(new Set(await 卡.locator("> .ant-card > .ant-card-head").evaluateAll(es => es.map(e => Math.round(e.getBoundingClientRect().height))))).toEqual(new Set([48]));
+      const a = await 框(卡.nth(0));
+      expect(await 卡.nth(1).evaluate(e => getComputedStyle(e).marginTop + "|" + (e.getBoundingClientRect().top - e.previousElementSibling!.getBoundingClientRect().bottom)), `宽 ${w}：卡距`).toBe("12px|12");
+      if (w === 1280) {
+        const 左 = await 框(page.locator(".rec-rail-blocks > .proj-fold").first());
+        expect(a.x - (左.x + 左.w), "左栏和中栏").toBe(12);
+      }
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await close(); }
+  }
+});
+
+it("右栏其余卡在白底（D-2 一张纸）、换皮主题照旧：「组长：…」「当前回款：…」一句话，提成字段名 64 + 隔 12，角色下拉 140", async () => {
+  for (const o of [{ 纸: "white" as const }, { 皮: "tech" }]) {
+    const 名 = JSON.stringify(o);
+    const { page, errors, close } = await 开(1280, { ...o, 全: true, 单: true }, 2400);
+    try {
+      await 全展开(page); await page.waitForTimeout(300);
+      expect(await page.locator(".cd-side .pd-team-lead, .cd-side .pd-pay-sum").count(), 名).toBe(0);
+      expect(await page.locator(".cd-side").getByText(/^组长：QA$/).count(), 名).toBe(1);
+      expect(await page.locator(".cd-side").getByText(/^当前回款：/).count(), 名).toBe(1);
+      expect((await 框(page.locator(".cd-side .pd-cm-k").first())).w, 名).toBe(64);
+      expect(await page.locator(".cd-side .pd-cm-row").first().evaluate(e => getComputedStyle(e).columnGap), 名).toBe("12px");
+      expect((await 框(page.locator(".cd-side .pd-team-role").first())).w, 名).toBe(140);
+      expect(await page.locator(".cd-side .proj-stock-rows .proj-info-row").count(), 名).toBe(0);
       expect(errors).toEqual([]);
     } finally { await close(); }
   }

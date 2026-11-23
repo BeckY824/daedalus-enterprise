@@ -22,8 +22,8 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
 
 
+/** 提成卡的行、字段名是 globals.css 的 .pd-cm-row / .pd-cm-k（卡片改进第三阶段在原底下收成 68 列 + 隔 8）；分到每人那几行照旧用这份 */
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "baseline", marginBottom: 8, minWidth: 0, flexWrap: "wrap" };
-const 键样: React.CSSProperties = { color: "var(--text-muted)", flex: "0 0 64px" };
 const 淡: React.CSSProperties = { color: "var(--text-muted)" };
 
 /** 不摆改：不在卡上摆「改分配」（10-31 页头放过；11-01 页头只留转让项目 / 退回公海，卡上照摆，目前没人传） */
@@ -41,9 +41,9 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
 
   return (
     <Card title={新样 ? 计数题(卡名("提成"), t.每人.length) : 卡名("提成")} extra={固定了 ? <Tag color="green">实际提成已固定</Tag> : <Tag>预估</Tag>}>
-      <div style={行样}><span style={键样}>成交金额</span>{钱(t.实际?.成交金额 ?? t.成交金额)}{固定了 && t.实际!.成交金额 !== t.成交金额 && <span style={淡}>（现在项目金额 {钱(t.成交金额)}）</span>}</div>
-      <div style={行样}>
-        <span style={键样}>项目底价</span>
+      <div className="pd-cm-row"><span className="pd-cm-k">成交金额</span>{钱(t.实际?.成交金额 ?? t.成交金额)}{固定了 && t.实际!.成交金额 !== t.成交金额 && <span style={淡}>（现在项目金额 {钱(t.成交金额)}）</span>}</div>
+      <div className="pd-cm-row">
+        <span className="pd-cm-k">项目底价</span>
         {底价能改 ? (
           <Space.Compact>
             <AmountInput aria-label="项目底价" min={0} precision={2} style={{ width: 160 }} placeholder="还没填" currency={t.币种} value={底价} onChange={(v) => set底价(v ?? null)} />
@@ -54,13 +54,13 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
           <span title={t.能填底价 && 固定了 ? "已经赢单，实际提成已固定，不能再改" : "项目底价由项目负责人填"}>{钱(t.实际?.项目底价 ?? t.项目底价)}</span>
         )}
       </div>
-      <div style={行样}><span style={键样}>项目溢价</span>{用的 ? 钱(用的.项目溢价) : "—"}{用的 && 用的.项目溢价 === 0 && 用的.成交金额 < 用的.项目底价 && <span style={淡}>（成交金额低于底价，溢价算 0）</span>}</div>
-      <div style={行样}>
-        <span style={键样}>预估提成</span>
+      <div className="pd-cm-row"><span className="pd-cm-k">项目溢价</span>{用的 ? 钱(用的.项目溢价) : "—"}{用的 && 用的.项目溢价 === 0 && 用的.成交金额 < 用的.项目底价 && <span style={淡}>（成交金额低于底价，溢价算 0）</span>}</div>
+      <div className="pd-cm-row">
+        <span className="pd-cm-k">预估提成</span>
         {t.预估 ? <span>{钱(t.预估.合计)} <span style={淡}>= {低于底价(t.预估.成交金额, t.预估.项目底价) ? "成交金额（低于底价，按比例折算）" : "底价"} × {t.比例.底价比例}%（{钱(t.预估.底价提成)}）+ 溢价 × {t.比例.溢价比例}%（{钱(t.预估.溢价提成)}），{t.单设 === "全部" ? "按负责人单设的比例" : t.单设 === "部分" ? `按负责人单设的比例（没设的那项按${t.范围}）` : `按${t.范围}比例`}</span></span> : <span style={淡}>填了项目底价才算得出来</span>}
       </div>
-      <div style={行样}>
-        <span style={键样}>实际提成</span>
+      <div className="pd-cm-row">
+        <span className="pd-cm-k">实际提成</span>
         {t.实际
           ? <span>{钱(t.实际.合计)} <span style={淡}>{t.实际.按算式 != null
               ? `（总管理员已更正；按算式是 ${钱(t.实际.按算式)}）`

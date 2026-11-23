@@ -22,7 +22,7 @@ import SaveButton from "@/components/SaveButton";
 import { 跑给按钮, type 跑法 } from "./detail-note";
 import { useFormDraft } from "@/components/FormDraft";
 import { 动作出错话 } from "@/lib/stale-deploy";
-import { useIsNowSkin } from "@/lib/use-skin";
+import { useIsNowSkin, useIsToneCards } from "@/lib/use-skin";
 import { 计数题 } from "./ProjectFold";
 
 export type 组员 = { id: string; userId: string; name: string; roleId: string | null; inviteStatus: string };
@@ -342,20 +342,24 @@ export function ProjectTeamCard({
   const 可加 = 在职.filter((u) => !在组.has(u.id));
   const 不能改 = 能改 ? undefined : 企业版 ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改";
   const 新样 = useIsNowSkin();
+  const 卡片样 = useIsToneCards();
 
   return (
     // 设计语言 D5 · M11-a：折叠的卡都写条数（现状主题；换皮主题照旧只有名字）。口径和「提成（N）」一样 = 人数、含组长（#403 审查）：
     // 在组的人（拒了邀请的不算，邀请中的算）+ 组长一位
     <Card title={新样 ? 计数题("项目组", 在组.size + (企业版 && 组长 ? 1 : 0)) : "项目组"}>
-      {企业版 && 组长 && <div style={{ marginBottom: 8 }}>组长：{组长}</div>}
+      {/* 卡片改进（现状 + 原底）：「组长」和项目资料同一套字段行（标签 68 列、值离卡左 92），组员名也落在 68 列里；白底、换皮照旧「组长：…」 */}
+      {企业版 && 组长 && (卡片样
+        ? <div className="proj-info-row pd-team-lead"><span className="proj-info-k">组长</span><span className="proj-one" title={组长}>{组长}</span></div>
+        : <div style={{ marginBottom: 8 }}>组长：{组长}</div>)}
       {组员们.length === 0 && !还没回来.length && <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>还没有拉人进项目组</div>}
       {组员们.map((m) => (
         <div key={m.id} className="pd-team-row-wrap">
         <div className="pd-team-row">
-          <span style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={m.name}>{m.name}</span>
+          <span className="pd-team-name" title={m.name}>{m.name}</span>
           {邀请说法[m.inviteStatus] && <Tag>{邀请说法[m.inviteStatus]}</Tag>}
           <Select
-            style={{ width: 140, flex: "0 0 auto" }}
+            className="pd-team-role"
             size="small"
             allowClear
             placeholder="不填角色"
@@ -378,7 +382,7 @@ export function ProjectTeamCard({
       {/* 刚邀请 / 刚加的：刷新回来前先摆上（企业版写「已邀请」） */}
       {还没回来.map((x) => (
         <div key={`new-${x.userId}`} className="pd-team-row is-new">
-          <span style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={x.name}>{x.name}</span>
+          <span className="pd-team-name" title={x.name}>{x.name}</span>
           <Tag role="status">{企业版 ? "已邀请" : "已加进来"}</Tag>
         </div>
       ))}

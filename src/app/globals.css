@@ -5199,6 +5199,12 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 }
 /* 项目组 / 提成分配（dt.team，项目详情）：刚邀请的先摆一行、分配条边输边变 */
 .pd-team-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; min-width: 0; }
+/* 组员名、角色下拉：原来的行内样式挪成 class（卡片改进第三阶段要在原底下改成 68 列），值一字不差 */
+.pd-team-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pd-team-role { width: 140px; flex: 0 0 auto; }
+/* 提成卡的行、字段名：原来的行内样式挪成 class（同上），值一字不差 */
+.pd-cm-row { display: flex; gap: 12px; align-items: baseline; margin-bottom: 8px; min-width: 0; flex-wrap: wrap; }
+.pd-cm-k { color: var(--text-muted); flex: 0 0 64px; }
 .pd-team-row.is-new { animation: cd-pj-flash-in var(--t) var(--ease); }
 .pd-split { display: flex; width: 100%; height: 10px; margin: 8px 0 6px; border-radius: 999px; overflow: hidden; background: var(--line-soft); }
 .pd-split-seg { flex: 0 0 0%; min-width: 0; transition: flex-basis var(--t-morph) var(--ease); }
@@ -6797,6 +6803,80 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .rec-zone .cd-comm-bar > .cd-seg > button { height: 28px; }
 }
 
+/* ================= 卡片改进 · 第三阶段：复盘任务页、首页指标卡、客户详情右栏其余卡（11-23，原型-卡片改进-20261123「改后」） =================
+   前缀和第一阶段一样（现状主题 + 非「白底一张纸」），删底色开关后直接变默认；一张纸（D-2 下面那段）、换皮主题照旧。
+     9. 复盘 · 任务：统计条（逾期 / 今天到期 / 本周到期 / 全部待办）是一整张卡，格与格之间 1px --field-line 从卡顶贯通到卡底；
+        选中 = --brand-bg 底 + 底边 2px 品牌色条（左右各缩 16、不碰圆角）+ 标签品牌深色 600；悬停只给浅底、不给色条；2×2 下条落在所选那一格底边
+    10. 复盘页签底线（antd Tabs 的 nav::before）--line → --field-line；选中页签的 2px 下划线压在它上面
+    11. 复盘的卡（全部待办、回收提醒）和客户详情同一套：四边 --field-line + 淡影、卡头线 --field-line、卡距 12；
+        看板三列铺到卡边、列与列之间一根竖线从卡头线下贯通到卡底（窄了一列时换成横线）；列头 13 · 600，计数 13 灰、去掉小胶囊
+    12. 首页指标卡和统计条共用 .home-card-k / -v：标签 13 灰、大数 26 · 600 行高 32；卡也是四边 --field-line + 淡影
+    13. 客户详情右栏其余卡对齐到 68 / 92（标签列 68 + 隔 8，值离卡左 92）：交付（备货 / 物流三行）、回款（当前回款）、项目组（组长、组员名）、
+        提成（.pd-cm-row，原来行内 64 + 隔 12）、关联客户 / 联系人（.proj-rel-field，原来 40 + 8）
+    14. 没有项目区的客户页（.rec-col-blocks）：卡距、栏距 12（中栏两张都是「新建 ＋ 收起」连体钮，没有单独的收起钮）
+    15. 多行字段改的时候，「0 / 500」字数单独占一行靠右，不再压在「⌘↵ 或点别处保存」那行提示上（改前就有） */
+
+/* 9 统计条 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-wrap > .btodo-cards { gap: 0; margin-bottom: var(--card-gap); border: 1px solid var(--field-line); border-radius: var(--r-card); background: var(--panel); box-shadow: 0 1px 2px rgb(0 0 0 / var(--card-raise-a)); overflow: hidden; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-cards > .btodo-card { position: relative; gap: 2px; padding: 14px var(--card-pad) var(--card-pad); border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-cards > .btodo-card + .btodo-card { border-left: 1px solid var(--field-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-cards > .btodo-card:is(:hover, :active) { border-color: var(--field-line); background: var(--row-hover); box-shadow: none; transform: none; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-cards > .btodo-card.is-on:is(*, :hover, :active) { border-color: var(--field-line); background: var(--brand-bg); box-shadow: none; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-cards > .btodo-card.is-on::after { content: ""; position: absolute; left: var(--card-pad); right: var(--card-pad); bottom: 0; height: 2px; background: var(--brand); pointer-events: none; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-cards > .btodo-card.is-on .home-card-k { color: var(--brand-deep); font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-cards > .btodo-card:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; border-radius: 0; }
+@container (max-width: 480px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-cards > .btodo-card:nth-child(odd) { border-left: 0; }
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-cards > .btodo-card:nth-child(n + 3) { border-top: 1px solid var(--field-line); }
+}
+
+/* 10 页签底线 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .data-shell-tabs > .ant-tabs-nav::before { border-bottom-color: var(--field-line); }
+
+/* 11 复盘的卡 + 看板列线 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-wrap > .btodo-list { border-color: var(--field-line); box-shadow: 0 1px 2px rgb(0 0 0 / var(--card-raise-a)); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-wrap > .btodo-list + .btodo-list { margin-top: var(--card-gap); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .data-shell-body .btodo-wrap > .btodo-list > .btodo-head { border-bottom-color: var(--field-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .data-shell-body .btodo-list > .btodo-board { gap: 0; margin: calc(-1 * var(--s3)) calc(-1 * var(--card-pad)) calc(-1 * var(--card-pad)); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-list > .btodo-board > .btodo-col { padding: 12px var(--card-pad) var(--card-pad); border-radius: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-list > .btodo-board > .btodo-col + .btodo-col { border-left: 1px solid var(--field-line); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-col > .btodo-col-h { padding: 0; font-size: var(--fs-note); line-height: 24px; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-col-h > b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-col-h > .btodo-col-n { padding: 0; border-radius: 0; background: transparent; color: var(--count-fg); font-size: var(--fs-note); line-height: 24px; text-align: right; }
+@container (max-width: 560px) {
+  :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .btodo-list > .btodo-board > .btodo-col + .btodo-col { border-left: 0; border-top: 1px solid var(--field-line); }
+}
+
+/* 12 首页指标卡（统计条的字也走这两条） */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.home-cards, .btodo-cards) .home-card-k { color: var(--text-muted); font-size: var(--fs-note); line-height: 20px; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.home-cards, .btodo-cards) .home-card-v { font-size: var(--fs-num); font-weight: 600; line-height: 32px; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .home-cards > .home-card { border-color: var(--field-line); box-shadow: 0 1px 2px rgb(0 0 0 / var(--card-raise-a)); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .home-cards > .home-kpi-card:is(:hover, :active) { border-color: var(--field-line); box-shadow: 0 1px 2px rgb(0 0 0 / var(--card-raise-a)); }
+
+/* 13 右栏其余卡：68 / 92 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .pd-cm-row { column-gap: 8px; flex-wrap: nowrap; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .pd-cm-row > .pd-cm-k { flex: 0 0 68px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .pd-cm-row > :not(.pd-cm-k) { min-width: 0; }
+/* 项目底价（输入框 + 保存）：放得下（≥ 160）就摆在值那一列，右栏 1280 只有 140 宽放不下就整组落到下一行占满卡宽，不把数字挤截 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .pd-cm-row:has(> .ant-space-compact) { flex-wrap: wrap; row-gap: 4px; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .pd-cm-row > .ant-space-compact { flex: 1 1 160px; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .pd-cm-row > .ant-space-compact > .ant-input-number { flex: 1 1 auto; min-width: 0; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .proj-rel-field { grid-template-columns: 68px minmax(0, 1fr); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .proj-rel-key { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .pd-team-row { column-gap: 8px; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .pd-team-row > .pd-team-name { flex: 0 0 68px; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) .pd-team-row > .pd-team-role { flex: 1 1 auto; width: auto; min-width: 0; }
+/* 组长、当前回款、交付三行用项目资料那套 .proj-info-row / .proj-info-k（组件里只在原底挂）；卡里最上面那行不往上让 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) :is(.rec-page, .proj-wrap) :is(.pd-team-lead, .pd-pay-sum) { display: flex; align-items: center; min-width: 0; margin-bottom: 4px; }
+
+/* 14 没有项目区的客户页 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .rec-page.ui-v2 > .rec:has(> .rec-col-blocks) { gap: var(--card-gap); }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .rec-page.ui-v2 .rec-col-blocks > .proj-fold + .proj-fold { margin-top: var(--card-gap); }
+
+/* 15 字数单独一行 */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .proj-inline-edit > .ant-input-textarea-show-count { margin-bottom: 18px; }
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="white"]) .proj-inline-edit > .ant-input-textarea-show-count .ant-input-data-count { bottom: -18px; font-size: var(--fs-min); line-height: 18px; }
+
 /* ================= 设计语言 D-2 · 方案 A「一张纸 + 分隔线」（11-22 用户定，评审页 评审-底色与模块分区-20261122） =================
    只挂现状主题、且底色不是「原底」（设置 → 外观里选「白底」；默认是原底，lib/appearance.ts）。「原底」照旧是浅灰地面 + 白卡，换皮主题一律不动。
    规矩（两方案共用 + A）：
@@ -6899,6 +6979,8 @@ button.proj-miss-chip { cursor: pointer; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .ant-card.rb-mod-card > .ant-card-body { padding-inline: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .rkpi { border: 0; border-block: 1px solid var(--mod-line); border-radius: 0; background: transparent; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board { gap: 0; }
+/* 卡片改进第三阶段在原底下让看板负外边距铺到卡边（那里卡左右有 16 内边距）；一张纸的 .btodo-list 不留内边距，这里归 0（只有没写 data-paper 的旧测试页两段同时挂得上） */
+:root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .data-shell-body .btodo-list > .btodo-board { margin: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col { padding-inline: var(--s3); }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col:first-child { padding-inline-start: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-board > .btodo-col:last-child { padding-inline-end: 0; }

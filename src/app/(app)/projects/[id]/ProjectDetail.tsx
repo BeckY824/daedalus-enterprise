@@ -1656,13 +1656,15 @@ export default function ProjectDetail({
   // 客户详情嵌入版的叫法（11-12，card-names.tsx）：右栏卡名补「项目」、卡点写「当前卡点」；项目详情页原样
   const 卡名 = (名: string) => (嵌入 ? 项目卡名(名) : 名);
   const 卡点名 = 嵌入 ? 客户详情卡点 : "卡点";
+  /** 交付卡备货 / 物流三行：原底下和项目资料同一套字段行（标签 68 列、值离卡左 92）；白底、换皮照旧行内样式 */
+  const 交付行 = 卡片样 ? 资料行() : { style: 行样 };
   const 交付卡 = 显示交付 && (
     <Card title={卡名("交付")}>
       {/* 备货状态（生产备货）、物流状态 + 物流单号（物流运输）：迁移 154，客户 11-19。交付卡只在订单阶段出现，这三格跟着它；
           缺着的必填在「完成节点」框里也能当场填 */}
       {p.企业版 && 备货物流 && (
         <div className="proj-stock-rows">
-          <div style={行样}>
+          <div {...交付行}>
             <span {...键}>备货状态</span>
             <ProjectInlineField<string | null>
               名="备货状态"
@@ -1675,7 +1677,7 @@ export default function ProjectDetail({
               )}
             />
           </div>
-          <div style={行样}>
+          <div {...交付行}>
             <span {...键}>物流状态</span>
             <ProjectInlineField<string | null>
               名="物流状态"
@@ -1688,7 +1690,7 @@ export default function ProjectDetail({
               )}
             />
           </div>
-          <div style={行样}>
+          <div {...交付行}>
             <span {...键}>物流单号</span>
             <ProjectInlineField<string>
               名="物流单号"

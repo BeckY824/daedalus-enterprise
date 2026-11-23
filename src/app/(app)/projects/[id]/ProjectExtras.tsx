@@ -20,7 +20,7 @@ import type { 回款 } from "@/lib/project/payment-db";
 import { 还应收, 回款少于应收, type 应收依据 } from "@/lib/project/payment-hint";
 import { 改项目画像Action } from "../actions";
 import ProjectInlineField from "./ProjectInlineField";
-import { useIsNowSkin } from "@/lib/use-skin";
+import { useIsNowSkin, useIsToneCards } from "@/lib/use-skin";
 import { 记回款, 删回款 } from "../payment-actions";
 import { 动作出错话 } from "@/lib/stale-deploy";
 
@@ -294,6 +294,7 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
   const 卡名 = useCardName();
   const router = useRouter();
   const [问后果, 后果框] = useConsequence();
+  const 卡片样 = useIsToneCards();
   const [日, set日] = useState<string | null>(dayjs().format("YYYY-MM-DD"));
   const [币, set币] = useState(默认币 ?? 默认币种);
   const [数, set数] = useState<number | null>(null);
@@ -336,11 +337,17 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
     });
   }
 
+  const 合计字 = (
+    <b className="pd-pay-total" style={{ overflowWrap: "anywhere" }}>{单币
+      ? <CountUp 值={单币.合计} 记号={`pay:${projectId}:${单币.币种}`} 只滚变化 格式={(n) => 金额(Number.isInteger(单币.合计) ? Math.round(n) : Math.round(n * 100) / 100, 单币.币种)} />
+      : 合计}</b>
+  );
   return (
     <Card title={计数题(卡名("回款"), 回款们.length)}>
-      <div style={{ marginBottom: 8 }}>当前回款：<b className="pd-pay-total" style={{ overflowWrap: "anywhere" }}>{单币
-        ? <CountUp 值={单币.合计} 记号={`pay:${projectId}:${单币.币种}`} 只滚变化 格式={(n) => 金额(Number.isInteger(单币.合计) ? Math.round(n) : Math.round(n * 100) / 100, 单币.币种)} />
-        : 合计}</b></div>
+      {/* 卡片改进（现状 + 原底）：「当前回款」和项目资料同一套字段行（标签 68 列、值离卡左 92）；白底、换皮照旧一句「当前回款：…」 */}
+      {卡片样
+        ? <div className="proj-info-row pd-pay-sum"><span className="proj-info-k">当前回款</span>{合计字}</div>
+        : <div style={{ marginBottom: 8 }}>当前回款：{合计字}</div>}
       {回款们.map((x) => (
         <div key={x.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "4px 0", borderTop: "1px solid var(--line-soft)" }}>
           <span style={{ color: "var(--text-muted)" }}>{dayjs(x.paidAt).format("YYYY-MM-DD")}</span>
