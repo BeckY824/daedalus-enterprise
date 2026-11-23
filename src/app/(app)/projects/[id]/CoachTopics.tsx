@@ -10,7 +10,7 @@
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Drawer, Dropdown, Grid, Input, Modal, Tag, type MenuProps } from "antd";
-import { DownOutlined } from "@ant-design/icons";
+import { AudioOutlined, DownOutlined } from "@ant-design/icons";
 import { fmtDateTime } from "@/lib/utils";
 import { 教练发起标签, 主题标题上限, 主题内容上限, 回复上限 } from "@/lib/enterprise/coach-topic";
 import type { 项目主题们, 主题给界面 } from "@/lib/enterprise/coach-topic-db";
@@ -24,6 +24,10 @@ const 状态色: Record<string, string> = { 待回复: "orange", 已回复: "blu
 
 /** 「录音点评」还没开放（教练点评改版 PR1 只做页头，11-21 用户「相关按钮功能目前点不动即可」）：下拉里灰着，这句既是第二行小字也是悬停说明 */
 export const 录音点评未开放 = "录音点评即将开放";
+/** 录音点评发出的主题：标签（话筒、虚线框）；转写下面的小字（改版方案 §4.5） */
+export const 录音点评标签 = "录音点评";
+const 机器识别话 = "机器识别，可能有错字，以录音为准";
+const 读时长 = (毫秒: number) => `${Math.floor(毫秒 / 60000)}:${String(Math.floor((毫秒 / 1000) % 60)).padStart(2, "0")}`;
 
 /**
  * 「发起点评 ▾」（教练点评改版 PR1，11-21；原沟通卡头的「发起主题」）：能发才摆（P-教练-11/12/13，数据.能发 由服务端算，不新增规则）。
@@ -122,7 +126,7 @@ function NewTopicModal({ 数据, projectId, 关 }: { 数据: 项目主题们; pr
 export default function CoachTopics({ 数据, projectId }: { 数据: 项目主题们 | null | undefined; projectId?: string }) {
   const [看关的, set看关的] = useState(false);
   // 录音草稿（录音点评 PR2，只有录的人自己的；开关关着没有 数据.录音）：钉在主题上面
-  const 草稿 = 数据?.录音?.草稿们.length && projectId ? <CoachRecDrafts projectId={projectId} 项目名={数据.项目名} 草稿们={数据.录音.草稿们} 可提交={数据.录音.可录} /> : null;
+  const 草稿 = 数据?.录音?.草稿们.length && projectId ? <CoachRecDrafts projectId={projectId} 项目名={数据.项目名} 草稿们={数据.录音.草稿们} 可提交={数据.录音.可录} 数据={数据} /> : null;
   if (!数据 || !数据.们.length) return 草稿;
   const 开着 = 数据.们.filter((t) => t.status !== "已关闭");
   const 关了 = 数据.们.filter((t) => t.status === "已关闭");
@@ -150,6 +154,7 @@ function TopicItem({ t }: { t: 主题给界面 }) {
   const [忙, set忙] = useState(false);
   const [错, set错] = useState<string | null>(null);
   const [问, set问] = useState<"关" | "删" | null>(null);
+  const [看转写, set看转写] = useState(false);
   // 回复打了没交的字留草稿（复盘第 1 类，教练主题回复）；回出去了就删
   const 稿 = useFormDraft({ 键: t.能回 ? `主题回复:${t.id}` : null, 值: { 回 }, 带回: (v) => { if (v.回 !== undefined) set回(v.回); }, 紧凑: true });
   const 跑 = async (f: () => Promise<{ ok: boolean; error?: string }>) => {
@@ -167,11 +172,32 @@ function TopicItem({ t }: { t: 主题给界面 }) {
     <div className={`cth-item${t.status === "待回复" ? " cth-wait" : ""}`} id={`coach-topic-${t.id}`} data-testid="coach-topic">
       <div className="cth-head">
         <Tag color="purple" bordered={false}>{教练发起标签}</Tag>
+        {t.录音 && <Tag className="cth-rec-tag" icon={<AudioOutlined />} data-testid="coach-topic-rec">{录音点评标签}</Tag>}
         <Tag color={状态色[t.status]}>{t.status}</Tag>
-        <span className="cth-meta">@{t.node || "—"} · {fmtDateTime(t.createdAt)}</span>
+        <span className="cth-meta">@{t.node || "—"} · {fmtDateTime(t.createdAt)}{t.录音?.时长毫秒 ? ` · 录音 ${读时长(t.录音.时长毫秒)}` : ""}</span>
       </div>
       <div className="cth-title" title={t.title}>{t.title}</div>
       <div className="cth-body">{t.body}</div>
+      {t.录音 && (
+        <div className="cth-rec" data-testid="coach-topic-rec-box">
+          {t.录音.音频没了
+            ? <div className="cth-meta">录音已过保留期</div>
+            : t.录音.能听
+              ? <audio className="crec-audio" controls preload="none" src={`/api/coach-rec/${t.录音.id}/audio`} aria-label="播放录音" />
+              : <div className="cth-meta">原声只有发起人和项目负责人能听</div>}
+          {t.录音.转写 && (
+            <>
+              <button type="button" className="cth-closed-toggle" aria-expanded={看转写} onClick={() => set看转写(!看转写)} data-testid="coach-topic-transcript-toggle">{看转写 ? "收起转写全文" : "看转写全文"}</button>
+              {看转写 && (
+                <>
+                  <pre className="crec-transcript-t" data-testid="coach-topic-transcript">{t.录音.转写}</pre>
+                  <div className="cth-meta">{机器识别话}</div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
       <div className="cth-meta">填写人：{t.作者.name}（{t.作者.身份}）{关闭说法(t)}</div>
       {t.回复们.length > 0 && (
         <div className="cth-replies">

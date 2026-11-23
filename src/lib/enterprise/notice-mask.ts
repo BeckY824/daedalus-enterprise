@@ -37,6 +37,37 @@ function 打掉(串: string): string {
   return maskPhone(数字);
 }
 
+/**
+ * 打码还原（11-22 录音点评 PR5 审查）：销售教练在确认框里看到的是打过码的草稿，存回去（稍后再发、发出）时库里要存原文。
+ * 提交上来的字里，和原文打码后一模一样的那一串（139****5678）按原文换回原号码；同一个打码样子对应几个原号码的按出现顺序轮着用。
+ * 教练自己改过、新写的号码照他写的存（对不上原文的不动）。原文们：原来的主题、要点、转写（教练可能从转写里抄）
+ */
+export function 打码还原(提交: string, 原文们: readonly (string | null | undefined)[]): string {
+  if (!提交 || !提交.includes("*")) return 提交;
+  const 表 = new Map<string, string[]>();
+  for (const s of 原文们) {
+    if (!s || !/\d|[０-９]/.test(s)) continue;
+    全角数字转半角(s).replace(候选, (m) => {
+      if (像号码(m)) {
+        const k = 打掉(m);
+        const 们 = 表.get(k) ?? [];
+        if (!们.includes(m)) 们.push(m);
+        表.set(k, 们);
+      }
+      return m;
+    });
+  }
+  if (!表.size) return 提交;
+  const 键们 = [...表.keys()].sort((a, b) => b.length - a.length).map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const 用过 = new Map<string, number>();
+  return 提交.replace(new RegExp(键们.join("|"), "g"), (k) => {
+    const 们 = 表.get(k)!;
+    const i = 用过.get(k) ?? 0;
+    用过.set(k, i + 1);
+    return 们[i % 们.length];
+  });
+}
+
 /** 标题、正文里像号码的数字串都打码；没有号码原样返回 */
 export function 通知文字打码(s: string): string {
   if (!s || !/\d|[０-９]/.test(s)) return s;
@@ -89,3 +120,14 @@ export function 文件名打码(name: string): string {
     return 数字.length >= 7 ? maskPhone(数字.replace(/^86(?=1[3-9]\d{9}$)/, "")) : 段;
   });
 }
+
+/**
+ * 打码还原以后变长了（带分隔的号码 139-1234-5678 打码成 139****5678，还原回来多出几个字）超过上限：回一句给人看的话；没超回 null（PR5 审查）。
+ * 提交的本身就超的不在这里管（照原来的「最多 N 字」）
+ */
+export function 还原超长话(提交: unknown, 还原后: unknown, 上限: number, 名: string): string | null {
+  if (typeof 提交 !== "string" || typeof 还原后 !== "string") return null;
+  const 长 = 还原后.trim().length;
+  return 提交.trim().length <= 上限 && 长 > 上限 ? `${名}里的号码换回原号码后有 ${长} 字，超过 ${上限} 字，请删几个字再发` : null;
+}
+

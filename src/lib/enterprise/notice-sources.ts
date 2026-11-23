@@ -845,3 +845,21 @@ export async function 录音没整理成通知(authorId: string, r: { id: string
     });
   });
 }
+
+/**
+ * 录音点评「整理好了」（PR5，改版方案 §4.3）：只给录的人。标题只写项目名；正文说去哪确认发出，不带转写、要点、文件名。
+ * 链接带 crec=<录音编号>：点开回到客户页（项目页按原规则跳客户页、带上参数），沟通卡上的草稿条认出这一条就直接打开确认框。
+ * 键带录音编号和时刻：重新整理一次又好了，各算一条
+ */
+export async function 录音整理好了通知(authorId: string, r: { id: string; projectId: string }): Promise<void> {
+  await 稳("录音整理好了通知", async () => {
+    const p = await 看全部(() => prisma.project.findUnique({ where: { id: r.projectId }, select: { name: true } }));
+    await notify([authorId], {
+      kind: "录音",
+      title: `你在项目「${p?.name ?? "（项目不在了）"}」的录音点评整理好了`,
+      body: "到项目详情「沟通记录」卡顶上的录音草稿里确认主题和要点，没问题就发出",
+      link: `/projects/${r.projectId}?crec=${r.id}`,
+      key: `coach-rec-ready:${r.id}:${分钟()}`,
+    });
+  });
+}

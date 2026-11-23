@@ -11,11 +11,14 @@
  * 文件名：框里显示的本机原名也过 文件名打码（安卓通话录音的文件名带对方号码）。
  * 时长：浏览器读出来只给人看（不信它，服务端 PR4 用 ffprobe 算，交了以后卡上显示服务端算的）。
  * 「提交整理」（PR4）：录音可用（开关 + 密钥 + ffmpeg 自检）时能点；整理失败的给原因和「重试整理」；转写中、整理中的留在草稿条上、不能删。
+ * 「继续确认」（PR5）：待确认、整理失败的打开确认框（CoachRecConfirm.tsx）；从「整理好了」通知点进来（地址带 crec=<编号>）直接打开那一条。
  */
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Modal, Progress } from "antd";
 import type { 录音给界面 } from "@/lib/enterprise/coach-rec-db";
+import type { 项目主题们 } from "@/lib/enterprise/coach-topic-db";
+import { CoachRecConfirm } from "./CoachRecConfirm";
 import { 片上限字节, 文件上限字节, 建议WiFi字节, 选文件accept } from "@/lib/enterprise/coach-rec";
 import { 文件名打码 } from "@/lib/enterprise/notice-mask";
 
@@ -241,7 +244,7 @@ const 状态字 = (x: 录音给界面): string =>
  * 待提交卡：回放、「提交整理」、删掉。只有录的人看得到（数据只给录的人）。
  * PR4：可提交（录音可用：开关 + 密钥 + ffmpeg）时「提交整理」能点 → 转写中；整理失败的写原因、给「重试整理」。不可提交时按钮灰着
  */
-export function PendingCard({ 录, 删, 可提交 = false }: { 录: 录音给界面; 删?: () => void; 可提交?: boolean }) {
+export function PendingCard({ 录, 删, 可提交 = false, 开确认 }: { 录: 录音给界面; 删?: () => void; 可提交?: boolean; 开确认?: (x: 录音给界面) => void }) {
   const router = useRouter();
   const [交后, set交后] = useState<录音给界面 | null>(null);
   const [忙, set忙] = useState(false);
@@ -269,6 +272,7 @@ export function PendingCard({ 录, 删, 可提交 = false }: { 录: 录音给界
       {现.status === "整理失败" && 现.错 && <div role="alert" className="crec-warn" data-testid="crec-fail">{现.错}</div>}
       <div className="crec-acts">
         {现.status === "待提交" && <Button size="small" type="primary" disabled={!可提交} loading={忙} title={灰话} onClick={() => void 交(false)} data-testid="crec-submit">提交整理</Button>}
+        {开确认 && 现.确认 && (现.status === "待确认" || 现.status === "整理失败") && <Button size="small" type={现.status === "待确认" ? "primary" : "default"} onClick={() => 开确认(现)} data-testid="crec-confirm-open">{现.status === "待确认" ? "继续确认" : "自己写了发出"}</Button>}
         {现.status === "整理失败" && <Button size="small" type="primary" disabled={!可提交} loading={忙} title={灰话} onClick={() => void 交(true)} data-testid="crec-retry">重试整理</Button>}
         {删 && 能删 && <Button size="small" danger type="text" onClick={删}>删掉</Button>}
       </div>
@@ -280,9 +284,34 @@ export function PendingCard({ 录, 删, 可提交 = false }: { 录: 录音给界
 /**
  * 沟通卡最上面的录音草稿条（只有录的人自己看得到）：没传完的写「上次传到 62%」+「接着传」「删掉」；传完待提交的出待提交卡
  */
-export function CoachRecDrafts({ projectId, 项目名, 草稿们, 可提交 = false }: { projectId: string; 项目名: string; 草稿们: 录音给界面[]; 可提交?: boolean }) {
+export function CoachRecDrafts({ projectId, 项目名, 草稿们, 可提交 = false, 数据 }: { projectId: string; 项目名: string; 草稿们: 录音给界面[]; 可提交?: boolean; 数据?: 项目主题们 | null }) {
   const router = useRouter();
   const [续, set续] = useState<录音给界面 | null>(null);
+  const [确认, set确认] = useState<录音给界面 | null>(null);
+  // 从「整理好了」通知点进来：地址带 crec=<录音编号>，是我这里的待确认 / 整理失败那条就直接打开确认框（只在进页面时看一次，参数从地址上去掉）
+  useEffect(() => {
+    let 号: string | null = null;
+    try {
+      号 = new URLSearchParams(window.location.search).get("crec");
+    } catch {
+      return;
+    }
+    const d = 号 ? 草稿们.find((x) => x.id === 号 && x.确认) : undefined;
+    if (!d) return;
+    // 下一拍再开（服务端渲染时没有地址，首屏不画框，免得水合对不上）；开了再去掉参数（开发模式下效果跑两遍，第一遍的定时被清掉）
+    const 定时 = setTimeout(() => {
+      set确认(d);
+      try {
+        const u = new URL(window.location.href);
+        u.searchParams.delete("crec");
+        window.history.replaceState(window.history.state, "", u.toString());
+      } catch {
+        /* 去不掉参数也不要紧：只在进页面时看一次 */
+      }
+    }, 0);
+    return () => clearTimeout(定时);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [问删, set问删] = useState<string | null>(null);
   const [忙, set忙] = useState(false);
   const [错, set错] = useState<string | null>(null);
@@ -309,7 +338,7 @@ export function CoachRecDrafts({ projectId, 项目名, 草稿们, 可提交 = fa
               </span>
             </div>
           ) : (
-            <PendingCard 录={d} 删={() => set问删(d.id)} 可提交={可提交} />
+            <PendingCard 录={d} 删={() => set问删(d.id)} 可提交={可提交} 开确认={set确认} />
           )}
           {问删 === d.id && (
             <div className="pd-del-band" role="group" aria-label="确认删掉这条录音" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); set问删(null); } }}>
@@ -324,6 +353,7 @@ export function CoachRecDrafts({ projectId, 项目名, 草稿们, 可提交 = fa
       ))}
       {错 && <div role="alert" className="cd-task-err">{错}</div>}
       {续 && <CoachRecUploadModal projectId={projectId} 项目名={项目名} 续={续} 可提交={可提交} 关={() => set续(null)} />}
+      {确认 && <CoachRecConfirm 录={确认} 数据={数据} 可整理={可提交} 关={() => set确认(null)} />}
     </div>
   );
 }
