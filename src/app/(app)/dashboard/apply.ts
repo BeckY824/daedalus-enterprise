@@ -70,9 +70,10 @@ export type 确认选项 = { 首条附件?: boolean };
 /**
  * 同事号：市场成员撞上同事名下的客户（重复咨询第一步 · 出口 C），卡上给「在 X 名下新建线索」（customers/repeat-inquiry-actions.ts）；
  * 交销售 = 负责人接不了指定分配，键写「新建线索交销售」（按区域自动分给销售、客户不动）
+ * 在推个数：市场成员撞上本机客户时这位客户在推的项目个数（含 0，只给个数），卡上错误下面写一行（ai-lead-dedupe.ts）
  */
 export type 同事号 = { 类型: string; 值: string; 负责人名: string; 交销售?: true };
-export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string; 首条附件票?: 首条附件票; 推进?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号 };
+export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string; 首条附件票?: 首条附件票; 推进?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号; 在推个数?: number };
 
 /**
  * 确认一张 AI 建议卡，把它真的写进去。
@@ -280,7 +281,7 @@ export async function applyProposal(input: Proposal, 选项?: 确认选项): Pro
  * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 阿里国际站ID，撞了不建、提醒原负责人。
  * 不撞：创建人 = 录入人；负责人按分配方式（指定 → 那位销售，客户跟着走；自动 → 建在我名下再按业务线分；暂不分配 / 个人自持 → 自己）
  */
-async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }, 要传附件 = false): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号 }> {
+async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }, 要传附件 = false): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号; 在推个数?: number }> {
   const meId = me.id;
   const { 号们: 备注号们, 剩 } = 认出备注里的号码(p.remark || "");
   /*
@@ -300,7 +301,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   };
   const 号们 = 行们.map(建档号).filter((h) => h !== null);
   const 撞了 = await AI建档查重详(号们, me, { 入口: "AI建档", 来源: p.source, 内容: 剩 });
-  if (撞了) return { ok: false, error: 撞了.话, ...(撞了.回收站 ? { 回收站号: { 类型: 撞了.回收站.类型, 值: 撞了.回收站.值 } } : {}), ...(撞了.公海 ? { 公海号: { 类型: 撞了.公海.类型, 值: 撞了.公海.值 } } : {}), ...(撞了.同事 ? { 同事号: { 类型: 撞了.同事.类型, 值: 撞了.同事.值, 负责人名: 撞了.同事.负责人名, ...(撞了.同事.交销售 ? { 交销售: true as const } : {}) } } : {}) };
+  if (撞了) return { ok: false, error: 撞了.话, ...(撞了.回收站 ? { 回收站号: { 类型: 撞了.回收站.类型, 值: 撞了.回收站.值 } } : {}), ...(撞了.公海 ? { 公海号: { 类型: 撞了.公海.类型, 值: 撞了.公海.值 } } : {}), ...(撞了.同事 ? { 同事号: { 类型: 撞了.同事.类型, 值: 撞了.同事.值, 负责人名: 撞了.同事.负责人名, ...(撞了.同事.交销售 ? { 交销售: true as const } : {}) } } : {}), ...(撞了.在推 != null ? { 在推个数: 撞了.在推 } : {}) };
   // 客户只有一格企业号码：有手机放手机；没手机按邮箱 → 微信 → 阿里国际站ID（类型值还叫旺旺ID）放第一个（新建客户企业号码不是手机号才免填电话）。
   // 全部几行都记进联系人的联系方式（建档向导 联系人.号码们）；一个都占不了企业号码的（只有座机、WhatsApp…）客户电话空着，联系人带着号
   const 企业号 = (["phone", "email", "wechat", "wangwang"] as const).map((k) => 行们.find((r) => r.kind === k)).map((r) => r && 建档号(r)).find(Boolean) ?? null;
@@ -468,7 +469,7 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   if (p.kind === "add_opportunity") return { ok: false, error: "这里商机是项目的一个阶段：请到项目页把它推到商机阶段" };
   if (只用项目 && p.kind === "add_contract") return { ok: false, error: "这里成交记在项目上：请到项目页把它推到成交" };
 
-  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票; 推进?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号 };
+  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票; 推进?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号; 在推个数?: number };
   let 撤销: 撤销凭据 | undefined;
   if (只用项目 && p.kind === "add_lead") {
     done = await 建成项目(p, me, 要传附件);

@@ -51,6 +51,7 @@ import { 全公司查号, 首条撞的, type 验好的号 } from "./contact-dedu
 import { 挑接手人, type 线 } from "./lead-assign";
 import { 规则开着 } from "./rules";
 import { 查重领取候选们, 候选挑不到为什么, type 查重领取候选 } from "./dedupe-claim";
+import { 在推 } from "./cust-status-auto";
 
 export const 出口C按钮 = (负责人名: string) => `在 ${负责人名} 名下新建线索`;
 export const 不是市场成员出口C话 = "在同事名下新建线索只给市场成员（渠道运营、市场管理）";
@@ -205,6 +206,29 @@ export async function 出口C按钮给不给(meId: string, 号: 验好的号): P
     return r.ok ? { 负责人名: r.目标.负责人名, ...(r.目标.交销售 ? { 交销售: true as const } : {}) } : null;
   } catch (e) {
     console.warn("[出口C] 判定出错，不出按钮：", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
+/**
+ * 撞号面板「在推项目 N 个」（客户 11-22 方案第 5 节「同时上」，11-23 确认）：市场成员（是市场成员of，同出口 C 发起人那一道）
+ * 查号码撞上本机的客户（同事名下、公海里、自己名下都算）时，面板上多一句这位客户名下在推的项目个数，含 0。
+ * 在推 = cust-status-auto.ts 的 在推（没结局、不在公海，客户状态「在推项目优先」认的同一条），回收站里的不算；
+ * 不分谁负责、看不看得到都数（看全部），只给个数：项目名、阶段、负责人一概不给（P-看-12）。
+ * 数的是首条撞的那位（撞号结论 认的同一位）；已撞 = 调用方已经查好的客户 id（AI 建档那条路），不给就按号码查一遍。
+ * 不是市场成员、没撞上本机客户（回收站里的、团队版服务端那边撞的）= null，面板不变；出任何错也当 null，不挡查重
+ */
+export async function 撞号在推个数(meId: string, 号: 验好的号, 已撞?: readonly string[]): Promise<number | null> {
+  try {
+    if (!企业版()) return null;
+    const org = await 权限组织();
+    if (!org || !是市场成员of(org, meId)) return null;
+    const 挑 = await 首条撞的(prisma, [...(已撞 ?? (await 全公司查号(prisma, 号.类型, 号.值, 号.键)))]);
+    if (!挑) return null;
+    const 们 = await 看全部(() => prisma.project.findMany({ where: { customerId: 挑.id, deletedAt: null }, select: { phase: true, node: true, result: true, pooledAt: true } }));
+    return 们.filter(在推).length;
+  } catch (e) {
+    console.warn("[撞号在推个数] 没数成，面板不带个数：", e instanceof Error ? e.message : e);
     return null;
   }
 }

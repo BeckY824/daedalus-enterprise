@@ -30,7 +30,7 @@ import AttachEntry, { 负责人说法, 我名下入口 } from "./AttachEntry";
 import RescueKey from "../../customers/RescueKey";
 import DedupeClaimKey from "../../customers/DedupeClaimKey";
 import RepeatInquiryKey from "../../customers/RepeatInquiryKey";
-import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
+import { 向导能选类型, 带进联系人, 号码类型叫法, 查重提示, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import { 每人最多号码, 内置号码种类, 号码上限, 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 线索号码种类 } from "@/lib/agent/proposals";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
@@ -1295,6 +1295,8 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了
             {撞?.school ? ` · ${撞.school}` : ""}
             {" · "}
             {在公海 ? "在公海" : 查.状态 === "我的通讯录已有" ? "在你名下" : 查.挂靠 ? `负责人：${负责人说法({ ...查.挂靠.负责人, 离职找: undefined })}` : `负责人：${负责人}${离职找 ? "（已离职）" : ""}`}
+            {/* 市场成员撞上客户：这位客户在推的项目个数（含 0，只给个数），服务端不是市场成员不带 */}
+            {查.在推个数 != null ? ` · ${查重提示.在推个数(查.在推个数)}` : ""}
             {查.归属地 ? ` · 归属地：${查.归属地}` : ""}
           </div>
           <Space size={8} style={{ marginTop: 8 }} wrap>

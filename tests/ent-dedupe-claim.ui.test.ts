@@ -12,6 +12,8 @@
  *   - 没有 市场可领（销售等）照旧「去领取」；原负责人是我但服务端说可领（是客户创建人，用户 11-19「仅对创建人豁免」）也摆键、不摆「领不回」
  *   - 出口 C 交销售没人接（服务端回 没建）：不当失败——框关、草稿清掉、键收起，键后一行普通样式（不是红字）；框里沟通内容下提醒别写客户名和联系方式
  *   - Windows 1024 / 1280 / 1366：框里不横向溢出，「领取并自动分配」点得中
+ *   - 撞号面板「在推项目 N 个」（客户 11-22 方案，只给市场成员、含 0）：服务端带 在推个数 才写那一句（向导面板、首页查重框都是），不带就没有；
+ *     首页查重框撞上看不到的同事客户（没 id）也写；只有个数，没有项目名
  * 服务端规则见 ent-dedupe-claim.test.ts
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -29,7 +31,7 @@ const plugin: Plugin = { name: "ent-dedupe-claim", setup(b) {
   stub(/^\.\.\/actions$/, "export const 建档向导=async()=>({ok:true,customerId:'c1',projectId:'p1'});export const 建档只建客户=async()=>({ok:true,customerId:'c2',projectId:null});");
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
   // 查号码：撞上公海里的「星河电子」；市场可领 / 原负责人是我 由用例设
-  stub(/(^|\/)number-actions$/, 补全动作桩("src/app/(app)/customers/number-actions.ts", "export const 查号码=async(t,v)=>(window.__查次=(window.__查次??0)+1,{ok:true,状态:'公海待捞',提示:'这个号码的客户在公海，本次录入已拦截，可去公海领取',值:v,撞:{id:'c7',name:'星河电子',school:null,salesOwnerName:'无负责人',createdAt:null},归属地:null,...(window.__可领?{市场可领:true}:{}),...(window.__我退的?{原负责人是我:true}:{}),...(window.__重复?{状态:'重复',提示:'销售甲某已有该客户信息',撞:{id:'c8',name:'星河电子',school:null,salesOwnerName:'销售甲某',createdAt:null},出口C:{负责人名:'销售甲某'}}:{})});export const 查客户名=async()=>({ok:true,撞:null});"));
+  stub(/(^|\/)number-actions$/, 补全动作桩("src/app/(app)/customers/number-actions.ts", "export const 查号码=async(t,v)=>(window.__查次=(window.__查次??0)+1,{ok:true,状态:'公海待捞',提示:'这个号码的客户在公海，本次录入已拦截，可去公海领取',值:v,撞:{id:'c7',name:'星河电子',school:null,salesOwnerName:'无负责人',createdAt:null},归属地:null,...(window.__可领?{市场可领:true}:{}),...(window.__我退的?{原负责人是我:true}:{}),...(window.__重复?{状态:'重复',提示:'销售甲某已有该客户信息',撞:{id:'c8',name:'星河电子',school:null,salesOwnerName:'销售甲某',createdAt:null},出口C:{负责人名:'销售甲某'}}:{}),...(window.__看不到?{撞:{id:null,name:null,school:null,salesOwnerName:'销售甲某',createdAt:null}}:{}),...(window.__在推!=null?{在推个数:window.__在推}:{})});export const 查客户名=async()=>({ok:true,撞:null});"));
   // 出口 C（重复咨询第一步）：框数据给负责人、渠道、撞上的联系人；交的时候记下参数（__C框 补框数据、__C回 换交的结果，由用例设）
   stub(/repeat-inquiry-actions$/, 补全动作桩("src/app/(app)/customers/repeat-inquiry-actions.ts", "export const 出口C框数据=async()=>({ok:true,负责人名:'销售甲某',渠道们:[{id:'ch1',name:'小红书|笔记',attr:null,platform:'小红书',active:true}],有撞上的联系人:true,...(window.__C框??{})});export const 出口C建线索=async(t,v,f,n)=>{window.__建=[t,v,f,n];return window.__C回??{ok:true,提示:'已转给该客户负责人 销售甲某 跟进（在其名下新建了一条线索），这次的沟通已记在上面；你在项目列表里能看到进度',负责人:'销售甲某'}};"));
   stub(/(^|\/)pool-actions$/, 补全动作桩("src/app/(app)/customers/pool-actions.ts", "export const 查重领取框数据=async()=>window.__框??{ok:true,新建线索项目:true,客户名:'星河电子',渠道们:[{id:'ch1',name:'小红书|笔记',attr:null,platform:'小红书',active:true}],联系人们:[{id:'k1',name:'王经理',position:'采购'},{id:'k2',name:'李工',position:null}],默认对接人:'k1'};export const 查重领取=async(t,v,f,id,n)=>{window.__领=[t,v,f,id,n];return window.__回??{ok:true,提示:'已领取并自动分配给 销售甲某，沟通已记在项目「星河电子-咨询」上',接手人:'销售甲某',项目:'星河电子-咨询',为什么:''}};"));
@@ -44,10 +46,10 @@ const 长名 = "某某超长国际贸易进出口集团股份有限公司华东�
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import {建档弹窗} from '@/app/(app)/projects/new/ProjectWizard';import DedupeClaimKey from '@/app/(app)/customers/DedupeClaimKey';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
+    import {建档弹窗} from '@/app/(app)/projects/new/ProjectWizard';import DedupeClaimKey from '@/app/(app)/customers/DedupeClaimKey';import DedupeKey from '@/app/(app)/dashboard/DedupeKey';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {我Provider} from '@/lib/me-client';
     const 数据={users:[{id:'u1',name:'渠运某',email:'a'}],要下一步:false,企业:{渠道们:[],节点们:['潜客培育','线索验证','线索推进'],分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:1,是销售:false,按区域:true,本人线:null,客户只给自己:false}};
     const 单独=window.__单独;
-    createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'u1',name:'渠运某'}}>{单独?<div><DedupeClaimKey 类型="手机号" 值="13905712266" 渠道={单独.渠道} 触点={单独.触点}/></div>:<建档弹窗 open 标题="新建线索" 项目="锁开" 数据={数据} onClose={()=>{}}/>}</我Provider></BusinessProvider></App></ConfigProvider>);
+    createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'u1',name:'渠运某'}}>{window.__查重框?<div style={{padding:'200px 20px 0'}}><DedupeKey 宽/></div>:单独?<div><DedupeClaimKey 类型="手机号" 值="13905712266" 渠道={单独.渠道} 触点={单独.触点}/></div>:<建档弹窗 open 标题="新建线索" 项目="锁开" 数据={数据} onClose={()=>{}}/>}</我Provider></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"', "process.env.CRM_ENTERPRISE": '"1"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -72,6 +74,13 @@ async function 开(w: number, 设: Record<string, unknown> = {}): Promise<Page> 
   await page.evaluate((s) => { localStorage.clear(); Object.assign(window, s); }, 设);
   await page.addScriptTag({ content: bundle });
   if (设.__单独) { await page.getByTestId("dedupe-claim").waitFor(); return page; }
+  if (设.__查重框) {
+    await page.getByRole("button", { name: "查重" }).click();
+    await page.getByLabel("要查的号码").fill("13905712266");
+    await page.getByLabel("要查的号码").press("Enter");
+    await page.locator(".home-dedupe .ant-alert").waitFor();
+    return page;
+  }
   const 框 = page.getByRole("dialog").first();
   await 框.getByLabel("号码", { exact: true }).fill("13905712266");
   await 框.getByLabel("号码", { exact: true }).press("Enter");
@@ -323,4 +332,50 @@ it("出口 C 交销售没人接：框里先说清、沟通内容下提醒别写�
     expect(await 向导.getByTestId("repeat-inquiry").count()).toBe(0);
     expect(await 草稿们()).toBe(0);
   } finally { await page.close(); }
+});
+
+it("撞号面板「在推项目 N 个」：服务端带了在推个数（市场成员）才写，含 0；不带（不是市场成员）没有这一句；只有个数", async () => {
+  // 建档向导（新建线索）撞上同事客户
+  for (const [在推, 该有] of [[0, "在推项目 0 个"], [3, "在推项目 3 个"], [null, null]] as const) {
+    const page = await 开(1024, { __重复: true, ...(在推 != null ? { __在推: 在推 } : {}) });
+    try {
+      const 面板 = page.getByRole("dialog").first().locator(".ant-alert").filter({ hasText: "星河电子" }).first();
+      const 字 = await 面板.innerText();
+      if (该有) expect(字).toContain(`负责人：销售甲某 · ${该有}`);
+      else expect(字).not.toContain("在推项目");
+    } finally { await page.close(); }
+  }
+  // 撞上公海客户（市场可领）：向导面板同样写
+  const 公海 = await 开(1024, { __可领: true, __在推: 0 });
+  try {
+    expect(await 公海.getByRole("dialog").first().locator(".ant-alert").filter({ hasText: "星河电子" }).first().innerText()).toContain("在公海 · 在推项目 0 个");
+  } finally { await 公海.close(); }
+});
+
+it("首页查重框（电脑 1280、手机 375）：撞上看不到的同事客户也写「在推项目 N 个」，不带客户名；公海可领那一格写在领取键上面；不带个数时没有这一句", async () => {
+  for (const w of [1280, 375]) {
+    const page = await 开(w, { __查重框: true, __重复: true, __看不到: true, __在推: 0 });
+    try {
+      const 框 = page.locator(".home-dedupe .ant-alert");
+      const 字 = await 框.innerText();
+      expect(字).toContain("在推项目 0 个");
+      expect(字).not.toContain("星河电子");
+      await 框.getByTestId("repeat-inquiry").waitFor();
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    } finally { await page.close(); }
+  }
+  const 看得到 = await 开(1280, { __查重框: true, __重复: true, __在推: 2 });
+  try {
+    expect(await 看得到.locator(".home-dedupe .ant-alert").innerText()).toContain("星河电子 · 在 销售甲某 名下 · 在推项目 2 个");
+  } finally { await 看得到.close(); }
+  const 公海 = await 开(1280, { __查重框: true, __可领: true, __在推: 1 });
+  try {
+    const 框 = 公海.locator(".home-dedupe .ant-alert");
+    expect(await 框.innerText()).toContain("在推项目 1 个");
+    await 框.getByTestId("dedupe-claim").waitFor();
+  } finally { await 公海.close(); }
+  const 不带 = await 开(1280, { __查重框: true, __重复: true });
+  try {
+    expect(await 不带.locator(".home-dedupe .ant-alert").innerText()).not.toContain("在推项目");
+  } finally { await 不带.close(); }
 });

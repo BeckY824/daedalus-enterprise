@@ -116,10 +116,13 @@ describe("撞了：不建、提醒原负责人", () => {
     await prisma.entMember.create({ data: { userId: 市场.id, bizRole: "channel_ops" } });
     当(市场);
     const r = await applyProposal(卡({ phone: "13700001234" }) as never);
-    expect(r).toMatchObject({ ok: false, error: 查重提示.AI建档重复("小甲"), 同事号: { 类型: "手机号", 负责人名: "小甲" } });
+    // 撞号面板只露在推项目个数（只给市场成员）：甲建的那条线索在推，1 个
+    expect(r).toMatchObject({ ok: false, error: 查重提示.AI建档重复("小甲"), 同事号: { 类型: "手机号", 负责人名: "小甲" }, 在推个数: 1 });
     expect(await prisma.task.count()).toBe(1);
     当(乙);
-    expect(await applyProposal(卡({ phone: "13700001234" }) as never)).not.toHaveProperty("同事号");
+    const 乙的 = await applyProposal(卡({ phone: "13700001234" }) as never);
+    expect(乙的).not.toHaveProperty("同事号");
+    expect(乙的).not.toHaveProperty("在推个数");
   });
 
   it("同一张卡点两次：只建一条待办", async () => {

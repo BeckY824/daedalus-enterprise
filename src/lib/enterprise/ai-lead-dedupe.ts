@@ -6,6 +6,7 @@
  *   公海待捞、我名下已有：照查重原提示拦；市场成员撞上公海另带 公海（卡片给「领取并记沟通」，F-016）
  *   重复、我是市场成员、客户不在公海 / 交接中：另带 同事（卡片给「在 X 名下新建线索」，负责人接不了的带 交销售、键写「新建线索交销售」；重复咨询第一步 · 出口 C，repeat-inquiry.ts）；
  *     话、给原负责人的待办、同号协同照旧（协同记的是系统留痕，不算沟通；要不要另建线索由市场成员点）
+ *   撞上本机客户（重复 / 公海待捞 / 我名下已有）、我是市场成员：另带 在推（这位客户在推的项目个数，含 0，只给个数；repeat-inquiry.ts 撞号在推个数）
  *   在用的没撞、回收站里撞了：照建档的提示拦，叫人找系统管理员恢复（客户 11-05（X-10））
  *   团队版服务端那边撞的：本机没有那位客户可挂待办，只回提示
  * 不加字段：邮箱、微信进联系人原有的两格，认出来的那几行从备注拿掉，认不出的原样留在备注
@@ -19,7 +20,7 @@ import { 全公司查号, 撞号结论, 首条撞的, 问同事撞没撞, 回收
 import { notify } from "./notify";
 import { 同号再次录入, type 录入信息 } from "./same-number-collab";
 import { 查重可领 } from "./dedupe-claim";
-import { 出口C按钮给不给, type 出口C按钮 } from "./repeat-inquiry";
+import { 出口C按钮给不给, 撞号在推个数, type 出口C按钮 } from "./repeat-inquiry";
 
 // 认备注里的号码是纯函数，11-17 搬到 remark-numbers.ts（新线索卡的必填在浏览器里也要用）；这里照旧导出
 export { 认出备注里的号码, type 认出的号 } from "./remark-numbers";
@@ -32,7 +33,7 @@ export async function AI建档查重(号们: 认出的号[], 我: { id: string; 
 }
 
 /** 同 AI建档查重，另带上只在回收站里撞上的那个号（卡片上给「从回收站捞回」，客户 11-05） */
-export async function AI建档查重详(号们: 认出的号[], 我: { id: string; name: string }, 录入?: 录入信息): Promise<{ 话: string; 回收站?: 认出的号; 公海?: 认出的号; 同事?: 认出的号 & 出口C按钮 } | null> {
+export async function AI建档查重详(号们: 认出的号[], 我: { id: string; name: string }, 录入?: 录入信息): Promise<{ 话: string; 回收站?: 认出的号; 公海?: 认出的号; 同事?: 认出的号 & 出口C按钮; 在推?: number } | null> {
   const 读 = await 读的我(defaultClient);
   for (const 号 of 号们) {
     const ids = await 全公司查号(prisma, 号.类型, 号.值, 号.键);
@@ -46,13 +47,16 @@ export async function AI建档查重详(号们: 认出的号[], 我: { id: strin
     const 结论 = await 撞号结论(prisma, ids, 我.id, 读);
     // 卡上录的内容也接同号协同（写进现有项目、发邀请、通知）；回 AI 卡的话照 10-27 定的原文，协同已经通知过就不再响铃
     const 协同 = 录入 ? await 同号再次录入(我, 号, 录入) : null;
+    // 市场成员撞上本机客户：卡上带这位客户在推的项目个数（含 0），不是市场成员 = null 不带
+    const 在推 = 结论.状态 === "首次录入" ? null : await 撞号在推个数(我.id, 号, ids);
+    const 带在推 = 在推 != null ? { 在推 } : {};
     // 市场成员撞上公海（F-016）：卡片上给「领取并记沟通」（customers/pool-actions.ts 查重领取），话照旧
-    if (结论.状态 === "公海待捞" && (await 查重可领(我.id, 号))) return { 话: 结论.提示, 公海: 号 };
-    if (结论.状态 !== "重复") return { 话: 结论.提示 };
+    if (结论.状态 === "公海待捞" && (await 查重可领(我.id, 号))) return { 话: 结论.提示, 公海: 号, ...带在推 };
+    if (结论.状态 !== "重复") return { 话: 结论.提示, ...带在推 };
     const 原 = await 首条撞的(prisma, ids);
     if (原?.salesOwnerId) await 提醒原负责人(原.id, 全称或显名(原), 原.salesOwnerId, 我, !协同?.走);
     const 出口C = await 出口C按钮给不给(我.id, 号);
-    return { 话: 查重提示.AI建档重复(结论.撞.salesOwnerName), ...(出口C ? { 同事: { ...号, ...出口C } } : {}) };
+    return { 话: 查重提示.AI建档重复(结论.撞.salesOwnerName), ...(出口C ? { 同事: { ...号, ...出口C } } : {}), ...带在推 };
   }
   return null;
 }

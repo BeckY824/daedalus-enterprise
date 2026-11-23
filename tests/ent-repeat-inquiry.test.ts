@@ -26,6 +26,8 @@
  *   - 主路径负责人到持有上限（用户 11-23）：照挑不到人处理——不建、待补建记录、通知这条线的销售管理和系统管理员（规则关着只发系统管理员），框打开就说
  *   - 负责人是销售管理：走主路径（指定分配）；两边同时交序号撞了唯一索引：整笔回滚重来，最多 3 次
  *   - 三态照现状（E-213 第一节 1）：建新线索、进线索验证、终判、那条沟通都重开倒计时；额度只认那条有效沟通回满
+ *   - 撞号面板「在推项目 N 个」（客户 11-22 方案第 5 节「同时上」）：只给市场成员、含 0；在推 = 没结局、不在公海、没删（同 在推项目优先）；
+ *     看不到的同事项目也数、只给个数不带项目名；不是市场成员不带这格；首页 AI 新线索卡同一套
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -84,6 +86,8 @@ import { 三态夜扫 } from "@/lib/enterprise/tri-state-db";
 import { 读一位三态 } from "@/lib/enterprise/tri-state-hold";
 import { 加天 } from "@/lib/enterprise/tri-state";
 import { beijingDay } from "@/lib/business-clock";
+import { AI建档查重详 } from "@/lib/enterprise/ai-lead-dedupe";
+import { 验号码 } from "@/lib/enterprise/contact-format";
 
 type 人 = { id: string; name: string };
 let 总管: 人, 市场: 人, 市场管: 人, 外贸甲: 人, 乙: 人;
@@ -424,6 +428,93 @@ describe("项目详情：这位客户其他在推的项目", () => {
     忘掉企业版范围();
     const 总管看 = await 以谁的身份(总管.id, () => 客户其他在推项目(这条, c.id));
     expect(总管看.看得到.length + 总管看.看不到).toBe(2);
+  });
+});
+
+describe("撞号面板：在推项目个数（只给市场成员，含 0）", () => {
+  /** 旧项目（同事客户自带，在推）之外再挂：乙的在推线索（算）、丢单的、公海里的、回收站里的（都不算） */
+  async function 挂项目(c: { id: string }) {
+    await prisma.project.create({ data: { name: "乙的秘密项目", customerId: c.id, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育" } });
+    await prisma.project.create({ data: { name: "丢了的", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "商机", node: "共识方案", result: "丢单" } });
+    await prisma.project.create({ data: { name: "公海里的", customerId: c.id, ownerId: "", creatorId: 外贸甲.id, phase: "线索", node: "潜客培育", pooledAt: new Date() } });
+    await prisma.project.create({ data: { name: "回收站里的", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "线索", node: "潜客培育", deletedAt: new Date() } });
+  }
+  const 号of = (号: string) => { const r = 验号码("手机号", 号); if (!r.ok) throw new Error(r.提示); return r; };
+
+  it("市场成员（渠运、市场管理）撞上同事客户：带在推个数；按组织看客户开着、同事的项目看不到也数；不带项目名", async () => {
+    await setSetting(规则.按组织看客户.key, true);
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    const c = await 同事客户(外贸甲.id);
+    await 挂项目(c);
+    for (const u of [市场, 市场管]) {
+      当(u);
+      忘掉企业版范围();
+      const r = await 以谁的身份(u.id, () => 查号码("手机号", c.号));
+      expect(r).toMatchObject({ ok: true, 状态: "重复", 在推个数: 2 });
+      // 只有个数：项目名、阶段都不在回给浏览器的结果里
+      expect(JSON.stringify(r)).not.toMatch(/旧项目|乙的秘密项目|丢了的|公海里的|回收站里的|明确需求|潜客培育/);
+    }
+  });
+
+  it("含 0：名下项目都结束了（或只剩公海里的）也带，写 0", async () => {
+    const c = await 同事客户(外贸甲.id);
+    await prisma.project.update({ where: { id: c.旧 }, data: { result: "丢单" } });
+    await prisma.project.create({ data: { name: "公海里的", customerId: c.id, ownerId: "", creatorId: 外贸甲.id, phase: "线索", node: "潜客培育", pooledAt: new Date() } });
+    当(市场);
+    const r = await 查号码("手机号", c.号);
+    expect(r).toMatchObject({ ok: true, 状态: "重复", 在推个数: 0 });
+  });
+
+  it("撞上公海里的客户、自己名下的客户：市场成员同样带（公海里的项目不算在推）", async () => {
+    const c = await 同事客户(外贸甲.id);
+    await prisma.customerPool.create({ data: { customerId: c.id, userId: 外贸甲.id, reason: "手动" } });
+    await prisma.project.update({ where: { id: c.旧 }, data: { pooledAt: new Date() } });
+    当(市场);
+    expect(await 查号码("手机号", c.号)).toMatchObject({ ok: true, 状态: "公海待捞", 在推个数: 0 });
+    const 我的 = await 同事客户(市场管.id);
+    当(市场管);
+    expect(await 查号码("手机号", 我的.号)).toMatchObject({ ok: true, 状态: "我的通讯录已有", 在推个数: 1 });
+  });
+
+  it("不是市场成员（销售、总管理）：面板不变，不带在推个数", async () => {
+    const c = await 同事客户(外贸甲.id);
+    await 挂项目(c);
+    for (const u of [乙, 总管]) {
+      当(u);
+      const r = await 查号码("手机号", c.号);
+      expect(r).toMatchObject({ ok: true, 状态: "重复" });
+      expect(r).not.toHaveProperty("在推个数");
+    }
+    // 外贸甲自己的客户：同样不带
+    当(外贸甲);
+    expect(await 查号码("手机号", c.号)).not.toHaveProperty("在推个数");
+  });
+
+  it("没撞上本机客户（首次录入、回收站里的）：市场成员也不带", async () => {
+    当(市场);
+    expect(await 查号码("手机号", "13911112222")).not.toHaveProperty("在推个数");
+    const c = await 同事客户(外贸甲.id);
+    await prisma.customer.update({ where: { id: c.id }, data: { deletedAt: new Date() } });
+    await prisma.contact.updateMany({ where: { customerId: c.id }, data: { deletedAt: new Date() } });
+    const r = await 查号码("手机号", c.号);
+    expect(r).toMatchObject({ ok: true, 状态: "回收站里有" });
+    expect(r).not.toHaveProperty("在推个数");
+  });
+
+  it("首页 AI 新线索卡：市场成员撞上同事客户带在推个数（含 0），不是市场成员不带", async () => {
+    const c = await 同事客户(外贸甲.id);
+    await 挂项目(c);
+    const 号 = [号of(c.号)];
+    当(市场);
+    const 市 = await AI建档查重详(号, 市场);
+    expect(市).toMatchObject({ 在推: 2, 同事: { 负责人名: 外贸甲.name } });
+    expect(JSON.stringify(市)).not.toMatch(/乙的秘密项目|旧项目/);
+    当(乙);
+    expect(await AI建档查重详(号, 乙)).not.toHaveProperty("在推");
+    await prisma.project.updateMany({ where: { customerId: c.id }, data: { result: "丢单" } });
+    当(市场);
+    expect(await AI建档查重详(号, 市场)).toMatchObject({ 在推: 0 });
   });
 });
 
