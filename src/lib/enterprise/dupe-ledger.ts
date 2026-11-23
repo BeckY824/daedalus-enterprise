@@ -100,6 +100,65 @@ export type 撞号结果 = "拦截" | "写进现有项目" | "新建线索" | "�
 export const 没人接前缀 = "没人接：";
 export const 没人接结果 = (为什么: string) => `${没人接前缀}${为什么}`.slice(0, 200) as `${typeof 没人接前缀}${string}`;
 
+/**
+ * 「未建线索」待补建记录（机制总表 P-公海-15 后半，客户 E-223「从第一天起挑不到人的咨询都留得下来」，迁移 165 EntDupeHit.unbuilt）：
+ * 出口 C 整笔没建的两种——交销售挑不到人（没人接）、主路径客户负责人到持有上限（到上限，用户 11-23 定照挑不到人处理）——
+ * 台账这一行存补建要用的字段。不写客户名（客户 id 在这一行的 customerId 上）；号码在这一行的 keyValue 上，这里不重复。
+ * 补建按钮（销售管理手选接手人、不补建写原因、客户进公海自动关）之后做，状态先只有「待补建」
+ */
+export type 未建线索记录 = {
+  状态: "待补建";
+  /** 没人接 = 交销售挑不到人；到上限 = 主路径客户负责人到持有上限 */
+  类: "没人接" | "到上限";
+  /** 客户编号（显示用的 NO.xxxxx；没编号的老数据 = 「—」） */
+  客户编号: string;
+  /** 这次选的渠道（补建时的项目来源） */
+  渠道: { id: string; 名: string };
+  /** 对接人：挂号码撞上的那位客户联系人（id），或交的人填的新对接人（还没建，补建时再建） */
+  对接人: { 撞上的联系人: string } | { 新建: { 名字: string; 职务: string | null } };
+  /** 这次的沟通：方式（字典叫法）、类型、发起方、时间（ISO）、内容全文 */
+  沟通: { 方式: string | null; 类型: string; 发起方: string | null; 时间: string; 内容: string };
+  没建原因: string;
+  /** 这次定的线（判不出 = null） */
+  线: "内贸" | "外贸" | null;
+  /** 当时的客户负责人（主路径到上限时就是他；交销售时是接不了的那位） */
+  客户负责人: { id: string; 名: string };
+  /** 通知了谁：类别（销售管理 / 系统管理员 / 一个都没有）+ 收件人 */
+  通知了: { 类别: "销售管理" | "系统管理员" | null; 人: { id: string; 名: string }[] };
+  交的人: { id: string; 名: string };
+  /** 交的时刻（ISO） */
+  交的时间: string;
+};
+
+/**
+ * 记「未建线索」：落在这次撞号那一行上（号码撞上 刚记 / 合并的那一行：同一人、同一客户、同一键、10 分钟内最新的）；
+ * 找不到（同组的人、台账没记上）就补一行（结果 = 没人接：原因）。同一人 10 分钟内再交 = 同一行，记录换成最新这次。从不抛：没记上不挡回话
+ */
+export async function 记未建线索(
+  d: { userId: string; keyType: string; keyValue: string; customerId: string; ownerId: string }, 记录: 未建线索记录,
+): Promise<string | null> {
+  try {
+    const unbuilt = JSON.stringify(记录);
+    const 有 = await prisma.entDupeHit.findFirst({
+      where: { userId: d.userId, customerId: d.customerId, keyType: d.keyType, keyValue: d.keyValue.slice(0, 200), createdAt: { gte: new Date(Date.now() - 撞号预警.合并分钟 * 60_000) } },
+      orderBy: { createdAt: "desc" },
+      select: { id: true },
+    });
+    if (有) {
+      await prisma.entDupeHit.update({ where: { id: 有.id }, data: { unbuilt } });
+      return 有.id;
+    }
+    const 行 = await prisma.entDupeHit.create({
+      data: { userId: d.userId, keyType: d.keyType, keyValue: d.keyValue.slice(0, 200), customerId: d.customerId, ownerId: d.ownerId, result: 没人接结果(记录.没建原因), unbuilt },
+      select: { id: true },
+    });
+    return 行.id;
+  } catch (e) {
+    console.warn("[撞号台账] 未建线索没记上：", e instanceof Error ? e.message : e);
+    return null;
+  }
+}
+
 /** 记一行（10 分钟内同一人同一客户同一键的并进上一行），新记的看要不要预警。从不抛：台账没记上不挡查重 */
 async function 记撞号(d: 台账行): Promise<{ id: string; action: string | null } | null> {
   try {

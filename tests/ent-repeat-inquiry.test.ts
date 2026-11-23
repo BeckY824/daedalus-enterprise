@@ -5,7 +5,7 @@
  *     记一条算数的分配记录（计入负责人本月已分）、进线索验证、沟通记在新线索上（记录人 = 市场成员）；客户的负责人、来源、联系人、旧项目不改
  *   - 线跟负责人走（E-213）：负责人是外贸，新线索、流转线、分配记录都是外贸
  *   - 撞号台账记「新建线索」，不计入预警
- *   - 不给的：不是市场成员、客户在公海；框打开后换了负责人 = 作废；负责人到持有上限 = 一行不写
+ *   - 不给的：不是市场成员、客户在公海；框打开后换了负责人 = 作废；负责人到持有上限 = 一行项目不写、照挑不到人收尾（见下）
  *   - 交销售（客户 E-213 第一节 2、3 问取 A，E-218 二②）：负责人接不了指定分配（暂停 / 禁止、停用离职、不是销售）= 同一个事务里先挑人，
  *     线索直接建在挑中的销售名下（不经过市场成员名下），记自动分配、计入本月已分、进线索验证；客户不动（负责人是市场成员的也不算市场转客户）；
  *     不过「分配方式谁能用」（系统分）；挑不到人（都暂停 / 禁止、都满额、这条线没人、规则「线索分配」关着）= 整笔不建，市场成员看不到客户名、指派不了；
@@ -22,10 +22,31 @@
  *   - 同事客户的名称不露给市场成员：项目名「重复咨询-客户编号」、成功的话只说转给负责人跟进；项目列表里也看不到客户名
  *   - 防重复提交：同一客户、同一发起人 10 分钟内已建过就认那一条，不再建、不再计数；只认出口 C 自己建的（之前查重领取建的同标记线索不算）
  *   - 详情「其他在推项目」不算回收站里的
+ *   - 「未建线索」待补建记录（P-公海-15 后半）：挑不到人 / 负责人到持有上限整笔没建时，撞号台账那一行存客户编号、渠道、对接人、沟通、原因、通知了谁、交的人和时间，不写客户名
+ *   - 主路径负责人到持有上限（用户 11-23）：照挑不到人处理——不建、待补建记录、通知这条线的销售管理和系统管理员（规则关着只发系统管理员），框打开就说
+ *   - 负责人是销售管理：走主路径（指定分配）；两边同时交序号撞了唯一索引：整笔回滚重来，最多 3 次
+ *   - 三态照现状（E-213 第一节 1）：建新线索、进线索验证、终判、那条沟通都重开倒计时；额度只认那条有效沟通回满
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "t", role: "SALES", title: "", avatar: null as string | null } }));
+/** 序号撞号：还要撞几次（出口 C 建线索时，先在同一个事务里用同一个号连写两行，抛真的唯一约束错，模拟两边同时交读到同一个最大号） */
+const 撞号 = vi.hoisted(() => ({ 次: 0, 撞了: 0 }));
+vi.mock("@/lib/enterprise/dedupe-claim", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/dedupe-claim")>();
+  const 建: typeof m.查重领取建线索项目 = async (tx, a) => {
+    if (撞号.次 > 0 && typeof a.项目名 === "function") {
+      撞号.次 -= 1;
+      撞号.撞了 += 1;
+      const 序 = await m.重复咨询下一序号(tx, a.customerId);
+      for (const name of ["同时交的那笔", "这一笔"]) {
+        await tx.project.create({ data: { name, customerId: a.customerId, ownerId: a.接手人, creatorId: a.创建人, source: "repeat-inquiry", repeatOfCustomerId: a.customerId, repeatSeq: 序 } });
+      }
+    }
+    return m.查重领取建线索项目(tx, a);
+  };
+  return { ...m, 查重领取建线索项目: 建 };
+});
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
@@ -42,7 +63,7 @@ import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 查号码 } from "@/app/(app)/customers/number-actions";
 import { 出口C建线索, 出口C框数据 } from "@/app/(app)/customers/repeat-inquiry-actions";
 import type { 查重领取沟通 } from "@/app/(app)/customers/pool-actions";
-import { 不是市场成员出口C话, 出口C作废话, 负责人到上限话, 客户其他在推项目, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C项目名, 重复咨询原始客户, 出口C没人接话, 出口C没人接预告话, 规则关着为什么 } from "@/lib/enterprise/repeat-inquiry";
+import { 不是市场成员出口C话, 出口C作废话, 负责人到上限话, 负责人到上限预告话, 负责人到上限为什么, 客户其他在推项目, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C项目名, 重复咨询原始客户, 出口C没人接话, 出口C没人接预告话, 规则关着为什么 } from "@/lib/enterprise/repeat-inquiry";
 import { 查重领取 } from "@/app/(app)/customers/pool-actions";
 import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
 import { 分配谁能用key, 分配方式id } from "@/lib/enterprise/assign-use";
@@ -57,6 +78,12 @@ import path from "node:path";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 重复咨询来源 } from "@/lib/project/system-created";
 import { 看成客户编号, 看成客户编号严 } from "@/lib/customer-no";
+import type { 未建线索记录 } from "@/lib/enterprise/dupe-ledger";
+import { 默认三态规则 } from "@/lib/project/org-rules";
+import { 三态夜扫 } from "@/lib/enterprise/tri-state-db";
+import { 读一位三态 } from "@/lib/enterprise/tri-state-hold";
+import { 加天 } from "@/lib/enterprise/tri-state";
+import { beijingDay } from "@/lib/business-clock";
 
 type 人 = { id: string; name: string };
 let 总管: 人, 市场: 人, 市场管: 人, 外贸甲: 人, 乙: 人;
@@ -276,15 +303,73 @@ describe("出口 C：在负责人名下新建线索", () => {
     await 没动(c.id);
   });
 
-  it("负责人到了持有上限：一行不写，话里不带别人的持有数", async () => {
+  it("负责人到了持有上限（用户 11-23 照挑不到人处理）：框打开就说；交了一行项目不写，留待补建记录、通知这条线的销售管理 + 系统管理员；话里不带别人的持有数", async () => {
+    const 内销管 = await 造人("smgr1", "内销管某", "sales_mgr", "内贸");
+    const 外销管 = await 造人("smgr2", "外销管某", "sales_mgr", "外贸");
     const c = await 同事客户(外贸甲.id);
     await setSetting("orgRules", { ...默认组织规则, 公海: { ...默认组织规则.公海, 持有上限开: true, 默认上限: 10, 每人上限: { [外贸甲.id]: 1 } } });
     invalidateSettingsCache();
     当(市场);
-    const r = await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true } });
-    expect(r).toEqual({ ok: false, error: 负责人到上限话(外贸甲.name) });
-    expect(负责人到上限话(外贸甲.name)).not.toMatch(/\d/);
+    await 查号码("手机号", c.号);
+    expect(await 出口C框数据("手机号", c.号)).toMatchObject({ ok: true, 交销售: false, 没人接: 负责人到上限预告话(外贸甲.name, "销售管理") });
+    // 填新的对接人：还没建（不建线索就不在客户下加人），名字、职务记在待补建里
+    const r = await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 名字: "李采购", 职务: "采购" } });
+    expect(r).toEqual({ ok: true, 没建: true, 提示: 负责人到上限话(外贸甲.name, "销售管理") });
+    expect(负责人到上限话(外贸甲.name, "销售管理")).not.toMatch(/\d/);
     await 没动(c.id);
+    expect(await prisma.contact.count({ where: { customerId: c.id } })).toBe(1);
+    // 台账：查号码那一行并成「没人接：负责人到上限」，同一行存待补建记录
+    const 账 = await prisma.entDupeHit.findMany({ where: { customerId: c.id } });
+    expect(账.map((x) => [x.userId, x.result])).toEqual([[市场.id, `没人接：${负责人到上限为什么}`]]);
+    const 记 = JSON.parse(账[0].unbuilt!) as 未建线索记录;
+    expect(记).toMatchObject({
+      状态: "待补建", 类: "到上限", 客户编号: 出口C项目名(序).replace("重复咨询-", ""), 渠道: { id: 新渠道, 名: "小红书|笔记" },
+      对接人: { 新建: { 名字: "李采购", 职务: "采购" } }, 沟通: { 类型: "PHONE", 内容: "老客户来电问新一期报价" },
+      没建原因: 负责人到上限为什么, 线: "外贸", 客户负责人: { id: 外贸甲.id, 名: 外贸甲.name }, 交的人: { id: 市场.id, 名: 市场.name },
+    });
+    expect(记.通知了.类别).toBe("销售管理");
+    expect(记.通知了.人.map((x) => x.id).sort()).toEqual([外销管.id, 总管.id].sort());
+    expect(JSON.stringify(记)).not.toContain(`老客户${序}`);
+    // 通知：外贸（负责人的线）的销售管理 + 系统管理员；内贸的销售管理、市场成员自己不收；不带客户名、号码、别人的持有数
+    const 通 = await prisma.entNotice.findMany({ where: { kind: "待分配" } });
+    expect(通.map((x) => x.userId).sort()).toEqual([外销管.id, 总管.id].sort());
+    expect(通.map((x) => x.userId)).not.toContain(内销管.id);
+    for (const n of 通) {
+      const 字 = `${n.title}\n${n.body}`;
+      expect(字).toContain("持有上限");
+      expect(字).toContain("小红书|笔记");
+      expect(字).toContain("老客户来电问新一期报价");
+      expect(字).not.toContain(`老客户${序}`);
+      expect(字).not.toContain(c.号);
+    }
+  });
+
+  it("负责人到持有上限、规则「线索分配」关着：只通知系统管理员（同 P-公海-15 前半）", async () => {
+    await 造人("smgr2", "外销管某", "sales_mgr", "外贸");
+    const c = await 同事客户(外贸甲.id);
+    await setSetting(规则.线索分配.key, false);
+    await setSetting("orgRules", { ...默认组织规则, 公海: { ...默认组织规则.公海, 持有上限开: true, 默认上限: 10, 每人上限: { [外贸甲.id]: 1 } } });
+    invalidateSettingsCache();
+    当(市场);
+    expect(await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true } })).toEqual({ ok: true, 没建: true, 提示: 负责人到上限话(外贸甲.name, "系统管理员") });
+    expect((await prisma.entNotice.findMany({ where: { kind: "待分配" } })).map((x) => x.userId)).toEqual([总管.id]);
+    const 记 = JSON.parse((await prisma.entDupeHit.findFirstOrThrow({ where: { customerId: c.id } })).unbuilt!) as 未建线索记录;
+    expect(记).toMatchObject({ 类: "到上限", 对接人: { 撞上的联系人: c.王 }, 通知了: { 类别: "系统管理员", 人: [{ id: 总管.id, 名: 总管.name }] } });
+    await 没动(c.id);
+  });
+
+  it("负责人是销售管理（能接指定分配）：走主路径，建在他名下、记指定分配、计入他本月已分，不交销售", async () => {
+    const 内销管 = await 造人("smgr1", "内销管某", "sales_mgr", "内贸");
+    const c = await 同事客户(内销管.id);
+    当(市场);
+    expect(await 出口C框数据("手机号", c.号)).toMatchObject({ ok: true, 负责人名: 内销管.name, 交销售: false });
+    expect(await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 内销管.name }))
+      .toEqual({ ok: true, 提示: 出口C已转话(内销管.name), 负责人: 内销管.name });
+    const p = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, id: { not: c.旧 } } });
+    expect(p).toMatchObject({ ownerId: 内销管.id, creatorId: 市场.id, assignMode: "指定分配", bizLine: "内贸", flowLine: "内贸", source: 重复咨询来源, repeatSeq: 1 });
+    expect(await prisma.entLeadAssign.findFirstOrThrow({ where: { projectId: p.id } })).toMatchObject({ toUserId: 内销管.id, way: "指定分配", counted: true, line: "内贸" });
+    expect(await 本月已分(内销管.id)).toBe(1);
+    expect(await 本月已分(乙.id)).toBe(0);
   });
 });
 
@@ -603,6 +688,34 @@ describe("命名加序与只读来源字段（E-218）", () => {
     await expect(建()).rejects.toMatchObject({ code: "P2002" });
   });
 
+  it("两边同时交、序号撞了唯一索引：整笔回滚重来，重来读到对方那条接着往下排；一直撞最多试 3 次，照抛、一行不留", async () => {
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    撞号.次 = 1;
+    撞号.撞了 = 0;
+    try {
+      const r = await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true } });
+      expect(r).toEqual({ ok: true, 提示: 出口C已转话(外贸甲.name), 负责人: 外贸甲.name });
+      expect(撞号.撞了).toBe(1);
+      // 撞的那一笔整笔回滚了（两行抢号的都不在）：只有重来建成的那一条，序号 1、分配记录一条、沟通一条
+      const 新 = await prisma.project.findMany({ where: { customerId: c.id, id: { not: c.旧 } } });
+      expect(新.map((x) => [x.name, x.repeatSeq])).toEqual([[出口C项目名(序), 1]]);
+      expect(await prisma.entLeadAssign.count()).toBe(1);
+      expect(await prisma.followUp.count({ where: { customerId: c.id } })).toBe(1);
+
+      // 一直撞：试 3 次就停，把唯一约束错照抛出去，这位客户名下一行不多
+      const d = await 同事客户(外贸甲.id);
+      撞号.次 = 9;
+      撞号.撞了 = 0;
+      await expect(出口C建线索("手机号", d.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true } })).rejects.toMatchObject({ code: "P2002" });
+      expect(撞号.撞了).toBe(3);
+      expect(await prisma.project.count({ where: { customerId: d.id } })).toBe(1);
+      expect(await prisma.followUp.count({ where: { customerId: d.id } })).toBe(0);
+    } finally {
+      撞号.次 = 0;
+    }
+  });
+
   it("负责人编辑项目改得了名字、改不了来源字段；改名后标记、原始客户、序号都还在；详情给原始客户编号 + 第几次", async () => {
     const c = await 同事客户(外贸甲.id);
     当(市场);
@@ -672,6 +785,19 @@ describe("交销售挑不到人：提醒能分配的人（P-转-38）；事务�
     // 台账：查号码那一行并成「没人接：原因」
     const 账 = await prisma.entDupeHit.findMany({ where: { customerId: c.id } });
     expect(账.map((x) => [x.userId, x.result])).toEqual([[市场.id, `没人接：${为什么}`]]);
+    // 同一行存「未建线索」待补建记录（P-公海-15 后半）：补建要用的都在，不写客户名
+    const 记 = JSON.parse(账[0].unbuilt!) as 未建线索记录;
+    expect(记).toMatchObject({
+      状态: "待补建", 类: "没人接", 客户编号: 出口C项目名(序).replace("重复咨询-", ""), 渠道: { id: 新渠道, 名: "小红书|笔记" }, 对接人: { 撞上的联系人: c.王 },
+      沟通: { 类型: "PHONE", 内容: "老客户来电问新一期报价" }, 没建原因: 为什么, 线: "内贸",
+      客户负责人: { id: 外贸甲.id, 名: 外贸甲.name }, 交的人: { id: 市场.id, 名: 市场.name },
+    });
+    expect(new Date(记.沟通.时间).getTime()).toBe(new Date("2026-11-20T10:00:00+08:00").getTime());
+    expect(Date.now() - new Date(记.交的时间).getTime()).toBeLessThan(60_000);
+    expect(记.通知了.类别).toBe("销售管理");
+    expect(记.通知了.人.map((x) => x.名).sort()).toEqual([内销管.name, 总管.name].sort());
+    expect(JSON.stringify(记)).not.toContain(`老客户${序}`);
+    expect(JSON.stringify(记)).not.toContain(c.号);
     // 通知：内贸销售管理 + 系统管理员（总管），外贸销售管理、市场成员自己不收
     const 通 = await prisma.entNotice.findMany({ where: { kind: "待分配" }, orderBy: { userId: "asc" } });
     expect(通.map((x) => x.userId).sort()).toEqual([内销管.id, 总管.id].sort());
@@ -874,5 +1000,73 @@ describe("项目列表按原始客户编号搜（检索读字段）：这一支�
     expect(await 搜(总管, "2024")).toEqual([]);
     expect(await 搜(总管, "02024")).toEqual([p.id]);
     expect(await 搜(总管, "NO.2024")).toEqual([p.id]);
+  });
+});
+
+describe("三态照现状（E-213 第一节 1）：出口 C 的四样动静都重开倒计时，额度只认那条有效沟通回满", () => {
+  const 今天 = beijingDay(new Date());
+  const 前 = (n: number) => 加天(今天, -n);
+  const 那天 = (n: number) => new Date(`${前(n)}T10:00:00+08:00`);
+  const 今天沟通 = (content: string) => 沟通({ content, occurredAt: `${今天} 00:00` });
+
+  beforeEach(async () => {
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { ...默认组织规则.超时回收, 起算日: 前(150) }, 三态: { ...默认三态规则, 开: true } });
+    invalidateSettingsCache();
+  });
+
+  /** 120 天前建档、名下旧项目 120 天没动的同事客户：夜扫后在沉睡；20 天前负责人点过一次继续持有（用掉 1 次额度） */
+  async function 沉睡客户() {
+    const c = await 同事客户(外贸甲.id);
+    await prisma.customer.update({ where: { id: c.id }, data: { createdAt: 那天(120) } });
+    await prisma.project.update({ where: { id: c.旧 }, data: { createdAt: 那天(120), updatedAt: 那天(120) } });
+    await 三态夜扫();
+    expect((await prisma.entCustomerClock.findUniqueOrThrow({ where: { customerId: c.id } })).state).toBe("沉睡");
+    await prisma.entCustomerStateLog.create({ data: { customerId: c.id, fromState: "沉睡", toState: "沉睡", via: "本人", reason: "还在跟", holdDays: 30, userId: 外贸甲.id, at: 那天(20) } });
+    return c;
+  }
+
+  it("额度：建新线索、进线索验证都不回满；市场成员记的那条是占位话（「跟进」）也不回满；换一位市场成员记一条有内容的沟通才回满", async () => {
+    const c = await 沉睡客户();
+    expect((await 读一位三态(c.id))!.继续持有.已用次数).toBe(1);
+    当(市场);
+    expect((await 出口C建线索("手机号", c.号, 今天沟通("跟进"), { 渠道: 新渠道, 对接人: { 撞上的: true } })).ok).toBe(true);
+    const 一 = (await 读一位三态(c.id))!;
+    // 倒计时重开了（建新线索、进线索验证当天的节点变更），额度没回满
+    expect([一.状态, 一.归零日, 一.继续持有.已用次数]).toEqual(["活跃", 今天, 1]);
+    expect((await prisma.entCustomerClock.findUniqueOrThrow({ where: { customerId: c.id } })).quotaResetDay).toBeNull();
+    当(市场管);
+    expect((await 出口C建线索("手机号", c.号, 今天沟通("老客户来电问新一期报价"), { 渠道: 新渠道, 对接人: { 撞上的: true } })).ok).toBe(true);
+    expect((await 读一位三态(c.id))!.继续持有.已用次数).toBe(0);
+    expect((await prisma.entCustomerClock.findUniqueOrThrow({ where: { customerId: c.id } })).quotaResetDay).toBe(今天);
+  });
+
+  it("倒计时：建新线索（起点节点）、进线索验证、那条沟通、终判，每一样单独都把归零日拨到它那天", async () => {
+    const c = await 沉睡客户();
+    当(市场);
+    expect((await 出口C建线索("手机号", c.号, 今天沟通("老客户来电问新一期报价"), { 渠道: 新渠道, 对接人: { 撞上的: true } })).ok).toBe(true);
+    const p = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, id: { not: c.旧 } } });
+    const 节点们 = await prisma.projectNodeLog.findMany({ where: { projectId: p.id }, orderBy: [{ at: "asc" }, { id: "asc" }] });
+    // 建的时候在起点节点记一行、市场分给销售进线索验证再记一行
+    expect(节点们.map((x) => x.toNode)).toEqual(["潜客培育", "线索验证"]);
+    // 都挪回 100 天前（钟上的推进底日一起挪，S7 拨过的钟不回退），归零日回到 100 天前
+    await prisma.project.update({ where: { id: p.id }, data: { createdAt: 那天(100) } });
+    await prisma.projectNodeLog.updateMany({ where: { projectId: p.id }, data: { at: 那天(100) } });
+    await prisma.followUp.updateMany({ where: { customerId: c.id }, data: { occurredAt: 那天(100) } });
+    await prisma.entCustomerClock.update({ where: { customerId: c.id }, data: { progressDay: 前(100) } });
+    expect((await 读一位三态(c.id))!.归零日).toBe(前(100));
+    // 一样一样拨回来
+    await prisma.projectNodeLog.update({ where: { id: 节点们[0].id }, data: { at: 那天(40) } });
+    expect((await 读一位三态(c.id))!.归零日).toBe(前(40));
+    await prisma.projectNodeLog.update({ where: { id: 节点们.at(-1)!.id }, data: { at: 那天(30) } });
+    expect((await 读一位三态(c.id))!.归零日).toBe(前(30));
+    await prisma.followUp.updateMany({ where: { customerId: c.id }, data: { occurredAt: 那天(20) } });
+    expect((await 读一位三态(c.id))!.归零日).toBe(前(20));
+    // 终判：负责人在线索验证面板判有效（需求状态先选上；推到下一个节点，记一行节点变更）
+    当(外贸甲);
+    忘掉企业版范围();
+    await prisma.project.update({ where: { id: p.id }, data: { demandStatus: "明确需求" } });
+    expect(await 以谁的身份(外贸甲.id, () => 线索初判Action(p.id, "有效"))).toMatchObject({ ok: true });
+    expect(await prisma.projectNodeLog.count({ where: { projectId: p.id } })).toBe(节点们.length + 1);
+    expect((await 读一位三态(c.id))!.归零日).toBe(今天);
   });
 });

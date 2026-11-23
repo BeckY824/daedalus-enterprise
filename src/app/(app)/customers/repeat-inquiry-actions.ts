@@ -16,7 +16,10 @@
  * 是系统分，不过「分配方式谁能用」（挡分配方式）。挑不到人（规则「线索分配」关着、这条线没人、都暂停 / 禁止、都满额）= 整笔不建
  *（现有的待分配要建的人占着负责人一格，见 repeat-inquiry.ts 文件头），照 P-转-38 提醒能分配的人（没人接收尾）：撞号台账记「没人接：原因」、
  * 这条线的销售管理和系统管理员收一条通知（客户编号、渠道、沟通摘要，不带客户名；规则关着只发系统管理员），
- * 回「这条线没有能接的销售（原因），这次没建；已通知销售管理」。
+ * 回「这条线没有能接的销售（原因），这次没建；已通知销售管理」。台账这一行同时存「未建线索」待补建记录（P-公海-15 后半：客户编号、渠道、对接人、
+ * 沟通方式 / 时间 / 内容、没建原因、通知了谁、交的人和时间，不写客户名；补建按钮之后做）。
+ * 主路径客户负责人到持有上限（M-公海-18，事务里 写前核上限 抛出、整笔回滚）= 照挑不到人处理（用户 11-23）：同样留待补建记录、
+ * 通知这条线的销售管理和系统管理员（规则关着只发系统管理员），回「负责人名下已到持有上限，这次没建；已通知销售管理」（没建，不是失败）；框打开时就到上限也先说清。
  * 客户不动（带标记的线索分配不算市场转客户，market-transfer.ts）。
  *
  * 两条路都没有选人：负责人由系统按上面写，参数里没有负责人，交了别的字段（ownerId 之类）也不认（tests/ent-repeat-inquiry.test.ts 钉着）。
@@ -36,7 +39,7 @@ import { 规整沟通, type 规整好的沟通 } from "@/lib/project/wizard";
 import { 落到渠道, 新数据渠道不行 } from "@/lib/enterprise/channel-main";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { 查重领取记沟通, 查重领取建线索项目, 认对接人, 落对接人, 撞上的联系人, 查重领取作废, 查重领取换人, 查重领取理由, 候选挑不到为什么, type 认好的对接人 } from "@/lib/enterprise/dedupe-claim";
-import { 出口C可用, 出口C的线, 出口C作废, 出口C作废话, 负责人到上限话, 出口C项目名, 出口C防重分钟, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C没人接话, 出口C没人接预告话, 出口C没人接收件人, 交销售候选, type 出口C没人接 } from "@/lib/enterprise/repeat-inquiry";
+import { 出口C可用, 出口C的线, 出口C作废, 出口C作废话, 负责人到上限话, 负责人到上限为什么, 负责人到上限预告话, 出口C项目名, 出口C防重分钟, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C没人接话, 出口C没人接预告话, 出口C没人接收件人, 交销售候选, type 出口C没人接 } from "@/lib/enterprise/repeat-inquiry";
 import type { 查重领取候选 } from "@/lib/enterprise/dedupe-claim";
 import { 企划线索计数key, 月份, 计不计数, 挑接手人, 挑的理由, 本月已分, 配额of, 满了 } from "@/lib/enterprise/lead-assign";
 import { 本月分配行, 读挑人底子, 读线部门 } from "@/lib/enterprise/assign-eta";
@@ -48,7 +51,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 import { 分配通知 } from "@/lib/enterprise/notice-sources";
-import { 号码撞上, 没人接结果 } from "@/lib/enterprise/dupe-ledger";
+import { 号码撞上, 没人接结果, 记未建线索, type 未建线索记录 } from "@/lib/enterprise/dupe-ledger";
 import { notify } from "@/lib/enterprise/notify";
 import { 客户编号显示 } from "@/lib/customer-no";
 import { FOLLOW_TYPE_MAP } from "@/lib/constants";
@@ -63,7 +66,7 @@ import type { 查重领取沟通 } from "./pool-actions";
 /**
  * 框打开时取：负责人名字（按钮、框头）、交销售（负责人接不了，新线索按区域自动分给销售）、能选的渠道、号码有没有撞上一位联系人
  *（有就默认挂他；框里不列同事客户的资料和联系人名字）。没有选人那一格。
- * 没人接 = 交销售这一刻就挑不到人：框照开、顶上先说清（交了不建，渠道和沟通发给销售管理 / 系统管理员，P-转-38）
+ * 没人接 = 交销售这一刻就挑不到人，或主路径负责人这一刻已到持有上限：框照开、顶上先说清（交了不建，渠道和沟通发给销售管理 / 系统管理员，P-转-38 / P-公海-15）
  */
 export type 出口C框 =
   | { ok: true; 负责人名: string; 交销售: boolean; 渠道们: 可选渠道[]; 有撞上的联系人: boolean; 没人接?: string }
@@ -80,7 +83,7 @@ export type 出口C对接人 = { 撞上的?: boolean; 名字?: string | null; �
 export type 出口C新项目 = { 渠道?: string | null; 对接人?: 出口C对接人 | null; 负责人名?: string | null };
 /**
  * 成功的话不带项目名、客户名（同事的客户，市场成员看不到它的名称）：只说转给了负责人跟进。
- * 没建 = 交销售挑不到人、照 P-转-38 记了台账发了通知（没人接收尾）：不是失败，界面清草稿、关框、用普通样式说这句，键收起（免得再点再发一遍）
+ * 没建 = 交销售挑不到人 / 主路径负责人到持有上限、照 P-转-38 记了台账（含待补建记录）发了通知（没人接收尾）：不是失败，界面清草稿、关框、用普通样式说这句，键收起（免得再点再发一遍）
  */
 export type 出口C结果 = { ok: true; 提示: string; 负责人: string } | { ok: true; 没建: true; 提示: string } | { ok: false; error: string };
 
@@ -96,6 +99,13 @@ export async function 出口C框数据(类型: string, 值: string): Promise<出
   if (r.目标.交销售) {
     const 候 = await 交销售候选(org!, me.id, r.目标.客户.id, r.目标.负责人);
     if (!候.ok) 没人接 = 出口C没人接预告话(候.没人接.为什么, (await 出口C没人接收件人(org!, 候.没人接.线, me.id)).通知);
+  } else {
+    // 主路径：负责人现在就到持有上限（新线索算 1 个，同事务里 写前核上限）= 交了不建，先说清。持有数整段看全部（同事名下的项目发起人的限定读数不全）
+    const 起 = await 看全部(async () => 持有上限起点(prisma, await 生效组织规则(), r.目标.负责人));
+    if (起 && 起.有 + 1 > 起.上限) {
+      const 线 = await 出口C的线(org!, r.目标.负责人, r.目标.客户.id, me.id);
+      没人接 = 负责人到上限预告话(r.目标.负责人名, (await 出口C没人接收件人(org!, 线, me.id)).通知);
+    }
   }
   const 撞上 = await 撞上的联系人(prisma, r.目标.客户.id, 号);
   return { ok: true, 负责人名: r.目标.负责人名, 交销售: r.目标.交销售, 渠道们: await 可选渠道们(), 有撞上的联系人: !!撞上, ...(没人接 ? { 没人接 } : {}) };
@@ -140,7 +150,7 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
   let 候: 查重领取候选 | null = null;
   if (交销售) {
     const 读 = await 交销售候选(org!, me.id, 客户.id, 负责人);
-    if (!读.ok) return 没人接收尾(org!, me, 号, 客户, 读.没人接, 渠道, 好);
+    if (!读.ok) return 没人接收尾(org!, me, 号, 客户, { ...读.没人接, 类: "没人接", 负责人, 负责人名 }, 渠道, 好, 对接人);
     候 = 读.候;
   }
   // 主路径：线跟负责人走；交销售：这次定的方向（判不出 = null：项目业务线按接手人的线，流转线按接手人事业部）
@@ -163,7 +173,7 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
   for (;;) {
     if (候 && 底) {
       const 挑 = 挑接手人(底.排位(), 跳过, 候.查满, 底.不限额);
-      if (!挑) return 没人接收尾(org!, me, 号, 客户, { 为什么: 候选挑不到为什么(候, 底), 线: 候.向.线 }, 渠道, 好);
+      if (!挑) return 没人接收尾(org!, me, 号, 客户, { 为什么: 候选挑不到为什么(候, 底), 线: 候.向.线, 类: "没人接", 负责人, 负责人名 }, 渠道, 好, 对接人);
       谁 = 挑;
       为什么 = 查重领取理由(候, 挑的理由(底.排位(), 跳过, 候.查满, 谁, 底.不限额));
     }
@@ -186,7 +196,7 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
           ? await 看全部(() => tx.entLeadAssign.findFirst({ where: { projectId: { in: 同标记.map((x) => x.id) }, fromUserId: me.id, byUserId: me.id }, orderBy: { createdAt: "desc" }, select: { projectId: true } }))
           : null;
         if (刚建?.projectId) return { 已有: 刚建.projectId };
-        // 持有上限（M-公海-18）：同客户页指定给别人，新建的线索算 1 个。交销售那条路照自动分配不看持有上限（A10 / A11）
+        // 持有上限（M-公海-18）：同客户页指定给别人，新建的线索算 1 个；超了整笔回滚、照挑不到人收尾（见下）。交销售那条路照自动分配不看持有上限（A10 / A11）
         if (!交销售) await 写前核上限(tx, await 持有上限起点(tx, 规则, 负责人), 1, "分配");
         // 交销售：按事务里重读的本月分配数再挑一遍，还是他才写（同 自动分给 / 查重领取 的复核）；判无效待补、满额也在这里核
         let 补位id: string | null = null;
@@ -216,7 +226,8 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
         await 看全部(() => 跟着项目重算(tx, 状态开, [客户.id]));
         return { 新: id, 补发: !!补位id };
       })));
-      if (!r.ok) return { ok: false, error: 负责人到上限话(负责人名) };
+      // 负责人到持有上限：整笔已回滚；照挑不到人处理（用户 11-23）：待补建记录 + 通知这条线的销售管理和系统管理员
+      if (!r.ok) return 没人接收尾(org!, me, 号, 客户, { 为什么: 负责人到上限为什么, 线, 类: "到上限", 负责人, 负责人名 }, 渠道, 好, 对接人);
       if ("已有" in r.值) return { ok: true, 提示: 出口C已转过话(负责人名, 出口C防重分钟, 交销售), 负责人: 负责人名 };
       项目id = r.值.新;
       补发 = r.值.补发;
@@ -277,31 +288,50 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
 }
 
 /**
- * 交销售挑不到人、整笔没建（P-转-38 提醒能分配的人，机制总表 P-转-38）：
- * 撞号台账这一行记「没人接：原因」（查号码时记的「拦截」那一行 10 分钟内并进去，不计入预警次数）；
+ * 整笔没建的收尾（P-转-38 提醒能分配的人，机制总表 P-转-38 / P-公海-15）：交销售挑不到人（类 没人接），或主路径客户负责人到持有上限（类 到上限，用户 11-23 定照挑不到人处理）。
+ * 撞号台账这一行记「没人接：原因」（查号码时记的「拦截」那一行 10 分钟内并进去，不计入预警次数），同一行存「未建线索」待补建记录
+ *（记未建线索：客户编号、渠道、对接人、沟通方式 / 时间 / 内容、没建原因、通知了谁、交的人和时间，不写客户名；补建按钮之后做）；
  * 这条线的销售管理和系统管理员各收一条站内通知（飞书照通知开关推；规则「线索分配」关着只发系统管理员，发起人自己不收，出口C没人接收件人），
  * 带客户编号、这次的渠道、沟通摘要，不带客户名（收件人不一定看得到这位客户）、不带号码（notify 兜底打码）。从不写项目、分配、沟通。
  * 回 { ok: true, 没建: true }：这一笔该做的（记台账、发通知）都做了，界面不当失败
  */
 async function 没人接收尾(
-  org: 组织, me: { id: string; name: string }, 号: 验好的号, 客户: { id: string; customerNo: number | null }, 没: 出口C没人接, 渠道: string, 好: 规整好的沟通,
+  org: 组织, me: { id: string; name: string }, 号: 验好的号, 客户: { id: string; customerNo: number | null },
+  没: 出口C没人接 & { 类: 未建线索记录["类"]; 负责人: string; 负责人名: string }, 渠道: string, 好: 规整好的沟通, 对接人: 认好的对接人,
 ): Promise<出口C结果> {
+  const 到上限 = 没.类 === "到上限";
   await 号码撞上(me.id, await 读的我(defaultClient), 号, 没人接结果(没.为什么));
   const { 人们, 通知, 开着 } = await 出口C没人接收件人(org, 没.线, me.id);
   const 编号 = 客户编号显示(客户);
   const 渠道名 = (await prisma.channel.findUnique({ where: { id: 渠道 }, select: { name: true } }))?.name ?? "—";
   const 摘要 = 好.content.replace(/\s+/g, " ").trim();
+  const 方式 = 好.method || FOLLOW_TYPE_MAP[好.type]?.label || 好.type;
+  const 交的时间 = new Date(Date.now());
+  // 待补建记录（P-公海-15 后半）：先记，通知发不出去也留得下来
+  const 收件人名 = new Map((人们.length ? await prisma.user.findMany({ where: { id: { in: 人们 } }, select: { id: true, name: true } }) : []).map((u) => [u.id, u.name]));
+  await 记未建线索({ userId: me.id, keyType: 号.类型, keyValue: 号.值, customerId: 客户.id, ownerId: 没.负责人 }, {
+    状态: "待补建", 类: 没.类, 客户编号: 编号, 渠道: { id: 渠道, 名: 渠道名 },
+    对接人: "挂" in 对接人 ? { 撞上的联系人: 对接人.挂 } : { 新建: { 名字: 对接人.建.name, 职务: 对接人.建.position } },
+    沟通: { 方式: 好.method || FOLLOW_TYPE_MAP[好.type]?.label || null, 类型: 好.type, 发起方: 好.initiator, 时间: 好.occurredAt.toISOString(), 内容: 好.content },
+    没建原因: 没.为什么, 线: 没.线, 客户负责人: { id: 没.负责人, 名: 没.负责人名 },
+    通知了: { 类别: 通知, 人: 人们.map((id) => ({ id, 名: 收件人名.get(id) ?? id })) },
+    交的人: { id: me.id, 名: me.name }, 交的时间: 交的时间.toISOString(),
+  });
+  const 沟通句 = `渠道：${渠道名}；沟通（${方式}）：${摘要.length > 120 ? `${摘要.slice(0, 120)}…` : 摘要}。`;
   // key 按 客户 + 发起人 + 10 分钟一格（同撞号台账 10 分钟并一行）：同一人隔一两分钟再交一次，不再重复提醒（默认键只挡同一分钟）
   if (人们.length) await notify(人们, {
     kind: "待分配",
-    key: `repeat-no-taker:${客户.id}:${me.id}:${Math.floor(Date.now() / 600_000)}`,
-    title: `老客户重复咨询没人接：${编号}`,
-    body: `${me.name} 查号码撞上客户 ${编号}（客户负责人接不了新线索），想新建一条交销售的线索，但${没.线 ? `${没.线}线` : "这条线"}没有能接的销售（${没.为什么}），这次没建。`
-      + `渠道：${渠道名}；沟通（${好.method || FOLLOW_TYPE_MAP[好.type]?.label || 好.type}）：${摘要.length > 120 ? `${摘要.slice(0, 120)}…` : 摘要}。${开着 ? `请调配额、恢复参与分配，或找 ${me.name} 另行安排` : "请在组织规则里打开线索分配，或手动处理"}`,
+    key: `repeat-no-taker:${客户.id}:${me.id}:${Math.floor(交的时间.getTime() / 600_000)}`,
+    title: 到上限 ? `老客户重复咨询没建（负责人到持有上限）：${编号}` : `老客户重复咨询没人接：${编号}`,
+    body: 到上限
+      ? `${me.name} 查号码撞上客户 ${编号}，想在客户负责人 ${没.负责人名} 名下新建一条线索，但他名下线索 / 商机阶段的项目已到持有上限，这次没建。`
+        + `${沟通句}已留在撞号台账（待补建）。请调整持有上限、让 ${没.负责人名} 推进或放回一些项目，或找 ${me.name} 另行安排`
+      : `${me.name} 查号码撞上客户 ${编号}（客户负责人接不了新线索），想新建一条交销售的线索，但${没.线 ? `${没.线}线` : "这条线"}没有能接的销售（${没.为什么}），这次没建。`
+        + `${沟通句}已留在撞号台账（待补建）。${开着 ? `请调配额、恢复参与分配，或找 ${me.name} 另行安排` : "请在组织规则里打开线索分配，或手动处理"}`,
     link: null,
   });
   // 不是失败：台账记了、通知发了（同一人 10 分钟内再交按 key 不再记，照样算通知到了）；收件人去掉发起人自己后一个不剩 = 「请找销售管理」
-  return { ok: true, 没建: true, 提示: 出口C没人接话(没.为什么, 通知) };
+  return { ok: true, 没建: true, 提示: 到上限 ? 负责人到上限话(没.负责人名, 通知) : 出口C没人接话(没.为什么, 通知) };
 }
 
 /** 序号撞了 (repeatOfCustomerId, repeatSeq) 的唯一索引（Prisma P2002）：出口C建线索 重来一次 */

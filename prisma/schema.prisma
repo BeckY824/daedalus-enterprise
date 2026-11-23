@@ -1894,6 +1894,9 @@ model EntDupeHit {
   /// 这一行触发的预警，按位记：1 = 第一档（同一人同一客户 7 天 ≥3 次）、2 = 第二档（同一客户 7 天 ≥3 个人）；0 = 没触发。
   /// 第三档（绕过强录）随强录推迟，第一期不写
   warnTier   Int       @default(0)
+  /// 「未建线索」待补建记录（迁移 165，P-公海-15）：出口 C 挑不到人 / 负责人到持有上限整笔没建时存补建要用的字段（JSON，dupe-ledger.ts 未建线索记录）：
+  /// 状态（待补建）、客户编号、渠道、对接人、沟通方式 / 时间 / 内容、没建原因、通知了谁、交的人和时间；不写客户名。别的行空
+  unbuilt    String?
   createdAt  DateTime  @default(now())
 
   @@index([userId, customerId, createdAt])
