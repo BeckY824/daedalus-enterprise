@@ -222,7 +222,7 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
         if (补位id && !(await 用掉补位(tx, 补位id, 记.id, id))) throw new 查重领取换人(false);
         // 市场分给销售：建好就进线索验证（M-线索-04），由接手人判
         if (算市场建给销售(org!, me.id, 接手人)) await 市场分配进线索验证(tx, [id], 接手人, me.id);
-        await 查重领取记沟通(tx, me.id, id, 好, new Date());
+        await 查重领取记沟通(tx, me.id, id, 好, new Date(), true); // 同一事务刚建的线索项目（#442 三态额度：带出的首条沟通补录早日期也回满）
         await 看全部(() => 跟着项目重算(tx, 状态开, [客户.id]));
         return { 新: id, 补发: !!补位id };
       })));
