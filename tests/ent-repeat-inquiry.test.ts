@@ -15,7 +15,8 @@
  *     线判不出两条线的销售管理都收；发起人自己不收，去掉他一个不剩 = 「请找销售管理」；规则关着正文建议打开规则或手动处理
  *   - 项目列表按原始客户编号命中那一支：短纯数字（「2024」）不触发（看成客户编号严，共用的 看成客户编号 不变）；销售用编号搜不到他看不到的同事的重复咨询线索
  *   - 没有选人：交了 ownerId / 接手人之类的参数也不认，负责人由系统定（E-218 二①）
- *   - 命名加序（E-218）：同一位客户第 2 次起「-2」「-3」，序号读只读字段 repeatSeq（含回收站、已结束的），改名不影响；(原始客户, 序号) 唯一
+ *   - 命名加序（E-218）：同一位客户第 2 次起「-2」「-3」，序号读只读字段 repeatSeq（含回收站、已结束的），改名不影响；(原始客户, 序号) 唯一；
+ *     序号只给出口 C 记：查重领取建的记原始客户、序号空（不占号、领几次都不撞索引）
  *   - 只读来源字段：编辑项目改不了 source / repeatOfCustomerId / repeatSeq；改了名标记还在；详情给「原始客户编号 + 第几次」
  *   - 对接人：挂号码撞上的那位（不改他）或新建一位（不设主联系人）
  *   - 同事客户的名称不露给市场成员：项目名「重复咨询-客户编号」、成功的话只说转给负责人跟进；项目列表里也看不到客户名
@@ -217,12 +218,13 @@ describe("出口 C：在负责人名下新建线索", () => {
     if (!领.ok) throw new Error(领.error);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(乙.id);
     const 领的 = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, source: 重复咨询来源 } });
-    expect(领的).toMatchObject({ creatorId: 市场.id, ownerId: 乙.id, repeatSeq: 1 });
+    // 查重领取带来源标记、记原始客户，但不占序号（序号只给出口 C 记）
+    expect(领的).toMatchObject({ creatorId: 市场.id, ownerId: 乙.id, repeatOfCustomerId: c.id, repeatSeq: null });
     // 几分钟后同一号码又来咨询：客户在乙名下，出口 C 在乙名下新建（不当成重复提交）
     const r = await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 乙.name });
     expect(r).toEqual({ ok: true, 提示: 出口C已转话(乙.name), 负责人: 乙.name });
     expect(await prisma.project.count({ where: { customerId: c.id, source: 重复咨询来源 } })).toBe(2);
-    expect(await prisma.project.findFirstOrThrow({ where: { customerId: c.id, repeatSeq: 2 } })).toMatchObject({ ownerId: 乙.id, name: 出口C项目名(序, 2) });
+    expect(await prisma.project.findFirstOrThrow({ where: { customerId: c.id, repeatSeq: 1 } })).toMatchObject({ ownerId: 乙.id, name: 出口C项目名(序) });
     // 再交一次才是重复提交
     expect(await 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 乙.name })).toEqual({ ok: true, 提示: 出口C已转过话(乙.name, 10), 负责人: 乙.name });
     expect(await prisma.project.count({ where: { customerId: c.id, source: 重复咨询来源 } })).toBe(2);
@@ -545,6 +547,34 @@ describe("命名加序与只读来源字段（E-218）", () => {
     const d = await 同事客户(外贸甲.id);
     expect(await 交(d)).toMatchObject({ ok: true });
     expect(await prisma.project.findFirstOrThrow({ where: { customerId: d.id, source: 重复咨询来源 } })).toMatchObject({ name: 出口C项目名(序), repeatSeq: 1 });
+  });
+
+  it("序号只给出口 C 记：先查重领取过（repeatSeq 空、不占号），出口 C 第一次不带序、repeatSeq = 1，再一次 -2；同一位客户查重领取两次不撞唯一索引", async () => {
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    // 查重领取两次（领完再进公海再领）：两条都记原始客户、序号都空，唯一索引里空值互不相撞
+    for (let i = 0; i < 2; i++) {
+      // 每次都当外贸甲放进公海的（按区域自动分给乙；内贸只有乙一个，乙当原负责人放的会挑不到人，所以第二次先把客户挪回外贸甲名下）
+      await prisma.customer.update({ where: { id: c.id }, data: { salesOwnerId: 外贸甲.id } });
+      await prisma.customerPool.create({ data: { customerId: c.id, userId: 外贸甲.id, reason: "手动" } });
+      const 领 = await 查重领取("手机号", c.号, 沟通(), c.id, { 渠道: 新渠道, 对接人: { 原id: c.王 } });
+      if (!领.ok) throw new Error(领.error);
+    }
+    const 领的 = await prisma.project.findMany({ where: { customerId: c.id, source: 重复咨询来源 }, select: { name: true, repeatOfCustomerId: true, repeatSeq: true } });
+    expect(领的).toHaveLength(2);
+    for (const x of 领的) expect(x).toMatchObject({ repeatOfCustomerId: c.id, repeatSeq: null });
+    expect(领的.some((x) => x.name.startsWith("重复咨询"))).toBe(false);
+    // 客户现在在乙名下：出口 C 第一次 = 「重复咨询-NO.x」不带序、repeatSeq 1；再一次 = -2
+    const 号 = 出口C项目名(序);
+    const 交乙 = () => 出口C建线索("手机号", c.号, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 乙.name });
+    await 挪早(c.id);
+    expect(await 交乙()).toMatchObject({ ok: true });
+    await 挪早(c.id);
+    expect(await 交乙()).toMatchObject({ ok: true });
+    const 出口C的 = await prisma.project.findMany({ where: { customerId: c.id, source: 重复咨询来源, repeatSeq: { not: null } }, orderBy: { repeatSeq: "asc" }, select: { name: true, repeatSeq: true } });
+    expect(出口C的).toEqual([{ name: 号, repeatSeq: 1 }, { name: `${号}-2`, repeatSeq: 2 }]);
+    // 详情：查重领取的只给原始客户编号、不带第几次
+    expect(await 重复咨询原始客户({ repeatOfCustomerId: c.id, repeatSeq: null })).toEqual({ 客户编号: `NO.${String(序).padStart(5, "0")}`, 第几次: null });
   });
 
   it("项目列表（检索读字段）：按数据来源「老客户重复咨询」筛；搜原始客户编号（NO.00001 或 00001）命中负责人改了名的那条", async () => {

@@ -1062,7 +1062,7 @@ model Project {
   /// 详情「原始客户编号」按它现读客户编号；检索 / 统计认「重复咨询」读 source 和这一列，不读项目名（lib/project/system-created.ts）
   repeatOfCustomerId   String?
   /// 这位客户的第几次重复咨询（迁移 163）：1、2、3……，同一位原始客户下不重号（唯一索引），按已有的（含回收站里的、已结束的）最大值 + 1 取；
-  /// 项目名「重复咨询-NO.客户编号」第 2 次起加「-2」「-3」就用它（lib/enterprise/repeat-inquiry.ts 出口C项目名）。正常建的为空
+  /// 项目名「重复咨询-NO.客户编号」第 2 次起加「-2」「-3」就用它（lib/enterprise/repeat-inquiry.ts 出口C项目名）。只出口 C 记；查重领取建的、正常建的为空
   repeatSeq            Int?
   /// 手动选的分配方向（企业版，迁移 152，11-18 审核 P0-1）：市场成员建档选自动分配时，人把「分配方向」手动改成的内贸 / 外贸；
   /// 空 = 没改过，按 区域 → 电话 → 本人事业部 现算（lib/enterprise/customer-region.ts 默认分配方向）。

@@ -281,15 +281,19 @@ export async function 落对接人(tx: Prisma.TransactionClient, customerId: str
  * 「市场分给销售进线索验证」由调用方接着推（同新线索自动分配）。
  * 出口 C（repeat-inquiry.ts）也用它建：接手人 = 客户负责人（交销售那条路 = 发起的市场成员，提交后再自动分配）、分配方式 = 指定分配 / 自动分配、
  * 线 = 调用方算好传进来；项目名由调用方给：查重领取 = 客户全称（市场成员领了能看这位客户）；出口 C = 「重复咨询-客户编号[-序号]」（同事的客户，名称不露给市场成员）。
- * 只读来源字段（迁移 163，客户 E-218）：repeatOfCustomerId = 这位客户、repeatSeq = 他的第几次重复咨询（重复咨询下一序号），建时写、之后没有入口改
+ * 只读来源字段（迁移 163，客户 E-218）：repeatOfCustomerId = 这位客户（两条路都写，留来源标记）；repeatSeq = 他的第几次重复咨询（重复咨询下一序号），
+ * 序号只给出口 C 记（项目名按序号起 = 传函数的那条路）：查重领取（项目名 = 客户全称）写空、不占号，客户先被查重领取过、出口 C 第一次照样是「重复咨询-NO.x」不带序。
+ * 建时写、之后没有入口改
  */
 export async function 查重领取建线索项目(
   tx: Prisma.TransactionClient,
   a: { customerId: string; 项目名: string | ((序: number) => string); 接手人: string; 创建人: string; 渠道: string; 对接人: string | null; 线: "内贸" | "外贸" | null; 分配方式: string },
 ): Promise<string> {
   const 接手人线 = a.线 ?? (await tx.entMember.findUnique({ where: { userId: a.接手人 }, select: { line: true } }))?.line ?? null;
-  const 序 = await 重复咨询下一序号(tx, a.customerId);
-  const 名 = typeof a.项目名 === "function" ? a.项目名(序) : a.项目名;
+  // 只有出口 C（项目名按序号起）取号；查重领取 repeatSeq 写空（唯一索引里空值互不相撞，同一位客户领几次都不撞）
+  let 序: number | null = null;
+  let 名: string;
+  if (typeof a.项目名 === "function") { 序 = await 重复咨询下一序号(tx, a.customerId); 名 = a.项目名(序); } else 名 = a.项目名;
   const p = await tx.project.create({
     data: {
       name: 名.trim().slice(0, 项目名上限) || "新线索", customerId: a.customerId, contactId: a.对接人,
@@ -304,7 +308,8 @@ export async function 查重领取建线索项目(
 }
 
 /**
- * 这位客户下一次重复咨询是第几次（迁移 163，客户 E-218）：已有的带这位原始客户的线索里 repeatSeq 最大的 + 1，第一次 = 1。
+ * 这位客户下一次重复咨询是第几次（迁移 163，客户 E-218）：已有的带这位原始客户的线索里非空 repeatSeq 最大的 + 1，第一次 = 1。
+ * 只出口 C 取号；查重领取建的 repeatSeq 是空（_max 不算空值），不占号。
  * 读字段、不解析项目名（负责人改了名照样对）；回收站里的、已结束的都算进去（看已删 + 看全部：同事名下的、删了的都要数到），保证不重号。
  * 同一位客户下 (repeatOfCustomerId, repeatSeq) 有唯一索引兜底：两边同时交撞了号，后到的那笔抛唯一约束整笔回滚，调用方重来一次（出口C建线索）。
  * 已知边界：回收站 30 天到期真删掉的那条不在库里了，它要是最大的那个号，下一次会再用一次这个号（那条线索已经不存在）
