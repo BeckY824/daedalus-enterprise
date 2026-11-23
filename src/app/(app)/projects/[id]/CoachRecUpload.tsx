@@ -9,7 +9,8 @@
  * 续传：本机 localStorage 只记「文件名 + 大小 + 修改时间 → 录音编号」（读写包 try，失败就当没有）；回来重新选同一个文件，先问服务器收到哪几片、只补没收到的。
  *       选的文件对不上草稿就问「换成这个文件重新传？」（旧的删掉）。「继续」时先问原来那条：已经是待提交（上次其实传完了）就直接显示完成，不新开、不重传。
  * 文件名：框里显示的本机原名也过 文件名打码（安卓通话录音的文件名带对方号码）。
- * 时长：浏览器读出来只给人看（不信它，服务端 PR4 用 ffprobe 算）。「提交整理」要等转写（PR4）接上，这一版灰着。
+ * 时长：浏览器读出来只给人看（不信它，服务端 PR4 用 ffprobe 算，交了以后卡上显示服务端算的）。
+ * 「提交整理」（PR4）：录音可用（开关 + 密钥 + ffmpeg 自检）时能点；整理失败的给原因和「重试整理」；转写中、整理中的留在草稿条上、不能删。
  */
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -63,7 +64,7 @@ type 阶段 = { k: "选" } | { k: "问换"; 旧: 录音给界面 } | { k: "传";
 /**
  * 传录音文件的框。续 = 从草稿条点进来、要接着传的那条（选的文件对不上就问换不换）
  */
-export function CoachRecUploadModal({ projectId, 项目名, 续, 关 }: { projectId: string; 项目名: string; 续?: 录音给界面 | null; 关: () => void }) {
+export function CoachRecUploadModal({ projectId, 项目名, 续, 可提交 = false, 关 }: { projectId: string; 项目名: string; 续?: 录音给界面 | null; 可提交?: boolean; 关: () => void }) {
   const router = useRouter();
   const [文件, set文件] = useState<File | null>(null);
   const [时长, set时长] = useState<number | null>(null);
@@ -225,26 +226,53 @@ export function CoachRecUploadModal({ projectId, 项目名, 续, 关 }: { projec
             {阶.k === "停" && <div role="alert" className="crec-warn" data-testid="crec-stopped">{阶.为什么}，已传 {百分(已传, 文件.size)}%。点「继续」从断的地方接着传。</div>}
           </div>
         )}
-        {阶.k === "完" && <PendingCard 录={阶.录音} />}
+        {阶.k === "完" && <PendingCard 录={阶.录音} 可提交={可提交} />}
         {错 && <div role="alert" className="cd-task-err">{错}</div>}
       </div>
     </Modal>
   );
 }
 
-/** 待提交卡：回放、「提交整理」（转写接上之前灰着）、删掉。只有录的人看得到（数据只给录的人） */
-export function PendingCard({ 录, 删 }: { 录: 录音给界面; 删?: () => void }) {
+/** 卡上的状态字（PR4 起交了以后也留在草稿条上：转写中、整理中不能删，等它跑完） */
+const 状态字 = (x: 录音给界面): string =>
+  x.status === "转写中" ? "正在转写，好了会通知你" : x.status === "整理中" ? "转写好了，正在整理要点" : x.status === "整理失败" ? "没整理成" : x.status === "待确认" ? "整理好了，待确认" : "待提交";
+
+/**
+ * 待提交卡：回放、「提交整理」、删掉。只有录的人看得到（数据只给录的人）。
+ * PR4：可提交（录音可用：开关 + 密钥 + ffmpeg）时「提交整理」能点 → 转写中；整理失败的写原因、给「重试整理」。不可提交时按钮灰着
+ */
+export function PendingCard({ 录, 删, 可提交 = false }: { 录: 录音给界面; 删?: () => void; 可提交?: boolean }) {
+  const router = useRouter();
+  const [交后, set交后] = useState<录音给界面 | null>(null);
+  const [忙, set忙] = useState(false);
+  const [错, set错] = useState<string | null>(null);
+  // 交了以后先用接口回的那条；页面刷新拿到更新的（更新于不早于它）就用页面的
+  const 现 = 交后 && 交后.id === 录.id && 交后.更新于 >= 录.更新于 ? 交后 : 录;
+  const 交 = async (重试: boolean) => {
+    set忙(true);
+    set错(null);
+    const r = await 调(`/api/coach-rec/${现.id}/${重试 ? "retry" : "submit"}`, { method: "POST" }).catch(() => null);
+    set忙(false);
+    if (!r || !r.ok) return set错(r ? 话(r, "没交上，请重试") : "网络断了，请重试");
+    set交后(r.体.录音 as 录音给界面);
+    router.refresh();
+  };
+  const 能删 = 现.status === "待提交" || 现.status === "整理失败" || 现.status === "待确认";
+  const 灰话 = 可提交 ? undefined : "转写还没开放，开放后点这里开始整理";
   return (
-    <div className="crec-pending" data-testid="crec-pending">
+    <div className="crec-pending" data-testid="crec-pending" data-status={现.status}>
       <div className="crec-pending-h">
-        <span className="crec-file-name" title={录.文件名 ?? ""}>{录.文件名 ?? "录音"}</span>
-        <span className="crec-hint">待提交 · {读大小(录.总字节 || 录.已收字节)}</span>
+        <span className="crec-file-name" title={现.文件名 ?? ""}>{现.文件名 ?? "录音"}</span>
+        <span className="crec-hint">{状态字(现)} · {读大小(现.总字节 || 现.已收字节)}{现.时长毫秒 ? ` · ${读时长(现.时长毫秒 / 1000)}` : ""}</span>
       </div>
-      {录.能听 && <audio className="crec-audio" controls preload="none" src={`/api/coach-rec/${录.id}/audio`} aria-label="回放录音" />}
+      {现.能听 && <audio className="crec-audio" controls preload="none" src={`/api/coach-rec/${现.id}/audio`} aria-label="回放录音" />}
+      {现.status === "整理失败" && 现.错 && <div role="alert" className="crec-warn" data-testid="crec-fail">{现.错}</div>}
       <div className="crec-acts">
-        <Button size="small" type="primary" disabled title="转写还没开放，开放后点这里开始整理">提交整理</Button>
-        {删 && <Button size="small" danger type="text" onClick={删}>删掉</Button>}
+        {现.status === "待提交" && <Button size="small" type="primary" disabled={!可提交} loading={忙} title={灰话} onClick={() => void 交(false)} data-testid="crec-submit">提交整理</Button>}
+        {现.status === "整理失败" && <Button size="small" type="primary" disabled={!可提交} loading={忙} title={灰话} onClick={() => void 交(true)} data-testid="crec-retry">重试整理</Button>}
+        {删 && 能删 && <Button size="small" danger type="text" onClick={删}>删掉</Button>}
       </div>
+      {错 && <div role="alert" className="cd-task-err">{错}</div>}
     </div>
   );
 }
@@ -252,7 +280,7 @@ export function PendingCard({ 录, 删 }: { 录: 录音给界面; 删?: () => vo
 /**
  * 沟通卡最上面的录音草稿条（只有录的人自己看得到）：没传完的写「上次传到 62%」+「接着传」「删掉」；传完待提交的出待提交卡
  */
-export function CoachRecDrafts({ projectId, 项目名, 草稿们 }: { projectId: string; 项目名: string; 草稿们: 录音给界面[] }) {
+export function CoachRecDrafts({ projectId, 项目名, 草稿们, 可提交 = false }: { projectId: string; 项目名: string; 草稿们: 录音给界面[]; 可提交?: boolean }) {
   const router = useRouter();
   const [续, set续] = useState<录音给界面 | null>(null);
   const [问删, set问删] = useState<string | null>(null);
@@ -281,7 +309,7 @@ export function CoachRecDrafts({ projectId, 项目名, 草稿们 }: { projectId:
               </span>
             </div>
           ) : (
-            <PendingCard 录={d} 删={() => set问删(d.id)} />
+            <PendingCard 录={d} 删={() => set问删(d.id)} 可提交={可提交} />
           )}
           {问删 === d.id && (
             <div className="pd-del-band" role="group" aria-label="确认删掉这条录音" onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); set问删(null); } }}>
@@ -295,7 +323,7 @@ export function CoachRecDrafts({ projectId, 项目名, 草稿们 }: { projectId:
         </div>
       ))}
       {错 && <div role="alert" className="cd-task-err">{错}</div>}
-      {续 && <CoachRecUploadModal projectId={projectId} 项目名={项目名} 续={续} 关={() => set续(null)} />}
+      {续 && <CoachRecUploadModal projectId={projectId} 项目名={项目名} 续={续} 可提交={可提交} 关={() => set续(null)} />}
     </div>
   );
 }
