@@ -369,7 +369,7 @@ export default function CustomerRoster({ data: 服务端给的, 默认页签 = "
   );
 }
 
-/* 名单还在路上时中栏摆的骨架挪到 components/RosterSkeleton.tsx（审查补：骨架被 (app)/loading 带进每页首屏包，不能连着名单的 Drawer、dayjs 一起带） */
+/* 名单还在路上时中栏摆的骨架挪到 components/RosterSkeleton.tsx（审查补：骨架被壳里的 SlotSkeleton 带进每页首屏包，不能连着名单的 Drawer、dayjs 一起带） */
 
 /** 服务端没有 layout 阶段，退回 useEffect（只为不报警告；宽度首帧前已由 外观预设脚本 挂好） */
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;

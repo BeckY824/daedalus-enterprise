@@ -3394,7 +3394,7 @@ button.ais-hd-b { cursor: pointer; }
 /* 骨架屏晚 180ms 再出现：这段时间内页面要是已经好了，就一眼都不会看见它。
    原来快的那几页也会闪一下灰块，闪一下比等一下更像出了问题。 */
 .app-loading { animation: app-loading-in var(--t) var(--ease) var(--t) both; }
-/* 通用正文骨架的标题条（原来写在 (app)/loading.tsx 的行内样式，PR-A 挪到 SlotSkeleton） */
+/* 通用正文骨架的标题条（原来写在 (app)/loading.tsx 的行内样式，PR-A 挪到 SlotSkeleton；11-24 二轮起 loading.tsx 撤了） */
 .slot-skel-title { max-width: 420px; margin-bottom: 20px; }
 @keyframes app-loading-in { from { opacity: 0; } to { opacity: 1; } }
 

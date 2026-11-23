@@ -8,6 +8,8 @@ import { ENT_DB, 账号, 读种子, type 种子 } from "./global-setup";
  * 修之前（3705 正式库副本实测）：点下去 30ms 旧内容就没了，接着 ~180ms 空白、~120ms 骨架，名单也整栏换成骨架再回来。
  * 现在：旧内容留到新内容提交那一帧，正文、中栏都不出骨架，名单那一栏不重挂；等得久了顶上出 2px 等待条。
  * 每帧（rAF）记一次；服务器回包人为压慢 600ms，让「中间那段」一定看得见。
+ * 跨段（3703 实操二轮不过的那批）：起点不在 /customers 下（项目看板、手机菜单换页）时 (app)/loading 是新挂的边界，
+ * 旧内容照样 40ms 就没了；撤掉它、首屏骨架改由壳里一直挂着的 <槽位> Suspense 出以后，跨段也是旧内容留到新内容就绪。
  */
 test.describe.configure({ mode: "serial", retries: 0 });
 
@@ -56,17 +58,22 @@ async function 压慢(page: Page) {
 }
 
 /** 开始每帧记：旧内容（打了 data-old 的）在不在、新的 h1 出没出、有没有骨架、等待条、名单那一栏是不是原来那个节点 */
-const 开始记 = (page: Page, 旧选择器: string, 新名: string) => page.evaluate(([旧选择器, 新名]) => {
+const 开始记 = (page: Page, 旧选择器: string, 新名: string, 去的路径 = "") => page.evaluate(([旧选择器, 新名, 去的路径]) => {
   document.querySelectorAll(旧选择器).forEach((e) => e.setAttribute("data-old", "1"));
   document.querySelector("aside.pane-roster")?.setAttribute("data-mark", "1");
   const w = window as unknown as { __帧: Record<string, boolean | string>[] };
   w.__帧 = [];
+  const 骨架选择器 = "[data-testid=customer-skeleton], [data-testid=page-skeleton], .roster-skel";
   const 一帧 = () => {
     const h = document.querySelector("main h1.rec-head-name");
+    const 骨架 = !!document.querySelector(骨架选择器);
     w.__帧.push({
       旧: !!document.querySelector("[data-old]"),
-      新: !!h && !h.hasAttribute("data-old") && h.getAttribute("title") === 新名,
-      骨架: !!document.querySelector("[data-testid=customer-skeleton], [data-testid=page-skeleton], .roster-skel"),
+      // 换页按地址认：到了要去的那一页、旧的那块不在了、也不是骨架（正文里有东西）
+      新: 去的路径
+        ? location.pathname === 去的路径 && !document.querySelector("[data-old]") && !骨架 && !!document.querySelector("main .page-fade > *")
+        : !!h && !h.hasAttribute("data-old") && h.getAttribute("title") === 新名,
+      骨架,
       条: !!document.querySelector("[data-testid=nav-progress]"),
       名单原样: !!document.querySelector("aside.pane-roster[data-mark]"),
       // 点的那一行立刻是选中的样子（链接里的 .nav-pend）
@@ -80,7 +87,7 @@ const 开始记 = (page: Page, 旧选择器: string, 新名: string) => page.eva
     if (!w.__帧.some((f) => f.新) || w.__帧.length < 5) requestAnimationFrame(一帧);
   };
   一帧();
-}, [旧选择器, 新名] as const);
+}, [旧选择器, 新名, 去的路径] as const);
 type 帧 = { 旧: boolean; 新: boolean; 骨架: boolean; 条: boolean; 名单原样: boolean; 行亮: boolean; 表格行亮: boolean; h1在: boolean; 胶囊: string };
 const 帧们 = (page: Page) => page.evaluate(() => (window as unknown as { __帧: 帧[] }).__帧);
 
@@ -182,6 +189,43 @@ test("390 手机：名单抽屉里换一位，不出骨架，旧内容留到新�
   const 帧 = await 帧们(page);
   const 新 = 帧.findIndex((f) => f.新);
   expect(帧.slice(0, 新).every((f) => f.旧), "新内容出来之前旧内容一直在").toBe(true);
+  expect(帧.filter((f) => f.骨架), "不出骨架").toEqual([]);
+  expect(帧.slice(0, 新).some((f) => f.条), "等了 600ms，顶上该出等待条").toBe(true);
+});
+
+test("跨段：项目看板点卡进客户详情，看板留到详情就绪，正文不出骨架", async ({ page }) => {
+  await 登录(page);
+  await page.goto("/projects");
+  const 卡 = page.locator(`.pipe-card[aria-label*="${前缀}-项目1"]`);
+  await 卡.waitFor();
+  await 压慢(page);
+  await 开始记(page, "main .pipe-card", `${前缀}-1`);
+  await 卡.click();
+  await expect.poll(async () => (await 帧们(page)).some((f) => f.新), { timeout: 20_000 }).toBe(true);
+  const 帧 = await 帧们(page);
+  const 新 = 帧.findIndex((f) => f.新);
+  // 改前：点下去 ~40ms (app)/loading 新挂、看板被正文骨架顶掉
+  expect(帧.slice(0, 新).every((f) => f.旧), "详情出来之前看板一直在").toBe(true);
+  expect(帧.slice(0, 新).filter((f) => f.骨架), "提交之前不出骨架").toEqual([]);
+  expect(帧.slice(0, 新).some((f) => f.条), "等了 600ms，顶上该出等待条").toBe(true);
+});
+
+test("390 手机：菜单换页（客户详情 → 公海），旧内容留到新页就绪，不出通用骨架", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await 登录(page);
+  await page.goto(`/customers/${ids[0]}`);
+  await expect(page.getByRole("main").locator("h1.rec-head-name")).toHaveAttribute("title", `${前缀}-1`);
+  await page.getByRole("button", { name: "打开导航菜单" }).click();
+  // 企业版菜单：首页 / 复盘 / 渠道 / 公海 / 客户（lib/enterprise/nav.ts）；菜单项的读屏名带图标名，按文字认
+  const 项 = page.locator(".ant-dropdown-menu-item").filter({ hasText: /^公海$/ });
+  await 项.waitFor();
+  await 压慢(page);
+  await 开始记(page, "main h1.rec-head-name", "", "/pool");
+  await 项.click();
+  await expect.poll(async () => (await 帧们(page)).some((f) => f.新), { timeout: 20_000 }).toBe(true);
+  const 帧 = await 帧们(page);
+  const 新 = 帧.findIndex((f) => f.新);
+  expect(帧.slice(0, 新).every((f) => f.旧), "新页出来之前旧内容一直在").toBe(true);
   expect(帧.filter((f) => f.骨架), "不出骨架").toEqual([]);
   expect(帧.slice(0, 新).some((f) => f.条), "等了 600ms，顶上该出等待条").toBe(true);
 });

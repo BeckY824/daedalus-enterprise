@@ -681,7 +681,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         <Content className="app-content" style={{ padding: "22px 26px" }}>
           <ListMemory />
           <PageFade 页={底下那页}>
-            <我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider>
+            <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider></槽位>
           </PageFade>
         </Content>
         {/* 企业版项目模式：手机上也能问一句。点浮标，面板铺满屏（globals.css 的手机 .dock），× 收起 */}
@@ -828,7 +828,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       {反馈去向 !== "none" && <FeedbackReplyToast 去向={反馈去向} />}
 
 
-      {/* 中栏：槽位自己带 <aside class="pane">，没有中栏的路由返回 null；(app)/loading 在这里按中栏画（SlotSkeleton） */}
+      {/* 中栏：槽位自己带 <aside class="pane">，没有中栏的路由返回 null；整页打开时槽位里的 Suspense 按中栏画骨架（SlotSkeleton） */}
       <槽位 名="pane" 有AI={Boolean(ai)}>{pane}</槽位>
 
       {/* antd 的 Content 自己就渲染成 <main>，外面不能再包一层：
@@ -841,11 +841,12 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
 
           看的是底下那页：同一页里改筛选、翻页走的是 query，不会重来一遍；开设置浮层也不算换页。
           不再用 key 重挂整块正文（那样换客户时新挂的 Suspense 边界会先出骨架、旧内容立刻没了），见 NavProgress.tsx 的 PageFade。
+          正文的首屏骨架在 <槽位 名="main"> 里（一直挂着，站内跳转不出，见 SlotSkeleton.tsx）。
           超宽屏下限制正文宽度并居中，避免表格被拉得过于稀疏。
         */}
         <ListMemory />
         <PageFade 页={底下那页} style={{ maxWidth: 1720, margin: "0 auto" }}>
-          <我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider>
+          <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider></槽位>
         </PageFade>
       </main>
       {/*

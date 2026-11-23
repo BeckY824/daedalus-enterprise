@@ -7,7 +7,7 @@ import { 对话列表把手 } from "@/components/WidthHandle";
 /**
  * 中栏还在路上时摆的骨架栏（客户 / 项目名单、首页对话列表）。
  *
- * **单独一个小文件**（跳转优化 PR-A 审查补）：(app)/loading → SlotSkeleton 会进每一页的首屏包，
+ * **单独一个小文件**（跳转优化 PR-A 审查补）：壳里的 <槽位> → SlotSkeleton 会进每一页的首屏包，
  * 原来骨架写在 CustomerRoster.tsx 里，连着名单的 Drawer、dayjs、分组那一大套一起被带进去。这里只引 lib/middle-pane（壳本来就有）。
  *
  * 和真栏同一个判法：栏收在抽屉里（窄窗、人自己收起、手机）时什么都不摆，只在整栏露着时摆同宽的一栏——
