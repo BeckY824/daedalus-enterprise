@@ -279,7 +279,8 @@ export function 向导接着建(me: { id: string }, 好: 规整好的, 出参: P
     const 跟进 = await tx.followUp.create({
       data: { type: 好.跟进.type, method: 好.跟进.method, initiator: 好.跟进.initiator, content: 好.跟进.content, occurredAt: 好.跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人.id, ownerId: me.id },
     });
-    await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: 项目.id, node: 落.node } });
+    // 建项目带出的首条沟通（M-公海-54：建项目 + 首条沟通合计 1 次，补录早日期也回满额度，tri-state-quota.ts 额度沟通日of）
+    await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: 项目.id, node: 落.node, withProjectCreate: true } });
     await 记沟通编号(tx, 跟进.id, 项目.id, 好.跟进.nextStepAt);
     if (好.企业) await 记沟通标记(tx, 跟进.id, 项目.id, 落.phase, false);
     await tx.customer.update({ where: { id: customerId }, data: { lastFollowAt: 好.跟进.occurredAt } });
@@ -340,7 +341,8 @@ export function 只建客户接着建(me: { id: string }, 好: 规整好的只�
       if (好.跟进.nextStepAt || 好.跟进.nextStepText) {
         await tx.project.update({ where: { id: projectId }, data: { nextStepAt: 好.跟进.nextStepAt, nextStepText: 好.跟进.nextStepText } });
       }
-      await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId, node: 第一个节点.node } });
+      // 同一次操作带出的首条沟通（这条路沟通先写、项目后建，建项目本来就挡不住它；标上和别的建项目路一致）
+      await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId, node: 第一个节点.node, withProjectCreate: true } });
       await 记沟通编号(tx, 跟进.id, projectId, 好.跟进.nextStepAt);
       await 记沟通标记(tx, 跟进.id, projectId, 第一个节点.phase, false);
       await tx.customer.update({ where: { id: customerId }, data: { lastFollowAt: 好.跟进.occurredAt } });
