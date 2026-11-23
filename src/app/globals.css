@@ -3264,6 +3264,8 @@ button.ais-hd-b { cursor: pointer; }
   padding: var(--s2) var(--s3); border-radius: var(--r-ctl); }
 .set-nav-i:hover { background: var(--hover); }
 .set-nav-i.on { background: var(--nav-on-bg); color: var(--nav-on-fg); }
+/* 卡片改进（11-23）页面底改白以后，白块（--nav-on-bg）压在白底上看不出选中的是哪栏：浅色下改铺 --hover 浅灰；暗黑的 --nav-on-bg 是品牌浅底，本来就认得出，不动 */
+:root:not([data-mode="dark"]) .set-nav-i.on { background: var(--hover); }
 .set-nav-i b { display: block; font-weight: 500; color: var(--ink); }
 .set-nav-i.on b { color: var(--brand-deep); font-weight: 600; }
 .set-nav-i span { display: block; margin-top: 1px; font-size: var(--fs-note); color: var(--text-muted); }
@@ -4529,7 +4531,6 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cd-pj-one > .cd-pj-nm { color: var(--ink); font-size: var(--fs-section); font-weight: 600; }
 .cd-pj-tag { flex: none; display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); font-size: var(--fs-min); }
 .cd-pj-mi { display: inline-flex; align-items: center; gap: 6px; max-width: 280px; }
-.cd-info-t { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cd-lock { flex: none; display: inline-flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; color: var(--text-faint); font-size: var(--fs-min); white-space: nowrap; cursor: default; }
 .cd-add { flex: none; height: 28px; padding: 0 10px; border: 1px dashed var(--line); border-radius: var(--r-tag); background: transparent; color: var(--text-muted);
   font-size: var(--fs-note); white-space: nowrap; cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
@@ -5052,7 +5053,7 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 }
 /* 项目组 / 提成分配（dt.team，项目详情）：刚邀请的先摆一行、分配条边输边变 */
 .pd-team-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; min-width: 0; }
-/* 组员名、角色下拉：原来的行内样式挪成 class（卡片改进第三阶段要在原底下改成 68 列），值一字不差 */
+/* 组员名、角色下拉：原来的行内样式挪成 class（卡片改进第三阶段改成 68 列），值一字不差 */
 .pd-team-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pd-team-role { width: 140px; flex: 0 0 auto; }
 /* 提成卡的行、字段名（ProjectCommission.tsx）：卡片改进第三阶段对齐到 68 / 92（标签列 68 + 隔 8，值离卡左 92；原来行内 64 + 隔 12），

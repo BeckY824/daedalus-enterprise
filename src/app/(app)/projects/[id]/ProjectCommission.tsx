@@ -21,7 +21,7 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
 
 
-/** 提成卡的行、字段名是 globals.css 的 .pd-cm-row / .pd-cm-k（卡片改进第三阶段在原底下收成 68 列 + 隔 8）；分到每人那几行照旧用这份 */
+/** 提成卡的行、字段名是 globals.css 的 .pd-cm-row / .pd-cm-k（卡片改进第三阶段收成 68 列 + 隔 8）；分到每人那几行照旧用这份 */
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "baseline", marginBottom: 8, minWidth: 0, flexWrap: "wrap" };
 const 淡: React.CSSProperties = { color: "var(--text-muted)" };
 
