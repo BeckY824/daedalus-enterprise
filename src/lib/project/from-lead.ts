@@ -51,7 +51,8 @@ export async function 线索建项目(
       customerId: a.customerId, contactId: 联系人?.id ?? null, ownerId: a.creatorId,
     },
   });
-  await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: 项目.id, node: 第一个节点.node } });
+  // 建项目带出的首条沟通（M-公海-54：建项目 + 首条沟通合计 1 次，补录早日期也回满额度，tri-state-quota.ts 额度沟通日of）
+  await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: 项目.id, node: 第一个节点.node, withProjectCreate: true } });
   // 并到已有客户时那位可能有更晚的跟进：只往后挪，不往回改
   await tx.customer.updateMany({
     where: { id: a.customerId, OR: [{ lastFollowAt: null }, { lastFollowAt: { lt: a.跟进.occurredAt } }] },
