@@ -172,16 +172,18 @@ export function 挑不到话(为什么: string): string {
 
 /**
  * 在领到的项目上记那条沟通（事务里，查重领取用）：记的人 = 市场成员，挂这条项目当时的节点；下一步是负责人的格，不写（同组员记，11-19）。
- * 不过 记项目沟通 那道「谁能记」：这一笔就是 F-016 开的例外，事务里刚把项目给了接手人
+ * 不过 记项目沟通 那道「谁能记」：这一笔就是 F-016 开的例外，事务里刚把项目给了接手人。
+ * 建项目带出（必传，不给默认值：新调用方得自己说清）：项目是同一个事务里刚建的（查重领取建线索项目）传 true——M-公海-54 建项目 + 首条沟通合计 1 次，
+ * 沟通日期补录早了也照样回满额度（FollowUpProject.withProjectCreate，tri-state-quota.ts 额度沟通日of）；挂的是原有项目传 false
  */
-export async function 查重领取记沟通(tx: Prisma.TransactionClient, 记的人: string, projectId: string, 好: 规整好的沟通, now: Date): Promise<string> {
+export async function 查重领取记沟通(tx: Prisma.TransactionClient, 记的人: string, projectId: string, 好: 规整好的沟通, now: Date, 建项目带出: boolean): Promise<string> {
   return 看全部(async () => {
     const p = await tx.project.findUnique({ where: { id: projectId }, select: { id: true, customerId: true, contactId: true, node: true, phase: true, pooledAt: true, result: true } });
     if (!p || p.pooledAt || p.result) throw new 查重领取作废("要挂沟通的项目刚被人动过（结束了或回了公海），这次没领");
     const 跟进 = await tx.followUp.create({
       data: { type: 好.type, method: 好.method, initiator: 好.initiator, content: 好.content, occurredAt: 好.occurredAt, title: "", status: "已完成", customerId: p.customerId, contactId: p.contactId, ownerId: 记的人 },
     });
-    await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });
+    await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())), withProjectCreate: 建项目带出 } });
     await 记沟通编号(tx, 跟进.id, p.id, null, now);
     await 记沟通标记(tx, 跟进.id, p.id, p.phase, false);
     const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } });
