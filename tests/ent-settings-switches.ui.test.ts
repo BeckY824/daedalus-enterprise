@@ -4,7 +4,7 @@
  *   - 17 张卡左边对齐（用户 11-23），子开关卡头写「属于：线索分配和配额」
  *   - 父开关关着：子开关开着的能关（照样弹后果框）、关着的打不开
  *   - 拨开关先弹后果框，取消不调 action；超时回收先数个数；持有上限只读显示、不放输入框
- *   - 每卡「上次：谁 · 几点 · 动作」；搜「卡点」给一条去项目模式；「在 X 里看」切到那一栏
+ *   - 每卡「上次：谁 · 几点 · 动作」，组织规则比不出的只写「操作日志里比不出」；搜「卡点」给一条去项目模式；「在 X 里看」切到那一栏
  *   - 1280 / 390 宽不横向撑出；深色下照样画出来
  * 原卡「主动放弃」在线索分配关着时同一条规矩（OrgTab）
  */
@@ -58,7 +58,7 @@ const 现状 = (改: Record<string, unknown> = {}) => ({
   飞书: { 推送凭据齐了: true, 通讯录凭据齐了: true, 通讯录间隔分钟: 60 },
   录音: { 能打开: true, 测过: false, 密钥: "已配置" },
 });
-const 改动 = { ok: true, 上次: { reply_overdue: { 谁: "总管理", at: "2026-11-20T17:47:08Z", 动作: "打开" } } };
+const 改动 = { ok: true, 上次: { reply_overdue: { 谁: "总管理", at: "2026-11-20T17:47:08Z", 动作: "打开" }, hold_cap: { 比不出: true } } };
 
 async function 开(身份: Parameters<typeof props>[0], 宽 = 1280, 预览 = 0, mode?: "dark") {
   return 开页(browser, 页包, { ...props(身份), __现: 现状(), __改: 改动, __预览: 预览, __mode: mode }, 宽, "?tab=switches");
@@ -86,6 +86,10 @@ it("系统管理员：目录「团队与权限」第一项是开关总览；17 �
     // 上次那行
     expect(await page.getByTestId("sw-card-reply_overdue").innerText()).toMatch(/上次：总管理 · .+ · 打开/);
     expect(await page.getByTestId("sw-card-first_two").innerText()).toContain("操作日志里没有改动");
+    // 组织规则比不出：只写一句，不出现「上次： · 」空格子
+    const 持有 = await page.getByTestId("sw-card-hold_cap").innerText();
+    expect(持有).toContain("操作日志里比不出");
+    expect(持有).not.toMatch(/上次：|· ·|undefined|Invalid Date/);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

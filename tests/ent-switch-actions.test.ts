@@ -2,7 +2,7 @@
  * 设置开关 N4 / N5（11-23）：开关总览的两个读动作服务端各自判「能进设置」。
  *   - 条线总管理、销售管理（账号 ADMIN 也一样）、只读管理员、市场管理、销售、勾了「不管设置」的总管理：都 403，什么都不给
  *   - 系统管理员：开关现状 给齐 17 项的值（子开关在父开关关着时照实给）、持有上限先数、字段权限表改没改过
- *   - 读开关改动：每个开关最近一次真变了的那行（orgRules 相邻两行比），比不出写「改了项目规则」
+ *   - 读开关改动：每个开关最近一次真变了的那行（orgRules 相邻两行比），比不出写 { 比不出: true }，不挂人名和时间
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -71,7 +71,7 @@ describe("系统管理员", () => {
     expect(r.持有上限).toEqual({ 默认上限: 30, 单设人数: 0, 到上限: 0 });
   });
 
-  it("读开关改动：单键开关认打开 / 关掉；组织规则相邻两行比出是哪个开关变了；最早那行比不出写「改了项目规则」", async () => {
+  it("读开关改动：单键开关认打开 / 关掉；组织规则相邻两行比出是哪个开关变了；最早那行比不出只写「比不出」", async () => {
     expect(await 设规则(true, "主动放弃")).toEqual({ ok: true });
     expect(await 改组织规则({ 公海: { 默认上限: 8 } })).toMatchObject({ ok: true });
     expect(await 改组织规则({ 阶段: { 前两节点要沟通: true } })).toMatchObject({ ok: true });
@@ -81,8 +81,8 @@ describe("系统管理员", () => {
     expect(r.上次.lead_giveup).toMatchObject({ 谁: "系统管理员甲", 动作: "打开" });
     expect(r.上次.first_two).toMatchObject({ 动作: "打开" });
     expect(r.上次.node_advance).toMatchObject({ 动作: "打开" });
-    // 第一行（改默认上限）没有上一行可比：持有上限和没找到的开关都算「改了项目规则」
-    expect(r.上次.hold_cap).toMatchObject({ 动作: "改了项目规则" });
+    // 第一行（改默认上限）没有上一行可比：持有上限和没找到的开关都是「比不出」，不挂人名和时间
+    expect(r.上次.hold_cap).toEqual({ 比不出: true });
     expect(r.上次.org_scope).toBeUndefined();
     // 操作日志摘要写的是哪项从什么变成什么（N9）
     const 摘要 = (await prisma.auditLog.findMany({ where: { entityId: "orgRules" }, orderBy: [{ at: "asc" }, { id: "asc" }] })).map((x) => x.summary);
@@ -90,7 +90,7 @@ describe("系统管理员", () => {
     expect(默认组织规则.阶段.前两节点要沟通).toBe(false);
   });
 
-  it("读开关改动：上一行是脚本写的 detail（不是整份规则）时比不出，不把没动的开关算成下一行操作人「打开 / 改上限」", async () => {
+  it("读开关改动：上一行是脚本写的 detail（不是整份规则）时比不出，不管真改没改的开关都写「比不出」，不挂下一行操作人", async () => {
     expect(await 改组织规则({ 公海: { 默认上限: 8 }, 阶段: { 前两节点要沟通: true } })).toMatchObject({ ok: true });
     const 第一行 = await prisma.auditLog.findFirstOrThrow({ where: { entityId: "orgRules" } });
     await prisma.auditLog.create({
@@ -104,9 +104,9 @@ describe("系统管理员", () => {
     expect(await 改组织规则({ 节点推进: { 开: true } })).toMatchObject({ ok: true });
     const r = await 读开关改动();
     if (!r.ok) throw new Error(r.error);
-    // 比的是脚本行：比不出，只记「改了项目规则」，不冒出没动过的「改上限」「打开」
-    expect(r.上次.hold_cap).toMatchObject({ 谁: "系统管理员甲", 动作: "改了项目规则" });
-    expect(r.上次.first_two).toMatchObject({ 谁: "系统管理员甲", 动作: "改了项目规则" });
-    expect(r.上次.node_advance).toMatchObject({ 动作: "改了项目规则" });
+    // 比的是脚本行：比不出，没动过的不冒出「改上限」「打开」；甲真改的节点推进也一样写比不出；都不挂人名和时间
+    expect(r.上次.hold_cap).toEqual({ 比不出: true });
+    expect(r.上次.first_two).toEqual({ 比不出: true });
+    expect(r.上次.node_advance).toEqual({ 比不出: true });
   });
 });

@@ -9,7 +9,7 @@
  * - 拨开关调原卡片用的同一个 action；后果框文案同 switch-table.ts；超时回收、持有上限打开前先数（use-count-confirm.tsx，和原卡共用）
  * - 父开关关着：子开关只拦「打开」，开着的照样能关
  * - 持有上限不放输入框：只读显示默认上限和单设人数 +「去项目模式改」（原卡点「保存」才存）
- * - 每卡「上次：谁 · 几点 · 打开 / 关掉」一行（读开关改动）
+ * - 每卡「上次：谁 · 几点 · 打开 / 关掉」一行（读开关改动）；组织规则比不出的只写「操作日志里比不出」
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -342,7 +342,9 @@ export default function SwitchesTab({ 去卡 }: { 去卡: (tab: 原页签, 找: 
           </div>
         )}
         <div className="sw-foot">
-          {最近
+          {最近 && "比不出" in 最近
+            ? <span>操作日志里比不出</span>
+            : 最近
             ? <span title={`${new Date(最近.at).toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" })}（北京时间）`}>上次：{最近.谁} · {时间话(最近.at)} · {最近.动作}</span>
             : <span>操作日志里没有改动（一直是默认）</span>}
           <button type="button" className="sw-link sw-push" onClick={() => 去卡(s.tab, s.找)}>在「{原页签名[s.tab]}」里看</button>
