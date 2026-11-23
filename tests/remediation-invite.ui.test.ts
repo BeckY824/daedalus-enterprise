@@ -16,10 +16,11 @@ const plugin:Plugin={name:'turn-boundaries',setup(b){
 beforeAll(async()=>{bundle=(await build({stdin:{contents:`import React from 'react';import{createRoot}from'react-dom/client';import{App}from'antd';import Turn from'@/app/(app)/dashboard/TurnView';import{BusinessProvider}from'@/lib/business-client';import{DEFAULT_BUSINESS,BUSINESS_PRESETS}from'@/lib/business-config';
  window.__drafts=[];const root=createRoot(document.getElementById('root'));window.__render=(status='已签约',trade=false)=>{window.__job={status:'done',value:{text:'',steps:[],answer:{text:'',customers:[{id:'qa-c',name:'QA客户',followStatus:status}],proposals:[],records:[]}}};const b={...(trade?BUSINESS_PRESETS['外贸出口']:DEFAULT_BUSINESS),statusLabels:{已签约:'已合作'}};root.render(<App><BusinessProvider value={b}><Turn turn={{id:'qa',question:'QA问题',kind:'ask',at:Date.now()}} onRetry={()=>{}} onRemove={()=>{}} onAsk={()=>{}} scrollOnMount={false}/></BusinessProvider></App>)};window.__render();`,loader:'tsx',resolveDir:process.cwd()},bundle:true,write:false,format:'iife',jsx:'automatic',alias:{'@':path.resolve('src')},define:{'process.env.NODE_ENV':'"production"'},plugins:[plugin],logLevel:'silent'})).outputFiles[0].text;browser=await chromium.launch()},120000);
 afterAll(async()=>{await browser?.close()});
-it('L-065 稳定签约状态或自定义显示名都保留邀请，未签和外贸没有转介绍邀请',async()=>{
+// HC-2b（#441）删了回答下面的客户卡片，转介绍邀请随卡片一起没了（企业版本来就不摆）；L-065 那条「签约状态换显示名还保留邀请」不再适用，改成哪种状态都没有邀请，客户名还在「涉及」一行里
+it('HC-2b 起首页回答里没有转介绍邀请（已签 / 自定义显示名 / 未签 / 外贸都没有），客户名留在「涉及」一行',async()=>{
  const page=await browser.newPage();await page.route('http://invite.test/**',r=>r.fulfill({contentType:'text/html',body:"<meta charset='utf-8'><div id='root'></div>"}));await page.goto('http://invite.test');await page.addScriptTag({content:bundle});
- const invite=page.getByRole('button',{name:'起草转介绍邀请',exact:true});await invite.waitFor();await invite.click();expect(await page.evaluate(()=>Reflect.get(window,'__drafts'))).toEqual([['invite','qa-c','从首页发起']]);
- await page.evaluate(()=>Reflect.get(window,'__render')('已合作'));await expect.poll(()=>invite.count()).toBe(1);
- await page.evaluate(()=>Reflect.get(window,'__render')('跟进中'));await expect.poll(()=>invite.count()).toBe(0);
- await page.evaluate(()=>Reflect.get(window,'__render')('已签约',true));await expect.poll(()=>invite.count()).toBe(0);await page.close();
+ const invite=page.getByRole('button',{name:'起草转介绍邀请',exact:true});await page.locator('.cli-inv').waitFor();expect(await page.locator('.cli-inv').innerText()).toContain('QA客户');expect(await invite.count()).toBe(0);
+ await page.evaluate(()=>Reflect.get(window,'__render')('已合作'));await page.locator('.cli-inv').waitFor();expect(await invite.count()).toBe(0);
+ await page.evaluate(()=>Reflect.get(window,'__render')('跟进中'));await page.locator('.cli-inv').waitFor();expect(await invite.count()).toBe(0);
+ await page.evaluate(()=>Reflect.get(window,'__render')('已签约',true));await page.locator('.cli-inv').waitFor();expect(await invite.count()).toBe(0);await page.close();
 });

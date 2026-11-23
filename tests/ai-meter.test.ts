@@ -83,7 +83,8 @@ describe("会调模型的按钮都挂着「1 次」", () => {
     ["app/(app)/customers/[id]/AiPanel.tsx", ["起草跟进话术", "起草转介绍邀请", "简报"]],
     ["app/(app)/customers/[id]/FollowUpForm.tsx", ["AI 解析填表"]],
     ["app/(app)/customers/[id]/RecordView.tsx", ["AI 解析"]],
-    ["app/(app)/dashboard/TurnView.tsx", ["起草跟进话术", "起草转介绍邀请"]],
+    // HC-2b（#441）删了回答下面的客户卡片，转介绍邀请随卡片一起没了，只剩「涉及」一行的起草跟进话术
+    ["app/(app)/dashboard/TurnView.tsx", ["起草跟进话术"]],
   ] as const)("%s", (文件, 字们) => {
     const s = 读(文件);
     for (const 字 of 字们) expect(按钮后面跟着角标(s, 字), `${文件} 的「${字}」没挂 <AiCost />`).toBe(true);
