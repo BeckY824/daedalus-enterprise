@@ -805,7 +805,8 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
           // 判无效补发：标这个待补用在这条分配上（同 assign-actions 分项目给）
           // 没标上（按说不会）= 抛换人：整笔回滚、按最新的数重挑
           if (补位id && !挂.公海 && !(await 用掉补位(tx, 补位id, 记.id, 项目id))) throw new 查重领取换人(false);
-          await 查重领取记沟通(tx, me.id, 项目id, 好, new Date());
+          // 新建线索项目那条路：沟通是建项目带出的首条（M-公海-54）；领旧项目的不是
+          await 查重领取记沟通(tx, me.id, 项目id, 好, new Date(), 新建);
         },
       });
       // 挑中的这位超了持有上限（M-公海-18）：整笔回滚，顺延下一位

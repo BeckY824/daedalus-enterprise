@@ -272,7 +272,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
       const f = await tx.followUp.create({
         data: { type: 跟进.type, method: 跟进.method, initiator: 跟进.initiator, content: 跟进.content, occurredAt: 跟进.occurredAt, title: "", status: "已完成", customerId, contactId: 联系人?.id ?? null, ownerId: me.id },
       });
-      await tx.followUpProject.create({ data: { followUpId: f.id, projectId: p.id, node: 落.节点 } });
+      // 建项目带出的首条沟通（M-公海-54：建项目 + 首条沟通合计 1 次，补录早日期也回满额度，tri-state-quota.ts 额度沟通日of）
+      await tx.followUpProject.create({ data: { followUpId: f.id, projectId: p.id, node: 落.节点, withProjectCreate: true } });
       await 记沟通编号(tx, f.id, p.id, 跟进.nextStepAt);
       await 记沟通标记(tx, f.id, p.id, "线索", false);
       // 这位可能有更晚的跟进：只往后挪，不往回改

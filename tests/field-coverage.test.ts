@@ -504,7 +504,10 @@ const 派生: Record<string, Record<string, string>> = {
     fromOwnerId: "转让 / 放回公海 / 领取前的负责人，那一刻系统写；改节点的行留空",
     toOwnerId: "转让 / 领取后的负责人，那一刻系统写；放回公海和改节点的行留空",
   },
-  FollowUpProject: { followUpId: "哪条沟通记录，记的时候定", projectId: "挂在哪个项目，记的时候定", node: "记这条时项目在哪个节点，系统打上" },
+  FollowUpProject: {
+    followUpId: "哪条沟通记录，记的时候定", projectId: "挂在哪个项目，记的时候定", node: "记这条时项目在哪个节点，系统打上",
+    withProjectCreate: "是不是建这个项目同一次操作带出的首条沟通，建项目的那几条路挂上时系统写、之后不改（迁移 166，三态额度重置用）",
+  },
   CustomerCreator: { customerId: "哪位客户，一位一行", userId: "实际建档的人，向导保存那一刻打上，不改", at: "建档那一刻，系统打上" },
   EntBlocker: {
     code: "BLK + 日期 + 当天流水，发布时系统生成，不改", projectId: "从哪个项目的沟通发布，发布时定",

@@ -231,8 +231,9 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
       // M-公海-54：额度、暂缓次数只被「严格晚于写入前最近动静日」的有效沟通重置。动静 = 建项目、换节点（退回项目公海的只算退回前）、算数的换负责人
       const 动静: 动静事件[] = [];
       for (const p of [...ps, ...(退回of.get(c.id) ?? []), ...(删了of.get(c.id) ?? [])]) {
-        动静.push({ 日: beijingDay(p.createdAt), 时: p.createdAt });
-        for (const t of 换节点们.get(p.id) ?? []) if (!p.pooledAt || t <= p.pooledAt) 动静.push({ 日: beijingDay(t), 时: t });
+        // 带项目 id：建项目同一次操作带出的首条沟通不被这个项目自己先写下的动静挡（额度沟通日of 随建项目）
+        动静.push({ 日: beijingDay(p.createdAt), 时: p.createdAt, 项目: p.id });
+        for (const t of 换节点们.get(p.id) ?? []) if (!p.pooledAt || t <= p.pooledAt) 动静.push({ 日: beijingDay(t), 时: t, 项目: p.id });
       }
       let 第几条 = 0;
       for (const x of 换人原行) {
@@ -339,10 +340,10 @@ async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date,
   const 出 = new Map<string, 客户沟通>();
   if (!ids.length) return 出;
   const 词们 = 预读词们 ?? await 读占位词(db);
-  type 行 = { cid: string; content: string; src: unknown; at: unknown; cat: unknown; vat: unknown };
+  type 行 = { cid: string; content: string; src: unknown; at: unknown; cat: unknown; vat: unknown; bp: string | null };
   const 生效 = (x: 行) => { const 写 = 转时刻(x.cat); return 写 ? 沟通生效时刻(转时刻(x.at), 写) : null; };
   const 有效 = (x: 行) => 有内容的沟通(x.content, { 占位词: 词们, AI生成: Number(x.src) === 1 || x.src === true });
-  const 列 = `f."customerId" AS cid, f.content AS content, EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src, f."occurredAt" AS at, f."createdAt" AS cat, (SELECT v."at" FROM "EntFollowUpFirstValid" v WHERE v."followUpId" = f.id) AS vat`;
+  const 列 = `f."customerId" AS cid, f.content AS content, EXISTS (SELECT 1 FROM "FollowUpSource" s WHERE s."followUpId" = f.id) AS src, f."occurredAt" AS at, f."createdAt" AS cat, (SELECT v."at" FROM "EntFollowUpFirstValid" v WHERE v."followUpId" = f.id) AS vat, (SELECT fp."projectId" FROM "FollowUpProject" fp WHERE fp."followUpId" = f.id AND fp."withProjectCreate" = 1) AS bp`;
   const 条件 = `f."deletedAt" IS NULL AND f.content <> '' AND ${不是同号留痕SQL("f")}`;
   const 先看 = await db.$queryRawUnsafe<(行 & { rn: unknown })[]>(
     `SELECT * FROM (SELECT ${列}, ROW_NUMBER() OVER (PARTITION BY f."customerId" ORDER BY ${沟通生效时刻SQL("f")} DESC, f.id DESC) AS rn
@@ -356,13 +357,15 @@ async function 最近沟通日们(db: 库, ids: readonly string[], 现在: Date,
     额度重置判定里「写入它的那一刻」用这条沟通第一次被判为有效的时刻（EntFollowUpFirstValid，第五轮）：先存一条无效的、过后改成有效，
     按改成有效的那一刻之前的最近动静日比，不能倒补成建的那天；没有那一行 = 建的时候就有效，按建的时刻。
     不读 updatedAt：改错别字、挂接联系人、客户恢复连带的改动都会刷新它，会把当天实时记的沟通事后当成补录、倒扣已给的重置。
-    生效日照旧是沟通日期和建的时刻取早的
+    生效日照旧是沟通日期和建的时刻取早的。
+    随建项目（M-公海-54「建项目 + 首条沟通合计 1 次」）：建项目同一次操作带出的首条沟通（FollowUpProject.withProjectCreate）、建的时候就有效的才填；
+    后来才改成有效的按改的那一刻算补录，不填（那时项目早建好了，建项目照样挡）
   */
   const 有效们 = (们: 行[]): 额度候选沟通[] => 们
     .map((x) => ({ x, t: 生效(x), 写: 转时刻(x.vat) ?? 转时刻(x.cat) }))
     .filter((y): y is { x: 行; t: Date; 写: Date } => !!y.t && !!y.写 && y.t.getTime() <= 现在.getTime() + 生效时刻余量 && 有效(y.x))
     .sort((a, b) => b.t.getTime() - a.t.getTime())
-    .map((y) => ({ 日: beijingDay(y.t), 写: y.写 }));
+    .map((y) => ({ 日: beijingDay(y.t), 写: y.写, 随建项目: y.x.vat == null && y.x.bp ? y.x.bp : null }));
   for (const [cid, 们] of 按客户) {
     const 候选们 = 有效们(们);
     // 最近几条都无效：只这位往前翻
