@@ -1,6 +1,7 @@
 "use client";
 
 import { useSettingsNote } from "./InlineNote";
+import { 跳到第一处 } from "@/lib/form-validation";
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Table, Button, Space, Tag, Modal, Form, Input, Select, Switch, Row as 行, Col, Alert, Typography, Grid, Popover, Tooltip } from "antd";
@@ -164,7 +165,7 @@ export default function MembersTab({
     }
   }
   async function 存() {
-    const v = await form.validateFields().catch(() => null);
+    const v = await form.validateFields().catch(跳到第一处(form));
     if (!v) return;
     const 提交 = (force?: boolean) => saveUser({ id: editing?.id, ...v, force });
 

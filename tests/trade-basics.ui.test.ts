@@ -104,16 +104,21 @@ async function 开(m = ""): Promise<{ page: Page; errors: string[]; 调用们: (
   return { page, errors, 调用们: () => page.evaluate(() => (window as unknown as { __calls?: 调用[] }).__calls ?? []) };
 }
 
-it("计划页：点 ✓ 弹小框；没写一句话时保存是灰的；保存并完成交的是「跟进 + 完成计划 + 7 天后的日期计划」", async () => {
+it("计划页：点 ✓ 弹小框；没写一句话点保存就地报红（E1 · D03，不再灰着）；保存并完成交的是「跟进 + 完成计划 + 7 天后的日期计划」", async () => {
   const { page, errors, 调用们 } = await 开("框");
   await page.getByRole("button", { name: "完成 发新报价" }).click();
   const 框 = page.getByTestId("complete-plan-modal");
   await 框.waitFor();
   await expect.poll(() => 框.getByLabel("跟进方式").locator("..").innerText()).toContain("WhatsApp");
   const 保存 = page.getByRole("button", { name: "保存并完成" });
-  expect(await 保存.isDisabled()).toBe(true);
-  await 框.getByLabel("这次聊了什么").fill("新报价发了，客户说周五回复");
+  // 设计语言 E1（D03）：保存一直能点；空着点，「一句话」下面报红、焦点挪过去，不交
   expect(await 保存.isDisabled()).toBe(false);
+  await 保存.click();
+  expect(await 框.locator(".fm-err").allInnerTexts()).toEqual(["请写一句这次聊了什么"]);
+  await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("这次聊了什么");
+  expect((await 调用们()).some((x) => x.名 === "saveFollowUp")).toBe(false);
+  await 框.getByLabel("这次聊了什么").fill("新报价发了，客户说周五回复");
+  expect(await 框.locator(".fm-err").count()).toBe(0);
   expect(await 框.innerText()).toContain("会排一条 10 月 23 日的计划：接着跟进：新报价发了");
   await 保存.click();
   await page.getByText(/已记一笔，「发新报价」完成；下次 10 月 23 日/).waitFor({ timeout: 15_000 });

@@ -91,6 +91,14 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
   const 笔 = useRef<HTMLButtonElement>(null);
   const 回焦 = useRef(false);
   const 按钮排 = useRef<HTMLDivElement>(null);
+  /*
+    K7（设计语言 E2）：回车 / 选了就存、没存上（金额敲了「约5万」）——存的那一下框是灰的（disabled），焦点掉到页面上：
+    Esc 按了没人接（还原不了），金额框的「认不出」浮层也挂着不走。没存上之后把焦点放回这一格的输入框：Esc 照常还原、浮层跟着焦点走。
+    失焦存的不抢回焦点（人已经点去别处了）
+  */
+  const 编辑格 = useRef<HTMLDivElement>(null);
+  const [错后回焦, set错后回焦] = useState(0);
+  const 回过焦 = useRef(0);
 
   const 键 = JSON.stringify(值);
   if (乐观 && 乐观.基准 !== 键) set乐观(null);
@@ -126,6 +134,12 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
   useEffect(() => {
     if (开着) 按钮排.current?.scrollIntoView?.({ block: "nearest" });
   }, [开着]);
+
+  useEffect(() => {
+    if (忙 || !开着 || 错后回焦 === 回过焦.current) return;
+    回过焦.current = 错后回焦;
+    编辑格.current?.querySelector<HTMLElement>("input:not([disabled]), textarea:not([disabled]), [role=combobox]")?.focus();
+  }, [忙, 开着, 错后回焦]);
 
   useEffect(() => {
     if (!刚存) return;
@@ -165,6 +179,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
       const 话 = await 存(v);
       if (话) {
         失败的.current = 串(输入);
+        if (!失焦) set错后回焦((n) => n + 1);
         return set错(话);
       }
       稿.存好了();
@@ -173,6 +188,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
       关(!失焦);
     } catch (e) {
       失败的.current = 串(输入);
+      if (!失焦) set错后回焦((n) => n + 1);
       set错(动作出错话(e, "没存上，请稍后再试"));
     } finally {
       在存.current = false;
@@ -228,6 +244,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
 
   return (
     <div
+      ref={编辑格}
       className="proj-inline-edit"
       data-inline-field={名}
       aria-busy={忙 || undefined}

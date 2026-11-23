@@ -535,7 +535,7 @@ function InvolvedLine({ customers, 总数, 回答时 }: { customers: 提到的�
             </RecordPeek>
             {触屏 && <DraftButton id={c.id} disabled={AI已用完} 短名={c.name} />}
             {/* 间隔点挂在前一个名字后面：折行时下一行从名字起头，不从一个点起头 */}
-            {i < customers.length - 1 && <span className="cli-inv-dot" aria-hidden="true">·</span>}
+            {i < customers.length - 1 && <span className="cli-inv-sep" aria-hidden="true">·</span>}
           </span>
         ))}
       </div>

@@ -50,6 +50,8 @@ import { 详细地址上限, 详细地址提示 } from "@/lib/project/profile-ru
 import type { 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 没业务角色不能新建话 } from "@/lib/enterprise/permissions";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { 格里该聚焦的 } from "@/lib/form-validation";
+import { 滚法 } from "@/lib/reduced-motion";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
 import { 回复晚于回收, 北京墙钟转时刻, 认定时分配, 分配晚于回复 } from "@/lib/project/time-fields";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
@@ -182,18 +184,23 @@ type 差项 = { 格: 格; 话: string };
  * 整张表还差什么（一个弹窗填完，P-界面-36）；空 = 能建。按钮不变灰，点了才把这些就地标红（原型 cr.validate）。
  * 没开项目：只看客户和首条沟通；企业版客户业务线必填（M-必填-13），开了项目跟项目的业务线走
  */
-function 还差们(d: 稿, 带项目: boolean, 要下一步: boolean, 企业: 企业建档 = null, 老 = false): 差项[] {
+function 还差们(d: 稿, 带项目: boolean, 要下一步: boolean, 企业: 企业建档 = null, 老 = false, 号待查 = false): 差项[] {
   const 差: 差项[] = [];
   const 记 = (格: 格, 话: string) => void 差.push({ 格, 话 });
   // 挑了老客户（原型 cr.old）：客户那几格不用填，只看项目和首条沟通
-  if (!老) 客户还差(d, 企业, 记);
+  if (!老) 客户还差(d, 企业, 记, 号待查);
   if (企业 && !d.项目.业务线 && !区域定线中(d, 带项目, 企业)) 记("业务线", 带项目 ? 业务线必填 : 客户业务线必填);
   if (!老 && 摆只建分配(带项目, 企业) && d.只建分配?.方式 === undefined) 记("项目分配", "请选项目分配方式");
   项目沟通还差(d, 带项目, 要下一步, 企业, 记);
   return 差;
 }
 
-function 客户还差(d: 稿, 企业: 企业建档, 记: (格: 格, 话: string) => void) {
+/**
+ * 号待查 = 号码填了、这个号还没查过（失焦那一下的查重还在路上，或还没离开输入框）：查过是首次录入就会照 带进联系人 把号码带进联系人那几格，
+ * 缺项按带进去之后的联系人算——不然填完号码直接点「保存」，联系人那条按旧的空格子报缺、焦点落到联系人姓名（3703 补点 ad2883cd）。
+ * 查过了（撞了 / 格式不对就没带）按联系人那几格的现状算
+ */
+function 客户还差(d: 稿, 企业: 企业建档, 记: (格: 格, 话: string) => void, 号待查 = false) {
   const 企 = !!企业;
   if (企 && !d.号码类型) 记("号码类型", "请选择号码类型");
   if (!d.phone.trim()) 记("号码", 企 ? "请填号码" : "请填电话");
@@ -205,7 +212,8 @@ function 客户还差(d: 稿, 企业: 企业建档, 记: (格: 格, 话: string)
   if (!d.客户.name.trim()) { if (!企) 记("客户名", "请填写名称"); }
   else if (企 && 是占位值(d.客户.name)) 记("客户名", 占位名提示("客户名称"));
   // 联系人姓名：企业版选填（11-17「联系人姓名不一定知道」），和联系方式至少一项（联系人电话 / 第一行带进的号 / 多加的号码，同服务端 联系人姓名问题）
-  const 姓名问题 = 联系人姓名问题(企, d.联系人.name, [d.联系人.phone, d.联系人.email, d.联系人.wechat, ...(企 ? (d.更多号码 ?? []).map((x) => x.value) : [])]);
+  const 人 = 企 && 号待查 && d.phone.trim() ? { ...d.联系人, ...带进联系人(d.联系人, d.带过, d.号码类型 ?? "", d.phone.trim()).改 } : d.联系人;
+  const 姓名问题 = 联系人姓名问题(企, 人.name, [人.phone, 人.email, 人.wechat, ...(企 ? (d.更多号码 ?? []).map((x) => x.value) : [])]);
   if (姓名问题) 记("联系人", 姓名问题);
   else if (企 && 是占位值(d.联系人.name)) 记("联系人", 占位名提示("联系人姓名"));
   const 来源 = 企业 ? 新建来源还差(d.客户.渠道, d.客户.触点) : "";
@@ -373,6 +381,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const 问一起转 = useCarryConfirm();
   const [交中, set交中] = useState(false);
   const [建好了, set建好了] = useState(false);
+  // 设计语言 E1（D14）：提交键统一叫「保存」（建好 → 保存、建好并分出去 → 保存并分出去、已建好 → 已保存）
   // 原型 cr.submit / g.save：建好了在「建好」按钮里打勾，不弹顶部提示；没建成 / 没查成的原因就地写（role=alert）：
   // 查重的写在客户那节头下面，建档的写在底栏上面。下一次点的时候清掉
   const [查错, set查错] = useState("");
@@ -487,7 +496,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const 号拦 = 号查过 && (企业版 ? !!企查 && !(企查.ok && 企查.状态 === "首次录入") : !!撞);
   const 名对上 = !!名查 && 名查.名 === d.客户.name.trim();
   const 名拦 = 企业版 && 名对上 && !!名查?.撞;
-  const 差们 = 还差们(d, 带项目, 要下一步, 企业, !!老客户);
+  const 差们 = 还差们(d, 带项目, 要下一步, 企业, !!老客户, !号查过);
   // 客户名一边打一边搜老客户（停 300ms 再问，晚回来的旧结果丢掉）
   const 搜词 = 能挑老客户 && !老客户 ? d.客户.name.trim() : "";
   useEffect(() => {
@@ -528,8 +537,12 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   // 销售选自动分配：分出去后就看不到这个项目了（A9）。就地黄条说后果、按钮写明「并分出去」，不再叠一层确认框（原型 cr.auto）
   const 自动分出去 = 带项目 && !!企业?.是销售 && d.项目.分配方式 === 1;
 
+  // 设计语言 E1（D03）：滚过去，焦点也跳到这一格（等红字画出来再挪；不让 focus 自己跳着滚，滚动照上面这一下）
+  //「号码类型」和号码拼在「联系方式」一格里（没有自己的 data-ge），滚到那一格、焦点落在标红的类型框上
   const 滚到 = (g: 格) => {
-    document.querySelector(`[data-ge="${g}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const 选 = `[data-ge="${g === "号码类型" ? "号码" : g}"]`;
+    document.querySelector(选)?.scrollIntoView({ block: "center", behavior: 滚法() });
+    window.setTimeout(() => 格里该聚焦的(document.querySelector(选))?.focus({ preventScroll: true }), 0);
   };
 
   // 手动「查重」：号码、客户名都查一遍
@@ -1229,7 +1242,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           <Button type="primary" autoFocus onClick={知道了}>{知道了字}</Button>
         ) : (
           <Button type="primary" loading={交中 && !建好了} icon={建好了 ? <CheckOutlined /> : undefined} onClick={() => void 点建好()}>
-            {建好了 ? "已建好" : 自动分出去 ? "建好并分出去" : "建好"}
+            {建好了 ? "已保存" : 自动分出去 ? "保存并分出去" : "保存"}
           </Button>
         )}
       </div>

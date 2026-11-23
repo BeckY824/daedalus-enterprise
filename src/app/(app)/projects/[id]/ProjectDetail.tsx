@@ -421,6 +421,11 @@ function 级别格(v: string | null) {
  * antd 把这个对象原样并进浮层库的 overflow（_util/placements getOverflowOptions），shiftY 浮层库认、antd 的类型没列，只能断言
  */
 const 补填框挪进屏 = { adjustX: 1, adjustY: 1, shiftY: true } as Exclude<PopoverProps["autoAdjustOverflow"], boolean | undefined>;
+/*
+  K5（设计语言 E2，29K⑥）：浮层库往屏里挪（shiftY）时不算挂在按钮下面那 4px 间距，挪完外框下沿总比屏幕低 3–4px、页面能多滚这一截。
+  把间距从「偏移」挪进外框（globals.css .pd-fill-pop 上边留白），偏移归零，挪的时候整块都算进去
+*/
+const 补填框不偏移: PopoverProps["align"] = { offset: [0, 0] };
 
 /**
  * 公海提示条那句（项目页、客户页项目区同一个）：能领说领了怎样；领不了说为什么。
@@ -1122,6 +1127,7 @@ export default function ProjectDetail({
                   // 下面放不下：先试翻到按钮上面，还放不下就整块往上挪到屏里（11-20 c2 实操：375 宽缺得多时底下按钮比屏幕低、要滚一下才看得到）。
                   // 默认只翻不挪，翻上去也放不下就照旧挂在下面伸出屏外；挪的时候按浮层外框算，外框底下留的安全区见 globals.css .pd-fill-pop
                   autoAdjustOverflow={补填框挪进屏}
+                  align={补填框不偏移}
                   arrow={false}
                   destroyOnHidden
                   classNames={{ root: "pd-fill-pop" }}
@@ -2047,7 +2053,7 @@ export default function ProjectDetail({
       {!p.放弃 && <GiveUpBanner projectId={p.id} />}
       {p.线索验证 && (
         <Modal open={验证开着} title="线索验证" footer={null} width={560} onCancel={() => set验证开着(false)} destroyOnHidden>
-          <LeadVerifyPanel projectId={p.id} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} 线索验证必填={p.线索验证必填 ?? []}
+          <LeadVerifyPanel projectId={p.id} 项目名={p.name} v={p.线索验证} 无效原因选项={p.原因选项.无效} 字数上限={p.字数上限} 跑={跑} 忙={忙} 缺有效沟通话={缺有效沟通话} 不给推={p.不给推} 线索验证必填={p.线索验证必填 ?? []}
             有效还差={没有效沟通 ? p.有效沟通差 : []}
             沟通半句={沟通半句}
             on去填={能去填 ? (叫) => { set验证开着(false); window.setTimeout(() => 去填(叫法到键(叫)), 80); } : undefined}
@@ -2416,7 +2422,26 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
   }, [限时到, 钟差, 丢稿]);
   const 差 = 过时了 ? 本人改过时提示 : !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体"
     : 动了下一步 && !下一步文字.trim() ? "请写下一步计划" : 动了下一步 && 要下一步 && !下一步时间 ? "请填下一步时间" : "";
+  /*
+    设计语言 E1（D03，同 D4 新建沟通框）：「保存」一直能点（限时到点了除外）；点了还缺的在各自格子下面报红、焦点跳到第一处，
+    每格带标签、* 在前（原来保存灰着、原因是底下一行灰字）
+  */
+  const [试过, set试过] = useState(false);
+  const 错们: [格: string, 话: string | null][] = [
+    ["发起主体", 主体们 && f.initiator && !发起 ? "请选发起主体" : null],
+    ["沟通内容", !content.trim() ? "请填写这次沟通的内容" : null],
+    ["下一步计划", 动了下一步 && !下一步文字.trim() ? "请写下一步计划" : null],
+    ["下一步时间", 动了下一步 && 要下一步 && !下一步时间 ? "请填下一步时间" : null],
+  ];
+  const 格错 = (格: string) => (试过 ? 错们.find(([k]) => k === 格)?.[1] ?? null : null);
+  const 错行 = (格: string) => 格错(格) && <div className="fm-err" role="alert">{格错(格)}</div>;
   const 交 = async () => {
+    if (!过时了 && 错们.some(([, 话]) => 话)) {
+      set试过(true);
+      const 第一处 = 错们.find(([, 话]) => 话)![0];
+      window.setTimeout(() => document.querySelector<HTMLElement>(`.follow-edit-modal [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), [tabindex="0"])`)?.focus(), 0);
+      return;
+    }
     set交中(true);
     const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt: occurredAt === 原时间 ? f.occurredAt : occurredAt, 版本: f.版本, ...(动了下一步 ? { 下一步: 下一步文字, 下一步时间 } : {}) }), "已保存修改", { 报错: (话) => set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话) });
     set交中(false);
@@ -2426,38 +2451,53 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     }
   };
   return (
-    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} okButtonProps={{ disabled: !!差, loading: 交中, title: 差 || undefined }} onCancel={() => { 稿.丢掉(); onClose(); }} onOk={() => void 交()}>
+    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} className="follow-edit-modal" okButtonProps={{ disabled: 过时了, loading: 交中, title: (过时了 && 差) || undefined }} onCancel={() => { 稿.丢掉(); onClose(); }} onOk={() => void 交()}>
       {稿.提示}
       <div style={{ display: "grid", gap: 12 }}>
         <div className="follow-pick-row">
-          <FollowMethodSelect aria-label="沟通方式" type={type} method={method} 类型们={类型们} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
-          {主体们 && <InitiatorSelect 们={主体们} value={发起} onChange={set发起} />}
-        </div>
-        <DatePicker
-          aria-label="沟通时间"
-          showTime={{ format: "HH:mm" }}
-          format={沟通时间格式}
-          allowClear={false}
-          style={{ width: "100%" }}
-          value={dayjs(occurredAt, 沟通时间格式)}
-          disabledDate={(x) => x.isAfter(dayjs(), "day")}
-          onChange={(v) => v && setOccurredAt(v.format(沟通时间格式))}
-        />
-        <Input.TextArea aria-label="沟通内容" rows={4} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
-        {改下一步 && (<>
-          <div>
-            <div className="proj-fu-lab">下一步计划<span className="proj-fu-req"> *</span></div>
-            <Input aria-label="下一步计划" value={下一步文字} onChange={(e) => set下一步文字(e.target.value)} maxLength={下一步文字上限} showCount placeholder="比如：周五前发报价单给对方采购" />
+          <div data-fk="沟通方式">
+            <格标签 名="沟通方式" 必填 />
+            <FollowMethodSelect aria-label="沟通方式" style={满宽} type={type} method={method} 类型们={类型们} onChange={(v) => { setType(v.type); setMethod(v.method); }} />
           </div>
-          <div>
-            <div className="proj-fu-lab">
-              下一步时间{要下一步 ? <span className="proj-fu-req"> *</span> : <span className="proj-fu-mute">（可不填）</span>}
+          {主体们 && (
+            <div data-fk="发起主体">
+              <格标签 名="发起主体" 必填={!!f.initiator} />
+              <InitiatorSelect 们={主体们} style={满宽} status={格错("发起主体") ? "error" : undefined} value={发起} onChange={set发起} />
+              {错行("发起主体")}
             </div>
-            <DatePicker aria-label="下一步时间" className="proj-fu-full" value={下一步时间 ? dayjs(下一步时间) : null} disabledDate={(x) => x.isBefore(dayjs(), "day")} onChange={(v) => set下一步时间(v ? v.format("YYYY-MM-DD") : null)} />
-            <div className="proj-fu-note">改了会同步到项目上的下一步</div>
+          )}
+        </div>
+        <div>
+          <格标签 名="沟通时间" />
+          <DatePicker
+            aria-label="沟通时间"
+            showTime={{ format: "HH:mm" }}
+            format={沟通时间格式}
+            allowClear={false}
+            style={{ width: "100%" }}
+            value={dayjs(occurredAt, 沟通时间格式)}
+            disabledDate={(x) => x.isAfter(dayjs(), "day")}
+            onChange={(v) => v && setOccurredAt(v.format(沟通时间格式))}
+          />
+        </div>
+        <div data-fk="沟通内容">
+          <格标签 名="沟通内容" 必填 />
+          <Input.TextArea aria-label="沟通内容" rows={4} status={格错("沟通内容") ? "error" : undefined} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
+          {错行("沟通内容")}
+        </div>
+        {改下一步 && (<>
+          <div data-fk="下一步计划">
+            <格标签 名="下一步计划" 必填 />
+            <Input aria-label="下一步计划" status={格错("下一步计划") ? "error" : undefined} value={下一步文字} onChange={(e) => set下一步文字(e.target.value)} maxLength={下一步文字上限} showCount placeholder="比如：周五前发报价单给对方采购" />
+            {错行("下一步计划")}
+          </div>
+          <div data-fk="下一步时间">
+            <格标签 名="下一步时间" 必填={要下一步} />
+            <DatePicker aria-label="下一步时间" className="proj-fu-full" status={格错("下一步时间") ? "error" : undefined} value={下一步时间 ? dayjs(下一步时间) : null} disabledDate={(x) => x.isBefore(dayjs(), "day")} onChange={(v) => set下一步时间(v ? v.format("YYYY-MM-DD") : null)} />
+            {错行("下一步时间")}
+            <div className="fm-help">{要下一步 ? "" : "可不填；"}改了会同步到项目上的下一步</div>
           </div>
         </>)}
-        {差 && !过时了 && <div style={{ color: "var(--text-muted)" }}>{差}</div>}
         <框里原因 话={交错} />
       </div>
     </Modal>
@@ -2640,7 +2680,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       set试过(true);
       // 焦点跳到第一处没填好的格子（等红字画出来再找）
       const 第一处 = 错们.find(([, 话]) => 话)![0];
-      window.setTimeout(() => document.querySelector<HTMLElement>(`.follow-modal [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), .ant-select-selector, [tabindex="0"])`)?.focus(), 0);
+      window.setTimeout(() => document.querySelector<HTMLElement>(`.follow-modal [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), [tabindex="0"])`)?.focus(), 0);
       return;
     }
     set交中(true);
