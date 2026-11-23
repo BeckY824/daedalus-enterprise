@@ -6688,6 +6688,11 @@ button.proj-miss-chip { cursor: pointer; }
 }
 
 
+/* ---------- 设计语言 E4 · 设置（11-22，只挂现状主题；换皮主题外观不动。结构改动在 MembersTab.tsx：行尾动作图标 + 字、「总管理」「管理员」标签灰；
+   K6 回收站表按列宽排、D22 浮层层级是 bug / 层级修复，所有主题都生效，不在这一段） ---------- */
+/* D19 卡片标题一个号：设置里卡片内的小节标题（Typography.Title level 5，antd 16）和卡头（15，--fs-section）同号 */
+:root:is(:not([data-skin]), [data-skin="now"]) .set-body h5.ant-typography { font-size: var(--fs-section); }
+
 /* ================= 设计语言 D-2 · 方案 A「一张纸 + 分隔线」（11-22 用户定，评审页 评审-底色与模块分区-20261122） =================
    只挂现状主题、且底色不是「原底」（设置 → 外观；默认白底，lib/appearance.ts）。「原底」照旧是浅灰地面 + 白卡，换皮主题一律不动。
    规矩（两方案共用 + A）：
@@ -6801,10 +6806,3 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .btodo-wrap { margin-inline: calc(-1 * var(--content-pad-x)); }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list { padding-inline: var(--s4); }
 }
-
-/* ---------- 设计语言 E4 · 设置（11-22，只挂现状主题；换皮主题外观不动。结构改动在 MembersTab.tsx：行尾动作图标 + 字、「总管理」「管理员」标签灰；
-   K6 回收站表按列宽排、D22 浮层层级是 bug / 层级修复，所有主题都生效，不在这一段） ---------- */
-/* D19 卡片标题一个号：设置里卡片内的小节标题（Typography.Title level 5，antd 16）和卡头（15，--fs-section）同号 */
-:root:is(:not([data-skin]), [data-skin="now"]) .set-body h5.ant-typography { font-size: var(--fs-section); }
-/* D16 状态色当小字：首页模型备注用 --success（3.30:1）压浅绿底，13 号以下要用 --success-text（设置锁「已发给…」同，settings.css） */
-:root:is(:not([data-skin]), [data-skin="now"]) .mp-note { color: var(--success-text); }
