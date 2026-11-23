@@ -10,7 +10,9 @@
  *     线索直接建在挑中的销售名下（不经过市场成员名下），记自动分配、计入本月已分、进线索验证；客户不动（负责人是市场成员的也不算市场转客户）；
  *     不过「分配方式谁能用」（系统分）；挑不到人（都暂停 / 禁止、都满额、这条线没人、规则「线索分配」关着）= 整笔不建，市场成员看不到客户名、指派不了；
  *     照 P-转-38 提醒能分配的人：撞号台账记「没人接：原因」，这条线的销售管理 + 系统管理员收通知（编号、渠道、沟通摘要，不带客户名；规则关着只发系统管理员）；
- *     框打开时就挑不到：框照开、先说清。事务里挑中的人刚满额 = 顺延下一位；有判无效待补的先补发（不计数、补位用掉）
+ *     框打开时就挑不到：框照开、先说清。事务里挑中的人刚满额 = 顺延下一位（顺延到没人 = 同样没建）；有判无效待补的先补发（不计数、补位用掉）；
+ *     没建回 { ok: true, 没建: true }（不是失败）；通知 key 按客户 + 发起人 + 10 分钟一格，同一人隔几分钟再交不重复提醒；
+ *     线判不出两条线的销售管理都收；发起人自己不收，去掉他一个不剩 = 「请找销售管理」；规则关着正文建议打开规则或手动处理
  *   - 项目列表按原始客户编号命中那一支：短纯数字（「2024」）不触发（看成客户编号严，共用的 看成客户编号 不变）；销售用编号搜不到他看不到的同事的重复咨询线索
  *   - 没有选人：交了 ownerId / 接手人之类的参数也不认，负责人由系统定（E-218 二①）
  *   - 命名加序（E-218）：同一位客户第 2 次起「-2」「-3」，序号读只读字段 repeatSeq（含回收站、已结束的），改名不影响；(原始客户, 序号) 唯一
@@ -47,6 +49,7 @@ import { 读项目列表 } from "@/lib/project/list";
 import { 分配线索, 项目分配线, 分配带走的项目 } from "@/app/(app)/leads/assign-actions";
 import { 公海项目市场转 } from "@/lib/enterprise/market-transfer";
 import { 读组织 } from "@/lib/enterprise/org";
+import { 是系统管理员of } from "@/lib/enterprise/org-core";
 import { 线索初判Action, 编辑项目 } from "@/app/(app)/projects/actions";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
@@ -405,7 +408,7 @@ describe("交销售：客户负责人接不了指定分配，新线索按区域�
     const 为什么 = "能接的销售都暂停或禁止了自动分配";
     // 框照开、先说清（这条线没有销售管理：通知只发系统管理员）；交了整笔不建
     expect(await 出口C框数据("手机号", c.号)).toMatchObject({ ok: true, 交销售: true, 没人接: 出口C没人接预告话(为什么, "系统管理员") });
-    expect(await 交(c, 外贸甲.name)).toEqual({ ok: false, error: 出口C没人接话(为什么, "系统管理员") });
+    expect(await 交(c, 外贸甲.name)).toEqual({ ok: true, 没建: true, 提示: 出口C没人接话(为什么, "系统管理员") });
     await 没动(c.id);
     expect(await prisma.project.count({ where: { ownerId: 市场.id } })).toBe(0);
     expect((await prisma.entDupeHit.findFirstOrThrow({ where: { customerId: c.id } })).result).toBe(`没人接：${为什么}`);
@@ -422,7 +425,7 @@ describe("交销售：客户负责人接不了指定分配，新线索按区域�
     const c = await 同事客户(外贸甲.id);
     当(市场);
     expect(await 查号码("手机号", c.号)).toMatchObject({ 出口C: { 负责人名: 外贸甲.name, 交销售: true } });
-    expect(await 交(c, 外贸甲.name)).toEqual({ ok: false, error: 出口C没人接话("能接的销售都暂停或禁止了自动分配", "系统管理员") });
+    expect(await 交(c, 外贸甲.name)).toEqual({ ok: true, 没建: true, 提示: 出口C没人接话("能接的销售都暂停或禁止了自动分配", "系统管理员") });
     await 没动(c.id);
   });
 
@@ -443,10 +446,14 @@ describe("交销售：客户负责人接不了指定分配，新线索按区域�
     await prisma.user.update({ where: { id: 外贸甲.id }, data: { active: false } });
     当(市场);
     expect(await 出口C框数据("手机号", c.号)).toMatchObject({ ok: true, 没人接: 出口C没人接预告话(规则关着为什么, "系统管理员") });
-    expect(await 交(c, 外贸甲.name)).toEqual({ ok: false, error: 出口C没人接话(规则关着为什么, "系统管理员") });
+    expect(await 交(c, 外贸甲.name)).toEqual({ ok: true, 没建: true, 提示: 出口C没人接话(规则关着为什么, "系统管理员") });
     await 没动(c.id);
     expect(await prisma.project.count({ where: { ownerId: 市场.id } })).toBe(0);
-    expect((await prisma.entNotice.findMany({ where: { kind: "待分配" }, select: { userId: true } })).map((x) => x.userId)).toEqual([总管.id]);
+    const 通 = await prisma.entNotice.findMany({ where: { kind: "待分配" }, select: { userId: true, body: true } });
+    expect(通.map((x) => x.userId)).toEqual([总管.id]);
+    // 规则关着：建议打开规则或手动处理，不建议调配额 / 恢复参与分配（没有自动分配，调了也没用）
+    expect(通[0].body).toContain("请在组织规则里打开线索分配，或手动处理");
+    expect(通[0].body).not.toMatch(/调配额|恢复参与分配/);
     expect(await prisma.entNotice.count({ where: { userId: 销管.id } })).toBe(0);
   });
 
@@ -627,7 +634,7 @@ describe("交销售挑不到人：提醒能分配的人（P-转-38）；事务�
     await 查号码("手机号", c.号);
     const 为什么 = "能接的销售本月都已满额";
     expect(await 出口C框数据("手机号", c.号)).toMatchObject({ ok: true, 交销售: true, 没人接: 出口C没人接预告话(为什么, "销售管理") });
-    expect(await 交(c, 外贸甲.name)).toEqual({ ok: false, error: 出口C没人接话(为什么, "销售管理") });
+    expect(await 交(c, 外贸甲.name)).toEqual({ ok: true, 没建: true, 提示: 出口C没人接话(为什么, "销售管理") });
     // 不建：没有新项目、没有新的分配记录、没有沟通
     expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(1);
     expect(await prisma.entLeadAssign.count()).toBe(1);
@@ -647,7 +654,75 @@ describe("交销售挑不到人：提醒能分配的人（P-转-38）；事务�
       expect(字).toContain(为什么);
       expect(字).not.toContain(`老客户${序}`);
       expect(字).not.toContain(c.号);
+      expect(字).toContain("请调配额、恢复参与分配");
     }
+  });
+
+  it("同一人 10 分钟内再交一次（隔了几分钟、不在同一分钟）：照样回没建，通知不重复（key = 客户 + 发起人 + 10 分钟一格）；下一格再交才再发", async () => {
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [外贸甲.id]: "暂停", [乙.id]: "暂停" });
+    invalidateSettingsCache();
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    const 话 = { ok: true, 没建: true, 提示: 出口C没人接话("能接的销售都暂停或禁止了自动分配", "系统管理员") };
+    const 格 = Math.floor(Date.now() / 600_000) * 600_000;
+    const 钟 = vi.spyOn(Date, "now");
+    try {
+      钟.mockReturnValue(格 + 1_000);
+      expect(await 交(c, 外贸甲.name)).toEqual(话);
+      // 同一格、隔了 3 分钟（默认按内容 + 当前分钟的键挡不住这一下）
+      钟.mockReturnValue(格 + 181_000);
+      expect(await 交(c, 外贸甲.name)).toEqual(话);
+      expect(await prisma.entNotice.count({ where: { kind: "待分配" } })).toBe(1);
+      // 下一格：算新的一次，再提醒一遍
+      钟.mockReturnValue(格 + 601_000);
+      expect(await 交(c, 外贸甲.name)).toEqual(话);
+      expect(await prisma.entNotice.count({ where: { kind: "待分配" } })).toBe(2);
+    } finally {
+      钟.mockRestore();
+    }
+    expect((await prisma.entNotice.findMany({ where: { kind: "待分配" } })).map((x) => x.userId)).toEqual([总管.id, 总管.id]);
+    await 没动(c.id);
+  });
+
+  it("线判不出（客户没区域、没电话，发起人没事业部）：两条线的销售管理 + 系统管理员都收", async () => {
+    const 内销管 = await 造人("smgr1", "内销管某", "sales_mgr", "内贸");
+    const 外销管 = await 造人("smgr2", "外销管某", "sales_mgr", "外贸");
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [外贸甲.id]: "暂停", [乙.id]: "暂停", [内销管.id]: "禁止", [外销管.id]: "禁止" });
+    invalidateSettingsCache();
+    // 只有邮箱的客户：按号码定不了线（查的是邮箱，客户和联系人的电话都空着）
+    序 += 1;
+    const 邮 = `buyer${序}@example.com`;
+    const c = await prisma.customer.create({ data: { name: `老客户${序}`, phone: "", salesOwnerId: 外贸甲.id, channelId: 老渠道, attributionChannelId: 老渠道, customerNo: 序 } });
+    await prisma.contact.create({ data: { name: "王经理", email: 邮, isPrimary: true, customerId: c.id } });
+    当(市场);
+    const 为什么 = "能接的销售都暂停或禁止了自动分配";
+    expect(await 出口C框数据("邮箱", 邮)).toMatchObject({ ok: true, 交销售: true, 没人接: 出口C没人接预告话(为什么, "销售管理") });
+    expect(await 出口C建线索("邮箱", 邮, 沟通(), { 渠道: 新渠道, 对接人: { 撞上的: true }, 负责人名: 外贸甲.name }))
+      .toEqual({ ok: true, 没建: true, 提示: 出口C没人接话(为什么, "销售管理") });
+    expect((await prisma.entNotice.findMany({ where: { kind: "待分配" } })).map((x) => x.userId).sort()).toEqual([内销管.id, 外销管.id, 总管.id].sort());
+    expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(0);
+  });
+
+  it("收件人去掉发起人自己一个不剩（发起人兼任唯一的系统管理员、没有销售管理）：框里和交了都说「请找销售管理」，不发通知", async () => {
+    // 总管设了业务线、没勾系统管理员 = 不算系统管理员；市场成员兼总管理（没设业务线）= 唯一的系统管理员
+    await prisma.entMember.update({ where: { userId: 总管.id }, data: { line: "外贸" } });
+    await prisma.entMember.update({ where: { userId: 市场.id }, data: { bizRole: "channel_ops,director" } });
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [市场.id]: "禁止", [外贸甲.id]: "暂停", [乙.id]: "暂停" });
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    const org = await 读组织();
+    expect([是系统管理员of(org, 市场.id), 是系统管理员of(org, 总管.id)]).toEqual([true, false]);
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    const 为什么 = "能接的销售都暂停或禁止了自动分配";
+    const 框 = await 出口C框数据("手机号", c.号);
+    expect(框).toMatchObject({ ok: true, 交销售: true, 没人接: 出口C没人接预告话(为什么, null) });
+    const r = await 交(c, 外贸甲.name);
+    expect(r).toEqual({ ok: true, 没建: true, 提示: 出口C没人接话(为什么, null) });
+    if (r.ok) expect(r.提示).toContain("请找销售管理");
+    expect(r.ok && r.提示).not.toContain("已通知");
+    expect(await prisma.entNotice.count({ where: { kind: "待分配" } })).toBe(0);
+    await 没动(c.id);
   });
 
   it("这条线没人（内贸没有销售）：不建，原因写这条线没人；只通知系统管理员", async () => {
@@ -655,7 +730,7 @@ describe("交销售挑不到人：提醒能分配的人（P-转-38）；事务�
     const c = await 同事客户(外贸甲.id);
     当(市场);
     const 为什么 = "内贸上没有能接的销售（或业务线对不上）";
-    expect(await 交(c, 外贸甲.name)).toEqual({ ok: false, error: 出口C没人接话(为什么, "系统管理员") });
+    expect(await 交(c, 外贸甲.name)).toEqual({ ok: true, 没建: true, 提示: 出口C没人接话(为什么, "系统管理员") });
     await 没动(c.id);
     expect((await prisma.entNotice.findMany({ where: { kind: "待分配" } })).map((x) => x.userId)).toEqual([总管.id]);
     expect((await prisma.entDupeHit.findFirstOrThrow({ where: { customerId: c.id } })).result).toBe(`没人接：${为什么}`);
@@ -689,6 +764,29 @@ describe("交销售挑不到人：提醒能分配的人（P-转-38）；事务�
     expect(await 本月已分(乙.id)).toBe(0);
     expect(await 本月已分(丙.id)).toBe(2);
     expect(await prisma.project.count({ where: { customerId: c.id } })).toBe(2);
+  });
+
+  it("事务里挑中的人刚满额、顺延下去没人可挑：回没建（不是失败），台账记「没人接」、通知系统管理员，一行项目 / 分配 / 沟通都不写", async () => {
+    // 内贸只有乙 0/1：事务外挑乙；进事务之前乙的配额被改成 0 → 事务里核出满了 → 跳过乙 → 没人了
+    await 设配额(乙, 1);
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    const 原 = defaultClient.$transaction as (...x: unknown[]) => unknown;
+    let 第几笔 = 0;
+    const spy = vi.spyOn(defaultClient, "$transaction").mockImplementation((async function (this: unknown, ...a: unknown[]) {
+      if (typeof a[0] === "function" && ++第几笔 === 1) await defaultClient.entLeadQuota.update({ where: { userId: 乙.id }, data: { quota: 0 } });
+      return 原.apply(this, a);
+    }) as never);
+    const 为什么 = "能接的销售本月都已满额";
+    try {
+      expect(await 交(c, 外贸甲.name)).toEqual({ ok: true, 没建: true, 提示: 出口C没人接话(为什么, "系统管理员") });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(第几笔).toBe(1);
+    await 没动(c.id);
+    expect((await prisma.entDupeHit.findFirstOrThrow({ where: { customerId: c.id } })).result).toBe(`没人接：${为什么}`);
+    expect((await prisma.entNotice.findMany({ where: { kind: "待分配" } })).map((x) => x.userId)).toEqual([总管.id]);
   });
 
   it("判无效补发：有内贸待补的丙先补（本来轮到乙）；分配记录不计数、补位记用在这条上；本月已分不涨", async () => {

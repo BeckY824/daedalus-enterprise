@@ -6,7 +6,9 @@
  * 建档向导（新建线索 / 新建客户）、首页查重框、首页 AI 新线索卡共用；服务端动作 customers/repeat-inquiry-actions.ts：只认号码、重查一遍。
  * 框里三样必填（同查重领取那一框）：这次的渠道、对接人、一条沟通。同事的客户资料、联系人名字一律不列：
  * 对接人默认挂「号码对应的那位联系人」（不显示名字），或者填新的人。结果就地写在键后面一行，建成了键收起。
- * 交销售这一刻就挑不到人（服务端给 没人接）：框照开、顶上先说清，键写「提交并通知」；交了不建，服务端把渠道和沟通发给销售管理 / 系统管理员（P-转-38）
+ * 交销售这一刻就挑不到人（服务端给 没人接）：框照开、顶上先说清，沟通内容下提醒别写客户名和联系方式，键写「提交并通知」；
+ * 交了不建，服务端把渠道和沟通发给这条线的销售管理和系统管理员（P-转-38），回 没建：不当失败——清草稿、关框、键收起，
+ * 键后面一行用普通样式说这句（不调 建了：什么都没建）
  */
 import { useEffect, useState } from "react";
 import { Button, Input, Modal, Select, Spin } from "antd";
@@ -30,7 +32,7 @@ const 新的人 = "new";
 
 export const 出口C说明 = (负责人: string, 交销售 = false) =>
   交销售
-    ? `客户负责人 ${负责人} 现在接不了新线索（账号停用、暂停或禁止参与分配、或不是销售），这次新建的线索（标「老客户重复咨询」）按客户区域定内贸 / 外贸、自动分配给一位能接的销售（计入他本月已分），进线索验证由他判；这条线没有能接的销售就不建，这次的渠道和沟通发给销售管理（规则「线索分配」关着发给系统管理员）。创建人记你、项目来源记这次的渠道，这次的沟通记在新线索上。客户的负责人、来源、联系人和原来的项目都不改；建好后你在项目列表里能看到进度`
+    ? `客户负责人 ${负责人} 现在接不了新线索（账号停用、暂停或禁止参与分配、或不是销售），这次新建的线索（标「老客户重复咨询」）按客户区域定内贸 / 外贸、自动分配给一位能接的销售（计入他本月已分），进线索验证由他判；这条线没有能接的销售就不建，这次的渠道和沟通发给这条线的销售管理和系统管理员（规则「线索分配」关着只发给系统管理员）。创建人记你、项目来源记这次的渠道，这次的沟通记在新线索上。客户的负责人、来源、联系人和原来的项目都不改；建好后你在项目列表里能看到进度`
     : `在 ${负责人} 名下新建一条线索（标「老客户重复咨询」，指定分配给他、计入他本月已分），进线索验证由他判；创建人记你、项目来源记这次的渠道，这次的沟通记在新线索上。客户的负责人、来源、联系人和原来的项目都不改；建好后你在项目列表里能看到进度`;
 
 /** 交销售：客户负责人接不了指定分配，新线索按区域自动分给销售（服务端 出口C按钮给不给 带来的） */
@@ -48,13 +50,14 @@ export default function RepeatInquiryKey({ 建了, ...外 }: 外面给的 & { �
       )}
       {话 && <span role={话.级 === "错" ? "alert" : "status"} className={话.级 === "错" ? "cu-said cu-said-err" : "cu-said"}>{话.话}</span>}
       <Modal open={开} title="老客户重复咨询：新建线索" footer={null} onCancel={() => set开(false)} destroyOnHidden width={560}>
-        {开 && <Body {...外} 关={() => set开(false)} 成了={(t) => { set开(false); set话({ 话: t, 级: "常" }); 建了?.(t); }} />}
+        {开 && <Body {...外} 关={() => set开(false)} 成了={(t, 建成) => { set开(false); set话({ 话: t, 级: "常" }); if (建成) 建了?.(t); }} />}
       </Modal>
     </>
   );
 }
 
-function Body({ 类型, 值, 负责人名, 交销售: 外交销售, 渠道: 带渠道, 触点, 关, 成了 }: 外面给的 & { 关: () => void; 成了: (提示: string) => void }) {
+/** 成了：建成 = 真建了线索；false = 没人接、只发了通知（服务端 没建） */
+function Body({ 类型, 值, 负责人名, 交销售: 外交销售, 渠道: 带渠道, 触点, 关, 成了 }: 外面给的 & { 关: () => void; 成了: (提示: string, 建成: boolean) => void }) {
   const b = useBusiness();
   const 能选类型 = 跟进类型们(外贸精简(b)).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   const [f, setF] = useState<查重领取沟通>({ type: 能选类型[0]?.value ?? "PHONE", content: "", occurredAt: dayjs().format(时间格式) });
@@ -103,8 +106,9 @@ function Body({ 类型, 值, 负责人名, 交销售: 外交销售, 渠道: 带�
     try {
       const r = await 出口C建线索(类型, 值, f, { 渠道, 对接人: 选新的人 ? { 名字, 职务: 职务 || null } : { 撞上的: true }, 负责人名: 负责人 });
       if (!r.ok) { set错(r.error); return; }
+      // 没建（没人接、通知已发）也算交上去了：草稿清掉、框关掉，不再让人点第二次
       稿.存好了();
-      成了(r.提示);
+      成了(r.提示, !("没建" in r));
     } catch (e) {
       set错(动作出错话(e, "没建成，请稍后再试"));
     } finally {
@@ -174,6 +178,7 @@ function Body({ 类型, 值, 负责人名, 交销售: 外交销售, 渠道: 带�
       <div className="cr-field">
         <span><span className="dc-claim-req">* </span>沟通内容</span>
         <Input.TextArea aria-label="沟通内容" rows={3} value={f.content} placeholder="这次咨询聊了什么" onChange={(e) => setF({ ...f, content: e.target.value })} />
+        {框?.ok && 框.没人接 && <span className="muted" data-testid="repeat-inquiry-content-hint">这段会发给销售管理 / 系统管理员，别写客户名和联系方式</span>}
       </div>
       {错 && <span role="alert" className="cu-said cu-said-err">{错}</span>}
       <div className="dc-claim-foot">

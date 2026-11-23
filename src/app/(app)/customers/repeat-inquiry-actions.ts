@@ -78,8 +78,11 @@ export type 出口C对接人 = { 撞上的?: boolean; 名字?: string | null; �
  * 它只用来核对、不是选人：新线索落给谁全由服务端定（见文件头），这里没有、也不认负责人 / 接手人参数
  */
 export type 出口C新项目 = { 渠道?: string | null; 对接人?: 出口C对接人 | null; 负责人名?: string | null };
-/** 成功的话不带项目名、客户名（同事的客户，市场成员看不到它的名称）：只说转给了负责人跟进 */
-export type 出口C结果 = { ok: true; 提示: string; 负责人: string } | { ok: false; error: string };
+/**
+ * 成功的话不带项目名、客户名（同事的客户，市场成员看不到它的名称）：只说转给了负责人跟进。
+ * 没建 = 交销售挑不到人、照 P-转-38 记了台账发了通知（没人接收尾）：不是失败，界面清草稿、关框、用普通样式说这句，键收起（免得再点再发一遍）
+ */
+export type 出口C结果 = { ok: true; 提示: string; 负责人: string } | { ok: true; 没建: true; 提示: string } | { ok: false; error: string };
 
 export async function 出口C框数据(类型: string, 值: string): Promise<出口C框> {
   const me = await requireUser();
@@ -92,7 +95,7 @@ export async function 出口C框数据(类型: string, 值: string): Promise<出
   let 没人接: string | undefined;
   if (r.目标.交销售) {
     const 候 = await 交销售候选(org!, me.id, r.目标.客户.id, r.目标.负责人);
-    if (!候.ok) 没人接 = 出口C没人接预告话(候.没人接.为什么, (await 出口C没人接收件人(org!, 候.没人接.线)).通知);
+    if (!候.ok) 没人接 = 出口C没人接预告话(候.没人接.为什么, (await 出口C没人接收件人(org!, 候.没人接.线, me.id)).通知);
   }
   const 撞上 = await 撞上的联系人(prisma, r.目标.客户.id, 号);
   return { ok: true, 负责人名: r.目标.负责人名, 交销售: r.目标.交销售, 渠道们: await 可选渠道们(), 有撞上的联系人: !!撞上, ...(没人接 ? { 没人接 } : {}) };
@@ -276,26 +279,29 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
 /**
  * 交销售挑不到人、整笔没建（P-转-38 提醒能分配的人，机制总表 P-转-38）：
  * 撞号台账这一行记「没人接：原因」（查号码时记的「拦截」那一行 10 分钟内并进去，不计入预警次数）；
- * 这条线的销售管理和系统管理员各收一条站内通知（飞书照通知开关推；规则「线索分配」关着只发系统管理员，出口C没人接收件人），
- * 带客户编号、这次的渠道、沟通摘要，不带客户名（收件人不一定看得到这位客户）、不带号码（notify 兜底打码）。从不写项目、分配、沟通
+ * 这条线的销售管理和系统管理员各收一条站内通知（飞书照通知开关推；规则「线索分配」关着只发系统管理员，发起人自己不收，出口C没人接收件人），
+ * 带客户编号、这次的渠道、沟通摘要，不带客户名（收件人不一定看得到这位客户）、不带号码（notify 兜底打码）。从不写项目、分配、沟通。
+ * 回 { ok: true, 没建: true }：这一笔该做的（记台账、发通知）都做了，界面不当失败
  */
 async function 没人接收尾(
   org: 组织, me: { id: string; name: string }, 号: 验好的号, 客户: { id: string; customerNo: number | null }, 没: 出口C没人接, 渠道: string, 好: 规整好的沟通,
 ): Promise<出口C结果> {
   await 号码撞上(me.id, await 读的我(defaultClient), 号, 没人接结果(没.为什么));
-  const { 人们, 通知 } = await 出口C没人接收件人(org, 没.线);
+  const { 人们, 通知, 开着 } = await 出口C没人接收件人(org, 没.线, me.id);
   const 编号 = 客户编号显示(客户);
   const 渠道名 = (await prisma.channel.findUnique({ where: { id: 渠道 }, select: { name: true } }))?.name ?? "—";
   const 摘要 = 好.content.replace(/\s+/g, " ").trim();
-  if (人们.length) await notify(人们.filter((id) => id !== me.id), {
+  // key 按 客户 + 发起人 + 10 分钟一格（同撞号台账 10 分钟并一行）：同一人隔一两分钟再交一次，不再重复提醒（默认键只挡同一分钟）
+  if (人们.length) await notify(人们, {
     kind: "待分配",
+    key: `repeat-no-taker:${客户.id}:${me.id}:${Math.floor(Date.now() / 600_000)}`,
     title: `老客户重复咨询没人接：${编号}`,
     body: `${me.name} 查号码撞上客户 ${编号}（客户负责人接不了新线索），想新建一条交销售的线索，但${没.线 ? `${没.线}线` : "这条线"}没有能接的销售（${没.为什么}），这次没建。`
-      + `渠道：${渠道名}；沟通（${好.method || FOLLOW_TYPE_MAP[好.type]?.label || 好.type}）：${摘要.length > 120 ? `${摘要.slice(0, 120)}…` : 摘要}。请调配额、恢复参与分配，或找 ${me.name} 另行安排`,
+      + `渠道：${渠道名}；沟通（${好.method || FOLLOW_TYPE_MAP[好.type]?.label || 好.type}）：${摘要.length > 120 ? `${摘要.slice(0, 120)}…` : 摘要}。${开着 ? `请调配额、恢复参与分配，或找 ${me.name} 另行安排` : "请在组织规则里打开线索分配，或手动处理"}`,
     link: null,
   });
-  // 同一分钟同样的内容再交，notify 按内容去重不再记一条，照样算通知到了；发起人自己就在收件人里（兼任）也算
-  return { ok: false, error: 出口C没人接话(没.为什么, 人们.length ? 通知 : null) };
+  // 不是失败：台账记了、通知发了（同一人 10 分钟内再交按 key 不再记，照样算通知到了）；收件人去掉发起人自己后一个不剩 = 「请找销售管理」
+  return { ok: true, 没建: true, 提示: 出口C没人接话(没.为什么, 通知) };
 }
 
 /** 序号撞了 (repeatOfCustomerId, repeatSeq) 的唯一索引（Prisma P2002）：出口C建线索 重来一次 */
