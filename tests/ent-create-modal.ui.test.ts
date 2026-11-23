@@ -28,7 +28,7 @@ const plugin: Plugin = { name: "ent-create-modal", setup(b) {
   // 建档两个 server action：记下交了什么，回成功
   stub(/^\.\.\/actions$/, "export const 建档向导=async(x)=>{(window.__调||=[]).push(['建档向导',x]);return window.__回??{ok:true,customerId:'c1',projectId:'p1'}};export const 建档只建客户=async(x)=>{(window.__调||=[]).push(['建档只建客户',x]);return window.__回只客户??{ok:true,customerId:'c2',projectId:null}};");
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
-  stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return {ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
+  stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);if(window.__查号慢)await new Promise(r=>setTimeout(r,400));return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return {ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
   stub(/customers\/DedupeClaimKey$/, "export default function D(){return null}");
   // 老客户新增项目（cr.old）：搜得到一位老客户；给客户建项目记下交了什么
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async(w)=>{(window.__调||=[]).push(['搜客户',w]);return [{id:'c9',name:'华东展具',附注:'138****5678'}]};");
@@ -464,6 +464,31 @@ it("市场成员给有地址的老客户新增项目、选自动分配：只读�
 });
 
 // 联系人姓名企业版选填（11-17「联系人姓名不一定知道」，同服务端 联系人姓名问题）：姓名和联系方式至少一项
+it("填了号码不离开输入框直接点「保存」：查重照常触发，缺项按刚填的号码算——联系人那条不报红，焦点落渠道（3703 补点 ad2883cd；1280 / 390）", async () => {
+  for (const w of [1280, 390]) {
+    const page = await 开(w, { __渠道们: [{ id: "ch1", name: "广交会", attr: null, platform: "展会", active: true }] });
+    try {
+      const 框 = page.getByRole("dialog");
+      // 查重晚回来（真服务端要走一趟网络）：点保存那一下联系人电话还没被号码带上
+      await page.evaluate(() => { (window as unknown as { __查号慢: boolean }).__查号慢 = true; });
+      const 号码 = 框.getByLabel("号码", { exact: true });
+      await 号码.fill("13905712266");
+      expect(await page.evaluate(() => document.activeElement?.getAttribute("aria-label") ?? null)).toBe("号码");
+      await 框.getByRole("button", { name: /^保\s*存$/ }).click();
+      await 框.getByRole("status").filter({ hasText: /还差 \d+ 项/ }).waitFor();
+      // 这一下：联系人那格不红、焦点在渠道那格
+      expect(await 框.locator("[data-ge='联系人'] [role=alert]").count()).toBe(0);
+      expect(await 框.getByText("联系人姓名和联系方式至少填一项").count()).toBe(0);
+      await expect.poll(() => page.evaluate(() => document.activeElement?.closest("[data-ge]")?.getAttribute("data-ge") ?? null)).toBe("来源");
+      // 失焦查重照常发了一次，回来后号码带进联系人电话
+      expect((await 调(page)).filter((x) => x[0] === "查号码")).toEqual([["查号码", "手机号", "13905712266"]]);
+      await expect.poll(() => 框.getByLabel("联系人电话").inputValue()).toBe("13905712266");
+      expect(await 框.locator("[data-ge='联系人'] [role=alert]").count()).toBe(0);
+      expect((await 调(page)).filter((x) => String(x[0]).startsWith("建档")).length).toBe(0);
+    } finally { await page.close(); }
+  }
+});
+
 it("企业版联系人姓名选填：空名 + 联系人电话能交（姓名交空串）；姓名和联系人号码全空就地拦「联系人姓名和联系方式至少填一项」", async () => {
   const page = await 开(1280);
   try {
