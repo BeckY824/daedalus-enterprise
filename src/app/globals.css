@@ -252,49 +252,6 @@
 .appr-mini-half { flex: 1; display: flex; gap: 6px; padding: 6px; background: var(--workbench); }
 .appr-mini-rail { width: 22%; border-radius: 4px; background: color-mix(in srgb, var(--line) 60%, transparent); }
 .appr-mini-card { flex: 1; border-radius: 4px; background: var(--panel); border: 1px solid var(--line); }
-/* 窗口那一行的小样：毛玻璃那张底下垫一块淡色「壁纸」，左栏透出来；实底那张就是原底 */
-.appr-mini-glass { background: linear-gradient(135deg, color-mix(in srgb, var(--cat-blue) 28%, var(--panel)), color-mix(in srgb, var(--cat-amber) 26%, var(--panel))); }
-.appr-mini-glass .appr-mini-rail { background: color-mix(in srgb, var(--panel) 45%, transparent); }
-.appr-mini-solid { background: var(--workbench); }
-
-/* ---------- 毛玻璃（2026-10-02，desktop/main.js 的 玻璃开着；学 MonoCode） ----------
-   <html class="glass"> 只在桌面端、系统支持、设置里没关时由 preload 挂上。窗口本身已经是系统材质
-   （Mac 的 vibrancy、Win11 的 acrylic），这里做的只是把各层的底色调成半透明，让材质透出来：
-     地面（body）全透 → 左栏只压一层薄色，最透 → 正文压得厚，读字不受影响 → 卡片、表格、浮层照旧实底。
-   字永远压在带底色的那一层上，壁纸再花也看得清。 */
-html.glass, html.glass body { background: transparent; background-image: none; }
-/* 三栏的浓淡照原型第 4 版：左栏最透（40%，掺一点品牌蓝——原型是模糊 + 加饱和，真窗口的系统模糊加不了饱和，拿这一点蓝补）、中栏一半（55%）、正文七成（72%），都是纯白叠；正文里的卡片仍是实白，浮在玻璃上一层。
-   栏和栏之间不用灰线，用一道半透明的白——玻璃的边是亮的，不是脏的 */
-html.glass .rail { background: color-mix(in srgb, color-mix(in srgb, var(--panel) 82%, var(--brand)) 40%, transparent); border-right-color: color-mix(in srgb, var(--panel) 55%, transparent); }
-html.glass .pane { background: color-mix(in srgb, color-mix(in srgb, var(--panel) 94%, var(--brand)) 55%, transparent); border-right-color: color-mix(in srgb, var(--panel) 55%, transparent); }
-html.glass .pane-search { background: color-mix(in srgb, var(--panel) 70%, transparent); }
-html.glass .pane-h { border-bottom-color: color-mix(in srgb, var(--panel) 55%, transparent); }
-html.glass .main { background: color-mix(in srgb, var(--panel) 72%, transparent); }
-html.glass .rail-meter { border-top-color: color-mix(in srgb, var(--panel) 55%, transparent); }
-/* 正文里的东西在玻璃上（照原型第 4 版）：卡片、表格是实白的一层，浮在 72% 的正文玻璃上——
-   边换成半透明白线、垫一道很浅的影子；筛选框、分段切换这些小控件是更薄的一层白，看得出底下的玻璃 */
-html.glass .card-soft, html.glass .ant-card, html.glass .set-body {
-  border-color: color-mix(in srgb, var(--panel) 70%, transparent);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 4%, transparent), 0 6px 18px -10px color-mix(in srgb, var(--ink) 14%, transparent); }
-html.glass .ant-table-wrapper .ant-table { border: 1px solid color-mix(in srgb, var(--panel) 70%, transparent); border-radius: var(--r-card);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 4%, transparent), 0 6px 18px -10px color-mix(in srgb, var(--ink) 14%, transparent); overflow: hidden; }
-html.glass .ant-table-wrapper .ant-table-thead > tr > th { background: color-mix(in srgb, var(--workbench) 70%, var(--panel)); }
-html.glass .ant-input-affix-wrapper, html.glass .ant-input-outlined, html.glass .ant-select-outlined .ant-select-selector, html.glass .ant-picker-outlined {
-  background: color-mix(in srgb, var(--panel) 78%, transparent); }
-html.glass .ant-segmented { background: color-mix(in srgb, var(--ink) 6%, transparent); }
-html.glass .ant-pagination .ant-pagination-item, html.glass .ant-pagination .ant-select-selector { background: color-mix(in srgb, var(--panel) 70%, transparent); }
-/* 网页版的毛玻璃（2026-10-24，lib/appearance.ts 的 网页玻璃键）：网页背后没有壁纸，自己垫一层——
-   和设置页「窗口」小样同一组颜色（左上偏蓝、右下偏琥珀），压得更淡，铺满窗口、不跟着滚。
-   上面各层半透明的规矩照用，透上来的就是这层；颜色都从 token 来，换主题跟着换 */
-html.glass.web-glass {
-  min-height: 100%;
-  background:
-    radial-gradient(ellipse 70% 60% at 0% 0%, color-mix(in srgb, var(--cat-blue) 22%, transparent), transparent 70%),
-    radial-gradient(ellipse 65% 60% at 100% 100%, color-mix(in srgb, var(--cat-amber) 20%, transparent), transparent 70%),
-    radial-gradient(ellipse 50% 45% at 85% 10%, color-mix(in srgb, var(--cat-violet) 10%, transparent), transparent 70%),
-    var(--workbench);
-  background-attachment: fixed;
-}
 
 /* ---------- 登录 / 找回的门（login/LoginForm.tsx、AuthShell.tsx）：左边一句话，右边一个表单 ---------- */
 .auth { position: relative; min-height: 100vh; display: grid; grid-template-columns: minmax(280px, 1fr) minmax(360px, 1.15fr); background: var(--page-bg); }
@@ -350,12 +307,7 @@ html.glass.web-glass {
 .auth-alert { margin-top: var(--s1); }
 /* 网页版注册 / 找回还是 antd Form：表单项自带 24px 下边距，叠上 .auth-form 的间距就空成两截 */
 .auth-form .ant-form-item { margin-bottom: var(--s3); }
-html.glass .auth { background: transparent; }
-html.glass .auth-side { background: color-mix(in srgb, color-mix(in srgb, var(--panel) 82%, var(--brand)) 40%, transparent); border-right-color: color-mix(in srgb, var(--line) 55%, transparent); }
-html.glass .auth-main { background: color-mix(in srgb, var(--panel) 97%, transparent); }
 /* 左边压在壁纸上的字：深一档，再垫一圈很淡的白光，壁纸再花也读得出 */
-html.glass .auth-claim, html.glass .auth-fine, html.glass .auth-brand { text-shadow: 0 0 12px color-mix(in srgb, var(--panel) 85%, transparent), 0 0 2px color-mix(in srgb, var(--panel) 70%, transparent); }
-html.glass .auth-fine { color: var(--ink-soft); }
 /* 窄窗口（Windows 上有人把窗口拉到很小）：只留表单那一半 */
 /* 窄屏左栏收起，表单上方补一枚小标（网页版会在手机上打开；桌面端窗口不会这么窄） */
 .auth-mobile-mark { display: none; }
@@ -368,7 +320,6 @@ html.glass .auth-fine { color: var(--ink-soft); }
 .auth-solo .auth-step h1 { text-align: center; }
 .auth-solo-name { overflow-wrap: anywhere; }
 .auth-solo-alt { text-align: center; }
-html.glass .auth-solo .auth-main { background: transparent; }
 
 /* 演示部署的选人门（login/DemoLogin.tsx）：按角色分组，一人一行，点了就进 */
 .demo-login { width: min(400px, 100%); }
@@ -512,7 +463,6 @@ html.os-win { --text-muted: color-mix(in srgb, var(--ink-soft) 80%, var(--panel)
 :root:root .rail-search:hover { border-color: var(--field-line-hover); }
 .rail-search:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .rail-search kbd { margin-left: auto; font-family: var(--font-ui); font-size: var(--fs-min); color: var(--text-faint); }
-html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, transparent); border-color: color-mix(in srgb, var(--panel) 70%, transparent); }
 /* 企业版站内通知的铃铛（11-01，NoticeBell）：搜索框右边一颗方钮，搜索框让出位置、不折行 */
 .rail-top .rail-search { flex: 1; min-width: 0; }
 .rail-top .rail-search > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -566,15 +516,6 @@ html.glass .rail-search { background: color-mix(in srgb, var(--panel) 62%, trans
 .rail-fav-i.on { background: var(--nav-on-bg); color: var(--nav-on-fg); }
 .rail-fav-av { width: 20px; height: 20px; flex: none; border-radius: 4px; display: grid; place-items: center; font-size: var(--fs-min); font-weight: 600; }
 .rail-fav-n { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 毛玻璃下：当前项是一块白玻璃（原型第 4 版），字压深一档；悬停也是薄薄一层白 */
-html.glass .rail-item { color: var(--ink-soft); }
-html.glass .rail-num, html.glass .rail-upd-v, html.glass .roster-cnt { color: var(--text-muted); }
-/* 左栏的小标题（更多 / 收藏的客户）压在最透的那层玻璃上：深一档，不然壁纸一花就看不见 */
-html.glass .rail-fav-h { color: var(--ink-soft); }
-html.glass .rail-on-bg { background: color-mix(in srgb, var(--panel) 72%, transparent); box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent); }
-html.glass .rail-item.on { color: var(--ink); }
-html.glass .rail-item:hover, html.glass .rail-fav-i:hover { background: color-mix(in srgb, var(--panel) 45%, transparent); }
-html.glass .rail-fav-i.on { background: color-mix(in srgb, var(--panel) 72%, transparent); color: var(--ink); }
 .rail-nav, .rail-foot { display: flex; flex-direction: column; gap: 2px; }
 .rail-foot { margin-top: auto; }
 /* 左栏底部「更新记录」「检查更新 · v0.46.15」（WhatsNew.tsx / UpdateRow.tsx）：平时深灰字、有新版蓝底、失败黄底 */
@@ -593,8 +534,6 @@ button.rail-upd.hot:hover { background: color-mix(in srgb, var(--brand) 16%, var
 .rail-upd-bar i { display: block; height: 100%; background: var(--brand); transition: width var(--t) var(--ease); }
 .rail-upd-bar.idle i { width: 30%; animation: rail-upd-scan 1.2s var(--ease) infinite; }
 @keyframes rail-upd-scan { from { transform: translateX(-100%); } to { transform: translateX(330%); } }
-html.glass button.rail-upd:hover { background: color-mix(in srgb, var(--panel) 45%, transparent); }
-html.glass .rail-upd.hot { background: color-mix(in srgb, var(--brand-bg) 85%, transparent); }
 /* 左栏底部的 AI 用量（AiCost.tsx 的 AiMeterBar）：一行字一条细槽，快用完变黄、用完变红 */
 .rail-meter { display: flex; flex-direction: column; gap: 5px; margin: var(--s1) 0 var(--s2); padding: var(--s2) 10px; border-top: 1px solid var(--line-soft); }
 .rail-meter-row { display: flex; justify-content: space-between; align-items: baseline; font-size: var(--fs-min); color: var(--text-muted); }
@@ -649,7 +588,6 @@ html.glass .rail-upd.hot { background: color-mix(in srgb, var(--brand-bg) 85%, t
   border: 0; border-radius: 999px; background: var(--brand-bg); color: var(--brand); font-size: var(--fs-body); cursor: pointer;
   transition: background var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .rail-fb:hover { background: color-mix(in srgb, var(--brand) 16%, var(--brand-bg)); color: var(--brand-deep); }
-html.glass .rail-fb { background: color-mix(in srgb, var(--brand-bg) 85%, transparent); }
 .rail-fb:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 /* 侧栏里它和更新键并排，一起往下让 6px；手机顶栏里要和铃铛一样大、一样高 */
 .rail-account .rail-fb { margin-top: 6px; }
@@ -682,7 +620,6 @@ html.glass .rail-fb { background: color-mix(in srgb, var(--brand-bg) 85%, transp
 .fbt { position: fixed; z-index: 30; left: calc(var(--rail-w) + 12px); bottom: 14px; display: flex; align-items: center; gap: 10px;
   width: min(340px, calc(100vw - var(--rail-w) - 24px)); padding: 10px 8px 10px 14px; border: 1px solid var(--line); border-radius: var(--r-card);
   background: var(--panel); box-shadow: var(--shadow-pop); animation: aitask-in var(--t) var(--ease); }
-html.glass .fbt { background: color-mix(in srgb, var(--panel) 88%, transparent); backdrop-filter: blur(18px) saturate(1.4); }
 .fbt-t { display: flex; flex-direction: column; flex: 1; min-width: 0; }
 .fbt-t b { font-size: var(--fs-note); font-weight: 600; color: var(--ink); }
 .fbt-t span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--text-muted); }
@@ -945,9 +882,6 @@ body.rail-resizing .shell .rail { transition: none; }
 .roster-tab:hover { color: var(--ink); }
 .roster-tab.on { background: var(--panel); color: var(--ink); font-weight: 500; box-shadow: 0 1px 2px color-mix(in srgb, var(--ink) 6%, transparent); }
 .roster-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
-html.glass .roster-tab.on { background: color-mix(in srgb, var(--panel) 80%, transparent); }
-html.glass .roster-row:hover { background: color-mix(in srgb, var(--panel) 50%, transparent); }
-html.glass .roster-row.on { background: color-mix(in srgb, var(--panel) 85%, transparent); box-shadow: 0 1px 3px color-mix(in srgb, var(--ink) 6%, transparent); }
 .pane-kbd { flex: none; font-size: var(--fs-min); color: var(--text-faint); border: 1px solid var(--line); border-radius: var(--r-ctl); padding: 0 4px; line-height: 16px; }
 /* 收成抽屉时，里面那套样式原样复用 */
 .pane-drawer .pane-h { border-bottom: 0; }
@@ -1216,10 +1150,6 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 }
 ::-webkit-scrollbar-track {
   background: transparent;
-}
-/* 毛玻璃：整页那条滚动条的轨道铺上和正文一样的底色，不然右边露出一条没罩过的、偏深的壁纸（第六轮 r6-pkg C1） */
-html.glass::-webkit-scrollbar-track, html.glass body::-webkit-scrollbar-track {
-  background: color-mix(in srgb, var(--panel) 72%, transparent);
 }
 
 /* ---------- 窄屏降级 ---------- */
@@ -4434,9 +4364,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* ---------- 列表页：表格成一张白卡（圆角 --r-mod、--shadow-card；现状 D-1 起 10、无影），表头白底灰字；行高、表头高不动（40 / 36） ---------- */
 .list .ant-table-wrapper .ant-table { border-radius: var(--r-mod); box-shadow: var(--shadow-card); background: var(--panel); }
 .list .ant-table-wrapper .ant-table-container { border-radius: var(--r-mod); overflow: hidden; }
-/* 现状 D-1：表格卡没了阴影，用一圈 1px --card-line 认边（画在阴影位，不占尺寸、不挪表格一个像素）。
-   玻璃模式（html.glass）自己给表格画了半透明 1px 边，这圈不再叠一道 */
-:root:root:not(.glass) .list .ant-table-wrapper .ant-table { box-shadow: 0 0 0 1px var(--card-line); }
+/* 现状 D-1：表格卡没了阴影，用一圈 1px --card-line 认边（画在阴影位，不占尺寸、不挪表格一个像素） */
+:root:root .list .ant-table-wrapper .ant-table { box-shadow: 0 0 0 1px var(--card-line); }
 .list .ant-table-thead > tr > th { background: var(--panel); border-bottom-color: var(--line-soft); }
 .list .ant-table-thead > tr > th::before { display: none; }
 .list .ant-table-tbody > tr > td { border-bottom-color: var(--line-soft); }
@@ -4457,7 +4386,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 
 /* ---------- 侧栏、页头：半透明 + 毛玻璃（支持才开，不支持就是原来的实色地面） ---------- */
 @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  html:not(.glass) .rail { background: color-mix(in srgb, var(--rail-bg) 78%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
+  html .rail { background: color-mix(in srgb, var(--rail-bg) 78%, transparent); -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px); }
 }
 .rail { border-right-color: var(--line-soft); }
 

@@ -1,10 +1,10 @@
 "use client";
 
 import { flushSync } from "react-dom";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 import { useLocalPref } from "@/lib/local-pref";
 import { 少动 } from "@/lib/reduced-motion";
-import { 外观键, 底色表, 明暗表, 默认外观, 读外观, 挂外观, 存外观值, 网页玻璃键, 是桌面端, 挂网页玻璃, type 外观, type 存的外观 } from "@/lib/appearance";
+import { 外观键, 底色表, 明暗表, 默认外观, 读外观, 挂外观, 存外观值, type 外观, type 存的外观 } from "@/lib/appearance";
 
 /**
  * 外观：这台电脑上的样子。只换值，不动数据，也不影响同事（规则见 lib/appearance.ts）。
@@ -95,90 +95,6 @@ export default function AppearanceTab() {
           ))}
         </div>
       </section>
-      <GlassRow />
     </div>
-  );
-}
-
-/** 壳的桥不会变，订阅什么都不用做 */
-const 无订阅 = () => () => {};
-
-/** 系统的「减少透明度」（Safari 还不报，当没开） */
-function 少透明() {
-  try {
-    return matchMedia("(prefers-reduced-transparency: reduce)").matches;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 毛玻璃：窗口背后透出自己的桌面壁纸，左栏最透、正文稍实。
- * 桌面端的开关存在壳那边（config.json），因为窗口材质是壳建窗口时定的，页面改不了；
- * 拨了当场生效，不用重启。Windows 10 没有这一行。
- * 网页版（2026-10-24）背后没有壁纸，透上来的是页面自己垫的一层淡色底图（lib/appearance.ts 的 网页玻璃键）；
- * 开关存在这个浏览器里，默认关。
- */
-function GlassRow() {
-  const 网页 = useSyncExternalStore(无订阅, () => !是桌面端(navigator.userAgent), () => false);
-  return 网页 ? <WebGlassRow /> : <DesktopGlassRow />;
-}
-
-function WebGlassRow() {
-  const [开, 存] = useLocalPref<boolean>(网页玻璃键, false);
-  const 系统关了 = useSyncExternalStore(无订阅, 少透明, () => false);
-  // 只在拨的时候挂：刷新时 <head> 那段已经挂好了，水合那一轮读到的是默认值，在 effect 里挂会先摘掉再挂回来，闪一下
-  const 选 = (v: boolean) => {
-    存(v);
-    挂网页玻璃(v && !系统关了);
-  };
-  return <GlassOpts 开={开 === true && !系统关了} 选={选} 系统关了={系统关了} 透出="透出淡色底图" />;
-}
-
-function DesktopGlassRow() {
-  const 桥 = useSyncExternalStore(无订阅, () => window.desktopShell, () => undefined);
-  const [态, set态] = useState<{ 可用: boolean; 开: boolean; 系统关了?: boolean } | null>(null);
-  useEffect(() => {
-    桥?.glass?.().then(set态).catch(() => {});
-  }, [桥]);
-  if (!桥?.setGlass || !态?.可用) return null;
-  const 选 = (开: boolean) => {
-    set态({ ...态, 开 }); // 先改界面，不等一个来回
-    桥.setGlass!(开).then(set态).catch(() => {});
-  };
-  return <GlassOpts 开={态.开} 选={选} 系统关了={态.系统关了} 透出="透出桌面壁纸" />;
-}
-
-function GlassOpts({ 开: 当前开, 选, 系统关了, 透出 }: { 开: boolean; 选: (开: boolean) => void; 系统关了?: boolean; 透出: string }) {
-  const 项 = [
-    { 开: true, 名: "毛玻璃", 说明: `${透出}，左栏最透` },
-    { 开: false, 名: "实底", 说明: "不透明" },
-  ];
-  return (
-    <section className="appr-row" aria-labelledby="appr-glass">
-      <div className="appr-h" id="appr-glass">窗口</div>
-      <div className="appr-opts" role="radiogroup" aria-labelledby="appr-glass">
-        {项.map((x) => (
-          <button
-            key={x.名}
-            type="button"
-            role="radio"
-            aria-checked={当前开 === x.开}
-            className={`appr-opt${当前开 === x.开 ? " on" : ""}`}
-            onClick={() => 选(x.开)}
-            disabled={系统关了}
-          >
-            <span className={`appr-mini appr-mini-${x.开 ? "glass" : "solid"}`} aria-hidden="true">
-              <i className="appr-mini-rail" />
-              <i className="appr-mini-card" />
-            </span>
-            <b>{x.名}</b>
-            <span>{x.说明}</span>
-          </button>
-        ))}
-      </div>
-      {/* 系统开了「减少透明度」：这里先用实底，说清是为什么，免得以为开关坏了 */}
-      {系统关了 && <p className="appr-note">系统设置里开了「减少透明度」，这里先用实底；在系统里关掉那一项，毛玻璃会自己回来。</p>}
-    </section>
   );
 }
