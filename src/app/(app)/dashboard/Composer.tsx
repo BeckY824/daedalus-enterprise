@@ -276,9 +276,12 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
     if (行数 >= 3 && 全文.trim().length >= 60) 粘.提示(全文, 行数);
   }
 
-  /** 发出去以后输入框这边要清的 */
-  function 发完(id: string) {
-    on发出(id);
+  /**
+   * 发出去以后输入框这边要清的。排队的那一问不报「刚发」（#441 审查 1）：它先不画，
+   * 报了正在答的那一轮就丢了 cli-turn-new；等它出队开跑时 useHomeTurns 再报
+   */
+  function 发完(id: string, 排队 = false) {
+    if (!排队) on发出(id);
     setQ("");
     setFiles([]);
   }
@@ -328,7 +331,7 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
     // 带的截图原件按这一问记在内存里（不发给模型）：出了新线索卡，卡上可以勾选存成这条线索的附件（11-18）
     记下对话截图(turn.id, files.flatMap((f) => (f.原件 ? [f.原件] : [])));
     if (!shouldQueue) start(turn);
-    发完(turn.id);
+    发完(turn.id, shouldQueue);
   }
   /**
    * 认好一张名片：新开一轮，连卡交给 Agent（2026-10-28 用户：「名片识别也要走agent，以及固定的提示词。」）——
@@ -355,7 +358,8 @@ export default function Composer({ ref, 屏, scope, models, model, 模式, sugge
     }
     const 排队 = Boolean(running);
     const turn = addTurn(scope, { question: 问, kind: "ask", 名片们: 卡们, 话: 话 || undefined, queued: 排队 });
-    if (!排队) start(turn);
+    if (排队) return;
+    start(turn);
     on发出(turn.id);
   }
   /**

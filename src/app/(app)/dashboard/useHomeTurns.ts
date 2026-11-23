@@ -17,7 +17,7 @@ import { 落一轮 } from "./threads";
  * 打一个字整屏的对话记录都跟着重渲。现在输入框的状态归 Composer，
  * 这里只在「换了一轮 / 有一轮开跑或停了」时才变。
  */
-export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, 上下文范围, 标题前缀 }: {
+export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, 上下文范围, 标题前缀, on出队 }: {
   会话: { id: string; title: string; messages: 历史消息[] } | null;
   scope: string;
   model: string;
@@ -25,6 +25,8 @@ export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, �
   上下文提示?: string;
   上下文范围?: 页面范围;
   标题前缀?: string;
+  /** 排队的那一问出队开跑了：HomeChat 这时才把它记成「刚发的」（#441 审查 1，排队时不记） */
+  on出队?: (id: string) => void;
 }) {
   const AI已用完 = useAiOutOfCredits();
   const router = useRouter();
@@ -136,6 +138,7 @@ export function useHomeTurns({ 会话, scope, model, 模式, 上下文提示, �
   */
   const 发排队的 = useEffectEvent((t: Turn) => {
     dequeueTurn(scope, t.id);
+    on出队?.(t.id);
     start(t);
   });
   useEffect(() => {

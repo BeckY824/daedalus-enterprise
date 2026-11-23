@@ -118,10 +118,14 @@ export default function HomeChat({ 空屏快捷, 会话, userName, suggestions, 
 }) {
   const b = useBusiness();
   const model = useModel(models);
-  const 屏 = useHomeTurns({ 会话, scope, model, 模式, 上下文提示, 上下文范围, 标题前缀 });
-  const { turns } = 屏;
-  /** 刚发出去的那一问。只有它会在挂载时把自己滚到视口顶部，翻历史不该乱跳 */
+  /**
+   * 刚发出去的那一问。只有它会在挂载时把自己滚到视口顶部，翻历史不该乱跳。
+   * 排队的那一问不算（#441 审查 1）：它先不画，「刚发的」要是换成它，正在答的那一轮就丢了 cli-turn-new、
+   * 下面那一框高的留白答到一半被收掉，滚动位置一跳。轮到它出队开跑时（useHomeTurns 的 on出队）才记成刚发的
+   */
   const [刚发的, set刚发的] = useState<string | null>(null);
+  const 屏 = useHomeTurns({ 会话, scope, model, 模式, 上下文提示, 上下文范围, 标题前缀, on出队: set刚发的 });
+  const { turns } = 屏;
   const composerRef = useRef<ComposerHandle>(null);
 
   /*
