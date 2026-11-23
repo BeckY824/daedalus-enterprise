@@ -45,7 +45,7 @@ const 市场桩: Plugin = { name: "design-la-market", setup(b) {
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},refresh(){},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>null;", "async()=>null"));
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
-  stub(/^\.\/actions$/, `const f=${好};export const 回项目邀请=f,市场复核Action=f,总管理终判Action=f,看板推进预检=async()=>({ok:true,还差:[]}),改项目节点=f,编辑项目=f,看板补必填料=async()=>({ok:false,error:'x'});`);
+  stub(/^\.\/actions$/, `const f=${好};export const 回项目邀请=f,市场复核Action=f,总管理终判Action=f,看板推进预检=async()=>({ok:true,还差:[]}),改项目节点=f,记完成节点被拦=f,编辑项目=f,看板补必填料=async()=>({ok:false,error:'x'});`);
   stub(/^\.\.\/actions$/, `const f=${好};export const 编辑项目=f,改项目画像Action=f,勾项目交付=f;`);
   stub(/assign-actions$/, `const f=${好};export const 分配线索=f,自动分配线索=f,撤销自动分配=f,批量自动分配=f,本月分配情况=async()=>({月:'2026-11',人:[]}),我分出去的线索=async()=>[],项目分配线=async()=>({线:'内贸'}),分配带走的项目=async()=>({项目数:0,项目:[]});`);
   stub(/blocker-actions$/, `const f=${好};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f;`);

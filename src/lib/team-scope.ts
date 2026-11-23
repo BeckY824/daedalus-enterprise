@@ -242,6 +242,27 @@ export async function 虚线只读线索(db: PrismaClient, l: { ownerId: string 
   return !l.ownerId || !(typeof x.我 === "string" ? l.ownerId === x.我 : x.我.includes(l.ownerId));
 }
 
+/**
+ * 有 我 时改 / 删按哪个范围（加上限定 里写的那一支）：线索全看（市场管理开着线索分配）时线索按 线索圈（没分的 + 圈里的人负责的，读写同一句），
+ * 别的照只按 我（不带读放开的虚线、市场、组员）
+ */
+function 写范围条件(model: string, x: Pick<限定, "我" | "线索全看" | "线索圈" | "公海回避"> & { 我: 谁 }): Record<string, unknown> | null {
+  if (x.线索全看 && model === "Lead") return x.线索圈 ? { OR: [{ ownerId: null }, { ownerId: { in: [...x.线索圈] } }] } : null;
+  return 限定条件(model, x.我, false, undefined, undefined, x.公海回避);
+}
+
+/**
+ * 这条线索改不改得了：和改线索（leads/actions.ts saveLead 的 prisma.lead.updateMany）同一道——只读管理员一律拒（只读拦），
+ * 再看在不在写的范围里（加上限定 里 Lead 写的那一支：没限定的人只剩原负责人回避，有 我 的走 写范围条件）。
+ * 给不经线索表写、却要按「能不能改这条线索」判的地方用（没挂客户的线索附件传、删，P-删-04）。db 传底层 defaultClient
+ */
+export async function 改得了线索(db: PrismaClient, id: string): Promise<boolean> {
+  if (await 只读的话(db)) return false;
+  const x = await 现在的限定(db);
+  const 条件 = x.我 ? 写范围条件("Lead", { ...x, 我: x.我 }) : x.公海回避 ? 只回避条件("Lead", x.公海回避) : null;
+  return (await db.lead.count({ where: 条件 ? { AND: [{ id }, 条件] } : { id } })) > 0;
+}
+
 /** 选中的里有虚线下属的、市场成员相关的客户：挡下时给人看的那句；没有回 null */
 export async function 虚线只读挡(db: PrismaClient, ids: string[]): Promise<string | null> {
   const 中 = await 虚线只读的(db, ids);
@@ -767,7 +788,7 @@ export function 加上限定(db: PrismaClient): PrismaClient {
           // 带出来的关联都是读：市场那段跟着放开。写（改、删）照旧只按 我，市场相关的改不到
           const a = 限定关联(model, (args ?? {}) as 查询参数, (m) => 限定条件(m, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, false, 待分配放开));
           const 线索放 = 线索全看 && model === "Lead";
-          const 条件 = !限定的操作.has(operation) ? null : 线索放 ? (线索圈 ? { OR: [{ ownerId: null }, { ownerId: { in: [...线索圈] } }] } : null) : 写操作.has(operation) ? 限定条件(model, 我, false, undefined, undefined, 公海回避) : 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, model === "Customer" && 限在非公海(a.where), 待分配放开);
+          const 条件 = !限定的操作.has(operation) ? null : 线索放 || 写操作.has(operation) ? 写范围条件(model, { 我, 线索全看, 线索圈, 公海回避 }) : 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, model === "Customer" && 限在非公海(a.where), 待分配放开);
           // 原来的 where 原样摊开、条件并进 AND：findUnique / update / delete 要求唯一键留在最外层
           const q0 = query((条件 ? { ...a, where: 并限定(a.where, 条件) } : a) as typeof args);
           const q = 写操作.has(operation) ? q0.finally(记一次写库) : q0;

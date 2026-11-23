@@ -183,3 +183,7 @@
   .sw-card { padding: 12px; }
   .sw-search { max-width: none; flex-basis: 100%; }
 }
+/* 必填拦截记录导出（11-23）：天数下拉 */
+.set-block-days { width: 96px; }
+/* 导出超上限只导了最新的那些：就在按钮旁说清 */
+.set-block-cut { color: var(--warning-text); min-width: 0; overflow-wrap: anywhere; }

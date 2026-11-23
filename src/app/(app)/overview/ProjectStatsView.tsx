@@ -211,7 +211,7 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
 
       <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
         <Col xs={24} xxl={单人 ? 24 : 12}>
-          <Card title={<span className="section-title">各进程的项目</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>只数进行中的</Typography.Text>}>
+          <Card className="rb-mod-card" title={<span className="section-title">各进程的项目</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>只数进行中的</Typography.Text>}>
             {有项目 ? (
               <Chart option={节点option} height={数.节点.length * 24 + 24} />
             ) : (
@@ -221,7 +221,7 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
         </Col>
         {!单人 && (
           <Col xs={24} xxl={12}>
-            <Card title={人表.题("按负责人")} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>进行中的，公海里的不算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
+            <Card className="rb-mod-card" title={人表.题("按负责人")} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>进行中的，公海里的不算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
               <FlipRows>
               <Table<人行现在>
                 size="small"
@@ -334,7 +334,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
         空={{ title: "这一段没有新建项目", hint: "漏斗从这段时间新建的项目往下数。换一个时间段看看。" }}
       />
 
-      <Card style={{ marginTop: 16 }} title={<span className="section-title">项目走势</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>一个项目来回改进程只数一次</Typography.Text>}>
+      <Card className="rb-mod-card" style={{ marginTop: 16 }} title={<span className="section-title">项目走势</span>} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>一个项目来回改进程只数一次</Typography.Text>}>
         {有事 ? (
           <Chart option={趋势option} height={320} />
         ) : (
@@ -343,7 +343,7 @@ export function ProjectPeriodView({ 数, 本位币, 口径, 单人, 出口叫法
       </Card>
 
       {!单人 && (
-        <Card style={{ marginTop: 16 }} title={人表.题("按负责人")} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>按项目现在的负责人算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
+        <Card className="rb-mod-card" style={{ marginTop: 16 }} title={人表.题("按负责人")} extra={<Typography.Text type="secondary" style={{ fontSize: 13 }}>按项目现在的负责人算</Typography.Text>} styles={{ body: { paddingTop: 8 } }}>
           <FlipRows>
           <Table<人行一段>
             size="small"

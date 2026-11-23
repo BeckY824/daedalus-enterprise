@@ -106,6 +106,8 @@ export const 不同步表 = [
   "EntLeadMakeup",
   // 企业版主动放弃（豁免）（2026-11-20，migrations/160）：同上
   "EntLeadGiveUp",
+  // 企业版必填拦截记录（2026-11-23，migrations/164）：同上
+  "EntRequiredBlock",
 ] as const;
 
 /**
@@ -235,6 +237,8 @@ export const 指向人的列: [string, string][] = [
   // 企业版主动放弃（豁免）（2026-11-20）：不建外键
   ["EntLeadGiveUp", "userId"],
   ["EntLeadGiveUp", "toUserId"],
+  // 企业版必填拦截记录（2026-11-23）：不建外键
+  ["EntRequiredBlock", "userId"],
   // 企业版项目回款（2026-10-31）：谁记的
   ["EntProjectPayment", "userId"],
 ];

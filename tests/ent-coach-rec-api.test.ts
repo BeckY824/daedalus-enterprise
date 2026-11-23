@@ -783,6 +783,8 @@ describe("录音 PR3：补段、丢段、打断", () => {
     expect(行).toMatchObject({ status: "上传中", segCount: 1, deletedAt: null, bytes: 120 });
     const 目录 = path.join(录音根(), 行.createdAt.toISOString().slice(0, 7).replace("-", ""), id);
     expect(fs.existsSync(path.join(目录, "seg-01.wav"))).toBe(true);
+    // 11-23：被拒的这段一片都没收，片目录 seg-02 一起删，不留空目录
+    expect(fs.existsSync(path.join(目录, "seg-02"))).toBe(false);
     // 丢掉这段 → 回到待提交，第 1 段还能听、能交
     expect((await 丢(id)).体.录音).toMatchObject({ status: "待提交", 段数: 1, 总字节: 120 });
     expect(fs.existsSync(path.join(目录, "seg-01.wav"))).toBe(true);

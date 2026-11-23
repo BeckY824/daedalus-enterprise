@@ -94,7 +94,7 @@ export default function LeadWaterfall({ 节点, 转商机, 说明 }: { 节点: �
   }, [节点, 条数, 转商机, 合计]);
 
   return (
-    <Card className="pfun-card" title={<span className="section-title">线索瀑布</span>}>
+    <Card className="pfun-card rb-mod-card" title={<span className="section-title">线索瀑布</span>}>
       <p className="pfun-note">{说明}</p>
       {合计 > 0 ? (
         <Chart option={option} height={(节点.length + 2) * 30 + 42} />

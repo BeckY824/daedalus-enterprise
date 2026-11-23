@@ -608,6 +608,13 @@ const 派生: Record<string, Record<string, string>> = {
     reason: "放弃原因，销售在框里选（外出 / 忙不过来 / 其他），记下后不改", note: "选「其他」时销售写的那句，记下后不改",
     toUserId: "转给了谁，转成时系统写", makeupId: "给放弃人记的那条待补，系统写",
   },
+  EntRequiredBlock: {
+    at: "被拦的那一刻，系统写（lib/project/required-block.ts，迁移 164）", userId: "谁被拦的，当前登录账号", projectId: "哪个项目，系统写",
+    customerId: "那一刻项目挂的客户，系统照抄", phase: "被拦时项目的阶段，系统照抄", node: "被拦时项目的节点，系统照抄",
+    toPhase: "想推到的阶段，系统按入口写；不知道的留空", toNode: "想推到的节点，同上",
+    kind: "节点必填 / 线索验证 / 本节点沟通，按哪道关拦下系统写", missing: "缺哪几项（显示名），系统按那一刻的必填算",
+    entry: "从哪儿推的（完成节点 / 看板拖动 / 首页AI 等），系统写", onBehalf: "直属上级代推被拦，系统按「仅上级推」判",
+  },
   EntReplyOverdue: {
     projectId: "哪个项目，超时未跟进那条链起头时系统建（迁移 150）", anchorAt: "起链时的超时基准，系统按指定回复时间写", holderId: "链上眼下这一位，系统写",
     since: "这一位的计时起点，系统写", overdueAt: "超时提醒发出的那一刻，钟上系统写", tried: "这一轮超时过的人，自动转时系统写",

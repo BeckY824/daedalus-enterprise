@@ -15,7 +15,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return window.__改节点回??{ok:true}},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记沟通||=[]).push(a);return window.__记沟通回??{ok:true,followUpId:'fx'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
+  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return window.__改节点回??{ok:true}},记完成节点被拦=async(...a)=>{(window.__被拦||=[]).push(a)},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记沟通||=[]).push(a);return window.__记沟通回??{ok:true,followUpId:'fx'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   // 定时分配（11-17）改 / 取消 / 现在分：服务端那串（prisma、通知）进不了浏览器包
   stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
@@ -1523,6 +1523,8 @@ it("R5 线索（M-节点-05/09）：完成节点一次一个节点；最后一�
     await page.waitForFunction(() => document.querySelector(".proj-stage-tab.is-on")?.textContent?.startsWith("线索"));
     expect(await page.locator(".proj-stage-exit.is-todo").innerText()).toBe("已转商机");
     expect(await 框字()).toContain("下一节点：线索验证");
+    // 必填拦截记录（11-23）：还差必填、补填框弹出 = 记一次被拦（交项目 id，服务端自己算还差）
+    expect(await page.evaluate(() => (window as unknown as { __被拦?: unknown[][] }).__被拦?.length ?? 0)).toBe(1);
     await page.getByRole("button", { name: "终止进程" }).click();
     expect(await page.getByRole("menuitem", { name: /终止进程/ }).innerText()).toContain("落到「线索流失」");
     await page.keyboard.press("Escape");
@@ -2402,6 +2404,9 @@ describe("F-017 推过线索验证的补填提示", () => {
       expect(await 提示(page).locator(".proj-miss-help").innerText()).toBe("点一项直接去填；「暂无」「-」这类占位不算填了");
       expect(await 灰因(page).innerText()).toBe("线索验证合格要先填好「线索验证」的必填项：还差需求状态（在「项目画像」里选）");
       expect(await page.locator(".proj-stage-acts button").first().isDisabled()).toBe(true);
+      // 必填拦截记录（11-23）：灰按钮样子不变，点它 = 被拦一次（点击落到外层 span，交项目 id）
+      await page.locator(".proj-stage-acts .proj-stage-tip").first().click();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __被拦?: unknown[][] }).__被拦?.length ?? 0)).toBe(1);
       // 两处画像卡同一个落点：独立页右栏这张挂着 id
       expect(await page.locator(".proj-side #project-profile-fold").count()).toBe(1);
       // 先收起画像卡，再点「去填」：展开、滚到它（记下 scrollIntoView 滚的是谁）

@@ -227,7 +227,7 @@ export async function 销售初判(
   const 验证人 = { verifiedById: me.id, verifiedAt: now, verifyNote: 说明 || null };
   if (判 === "有效") {
     // 先推进程（门槛不过什么都不写），推成了再记
-    const r = await 改节点(me, p.id, { phase: "线索", node: MQL合格去 }, undefined, { 验证放行: true });
+    const r = await 改节点(me, p.id, { phase: "线索", node: MQL合格去 }, undefined, { 验证放行: true, 入口: "线索验证判定" });
     if (!r.ok) return r;
     const w = await 写状态(p.id, 读, { ...清空, ...验证人, invalidReason: null, verdict: "有效线索", finalResult: "有效线索", pending: null }, { step: "销售初判", verdict: "有效", note: 说明, userId: me.id });
     if (!w.ok) return w;
@@ -294,7 +294,7 @@ export async function 销售终验(me: 谁, projectId: string, 接受: boolean, 
   if (!核.ok) return 核;
   const 说明 = 字(disputeNote, 说明上限);
   if (接受) {
-    const r = await 改节点(me, 核.p.id, { phase: "线索", node: MQL合格去 }, undefined, { 验证放行: true });
+    const r = await 改节点(me, 核.p.id, { phase: "线索", node: MQL合格去 }, undefined, { 验证放行: true, 入口: "线索验证判定" });
     if (!r.ok) return r;
     const w = await 写状态(核.p.id, 核.读, { salesAck: "接受复核", ackedAt: new Date(), verdict: "有效线索", finalResult: "有效线索", pending: null }, { step: "销售终验", verdict: "接受复核", note: 说明, userId: me.id });
     if (!w.ok) return w;
@@ -309,7 +309,7 @@ export async function 销售认领(me: 谁, projectId: string, 继续: boolean):
   const 核 = await 核销售(me, projectId, "销售认领");
   if (!核.ok) return 核;
   if (继续) {
-    const r = await 改节点(me, 核.p.id, { phase: "线索", node: MQL合格去 }, undefined, { 验证放行: true });
+    const r = await 改节点(me, 核.p.id, { phase: "线索", node: MQL合格去 }, undefined, { 验证放行: true, 入口: "线索验证判定" });
     if (!r.ok) return r;
     const w = await 写状态(核.p.id, 核.读, { pending: null }, { step: "销售认领", verdict: "认领继续", userId: me.id });
     if (!w.ok) return w;

@@ -158,10 +158,10 @@ describe("D-2 方案 A「一张纸」：token、原底开关、三页", () => {
   });
 
   it("复盘·数据的 antd 卡（漏斗、瀑布、各进程、按负责人、走势）也不画卡；回收提醒行横向裁掉转动的箭头；手机客户详情页面自己的内边距兜住三栏负外边距", () => {
-    有规则(`${A} .data-shell-body .ant-card`, "border: 0; border-top: 1px solid var(--mod-line); border-radius: 0; background: transparent; box-shadow: none");
-    有规则(`${A} .data-shell-body .ant-card > .ant-card-head`, "min-height: var(--mod-head-h); padding-inline: 0; border-bottom-width: 0");
-    有规则(`${A} .data-shell-body .ant-card > .ant-card-head .section-title`, "color: var(--mod-title)");
-    有规则(`${A} .data-shell-body .ant-card > .ant-card-body`, "padding-inline: 0");
+    有规则(`${A} .ant-card.rb-mod-card`, "border: 0; border-top: 1px solid var(--mod-line); border-radius: 0; background: transparent; box-shadow: none");
+    有规则(`${A} .ant-card.rb-mod-card > .ant-card-head`, "min-height: var(--mod-head-h); padding-inline: 0; border-bottom-width: 0");
+    有规则(`${A} .ant-card.rb-mod-card > .ant-card-head .section-title`, "color: var(--mod-title)");
+    有规则(`${A} .ant-card.rb-mod-card > .ant-card-body`, "padding-inline: 0");
     有规则(`${A} .ov-rc-head`, "overflow-x: clip");
     有规则(`${A} .app-content > .rec-page:has(> .rec.rec-cd)`, "margin-inline: calc(-1 * var(--content-pad-x)); padding-inline: var(--content-pad-x)");
   });
