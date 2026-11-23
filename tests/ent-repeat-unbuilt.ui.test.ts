@@ -1,7 +1,7 @@
 /**
  * 「挂靠申请」页「重复咨询待补建」一栏（projects/attach/UnbuiltCard.tsx，P-公海-15 后半），真 Chromium，1280 宽和手机 390 宽：
  *   - 管的人：一行 + 省略号（超长渠道 / 对接人 / 沟通悬停看全文）、页面不横滚；带锚点 id（通知点进来落在这一栏）
- *   - 补建：就地确认才调；服务端回「要手选」= 弹框列这条线能接的销售，选一位再点，带着选的人再调一次；成了顶上一句结果、不弹顶部提示
+ *   - 补建：锚在键上的确认浮层确认了才调（浮层挂在 body 上，不被卡内表格可视区截；Esc 收起、焦点回「补建」）；服务端回「要手选」= 弹框列这条线能接的销售，选一位再点，带着选的人再调一次；成了顶上一句结果、不弹顶部提示
  *   - 不补建：弹框原因必填（空着确认键点不了），写了才调、带原因
  *   - 被挡（已被处理）：原因就地写在那一行
  *   - 市场同事：只看「我交的」，只有客户编号 / 时间 / 状态 / 结果，没有任何键；销售（两份都空）：整栏不出现
@@ -30,11 +30,11 @@ const plugin: Plugin = { name: "unbuilt", setup(b) {
 } };
 const 打包 = async (body: string) => (await build({
   stdin: { contents: `
-    import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
+    import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';import {themeConfig} from '@/lib/theme';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     import AttachView from '@/app/(app)/projects/attach/AttachView';
     ${body}
-    window.__go=()=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><Test/></BusinessProvider></App></ConfigProvider>);
+    window.__go=()=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN} theme={themeConfig}><App><BusinessProvider value={DEFAULT_BUSINESS}><Test/></BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic",
   alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent",
 })).outputFiles[0].text;
@@ -73,15 +73,18 @@ const 调了 = (page: Page) => page.evaluate(() => (window as unknown as { __调
 const 不横滚 = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth);
 const 无顶部提示 = async (page: Page) => expect(await page.locator(".ant-message-notice").count()).toBe(0);
 const 栏 = (page: Page) => page.locator("#repeat-unbuilt");
+/** 「补建」的确认浮层（开着的那个） */
+const 确认浮层 = (page: Page) => page.locator(".ls-ub-pop:not(.ant-popover-hidden)");
 /** antd 两个汉字的键会自动插空格（「补 建」）；「不补建」三个字不插，免得被当成「补建」 */
 const 补建键 = /^补\s?建$/;
+const 取消键 = /^取\s?消$/;
 
 /** 卡片、表格可视区、某个元素的框（横向） */
 const 框of = (page: Page, sel: string) => page.locator(sel).first().evaluate((e) => { const r = e.getBoundingClientRect(); return { 左: r.left, 右: r.right, 上: r.top, 下: r.bottom }; });
 
 // 1280 宽：真页面左栏占掉一截，卡内约 982（3703 实操量的），这里把根节点收到 1010 宽照着摆；别的宽度照视口
 for (const [宽, 根宽] of [[1280, 1010], [1366, 0], [1920, 0], [390, 0]] as const) {
-  it(`${宽} 宽：「补建 / 不补建」钉在右边、不横滑就在卡片可视范围里，往右滑时左边有分隔；页面不横滚；已补建行进得了的有链接、进不了的没有`, async () => {
+  it(`${宽} 宽：「补建 / 不补建」钉在右边、不横滑就在卡片可视范围里，往右滑时左边有分隔；点补建后确认浮层整块在屏里、不用横滑，Esc / 取消收起焦点回原键；页面不横滚；已补建行进得了的有链接、进不了的没有`, async () => {
     const { page, errors } = await 开(包.管, 宽);
     try {
       if (根宽) await page.evaluate((w) => { document.getElementById("root")!.style.width = `${w}px`; }, 根宽);
@@ -110,6 +113,50 @@ for (const [宽, 根宽] of [[1280, 1010], [1366, 0], [1920, 0], [390, 0]] as co
         expect(await 待.getByRole("button", { name: "不补建" }).evaluate((e) => e.getBoundingClientRect().left)).toBeCloseTo(前, 0);
         await page.locator("#repeat-unbuilt .ant-table-content").evaluate((e) => { e.scrollLeft = 0; });
       }
+      // 点「补建」：确认浮层（问句 + 补建 / 取消）整块在屏里、离屏边至少 8px，不用横滑就点得到（中心点上就是它自己、没被盖住），页面不横滚；
+      // 操作列不变宽、照旧钉右；只是问，还没调
+      const 列宽 = await 操作格.evaluate((e) => e.getBoundingClientRect().width);
+      const 补 = 待.getByRole("button", { name: 补建键 });
+      await 补.click();
+      const 浮 = 确认浮层(page);
+      await 浮.waitFor();
+      await expect.poll(() => 浮.evaluate((e) => getComputedStyle(e).opacity)).toBe("1");
+      const 块 = await 浮.locator(".ant-popover-container").evaluate((e) => { const r = e.getBoundingClientRect(); return { 左: r.left, 右: r.right, 上: r.top, 下: r.bottom }; });
+      expect(块.左, JSON.stringify(块)).toBeGreaterThanOrEqual(8);
+      expect(块.右, JSON.stringify(块)).toBeLessThanOrEqual(宽 - 8);
+      expect(块.上).toBeGreaterThanOrEqual(0);
+      expect(块.下).toBeLessThanOrEqual(900);
+      expect(await 浮.innerText()).toContain("按此刻落人：负责人能接给他，否则按区域自动分配");
+      for (const 件 of [浮.locator(".ant-popconfirm-description"), 浮.getByRole("button", { name: 补建键 }), 浮.getByRole("button", { name: 取消键 })]) {
+        const 量 = await 件.evaluate((e) => {
+          const r = e.getBoundingClientRect(); const 点 = document.elementFromPoint((r.left + r.right) / 2, (r.top + r.bottom) / 2);
+          return { 左: r.left, 右: r.right, 上: r.top, 下: r.bottom, 是它: !!点 && e.contains(点) };
+        });
+        expect(量.左, JSON.stringify(量)).toBeGreaterThanOrEqual(块.左 - 0.5);
+        expect(量.右, JSON.stringify(量)).toBeLessThanOrEqual(块.右 + 0.5);
+        expect(量.上).toBeGreaterThanOrEqual(块.上 - 0.5);
+        expect(量.下).toBeLessThanOrEqual(块.下 + 0.5);
+        expect(量.是它, JSON.stringify(量)).toBe(true);
+      }
+      expect(await 不横滚(page)).toBe(true);
+      expect(await 操作格.evaluate((e) => e.getBoundingClientRect().width)).toBeCloseTo(列宽, 0);
+      expect(await 操作格.getAttribute("class")).toContain("ant-table-cell-fix-end");
+      expect(await 调了(page)).toEqual([]);
+      // 取消：收起、焦点回「补建」
+      await 浮.getByRole("button", { name: 取消键 }).click();
+      await 浮.waitFor({ state: "hidden" });
+      await expect.poll(() => 补.evaluate((e) => document.activeElement === e)).toBe(true);
+      // 键盘点开：焦点挪到「取消」；Esc 收起、焦点回「补建」；没调
+      await page.keyboard.press("Shift+Tab");
+      await page.keyboard.press("Tab");
+      await expect.poll(() => 补.evaluate((e) => document.activeElement === e)).toBe(true);
+      await page.keyboard.press("Enter");
+      await 浮.waitFor();
+      await expect.poll(() => page.evaluate(() => document.activeElement?.closest(".ls-ub-pop") ? document.activeElement.textContent?.replace(/\s/g, "") : null)).toBe("取消");
+      await page.keyboard.press("Escape");
+      await 浮.waitFor({ state: "hidden" });
+      await expect.poll(() => 补.evaluate((e) => document.activeElement === e)).toBe(true);
+      expect(await 调了(page)).toEqual([]);
       // 已补建：进得了的那行，线索名是链接（最终地址），整格照旧一行 + 悬停看全文；进不了的那行没有链接
       const 有 = 栏(page).locator(".ant-table-tbody tr").filter({ hasText: "重复咨询-NO.000123" });
       const 链 = 有.locator("a.ls-ub-lead");
@@ -127,7 +174,7 @@ for (const [宽, 根宽] of [[1280, 1010], [1366, 0], [1920, 0], [390, 0]] as co
   }, 60_000);
 }
 
-it("操作列左边的分隔：浅色、深色都跟着面板底色走（不是写死的白）", async () => {
+it("操作列左边的分隔、补建的确认浮层：浅色、深色都跟着颜色 token 走（分隔线色 / 浮层底，不是写死的白）", async () => {
   const 底色 = async (深: boolean) => {
     const { page } = await 开(包.管, 1280);
     try {
@@ -138,7 +185,17 @@ it("操作列左边的分隔：浅色、深色都跟着面板底色走（不是�
       await page.evaluate(() => { document.getElementById("root")!.style.width = "1010px"; });
       const 格 = 栏(page).locator(".ant-table-tbody tr").filter({ hasText: "待补建" }).first().locator("td").last();
       await 格.waitFor();
-      return await 格.evaluate((e) => ({ 图: getComputedStyle(e, "::after").backgroundImage, 面板: getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() }));
+      const 分隔 = await 格.evaluate((e) => ({ 图: getComputedStyle(e, "::after").backgroundImage, 面板: getComputedStyle(document.documentElement).getPropertyValue("--panel").trim() }));
+      // 「补建」的确认浮层：底色是浮层底 --pop-bg（深色跟着换），问句是可读的字色、不是底色
+      await 格.getByRole("button", { name: 补建键 }).click();
+      const 浮 = 确认浮层(page).locator(".ant-popover-container");
+      await 浮.waitFor();
+      const 浮层 = await 浮.evaluate((e) => {
+        const 样 = document.createElement("i"); 样.style.background = "var(--pop-bg)"; 样.style.color = "var(--ink)"; document.body.append(样);
+        const 要 = { 底: getComputedStyle(样).backgroundColor, 墨: getComputedStyle(样).color }; 样.remove();
+        return { 底: getComputedStyle(e).backgroundColor, 要底: 要.底, 字: getComputedStyle(e.querySelector(".ant-popconfirm-title")!).color, 墨: 要.墨 };
+      });
+      return { ...分隔, 浮层 };
     } finally { await page.close(); }
   };
   const 浅 = await 底色(false), 深 = await 底色(true);
@@ -146,10 +203,15 @@ it("操作列左边的分隔：浅色、深色都跟着面板底色走（不是�
   expect(深.图).toContain("linear-gradient");
   expect(深.面板).not.toBe(浅.面板);
   expect(深.图).not.toBe(浅.图);
+  for (const 色 of [浅.浮层, 深.浮层]) {
+    expect(色.底, JSON.stringify(色)).toBe(色.要底);
+    expect(色.字, JSON.stringify(色)).not.toBe(色.底);
+  }
+  expect(深.浮层.底).not.toBe(浅.浮层.底);
 }, 60_000);
 
 for (const 宽 of [1280, 390]) {
-  it(`${宽} 宽：一行 + 省略号、悬停看全文、页面不横滚；补建就地确认才调，成了顶上一句结果`, async () => {
+  it(`${宽} 宽：一行 + 省略号、悬停看全文、页面不横滚；补建在浮层里确认了才调，成了顶上一句结果`, async () => {
     const { page, errors } = await 开(包.管, 宽);
     try {
       await 栏(page).waitFor();
@@ -166,9 +228,9 @@ for (const 宽 of [1280, 390]) {
       const 已 = 栏(page).locator(".ant-table-tbody tr").filter({ hasText: "已补建" });
       expect(await 已.getByRole("button").count()).toBe(0);
       expect(await 已.locator(".ls-ub-one[title*='补成线索']").count()).toBe(2);
-      // 补建：先就地确认
+      // 补建：先在浮层里确认
       await 栏(page).getByRole("button", { name: 补建键 }).first().click();
-      const 问 = page.locator(".inlc-ask").first();
+      const 问 = 确认浮层(page);
       await 问.waitFor();
       expect(await 调了(page)).toEqual([]);
       await 问.getByRole("button", { name: 补建键 }).click();
@@ -185,7 +247,7 @@ for (const 宽 of [1280, 390]) {
     try {
       await page.evaluate(() => { (window as unknown as { __要手选: boolean }).__要手选 = true; });
       await 栏(page).getByRole("button", { name: 补建键 }).first().click();
-      await page.locator(".inlc-ask").first().getByRole("button", { name: 补建键 }).click();
+      await 确认浮层(page).getByRole("button", { name: 补建键 }).click();
       const 框 = page.getByRole("dialog").filter({ hasText: "选一位接手的销售" });
       await 框.waitFor();
       expect(await 框.innerText()).toContain("规则「线索分配」没开");
@@ -220,7 +282,7 @@ for (const 宽 of [1280, 390]) {
     try {
       await page.evaluate(() => { (window as unknown as { __挡: Record<string, string> }).__挡 = { 补建待补建: "这条已经补建了（销管某 处理），不用再处理" }; });
       await 栏(page).getByRole("button", { name: 补建键 }).first().click();
-      await page.locator(".inlc-ask").first().getByRole("button", { name: 补建键 }).click();
+      await 确认浮层(page).getByRole("button", { name: 补建键 }).click();
       await 栏(page).locator(".ls-row-err").filter({ hasText: "这条已经补建了" }).waitFor();
       await 无顶部提示(page);
       expect(errors).toEqual([]);

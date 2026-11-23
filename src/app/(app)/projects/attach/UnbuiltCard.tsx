@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Card, Empty, Input, Modal, Select, Space, Table, Tag } from "antd";
+import { Alert, Button, Card, Empty, Input, Modal, Popconfirm, Select, Space, Table, Tag, type PopoverProps } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import InlineConfirm from "@/components/InlineConfirm";
 import { RowLink } from "@/components/ui";
 import { dayjs } from "@/lib/utils";
 import type { 待补建栏, 待补建行, 我交的待补建, 处理结果 } from "@/lib/enterprise/repeat-unbuilt";
@@ -36,12 +35,55 @@ function 结果格({ r, 空话 }: { r: 处理结果 | null; 空话: string }) {
 }
 /** 操作列宽：「补建」「不补建」两颗小键 + 格子内边距。钉在右边（1280 宽表格要横滑，键不能藏在可视区外；手机宽也钉，横滑的列更多、键更该在眼前） */
 const 操作宽 = 140;
+/** 确认浮层放不下：能翻就翻，左右放不下整块挪进屏（同首页查重小框；放外面，每次渲染同一个对象）；挪过去离屏边的那截见 globals.css .ls-ub-pop */
+const 挪进屏 = { adjustX: 1, adjustY: 1, shiftX: true } as Exclude<PopoverProps["autoAdjustOverflow"], boolean | undefined>;
+
+/**
+ * 「补建」键 + 锚在它上面的确认浮层。原来用就地确认（键自己变成问句 + 两颗键，约 458px 宽），
+ * 操作列钉右收到 140 之后被卡内表格容器截掉、要横滑才点得到（3703 实操）；浮层挂在 body 上，不受表格可视区截，列宽平时不变。
+ *   - 点外面、点取消、Esc 收起；确认发出去在等结果时确认键转圈，回来收起（没办成的原因照旧写在这一行）
+ *   - 键盘点开的（:focus-visible）焦点挪到「取消」（回车再按一下是退出）；焦点在浮层里收起时还给「补建」，不掉回 <body>
+ */
+function BuildKey({ 做, 禁 }: { 做: () => Promise<unknown>; 禁: boolean }) {
+  const [开, set开] = useState(false);
+  const 键 = useRef<HTMLButtonElement>(null);
+  const 问 = useRef<HTMLSpanElement>(null);
+  const 键盘开 = useRef(false);
+  const 浮层 = () => 问.current?.closest<HTMLElement>(".ls-ub-pop") ?? null;
+  const 换 = (v: boolean) => {
+    if (v) 键盘开.current = !!键.current?.matches(":focus-visible");
+    else if (浮层()?.contains(document.activeElement)) requestAnimationFrame(() => 键.current?.focus({ preventScroll: true }));
+    set开(v);
+  };
+  useEffect(() => {
+    if (!开 || !键盘开.current) return;
+    // 浮层内容开的那一下才画进 body，等一帧再找
+    const t = requestAnimationFrame(() => 浮层()?.querySelector<HTMLButtonElement>(".ant-popconfirm-buttons button")?.focus({ preventScroll: true }));
+    return () => cancelAnimationFrame(t);
+  }, [开]);
+  return (
+    <Popconfirm
+      open={开}
+      onOpenChange={换}
+      placement="bottomRight"
+      autoAdjustOverflow={挪进屏}
+      classNames={{ root: "ls-ub-pop" }}
+      title="补建这条？"
+      description={<span ref={问}>按此刻落人：负责人能接给他，否则按区域自动分配</span>}
+      okText="补建"
+      cancelText="取消"
+      onConfirm={async () => { await 做(); }}
+    >
+      <Button ref={键} size="small" type="primary" disabled={禁} aria-haspopup="dialog" aria-expanded={开}>补建</Button>
+    </Popconfirm>
+  );
+}
 const 网断: { ok: false; error: string; 刷新?: true } = { ok: false, error: "没办成，网络可能断了，再点一次" };
 
 /**
  * 「挂靠申请」页「重复咨询待补建」（P-公海-15 后半，lib/enterprise/repeat-unbuilt.ts）：
  *   - 管（这条线的销售管理、总管理、系统管理员）：每条的客户编号、渠道、对接人、沟通、没建原因、通知了谁、交的人和时间、处理结果；
- *     待补建的可点「补建」（就地确认；落给谁按点的那一刻，挑不到人时弹框从这条线能接的销售里选一位）、「不补建」（弹框写原因，必填）
+ *     待补建的可点「补建」（锚在键上的确认浮层；落给谁按点的那一刻，挑不到人时弹框从这条线能接的销售里选一位）、「不补建」（弹框写原因，必填）
  *   - 我交的（交的市场同事）：只有客户编号、交的时间、状态、处理结果；没有任何键
  * 没办成的原因就地写在那一行（不弹顶部提示）；办成了刷新，顶上留一句结果。出口 C 没建的通知链到这一栏（锚点）
  */
@@ -107,9 +149,7 @@ export default function UnbuiltCard({ 栏 }: { 栏: 待补建栏 }) {
       title: "", key: "op", width: 操作宽, fixed: "right", render: (_, r) => r.状态 === "待补建" && (
         <div className="ls-at-op">
           <Space size={4}>
-            <InlineConfirm 问="按此刻落人：负责人能接给他，否则按区域自动分配" 是="补建" 中性 做={() => 补(r.键)}>
-              <Button size="small" type="primary" disabled={!!忙 && 忙 !== r.键}>补建</Button>
-            </InlineConfirm>
+            <BuildKey 做={() => 补(r.键)} 禁={!!忙 && 忙 !== r.键} />
             <Button size="small" disabled={!!忙} onClick={() => set关({ 键: r.键, 客户编号: r.客户编号, 原因: "", 错: null })}>不补建</Button>
           </Space>
           {行错?.键 === r.键 && <div className="ls-row-err" role="alert" title={行错.话}>{行错.话}</div>}

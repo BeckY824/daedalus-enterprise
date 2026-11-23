@@ -4976,14 +4976,20 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .ls-ub-full { width: 100%; }
 #repeat-unbuilt { scroll-margin-top: 64px; }
 /* 管的那张表的操作列钉在右边（1280 宽表格比卡宽，「补建 / 不补建」不能要横滑才看得到）：右边还能往右滚时（antd 挂 cell-fix-end-shadow-show）
-   操作列左边一道渐隐分隔——贴边压一点墨色看得出是一道边，再淡出到透明，滑到底下的字是淡出去的；底色用面板 / 行悬停色，浅深色跟着变量走。滚到底收起 */
+   操作列左边一道渐隐分隔——贴边是浅分隔线色（--line-soft，比面板深一档），看得出是一道边，再淡出到透明，滑到底下的字是淡出去的；
+   悬停的行底色深一档，贴边换主分隔线色（--line）。都是现成 token，浅深色跟着变；不现调色（color-mix 只减不增）。滚到底收起 */
 .ls-ub-tbl .ant-table-cell-fix-end::after {
   width: var(--edge-fade); box-shadow: none; opacity: 0; transition: opacity var(--t) var(--ease);
-  background: linear-gradient(to left, color-mix(in srgb, var(--ink) 8%, var(--panel)), transparent);
+  background: linear-gradient(to left, var(--line-soft), transparent);
 }
-.ls-ub-tbl .ant-table-row:hover > .ant-table-cell-fix-end::after { background: linear-gradient(to left, color-mix(in srgb, var(--ink) 8%, var(--row-hover)), transparent); }
+.ls-ub-tbl .ant-table-row:hover > .ant-table-cell-fix-end::after { background: linear-gradient(to left, var(--line), transparent); }
 .ls-ub-tbl .ant-table-cell-fix-end-shadow-show::after { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .ls-ub-tbl .ant-table-cell-fix-end::after { transition: none; } }
+/* 「补建」的确认浮层（UnbuiltCard 的 BuildKey）：挂在 body 上、不被表格可视区截；字长了折行，宽不超过屏宽减两边页边。
+   手机宽放不下时整块挪进屏（挪进屏 shiftX）会贴住屏边，外框左右各垫 16px 透明边（同 .home-dedupe-pop），看得到的那块离屏边 16px */
+.ant-popover.ls-ub-pop { max-width: min(400px, 100vw); }
+.ls-ub-pop .ant-popconfirm-description { overflow-wrap: anywhere; }
+@media (max-width: 767px) { .ant-popover.ls-ub-pop { padding-inline: var(--s4, 16px); } }
 /* 处理结果里补成的线索名：看的人进得了那条项目才有这个链接 */
 .ls-ub-lead { color: var(--brand); }
 .ls-ub-lead:hover, .ls-ub-lead:focus-visible { color: var(--brand-deep); text-decoration: underline; }
