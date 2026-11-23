@@ -7,7 +7,7 @@ import { 补全动作桩 } from "./helpers/action-stubs";
    真 DataShell + BoardTodos、真 HomeCards + globals.css，只桩掉服务端动作（桩照 ent-design-rb-layout）。钉的是：
    统计条（逾期 / 今天到期 / 本周到期 / 全部待办）是一整张卡，格与格竖线贯通；选中 = --brand-bg 底 + 底边 2px 品牌色条左右各缩 16、不碰圆角；悬停只给浅底；
    390 的 2×2 下色条落在所选那一格底边；页签底线 --field-line；看板列之间竖线贯通；首页指标卡和统计条同一套字（大数 26、标签 13 灰）；
-   这些只挂现状主题 + 非一张纸：白底（D-2 一张纸）、换皮主题照旧；暗黑跟着 token */
+   外观只剩一套（11-23 删了换皮主题和底色开关），这些就是默认样子；暗黑跟着 token */
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "card-refine-review", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
@@ -54,22 +54,19 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 首页?: boolean; 卡?: string; 逾期?: number; 皮?: string; 纸?: "tone" | "white" | null; 暗?: boolean };
+type 参 = { 首页?: boolean; 卡?: string; 逾期?: number; 暗?: boolean };
 /** 壳照 ent-design-rb-layout：正文在 main.app-content 里，电脑宽左边让出左栏 220、正文内边距 22 / 26 */
 async function 开(width: number, o: 参 = {}) {
   const 手 = width < 768;
   const ctx = await browser.newContext({ viewport: { width, height: 900 }, hasTouch: 手 });
   const page = await ctx.newPage(); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
-  const 纸 = o.纸 === undefined ? "tone" : o.纸;
-  const 属 = `${o.皮 || o.暗 ? ` data-skin="${o.皮 ?? "now"}"` : ""}${纸 ? ` data-paper="${纸}"` : ""} data-mode="${o.暗 ? "dark" : "light"}"`;
+  const 属 = ` data-mode="${o.暗 ? "dark" : "light"}"`;
   const 壳 = `<div class='has-ai-fab'><main class='main app-content'><div id='root'></div></main></div>`;
   await page.route("http://card-refine.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${属}><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><style>body{margin:0;background:var(--page-bg)}</style>${壳}</html>` }));
   await page.goto(`http://card-refine.test/${o.首页 ? "dashboard" : "overview"}`);
-  await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
-  if (o.皮 || o.暗) await page.addStyleTag({ path: path.resolve("src/app/skins/shared.css") });
-  if (o.皮) await page.addStyleTag({ path: path.resolve(`src/app/skins/${o.皮}.css`) });
-  if (o.暗) await page.addStyleTag({ path: path.resolve("src/app/dark.css") });
+  // 和 layout.tsx 同序：globals → antd-dark → dark（dark.css 只在 data-mode="dark" 下生效，浅色也挂上无妨）
+  for (const f of ["globals.css", "antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
   await page.addStyleTag({ content: 手 ? ".app-content{display:block}" : ".app-content{display:block;margin-left:220px;padding:22px 26px}" });
   await page.addScriptTag({ content: bundle });
   if (o.首页) { await page.evaluate(() => (window as unknown as { __首页: () => void }).__首页()); await page.locator(".home-cards").waitFor(); }
@@ -222,19 +219,3 @@ it("暗黑（现状）：统计条线是暗黑的 --field-line、影 .30，选�
   } finally { await close(); }
 });
 
-it("白底（D-2 一张纸）、换皮主题照旧：统计条没有外框和色条、页签线不是 --field-line、首页卡字号照旧", async () => {
-  for (const o of [{ 纸: "white" as const }, { 皮: "tech" }, { 皮: "ledger" }]) {
-    const 名 = JSON.stringify(o);
-    const { page, errors, close } = await 开(1280, o);
-    try {
-      expect(await page.locator(".btodo-cards").evaluate(e => getComputedStyle(e).borderTopWidth), 名).toBe("0px");
-      expect((await 色条(page.locator(".btodo-cards > .btodo-card.is-on"))).有, 名).toBe(false);
-      const 线 = await 量变量(page, "--field-line", "border-top-color");
-      const 页签线 = await page.locator(".data-shell-tabs > .ant-tabs-nav").evaluate(e => getComputedStyle(e, "::before").borderBottomColor);
-      if (线 !== await 量变量(page, "--line", "border-top-color")) expect(页签线, 名).not.toBe(线);
-      // 看板列头计数还是小胶囊（换皮主题、一张纸都没改）
-      expect(await page.locator(".btodo-col-h > .btodo-col-n").first().evaluate(e => getComputedStyle(e).borderTopLeftRadius), 名).not.toBe("0px");
-      expect(errors).toEqual([]);
-    } finally { await close(); }
-  }
-});

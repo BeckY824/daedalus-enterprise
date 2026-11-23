@@ -10,12 +10,12 @@
  *   2. tsx/ts 写死的 borderRadius（含 echarts 的 [a, b, c, d]）和字符串里的 border-radius:Npx 也要在档上
  *   3. <Tag> 不许在 style 里写 borderRadius——标签形状只归 lib/theme.ts 的 components.Tag 和 .ant-tag 管
  *   4. antd 主题抄的圆角和 :root 一致
- * 主题（skins/*.css）可以改 --r-* 的值，那是 token 块，不受第 1 条管。
+ * 暗黑（dark.css）这类 token 块可以改 --r-* 的值，不受第 1 条管。
  */
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { 源, 去注释, 根变量 } from "./skin-css";
+import { 源, 去注释, 根变量 } from "./css-read";
 
 const 五档 = new Set([0, 4, 8, 10, 14, 999]);
 

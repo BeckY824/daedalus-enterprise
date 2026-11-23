@@ -9,12 +9,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { 去注释, 源, 主题目录 } from "./skin-css";
+import { 去注释, 源 } from "./css-read";
 
-const 文件 = [
-  path.join(源, "app/globals.css"),
-  ...fs.readdirSync(主题目录).filter((n) => n.endsWith(".css")).map((n) => path.join(主题目录, n)),
-];
+const 文件 = [path.join(源, "app/globals.css")];
 
 /** 找出所有 @media (prefers-reduced-motion: reduce) { … } 的内层（按花括号配对） */
 function 减弱块(css: string): { 起行: number; 内: string }[] {

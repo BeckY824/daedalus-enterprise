@@ -8,7 +8,7 @@ import { 补全动作桩 } from "./helpers/action-stubs";
    三栏卡头同一条顶线、都 48；进程卡把项目切换那一行做成卡头（右「完成节点」连体钮、不能收起）；标题 15 · 600、计数 13 灰；
    字段名 13 灰、值 14 主字色、三栏值起点都离卡左 92、超过 5 字的字段名一行省略；收起钮 32 纯图标、触屏点击区 44；
    「本项目 / 这位客户全部」在沟通卡身第一行、高 32、触屏 44；右栏多行字段改的时候标签在上、框占满一行；
-   这些只挂现状主题 + 非一张纸：白底（D-2 一张纸）、换皮主题照旧；暗黑跟着 token；项目详情独立页共用的卡一起变、不坏 */
+   外观只剩一套（11-23 删了换皮主题和底色开关），这些就是默认样子；暗黑跟着 token；项目详情独立页共用的卡一起变、不坏 */
 let browser: Browser, bundle: string;
 const 空跑 = "async()=>({ok:true})";
 const plugin: Plugin = { name: "card-refine", setup(b) {
@@ -139,21 +139,18 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 无区?: boolean; 全?: boolean; 项目页?: boolean; 单?: boolean; 多?: boolean; 空?: boolean; 只读?: boolean; 公司名?: string; 皮?: string; 纸?: "tone" | "white" | null; 暗?: boolean };
+type 参 = { 无区?: boolean; 全?: boolean; 项目页?: boolean; 单?: boolean; 多?: boolean; 空?: boolean; 只读?: boolean; 公司名?: string; 暗?: boolean };
 async function 开(width: number, o: 参 = {}, height = 900) {
   const 手机 = width < 768;
   const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: 手机 });
   const page = await ctx.newPage(); page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
-  const 纸 = o.纸 === undefined ? "tone" : o.纸;
-  const 属 = `${o.皮 || o.暗 ? ` data-skin="${o.皮 ?? "now"}"` : ""}${纸 ? ` data-paper="${纸}"` : ""} data-mode="${o.暗 ? "dark" : "light"}"`;
+  const 属 = ` data-mode="${o.暗 ? "dark" : "light"}"`;
   await page.route("http://card-refine.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${属}><meta charset='utf-8'><style>body{margin:0;background:var(--page-bg)}</style><div id='root'></div></html>` }));
   await page.goto("http://card-refine.test/customers/a");
-  await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
-  if (o.皮 || o.暗) await page.addStyleTag({ path: path.resolve("src/app/skins/shared.css") });
-  if (o.皮) await page.addStyleTag({ path: path.resolve(`src/app/skins/${o.皮}.css`) });
-  if (o.暗) await page.addStyleTag({ path: path.resolve("src/app/dark.css") });
+  // 和 layout.tsx 同序：globals → antd-dark → dark（dark.css 只在 data-mode="dark" 下生效，浅色也挂上无妨）
+  for (const f of ["globals.css", "antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
   await page.addScriptTag({ content: bundle });
   if (o.项目页) { await page.evaluate(() => (window as unknown as { __renderP: () => void }).__renderP()); await page.locator(".proj-wrap").first().waitFor(); }
   else { await page.evaluate(a => (window as unknown as { __render: (o: object) => void }).__render(a), o as object); await page.locator(o.无区 ? ".rec-col-blocks" : ".rec-zone").first().waitFor(); }
@@ -364,27 +361,6 @@ it("暗黑（现状）：卡边是暗黑的 --field-line、影 .30；计数灰�
   } finally { await close(); }
 });
 
-it("白底（D-2 一张纸）、换皮主题照旧：沟通范围钮还在卡头、右栏卡头带项目名、计数和标题同一档、收起钮 28 带框", async () => {
-  for (const o of [{ 纸: "white" as const }, { 皮: "tech" }, { 皮: "pixel" }]) {
-    const { page, errors, close } = await 开(1280, o);
-    try {
-      const 名 = JSON.stringify(o);
-      if (!o.皮) {
-        // 换皮主题的沟通卡头是旧结构（D4 之前），只核白底
-        expect(await page.locator(".cd-comm .ant-card-head .cd-seg").count(), 名).toBe(1);
-        expect(await page.locator(".cd-comm-bar").count(), 名).toBe(0);
-        expect(await page.locator(".cd-side .proj-info > .ant-card-head .ant-card-head-title").innerText(), 名).toMatch(/^项目资料 · /);
-      }
-      const 题 = page.locator(".rec-rail .ant-card-head-title").filter({ hasText: "客户联系人" });
-      const [n, c] = await Promise.all([题.locator(".mod-t-n").evaluate(e => getComputedStyle(e).fontSize + getComputedStyle(e).fontWeight + getComputedStyle(e).color), 题.locator(".mod-cnt").evaluate(e => getComputedStyle(e).fontSize + getComputedStyle(e).fontWeight + getComputedStyle(e).color)]);
-      expect(c, 名).toBe(n);
-      const 钮 = page.locator(".rec-rail-blocks > .proj-fold > .proj-fold-btn").first();
-      expect(await 钮.evaluate(e => getComputedStyle(e).borderTopWidth), 名).not.toBe("0px");
-      expect((await 框(钮)).w, 名).toBe(28);
-      expect(errors).toEqual([]);
-    } finally { await close(); }
-  }
-});
 
 it("项目详情独立页（共用 ProjectFold / ProjectDetail）：卡头 48、收起钮 32、计数灰、资料值离卡左 92，1280 / 390 不横滚", async () => {
   for (const w of [1280, 390]) {
@@ -485,20 +461,3 @@ it("没有项目区的客户页（.rec-col-blocks）：卡四边 --field-line、
   }
 });
 
-it("右栏其余卡在白底（D-2 一张纸）、换皮主题照旧：「组长：…」「当前回款：…」一句话，提成字段名 64 + 隔 12，角色下拉 140", async () => {
-  for (const o of [{ 纸: "white" as const }, { 皮: "tech" }]) {
-    const 名 = JSON.stringify(o);
-    const { page, errors, close } = await 开(1280, { ...o, 全: true, 单: true }, 2400);
-    try {
-      await 全展开(page); await page.waitForTimeout(300);
-      expect(await page.locator(".cd-side .pd-team-lead, .cd-side .pd-pay-sum").count(), 名).toBe(0);
-      expect(await page.locator(".cd-side").getByText(/^组长：QA$/).count(), 名).toBe(1);
-      expect(await page.locator(".cd-side").getByText(/^当前回款：/).count(), 名).toBe(1);
-      expect((await 框(page.locator(".cd-side .pd-cm-k").first())).w, 名).toBe(64);
-      expect(await page.locator(".cd-side .pd-cm-row").first().evaluate(e => getComputedStyle(e).columnGap), 名).toBe("12px");
-      expect((await 框(page.locator(".cd-side .pd-team-role").first())).w, 名).toBe(140);
-      expect(await page.locator(".cd-side .proj-stock-rows .proj-info-row").count(), 名).toBe(0);
-      expect(errors).toEqual([]);
-    } finally { await close(); }
-  }
-});

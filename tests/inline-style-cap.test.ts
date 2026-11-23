@@ -13,7 +13,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { 源 } from "./skin-css";
+import { 源 } from "./css-read";
 import 基线 from "./inline-style-baseline.json";
 
 function 所有tsx(dir: string): string[] {

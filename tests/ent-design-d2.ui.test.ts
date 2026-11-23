@@ -7,7 +7,6 @@ import { chromium, type Browser, type Page } from "playwright";
    - M2-b 悬停只换底色；当前那位浅蓝底 + 左边 2px 主色（原来浅灰底）
    - M2-c（K8）手机名单 = 底部抽屉：顶上圆角、把手、右上 × 44；× 关、往下拉关
    - M1-c 星标 28×28，手机 44×44；M1-b 菜单灰项说明 12px muted
-   - 换皮主题（tech）不动：当前行照旧 --nav-on-bg、没有左边那道
    页头、中栏右栏各自滚、超长公司名四个宽度在 ent-cust-detail-merge.ui.test.ts（真 CustomerDetail） */
 let browser: Browser, bundle: string;
 const 长名 = "某某超长贸易进出口有限公司".repeat(6);
@@ -42,16 +41,15 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 开(width: number, o: { total?: number; 皮?: string } = {}) {
+async function 开(width: number, o: { total?: number } = {}) {
   const 手机 = width < 768;
   const ctx = await browser.newContext({ viewport: { width, height: 844 }, hasTouch: 手机 });
   const page = await ctx.newPage(); page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
-  await page.route("http://design-d2.test/**", r => r.fulfill({ contentType: "text/html", body: `<html${o.皮 ? ` data-skin="${o.皮}"` : ""}><meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div></html>` }));
+  await page.route("http://design-d2.test/**", r => r.fulfill({ contentType: "text/html", body: "<html><meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div></html>" }));
   await page.goto("http://design-d2.test/customers/c1");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
-  if (o.皮) for (const f of ["src/app/skins/shared.css", `src/app/skins/${o.皮}.css`]) await page.addStyleTag({ path: path.resolve(f) });
   await page.addScriptTag({ content: bundle });
   await page.evaluate(a => (window as unknown as { __render: (o: object) => void }).__render(a), { total: o.total });
   await page.locator(".rec-head").waitFor();
@@ -189,12 +187,3 @@ it("星标点击区 28×28（1366），手机 44×44；菜单里灰项的说明 
   }
 });
 
-it("换皮主题（tech）不动：当前行照旧 --nav-on-bg、没有左边那道；计数照旧 faint", async () => {
-  const { page, errors, 色, close } = await 开(1366, { 皮: "tech" });
-  try {
-    await page.locator(".pane-roster .roster-row").first().waitFor();
-    expect(await 当前行(page)).toEqual({ 底: await 色("--nav-on-bg", "background-color"), 条: null });
-    expect(await page.locator(".roster-cnt").first().evaluate(e => getComputedStyle(e).color)).toBe(await 色("--text-faint"));
-    expect(errors).toEqual([]);
-  } finally { await close(); }
-});

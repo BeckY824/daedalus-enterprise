@@ -2,7 +2,6 @@
 
 import { createContext, useContext, useState, type ReactNode } from "react";
 import { Button, Space, Tooltip } from "antd";
-import { useIsNowSkin } from "@/lib/use-skin";
 
 /**
  * 企业版项目详情的模块壳（11-01 用户：「页面各模块采用可展开/收起的瀑布流布局……各功能模块采用插件化设计，便于后续独立优化调整」
@@ -98,7 +97,6 @@ export type 连体主钮 = { 字: string; onClick: () => void; disabled?: boolea
  */
 export function FoldSplit({ 主, 色 = "plain" }: { 主?: 连体主钮 | null; 色?: 连体色 }) {
   const 折 = useContext(折叠上下文);
-  const 新样 = useIsNowSkin();
   if (!折) return null;
   const 型 = 色 === "brand" ? "primary" as const : undefined;
   const 类 = 色 === "success" ? "proj-done-btn" : undefined;
@@ -119,23 +117,18 @@ export function FoldSplit({ 主, 色 = "plain" }: { 主?: 连体主钮 | null; �
     <Space.Compact className={`split-btn split-${色}${主 ? "" : " split-solo"}`}>
       {左 && (主!.原因 ? <Tooltip title={主!.原因}><span className="proj-stage-tip">{左}</span></Tooltip> : 左)}
       {/* 右半是收起 / 展开，不是菜单（P-界面-22 ⑥ 保留连体）：悬停给一句「收起 / 展开」（D4 · M9-a），原来只有浏览器自带的 title */}
-      {(() => {
-        const 钮 = (
-          <Button
-            type={型}
-            className={`split-caret${类 ? ` ${类}` : ""}`}
-            icon={连体箭头}
-            aria-expanded={折.摊开}
-            aria-controls={折.控制}
-            aria-label={`${折.摊开 ? "收起" : "展开"}${折.名}`}
-            // 换皮主题照 D4 之前用浏览器自带的 title
-            title={新样 ? undefined : 收展话}
-            disabled={折.锁开}
-            onClick={折.切}
-          />
-        );
-        return 新样 ? <Tooltip title={收展话}>{钮}</Tooltip> : 钮;
-      })()}
+      <Tooltip title={收展话}>
+        <Button
+          type={型}
+          className={`split-caret${类 ? ` ${类}` : ""}`}
+          icon={连体箭头}
+          aria-expanded={折.摊开}
+          aria-controls={折.控制}
+          aria-label={`${折.摊开 ? "收起" : "展开"}${折.名}`}
+          disabled={折.锁开}
+          onClick={折.切}
+        />
+      </Tooltip>
     </Space.Compact>
   );
 }

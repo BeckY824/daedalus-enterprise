@@ -1,20 +1,16 @@
-/**
- * 换皮主题 × 基础控件的量法（tests/ent-design-d1-skins.ui.test.ts 用）。
- *
- * D1 · 设计语言 11-21 只改现状主题，用户定「换皮主题不动」：这里把输入框、数字框、日期框、名单搜索框、蓝标签
- * 在某个主题下的静态 / 悬停 / 聚焦样子量出来，测试拿它和 main 上量的值逐项比。
- * 不依赖 vitest：给一个源码根（默认本仓库），也能拿去量别的版本（比如 git archive 出来的 main）。
- * 样式表照 app/layout.tsx 的顺序注入：globals → skins/shared → 各主题 → dark。
- */
+import { afterAll, beforeAll, expect, it } from "vitest";
 import { build } from "esbuild";
 import path from "node:path";
-import type { Browser } from "playwright";
+import { chromium, type Browser } from "playwright";
+/* D1 · 设计语言 11-21：输入框、数字框、日期框、中栏名单搜索框（静 / 悬停 / 聚焦）、禁用框、只读框、蓝标签和灰标签在真浏览器里量一遍。
+   用真的 lib/theme.ts（ConfigProvider）+ antd 控件；样式表照 app/layout.tsx 的顺序注入：globals → antd-dark → dark */
+const 样式 = ["globals.css", "antd-dark.css", "dark.css"];
 
-export const 主题样式 = ["app/globals.css", "app/skins/shared.css", "app/skins/pixel.css", "app/skins/tech.css", "app/skins/luxe.css", "app/skins/ledger.css", "app/dark.css"];
+type 控件样 = Record<string, string>;
+let browser: Browser, bundle: string;
 
-/** 打包夹具：真的 lib/theme.ts（ConfigProvider）+ antd 控件。src 指向要量的那份源码 */
-export async function 打包(src: string): Promise<string> {
-  return (await build({
+beforeAll(async () => {
+  bundle = (await build({
     stdin: {
       contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider,Input,InputNumber,DatePicker,Tag} from 'antd';import zhCN from 'antd/locale/zh_CN';
@@ -34,21 +30,19 @@ export async function 打包(src: string): Promise<string> {
       resolveDir: process.cwd(),
     },
     bundle: true, write: false, format: "iife", jsx: "automatic",
-    alias: { "@": src }, define: { "process.env.NODE_ENV": '"production"' }, logLevel: "silent",
+    alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, logLevel: "silent",
   })).outputFiles[0].text;
-}
+  browser = await chromium.launch();
+}, 120_000);
+afterAll(async () => { await browser?.close(); });
 
-export type 控件样 = Record<string, string>;
-
-/** 在某个主题下量一遍。skin 为空 = 现状主题 */
-export async function 量(browser: Browser, src: string, bundle: string, skin: string | null): Promise<控件样> {
+async function 量(): Promise<控件样> {
   const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
   page.setDefaultTimeout(5000);
   try {
-    await page.route("http://skin-controls.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
-    await page.goto("http://skin-controls.test");
-    if (skin) await page.evaluate((s) => document.documentElement.setAttribute("data-skin", s), skin);
-    for (const f of 主题样式) await page.addStyleTag({ path: path.join(src, f) });
+    await page.route("http://d1-controls.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://d1-controls.test");
+    for (const f of 样式) await page.addStyleTag({ path: path.resolve("src/app", f) });
     await page.addScriptTag({ content: bundle });
     await page.locator("#k-blue").waitFor();
     await page.mouse.move(1300, 880);
@@ -84,3 +78,21 @@ export async function 量(browser: Browser, src: string, bundle: string, skin: s
     await page.close();
   }
 }
+
+it("输入类控件白底 + --field-line、悬停 #86868b、聚焦主色光晕；禁用框照 antd 原样（不挂新规则），只读框和输入框同一套", async () => {
+  const 现 = await 量();
+  for (const 名 of ["输入框", "数字框", "日期框", "名单搜索框"]) {
+    expect(现[`${名}.静.框`], 名).toBe("rgb(199, 199, 204)");
+    expect(现[`${名}.静.底`], 名).toBe("rgb(255, 255, 255)");
+    expect(现[`${名}.悬停.框`], 名).toBe("rgb(134, 134, 139)");
+    expect(现[`${名}.聚焦.框`], 名).toBe("rgb(10, 102, 216)");
+    expect(现[`${名}.聚焦.影`], 名).toMatch(/0\.18\)? 0px 0px 0px 3px$/);
+  }
+  // 禁用：main 上就是 antd 原样（框 #d9d9d9、底 --hover），D1 不动
+  expect([现["禁用框.框"], 现["禁用框.底"], 现["禁用框.影"]]).toEqual(["rgb(217, 217, 217)", "rgb(236, 236, 238)", "none"]);
+  // 只读：能选中复制，看起来和输入框一样是个格子
+  expect([现["只读框.框"], 现["只读框.底"]]).toEqual(["rgb(199, 199, 204)", "rgb(255, 255, 255)"]);
+  // 标签：蓝的也落成中性灰 --tag-bg / --tag-fg
+  expect(现["标签.k-blue.底"]).toBe("rgb(236, 236, 238)");
+  expect(现["标签.k-blue.字"]).toBe("rgb(66, 66, 69)");
+}, 60_000);

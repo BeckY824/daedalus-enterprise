@@ -98,7 +98,7 @@ it("企业版：左边节点、沟通、卡点，右边项目、交付、项目�
   try {
     // U-项目-01：左栏瀑布流——当前进程（无标题）→ 沟通（带条数）→ 卡点；没给项目附件 / 回款就不摆那两块
     expect(await 卡标题(page, ".proj-main")).toEqual(["", "沟通（1）", "卡点（0）"]);
-    // 设计语言 D5 · M10-c：现状主题下折叠卡头带个数
+    // 设计语言 D5 · M10-c：折叠卡头带个数
     expect(await 卡标题(page, ".proj-side")).toEqual(["项目", "交付", "项目组（2）", "提成（2）", "进程变更（1）"]);
     const [主, 侧] = await Promise.all([page.locator(".proj-main").boundingBox(), page.locator(".proj-side").boundingBox()]);
     expect(侧!.x).toBeGreaterThan(主!.x + 主!.width);
@@ -408,7 +408,7 @@ it("迁移 101：项目卡有合同状态、痛点标注（多行），左栏合
     expect(字.indexOf("成交需求")).toBeLessThan(字.indexOf("痛点标注"));
     // F-项目-18：附件合成左栏一块「项目附件」，项目方案在前、合同附件紧跟（F-042 方案在上，合同格提示「放上面」指它），再是验收报告（M-必填-11），最后是沟通上的附件
     expect(await 卡标题(page, ".proj-main")).toContain("项目附件（0）");
-    // 设计语言 D5 · M12：现状主题每格小标题一行带「上传」，格名在 .att-h-t
+    // 设计语言 D5 · M12：每格小标题一行带「上传」，格名在 .att-h-t
     expect(await page.locator(".proj-main .proj-att-h .att-h-t, .proj-main .proj-att-h:not(.att-h-row)").allInnerTexts()).toEqual(["项目方案（0）", "合同附件（0）", "验收报告（0）", "其它附件（0）", "沟通附件（0）"]);
     // 填了：一行显示（换行压成空格，放不下「…」），悬停浮层用 data-tip 里的原文、保住分段（11-04 用户：待定第 1 点按优化来）
     await page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over(v), { 成交钱: 钱, 项目附件: 附, 项目新字段: { painPoints: "交期总拖\n售后慢", contractStatus: "待我方确认" } });
@@ -1654,11 +1654,9 @@ it.each([1024, 800])("R6 %ipx：页头按钮折行不出屏、标题不被挤没
 });
 
 /* 10-31：画像各项、需求状态、关联里的角色 / 立场没填时写灰字（只是显示）；11-04 用户：灰字统一改「—」，单选、多选下拉第一项都是「—」，选了回到没填 */
-const 画像卡 = (page: import("playwright").Page) => page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^项目画像$/ }) }).first();
+const 画像卡 = (page: import("playwright").Page) => page.locator(".ant-card").filter({ has: page.locator(".proj-profile") }).first();
 async function 开画像(能改: boolean) {
   const { page, errors } = await open(true);
-  // 这两条测的是换皮主题的常开下拉（换皮不动）；现状主题「看 → 点了改」在 ent-design-d5-skins 里测
-  await page.evaluate(() => document.documentElement.setAttribute("data-skin", "ledger"));
   await page.evaluate(x => (window as unknown as { __画像: (x: boolean) => void }).__画像(x), 能改);
   await 画像卡(page).waitFor();
   return { page, errors };
@@ -1668,10 +1666,11 @@ it("画像只读：十二项都在、按序；空的（含需求类型、需求�
   try {
     const 卡 = 画像卡(page);
     expect(await 卡.locator(".proj-profile-key").allInnerTexts()).toEqual(["预算能力", "价格感知", "决策链路", "需求状态", "需求类型", "采购周期", "产品匹配", "价值认同", "决策触达", "竞品信息", "部署条件", "场地现状"]);
-    const 值 = await 卡.locator(".proj-profile-val").allInnerTexts();
+    // 只读：每行就是名字 + 一段字（没有笔、没有下拉）
+    const 值 = await 卡.locator(".proj-profile-row > :nth-child(2)").allInnerTexts();
     expect(值).toEqual(["预算充足", "—", "—", "—", "—", "半年", "—", "—", "—", "无竞品·我方独家", "—", "—"]);
     // 灰字：和正文色不一样
-    const [灰, 正] = await Promise.all([卡.locator(".unconfirmed").first().evaluate(e => getComputedStyle(e).color), 卡.locator(".proj-profile-val").first().evaluate(e => getComputedStyle(e).color)]);
+    const [灰, 正] = await Promise.all([卡.locator(".unconfirmed").first().evaluate(e => getComputedStyle(e).color), 卡.locator(".proj-profile-row > :nth-child(2)").first().evaluate(e => getComputedStyle(e).color)]);
     expect(灰).not.toBe(正);
     // 关联只读：王总没角色、没立场；同事的客户没身份
     const 关联卡 = page.locator(".proj-side .ant-card").filter({ hasText: /关联(客户|联系人)（/ });
@@ -1680,54 +1679,36 @@ it("画像只读：十二项都在、按序；空的（含需求类型、需求�
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
-it("画像能改：空的下拉占位写「—」；单选、多选第一项「—」，选了就存空、回到没填；空着再选「—」不存", async () => {
+it("画像能改（看 → 点了改）：单选、多选下拉第一项「—」，选了就存空、回到没填；空着再选「—」不存", async () => {
   const { page, errors } = await 开画像(true);
   try {
     const 卡 = 画像卡(page);
-    expect(await 卡.locator(".ant-select-placeholder").allInnerTexts()).toEqual(Array(9).fill("—"));
-    const 周期 = 卡.getByRole("combobox", { name: "采购周期" });
-    await 周期.click();
+    const 行 = (名: string) => 卡.locator(".proj-profile-row").filter({ has: page.locator(".proj-profile-key", { hasText: new RegExp(`^${名}$`) }) });
     const 项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
+    const 收起 = () => page.waitForFunction(() => ![...document.querySelectorAll(".ant-select-dropdown")].some(e => (e as HTMLElement).offsetParent && !e.className.includes("hidden")));
+    const 存了几次 = () => page.evaluate(() => ((window as unknown as { __画像存?: unknown[] }).__画像存 ?? []).length);
+    // 采购周期（半年）：点一行展开下拉，第一项「—」，选了存 null、回到「—」
+    await 行("采购周期").locator(".proj-inline").click();
     await 项.first().waitFor();
     // 下拉还在展开动画里时 :visible 偶尔一项都抓不到（CI 负载高时拿到过 []），轮询到稳
     await expect.poll(async () => (await 项.allInnerTexts()).slice(0, 6)).toEqual(["—", "一年", "半年", "三月", "次月", "本月成交"]);
     await 项.first().click();
-    await page.waitForFunction(() => ((window as unknown as { __画像存?: unknown[] }).__画像存 ?? []).length === 1);
+    await expect.poll(存了几次).toBe(1);
     expect(await page.evaluate(() => (window as unknown as { __画像存: unknown[][] }).__画像存[0])).toEqual(["p1", { purchaseCycle: null }]);
-    await 卡.locator(".proj-profile-row").filter({ hasText: "采购周期" }).locator(".ant-select-placeholder").waitFor();
-    // 已经空着的场地现状再选「—」：不存（等上一个下拉收完再开）
-    await page.waitForFunction(() => ![...document.querySelectorAll(".ant-select-dropdown")].some(e => (e as HTMLElement).offsetParent && !e.className.includes("hidden")));
-    await 卡.getByRole("combobox", { name: "场地现状" }).click();
-    await page.locator(".ant-select-dropdown:visible .ant-select-item-option").first().click();
-    await page.waitForTimeout(200);
-    expect(await page.evaluate(() => (window as unknown as { __画像存: unknown[] }).__画像存.length)).toBe(1);
-    // 多选「需求类型」（11-04）：第一项「—」；先勾一个存一次，再勾「—」= 全清空、存 []；空着再勾「—」不存
-    const 收起 = () => page.waitForFunction(() => ![...document.querySelectorAll(".ant-select-dropdown")].some(e => (e as HTMLElement).offsetParent && !e.className.includes("hidden")));
-    const 存了几次 = () => page.evaluate(() => ((window as unknown as { __画像存?: unknown[] }).__画像存 ?? []).length);
-    const 需求类型 = 卡.getByRole("combobox", { name: "需求类型" });
-    await 需求类型.click();
+    await expect.poll(() => 行("采购周期").locator(".proj-inline-val").innerText()).toBe("—");
+    // 已经空着的场地现状再选「—」：不存
+    await 收起();
+    await 行("场地现状").locator(".proj-inline").click();
+    await 项.first().waitFor();
     await expect.poll(async () => (await 项.allInnerTexts())[0]).toBe("—");
-    const 第二个选项 = (await 项.nth(1).innerText()).trim();
-    await 项.nth(1).click();
-    await expect.poll(存了几次).toBe(2);
-    expect(await page.evaluate(() => (window as unknown as { __画像存: unknown[][] }).__画像存[1])).toEqual(["p1", { productNeeds: [第二个选项] }]);
-    // 存的时候整张卡禁用、下拉会收起（原有行为），存完重新点开
-    const 再开需求类型 = async () => {
-      await expect.poll(() => 需求类型.isDisabled()).toBe(false);
-      await 收起();
-      await 需求类型.click();
-      await 项.first().waitFor();
-    };
-    await 再开需求类型();
-    await 项.first().click();
-    await expect.poll(存了几次).toBe(3);
-    expect(await page.evaluate(() => (window as unknown as { __画像存: unknown[][] }).__画像存[2])).toEqual(["p1", { productNeeds: [] }]);
-    await 卡.locator(".proj-profile-row").filter({ hasText: "需求类型" }).locator(".ant-select-placeholder").waitFor();
-    expect(await 卡.locator(".proj-profile-row").filter({ hasText: "需求类型" }).locator(".ant-select-selection-item").count()).toBe(0);
-    await 再开需求类型();
     await 项.first().click();
     await page.waitForTimeout(200);
-    expect(await 存了几次()).toBe(3);
+    expect(await 存了几次()).toBe(1);
+    await page.keyboard.press("Escape");
+    await 收起();
+    // 多选「需求类型」（11-04）：第一项也是「—」
+    await 行("需求类型").locator(".proj-inline").click();
+    await expect.poll(async () => (await 项.allInnerTexts())[0]).toBe("—");
     await page.keyboard.press("Escape");
     await 收起();
     // 关联能改：立场下拉占位「—」、第一项「—」

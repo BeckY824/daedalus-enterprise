@@ -1,36 +1,34 @@
 "use client";
 
 import { flushSync } from "react-dom";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 import { useLocalPref } from "@/lib/local-pref";
 import { 少动 } from "@/lib/reduced-motion";
-import { 外观键, 底色表, 主题表, 明暗表, 默认外观, 读外观, 挂外观, 存外观值, 网页玻璃键, 是桌面端, 挂网页玻璃, type 外观, type 存的外观 } from "@/lib/appearance";
+import { 外观键, 明暗表, 默认外观, 读外观, 挂外观, type 外观 } from "@/lib/appearance";
 
 /**
  * 外观：这台电脑上的样子。只换值，不动数据，也不影响同事（规则见 lib/appearance.ts）。
  *
- * 三行：明暗（浅色 / 深色 / 跟随系统）、底色（原底 / 白底；默认原底，11-22 D-2 曾改成白底、11-23 切回）和主题（现状 / 像素 / 科技 / 高级 / 账簿），互不影响、可以任意组合。
+ * 只有一行明暗：浅色 / 深色 / 跟随系统（11-23 起主题、底色、毛玻璃都删了，外观只留一套）。
  * 跟随系统时系统一换就跟着换，那个监听挂在根布局上（components/ModeFollow.tsx），不只在这一页。
- * 主题那一行只在主题多于一套时出现——一个只有一个选项的选择器是在让人找一个不存在的东西。
- * 每个选项带一张小样：看得见选了以后长什么样，比一句说明管用。主题的小样挂 data-skin-preview，
- * 主题样式表对它也生效（skins/*.css 的 token 块同时写在 [data-skin-preview="x"] 上），所以小样就是那套主题本身的值。
+ * 每个选项带一张小样：看得见选了以后长什么样，比一句说明管用。
  */
 export default function AppearanceTab() {
-  const [存的, 存] = useLocalPref<存的外观>(外观键, 默认外观);
+  const [存的, 存] = useLocalPref<外观>(外观键, 默认外观);
   const 当前 = 读外观(JSON.stringify(存的));
   // 选完当场生效：<html> 上的属性一换，整页的 token 跟着换，不用刷新
-  useEffect(() => 挂外观(当前), [当前.paper, 当前.skin, 当前.mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => 挂外观(当前), [当前.mode]); // eslint-disable-line react-hooks/exhaustive-deps
   /**
-   * 点了就当场挂上，不只靠上面那个 effect：页面上亮的和 <html> 上挂的对不上时（D6-1：刷新后亮着「原底」、实际是白底），
+   * 点了就当场挂上，不只靠上面那个 effect：页面上亮的和 <html> 上挂的对不上时（D6-1），
    * 点亮着的那一项值没变、effect 不重跑，点了像没反应、换不回去
    */
   const 选 = (a: 外观) => {
     /*
-      换主题、底色时整屏交叉淡化 0.2 秒（原型 st.theme）：浏览器有 View Transitions 就让新旧两屏淡过去（时长在 settings.css
+      换明暗时整屏交叉淡化 0.2 秒（原型 st.theme）：浏览器有 View Transitions 就让新旧两屏淡过去（时长在 settings.css
       ::view-transition-*(root)，用 --t 令牌）；没有、或开了减弱动态，照旧直接换
     */
     const 换 = () => {
-      存(存外观值(a)); // 带上底色版：这之后选的「白底」才认（lib/appearance.ts 认底色）
+      存(a); // 整份重存：以前存着的主题、底色一并丢掉
       挂外观(a);
     };
     const 文档 = document as Document & { startViewTransition?: (f: () => void) => unknown };
@@ -75,139 +73,6 @@ export default function AppearanceTab() {
           ))}
         </div>
       </section>
-      <section className="appr-row" aria-labelledby="appr-paper">
-        <div className="appr-h" id="appr-paper">底色</div>
-        <div className="appr-opts" role="radiogroup" aria-labelledby="appr-paper">
-          {底色表.map((x) => (
-            <button
-              key={x.key}
-              type="button"
-              role="radio"
-              aria-checked={当前.paper === x.key}
-              className={`appr-opt${当前.paper === x.key ? " on" : ""}`}
-              onClick={() => 选({ ...当前, paper: x.key })}
-            >
-              <span className={`appr-mini appr-mini-${x.key}`} aria-hidden="true">
-                <i className="appr-mini-rail" />
-                <i className="appr-mini-card" />
-              </span>
-              <b>{x.名}</b>
-              <span>{x.说明}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-      <GlassRow />
-      {主题表.length > 1 && (
-        <section className="appr-row" aria-labelledby="appr-skin">
-          <div className="appr-h" id="appr-skin">主题</div>
-          <div className="appr-opts" role="radiogroup" aria-labelledby="appr-skin">
-            {主题表.map((x) => (
-              <button
-                key={x.key}
-                type="button"
-                role="radio"
-                aria-checked={当前.skin === x.key}
-                className={`appr-opt${当前.skin === x.key ? " on" : ""}`}
-                onClick={() => 选({ ...当前, skin: x.key })}
-              >
-                <span className="appr-mini appr-mini-skin" data-skin-preview={x.key} aria-hidden="true">
-                  <i className="appr-mini-rail" />
-                  <span className="appr-mini-card">
-                    <em>客户 Aa 12</em>
-                    <i className="appr-mini-bar" />
-                  </span>
-                </span>
-                <b>{x.名}</b>
-                <span>{x.说明}</span>
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
     </div>
-  );
-}
-
-/** 壳的桥不会变，订阅什么都不用做 */
-const 无订阅 = () => () => {};
-
-/** 系统的「减少透明度」（Safari 还不报，当没开） */
-function 少透明() {
-  try {
-    return matchMedia("(prefers-reduced-transparency: reduce)").matches;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 毛玻璃：窗口背后透出自己的桌面壁纸，左栏最透、正文稍实。
- * 桌面端的开关存在壳那边（config.json），因为窗口材质是壳建窗口时定的，页面改不了；
- * 拨了当场生效，不用重启。Windows 10 没有这一行。
- * 网页版（2026-10-24）背后没有壁纸，透上来的是页面自己垫的一层淡色底图（lib/appearance.ts 的 网页玻璃键）；
- * 开关存在这个浏览器里，默认关。
- */
-function GlassRow() {
-  const 网页 = useSyncExternalStore(无订阅, () => !是桌面端(navigator.userAgent), () => false);
-  return 网页 ? <WebGlassRow /> : <DesktopGlassRow />;
-}
-
-function WebGlassRow() {
-  const [开, 存] = useLocalPref<boolean>(网页玻璃键, false);
-  const 系统关了 = useSyncExternalStore(无订阅, 少透明, () => false);
-  // 只在拨的时候挂：刷新时 <head> 那段已经挂好了，水合那一轮读到的是默认值，在 effect 里挂会先摘掉再挂回来，闪一下
-  const 选 = (v: boolean) => {
-    存(v);
-    挂网页玻璃(v && !系统关了);
-  };
-  return <GlassOpts 开={开 === true && !系统关了} 选={选} 系统关了={系统关了} 透出="透出淡色底图" />;
-}
-
-function DesktopGlassRow() {
-  const 桥 = useSyncExternalStore(无订阅, () => window.desktopShell, () => undefined);
-  const [态, set态] = useState<{ 可用: boolean; 开: boolean; 系统关了?: boolean } | null>(null);
-  useEffect(() => {
-    桥?.glass?.().then(set态).catch(() => {});
-  }, [桥]);
-  if (!桥?.setGlass || !态?.可用) return null;
-  const 选 = (开: boolean) => {
-    set态({ ...态, 开 }); // 先改界面，不等一个来回
-    桥.setGlass!(开).then(set态).catch(() => {});
-  };
-  return <GlassOpts 开={态.开} 选={选} 系统关了={态.系统关了} 透出="透出桌面壁纸" />;
-}
-
-function GlassOpts({ 开: 当前开, 选, 系统关了, 透出 }: { 开: boolean; 选: (开: boolean) => void; 系统关了?: boolean; 透出: string }) {
-  const 项 = [
-    { 开: true, 名: "毛玻璃", 说明: `${透出}，左栏最透` },
-    { 开: false, 名: "实底", 说明: "不透明" },
-  ];
-  return (
-    <section className="appr-row" aria-labelledby="appr-glass">
-      <div className="appr-h" id="appr-glass">窗口</div>
-      <div className="appr-opts" role="radiogroup" aria-labelledby="appr-glass">
-        {项.map((x) => (
-          <button
-            key={x.名}
-            type="button"
-            role="radio"
-            aria-checked={当前开 === x.开}
-            className={`appr-opt${当前开 === x.开 ? " on" : ""}`}
-            onClick={() => 选(x.开)}
-            disabled={系统关了}
-          >
-            <span className={`appr-mini appr-mini-${x.开 ? "glass" : "solid"}`} aria-hidden="true">
-              <i className="appr-mini-rail" />
-              <i className="appr-mini-card" />
-            </span>
-            <b>{x.名}</b>
-            <span>{x.说明}</span>
-          </button>
-        ))}
-      </div>
-      {/* 系统开了「减少透明度」：这里先用实底，说清是为什么，免得以为开关坏了 */}
-      {系统关了 && <p className="appr-note">系统设置里开了「减少透明度」，这里先用实底；在系统里关掉那一项，毛玻璃会自己回来。</p>}
-    </section>
   );
 }

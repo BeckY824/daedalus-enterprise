@@ -4,7 +4,6 @@ import { useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Pagination, Segmented, Select, Tag } from "antd";
 import { fmtDateTime } from "@/lib/utils";
-import { useIsNowSkin } from "@/lib/use-skin";
 import EmptyState from "@/components/EmptyState";
 import {
   主题范围们, 主题范围叫法, 主题状态们, 复盘列表每页,
@@ -48,8 +47,7 @@ const 状态色: Record<string, string> = { 待回复: "orange", 已回复: "blu
  * 只读：回复、关闭在项目里做。数据在 lib/enterprise/coach-topic-db.ts 复盘主题of，每条都过了 能看主题
  */
 export default function BoardTopics({ 数, 范围, 状态 = "" }: { 数: 复盘主题; 范围: 主题范围; 状态?: 主题状态筛 | "" }) {
-  // 设计语言 R-B（R3）：现状主题「沟通 / 主题」和「谁的主题」挪到卡外筛选条，卡头「教练主题（N）」+ 状态下拉；换皮主题照旧
-  const 新样 = useIsNowSkin();
+  // 设计语言 R-B（R3）：「沟通 / 主题」和「谁的主题」挪到卡外筛选条，卡头「教练主题（N）」+ 状态下拉
   const router = useRouter();
   const sp = useSearchParams();
   const [换着, start] = useTransition();
@@ -92,31 +90,16 @@ export default function BoardTopics({ 数, 范围, 状态 = "" }: { 数: 复盘�
   );
   return (
     <>
-    {新样 && (
-      <div className="rtalk-bar" role="group" aria-label="主题筛选">
-        <TalkKindSwitch 当前="topic" />
-        {谁钮}
-      </div>
-    )}
+    <div className="rtalk-bar" role="group" aria-label="主题筛选">
+      <TalkKindSwitch 当前="topic" />
+      {谁钮}
+    </div>
     <div className="btodo-wrap rtalk-wrap">
       <section className={`btodo-list${换着 ? " is-pending" : ""}`} aria-label="教练主题列表" aria-busy={换着}>
-        {新样 ? (
-          <div className="btodo-head">
-            <b className="section-title">教练主题<span className="card-count">（{数.总数.toLocaleString("zh-CN")}）</span></b>
-            <div className="btodo-head-r">{状态下拉}</div>
-          </div>
-        ) : (
         <div className="btodo-head">
-          <span className="rtopic-head-l">
-            <b className="section-title">项目沟通</b>
-            <TalkKindSwitch 当前="topic" />
-          </span>
-          <div className="btodo-head-r">
-            {状态下拉}
-            {谁钮}
-          </div>
+          <b className="section-title">教练主题<span className="card-count">（{数.总数.toLocaleString("zh-CN")}）</span></b>
+          <div className="btodo-head-r">{状态下拉}</div>
         </div>
-        )}
         {数.行.length === 0 ? (
           <EmptyState
             title="没有主题"

@@ -3,10 +3,10 @@ import { build } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
 /* 暗黑下 antd 分段控件选中字、页签未选中字（11-22 修 main 上原有的缺陷）：
-   lib/theme.ts 里 Segmented / Tabs 的字色是写死的浅色墨色 palette.ink #1d1d1f，skins/shared.css 暗黑那条只换了轨道和选中底，
+   lib/theme.ts 里 Segmented / Tabs 的字色是写死的浅色墨色 palette.ink #1d1d1f，antd-dark.css暗黑那条只换了轨道和选中底，
    字还是 #1d1d1f，压在暗底上看不见（/overview「团队 / 看板」「卡点 / 沟通 / 数据」）。
-   修：shared.css 同一条里把这几项接到 --ink；现状暗黑下分段选中底抬亮一档、比轨道亮（照 .cd-seg，规则在 globals.css）。量：现状暗黑下是暗黑的 --ink；现状浅色一个像素不变；换皮主题跟着它自己的 --ink 走
-   用真的 lib/theme.ts（ConfigProvider）+ globals.css + dark.css + skins/*.css */
+   修：同一条里把这几项接到 --ink；暗黑下分段选中底抬亮一档、比轨道亮（照 .cd-seg，规则在 globals.css）。量：暗黑下是暗黑的 --ink；浅色一个像素不变
+   用真的 lib/theme.ts（ConfigProvider）+ globals.css + antd-dark.css + dark.css（照 app/layout.tsx 的顺序） */
 let browser: Browser, bundle: string;
 
 beforeAll(async () => {
@@ -22,14 +22,14 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 量(属性: { skin?: string; mode?: string }) {
+async function 量(属性: { mode?: string }) {
   const page = await browser.newPage({ viewport: { width: 1024, height: 600 } }); page.setDefaultTimeout(5000);
   const errors: string[] = [];
   page.on("pageerror", e => errors.push(e.message));
-  const 根 = `${属性.skin ? ` data-skin="${属性.skin}"` : ""}${属性.mode ? ` data-mode="${属性.mode}"` : ""}`;
+  const 根 = 属性.mode ? ` data-mode="${属性.mode}"` : "";
   await page.route("http://dark-tabs.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${根}><meta charset='utf-8'><style>body{margin:0;background:var(--page-bg)}</style><div id='root'></div></html>` }));
   await page.goto("http://dark-tabs.test");
-  for (const f of ["globals.css", "skins/shared.css", "skins/pixel.css", "skins/tech.css", "skins/luxe.css", "skins/ledger.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+  for (const f of ["globals.css", "antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
   await page.addScriptTag({ content: bundle });
   await page.locator("#tabs .ant-tabs-tab").first().waitFor();
   const r = await page.evaluate(() => {
@@ -50,8 +50,8 @@ async function 量(属性: { skin?: string; mode?: string }) {
   return r;
 }
 
-it("现状暗黑：分段选中字、页签未选中 / 选中字都是暗黑的 --ink（不是浅色的 #1d1d1f）", async () => {
-  const r = await 量({ skin: "now", mode: "dark" });
+it("暗黑：分段选中字、页签未选中 / 选中字都是暗黑的 --ink（不是浅色的 #1d1d1f）", async () => {
+  const r = await 量({ mode: "dark" });
   expect(r.ink).toBe("rgb(232, 234, 238)");
   expect(r.段选中).toBe(r.ink);
   expect(r.签未选).toBe(r.ink);
@@ -60,15 +60,8 @@ it("现状暗黑：分段选中字、页签未选中 / 选中字都是暗黑的 
   expect(r.选中底亮).toBeGreaterThan(r.轨道亮);
 });
 
-it("现状浅色：照旧是 #1d1d1f（这次不动浅色）", async () => {
-  const r = await 量({ skin: "now", mode: "light" });
+it("浅色：照旧是 #1d1d1f（这次不动浅色）", async () => {
+  const r = await 量({ mode: "light" });
   for (const k of ["段选中", "签未选", "签选中"] as const) expect(r[k], k).toBe("rgb(29, 29, 31)");
 });
 
-it("换皮主题（浅色、暗黑）：跟着各自的 --ink 走", async () => {
-  for (const skin of ["pixel", "tech", "luxe", "ledger"])
-    for (const mode of ["light", "dark"]) {
-      const r = await 量({ skin, mode });
-      for (const k of ["段选中", "签未选", "签选中"] as const) expect(r[k], `${skin} ${mode} ${k}`).toBe(r.ink);
-    }
-});

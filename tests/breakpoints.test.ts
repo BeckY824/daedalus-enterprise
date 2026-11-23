@@ -12,7 +12,7 @@
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { 源, 去注释 } from "./skin-css";
+import { 源, 去注释 } from "./css-read";
 import { 名单门槛 } from "@/lib/roster";
 
 const 档 = { max: new Set([767, 1199, 1439]), min: new Set([768, 1200, 1440]) };

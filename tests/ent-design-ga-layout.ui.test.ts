@@ -13,7 +13,6 @@
  *   G7 空态句 / 筛了没对上 / 只选了某一池；换池骨架 --skel-delay 后才出
  *   G8 选人框输入框白底 + --field-line；底下那句 13 号、行距 22
  *   D12 390 触屏点格子不冒悬停浮层；D40 滚到底末行「⋯」不在 AI 球底下
- *   换皮主题（账簿）外观、结构照旧：末尾对照
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -62,20 +61,19 @@ afterAll(async () => { await browser?.close(); });
 
 /** 壳：.has-ai-fab 给正文底下留白，右下角一颗 AI 球（同 AppShell / AiFab 的类名）；电脑宽左边让出左栏 220 */
 const 壳 = "<div class='has-ai-fab'><main class='main app-content'><div id='root'></div></main><button class='ai-fab' aria-label='AI 助手'><span class='ai-fab-core'></span></button></div>";
-async function 开(w: number, o: 参 = {}, 主题?: string): Promise<{ page: Page; errors: string[] }> {
+async function 开(w: number, o: 参 = {}): Promise<{ page: Page; errors: string[] }> {
   const 手 = w < 768;
   const page = await browser.newPage({ viewport: { width: w, height: 900 }, ...(手 ? { isMobile: true, hasTouch: true } : {}) });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   await page.route("http://design-ga.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><style>body{margin:0}</style>${壳}` }));
   await page.goto("http://design-ga.test/pool");
-  if (主题) await page.evaluate((t) => document.documentElement.setAttribute("data-skin", t), 主题);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ content: 手 ? ".app-content{display:block}" : ".app-content{display:block;margin-left:220px;padding:22px 26px}" });
   await page.addScriptTag({ content: 包 });
   await page.evaluate((x) => (window as unknown as { __render: (x: object) => void }).__render(x), o);
   await page.locator(o.空 ? ".list" : "tr[data-row-key='c1']").first().waitFor();
-  if (process.env.GA_SHOT) await page.screenshot({ path: `${process.env.GA_SHOT}/ga-${w}-${主题 ?? "now"}-${Object.entries(o).map(([k, v]) => `${k}${v}`).join("_") || "base"}.png` });
+  if (process.env.GA_SHOT) await page.screenshot({ path: `${process.env.GA_SHOT}/ga-${w}-${Object.entries(o).map(([k, v]) => `${k}${v}`).join("_") || "base"}.png` });
   return { page, errors };
 }
 const 页横滚 = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
@@ -509,18 +507,3 @@ it("只读（市场管理、只读管理员）：没有操作列、没有勾选�
   } finally { await page.close(); }
 });
 
-it("换皮主题（账簿）照原样：一行筛选、属性带色标签、没有页头计数、领取在操作格里原地展开", async () => {
-  const { page, errors } = await 开(1366, {}, "ledger");
-  try {
-    expect(await page.locator(".pool-bar, .pool-head-n, .pool-hold").count()).toBe(0);
-    expect(await page.locator(".pool-filters .ant-segmented-item").allInnerTexts()).toEqual(["全部 67093", "线索池 54341", "商机池 12719", "订单池 33", "客户池 0"]);
-    expect(await page.locator("tr[data-row-key='c1'] .ant-tag").first().evaluate((el) => el.className)).toMatch(/ant-tag-blue/);
-    expect(await page.locator("thead th").filter({ hasText: "当前进程" }).count()).toBe(1);
-    const r = page.locator("tr[data-row-key='c0']");
-    await r.getByRole("button", { name: /^领取/ }).click();
-    await r.locator("td.dl-col-操作 .inlc-ask").waitFor();
-    expect(await r.locator("td.dl-col-客户 .pool-why").count()).toBe(1);
-    expect(await page.locator(".pool-ask").count()).toBe(0);
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
-});

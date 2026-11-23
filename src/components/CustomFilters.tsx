@@ -4,7 +4,6 @@ import { cloneElement, useLayoutEffect, useRef, useState, type CSSProperties, ty
 import { Button, Checkbox, Popover, Select, Space, type SelectProps } from "antd";
 import { FilterOutlined, LeftOutlined, SettingOutlined } from "@ant-design/icons";
 import { useLocalPref } from "@/lib/local-pref";
-import { useIsNowSkin } from "@/lib/use-skin";
 import { 切换外露, 拆筛选项, 筛选偏好键, type 筛选项元 } from "@/lib/custom-filters";
 
 export type 筛选项 = 筛选项元 & {
@@ -33,8 +32,7 @@ function MoreFiltersButton({
   恢复默认: () => void;
 }) {
   const 名字 = 筛了几个 > 0 ? `更多筛选，已筛 ${筛了几个} 项` : "更多筛选";
-  /* 现状主题（设计语言 L-B，P-界面-12）：按钮写「更多筛选（N）」；窄窗口文字藏了只剩数字（.cf-more-t 连括号一起藏）。换皮主题照旧「更多筛选 · N」 */
-  const 新样 = useIsNowSkin();
+  /* 设计语言 L-B，P-界面-12：按钮写「更多筛选（N）」；窄窗口文字藏了只剩数字（.cf-more-t 连括号一起藏） */
   const [开着, 设开着] = useState(false);
   const [看清单, 设看清单] = useState(false);
   // 全摆出去了就没有第一屏，直接给清单：不然这个按钮点开是空的
@@ -87,18 +85,11 @@ function MoreFiltersButton({
       {/* 窄窗口只留图标和数字（globals.css .cf-more-t），文字藏了靠 aria-label / title 说清 */}
       <Button icon={<FilterOutlined />} aria-label={名字} title={名字}>
         {筛了几个 > 0 ? (
-          新样 ? (
-            <span>
-              <span className="cf-more-t">更多筛选（</span>
-              {筛了几个}
-              <span className="cf-more-t">）</span>
-            </span>
-          ) : (
           <span>
-            <span className="cf-more-t">更多筛选 · </span>
+            <span className="cf-more-t">更多筛选（</span>
             {筛了几个}
+            <span className="cf-more-t">）</span>
           </span>
-          )
         ) : (
           <span className="cf-more-t">更多筛选</span>
         )}
@@ -130,10 +121,10 @@ export function useCustomFilters(页: string, 项: 筛选项[], { 停用 = false
   const [存的, 存] = useLocalPref<string[] | null>(筛选偏好键(页), null);
   const 能挤 = 项.some((x) => x.挤);
   /*
-    现状主题手机宽也收（设计语言 L-A · L-新5 / D06）：带「挤」的项（客户页阶段 / 进程 / 回收状态）原来 1366 收进「更多筛选」、390 摆外面，
-    同一组筛选两种摆法；手机上还多占一整行、表格首屏少几行。现在两边一样：外面只摆搜索、客户状态、负责人。换皮主题照原样
+    手机宽也收（设计语言 L-A · L-新5 / D06）：带「挤」的项（客户页阶段 / 进程 / 回收状态）原来 1366 收进「更多筛选」、390 摆外面，
+    同一组筛选两种摆法；手机上还多占一整行、表格首屏少几行。现在两边一样：外面只摆搜索、客户状态、负责人
   */
-  const [挤掉, 探针] = useSqueezeRow(能挤, useIsNowSkin());
+  const [挤掉, 探针] = useSqueezeRow(能挤);
   const { 可见, 外露, 收着, 筛了几个 } = 拆筛选项(项, 停用 ? null : 存的, 挤掉);
   return {
     外露: [
@@ -166,9 +157,9 @@ const 一行高 = 40;
  * 「留给筛选组的可用宽」= 行宽减去行里别的格（最左的「列表 / 看板」、右端那一格、「列」……弹性空格不算宽）和格间距；
  * 可用宽够摆开了才放回来（F-043：原来记的是收起那一刻的可用宽、宽了就放回来，竖滚动条一来一去就来回收放到 React #185）。只看行宽不够：
  * 客户页看板往右端那一格放「分配」「我分出去的」、后来又拿走时行宽不变，原来收进去就放不回来（11-12 复审）。
- * 所以行、组、行里别的格都盯着。在画之前量（layout effect），人看不到跳一下。手机宽（< 768）筛选行本来就折，不量：现状主题一律收（手机也收），换皮主题一律摆外面
+ * 所以行、组、行里别的格都盯着。在画之前量（layout effect），人看不到跳一下。手机宽（< 768）筛选行本来就折，不量：一律收
  */
-function useSqueezeRow(能挤: boolean, 手机也收 = false): [boolean, (el: HTMLSpanElement | null) => void] {
+function useSqueezeRow(能挤: boolean): [boolean, (el: HTMLSpanElement | null) => void] {
   const [挤掉, set挤掉] = useState(false);
   const [探针, set探针] = useState<HTMLSpanElement | null>(null);
   const 挤时要宽 = useRef(0);
@@ -200,7 +191,7 @@ function useSqueezeRow(能挤: boolean, 手机也收 = false): [boolean, (el: HT
       return 格.reduce((n, x) => n + x.getBoundingClientRect().width, 0) + 间距 * Math.max(0, 格.length - 1);
     };
     const 量 = () => {
-      if (!window.matchMedia("(min-width: 768px)").matches) return set挤掉(手机也收);
+      if (!window.matchMedia("(min-width: 768px)").matches) return set挤掉(true);
       const 宽 = 可用宽();
       if (!挤掉) {
         // 记的是「摆开要多宽」，至少比这一刻的可用宽多 1（这一刻确实折了）：可用宽到了它才放回来，滚动条来去不算
@@ -231,6 +222,6 @@ function useSqueezeRow(能挤: boolean, 手机也收 = false): [boolean, (el: HT
       ro.disconnect();
       mo.disconnect();
     };
-  }, [能挤, 探针, 挤掉, 手机也收]);
+  }, [能挤, 探针, 挤掉]);
   return [挤掉, set探针];
 }

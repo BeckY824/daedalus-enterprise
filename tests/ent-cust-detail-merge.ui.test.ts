@@ -126,7 +126,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 皮?: string; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
+type 参 = { hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -151,10 +151,6 @@ async function 开(width: number, o: 参 = {}, height = 800) {
   page.on("pageerror", e => errors.push(e.message));
   await page.route("http://cust-merge.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
   await page.goto("http://cust-merge.test/customers/a" + (o.hash ?? "")); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
-  if (o.皮) {
-    await page.evaluate(k => document.documentElement.setAttribute("data-skin", k), o.皮);
-    for (const f of ["src/app/skins/shared.css", `src/app/skins/${o.皮}.css`]) await page.addStyleTag({ path: path.resolve(f) });
-  }
   await page.addScriptTag({ content: bundle });
   await 画(page, o);
   return { page, errors };
@@ -338,10 +334,10 @@ it.each([1280, 1366, 1440])("提醒条 %ipx：在项目区中栏、进程卡正�
     // 不在客户名下面通栏，在项目区那张网格里
     expect(await 条.evaluate(el => !!el.closest(".rec-zone .cd-zb > .cd-alert"))).toBe(true);
     const [框, 中栏, 右栏, 进程卡] = await Promise.all([条.boundingBox(), page.locator(".cd-mid").boundingBox(), page.locator(".cd-side").boundingBox(), page.locator(".cd-mid > .ant-card").first().boundingBox()]);
-    // 落在中栏那一列：设计语言 D-2 方案 A（11-22）起模块不画卡、栏与栏之间一根竖线，提醒条两边各让 16，和模块里的字对齐、不贴着栏线
-    expect(Math.abs(框!.x - (进程卡!.x + 16))).toBeLessThanOrEqual(1);
-    expect(Math.abs(框!.width - (进程卡!.width - 32))).toBeLessThanOrEqual(1);
-    expect(Math.abs(框!.x - (中栏!.x + 16))).toBeLessThanOrEqual(1);
+    // 和中栏那一列同宽（量进程卡：D2 起中栏是一扇自己滚的窗，左右各让 4px 给卡片阴影，栏框比列宽 8px）
+    expect(Math.abs(框!.x - 进程卡!.x)).toBeLessThanOrEqual(1);
+    expect(Math.abs(框!.width - 进程卡!.width)).toBeLessThanOrEqual(1);
+    expect(Math.abs(框!.x - 中栏!.x)).toBeLessThanOrEqual(5);
     expect(框!.y + 框!.height).toBeLessThanOrEqual(进程卡!.y + 1);
     expect(Math.abs(右栏!.y - 中栏!.y)).toBeLessThanOrEqual(1);
     expect(await page.locator(".rec-head + [data-testid=tri-state-bar]").count()).toBe(0);
@@ -1143,18 +1139,6 @@ it("[D3 · M5-a] 空态字 --text-muted、句式「还没有 X」；左栏卡头
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
-});
-
-it("[D3] 换皮主题（tech）不动：空态照旧 --text-faint、联系人照旧第一位摊开 + 其余手风琴（没有组、没有细线）、复制键 20", async () => {
-  const { page, errors } = await 开(1366, { 八人: true, 皮: "tech" });
-  try {
-    expect(await page.locator(".rec-rail .rec-empty").first().evaluate(e => getComputedStyle(e).color)).toBe(await 取色(page, "--text-faint"));
-    // 结构按主题分开渲染（lib/use-skin.ts）：换皮主题不出 D3 的「每人一组」
-    expect(await page.locator(".rec-cg").count()).toBe(0);
-    expect(await page.locator(".rec-contact-fold").count()).toBe(7);
-    expect(Math.round((await page.locator(".rec-contact .copy-val-b").first().boundingBox())!.width)).toBe(20);
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
 });
 
 it("[D4 审查] 客户页项目区：缺项小块点了都有落点——右栏那一格、画像卡、线索验证框、新建沟通框；「国家」滚到左栏客户资料那一格（联系人多到有「展开其余」也不点错）；企业版「来源」就地说", async () => {

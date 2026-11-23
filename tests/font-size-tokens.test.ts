@@ -8,12 +8,12 @@
  *   1. css 里的 font-size 只许 var(--fs-*)，或从它推出来的 var(--dt-*)（详情页大一号）、图标的 var(--ic)、inherit、0（藏字）。图标、字形（箭头、圆点、评分条）放行，名单在下面，每条写了为什么
  *   2. tsx/ts 里写死的 fontSize 数字只许在六档上；比 12 小的只放行图标（*Outlined）和图表轴/图例（echarts 的 axisLabel、textStyle）
  *   3. 镜像不许漂：antd 主题（lib/theme.ts）抄的字号要和 :root 一字不差
- * 主题（skins/*.css）可以改 --fs-* 的值，那是 token 块，不受第 1 条管。
+ * 暗黑（dark.css）这类 token 块可以改 --fs-* 的值，不受第 1 条管。
  */
 import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
-import { 源, 去注释, 根变量 } from "./skin-css";
+import { 源, 去注释, 根变量 } from "./css-read";
 
 const 六档 = new Set([12, 13, 14, 15, 22, 26]);
 

@@ -38,10 +38,10 @@ describe("待分配新线索那一行", () => {
     expect(html.match(/home-cth-todo-one/g)).toHaveLength(1);
   });
 
-  it("只占一行：home-cth-todo-one 不换行、放不下省略（换皮主题）；现状主题和别的待办同一种行，放不下折行、时间不截（H-A）", () => {
+  it("和别的待办同一种行，放不下折行、时间不截（H-A）", () => {
     const css = readFileSync("src/app/globals.css", "utf8");
-    expect(css).toContain(':root:is(:not([data-skin]), [data-skin="now"]) .home-cth-todo-one { flex-wrap: wrap;');
-    expect(css).toContain(':root:is(:not([data-skin]), [data-skin="now"]) .home-cth-todo-time { white-space: nowrap; }');
+    expect(css).toContain(':root:root .home-cth-todo-one { flex-wrap: wrap;');
+    expect(css).toContain(':root:root .home-cth-todo-time { white-space: nowrap; }');
     expect(css).toMatch(/\.home-cth-todo-one \{[^}]*flex-wrap: nowrap/);
     expect(css).toMatch(/\.home-cth-todo-one \.home-cth-todo-t \{[^}]*text-overflow: ellipsis/);
     // 整行不裁（overflow: hidden 会裁掉「去分配」的键盘焦点框），省略只在标题、中间那段上

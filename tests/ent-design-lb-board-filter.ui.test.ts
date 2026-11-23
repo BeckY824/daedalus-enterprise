@@ -1,9 +1,8 @@
 /**
- * 设计语言 L-B · D37 补：客户页「看板」视图的筛选占位字也墨色（L-A 只改了列表筛选行）。只挂现状主题。
+ * 设计语言 L-B · D37 补：客户页「看板」视图的筛选占位字也墨色（L-A 只改了列表筛选行）。
  *
  *   市场管理客户页（我分出去的）看板：筛选在 .pipe-top，「全部成员 / 全部创建人 / 全部进程」占位字和「全部阶段」一个颜色（墨色，不是 faint）
  *   销售客户页看板：筛选行照旧是 .list-bar（看板体换掉表格），占位字墨色
- *   像素主题：照旧（占位字不改成墨色）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -91,12 +90,12 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 开(包: string, w: number, 参: Record<string, unknown> = {}, 主题?: string): Promise<Page> {
+async function 开(包: string, w: number, 参: Record<string, unknown> = {}): Promise<Page> {
   const page = await browser.newPage({ viewport: { width: w, height: 900 } });
   page.setDefaultTimeout(5000);
   await page.route("http://design-lb.test/**", (r) => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
   await page.goto("http://design-lb.test/customers");
-  await page.evaluate((t) => { localStorage.setItem("projects-view", JSON.stringify("看板")); if (t) document.documentElement.setAttribute("data-skin", t); }, 主题);
+  await page.evaluate(() => { localStorage.setItem("projects-view", JSON.stringify("看板")); });
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ content: "#root{margin-left:220px;padding:22px 26px}" });
   await page.addScriptTag({ content: 包 });
@@ -131,15 +130,5 @@ it("销售客户页看板：筛选行（.list-bar）占位字墨色", async () =
     expect(Object.keys(们).length).toBeGreaterThanOrEqual(2);
     const 墨 = await 色(page, "--ink");
     for (const [k, c] of Object.entries(们)) expect(c, k).toBe(墨);
-  } finally { await page.close(); }
-});
-
-it("像素主题：市场管理客户页看板占位字照旧（不改墨色）", async () => {
-  const page = await 开(市场包, 1366, {}, "pixel");
-  try {
-    await page.locator(".cust-market .pipe-top .ant-select-placeholder").first().waitFor();
-    const 墨 = await 色(page, "--ink");
-    const 占位 = await page.locator(".cust-market .pipe-top .ant-select-placeholder").first().evaluate((e) => getComputedStyle(e).color);
-    expect(占位).not.toBe(墨);
   } finally { await page.close(); }
 });

@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Tooltip } from "antd";
 import { useCopy } from "@/lib/clipboard";
-import { CopyOutlined, ReloadOutlined, CloseOutlined, RightOutlined } from "@ant-design/icons";
+import { CopyOutlined, ReloadOutlined, RightOutlined } from "@ant-design/icons";
 import ProposalCard, { type 卡况 } from "@/components/ProposalCard";
 import ProposalBatch from "@/components/ProposalBatch";
 import { 对话截图 } from "@/lib/card-scan/originals";
@@ -26,7 +26,6 @@ import { 起草, 草稿键, useCopyDraft, type 草稿类 } from "@/lib/draft-job
 import AiCost, { useAiOutOfCredits } from "@/components/AiCost";
 import ResearchRun, { ResearchPick } from "@/components/research/ResearchRun";
 import ResearchPerson from "@/components/research/ResearchPerson";
-import { useIsNowSkin } from "@/lib/use-skin";
 import TurnMenu, { 有表格 } from "./TurnMenu";
 
 // 后发照片那张「存到刚建的客户名下」卡（11-01 速度闸门）：AI 面板每一页都在，用到时才去拿
@@ -78,8 +77,8 @@ export function 滚动容器(el: HTMLElement | null): HTMLElement | null {
   const 面板 = el?.closest<HTMLElement>(".dock-body");
   if (面板) return 面板;
   /*
-    首页对话框（设计语言 HC-1，只现状主题驾驶舱问过之后）：对话在 .cli-log 里滚，整页不滚。
-    样式只挂现状主题——换皮主题下 .cli-log 不滚、还是整页滚，所以要看它真在不在滚，不能光认类名
+    首页对话框（设计语言 HC-1，只驾驶舱问过之后）：对话在 .cli-log 里滚，整页不滚。
+    别的时候 .cli-log 不滚、还是整页滚，所以要看它真在不在滚，不能光认类名
   */
   const log = el?.closest<HTMLElement>(".cli-log");
   if (log && /(auto|scroll)/.test(getComputedStyle(log).overflowY)) return log;
@@ -149,8 +148,7 @@ export default function TurnView({
   const b = useBusiness();
   const 复制 = useCopy();
   const AI已用完 = useAiOutOfCredits();
-  /** 现状主题（设计语言 HC-2a，C8-A）：操作行的 × 收进 ⋯（复制为表格 / 引用到新问题 / 移除这一轮）；状态条不写「Esc 打断」 */
-  const 现状 = useIsNowSkin();
+  /* 设计语言 HC-2a（C8-A）：操作行的 × 收进 ⋯（复制为表格 / 引用到新问题 / 移除这一轮）；状态条不写「Esc 打断」 */
   const job = useJob<StreamJob<AgentAnswer>>(`home:${turn.id}`);
   const ref = useRef<HTMLDivElement>(null);
   const done = job?.status === "done" || job?.status === "error";
@@ -325,15 +323,7 @@ export default function TurnView({
                 <ReloadOutlined />
               </button>
             </Tooltip>
-            {现状 ? (
-              <TurnMenu 根={ref} 问句={turn.question} 表格={false} on移除={() => set移走中(true)} />
-            ) : (
-              <Tooltip title="移除这一轮">
-                <button type="button" className="cli-ic" aria-label="移除这一轮" onClick={() => set移走中(true)}>
-                  <CloseOutlined />
-                </button>
-              </Tooltip>
-            )}
+            <TurnMenu 根={ref} 问句={turn.question} 表格={false} on移除={() => set移走中(true)} />
             <span className="cli-bar-t">{whenLabel(turn.at)}</span>
           </div>
         )}
@@ -368,7 +358,6 @@ export default function TurnView({
           原因={job.status === "error" ? job.error : undefined}
           写着={writing}
           等确认={待确认}
-          附注={!done && !现状 ? "Esc 打断" : undefined}
           onRetry={重答}
         />
       )}
@@ -469,15 +458,7 @@ export default function TurnView({
               <AiCost />
             </button>
           </Tooltip>
-          {现状 ? (
-            <TurnMenu 根={ref} 问句={turn.question} 表格={有表格(answer?.text ?? text)} on移除={() => set移走中(true)} />
-          ) : (
-            <Tooltip title="移除这一轮">
-              <button type="button" className="cli-ic" aria-label="移除这一轮" onClick={() => set移走中(true)}>
-                <CloseOutlined />
-              </button>
-            </Tooltip>
-          )}
+          <TurnMenu 根={ref} 问句={turn.question} 表格={有表格(answer?.text ?? text)} on移除={() => set移走中(true)} />
           <span className="cli-bar-t">{whenLabel(turn.at)}</span>
         </div>
       )}

@@ -239,7 +239,7 @@ export async function 查排版(page: Page, 选项: 查排版选项 = {}): Promi
       if (短字的.some((o) => o !== el && el.contains(o))) continue;
       const t = (el.textContent ?? "").replace(/\s+/g, " ").trim();
       if (!t || [...t].length > 8) continue;
-      // 里面有块级的子元素（「逾期跟进 / 6 先处理」、设置左栏「外观 / 底色和主题」）是设计成上下几行的：那就按每段字自己数，
+      // 里面有块级的子元素（「逾期跟进 / 6 先处理」、设置左栏「外观 / 浅色、深色、跟随系统」）是设计成上下几行的：那就按每段字自己数，
       // 一段字被拆到两行才算；全是行内的（按钮、表头、标签）整个一起数
       const 分块 = [...el.querySelectorAll("*")].some((d) => !getComputedStyle(d).display.startsWith("inline") && getComputedStyle(d).display !== "contents");
       const 数行 = (顶们: number[]) => { 顶们.sort((a, b) => a - b); return 顶们.length ? 1 + 顶们.slice(1).filter((y, i) => y - 顶们[i] > 6).length : 0; };

@@ -38,7 +38,7 @@ import { 滚法 } from "@/lib/reduced-motion";
 const 说明表: Record<string, string> = {
   profile: "你的名字、职位",
   keymap: "键盘上那几个键",
-  appearance: "底色和主题",
+  appearance: "浅色、深色、跟随系统",
   members: "谁能进、谁是管理员",
   password: "改密码、看哪几台机器登录着",
   ai: "走哪把 Key、还剩几次",
@@ -66,7 +66,7 @@ const 搜词表: Record<string, string[]> = {
   profile: ["名字", "职位"],
   password: ["密码", "退出", "机器"],
   keymap: ["快捷键", "键位"],
-  appearance: ["主题", "深色", "底色"],
+  appearance: ["明暗", "深色", "浅色", "主题"],
   members: ["系统管理员", "停用", "离职", "飞书", "解绑", "成员"],
   org: ["部门", "直属上级", "虚线上级", "字段权限", "线索分配", "配额", "市场部门", "只看某人", "业务角色", "后台设置谁能改"],
   business: ["叫法", "客户", "学员"],

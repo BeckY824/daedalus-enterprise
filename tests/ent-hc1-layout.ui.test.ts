@@ -8,7 +8,6 @@
  *   C12 往上翻出「↓」，下面长新字带蓝点，点了回到最新；刚发那一轮留一框高的空（问句能顶到框顶）
  *   C13 390：对话栏 52 高、钮 44；框铺满、输入框贴视口底；不横滚
  *   C5 还没问：「晚上好」上方的空 = 输入框下方的空（±2，1366 / 1024 / 390；有没有顶部待办都量）
- * 换皮主题（账簿）照旧：没有框头、整页滚、框不钉高。
  *
  * 外面的结构照 AppShell + HomeChat 驾驶舱那一支摆（HomeChat 连着对话流、路由、背调，单拎出来画不了；同 ent-design-ha-layout.ui.test.ts），
  * 框头、回到最新、问候、输入框底栏、指标卡用真组件
@@ -39,7 +38,6 @@ beforeAll(async () => {
     import AwaitAssignTodo from '@/app/(app)/leads/AwaitAssignTodo';
     import ReplyDueTodo from '@/app/(app)/dashboard/ReplyDueTodo';
     import AssignEtaLine from '@/app/(app)/dashboard/AssignEtaLine';
-    import { useIsNowSkin } from '@/lib/use-skin';
     import { configureBrowserBusinessTimeZone } from '@/lib/business-clock';
     configureBrowserBusinessTimeZone('Asia/Shanghai');
     const 长 = '某某超长贸易进出口有限公司'.repeat(4);
@@ -65,14 +63,13 @@ beforeAll(async () => {
       </div>
     );
     function 问过({ 轮数, 待办, 新, 对话 }) {
-      const 现状 = useIsNowSkin();
       // 照 HomeChat：key 按这一屏装着的对话 id 换，认领（空 → 真 id、刚发的还在）不换
       const 键 = useToLatestKey(对话 === undefined ? 'c1' : 对话, !!新);
       const 轮们 = Array.from({ length: 轮数 }, (_, i) => i);
       return (
-        <div className={'cli' + (现状 ? ' cli-paper' : '')}><div className="cli-ck"><div className="cli-ck-g">
+        <div className="cli cli-paper"><div className="cli-ck"><div className="cli-ck-g">
           <div className="cli-col cli-frame">
-            {现状 ? <ChatHead 标题="今天该跟谁" 对话id="c1" 能改 待办={待办们(待办)} /> : 待办们(待办)}
+            <ChatHead 标题="今天该跟谁" 对话id="c1" 能改 待办={待办们(待办)} />
             <div className="cli-log">
               {轮们.map((i) => (
                 <div key={i} className={'cli-turn' + (新 && i === 轮数 - 1 ? ' cli-turn-new' : '')} data-i={i}>
@@ -82,7 +79,7 @@ beforeAll(async () => {
               ))}
               <div />
             </div>
-            {现状 && <ToLatest key={键} 刚发={!!新} />}
+            <ToLatest key={键} 刚发={!!新} />
             {输入框(false)}
           </div>
           <HomeCards 数={卡数} />
@@ -112,22 +109,21 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 开参 = { 宽: number; 高?: number; 样?: "问过" | "没问"; 轮数?: number; 待办?: number; 新?: boolean; 收列表?: boolean; skin?: "now" | "ledger"; 长时段?: boolean };
+type 开参 = { 宽: number; 高?: number; 样?: "问过" | "没问"; 轮数?: number; 待办?: number; 新?: boolean; 收列表?: boolean; 长时段?: boolean };
 async function 开(o: 开参): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: o.宽, height: o.高 ?? 900 }, reducedMotion: "reduce", timezoneId: "Europe/London" });
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
-  const skin = o.skin ?? "now";
   const 手机 = o.宽 < 768;
   // 照 AppShell：电脑 = 左栏 220 + 中栏 232（开着、够宽时）+ main（内边距 22 / 26，里面一层换页 div）；手机 = 顶栏 48 + Content（.cli 直接挂在里面）
   const 中栏 = !手机 && !o.收列表 && o.宽 >= 220 + 232 + 640;
   const 壳 = 手机
     ? `<section class='ant-layout' style='min-height:100vh;display:flex;flex-direction:column'><header style='height:48px;flex:none;border-bottom:1px solid #eee'></header><main class='app-content' id='root' style='padding:22px 26px'></main></section>`
     : `<div class='shell'><nav style='width:220px;flex:none'></nav>${中栏 ? "<aside class='pane' style='width:232px'></aside>" : ""}<main class='main app-content' style='padding:22px 26px'><div id='root' style='max-width:1720px;margin:0 auto'></div></main></div>`;
-  await page.route("http://hc1.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${skin === "now" ? "" : ` data-skin="${skin}" data-paper="tone" data-mode="light"`}><meta charset='utf-8'><body style='margin:0'>${壳}</body></html>` }));
+  await page.route("http://hc1.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html><meta charset='utf-8'><body style='margin:0'>${壳}</body></html>` }));
   await page.goto("http://hc1.test/dashboard");
   if (o.收列表) await page.evaluate(() => localStorage.setItem("pane.chat.collapsed", "true"));
-  for (const f of ["globals.css", ...(skin === "now" ? [] : ["skins/shared.css", `skins/${skin}.css`])]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+  await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: bundle });
   if (o.长时段) await page.evaluate(() => { (window as unknown as { __长时段: boolean }).__长时段 = true; });
   await page.evaluate(([样, opt]) => (window as unknown as { __画: (el: Element, s: string, o: unknown) => void }).__画(document.getElementById("root")!, 样 as string, opt), [o.样 ?? "问过", { 轮数: o.轮数 ?? 12, 待办: o.待办 ?? 2, 新: o.新 ?? false }] as const);
@@ -583,15 +579,3 @@ for (const [宽, 待办] of [[1366, 0], [1366, 2], [1024, 0], [390, 0], [390, 2]
     } finally { await page.close(); }
   });
 }
-
-it("换皮主题（账簿）照旧：没有框头和「待办 N」，整页滚，框不钉高；示例照原文", async () => {
-  const { page, errors } = await 开({ 宽: 1366, skin: "ledger", 轮数: 14 });
-  try {
-    expect(await page.locator(".cli-head").count()).toBe(0);
-    expect(await page.locator(".cli-paper").count()).toBe(0);
-    expect(await page.locator(".cli-log").evaluate((e) => getComputedStyle(e).overflowY)).toBe("visible");
-    expect(await page.evaluate(() => document.documentElement.scrollHeight > window.innerHeight)).toBe(true);
-    expect(await page.locator(".cli-log .home-cth-todo").count() + await page.locator(".cli-frame > .home-cth-todo").count()).toBe(2);
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
-});

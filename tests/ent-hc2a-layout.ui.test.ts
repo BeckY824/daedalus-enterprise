@@ -6,7 +6,6 @@
  *   C7 步骤条不带框不带底
  *   C8 最后一轮操作行常显，之前的悬停才出；⋯ 往上弹：复制为表格（有表格才出）/ 引用到新问题 / 移除这一轮（红字）；
  *      移除照旧原地「已移除… 撤销」；触屏（390）常显、钮 44
- * 换皮主题（账簿）照旧：操作行每轮常显、还是 ×，没有 ⋯。
  *
  * 外面的结构照 HC-1 的一张纸（.cli-paper 框里滚），里面是真 TurnView + 真 StreamMarkdown；任务表、建议卡、背调、扣次数打桩。
  */
@@ -48,14 +47,12 @@ beforeAll(async () => {
     import { 加引用 } from '@/app/(app)/dashboard/TurnMenu';
     window.__加引用 = 加引用;
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
-    import { useIsNowSkin } from '@/lib/use-skin';
     let root;
     function 页({ 轮们 }) {
-      const 现状 = useIsNowSkin();
       return (
-        <div className={'cli' + (现状 ? ' cli-paper' : '')}><div className="cli-ck"><div className="cli-ck-g">
+        <div className="cli cli-paper"><div className="cli-ck"><div className="cli-ck-g">
           <div className="cli-col cli-frame">
-            {现状 && <div className="cli-head"><span className="cli-head-t">对话</span></div>}
+            <div className="cli-head"><span className="cli-head-t">对话</span></div>
             <div className="cli-log">
               {轮们.map((t) => <TurnView key={t.id} turn={t} onRetry={() => {}} onRemove={() => { window.__移除 = t.id; }} onAsk={() => {}} scrollOnMount={false} />)}
               <div />
@@ -90,7 +87,7 @@ const 任务们 = {
   "home:t2": 答(`按金额从高到低：\n\n${表}\n\n${宽表}\n\n就这些。`),
 };
 
-async function 开(宽: number, skin: "now" | "ledger" = "now"): Promise<{ page: Page; errors: string[]; close: () => Promise<void> }> {
+async function 开(宽: number): Promise<{ page: Page; errors: string[]; close: () => Promise<void> }> {
   const 手机 = 宽 < 768;
   const ctx = await browser.newContext({ viewport: { width: 宽, height: 900 }, reducedMotion: "reduce", hasTouch: 手机, isMobile: 手机 });
   const page = await ctx.newPage();
@@ -99,9 +96,9 @@ async function 开(宽: number, skin: "now" | "ledger" = "now"): Promise<{ page:
   const 壳 = 手机
     ? `<section class='ant-layout' style='min-height:100vh;display:flex;flex-direction:column'><header style='height:48px;flex:none'></header><main class='app-content' id='root' style='padding:22px 26px'></main></section>`
     : `<div class='shell'><nav style='width:220px;flex:none'></nav><aside class='pane' style='width:232px'></aside><main class='main app-content' style='padding:22px 26px'><div id='root' style='max-width:1720px;margin:0 auto'></div></main></div>`;
-  await page.route("http://hc2a.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${skin === "now" ? "" : ` data-skin="${skin}" data-paper="tone" data-mode="light"`}><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><body style='margin:0'>${壳}</body></html>` }));
+  await page.route("http://hc2a.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><body style='margin:0'>${壳}</body></html>` }));
   await page.goto("http://hc2a.test/dashboard");
-  for (const f of ["globals.css", ...(skin === "now" ? [] : ["skins/shared.css", `skins/${skin}.css`])]) await page.addStyleTag({ path: path.resolve("src/app", f) });
+  await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: bundle });
   await page.evaluate(([轮, 任务]) => { (window as unknown as { __jobs: unknown }).__jobs = 任务; (window as unknown as { __画: (el: Element, t: unknown) => void }).__画(document.getElementById("root")!, 轮); }, [轮们, 任务们] as const);
   await page.locator(".cli-turn .cli-bar").first().waitFor({ state: "attached" });
@@ -271,18 +268,6 @@ it("C8 触屏 390：每轮操作行常显、钮 44；页面不横滚", async () 
     expect(步骤.钮).toBeGreaterThanOrEqual(44);
     expect(步骤.行, "步骤条那一行仍是原来的一行高（没被 44 撑高）").toBeLessThan(30);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
-    expect(errors).toEqual([]);
-  } finally { await close(); }
-});
-
-it("换皮主题（账簿）照旧：每轮操作行常显、还是 ×，没有 ⋯；步骤条还是框", async () => {
-  const { page, errors, close } = await 开(1366, "ledger");
-  try {
-    expect(await 轮(page, 0).locator(".cli-bar").evaluate((e) => getComputedStyle(e).opacity)).toBe("1");
-    expect(await page.getByRole("button", { name: "移除这一轮" }).count()).toBe(3);
-    expect(await page.getByRole("button", { name: "这一轮的更多操作" }).count()).toBe(0);
-    expect(await page.locator(".cli-turn .md-num").count()).toBeGreaterThan(0); // class 照加，账簿不给样子
-    expect(await page.locator(".ais").first().evaluate((e) => getComputedStyle(e).borderTopWidth)).not.toBe("0px");
     expect(errors).toEqual([]);
   } finally { await close(); }
 });
