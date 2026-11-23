@@ -6,6 +6,7 @@
 import { describe, it, expect } from "vitest";
 import {
   项目业务线, 认业务线, 是项目线, 建议业务线, 台湾算, 规整线部门, 线部门们, 线勾了部门, 按部门候选, 默认分配方式, 分配方式序号, 是销售角色,
+  自动可接, 本人事业部,
 } from "@/lib/enterprise/assign-line";
 import { 建组织 } from "@/lib/enterprise/org-core";
 import { 自动候选人们 } from "@/lib/enterprise/lead-assign";
@@ -96,6 +97,53 @@ describe("各条线参与自动分配的部门（A4 / A5）", () => {
     expect(按部门候选(org, null, "外贸", 设, 自动候选人们)).not.toContain("丁");
     // 勾的部门都删了 = 没勾
     expect(按部门候选(org, null, "内贸", { 内贸: ["已删"], 外贸: [] }, 自动候选人们).sort()).toEqual(自动候选人们(org, null, "内贸").sort());
+  });
+});
+
+describe("自动可接：销售管理按本人事业部只进本线（11-23 Q-F044，「不要混线」）", () => {
+  const 组 = () => 建组织(
+    ["内管", "外管", "内销", "外销", "两线管", "没线管", "标外管", "兼管", "总管"].map((id) => ({ id, role: "SALES", active: true })),
+    [
+      成员行("内管", "sales_mgr", "内一组"),
+      成员行("外管", "sales_mgr", "战队"),
+      成员行("内销", "sales", "内一组"),
+      成员行("外销", "sales", "战队"),
+      成员行("两线管", "sales_mgr", "共用组"), // 部门两条线都勾了：事业部判不出
+      成员行("没线管", "sales_mgr", null), // 没部门、没业务线
+      成员行("标外管", "sales_mgr", "内一组", "外贸"), // 成员业务线标外贸，排在部门前面
+      成员行("兼管", "sales,sales_mgr", "内一组"),
+      成员行("总管", "director", "内一组"),
+    ],
+    [部("内贸部"), 部("内一组", "内贸部"), 部("外贸部"), 部("战队", "外贸部"), 部("共用组")],
+  );
+  const 设 = { 内贸: ["内贸部", "共用组"], 外贸: ["外贸部", "共用组"] };
+  const 全 = ["内管", "外管", "内销", "外销", "两线管", "没线管", "标外管", "兼管", "总管"];
+
+  it("外贸销售管理只进外贸线、不进内贸线；内贸销售管理只进内贸线、不进外贸线", () => {
+    const org = 组();
+    expect(自动可接(org, 全, "外贸", 设)).toContain("外管");
+    expect(自动可接(org, 全, "内贸", 设)).not.toContain("外管");
+    expect(自动可接(org, 全, "内贸", 设)).toContain("内管");
+    expect(自动可接(org, 全, "外贸", 设)).not.toContain("内管");
+  });
+
+  it("事业部判不出的纯销售管理两条线都不进；成员业务线排在部门前面；线没定（null）不给纯销售管理", () => {
+    const org = 组();
+    for (const l of ["内贸", "外贸"] as const) {
+      expect(自动可接(org, 全, l, 设)).not.toContain("两线管");
+      expect(自动可接(org, 全, l, 设)).not.toContain("没线管");
+    }
+    expect(本人事业部(org, 设, "标外管")).toBe("外贸");
+    expect(自动可接(org, 全, "外贸", 设)).toContain("标外管");
+    expect(自动可接(org, 全, "内贸", 设)).not.toContain("标外管");
+    expect(自动可接(org, 全, null, 设).filter((id) => id.endsWith("管") && id !== "兼管")).toEqual([]);
+  });
+
+  it("有销售角色的照旧按传进来的候选放行（线由候选池定）；总管理等非销售角色不进", () => {
+    const org = 组();
+    expect(自动可接(org, 全, "内贸", 设)).toEqual(expect.arrayContaining(["内销", "外销", "兼管"]));
+    expect(自动可接(org, 全, "外贸", 设)).not.toContain("总管");
+    expect(自动可接(org, 全, "内贸", 设)).not.toContain("总管");
   });
 });
 
