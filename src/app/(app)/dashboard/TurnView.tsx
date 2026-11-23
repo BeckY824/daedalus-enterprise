@@ -299,13 +299,13 @@ export default function TurnView({
       画: (段: 链段, 字: React.ReactNode) => {
         const c = 按id.get(段.id)!;
         return (
-          <RecordPeek 客户={c} 状态={c.followStatus ? statusLabel(b, c.followStatus) : undefined} 客户叫={b.customer}>
+          <RecordPeek 客户={c} 状态={c.followStatus ? statusLabel(b, c.followStatus) : undefined} 客户叫={b.customer} 回答时={turn.历史}>
             {字}
           </RecordPeek>
         );
       },
     };
-  }, [链客户, 答文, b]);
+  }, [链客户, 答文, b, turn.历史]);
 
   if (排队藏着) return null;
 
@@ -462,7 +462,7 @@ export default function TurnView({
       )}
 
       {/* 涉及 N 位客户（HC-2b，页首第 4 件默认「留，缩成一行」）：一行名字，名字是链接、悬停小卡里能起草 */}
-      {answer && answer.customers.length > 0 && <InvolvedLine customers={answer.customers.slice(0, 5)} 总数={answer.customers.length} />}
+      {answer && answer.customers.length > 0 && <InvolvedLine customers={answer.customers.slice(0, 5)} 总数={answer.customers.length} 回答时={turn.历史} />}
 
       {/*
         回答后面跟着下一步（照 eigent 那条：结果 → 简报 → 建议的后续）。
@@ -511,7 +511,7 @@ export default function TurnView({
  * 「涉及 N 位客户：A · B · C」一行（HC-2b）。名字是链接、悬停出小卡（负责人、状态、上次跟进），
  * 小卡底下「起草跟进话术」；起草好的话术照旧在这一行下面就地展开（和原来卡片里一样，复制 / 收起）
  */
-function InvolvedLine({ customers, 总数 }: { customers: 提到的客户[]; 总数: number }) {
+function InvolvedLine({ customers, 总数, 回答时 }: { customers: 提到的客户[]; 总数: number; 回答时?: boolean }) {
   const b = useBusiness();
   const AI已用完 = useAiOutOfCredits();
   /* 触屏没有悬停、小卡出不来：每个名字后面直接摆一颗「起草」（点击区 44），起草入口不丢（11-22 定） */
@@ -528,6 +528,7 @@ function InvolvedLine({ customers, 总数 }: { customers: 提到的客户[]; 总
               客户={c}
               状态={c.followStatus ? statusLabel(b, c.followStatus) : undefined}
               客户叫={b.customer}
+              回答时={回答时}
               动作={<DraftButton id={c.id} disabled={AI已用完} />}
             >
               {c.name}

@@ -597,9 +597,9 @@ ${写不了 ? 只读规则(写不了) : 出卡规则}
     if (tool.name === "get_customer" && result.data && typeof result.data === "object" && "id" in result.data) {
       const d = result.data as { id: string; name: string; profile: string };
       const m = d.profile.match(/跟进状态「([^」]+)」/);
-      // 负责人在 profile 那句话里（tools.ts get_customer）；上次跟进 = 跟进记录按时间倒序的第一条
+      // 负责人在 profile 那句话里（tools.ts get_customer）；上次跟进 = 跟进记录按时间倒序的第一条，带年的完整日期（#441 审查 3），小卡按今年与否再定写法
       const 负责人 = d.profile.match(/负责人 ([^；]+)/)?.[1]?.trim();
-      const 上次 = result.records?.[0]?.date;
+      const 上次 = result.上次跟进;
       customers.set(d.id, { id: d.id, name: d.name, followStatus: m?.[1] ?? "", ...(负责人 ? { owner: 负责人 } : {}), ...(上次 ? { lastFollowAt: 上次 } : {}) });
     } else {
       // 搜索 / 盯盘 / 计划里出现过的人先记着，回答里提到了才给动作

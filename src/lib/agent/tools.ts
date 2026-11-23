@@ -89,7 +89,13 @@ export type ToolContext = {
 
 /** ctx 没带脱敏器时原样返回。自部署实例本来就该看见真号 */
 export const 脱敏 = (ctx: ToolContext) => ctx.号 ?? (<T extends string | null>(p: T): T => p);
-export type ToolResult = { summary: string; data: unknown; records?: BriefRecord[] };
+export type ToolResult = {
+  summary: string;
+  data: unknown;
+  records?: BriefRecord[];
+  /** get_customer：最近一次跟进的完整日期（YYYY-MM-DD）。不给模型，只给回答里客户名的小卡（records 的 date 是 MM-DD 不带年，#441 审查 3） */
+  上次跟进?: string;
+};
 
 export type Tool = {
   name: string;
@@ -467,7 +473,12 @@ export const TOOLS: Tool[] = [
         timeline: timeline || "（从未跟进过）",
         ...(只用项目 ? { 项目, ...(项目行.length > 项目最多 ? { 项目说明: `只列最近动过的 ${项目最多} 个，更早的用 list_projects 按客户名查` } : {}) } : {}),
       };
-      return { summary: `${客户显名(c)}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length - 回填个} 个项目${项目行.length <= 项目最多 && 回填个 ? `（另有 ${回填个} 个历史分析回填的，不计入）` : ""}` : ""}${c.plans[0] ? "、1 条计划" : ""}`, data, records };
+      return {
+        summary: `${客户显名(c)}：${c.followUps.length} 条跟进${sources ? `、${sources} 段原文` : ""}${项目.length ? `、${项目行.length > 项目最多 ? `${项目最多}+` : 项目.length - 回填个} 个项目${项目行.length <= 项目最多 && 回填个 ? `（另有 ${回填个} 个历史分析回填的，不计入）` : ""}` : ""}${c.plans[0] ? "、1 条计划" : ""}`,
+        data,
+        records,
+        ...(c.followUps[0] ? { 上次跟进: dayjs(c.followUps[0].occurredAt).format("YYYY-MM-DD") } : {}),
+      };
     },
   },
   {

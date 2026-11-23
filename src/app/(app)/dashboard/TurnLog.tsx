@@ -31,6 +31,8 @@ function TurnLog({ turns, 刚发的, scope, 动作 }: { turns: Turn[]; 刚发的
             clearJob(`home:${t.id}`);
             // 找公司后接着背调的那一轮：重新背调是新的一次（新 runId，照常扣），不再沿用找公司那一笔
             if (t.接着) updateTurn(scope, t.id, { 接着: undefined });
+            // 翻出来的历史轮次重答：答案是这会儿新查的，小卡照常摆负责人 / 状态 / 上次跟进（#441 审查 3）
+            if (t.历史) updateTurn(scope, t.id, { 历史: undefined });
             if (动作.在跑()) dequeueTurn(scope, t.id);
             动作.刚发(t.id);
             动作.start(t);

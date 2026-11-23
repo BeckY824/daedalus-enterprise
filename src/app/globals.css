@@ -6794,6 +6794,8 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root .md-ent { color: var(--brand-deep); text-decoration: underline; text-decoration-color: var(--brand-line); text-underline-offset: 3px; transition: text-decoration-color var(--t-fast) var(--ease); }
 :root:root .md-ent:hover { color: var(--brand-deep); text-decoration-color: currentColor; }
 :root:root .md-ent:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+/* 名字外面那一层（#441 审查 2）：键盘焦点进出名字和小卡在这一块里认；「涉及」那一行的小卡挂在这里，Tab 顺序紧跟名字 */
+:root:root .peek-w { min-width: 0; max-width: 100%; }
 /* 悬停小卡（RecordPeek）：名字、负责人 / 跟进状态 / 上次跟进三行、底下动作 */
 :root:root .peek { width: 248px; max-width: calc(100vw - 32px); font-size: var(--fs-note); line-height: 1.55; color: var(--ink-soft); }
 :root:root .peek-n { margin-bottom: var(--s1); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }

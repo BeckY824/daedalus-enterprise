@@ -60,7 +60,7 @@ export function 历史成屏(messages: 历史消息[]): { turns: Turn[]; jobs: {
     const refs = (a.refs ?? {}) as { records?: BriefRecord[]; customers?: AgentAnswer["customers"]; research?: unknown; 写不了?: unknown; 拒了写?: unknown };
     // 背调那一轮：报告整份存在 refs.research 里，读回来照样画成卡（形状不对就退回当一段字显示）
     const research = 认背调状态(refs.research) ?? undefined;
-    turns.push({ id: u.id, question: u.text, kind: research ? "research" : "ask", at: Date.parse(u.createdAt), ...(research ? { 公司: research.目标.name } : {}) });
+    turns.push({ id: u.id, question: u.text, kind: research ? "research" : "ask", at: Date.parse(u.createdAt), 历史: true, ...(research ? { 公司: research.目标.name } : {}) });
     jobs.push({
       key: `home:${u.id}`,
       value: {

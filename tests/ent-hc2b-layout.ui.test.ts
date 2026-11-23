@@ -31,7 +31,7 @@ const plugin: Plugin = { name: "ent-hc2b", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `import React from 'react';import{createRoot}from'react-dom/client';import{flushSync}from'react-dom';import{App}from'antd';import Turn from'@/app/(app)/dashboard/TurnView';import{BusinessProvider}from'@/lib/business-client';import{DEFAULT_BUSINESS}from'@/lib/business-config';
     const root=createRoot(document.getElementById('root'));
-    window.__render=(job)=>{window.__job=job;flushSync(()=>root.render(<App><BusinessProvider value={DEFAULT_BUSINESS}><div className='cli'><div className='cli-log'><Turn key={Math.random()} turn={{id:'qa',question:'今天该跟谁',kind:'ask',at:Date.now()}} onRetry={()=>{}} onRemove={()=>{}} onAsk={(q)=>{window.__问=q}} scrollOnMount={false}/></div></div></BusinessProvider></App>))};`,
+    window.__render=(job,轮)=>{window.__job=job;flushSync(()=>root.render(<App><BusinessProvider value={DEFAULT_BUSINESS}><div className='cli'><div className='cli-log'><Turn key={Math.random()} turn={{id:'qa',question:'今天该跟谁',kind:'ask',at:Date.now(),...轮}} onRetry={()=>{}} onRemove={()=>{}} onAsk={(q)=>{window.__问=q}} scrollOnMount={false}/></div></div></BusinessProvider></App>))};`,
     loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, loader: { ".css": "empty" }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -60,7 +60,7 @@ async function 开(o: 开参 = {}): Promise<{ page: Page; errors: string[] }> {
   await page.addScriptTag({ content: bundle });
   return { page, errors };
 }
-const 画 = (page: Page, job: unknown) => page.evaluate((j) => (window as unknown as { __render: (j: unknown) => void }).__render(j), job);
+const 画 = (page: Page, job: unknown, 轮?: Record<string, unknown>) => page.evaluate(([j, t]) => (window as unknown as { __render: (j: unknown, t: unknown) => void }).__render(j, t), [job, 轮] as const);
 const 不横滚 = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 
 it("C6-A（1366）：客户名变链接——从长到短、同名不同 id 不链、每个只链第一次；悬停出小卡（负责人 / 跟进状态 / 上次跟进，没有写「—」），点了去详情", async () => {
@@ -203,6 +203,96 @@ it("超时按 code 认：带 code=timeout 写「等了 N 秒没回来」；文�
     expect(await page.locator(".ais-tt").textContent()).toBe("等了 60 秒没回来");
     await 画(page, { status: "error", error: "AI 这次超时没回音，稍后再问一次试试", startedAt: 起, endedAt: 起 + 60_000, value: { steps: 步 } });
     expect(await page.locator(".ais-tt").textContent()).toBe("停在第 1 步：AI 这次超时没回音，稍后再问一次试试");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/** 一直按 Tab，直到焦点落到 sel 上（最多 40 下） */
+async function Tab到(page: Page, sel: string) {
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press("Tab");
+    if (await page.evaluate((s) => document.activeElement?.matches(s) ?? false, sel)) return;
+  }
+  throw new Error(`Tab 不到 ${sel}`);
+}
+const 焦点 = (page: Page) => page.evaluate(() => { const e = document.activeElement as HTMLElement | null; return e ? (e.getAttribute("aria-label") || e.textContent || "").trim() : ""; });
+const 开着的卡 = (page: Page) => page.locator(".ant-popover:not(.ant-popover-hidden) .peek");
+
+it("#441 审查 2 键盘（1366）：Tab 到「涉及」里的名字出小卡，再 Tab 进卡里「起草跟进话术」、回车起草；Esc 关卡、焦点回名字；Tab 过卡尾到下一个名字", async () => {
+  const { page, errors } = await 开();
+  try {
+    await 画(page, 答完({ customers: 客户们.slice(0, 2) }));
+    await page.locator("body").click({ position: { x: 2, y: 2 } });
+    await Tab到(page, ".cli-inv .md-ent[data-peek='c1']");
+    await expect.poll(() => 开着的卡(page).count()).toBe(1);
+    expect(await 开着的卡(page).locator(".peek-n").textContent()).toBe("华东某展具公司");
+    // 名字后面紧跟着就是卡里的东西：起草 → 打开客户
+    await page.keyboard.press("Tab");
+    expect(await 焦点(page)).toMatch(/^起草跟进话术/);
+    await page.keyboard.press("Enter");
+    expect(await page.evaluate(() => (window as unknown as { __起草: unknown }).__起草)).toEqual(["wakeup", "c1"]);
+    expect(await 开着的卡(page).count(), "焦点在卡里，卡不关").toBe(1);
+    // Esc：关卡，焦点回名字；按 Esc 不该再自己弹回来
+    await page.keyboard.press("Escape");
+    await expect.poll(() => 开着的卡(page).count()).toBe(0);
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-peek"))).toBe("c1");
+    await page.waitForTimeout(300);
+    expect(await 开着的卡(page).count()).toBe(0);
+    // 再 Tab：卡关着，直接到下一个名字，它的卡出来
+    await page.keyboard.press("Tab");
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-peek"))).toBe("c2");
+    await expect.poll(() => 开着的卡(page).locator(".peek-n").allTextContents()).toEqual(["某展具"]);
+    // Tab 过这张卡的最后一项（打开客户）：卡关掉
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    expect(await 焦点(page)).toMatch(/^打开客户/);
+    await page.keyboard.press("Tab");
+    await expect.poll(() => 开着的卡(page).count()).toBe(0);
+    // 鼠标点名字（不是键盘）不因为拿到焦点就出卡：照旧只看悬停
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("#441 审查 2 键盘（1366）：回答正文里的客户名 Tab 到也出小卡（负责人 / 状态 / 上次跟进），Esc 关", async () => {
+  const { page, errors } = await 开();
+  try {
+    await 画(page, 答完());
+    await page.locator("body").click({ position: { x: 2, y: 2 } });
+    await Tab到(page, ".cli-a .md-ent[data-peek='c1']");
+    await expect.poll(() => 开着的卡(page).locator("dd").allTextContents()).toEqual(["销售甲", "跟进中", "11-19"]);
+    await page.keyboard.press("Escape");
+    await expect.poll(() => 开着的卡(page).count()).toBe(0);
+    expect(await page.evaluate(() => document.activeElement?.getAttribute("data-peek"))).toBe("c1");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("#441 审查 3：小卡「上次跟进」不是今年的带年份，今年的只写月-日；翻出来的历史轮次只给名字和「打开」，不摆当时的负责人 / 状态 / 上次跟进", async () => {
+  const { page, errors } = await 开();
+  try {
+    const 今年 = new Date().getFullYear();
+    const 们 = [
+      { id: "c1", name: "华东某展具公司", followStatus: "跟进中", owner: "销售甲", lastFollowAt: `${今年 - 1}-03-04` },
+      { id: "c2", name: "某展具", followStatus: "跟进中", owner: "销售乙", lastFollowAt: `${今年}-11-19` },
+    ];
+    await 画(page, 答完({ customers: 们 }));
+    await page.locator(".cli-inv .md-ent").first().hover();
+    await expect.poll(() => 开着的卡(page).locator("dd").allTextContents()).toEqual(["销售甲", "跟进中", `${今年 - 1}-03-04`]);
+    await page.mouse.move(5, 880);
+    await expect.poll(() => 开着的卡(page).count()).toBe(0);
+    await page.locator(".cli-inv .md-ent").nth(1).hover();
+    await expect.poll(() => 开着的卡(page).locator("dd").allTextContents()).toEqual(["销售乙", "跟进中", "11-19"]);
+    await page.mouse.move(5, 880);
+    await expect.poll(() => 开着的卡(page).count()).toBe(0);
+    // 历史轮次（库里翻出来的）：小卡只有名字、起草和「打开」
+    await 画(page, 答完({ customers: 们 }), { 历史: true });
+    await page.locator(".cli-inv .md-ent").first().hover();
+    const 卡 = 开着的卡(page);
+    await 卡.waitFor();
+    expect(await 卡.locator(".peek-n").textContent()).toBe("华东某展具公司");
+    expect(await 卡.locator("dl").count()).toBe(0);
+    expect(await 卡.getByRole("button", { name: /起草跟进话术/ }).count()).toBe(1);
+    expect(await 卡.locator(".peek-go").textContent()).toContain("打开客户");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
