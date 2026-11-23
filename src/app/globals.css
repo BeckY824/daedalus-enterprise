@@ -688,7 +688,7 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 /* 选中的底色是一块会滑动的层（AppShell 里的 layoutId），压在图标和字下面 */
 .rail-on-bg { position: absolute; inset: 0; border-radius: var(--r-card); background: var(--nav-on-bg); z-index: 0; }
 /* 明亮下的选中块：白底 + 一圈 0.5px 发丝描边 + 1px 软影（原型 g.feel）。暗黑不挂，走自己的底色 */
-:root:root:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on) {
+:root:root:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on, .rail-item:has(> .nav-pend), .rail-fav-i:has(> .nav-pend)) {
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 6%, transparent), 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
 }
 .rail-item > :not(.rail-on-bg) { position: relative; z-index: 1; }
@@ -6863,8 +6863,17 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root .roster-row:has(> .nav-pend)::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 999px; background: var(--brand); }
 :root:root .pane-rows:has(.nav-pend) .roster-row.on:not(:has(> .nav-pend)) { background: transparent; }
 :root:root .pane-rows:has(.nav-pend) .roster-row.on:not(:has(> .nav-pend))::before { content: none; }
-/* 左栏收藏、表格里的名字链接：点的那一条先是悬停的底色 */
-.rail-fav-i:has(> .nav-pend) { background: var(--hover); color: var(--ink); }
+/* 左栏（审查补）：点的那一项立刻是选中的样子，原来选中的那项同时退掉，照名单行的写法。
+   选中底色平时是一块在各项之间滑的层（.rail-on-bg，layoutId）：等新页的这段时间不滑，
+   直接画在点的那一项上、那块层先藏起来；新页一提交 .nav-pend 撤了，层已经在新的一项里（AppShell 的 去向）。
+   收藏的客户 / 项目各管各的：点收藏不动主导航那一项（去的还是「客户」底下）。明亮下的发丝描边 + 软影并在上面 .rail-on-bg 那条里 */
+:root:root .rail-item:has(> .nav-pend), :root:root .rail-item:has(> .nav-pend):hover { background: var(--nav-on-bg); color: var(--nav-on-fg); }
+:root:root .rail-item:has(> .nav-pend) b { font-weight: 600; }
+:root:root .rail:has(.rail-item > .nav-pend) .rail-on-bg { visibility: hidden; }
+:root:root .rail:has(.rail-item > .nav-pend) .rail-item.on:not(:has(> .nav-pend)) { color: var(--text-muted); }
+:root:root .rail:has(.rail-item > .nav-pend) .rail-item.on:not(:has(> .nav-pend)) b { font-weight: 500; }
+:root:root .rail-fav-i:has(> .nav-pend), :root:root .rail-fav-i:has(> .nav-pend):hover { background: var(--nav-on-bg); color: var(--nav-on-fg); }
+:root:root .rail-favs:has(.nav-pend) .rail-fav-i.on:not(:has(> .nav-pend)) { background: transparent; color: var(--ink-soft); box-shadow: none; }
 .ant-table-wrapper .ant-table-tbody > tr.row-going > td, .ant-table-wrapper .ant-table-tbody > tr:has(.nav-pend) > td { background: var(--brand-bg); }
 /* 审查补（PR-A）：看板点的那张卡（客户看板、项目看板，.is-going = useNavGo 在等）、客户页「关联客户」那一小行先高亮；
    .nav-pend 本身永远不占地方（链接里的子元素选择器不该把它撑出来） */

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useSyncExternalStore, useTransition } from "react";
+import { createContext, createElement, useContext, useEffect, useMemo, useSyncExternalStore, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 
 /**
@@ -55,4 +55,24 @@ export function useNavGo() {
     }),
     [pending, router],
   );
+}
+
+type 跳转 = ReturnType<typeof useNavGo>;
+const 壳里的 = createContext<跳转 | null>(null);
+
+/**
+ * 壳（AppShell）里挂一份一直不卸的 useNavGo（审查补）。弹窗、抽屉、撤销条里发起的跳转用 useShellNavGo：
+ * 自己那份 useNavGo 的 pending 挂在弹窗组件上，弹窗一关（关() 在 push 前后都一样，destroyOnHidden / 条件渲染）组件就卸了，
+ * 计数跟着减掉，等待条在新页提交之前就没了。壳里这份要到新页提交才撤
+ */
+export function NavGoProvider({ children }: { children: ReactNode }) {
+  const 跳 = useNavGo();
+  return createElement(壳里的.Provider, { value: 跳 }, children);
+}
+
+/** 弹窗 / 抽屉 / 撤销条里跳页用这个：有壳用壳里那份，没有（单测里单独挂的组件）退回自己的 */
+export function useShellNavGo(): 跳转 {
+  const 壳 = useContext(壳里的);
+  const 自己 = useNavGo();
+  return 壳 ?? 自己;
 }

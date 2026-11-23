@@ -33,11 +33,25 @@ export function LinkPending() {
   return pending ? <span className="nav-pend" hidden /> : null;
 }
 
+/** 换栏目时正文从这个透明度淡到 1：看得出换了一页，又不会先暗下去像刷新 */
+export const 淡入起点 = 0.6;
+
+/** 有 [id] 的详情页（src/app/(app)/customers/[id]、projects/[id]）：同一种之间换 id 不淡 */
+const 详情页 = /^\/(customers|projects)\/[^/]+$/;
+/** 两个地址是不是同一种详情页、只差 id（客户 A→B、项目 A→B） */
+export function 只换了id(前: string, 后: string): boolean {
+  const a = 前.match(详情页), b = 后.match(详情页);
+  return !!a && !!b && a[1] === b[1];
+}
+
 /** 服务端没有 layout 阶段，退回 useEffect（只为不报警告） */
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;
 
 /**
- * 换页时正文淡进来（180ms，只淡不移，减弱动态时一样）。
+ * 换页时正文淡进来（--t 180ms、--ease，只淡不移，减弱动态时一样）。
+ * 只在换栏目时淡，从 0.6 起（审查补）：原来从 0 起，客户 A→B 整块正文先暗一下再出来，看着还是像刷新。
+ * 同一种页只换了 id（客户 A→B、项目 A→B）一帧换上、不淡——页头、页签、版式都没变，淡一下反而晃眼；
+ * 同一页换查询参数（客户详情里换 ?project=）不是换页，本来就不淡（页 只认路径）。
  *
  * 原来是 `<motion.div key={底下那页}>`：地址一变整块正文按新 key **重挂**——底下的 Suspense 边界跟着新挂，
  * 新挂的边界在 transition 里照样先出骨架，旧内容立刻没了；而且正文里的状态也跟着丢。
@@ -49,10 +63,12 @@ export function PageFade({ 页, className, style, children }: { 页: string; cla
   const 上次 = useRef(页);
   useIsoLayoutEffect(() => {
     if (上次.current === 页) return;
+    const 前 = 上次.current;
     上次.current = 页;
+    if (只换了id(前, 页)) return;
     const el = 框.current;
     if (!el || typeof el.animate !== "function") return;
-    const a = el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 时长.base * 1000, easing: 曲线CSS.ease });
+    const a = el.animate([{ opacity: 淡入起点 }, { opacity: 1 }], { duration: 时长.base * 1000, easing: 曲线CSS.ease });
     return () => a.cancel();
   }, [页]);
   return (

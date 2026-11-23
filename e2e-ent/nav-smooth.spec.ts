@@ -61,7 +61,7 @@ async function 压慢(page: Page) {
 const 开始记 = (page: Page, 旧选择器: string, 新名: string, 去的路径 = "") => page.evaluate(([旧选择器, 新名, 去的路径]) => {
   document.querySelectorAll(旧选择器).forEach((e) => e.setAttribute("data-old", "1"));
   document.querySelector("aside.pane-roster")?.setAttribute("data-mark", "1");
-  const w = window as unknown as { __帧: Record<string, boolean | string>[] };
+  const w = window as unknown as { __帧: Record<string, boolean | string | number>[] };
   w.__帧 = [];
   const 骨架选择器 = "[data-testid=customer-skeleton], [data-testid=page-skeleton], .roster-skel";
   const 一帧 = () => {
@@ -81,6 +81,8 @@ const 开始记 = (page: Page, 旧选择器: string, 新名: string, 去的路�
       // 表格点的那一行（DataList 的 .row-going）
       表格行亮: !!document.querySelector("main .ant-table-tbody > tr.row-going"),
       h1在: !!document.querySelector("main h1.rec-head-name"),
+      // 正文外框的透明度（PageFade：同一种页只换 id 不淡，换栏目从 0.6 起淡）
+      透明: Number(getComputedStyle(document.querySelector("main .page-fade") ?? document.body).opacity),
       // 项目胶囊：选中的是不是要去的那个
       胶囊: [...document.querySelectorAll(".cd-pj-pill.on")].map((e) => e.textContent).join("|"),
     });
@@ -88,8 +90,10 @@ const 开始记 = (page: Page, 旧选择器: string, 新名: string, 去的路�
   };
   一帧();
 }, [旧选择器, 新名, 去的路径] as const);
-type 帧 = { 旧: boolean; 新: boolean; 骨架: boolean; 条: boolean; 名单原样: boolean; 行亮: boolean; 表格行亮: boolean; h1在: boolean; 胶囊: string };
+type 帧 = { 旧: boolean; 新: boolean; 骨架: boolean; 条: boolean; 名单原样: boolean; 行亮: boolean; 表格行亮: boolean; h1在: boolean; 胶囊: string; 透明: number };
 const 帧们 = (page: Page) => page.evaluate(() => (window as unknown as { __帧: 帧[] }).__帧);
+/** 新页提交以后等待条要撤（每条用例收尾都查：pending 漏减、组件卸了没减都会让条一直挂着） */
+const 条撤了 = (page: Page) => expect(page.locator("[data-testid=nav-progress]")).toHaveCount(0);
 
 test("换一位客户：旧内容留到新内容就绪，不出骨架，名单不重挂", async ({ page }) => {
   await 登录(page);
@@ -111,7 +115,54 @@ test("换一位客户：旧内容留到新内容就绪，不出骨架，名单�
   const 亮起 = 帧.findIndex((f) => f.行亮);
   expect(亮起, "点的那一行该立刻高亮").toBeGreaterThan(-1);
   expect(帧.slice(亮起, 新).every((f) => f.行亮)).toBe(true);
-  await expect(page.locator("[data-testid=nav-progress]")).toHaveCount(0);
+  // 同一种页只换 id：正文不淡，一帧都不暗下去（审查补：原来从 0 淡，整块先暗一下像刷新）
+  await page.waitForTimeout(250);
+  expect(Math.min(...(await 帧们(page)).map((f) => f.透明)), "换客户时正文透明度不掉到 0.6 以下").toBeGreaterThanOrEqual(0.6);
+  await 条撤了(page);
+});
+
+test("连点两条：第一次被第二次顶掉，落到第二条，等待条照样撤、点过的行不留高亮", async ({ page }) => {
+  await 登录(page);
+  await page.goto(`/customers/${ids[0]}`);
+  await expect(page.getByRole("main").locator("h1.rec-head-name")).toHaveAttribute("title", `${前缀}-1`);
+  const 行 = (i: number) => page.locator(`aside.pane-roster a.roster-row[href="/customers/${ids[i]}"]`);
+  await 行(2).waitFor();
+  await 压慢(page);
+  await 开始记(page, "main h1.rec-head-name", `${前缀}-3`);
+  await 行(1).click();
+  await page.waitForTimeout(150);
+  await 行(2).click();
+  await expect.poll(async () => (await 帧们(page)).some((f) => f.新), { timeout: 20_000 }).toBe(true);
+  const 帧 = await 帧们(page);
+  const 新 = 帧.findIndex((f) => f.新);
+  expect(帧.slice(0, 新).filter((f) => f.骨架), "不出骨架").toEqual([]);
+  expect(帧.slice(0, 新).some((f) => f.条), "等了 600ms，顶上该出等待条").toBe(true);
+  await expect(page).toHaveURL(new RegExp(`/customers/${ids[2]}$`));
+  // 第一次那一趟晚回来也不能把页面换回第二位
+  await page.waitForTimeout(800);
+  await expect(page.getByRole("main").locator("h1.rec-head-name")).toHaveAttribute("title", `${前缀}-3`);
+  await 条撤了(page);
+  await expect(page.locator(".nav-pend")).toHaveCount(0);
+});
+
+test("后退：回到上一位客户，不出骨架，等待条不留", async ({ page }) => {
+  await 登录(page);
+  await page.goto(`/customers/${ids[0]}`);
+  await expect(page.getByRole("main").locator("h1.rec-head-name")).toHaveAttribute("title", `${前缀}-1`);
+  await page.locator(`aside.pane-roster a.roster-row[href="/customers/${ids[1]}"]`).click();
+  await expect(page.getByRole("main").locator("h1.rec-head-name")).toHaveAttribute("title", `${前缀}-2`);
+  await 条撤了(page);
+  await 压慢(page);
+  await 开始记(page, "main h1.rec-head-name", `${前缀}-1`);
+  await page.goBack();
+  await expect.poll(async () => (await 帧们(page)).some((f) => f.新), { timeout: 20_000 }).toBe(true);
+  const 帧 = await 帧们(page);
+  const 新 = 帧.findIndex((f) => f.新);
+  expect(帧.slice(0, 新).every((f) => f.旧), "上一位出来之前当前这位一直在").toBe(true);
+  expect(帧.filter((f) => f.骨架), "不出骨架").toEqual([]);
+  expect(帧.every((f) => f.名单原样), "名单那一栏还是原来那个节点").toBe(true);
+  await expect(page).toHaveURL(new RegExp(`/customers/${ids[0]}$`));
+  await 条撤了(page);
 });
 
 test("列表进详情：表格留到详情就绪，不出正文骨架", async ({ page }) => {
@@ -128,6 +179,7 @@ test("列表进详情：表格留到详情就绪，不出正文骨架", async ({
   expect(帧.slice(0, 新).every((f) => f.旧), "详情出来之前表格一直在").toBe(true);
   // 名单是详情提交以后才在中栏里晚到的（自带 Suspense，不挡切页），那时出名单骨架是对的；这里只管提交之前
   expect(帧.slice(0, 新).filter((f) => f.骨架), "提交之前不出骨架").toEqual([]);
+  await 条撤了(page);
 });
 
 test("表格里点一行（不点名字）进详情：那一行立刻高亮、等久了出等待条，表格留到详情就绪", async ({ page }) => {
@@ -150,6 +202,7 @@ test("表格里点一行（不点名字）进详情：那一行立刻高亮、�
   expect(亮起, "点的那一行该立刻高亮").toBeGreaterThan(-1);
   expect(帧.slice(亮起, 新).every((f) => f.表格行亮)).toBe(true);
   expect(帧.slice(0, 新).some((f) => f.条), "等了 600ms，顶上该出等待条").toBe(true);
+  await 条撤了(page);
 });
 
 test("项目 A→B（客户详情里点项目胶囊）：不出骨架，客户页头一直在", async ({ page }) => {
@@ -172,6 +225,8 @@ test("项目 A→B（客户详情里点项目胶囊）：不出骨架，客户�
   const 帧 = await 帧们(page);
   expect(帧.filter((f) => f.骨架), "不出骨架").toEqual([]);
   expect(帧.every((f) => f.h1在 && f.名单原样), "客户页头、名单一直在").toBe(true);
+  expect(Math.min(...帧.map((f) => f.透明)), "同一页换 ?project= 不是换页，正文不淡").toBeGreaterThanOrEqual(0.6);
+  await 条撤了(page);
 });
 
 test("390 手机：名单抽屉里换一位，不出骨架，旧内容留到新内容", async ({ page }) => {
@@ -191,6 +246,7 @@ test("390 手机：名单抽屉里换一位，不出骨架，旧内容留到新�
   expect(帧.slice(0, 新).every((f) => f.旧), "新内容出来之前旧内容一直在").toBe(true);
   expect(帧.filter((f) => f.骨架), "不出骨架").toEqual([]);
   expect(帧.slice(0, 新).some((f) => f.条), "等了 600ms，顶上该出等待条").toBe(true);
+  await 条撤了(page);
 });
 
 test("跨段：项目看板点卡进客户详情，看板留到详情就绪，正文不出骨架", async ({ page }) => {
@@ -208,6 +264,7 @@ test("跨段：项目看板点卡进客户详情，看板留到详情就绪，�
   expect(帧.slice(0, 新).every((f) => f.旧), "详情出来之前看板一直在").toBe(true);
   expect(帧.slice(0, 新).filter((f) => f.骨架), "提交之前不出骨架").toEqual([]);
   expect(帧.slice(0, 新).some((f) => f.条), "等了 600ms，顶上该出等待条").toBe(true);
+  await 条撤了(page);
 });
 
 test("390 手机：菜单换页（客户详情 → 公海），旧内容留到新页就绪，不出通用骨架", async ({ page }) => {
@@ -228,6 +285,7 @@ test("390 手机：菜单换页（客户详情 → 公海），旧内容留到�
   expect(帧.slice(0, 新).every((f) => f.旧), "新页出来之前旧内容一直在").toBe(true);
   expect(帧.filter((f) => f.骨架), "不出骨架").toEqual([]);
   expect(帧.slice(0, 新).some((f) => f.条), "等了 600ms，顶上该出等待条").toBe(true);
+  await 条撤了(page);
 });
 
 /** 旧内容没了、新内容还没好的帧数（正文空白），只数新内容出来之前的 */
@@ -251,6 +309,7 @@ test("复盘看板 → 项目：链接直接是客户页项目地址，不经过
   expect(帧.slice(0, 帧.findIndex((f) => f.新)).filter((f) => f.骨架), "提交之前不出骨架").toEqual([]);
   expect(原href, "入口直接链到客户页项目地址").toBe(`/customers/${ids[0]}?project=${项目们[1]}`);
   await expect(page).toHaveURL(new RegExp(`/customers/${ids[0]}\\?project=${项目们[1]}`));
+  await 条撤了(page);
 });
 
 test("通知铃 → 项目：存的 /projects/<id> 链接服务端换成客户页地址，点了正文不空", async ({ page }) => {
@@ -272,6 +331,7 @@ test("通知铃 → 项目：存的 /projects/<id> 链接服务端换成客户�
     console.log(`[通知铃→项目] 空帧 ${空帧数(帧)} / 共 ${帧.findIndex((f) => f.新)} 帧`);
     expect(空帧数(帧), "旧内容留到客户页就绪，中间不空").toBe(0);
     await expect(page).toHaveURL(new RegExp(`/customers/${ids[0]}\\?project=${项目们[0]}`));
+    await 条撤了(page);
   } finally {
     await db.entNotice.deleteMany({ where: { dedupeKey: `${前缀}-n1` } });
   }

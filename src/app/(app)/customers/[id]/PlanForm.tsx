@@ -7,7 +7,7 @@ import { requiredText, isFormValidationError, 跳到第一处 } from "@/lib/form
 import OptionInput from "@/components/OptionInput";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useNavGo } from "@/lib/nav-pending";
+import { useShellNavGo } from "@/lib/nav-pending";
 import { Modal, Form, Input, Button, Checkbox, Typography } from "antd";
 import SaveButton from "@/components/SaveButton";
 import { showUndo } from "@/components/UndoBar";
@@ -55,8 +55,8 @@ export default function PlanForm({
 }) {
   const [form] = Form.useForm();
   const router = useRouter();
-  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
-  const 去页 = useNavGo();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts）。用壳里那份：撤销条上点「去记录页」时表单早关了 */
+  const 去页 = useShellNavGo();
   const hasTime = Form.useWatch("hasTime", form) ?? true;
   const 计划时间 = Form.useWatch("plannedAt", form);
   const 挑人 = !customerId;

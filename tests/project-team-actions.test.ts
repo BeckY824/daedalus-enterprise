@@ -25,6 +25,7 @@ import { invalidateSettingsCache } from "@/lib/settings";
 let 甲: string;
 let 乙: string;
 let 项目id: string;
+let 客户id: string;
 
 const 记录 = () => prisma.auditLog.findMany({ orderBy: { at: "asc" }, select: { entity: true, entityId: true, summary: true } });
 
@@ -38,6 +39,7 @@ beforeEach(async () => {
   await prisma.entMember.createMany({ data: [{ userId: 甲, bizRole: "director" }, { userId: 乙 }] });
   mocks.user = { ...mocks.user, id: 甲, role: "ADMIN" };
   const c = await prisma.customer.create({ data: { name: "客户", phone: "13800000001", salesOwnerId: 甲 } });
+  客户id = c.id;
   项目id = (await prisma.project.create({ data: { name: "一期", customerId: c.id, ownerId: 甲, creatorId: 甲 } })).id;
 });
 
@@ -176,7 +178,8 @@ describe("企业版项目组邀请（10-26）", () => {
     expect(await 加项目组员(项目id, 乙, null)).toEqual({ ok: true });
     mocks.user = { ...mocks.user, id: 乙, role: "SALES" };
     // 同意了带上打开项目的最终地址（跳转优化 PR-A：项目页会跳客户页的直接给客户页）
-    expect(await 回项目邀请(m.id, true)).toMatchObject({ ok: true });
+    // 组员看得到客户（限定层按项目组放行）→ 项目页会跳客户页：直接给客户页地址，钉死整份回包（漏了 去 就会经过重定向那段空白）
+    expect(await 回项目邀请(m.id, true)).toEqual({ ok: true, 去: `/customers/${客户id}?project=${项目id}` });
     expect((await 记录()).map((r) => r.summary)).toEqual([
       expect.stringContaining("邀请进"), expect.stringContaining("拒绝加入"),
       expect.stringContaining("邀请进"), expect.stringContaining("同意加入"),

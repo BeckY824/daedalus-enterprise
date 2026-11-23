@@ -3,7 +3,7 @@
  * 真 Chromium 里钉住：
  *   - 60 秒内连着换人：一次都不拉（连着翻不打扰）
  *   - 隔了 60 秒以上又换了一位：后台拉 /api/roster/… 一次，换上新的
- *   - 切回标签页：拉一次
+ *   - 切回标签页：距上次查名单 ≥30 秒才拉一次；30 秒内来回切不拉
  *   - 拉失败（401）：留着手上那份
  *   - 服务端又给了新的一份（router.refresh）：以服务端那份为准
  * 客户名单、项目名单都接上了它（文件里扫一下）
@@ -72,10 +72,22 @@ it("60 秒内连着换人不拉；隔了 60 秒以上再换一位，后台拉一
   await t.close();
 });
 
-it("切回标签页拉一次；服务端又给了新的一份就以服务端为准", async () => {
+it("切回标签页：距上次查名单不到 30 秒不拉，过了 30 秒拉一次；服务端又给了新的一份就以服务端为准", async () => {
   const t = await 打开(() => ({ status: 200, rows: ["甲", "乙", "丙"] }));
   await 切回(t.page);
+  await t.page.waitForTimeout(150);
+  expect(t.拉了(), "刚查过名单，切回不拉").toBe(0);
+  await 拨到(t.page, 29);
+  await 切回(t.page);
+  await t.page.waitForTimeout(150);
+  expect(t.拉了(), "29 秒还不到 30 秒").toBe(0);
+  await 拨到(t.page, 31);
+  await 切回(t.page);
   await expect.poll(() => 名单(t.page)).toEqual(["甲", "乙", "丙"]);
+  expect(t.拉了()).toBe(1);
+  // 刚拉过：马上再切回一次不拉
+  await 切回(t.page);
+  await t.page.waitForTimeout(150);
   expect(t.拉了()).toBe(1);
   await t.画({ rows: ["保存后刷新的"], 那位: "a" });
   expect(await 名单(t.page)).toEqual(["保存后刷新的"]);
@@ -84,10 +96,15 @@ it("切回标签页拉一次；服务端又给了新的一份就以服务端为�
 
 it("拉失败（登出、断网）留着手上那份", async () => {
   const t = await 打开(() => ({ status: 401 }));
+  await 拨到(t.page, 31);
   await 切回(t.page);
   await expect.poll(() => t.拉了()).toBe(1);
   await t.page.waitForTimeout(150);
   expect(await 名单(t.page)).toEqual(["甲", "乙"]);
+  // 失败的也算拉过一次：马上再切回不连着重试
+  await 切回(t.page);
+  await t.page.waitForTimeout(150);
+  expect(t.拉了()).toBe(1);
   await t.close();
 });
 

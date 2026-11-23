@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
-import { useNavGo } from "@/lib/nav-pending";
+import { useShellNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
 import { LinkPending } from "@/components/NavProgress";
 import { Alert, AutoComplete, Button, Input, InputNumber, Modal, Select, Space, Switch, Tag } from "antd";
@@ -331,8 +331,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const 企业版 = !!企业;
   const 能填下一步 = 企业版 || 要下一步;
   const router = useRouter();
-  /** 建完落到新客户 / 新项目：等新页时顶上的条亮（lib/nav-pending.ts，跳转优化 PR-A） */
-  const 去页 = useNavGo();
+  /** 建完落到新客户 / 新项目：等新页时顶上的条亮（lib/nav-pending.ts，跳转优化 PR-A）。
+      用壳里那份：弹窗先关、向导卸了，等待条照样挂到新页提交（审查补） */
+  const 去页 = useShellNavGo();
   const b = useBusiness();
   const 我 = useMe();
   const 能选类型 = 跟进类型们(外贸精简(b)).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
@@ -605,7 +606,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         弹窗?.关();
         // 客户转给了销售、我看不到了：回客户列表（留着刷新就是 404）；项目分走了：留在原页刷新；
         // 不然落到这位客户、停在新项目（landed：新项目卡亮 2 秒，原型 cr.submit）；本来就在这位客户页上的换地址不加历史
-        if (看不到) return void router.push("/customers");
+        if (看不到) return void 去页.push("/customers");
         if (r.转走) return void router.refresh();
         const 去 = `/customers/${encodeURIComponent(客.id)}?project=${encodeURIComponent(r.projectId)}&landed=1`;
         if (锁客户) 去页.replace(去, { scroll: false });

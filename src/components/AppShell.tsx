@@ -53,7 +53,7 @@ import { useBusiness } from "@/lib/business-client";
 import { DockOpenContext, useNarrow, usePageOwnsCmdK } from "@/lib/roster";
 import { 跟随过渡 } from "@/lib/motion";
 import NavProgress, { LinkPending, PageFade } from "@/components/NavProgress";
-import { useNavGo } from "@/lib/nav-pending";
+import { NavGoProvider, useNavGo } from "@/lib/nav-pending";
 import { 槽位 } from "@/components/SlotSkeleton";
 import NoticeBell from "@/components/NoticeBell";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
@@ -643,7 +643,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   if (小屏) {
     // 底色走 --page-bg：外观选白底时地面跟着变白（antd 的 bodyBg 是 JS 里写死的色值，读不到外观）
     return (
-      <切换视图Provider value={!!正在视图}>
+      <切换视图Provider value={!!正在视图}><NavGoProvider>
       <Layout className={显示浮标 ? "has-ai-fab" : undefined} style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
         {视图条}
         {挑人框}
@@ -654,8 +654,12 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             menu={{
               /* 整行可点：label 里塞 <Link> 的话，点在图标或右边空白上只会把菜单关掉 */
               items: [...nav.map(({ key, icon, label }) => ({ key, icon, label })), { key: "/settings", icon: <SettingOutlined />, label: "设置" }],
-              selectedKeys: [selectedKey],
-              onClick: ({ key }) => 跳.push(左栏地址(key)),
+              /* 点的那一项立刻算选中（同电脑左栏的 去向）：新页慢、人再打开菜单，亮的是刚点的那项，不是还没离开的那页 */
+              selectedKeys: [亮项],
+              onClick: ({ key }) => {
+                if (key !== selectedKey) set去向(key);
+                跳.push(左栏地址(key));
+              },
             }}
           >
             <Button type="text" icon={<MenuOutlined />} aria-label="打开导航菜单" />
@@ -698,12 +702,12 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         <CommandBar 有AI={Boolean(ai)} 企业版项目={企业版项目} 全局搜索={全局搜索} />
         <NavProgress />
       </Layout>
-      </切换视图Provider>
+      </NavGoProvider></切换视图Provider>
     );
   }
 
   return (
-    <切换视图Provider value={!!正在视图}>
+    <切换视图Provider value={!!正在视图}><NavGoProvider>
     <DockOpenContext.Provider value={面板占着地方}>
     <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && !浮窗 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${留AI位 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}${宽窄切换中 ? " rail-anim" : ""}`}>
       {视图条}
@@ -866,6 +870,6 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       )}
     </div>
     </DockOpenContext.Provider>
-    </切换视图Provider>
+    </NavGoProvider></切换视图Provider>
   );
 }
