@@ -112,6 +112,9 @@ export default function TrashTab() {
       <Table<回收站条目>
         rowKey={(r) => `${r.表}:${r.id}`}
         size="middle"
+        // K6（设计语言 E4，29K⑧）：按列宽排（同成员表）。原来自动排，长客户名的省略号量的是整串，名称列按全长撑开，
+        // 1024 宽（正文 494）表格伸出正文 42px、长名字 64px。现在名称列分剩下的宽、放不下省略号。是 bug 修复，所有主题都生效
+        tableLayout="fixed"
         loading={行 === null}
         dataSource={行 ?? []}
         pagination={(行?.length ?? 0) > 50 ? { pageSize: 50, showSizeChanger: false } : false}

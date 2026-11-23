@@ -201,6 +201,11 @@
   --edge-fade: 24px;                   /* 横滑条两端渐隐宽度（节点条） */
   --skel-delay: 180ms;                 /* 加载多久后才出骨架：快的不闪（D07）。是延迟不是过渡，所以不叫 --t-* */
   --ai-safe: 72px;                     /* 滚动区底部留白，不让右下 AI 球盖住末行（D40） */
+  /* 浮层层级（D22，设计语言 E4）：自绘的浮层按 antd 的刻度排——弹框 1000、气泡 1030、下拉 1050、提示 1070。
+     --z-sheet 整页浮层（设置）在弹框之下：设置里开的弹框、下拉、气泡总在它上面，不靠谁后挂进页面；
+     --z-pop 自绘小浮层（看板闸门「没推过去」）同 antd 气泡层，不和下拉抢同一层 */
+  --z-sheet: 990;
+  --z-pop: 1030;
 }
 /* 不认 linear() 的浏览器（Safari 17.2 以前）：var(--ease) 落到 transition 里会让整条 transition 作废、一点动效都没有。
    退回原来那条不过冲的 ease-out；--ease-spring 也退到它，不再回到 1.34 的过冲 */
@@ -3232,7 +3237,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 .pipe-card.is-gated { box-shadow: 0 0 0 1.5px var(--warning); }
 .pipe-col.is-drop { background: var(--brand-bg); outline: 1px dashed var(--brand); outline-offset: -1px; }
 .pipe-col.is-drop-no { outline: 1px dashed var(--field-line); outline-offset: -1px; }
-.board-gate { position: fixed; z-index: 1050; padding: var(--s3); background: var(--panel); border-radius: var(--r-card); box-shadow: var(--shadow-pop); border: 1px solid var(--line);
+.board-gate { position: fixed; z-index: var(--z-pop); padding: var(--s3); background: var(--panel); border-radius: var(--r-card); box-shadow: var(--shadow-pop); border: 1px solid var(--line);
   animation: board-gate-in var(--t-pop) var(--ease) both; transform-origin: left top; overflow-wrap: anywhere; }
 @keyframes board-gate-in { from { opacity: 0; scale: var(--pop-scale); } to { opacity: 1; scale: 1; } }
 .board-gate-t { color: var(--warning-text); font-weight: 600; }
@@ -3349,7 +3354,7 @@ button.ais-hd-b:hover .ais-tog-t { color: var(--ink-soft); }
 /* ── 设置浮层 ──────────────────────────────────────────
    设置不是一页，是一层：盖在你正看的东西上面，关掉回到原处。
    照 Claude / Codex 桌面端那样。装它的是拦截路由，地址仍然是 /settings。 */
-.setm { position: fixed; inset: 0; z-index: 1000; display: flex; align-items: center; justify-content: center;
+.setm { position: fixed; inset: 0; z-index: var(--z-sheet); display: flex; align-items: center; justify-content: center;
   padding: 40px 24px; background: rgba(17, 24, 39, 0.28); backdrop-filter: blur(2px); }
 /* **高度是定的，不是跟着内容长的**：原来切到「业务配置」「桌面端」这种长栏时，
    整层会当场蹿高一截——人看到的是"弹窗自己放大了"。窗口就该是一个固定的框，
@@ -6796,3 +6801,10 @@ button.proj-miss-chip { cursor: pointer; }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .app-content .btodo-wrap { margin-inline: calc(-1 * var(--content-pad-x)); }
   :root:is(:not([data-skin]), [data-skin="now"]):not([data-paper="tone"]) .btodo-list { padding-inline: var(--s4); }
 }
+
+/* ---------- 设计语言 E4 · 设置（11-22，只挂现状主题；换皮主题外观不动。结构改动在 MembersTab.tsx：行尾动作图标 + 字、「总管理」「管理员」标签灰；
+   K6 回收站表按列宽排、D22 浮层层级是 bug / 层级修复，所有主题都生效，不在这一段） ---------- */
+/* D19 卡片标题一个号：设置里卡片内的小节标题（Typography.Title level 5，antd 16）和卡头（15，--fs-section）同号 */
+:root:is(:not([data-skin]), [data-skin="now"]) .set-body h5.ant-typography { font-size: var(--fs-section); }
+/* D16 状态色当小字：首页模型备注用 --success（3.30:1）压浅绿底，13 号以下要用 --success-text（设置锁「已发给…」同，settings.css） */
+:root:is(:not([data-skin]), [data-skin="now"]) .mp-note { color: var(--success-text); }
