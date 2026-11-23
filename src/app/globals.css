@@ -1409,10 +1409,8 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 .proj-att-sec { min-width: 0; }
 .proj-att-sec + .proj-att-sec { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .proj-att-h { font-weight: 600; margin-bottom: 8px; }
-/* F-042（P-界面-59）：项目方案、合同附件两格各自一个框、小标题下一行提示放什么（一行，放不下省略、悬停看全文）；后面的格照旧细线隔开 */
-.proj-att-sec.is-box { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-card); }
-.proj-att-sec.is-box + .proj-att-sec.is-box { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-.proj-att-sec.is-box + .proj-att-sec:not(.is-box) { padding-top: 0; border-top: 0; }
+/* F-042（P-界面-59）：项目方案、合同附件两格小标题下一行提示放什么（一行，放不下省略、悬停看全文）；
+   11-23 用户：不再各自框成卡里套卡，和后面的格同一种写法、细线隔开 */
 .proj-att-tip { margin: -4px 0 8px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-att-from { min-width: 0; }
 .proj-att-from + .proj-att-from { margin-top: 10px; }
