@@ -2026,7 +2026,7 @@ describe("沟通卡头：隐藏接手前", () => {
       expect(await 不伸出(page, ".proj-main")).toEqual([]);
       const 标题 = await 钮.evaluate(e => {
         const t = e.closest(".ant-card-head")!.querySelector(".ant-card-head-title") as HTMLElement;
-        return { 完整: t.scrollWidth <= t.clientWidth, 文字: t.innerText };
+        return { 完整: t.scrollWidth <= t.clientWidth, 文字: t.textContent };
       });
       expect(标题).toEqual({ 完整: true, 文字: "沟通（2）" });
       // 折叠按钮（ProjectFold）摆在卡头最右，这几颗不能压上去

@@ -112,14 +112,14 @@ it("1024 / 1280 / 1366：号码一类一行，不出左栏；带复制键的号�
       }
       // 长邮箱、长座机在 232 / 260 的左栏里放不下：折成几行、一个字不截；短的 WhatsApp 一行；微信照旧一行
       expect(m.行们.map((r) => r.截了), `${w}`).toEqual([false, false, false, false]);
-      // D3（PR #401 实操）起带复制键的格整行展开：名字一行、号码一行（复制键 28 高跟在号码后面），所以至多「两行」= 6 + 22 + 28 + 6 ≈ 60。
+      // D3（PR #401 实操）起带复制键的格整行展开：名字一行、号码一行（复制键 28 高跟在号码后面），所以至多「两行」= 6 + 22 + 28 + 6 ≈ 60（卡片改进 11-23 起值行高 24、上下各 4，仍在 60 内）。
       // 这份只跑现状主题（不挂 data-skin），换皮主题那边结构不变、见 ent-design-d3-skins.ui.test.ts
       const 两行 = 60;
       // 长座机、长邮箱折不折到第三行看机器字体（CI 上 1024 的座机两行就放下了）：一个字不截由上面「截了」管，这里只要求不比短号码矮
       expect(m.行们[0].高, `${w} 座机`).toBeGreaterThanOrEqual(m.行们[1].高);
       expect(m.行们[2].高, `${w} 邮箱`).toBeGreaterThanOrEqual(m.行们[1].高);
       expect(m.行们[1].高, `${w} WhatsApp 两行以内`).toBeLessThanOrEqual(两行);
-      expect(m.行们[1].号, `${w} WhatsApp 整串一行、复制键同一行跟在后面`).toEqual({ 字高: 22, 同行: true, 在后面: true });
+      expect(m.行们[1].号, `${w} WhatsApp 整串一行、复制键同一行跟在后面`).toEqual({ 字高: 24, 同行: true, 在后面: true }); // 卡片改进（11-23）：字段值行高 24
       expect(m.行们[3].高, `${w} 微信`).toBeLessThan(44);
       expect(m.栏横滚, `${w}`).toBe(false);
       expect(m.页横滚, `${w}`).toBeLessThanOrEqual(0);

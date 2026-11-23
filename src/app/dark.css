@@ -34,6 +34,7 @@
   --logo-frame: #e6ebf2; --logo-line: #6f97ff;
   --shadow-card: none;
   --card-line: var(--line);
+  --card-raise-a: 0.3;
   --shadow-pop: 0 8px 24px rgba(0, 0, 0, 0.5);
   --page-pattern: none;
 }

@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useCardName } from "./card-names";
+import { 计数题 } from "./ProjectFold";
 import { useRouter } from "next/navigation";
 import { Button, Card, Select, Space } from "antd";
 import AmountInput, { 金额认不出 } from "@/components/AmountInput";
@@ -255,7 +256,7 @@ export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通
   // 设计语言 D5 · M11-b：现状主题「上传」挪到各格小标题右边、「单个最多 20 MB」整卡写一次、每格能拖进来；换皮主题照 D5 之前（use-skin.ts）
   const 新样 = useIsNowSkin();
   return (
-    <Card title={`项目附件（${合计}）`} className="proj-att-card" data-testid="project-attachments">
+    <Card title={计数题("项目附件", 合计)} className="proj-att-card" data-testid="project-attachments">
       {新样 && !只读 && <div className="att-card-hint" data-testid="att-card-hint">单个最多 {读大小(附件上限字节)}；能拖进各格，也可以直接粘贴截图</div>}
       {附件格们.map(([k, 名]) => (
         <section key={k} className="proj-att-sec" aria-label={名} data-paste-scope="">
@@ -336,7 +337,7 @@ export function ProjectPaymentsCard({ projectId, 回款们, 能改, 默认: 默�
   }
 
   return (
-    <Card title={`${卡名("回款")}（${回款们.length}）`}>
+    <Card title={计数题(卡名("回款"), 回款们.length)}>
       <div style={{ marginBottom: 8 }}>当前回款：<b className="pd-pay-total" style={{ overflowWrap: "anywhere" }}>{单币
         ? <CountUp 值={单币.合计} 记号={`pay:${projectId}:${单币.币种}`} 只滚变化 格式={(n) => 金额(Number.isInteger(单币.合计) ? Math.round(n) : Math.round(n * 100) / 100, 单币.币种)} />
         : 合计}</b></div>

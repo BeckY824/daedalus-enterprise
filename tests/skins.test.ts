@@ -12,7 +12,7 @@ import { describe, it, expect } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import { 主题表, 默认外观 } from "@/lib/appearance";
-import { 现状主题 } from "@/lib/use-skin";
+import { 现状主题, 原底 } from "@/lib/use-skin";
 import { ANTD_CSS_VAR_KEY } from "@/lib/theme";
 import { 源, 主题目录, 拆块, 变量, 根变量, 主题文件, 去注释 } from "./skin-css";
 
@@ -28,6 +28,8 @@ describe("主题清单", () => {
 
   it("lib/use-skin.ts 的现状主题和 appearance 的默认主题是同一个（use-skin 不引 appearance，免得 CI 牵连一大片）", () => {
     expect(现状主题).toBe(默认外观.skin);
+    // 卡片改进（11-23）：useIsToneCards 服务端按默认底色（原底）渲染，和 layout 先挂的 data-paper 一致才不闪
+    expect(原底).toBe(默认外观.paper);
   });
   it("主题只许定义 :root 里已有的 token 名（拼错不会报错，只会悄悄沿用现状）", () => {
     const 有 = 根变量();

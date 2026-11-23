@@ -133,7 +133,8 @@ for (const width of [1366, 1024])
           const t = el.querySelector(".copy-val-t")!.getBoundingClientRect(); const b = el.querySelector(".copy-val-b")!.getBoundingClientRect();
           return { 号高: Math.round(t.height), 同行: Math.abs((b.top + b.bottom) / 2 - (t.top + t.bottom) / 2) < 6, 在后面: b.left >= t.right - 1, 不出格: b.right <= el.getBoundingClientRect().right };
         });
-        expect(r).toEqual({ 号高: 22, 同行: true, 在后面: true, 不出格: true });
+        // 卡片改进（11-23）：现状主题 + 原底下字段值行高 24
+        expect(r).toEqual({ 号高: 24, 同行: true, 在后面: true, 不出格: true });
       } finally { await page.close(); }
     }, 60_000);
 

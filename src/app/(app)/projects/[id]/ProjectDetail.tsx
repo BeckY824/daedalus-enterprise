@@ -19,7 +19,7 @@ import { 有值, 空值符, 空显 } from "@/lib/empty-value";
 import { 公海规则, 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 import { 必填叫法, 必填项们, type 必填项 } from "@/lib/project/required";
 import { PageHead, CustomerLink, FollowTypeCell, FOLLOW_TYPE_ICON } from "@/components/ui";
-import { useIsNowSkin } from "@/lib/use-skin";
+import { useIsNowSkin, useIsToneCards } from "@/lib/use-skin";
 import { 跟进方式名 } from "@/lib/follow-method";
 import { useBusiness } from "@/lib/business-client";
 import { dayjs, fmtDateTime, smartTime, 成员选项 } from "@/lib/utils";
@@ -40,7 +40,7 @@ import LeadVerifyPanel from "./LeadVerifyPanel";
 import GiveUpBanner from "./GiveUpBanner";
 import type { 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
 import { useDetailNote, 框里原因, type 跑法, type 就地回执 } from "./detail-note";
-import { FoldSplit, ProjectFold, 模块钮色, 连体箭头 } from "./ProjectFold";
+import { FoldSplit, ProjectFold, 模块钮色, 连体箭头, 计数题 } from "./ProjectFold";
 import { 卡名Provider, 客户详情卡点, 项目卡名 } from "./card-names";
 import { ProjectFillRequired, 定位到模块 } from "./ProjectFillRequired";
 import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
@@ -271,12 +271,14 @@ const 键样: React.CSSProperties = { color: "var(--text-muted)", fontSize: "var
 const 多行行样: React.CSSProperties = { ...行样, alignItems: "flex-start" };
 /**
  * 现状主题项目资料卡的行（设计语言 D5 · M10，#403 审查）：行距、负边距、悬停底、对齐都交给 globals.css 的 .proj-info-row，
- * 行内样式去掉 marginBottom / alignItems（不然 CSS 要 !important 才压得过）；多行的那种挂 is-top 顶对齐
+ * 行内样式去掉 marginBottom / alignItems / gap（不然 CSS 要 !important 才压得过）；多行的那种挂 is-top 顶对齐
  */
 const 现资料样 = new Map<React.CSSProperties, React.CSSProperties>([行样, 多行行样, 定时行样].map((样) => {
   const 余 = { ...样 };
   delete 余.marginBottom;
   delete 余.alignItems;
+  // 字段名和值之间的 12 也交给 .proj-info-row（卡片改进要收成 8、和左栏客户资料同一列宽）
+  delete 余.gap;
   return [样, 余];
 }));
 
@@ -603,6 +605,13 @@ export default function ProjectDetail({
   const 钱显 = (话: string) => (新样 ? 钱字(话) : 话);
   /** 项目资料卡一行的 class / style：现状主题挂 .proj-info-row，换皮照旧行内样式 */
   const 资料行 = (样: React.CSSProperties = 行样) => (新样 ? { className: 样 === 多行行样 ? "proj-info-row is-top" : "proj-info-row", style: 现资料样.get(样) } : { style: 样 });
+  /** 资料行的字段名：现状主题挂 .proj-info-k（宽度、省略交给 globals.css，卡片改进要统一成 68 列），换皮照旧行内样式 */
+  const 键 = 新样 ? { className: "proj-info-k" } : { style: 键样 };
+  /**
+   * 卡片改进（11-23 原型-卡片改进，现状主题、不是一张纸）：沟通卡「本项目 / 这位客户全部」从卡头挪进卡身第一行；
+   * 右栏卡头只写「项目资料」（项目名已经在进程卡卡头的胶囊里）。白底一张纸、换皮主题照旧
+   */
+  const 卡片样 = useIsToneCards();
   /** 删沟通没删成：原因写在那条沟通下面（就地，不弹顶部提示） */
   const [删沟通错, set删沟通错] = useState<{ id: string; 话: string } | null>(null);
   const [异常框, set异常框] = useState<位置 | null>(null);
@@ -1216,7 +1225,8 @@ export default function ProjectDetail({
     </>
   );
   const 节点卡 = (
-    <Card style={p.企业版 ? undefined : { marginBottom: 16 }}>
+    // 嵌在客户页：进程卡挂 .cd-proc，卡片改进下项目切换那一行就是这张卡的 48 高卡头（globals.css）
+    <Card className={嵌入 ? "cd-proc" : undefined} style={p.企业版 ? undefined : { marginBottom: 16 }}>
       {!嵌入 && 顶块}
       {/* 企业版：三个阶段页签 + 完成节点 ▼ / 新增沟通（M-节点-04）；别的版本照旧一条进度条 */}
       {p.企业版 ? (
@@ -1302,7 +1312,7 @@ export default function ProjectDetail({
     <Card
       // 设计语言 D5 · M10：现状主题下行距 34、悬停整行浅底 + 行尾铅笔、改的时候标签顶对齐、卡头图标点击区 28 / 44（globals.css .proj-info，只挂现状主题）
       className={新样 ? "proj-info" : undefined}
-      title={嵌入 ? (嵌入.多项目 ? <span className="cd-info-t" title={`项目资料 · ${p.name}`}>项目资料 · {p.name}</span> : "项目资料") : "项目"}
+      title={嵌入 ? (嵌入.多项目 && !卡片样 ? <span className="cd-info-t" title={`项目资料 · ${p.name}`}>项目资料 · {p.name}</span> : "项目资料") : "项目"}
       // U-项目-05：企业版改项目的入口挪到项目卡右上角一个笔（页头不再摆「编辑项目」），点开还是同一个编辑框；别的版本照旧「编辑」
       extra={嵌入 ? (
         // 嵌在客户页：项目收藏星挪到这张卡头（审查 #2，页签行 1024 宽已经很挤），只管当前页签这个项目；编辑笔照旧在最右
@@ -1316,7 +1326,7 @@ export default function ProjectDetail({
     >
       {p.线索验证 && (
         <div {...资料行()}>
-          <span style={键样}>线索验证</span>
+          <span {...键}>线索验证</span>
           <Button type="text" size="small" style={{ paddingInline: 4, marginInlineStart: -4, height: "auto" }} onClick={() => set验证开着(true)} aria-label={`线索验证：${p.线索验证.叫法}，点开查看和操作`} data-testid="lead-verify-row">
             {/* 11-01 会议 §6：结果写成纯字、不套灰框（和下面各行的写法一致） */}
             <span style={{ marginInlineEnd: 4 }} data-testid="lead-verify-result">{p.线索验证.叫法}</span>
@@ -1325,16 +1335,16 @@ export default function ProjectDetail({
           </Button>
         </div>
       )}
-      <div {...资料行()}><span style={键样}>{b.customer}</span>{p.客户入口 === "只读卡" && p.客户卡名 ? <CustomerReadonlyCard projectId={p.id} name={p.客户卡名.name} company={p.客户卡名.school} /> : p.customer ? <CustomerLink id={p.客户入口 === "文字" ? null : p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
+      <div {...资料行()}><span {...键}>{b.customer}</span>{p.客户入口 === "只读卡" && p.客户卡名 ? <CustomerReadonlyCard projectId={p.id} name={p.客户卡名.name} company={p.客户卡名.school} /> : p.customer ? <CustomerLink id={p.客户入口 === "文字" ? null : p.customer.id} name={p.customer.name} company={p.customer.school} /> : <span style={{ color: "var(--text-muted)" }}>{p.pooled ? "领取后可见" : "无权查看"}</span>}</div>
       {p.来源线索 && (
-        <div {...资料行()}><span style={键样}>来源线索</span><span className="proj-one">{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
+        <div {...资料行()}><span {...键}>来源线索</span><span className="proj-one">{p.来源线索.name ?? <span style={{ color: "var(--text-muted)" }}>已删除的线索</span>}{p.来源线索.convertedAt && <span style={{ color: "var(--text-muted)" }}>（{p.来源线索.convertedAt} 转入）</span>}</span></div>
       )}
       {/* 联系人名字、职位可能很长：在 1024 宽的项目卡里折行，不顶出卡片 */}
       {/* 11-04：企业版就地改联系人（下拉选本客户的联系人，可清空）；不是企业版照旧只读。
           可清空的就地下拉第一项都是「—」：误点了能选回没填（11-04 用户） */}
       {p.企业版 && 能就地改 && p.customer ? (
         <div {...资料行()}>
-          <span style={键样}>联系人</span>
+          <span {...键}>联系人</span>
           <ProjectInlineField<string | null>
             名="联系人"
             值={p.contact?.id ?? null}
@@ -1353,13 +1363,13 @@ export default function ProjectDetail({
       ) : (
         // 现状主题（D5 遗留）：只能看的人也摆这一行，没挂联系人写「—」；换皮主题照旧有才摆
         新样 && p.企业版
-          ? <div {...资料行()}><span style={键样}>联系人</span>{p.contact ? 联系人字(p.contact) : 待填("联系人")}</div>
-          : p.contact && <div {...资料行()}><span style={键样}>联系人</span><span className="proj-one">{空显(p.contact.name)}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
+          ? <div {...资料行()}><span {...键}>联系人</span>{p.contact ? 联系人字(p.contact) : 待填("联系人")}</div>
+          : p.contact && <div {...资料行()}><span {...键}>联系人</span><span className="proj-one">{空显(p.contact.name)}{p.contact.position ? ` · ${p.contact.position}` : ""}</span></div>
       )}
-      {p.contact && p.联系人附件 && <div {...资料行()}><span style={键样}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
+      {p.contact && p.联系人附件 && <div {...资料行()}><span {...键}>附件</span><ContactAttachmentsButton contactId={p.contact.id} 名字={p.contact.name} 起始个数={p.联系人附件.个数} 只读={p.联系人附件.只读} /></div>}
       {p.企业版 && p.level !== undefined && (
         <div {...资料行()}>
-          <span style={键样}>级别</span>
+          <span {...键}>级别</span>
           <ProjectInlineField<string | null>
             名="级别"
             值={p.level}
@@ -1375,7 +1385,7 @@ export default function ProjectDetail({
       {/* 项目标签（F-项目-14）：和级别各一格、各自填，互不带动 */}
       {p.企业版 && p.项目标签 && (
         <div {...资料行()}>
-          <span style={键样}>项目标签</span>
+          <span {...键}>项目标签</span>
           <ProjectInlineField<string | null>
             名="项目标签"
             值={p.项目标签.值}
@@ -1389,7 +1399,7 @@ export default function ProjectDetail({
         </div>
       )}
       <div {...资料行()}>
-        <span style={键样}>金额</span>
+        <span {...键}>金额</span>
         <ProjectInlineField<钱格值>
           名="金额"
           值={{ 数: p.amount || null, 币: p.currency }}
@@ -1404,7 +1414,7 @@ export default function ProjectDetail({
       {p.企业版 && p.成交钱 && (
         <>
           <div {...资料行()}>
-            <span style={键样}>定金金额</span>
+            <span {...键}>定金金额</span>
             <ProjectInlineField<钱格值>
               名="定金金额"
               值={{ 数: p.成交钱.depositAmount, 币: p.成交钱.depositCurrency ?? 默认币种 }}
@@ -1416,7 +1426,7 @@ export default function ProjectDetail({
             />
           </div>
           <div {...资料行()}>
-            <span style={键样}>合同金额</span>
+            <span {...键}>合同金额</span>
             <ProjectInlineField<钱格值>
               名="合同金额"
               值={{ 数: p.成交钱.contractAmount, 币: p.成交钱.contractCurrency ?? 默认币种 }}
@@ -1429,7 +1439,7 @@ export default function ProjectDetail({
           </div>
           {p.项目新字段?.contractStatus !== undefined && (
             <div {...资料行()}>
-              <span style={键样}>合同状态</span>
+              <span {...键}>合同状态</span>
               <ProjectInlineField<string | null>
                 名="合同状态"
                 值={p.项目新字段.contractStatus}
@@ -1442,9 +1452,9 @@ export default function ProjectDetail({
               />
             </div>
           )}
-          {p.回款们 && <div {...资料行()}><span style={键样}>当前回款</span>{新样 && p.回款们.length ? 钱字(合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency))) : <span className="proj-one">{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span>}</div>}
+          {p.回款们 && <div {...资料行()}><span {...键}>当前回款</span>{新样 && p.回款们.length ? 钱字(合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency))) : <span className="proj-one">{p.回款们.length ? 合计文字(按币种合计(p.回款们, (x) => x.amount, (x) => x.currency)) : 待填("当前回款")}</span>}</div>}
           <div {...资料行(多行行样)}>
-            <span style={键样}>需求描述</span>
+            <span {...键}>需求描述</span>
             <ProjectInlineField<string>
               名="需求描述"
               规整={(v) => v.trim()}
@@ -1459,7 +1469,7 @@ export default function ProjectDetail({
           </div>
           {p.项目新字段 && "painPoints" in p.项目新字段 && (
             <div {...资料行(多行行样)}>
-              <span style={键样}>痛点标注</span>
+              <span {...键}>痛点标注</span>
               <ProjectInlineField<string>
                 名="痛点标注"
                 规整={(v) => v.trim()}
@@ -1477,7 +1487,7 @@ export default function ProjectDetail({
       )}
       {p.企业版 && (
         <div {...资料行()}>
-          <span style={键样}>预计成交</span>
+          <span {...键}>预计成交</span>
           <ProjectInlineField<string | null>
             名="预计成交"
             值={p.expectedDealAt ?? null}
@@ -1493,7 +1503,7 @@ export default function ProjectDetail({
       {/* 指定回复时间（11-17）：客户要求的联系时间点 / 时间段，两格选填；没填「—」 */}
       {p.指定回复 && (
         <div {...资料行()}>
-          <span style={键样}>指定回复</span>
+          <span {...键}>指定回复</span>
           <ProjectInlineField<回复两格>
             名="指定回复"
             值={p.指定回复}
@@ -1511,7 +1521,7 @@ export default function ProjectDetail({
       {/* 指定分配时间（11-17 PR3）：还在待分配、到点由后台分；录入人和能分配的人能改时间、改成现在分配、取消定时 */}
       {p.定时分配 && (
         <div {...资料行(定时行样)} data-testid="project-schedule-row">
-          <span style={键样}>定时分配</span>
+          <span {...键}>定时分配</span>
           <ProjectInlineField<string>
             名="定时分配"
             值={p.定时分配.时间}
@@ -1540,16 +1550,16 @@ export default function ProjectDetail({
       {/* 嵌在客户页没有项目页头（审查 #2）：页头副标题里的负责人、创建人、创建时间挪到这张卡上 */}
       {嵌入 && (
         <>
-          <div {...资料行()} data-testid="project-owner-row"><span style={键样}>负责人</span><span className="proj-one" title={负责人说法(p)}>{负责人说法(p)}</span></div>
-          <div {...资料行()} data-testid="project-creator-row"><span style={键样}>创建人</span><span className="proj-one">{p.creatorName || 空值符}</span></div>
-          <div {...资料行()} data-testid="project-created-row"><span style={键样}>创建于</span><span className="proj-one">{fmtDateTime(p.createdAt)}</span></div>
+          <div {...资料行()} data-testid="project-owner-row"><span {...键}>负责人</span><span className="proj-one" title={负责人说法(p)}>{负责人说法(p)}</span></div>
+          <div {...资料行()} data-testid="project-creator-row"><span {...键}>创建人</span><span className="proj-one">{p.creatorName || 空值符}</span></div>
+          <div {...资料行()} data-testid="project-created-row"><span {...键}>创建于</span><span className="proj-one">{fmtDateTime(p.createdAt)}</span></div>
         </>
       )}
-      {p.企业版 && p.数据来源 && <div {...资料行()} data-testid="project-data-source-row"><span style={键样}>数据来源</span><span className="proj-one"><Tag bordered={false} color="purple">{p.数据来源}</Tag></span></div>}
-      {p.企业版 && p.已立项天数 !== undefined && <div {...资料行()}><span style={键样}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
+      {p.企业版 && p.数据来源 && <div {...资料行()} data-testid="project-data-source-row"><span {...键}>数据来源</span><span className="proj-one"><Tag bordered={false} color="purple">{p.数据来源}</Tag></span></div>}
+      {p.企业版 && p.已立项天数 !== undefined && <div {...资料行()}><span {...键}>已立项</span>{p.已立项天数 === 0 ? "今天立项" : `${p.已立项天数} 天`}</div>}
       {p.企业版 && p.项目来源 !== undefined && (
         <div {...资料行()}>
-          <span style={键样}>项目来源</span>
+          <span {...键}>项目来源</span>
           {/*
             项目来源（P-删-03，11-10 起同客户来源）：项目自己的来源有值就锁，这里只读；空着（跟客户来源走）的可以就地补一次，
             补了就锁、不给清空。服务端 改项目 同样拒换、拒清空，这里只是辅助。显示等 refresh 带回服务端拼好的名字
@@ -1568,7 +1578,7 @@ export default function ProjectDetail({
       )}
       {p.企业版 && p.bizLine !== undefined && (
         <div {...资料行()}>
-          <span style={键样}>业务线</span>
+          <span {...键}>业务线</span>
           {/* 11-04 就地改：三选一，不能清空（新建必填）；改线不换负责人 */}
           <ProjectInlineField<string | null>
             名="业务线"
@@ -1586,7 +1596,7 @@ export default function ProjectDetail({
         <>
           {/* 11-04 就地改：区域四格 + 详细地址一起改、一起存（和新建项目同一个地址组件）；地址看像别的业务线时提示一句，不自动改线 */}
           <div {...资料行()}>
-            <span style={键样}>区域</span>
+            <span {...键}>区域</span>
             <ProjectInlineField<客户地址 & { location: string | null }>
               名="区域"
               值={p.所在地}
@@ -1614,11 +1624,11 @@ export default function ProjectDetail({
         </>
       )}
       {p.historyOwners.length > 0 && (
-        <div {...资料行()}><span style={键样}>历史</span><span className="proj-one" title={`历史负责人（把这个项目放回过公海的人）：${p.historyOwners.join("、")}`}>{p.historyOwners.join("、")}</span></div>
+        <div {...资料行()}><span {...键}>历史</span><span className="proj-one" title={`历史负责人（把这个项目放回过公海的人）：${p.historyOwners.join("、")}`}>{p.historyOwners.join("、")}</span></div>
       )}
       {(p.nextStepText || p.nextStepAt) && !p.pooled && (
         <div {...资料行()}>
-          <span style={键样}>下一步</span>
+          <span {...键}>下一步</span>
           <span className="proj-one">
             {p.nextStepText}
             {p.nextStepText && p.nextStepAt && <span style={{ color: "var(--text-muted)" }}> · </span>}
@@ -1628,7 +1638,7 @@ export default function ProjectDetail({
       )}
       {能就地改 ? (
         <div {...资料行(多行行样)}>
-          <span style={键样}>备注</span>
+          <span {...键}>备注</span>
           <ProjectInlineField<string>
             名="备注"
             规整={(v) => v.trim()}
@@ -1653,7 +1663,7 @@ export default function ProjectDetail({
       {p.企业版 && 备货物流 && (
         <div className="proj-stock-rows">
           <div style={行样}>
-            <span style={键样}>备货状态</span>
+            <span {...键}>备货状态</span>
             <ProjectInlineField<string | null>
               名="备货状态"
               值={备货物流.备货状态}
@@ -1666,7 +1676,7 @@ export default function ProjectDetail({
             />
           </div>
           <div style={行样}>
-            <span style={键样}>物流状态</span>
+            <span {...键}>物流状态</span>
             <ProjectInlineField<string | null>
               名="物流状态"
               值={备货物流.物流状态.值}
@@ -1679,7 +1689,7 @@ export default function ProjectDetail({
             />
           </div>
           <div style={行样}>
-            <span style={键样}>物流单号</span>
+            <span {...键}>物流单号</span>
             <ProjectInlineField<string>
               名="物流单号"
               规整={(v) => v.trim()}
@@ -1733,7 +1743,7 @@ export default function ProjectDetail({
   const 提成区 = p.提成 && <ProjectCommissionCard key={`${p.提成.项目底价}-${p.提成.实际?.固定于 ?? ""}`} projectId={p.id} t={p.提成} 忙={忙} 跑={跑}  />;
   const 变更卡 = (
     // 设计语言 D5 · M11-a：折叠的卡都写条数（现状主题；换皮主题照旧只有名字）
-    <Card title={新样 ? `${卡名("进程变更")}（${p.logs.length}）` : 卡名("进程变更")}>
+    <Card title={新样 ? 计数题(卡名("进程变更"), p.logs.length) : 卡名("进程变更")}>
       <Timeline
         items={p.logs.map((l) => ({
           color: l.kind !== "node" ? "gray" : l.to.result === "异常状态" ? "red" : 是交付(l.to.result) ? "green" : "blue",
@@ -1861,7 +1871,7 @@ export default function ProjectDetail({
   const 沟通卡 = 嵌入 ? (
     <Card
       className="cd-comm"
-      title={<span className="cd-comm-t"><span>沟通记录（{看全部沟通 ? 嵌入.全部沟通数 : 沟通数字}）</span>{沟通范围钮}</span>}
+      title={<span className="cd-comm-t">{计数题("沟通记录", 看全部沟通 ? 嵌入.全部沟通数 : 沟通数字)}{!卡片样 && 沟通范围钮}</span>}
       extra={(
         <Space size={8} className="proj-follow-acts">
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
@@ -1871,13 +1881,14 @@ export default function ProjectDetail({
         </Space>
       )}
     >
+      {卡片样 && 沟通范围钮 && <div className="cd-comm-bar">{沟通范围钮}</div>}
       {看全部沟通 ? 嵌入.全部沟通 : 沟通身()}
     </Card>
   ) : (
     <Card
       // 客户页「跟进」菜单跳过来的落点（/projects/<id>#project-follow，P14 第 3 条）
       // 企业版的落点 id 在外面那层模块壳上（ProjectFold）
-      {...(p.企业版 ? { title: `沟通（${沟通数字}）` } : { id: "project-follow", title: "沟通" })}
+      {...(p.企业版 ? { title: 计数题("沟通", 沟通数字) } : { id: "project-follow", title: "沟通" })}
       extra={
         p.企业版 ? (
           // 企业版：「新增沟通」在这块卡头（「AI 录入」11-12 收进弹窗顶上的切换；11-01 页头只留转让、退回公海）；11-01 会议 §5：右侧写「新增沟通」、走弹窗。
@@ -1899,7 +1910,7 @@ export default function ProjectDetail({
   // 企业版原叫「卡点与任务」（U-项目-01）；这一版只有卡点、没有任务数据，界面上就叫「卡点」
   const 卡点区 = 卡点 && (
     <Card
-      title={p.企业版 ? `${卡点名}（${搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length}）` : `卡点（${卡点.们.length}）`}
+      title={p.企业版 ? 计数题(卡点名, 搜着 ? `搜到 ${列卡点.length}` : 卡点.们.length) : `卡点（${卡点.们.length}）`}
       // 发卡点挂在最近一条沟通上（沟通行的「…」里也能挑别的那条）；企业版 11-01 从页头回到这块卡头，没沟通时灰着、悬停说为什么
       extra={p.企业版 ? (
         // 11-12 连体按钮：左半「新建卡点」（11-12 用户看 3702 由「发卡点」改名；没沟通时灰着、悬停说为什么），右半收起 / 展开；不能发只剩右半

@@ -116,13 +116,13 @@ const 两币回款 = { 成交钱: { contractAmount: null, contractCurrency: null
 ] };
 
 describe("现状主题：D5 新样子", () => {
-  it("项目资料：行距 34、悬停整行浅底 + 行尾铅笔；无名联系人的「—」和别的空值同色；卡头图标点击区 28", async () => {
+  it("项目资料：行距 32（卡片改进 11-23 原型，原 34）、悬停整行浅底 + 行尾铅笔；无名联系人的「—」和别的空值同色；卡头图标点击区 28", async () => {
     const { page, errors } = await 开("now", 无名联系人);
     try {
       const 卡 = page.locator(".proj-info");
       await 卡.waitFor();
       const 行 = 卡.locator(".proj-info-row").filter({ has: page.locator('[data-inline-field="级别"]') });
-      expect((await 行.boundingBox())!.height).toBeGreaterThanOrEqual(34);
+      expect((await 行.boundingBox())!.height).toBeGreaterThanOrEqual(32);
       // #403 审查：样式只管资料行（.proj-info-row），行与行之间不再靠 !important 压行内 marginBottom
       expect(await 行.evaluate(e => [getComputedStyle(e).marginBottom, getComputedStyle(e).marginLeft, e.getAttribute("style")?.includes("margin") ?? false])).toEqual(["0px", "-8px", false]);
       await 行.hover();

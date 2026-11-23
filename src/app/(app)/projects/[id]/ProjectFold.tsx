@@ -61,6 +61,18 @@ export function ProjectFold({ id, 名, 开: 外开, set开: 外set开, 默认开
   );
 }
 
+/**
+ * 模块卡头「标题（计数）」（卡片改进 11-23）：计数拆成单独一段，原底下标题 15 · 600 一行省略、计数 13 灰常规字重不省略（globals.css .mod-t）；
+ * 白底、换皮主题没有这几条样式，两段照旧连成一串、和原来一字不差。标题被截了悬停看全文走全站的 TruncTip（不另挂 title，免得叠两层提示）
+ */
+export function 计数题(名: string, 数: ReactNode) {
+  return (
+    <span className="mod-t">
+      <span className="mod-t-n">{名}</span><span className="mod-cnt">（{数}）</span>
+    </span>
+  );
+}
+
 /** 连体按钮右半的箭头：收起钮和「完成节点 ▾」同一个图标、同一个大小 */
 export const 连体箭头 = (
   <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden focusable="false">

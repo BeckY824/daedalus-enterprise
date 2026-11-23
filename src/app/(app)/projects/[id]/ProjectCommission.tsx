@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useIsNowSkin } from "@/lib/use-skin";
 import { useCardName } from "./card-names";
+import { 计数题 } from "./ProjectFold";
 import { Button, Card, Input, InputNumber, Modal, Space, Tag } from "antd";
 import { 金额 } from "@/lib/currency";
 import AmountInput, { 金额认不出 } from "@/components/AmountInput";
@@ -39,7 +40,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
   const 新样 = useIsNowSkin();
 
   return (
-    <Card title={新样 ? `${卡名("提成")}（${t.每人.length}）` : 卡名("提成")} extra={固定了 ? <Tag color="green">实际提成已固定</Tag> : <Tag>预估</Tag>}>
+    <Card title={新样 ? 计数题(卡名("提成"), t.每人.length) : 卡名("提成")} extra={固定了 ? <Tag color="green">实际提成已固定</Tag> : <Tag>预估</Tag>}>
       <div style={行样}><span style={键样}>成交金额</span>{钱(t.实际?.成交金额 ?? t.成交金额)}{固定了 && t.实际!.成交金额 !== t.成交金额 && <span style={淡}>（现在项目金额 {钱(t.成交金额)}）</span>}</div>
       <div style={行样}>
         <span style={键样}>项目底价</span>

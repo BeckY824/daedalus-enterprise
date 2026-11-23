@@ -61,7 +61,7 @@ import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
 import { 登记智能总结 } from "@/lib/ai-float";
 import LinkedCustomers from "./LinkedCustomers";
-import { FoldSplit, ProjectFold, 模块钮色, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
+import { FoldSplit, ProjectFold, 模块钮色, 计数题, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
 import { 沟通都不能记话 } from "@/lib/project/follow-needs-project-text";
 import NewProjectEntry from "./NewProjectEntry";
@@ -1187,7 +1187,7 @@ export default function RecordView({
   const 节 = (名: string, 数: number | string | undefined, 加: ReactNode, 身: ReactNode, 连体?: { 主: 连体主钮 | null; 色: 连体色 }, id?: string) =>
     去项目跟进 ? (
       <ProjectFold key={名} id={id} 名={名} 连体={!!连体}>
-        <Card className="rec-mod" title={数 === undefined ? 名 : `${名}（${数}）`} extra={连体 ? <Space size={8}>{加}<FoldSplit 主={连体.主} 色={连体.色} /></Space> : 加 || undefined}>
+        <Card className="rec-mod" title={数 === undefined ? 名 : 计数题(名, 数)} extra={连体 ? <Space size={8}>{加}<FoldSplit 主={连体.主} 色={连体.色} /></Space> : 加 || undefined}>
           {身}
         </Card>
       </ProjectFold>
