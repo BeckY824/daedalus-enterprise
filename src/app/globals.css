@@ -4971,6 +4971,10 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .ls-row-gone { opacity: 0; max-height: 0 !important; min-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; margin: 0 !important; overflow: hidden; transition: opacity var(--t-fast) var(--ease), max-height var(--t) var(--ease), padding var(--t) var(--ease); }
 @media (prefers-reduced-motion: reduce) { .ls-row-gone { transition: none; } }
 .ls-row-err { min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--danger-text); }
+/* 挂靠申请页「重复咨询待补建」：格子一行 + 省略号（悬停 title 看全文）；弹框里的选人框占满一行；锚点跳过来时顶上留出页头 */
+.ls-ub-one { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-ub-full { width: 100%; }
+#repeat-unbuilt { scroll-margin-top: 64px; }
 .ls-ho-give { flex: 0 1 auto; min-width: 0; max-width: 60%; }
 .ls-ho-give > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ls-ho-err { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--danger-text); }
