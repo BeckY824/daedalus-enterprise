@@ -21,8 +21,12 @@ export async function 补建待补建(键: string, 指定?: string | null): Prom
     if (没设业务角色(await 权限组织(), me.id)) return 没角色;
     const r = await 补建待补建记录(me, 键, 指定 ?? undefined);
     revalidatePath(挂靠页);
-    if (r.ok) { revalidatePath("/projects"); revalidatePath("/leads"); }
-    return r;
+    if (!r.ok) return r;
+    // 补成了：项目、线索列表和这位客户的详情页（新线索、沟通、客户状态都在上面）
+    revalidatePath("/projects");
+    revalidatePath("/leads");
+    if ("客户id" in r) revalidatePath(`/customers/${r.客户id}`);
+    return { ok: true, 提示: r.提示 };
   } catch (e) { return 不在了(e); }
 }
 

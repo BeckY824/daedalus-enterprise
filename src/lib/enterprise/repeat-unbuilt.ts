@@ -10,11 +10,11 @@
  *   - 别人（销售等）：这一栏不出现
  * 补建（按点的那一刻定落给谁）：
  *   1. 客户负责人能接（在职销售 / 销售管理、参与状态正常、没到持有上限）→ 建在他名下，指定分配
- *   2. 还不能 → 按区域定线、自动分配再挑一次（同出口 C 交销售：交销售候选 + 挑接手人，事务里复核），自动分配
- *   3. 还挑不到 → 回「要手选」+ 这条线能接的销售（可指定的人、线对得上、没到持有上限），销售管理选一位再点，指定分配
+ *   2. 还不能（或点之前能接、进事务这一刻刚到持有上限：同 P-公海-15 到上限照挑不到人处理）→ 按区域定线、自动分配再挑一次（同出口 C 交销售：交销售候选 + 挑接手人，事务里复核），自动分配
+ *   3. 还挑不到 → 回「要手选」+ 这条线能接的销售（可指定的人、线对得上、没到持有上限），销售管理选一位再点，指定分配（事务里再核一次：在职、线、参与状态、持有上限）
  *   建法同出口 C：项目名「重复咨询-客户编号」第 2 次起加序、来源 / 原始客户 / 序号同出口 C（查重领取建线索项目），创建人 = 交的市场同事，
  *   渠道、对接人、沟通都用记录里的；沟通记录人 = 市场同事、时间照当时填的，首条沟通标建项目带出（三态额度）；一条算数的分配记录（from = 市场同事，by = 点的人）、
- *   市场建给销售进线索验证、重算客户状态。记录标「已补建」+ 谁 / 几点 / 补成哪条线索；接手的销售收分配通知，市场同事收「已补建」。
+ *   市场建给销售进线索验证、重算客户状态；自动分配 / 手选另在项目上记「分配新线索…给…」；序号撞了唯一索引整笔重来（最多 3 次）。记录标「已补建」+ 谁 / 几点 / 补成哪条线索；接手的销售收分配通知，市场同事收「已补建」。
  * 不补建：原因必填，标「已关闭」，通知市场同事。客户中途进了公海：进公海那一刻自动关（unbuilt-record.ts 待补建进公海关）；点的时候才发现在公海也就地关。
  * 并发：两个人同时点同一条，事务里重读这一条、还是「待补建」才往下写（SQLite 写事务独占，后进来的读到已处理），只成一次，后到的回「已被处理」。
  */
@@ -33,7 +33,7 @@ import { 权限组织 } from "./org";
 import { 是系统管理员of, 管理员类别们of, type 组织 } from "./org-core";
 import { 能分配线索, 不能当负责人话, 只读角色, 只读话of } from "./permissions";
 import { 分配方式叫法 } from "./dict";
-import { 可指定的人, 本月分配行, 读挑人底子, 读线部门 } from "./assign-eta";
+import { 可指定的人, 指定问题, 本月分配行, 读挑人底子, 读线部门 } from "./assign-eta";
 import { 企划线索计数key, 计不计数, 挑接手人, 本月已分, 配额of, 满了, 月份 } from "./lead-assign";
 import { 找待用补位, 用掉补位, 待用补位行 } from "./invalid-makeup";
 import { 写流转线, 换人定线 } from "./flow-line";
@@ -44,7 +44,7 @@ import { 分配通知 } from "./notice-sources";
 import { notify } from "./notify";
 import { 交接中的客户 } from "./handover-db";
 import { 查重领取建线索项目, 查重领取记沟通, 落对接人, 查重领取换人, 查重领取作废, type 查重领取候选 } from "./dedupe-claim";
-import { 负责人能接, 交销售候选, 出口C的线, 出口C项目名 } from "./repeat-inquiry";
+import { 负责人能接, 交销售候选, 出口C的线, 出口C项目名, 序号撞了 } from "./repeat-inquiry";
 import { 未建条们, 改未建条, 未建键, 拆未建键, 进公海关原因, type 未建线索记录, type 未建处理, type 未建状态 } from "./unbuilt-record";
 
 /** 这一栏在页面上的锚点：出口 C 没建的那条通知点进来就落在这一栏 */
@@ -126,7 +126,9 @@ export async function 读待补建栏(me: Pick<SessionUser, "id">): Promise<待�
   const org = await 权限组织();
   if (!org) return 空;
   const 管人 = 是待补建管理人(org, me.id);
-  const 行们 = await 看全部(() => prisma.entDupeHit.findMany({ where: { unbuilt: { not: null } }, select: { id: true, unbuilt: true }, orderBy: { createdAt: "desc" }, take: 2000 }));
+  // 不截条数：截了最早的待补建会悄悄不出现（待补建的一直留着；已处理的按处理时间留 已处理留天，台账行的时间对不上处理时间，只能读出来再筛）。
+  // 只有出口 C 整笔没建的那几行有这一列，量小
+  const 行们 = await 看全部(() => prisma.entDupeHit.findMany({ where: { unbuilt: { not: null } }, select: { id: true, unbuilt: true }, orderBy: { createdAt: "desc" } }));
   const 起 = Date.now() - 已处理留天 * 86_400_000;
   const 条们 = 行们.flatMap((行) => 未建条们(行.unbuilt).map((x) => ({ 键: 未建键(行.id, x.位), r: x.记录 }))).filter((x) => 留着(x.r, 起));
   const 我交的 = 条们.filter((x) => x.r.交的人.id === me.id)
@@ -217,19 +219,51 @@ async function 就地进公海关(a: 读到): Promise<void> {
   });
 }
 
-/** 记录里的沟通还原成 查重领取记沟通 要的样子：方式存的是字典叫法，没选方式时存的是类型的叫法（那种还原成空） */
+/**
+ * 记录里的沟通还原成 查重领取记沟通 要的样子。记录里的方式 = 原来的 好.method，只有「其他」类没选方式（企业版只有这一种会空）时存的是类型的叫法「其他记录」：
+ * 只把那一种还原成空。线上会议、邮件沟通、WhatsApp、微信沟通 和类型同名，是正常选的方式，照原样（同出口 C 直接建的）
+ */
 function 还原沟通(r: 未建线索记录): 规整好的沟通 {
-  const 方式 = r.沟通.方式 && r.沟通.方式 !== FOLLOW_TYPE_MAP[r.沟通.类型]?.label ? r.沟通.方式 : null;
-  return { type: r.沟通.类型, method: 方式, initiator: r.沟通.发起方, content: r.沟通.内容, occurredAt: new Date(r.沟通.时间), nextStepAt: null, nextStepText: null };
+  const 没选 = r.沟通.类型 === "OTHER" && r.沟通.方式 === FOLLOW_TYPE_MAP.OTHER?.label;
+  return { type: r.沟通.类型, method: 没选 ? null : r.沟通.方式 || null, initiator: r.沟通.发起方, content: r.沟通.内容, occurredAt: new Date(r.沟通.时间), nextStepAt: null, nextStepText: null };
 }
 
 type 落法 = NonNullable<未建处理["线索"]>["落法"];
+type 落点 = { 法: 落法; 接手人: string; 候: 查重领取候选 | null; 手选线: "内贸" | "外贸" | null };
+
+/** 手选的那位事务里再核一次（点之前列候选时能接，进事务这一刻可能刚被暂停 / 停用 / 改了线）：在职、线对得上、能被指定、能当负责人 */
+async function 手选还能接(tx: Pick<typeof prisma, "user" | "entMember">, org: 组织, id: string, 线: "内贸" | "外贸" | null): Promise<boolean> {
+  if (!(await tx.user.findUnique({ where: { id }, select: { active: true } }))?.active) return false;
+  const 他的线 = (await tx.entMember.findUnique({ where: { userId: id }, select: { line: true } }))?.line ?? null;
+  if (线 && 他的线 && 他的线 !== 线) return false;
+  return !(await 指定问题(org, id)) && !不能当负责人话(org, id);
+}
+/** 事务里核出手选的人接不了了：整笔回滚，回 手选的人接不了话（界面留着选人框换一位） */
+class 手选接不了 extends Error {}
+
+/**
+ * 落给谁（按这一刻）：负责人能接 → 他；还不能（或 跳过负责人：进事务时他刚到持有上限）→ 按区域自动分配；还挑不到 → 手选（没带指定 = 回要手选）
+ */
+async function 定落点(org: 组织, c: { id: string; salesOwnerId: string | null }, r: 未建线索记录, 规则: Awaited<ReturnType<typeof 生效组织规则>>, 指定: unknown, 跳过负责人: boolean): Promise<落点 | 补建结果> {
+  const 负责人 = c.salesOwnerId;
+  if (!跳过负责人 && 负责人 && (await 负责人能接(org, 负责人))) {
+    const 起 = await 看全部(() => 持有上限起点(prisma, 规则, 负责人));
+    if (!起 || 起.有 + 1 <= 起.上限) return { 法: "负责人", 接手人: 负责人, 候: null, 手选线: null };
+  }
+  const 读 = await 交销售候选(org, r.交的人.id, c.id, 负责人 ?? "");
+  if (读.ok) return { 法: "自动分配", 接手人: "", 候: 读.候, 手选线: null };
+  const 手选线 = 读.没人接.线 ?? r.线;
+  const 候选 = await 手选候选(org, 手选线);
+  if (typeof 指定 !== "string" || !指定) return { ok: false, 要手选: { 为什么: 读.没人接.为什么, 候选 } };
+  if (!候选.some((x) => x.id === 指定)) return { ok: false, error: 手选的人接不了话 };
+  return { 法: "手选", 接手人: 指定, 候: null, 手选线 };
+}
 
 /**
  * 补建（见文件头）。指定 = 第 3 步销售管理手选的那位（前两步能落人时不认它，按点的那一刻算）。
- * 回 要手选 = 前两步都挑不到，界面列候选让他选一位再点
+ * 回 要手选 = 前两步都挑不到，界面列候选让他选一位再点。成了带客户 id（动作那层刷新客户详情页用，不回给界面）
  */
-export async function 补建待补建记录(me: SessionUser, 键: unknown, 指定?: unknown): Promise<补建结果> {
+export async function 补建待补建记录(me: SessionUser, 键: unknown, 指定?: unknown): Promise<补建结果 | { ok: true; 提示: string; 客户id: string }> {
   const g = await 门(me);
   if ("ok" in g) return g;
   const { org } = g;
@@ -245,127 +279,140 @@ export async function 补建待补建记录(me: SessionUser, 键: unknown, 指�
   if ((await 交接中的客户([c.id])).size) return { ok: false, error: 交接中不补建话 };
   const 规则 = await 生效组织规则();
   const 交的人 = r.交的人.id;
-
-  // 落给谁：按点的这一刻（负责人 → 自动分配 → 手选）
-  let 法: 落法 | null = null;
-  let 接手人 = "";
-  let 候: 查重领取候选 | null = null;
-  const 负责人 = c.salesOwnerId;
-  if (负责人 && (await 负责人能接(org, 负责人))) {
-    const 起 = await 看全部(() => 持有上限起点(prisma, 规则, 负责人));
-    if (!起 || 起.有 + 1 <= 起.上限) { 法 = "负责人"; 接手人 = 负责人; }
-  }
-  let 手选线 = r.线;
-  if (!法) {
-    const 读 = await 交销售候选(org, 交的人, c.id, 负责人 ?? "");
-    if (读.ok) { 法 = "自动分配"; 候 = 读.候; } else {
-      手选线 = 读.没人接.线 ?? r.线;
-      const 候选 = await 手选候选(org, 手选线);
-      if (typeof 指定 !== "string" || !指定) return { ok: false, 要手选: { 为什么: 读.没人接.为什么, 候选 } };
-      if (!候选.some((x) => x.id === 指定)) return { ok: false, error: 手选的人接不了话 };
-      法 = "手选"; 接手人 = 指定;
-    }
-  }
-
-  const 线 = 候 ? 候.向.线 : await 出口C的线(org, 接手人, c.id, 交的人);
-  const [way, 企划算数, 状态开, 线设] = await Promise.all([
-    分配方式叫法(法 === "自动分配" ? 1 : 0), getSetting<boolean>(企划线索计数key), 客户状态自动(), 法 === "自动分配" ? 读线部门() : Promise.resolve(null),
-  ]);
-  const 算数 = 计不计数("营销", 企划算数);
-  const 月 = 候?.月 ?? 月份();
   const 好 = 还原沟通(r);
-  const 跳过 = new Set(候?.底.不参与 ?? []);
-  let 底 = 候?.底 ?? null;
-  let 重挑 = 0;
-  let 结果: { id: string; 名: string; 补发: boolean } | null = null;
-  for (;;) {
-    if (候 && 底) {
-      const 挑 = 挑接手人(底.排位(), 跳过, 候.查满, 底.不限额);
-      // 事务里复核顺延到没人：这一刻挑不到了，照第 3 步让他手选
-      if (!挑) return { ok: false, 要手选: { 为什么: "这条线能接的销售刚被分满了", 候选: await 手选候选(org, 候.向.线 ?? r.线) } };
-      接手人 = 挑;
-    }
-    try {
-      const 跑 = await 整批或不做(() => 看全部(() => prisma.$transaction(async (tx) => {
-        const 文 = await 重读这条(tx, a);
-        const 现 = await tx.customer.findUnique({ where: { id: c.id }, select: { salesOwnerId: true, customerNo: true, pool: { select: { customerId: true } } } });
-        if (!现) throw new 补建作废(客户不在了话);
-        if (现.pool) throw new 补建作废(进公海关原因);
-        if (法 === "负责人" && 现.salesOwnerId !== 接手人) throw new 补建作废(负责人刚变了话);
-        if (法 !== "自动分配") await 写前核上限(tx, await 持有上限起点(tx, 规则, 接手人), 1, "分配");
-        let 补位id: string | null = null;
-        if (候 && 底) {
-          if (挑接手人(底.排位(undefined, await 本月分配行(候.人们, 候.月, tx), 底.用补位 ? await 待用补位行(候.人们, tx) : undefined), 跳过, 候.查满, 底.不限额) !== 接手人) throw new 查重领取换人(false);
-          补位id = 底.用补位 ? await 找待用补位(tx, 接手人, 候.向.线) : null;
-          if (!补位id && 候.查满 && !底.不限额 && 满了(await 本月已分(接手人, 候.月, tx), await 配额of(接手人, tx))) throw new 查重领取换人(true);
-        }
-        // 对接人：号码撞上的那位还在就挂他（不改他），删了就不挂；新的人这时才在客户下建（不设主联系人）
-        let 对接人id: string | null = null;
-        if ("撞上的联系人" in r.对接人) {
-          对接人id = (await tx.contact.findFirst({ where: { id: r.对接人.撞上的联系人, customerId: c.id, deletedAt: null }, select: { id: true } }))?.id ?? null;
-        } else {
-          对接人id = await 落对接人(tx, c.id, { 建: { name: r.对接人.新建.名字, position: r.对接人.新建.职务 } }, 交的人);
-        }
-        const id = await 查重领取建线索项目(tx, {
-          customerId: c.id, 项目名: (序) => 出口C项目名(现.customerNo, 序), 接手人, 创建人: 交的人, 渠道: r.渠道.id, 对接人: 对接人id, 线, 分配方式: way,
-        });
-        if (法 === "自动分配") await 换人定线(tx, { 项目: [id] }, { 操作人: me.id, 接手人, 自动: true, 方向: 线 }, { org, 设: 线设! });
-        else await 写流转线(tx, 线!, { 项目: [id] });
-        const 记 = await tx.entLeadAssign.create({
-          data: { projectId: id, toUserId: 接手人, fromUserId: 交的人, byUserId: me.id, line: 线, kind: "营销", counted: 算数 && !补位id, month: 月, way },
-          select: { id: true },
-        });
-        if (补位id && !(await 用掉补位(tx, 补位id, 记.id, id))) throw new 查重领取换人(false);
-        if (算市场建给销售(org, 交的人, 接手人)) await 市场分配进线索验证(tx, [id], 接手人, me.id);
-        // 沟通：记录人 = 交的市场同事、时间照当时填的；同一事务刚建的线索项目，首条沟通标建项目带出（三态额度 PR 442）
-        await 查重领取记沟通(tx, 交的人, id, 好, new Date(), true);
-        await 跟着项目重算(tx, 状态开, [c.id]);
-        const 名 = (await tx.project.findUnique({ where: { id }, select: { name: true } }))?.name ?? "";
-        const 接手人名 = (await tx.user.findUnique({ where: { id: 接手人 }, select: { name: true } }))?.name ?? 接手人;
-        const 新 = 改未建条(文, a.位, (x) => ({
-          ...x, 状态: "已补建", 处理: { 谁: { id: me.id, 名: me.name }, 时间: new Date().toISOString(), 线索: { id, 名, 接手人: { id: 接手人, 名: 接手人名 }, 落法: 法! } },
-        }));
-        if (!新) throw new 已处理错(null);
-        await tx.entDupeHit.update({ where: { id: a.行id }, data: { unbuilt: 新 } });
-        return { id, 名, 补发: !!补位id };
-      })));
-      if (!跑.ok) return { ok: false, error: 跑.超 };
-      结果 = 跑.值;
-      break;
-    } catch (e) {
-      if (e instanceof 已处理错) return { ok: false, error: e.现 ? 已被处理话(e.现) : 待补建找不到话, 刷新: true };
-      if (e instanceof 补建作废) {
-        if (e.message === 进公海关原因) await 就地进公海关(a);
-        return { ok: false, error: e.message, 刷新: true };
-      }
-      if (e instanceof 查重领取作废) return { ok: false, error: e.message.replace("这次没领", "这次没补建") };
-      if (e instanceof 查重领取换人 && 候) {
-        if (e.满) { 跳过.add(接手人); continue; }
-        if (++重挑 > 5) return { ok: false, error: 同时补建太多话 };
-        底 = await 读挑人底子(候.人们, 候.月, 候.补位);
-        continue;
-      }
-      throw e;
-    }
-  }
+  const [企划算数, 状态开] = await Promise.all([getSetting<boolean>(企划线索计数key), 客户状态自动()]);
+  const 算数 = 计不计数("营销", 企划算数);
 
+  // 外圈：负责人点之前能接、进事务这一刻刚到持有上限（同 P-公海-15「负责人已到持有上限，同样照挑不到人处理」）= 跳过他再定一次落点，往下走自动分配
+  let 跳过负责人 = false;
+  for (;;) {
+    const 落 = await 定落点(org, c, r, 规则, 指定, 跳过负责人);
+    if ("ok" in 落) return 落;
+    const { 法, 候, 手选线 } = 落;
+    let 接手人 = 落.接手人;
+    const 线 = 候 ? 候.向.线 : await 出口C的线(org, 接手人, c.id, 交的人);
+    const [way, 线设] = await Promise.all([分配方式叫法(法 === "自动分配" ? 1 : 0), 法 === "自动分配" ? 读线部门() : Promise.resolve(null)]);
+    const 月 = 候?.月 ?? 月份();
+    const 跳过 = new Set(候?.底.不参与 ?? []);
+    let 底 = 候?.底 ?? null;
+    let 重挑 = 0;
+    let 撞号 = 0;
+    let 结果: { id: string; 名: string; 补发: boolean } | null = null;
+    for (;;) {
+      if (候 && 底) {
+        const 挑 = 挑接手人(底.排位(), 跳过, 候.查满, 底.不限额);
+        // 事务里复核顺延到没人：这一刻挑不到了，照第 3 步让他手选
+        if (!挑) return { ok: false, 要手选: { 为什么: "这条线能接的销售刚被分满了", 候选: await 手选候选(org, 候.向.线 ?? r.线) } };
+        接手人 = 挑;
+      }
+      try {
+        const 跑 = await 整批或不做(() => 看全部(() => prisma.$transaction(async (tx) => {
+          const 文 = await 重读这条(tx, a);
+          const 现 = await tx.customer.findUnique({ where: { id: c.id }, select: { salesOwnerId: true, customerNo: true, pool: { select: { customerId: true } } } });
+          if (!现) throw new 补建作废(客户不在了话);
+          if (现.pool) throw new 补建作废(进公海关原因);
+          if (法 === "负责人" && 现.salesOwnerId !== 接手人) throw new 补建作废(负责人刚变了话);
+          if (法 !== "自动分配") await 写前核上限(tx, await 持有上限起点(tx, 规则, 接手人), 1, "分配");
+          if (法 === "手选" && !(await 手选还能接(tx, org, 接手人, 手选线))) throw new 手选接不了();
+          let 补位id: string | null = null;
+          if (候 && 底) {
+            if (挑接手人(底.排位(undefined, await 本月分配行(候.人们, 候.月, tx), 底.用补位 ? await 待用补位行(候.人们, tx) : undefined), 跳过, 候.查满, 底.不限额) !== 接手人) throw new 查重领取换人(false);
+            补位id = 底.用补位 ? await 找待用补位(tx, 接手人, 候.向.线) : null;
+            if (!补位id && 候.查满 && !底.不限额 && 满了(await 本月已分(接手人, 候.月, tx), await 配额of(接手人, tx))) throw new 查重领取换人(true);
+          }
+          // 对接人：号码撞上的那位还在就挂他（不改他），删了就不挂；新的人这时才在客户下建（不设主联系人）
+          let 对接人id: string | null = null;
+          if ("撞上的联系人" in r.对接人) {
+            对接人id = (await tx.contact.findFirst({ where: { id: r.对接人.撞上的联系人, customerId: c.id, deletedAt: null }, select: { id: true } }))?.id ?? null;
+          } else {
+            对接人id = await 落对接人(tx, c.id, { 建: { name: r.对接人.新建.名字, position: r.对接人.新建.职务 } }, 交的人);
+          }
+          const id = await 查重领取建线索项目(tx, {
+            customerId: c.id, 项目名: (序) => 出口C项目名(现.customerNo, 序), 接手人, 创建人: 交的人, 渠道: r.渠道.id, 对接人: 对接人id, 线, 分配方式: way,
+          });
+          if (法 === "自动分配") await 换人定线(tx, { 项目: [id] }, { 操作人: me.id, 接手人, 自动: true, 方向: 线 }, { org, 设: 线设! });
+          else await 写流转线(tx, 线!, { 项目: [id] });
+          const 记 = await tx.entLeadAssign.create({
+            data: { projectId: id, toUserId: 接手人, fromUserId: 交的人, byUserId: me.id, line: 线, kind: "营销", counted: 算数 && !补位id, month: 月, way },
+            select: { id: true },
+          });
+          if (补位id && !(await 用掉补位(tx, 补位id, 记.id, id))) throw new 查重领取换人(false);
+          if (算市场建给销售(org, 交的人, 接手人)) await 市场分配进线索验证(tx, [id], 接手人, me.id);
+          // 沟通：记录人 = 交的市场同事、时间照当时填的；同一事务刚建的线索项目，首条沟通标建项目带出（三态额度 PR 442）
+          await 查重领取记沟通(tx, 交的人, id, 好, new Date(), true);
+          await 跟着项目重算(tx, 状态开, [c.id]);
+          const 名 = (await tx.project.findUnique({ where: { id }, select: { name: true } }))?.name ?? "";
+          const 接手人名 = (await tx.user.findUnique({ where: { id: 接手人 }, select: { name: true } }))?.name ?? 接手人;
+          const 新 = 改未建条(文, a.位, (x) => ({
+            ...x, 状态: "已补建", 处理: { 谁: { id: me.id, 名: me.name }, 时间: new Date().toISOString(), 线索: { id, 名, 接手人: { id: 接手人, 名: 接手人名 }, 落法: 法 } },
+          }));
+          if (!新) throw new 已处理错(null);
+          await tx.entDupeHit.update({ where: { id: a.行id }, data: { unbuilt: 新 } });
+          return { id, 名, 补发: !!补位id };
+        })));
+        if (!跑.ok) {
+          // 进事务这一刻到了持有上限：负责人 = 跳过他往下走自动分配；手选的人 = 换一位
+          if (法 === "负责人") break;
+          return { ok: false, error: 法 === "手选" ? 手选的人接不了话 : 跑.超 };
+        }
+        结果 = 跑.值;
+        break;
+      } catch (e) {
+        if (e instanceof 已处理错) return { ok: false, error: e.现 ? 已被处理话(e.现) : 待补建找不到话, 刷新: true };
+        if (e instanceof 补建作废) {
+          if (e.message === 进公海关原因) await 就地进公海关(a);
+          return { ok: false, error: e.message, 刷新: true };
+        }
+        if (e instanceof 手选接不了) return { ok: false, error: 手选的人接不了话 };
+        if (e instanceof 查重领取作废) return { ok: false, error: e.message.replace("这次没领", "这次没补建") };
+        if (e instanceof 查重领取换人 && 候) {
+          if (e.满) { 跳过.add(接手人); continue; }
+          if (++重挑 > 5) return { ok: false, error: 同时补建太多话 };
+          底 = await 读挑人底子(候.人们, 候.月, 候.补位);
+          continue;
+        }
+        // 同一位客户两笔同时建、序号撞了唯一索引（多进程时两笔事务各读到同一个最大号）：整笔已回滚，重来一次（再来读到对方那条，接着往下排）
+        if (序号撞了(e) && ++撞号 < 3) continue;
+        throw e;
+      }
+    }
+    if (!结果) { 跳过负责人 = true; continue; }
+    const 接手人名 = await 补建收尾(me, a, c.id, r, { 法, 接手人, 线, way, 月, counted: 算数 && !结果.补发, 补发: 结果.补发 }, 结果);
+    return { ok: true, 提示: 补建成了话(接手人名, 法), 客户id: c.id };
+  }
+}
+
+/** 补建成了之后：操作日志（自动分配 / 手选另记项目上「分配新线索…给…」，同出口 C 交销售）、通知接手人和交的市场同事、重算客户三态；回接手人的名字 */
+async function 补建收尾(
+  me: SessionUser, a: 读到, 客户id: string, r: 未建线索记录,
+  落: { 法: 落法; 接手人: string; 线: "内贸" | "外贸" | null; way: string; 月: string; counted: boolean; 补发: boolean }, 结果: { id: string; 名: string },
+): Promise<string> {
+  const { 法, 接手人, 线, way, 月, counted, 补发 } = 落;
   const b = await getBusiness();
   const 接手人名 = (await prisma.user.findUnique({ where: { id: 接手人 }, select: { name: true } }))?.name ?? 接手人;
   await recordAudit({
     user: me, action: "create", entity: "Project", entityId: 结果.id,
     summary: `补建重复咨询待补建（客户 ${r.客户编号}，${r.交的人.名} 交的）：新建线索「${结果.名}」${法 === "负责人" ? `建在客户负责人「${接手人名}」名下` : 法 === "自动分配" ? `按区域自动分配给「${接手人名}」` : `由销售管理手选交给「${接手人名}」`}，沟通记录人仍是 ${r.交的人.名}`,
-    detail: { 补建: true, 台账: a.行id, 位: a.位, 客户: c.id, 落法: 法, 接手人, 渠道: r.渠道.id, 线, 分配方式: way, counted: 算数 && !结果.补发, month: 月, 交的人 },
+    detail: { 补建: true, 台账: a.行id, 位: a.位, 客户: 客户id, 落法: 法, 接手人, 渠道: r.渠道.id, 线, 分配方式: way, counted, month: 月, 交的人: r.交的人.id },
   });
+  if (法 !== "负责人") {
+    // 项目上也记一条（同出口 C 交销售 / 查重领取）：项目的操作日志里看得到这次分配
+    await recordAudit({
+      user: me, action: "update", entity: "Project", entityId: 结果.id,
+      summary: `分配新线索「${结果.名}」给 ${接手人名}${线 ? `（${线}）` : ""}${补发 ? "，判无效补发、不计数" : counted ? "" : "，不计数"}`,
+      detail: { toUserId: 接手人, fromUserId: r.交的人.id, line: 线, kind: "营销", counted, month: 月, 分配方式: way, 补建: true },
+    });
+  }
   await 分配通知(me, [{ projectId: 结果.id, toUserId: 接手人 }], 法 === "自动分配",
     `老客户重复咨询补建：${r.交的人.名} 之前查号码撞上这位${b.customer}，当时没建成；${me.name} 补建了这条线索给你（创建人记 ${r.交的人.名}，${b.customer}负责人不变），当时的沟通记在它上面。如与原项目同一需求，线索验证时选「重复线索」`);
-  await notify([交的人], {
+  await notify([r.交的人.id], {
     kind: "重复咨询待补建", key: `repeat-unbuilt-done:${未建键(a.行id, a.位)}`,
     title: `重复咨询已补建：${r.客户编号}`,
     body: `你交的客户 ${r.客户编号} 那次咨询，${me.name} 已补建成线索「${结果.名}」，交给 ${接手人名} 跟进；你在项目列表里能看到进度`,
     link: 待补建栏链接,
   });
-  await 存沟通后重算三态(c.id);
-  return { ok: true, 提示: 补建成了话(接手人名, 法!) };
+  await 存沟通后重算三态(客户id);
+  return 接手人名;
 }
 
 /** 不补建：原因必填，标已关闭，通知交的市场同事（客户 E-227 三处默认 ②） */

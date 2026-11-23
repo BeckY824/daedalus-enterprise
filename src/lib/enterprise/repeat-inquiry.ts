@@ -108,6 +108,11 @@ export const 出口C项目名 = (customerNo: number | null | undefined, 序 = 1)
   const 尾 = 序 > 1 ? `-${序}` : "";
   return 号 ? `重复咨询-${号}${尾}` : `重复咨询${尾}`;
 };
+/** 序号撞了 (repeatOfCustomerId, repeatSeq) 的唯一索引（Prisma P2002）：出口C建线索、补建待补建 整笔已回滚，重来一次 */
+export function 序号撞了(e: unknown): boolean {
+  if (!e || typeof e !== "object" || (e as { code?: unknown }).code !== "P2002") return false;
+  return JSON.stringify((e as { meta?: unknown }).meta ?? "").includes("repeatSeq");
+}
 /** 防重复提交：同一客户、同一发起人这么多分钟内已经由出口 C 建过一条，就认那一条、不再建、不再计数（两个标签页同时交） */
 export const 出口C防重分钟 = 10;
 

@@ -39,7 +39,7 @@ import { 规整沟通, type 规整好的沟通 } from "@/lib/project/wizard";
 import { 落到渠道, 新数据渠道不行 } from "@/lib/enterprise/channel-main";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { 查重领取记沟通, 查重领取建线索项目, 认对接人, 落对接人, 撞上的联系人, 查重领取作废, 查重领取换人, 查重领取理由, 候选挑不到为什么, type 认好的对接人 } from "@/lib/enterprise/dedupe-claim";
-import { 出口C可用, 出口C的线, 出口C作废, 出口C作废话, 负责人到上限话, 负责人到上限为什么, 负责人到上限预告话, 出口C项目名, 出口C防重分钟, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C没人接话, 出口C没人接预告话, 出口C没人接收件人, 交销售候选, 待补建没写成话, 待补建没写成交的人话, type 出口C没人接 } from "@/lib/enterprise/repeat-inquiry";
+import { 出口C可用, 出口C的线, 出口C作废, 出口C作废话, 负责人到上限话, 负责人到上限为什么, 负责人到上限预告话, 出口C项目名, 出口C防重分钟, 出口C已转话, 出口C已转过话, 出口C交销售已分话, 出口C没人接话, 出口C没人接预告话, 出口C没人接收件人, 交销售候选, 待补建没写成话, 待补建没写成交的人话, 序号撞了, type 出口C没人接 } from "@/lib/enterprise/repeat-inquiry";
 import type { 查重领取候选 } from "@/lib/enterprise/dedupe-claim";
 import { 企划线索计数key, 月份, 计不计数, 挑接手人, 挑的理由, 本月已分, 配额of, 满了 } from "@/lib/enterprise/lead-assign";
 import { 本月分配行, 读挑人底子, 读线部门 } from "@/lib/enterprise/assign-eta";
@@ -348,10 +348,4 @@ async function 没人接收尾(
   // 不是失败：台账记了、通知发了（同一人 10 分钟内再交按 key 不再记，照样算通知到了）；收件人去掉发起人自己后一个不剩 = 「请找销售管理」
   const 话 = 到上限 ? 负责人到上限话(没.负责人名, 通知) : 出口C没人接话(没.为什么, 通知);
   return { ok: true, 没建: true, 提示: 记上 ? 话 : `${话}${待补建没写成交的人话(人们.length > 0)}` };
-}
-
-/** 序号撞了 (repeatOfCustomerId, repeatSeq) 的唯一索引（Prisma P2002）：出口C建线索 重来一次 */
-function 序号撞了(e: unknown): boolean {
-  if (!e || typeof e !== "object" || (e as { code?: unknown }).code !== "P2002") return false;
-  return JSON.stringify((e as { meta?: unknown }).meta ?? "").includes("repeatSeq");
 }

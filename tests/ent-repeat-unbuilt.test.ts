@@ -8,11 +8,55 @@
  *   - 并发：两个人同时点补建同一条只成一次，后到的回「已被处理」
  *   - 谁看得到：这条线的销售管理、系统管理员看全部；交的市场同事只看自己的、只有客户编号；销售这一栏不出现、点不了
  *   - 出口 C 没建的那条通知点进来就是这一栏（link）
+ *   - 审查补记：沟通方式原样补回、序号撞号重来、项目上第二条分配日志、负责人进事务刚到上限改走自动分配、栏不截条数、手选的人事务里再核、刷新客户详情、补建 / 不补建同时点、事务前刚进公海
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "t", role: "SALES", title: "", avatar: null as string | null } }));
-vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+/**
+ * 插进流程里的钩子（只响一次）：
+ *   撞号 = 建线索项目时先在同一事务里用同一个号连写两行，抛真的唯一约束错（模拟两边同时补建读到同一个最大号）；
+ *   事务里 = 补建事务里第一次读持有数时（点之前核过了、进事务这一刻才变）；交接前 = 事务外查交接那一下（核过公海之后、进事务之前）
+ */
+const 钩 = vi.hoisted(() => ({
+  撞号: 0, 撞了: 0,
+  事务里: null as null | ((tx: unknown) => Promise<void>),
+  交接前: null as null | (() => Promise<void>),
+  刷新了: [] as string[],
+}));
+vi.mock("@/lib/enterprise/dedupe-claim", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/dedupe-claim")>();
+  const 建: typeof m.查重领取建线索项目 = async (tx, a) => {
+    if (钩.撞号 > 0 && typeof a.项目名 === "function") {
+      钩.撞号 -= 1;
+      钩.撞了 += 1;
+      const 序 = await m.重复咨询下一序号(tx, a.customerId);
+      for (const name of ["同时补建的那笔", "这一笔"]) {
+        await tx.project.create({ data: { name, customerId: a.customerId, ownerId: a.接手人, creatorId: a.创建人, source: "repeat-inquiry", repeatOfCustomerId: a.customerId, repeatSeq: 序 } });
+      }
+    }
+    return m.查重领取建线索项目(tx, a);
+  };
+  return { ...m, 查重领取建线索项目: 建 };
+});
+vi.mock("@/lib/project/db", async (原) => {
+  const m = await 原<typeof import("@/lib/project/db")>();
+  const { prisma: 库 } = await import("@/lib/prisma");
+  const 起点: typeof m.持有上限起点 = async (db, 规则, userId) => {
+    if (钩.事务里 && db !== 库) { const f = 钩.事务里; 钩.事务里 = null; await f(db); }
+    return m.持有上限起点(db, 规则, userId);
+  };
+  return { ...m, 持有上限起点: 起点 };
+});
+vi.mock("@/lib/enterprise/handover-db", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/handover-db")>();
+  const 查: typeof m.交接中的客户 = async (...a) => {
+    if (钩.交接前) { const f = 钩.交接前; 钩.交接前 = null; await f(); }
+    return m.交接中的客户(...a);
+  };
+  return { ...m, 交接中的客户: 查 };
+});
+vi.mock("next/cache", () => ({ revalidatePath: (p: string) => { 钩.刷新了.push(p); }, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
@@ -34,6 +78,7 @@ import {
 import { 读未建线索, 未建键, 进公海关原因 } from "@/lib/enterprise/unbuilt-record";
 import { 记换负责人 } from "@/lib/owner-log-db";
 import { 重复咨询来源 } from "@/lib/project/system-created";
+import type { Prisma } from "@/generated/prisma";
 
 type 人 = { id: string; name: string };
 let 总管: 人, 市场: 人, 市场管: 人, 外贸甲: 人, 乙: 人, 内销管: 人, 外销管: 人;
@@ -78,6 +123,7 @@ async function 到上限留一条(对接人: object = { 名字: "李采购", 职
 }
 
 beforeEach(async () => {
+  Object.assign(钩, { 撞号: 0, 撞了: 0, 事务里: null, 交接前: null, 刷新了: [] });
   await resetDb();
   invalidateSettingsCache();
   忘掉企业版范围();
@@ -281,5 +327,171 @@ describe("谁看得到、谁点得了", () => {
     当(外销管);
     expect(await 补建待补建("乱写")).toMatchObject({ ok: false, 刷新: true });
     expect(await 不补建待补建("x:9", "原因")).toMatchObject({ ok: false, 刷新: true });
+  });
+});
+
+describe("审查补记", () => {
+  /** 留一条待补建（负责人外贸甲到上限），用这次的沟通 */
+  async function 用这次沟通留一条(这次: object) {
+    const c = await 同事客户(外贸甲.id);
+    await 上限({ [外贸甲.id]: 0 });
+    当(市场);
+    expect(await 出口C建线索("手机号", c.号, 这次 as typeof 沟通, { 渠道: 新渠道, 对接人: { 撞上的: true } })).toMatchObject({ ok: true, 没建: true });
+    return c;
+  }
+
+  it("沟通方式照原样补回：线上会议 / 邮件沟通 / WhatsApp / 微信沟通（和类型同名）不丢成空；手机通话照留；其他类没选方式仍是空", async () => {
+    const 例: [string, string | null, string | null][] = [
+      ["MEETING", "线上会议", "线上会议"], ["EMAIL", "邮件沟通", "邮件沟通"], ["WHATSAPP", "WhatsApp", "WhatsApp"], ["WECHAT", "微信沟通", "微信沟通"],
+      ["PHONE", null, "手机通话"], ["OTHER", null, null],
+    ];
+    for (const [type, method, 应] of 例) {
+      const c = await 用这次沟通留一条({ ...沟通, type, ...(method ? { method } : {}) });
+      const { 键 } = await 待补建of(c.id);
+      await 上限({});
+      当(外销管);
+      expect((await 补建待补建(键)).ok).toBe(true);
+      const f = await prisma.followUp.findFirstOrThrow({ where: { customerId: c.id } });
+      expect({ type: f.type, method: f.method }).toEqual({ type, method: 应 });
+    }
+  });
+
+  it("补建时序号撞了唯一索引（两边同时建）：整笔回滚重来，建成一条；一直撞最多试 3 次，照抛、一行不留、记录还待补建", async () => {
+    const c = await 到上限留一条();
+    await 上限({});
+    const { 键 } = await 待补建of(c.id);
+    当(外销管);
+    钩.撞号 = 1;
+    expect(await 补建待补建(键)).toEqual({ ok: true, 提示: 补建成了话(外贸甲.name, "负责人") });
+    expect(钩.撞了).toBe(1);
+    expect(await prisma.project.count({ where: { customerId: c.id, source: 重复咨询来源 } })).toBe(1);
+    const d = await 到上限留一条({ 撞上的: true });
+    await 上限({});
+    const k = (await 待补建of(d.id)).键;
+    当(外销管);
+    钩.撞号 = 9;
+    钩.撞了 = 0;
+    expect((await 补建待补建(k)).ok).toBe(false);
+    expect(钩.撞了).toBe(3);
+    expect(await prisma.project.count({ where: { customerId: d.id } })).toBe(1);
+    expect((await 待补建of(d.id)).记.状态).toBe("待补建");
+  });
+
+  it("自动分配、手选两种落点：项目上另记一条「分配新线索…给…」；负责人落点不记", async () => {
+    await setSetting(自动分配不参与key, { [总管.id]: "禁止", [内销管.id]: "禁止", [外销管.id]: "禁止", [外贸甲.id]: "暂停" });
+    invalidateSettingsCache();
+    const c = await 同事客户(外贸甲.id);
+    当(市场);
+    await 设配额(乙, 0);
+    await setSetting(不设配额key, false);
+    invalidateSettingsCache();
+    expect(await 出口C建线索("手机号", c.号, 沟通, { 渠道: 新渠道, 对接人: { 撞上的: true } })).toMatchObject({ ok: true, 没建: true });
+    await 设配额(乙, 5);
+    当(内销管);
+    expect(await 补建待补建((await 待补建of(c.id)).键)).toEqual({ ok: true, 提示: 补建成了话(乙.name, "自动分配") });
+    const p = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, source: 重复咨询来源 } });
+    const 记 = await prisma.auditLog.findMany({ where: { entity: "Project", entityId: p.id, action: "update" } });
+    expect(记).toHaveLength(1);
+    expect(记[0].summary).toContain(`分配新线索「${p.name}」给 ${乙.name}`);
+    // 手选
+    await setSetting(规则.线索分配.key, false);
+    invalidateSettingsCache();
+    const d = await 同事客户(市场管.id);
+    当(市场);
+    expect(await 出口C建线索("手机号", d.号, 沟通, { 渠道: 新渠道, 对接人: { 撞上的: true } })).toMatchObject({ ok: true, 没建: true });
+    当(总管);
+    expect((await 补建待补建((await 待补建of(d.id)).键, 乙.id)).ok).toBe(true);
+    const q = await prisma.project.findFirstOrThrow({ where: { customerId: d.id, source: 重复咨询来源 } });
+    const 记2 = await prisma.auditLog.findMany({ where: { entity: "Project", entityId: q.id, action: "update" } });
+    expect(记2).toHaveLength(1);
+    expect(记2[0].summary).toContain(`分配新线索「${q.name}」给 ${乙.name}`);
+    // 负责人落点不记
+    const e = await 到上限留一条();
+    await 上限({});
+    当(外销管);
+    expect((await 补建待补建((await 待补建of(e.id)).键)).ok).toBe(true);
+    const r = await prisma.project.findFirstOrThrow({ where: { customerId: e.id, source: 重复咨询来源 } });
+    expect(await prisma.auditLog.count({ where: { entity: "Project", entityId: r.id, action: "update" } })).toBe(0);
+  });
+
+  it("负责人点之前能接、进事务这一刻刚到持有上限：不回「少选几个」，往下走按区域自动分配", async () => {
+    const c = await 到上限留一条();
+    await 上限({ [外贸甲.id]: 2 });
+    const { 键 } = await 待补建of(c.id);
+    钩.事务里 = async (tx) => {
+      await (tx as Prisma.TransactionClient).project.create({ data: { name: "刚分来的", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "商机", node: "明确需求", channelId: 老渠道 } });
+    };
+    当(外销管);
+    const r = await 补建待补建(键);
+    expect(钩.事务里).toBeNull();
+    expect(r).toMatchObject({ ok: true, 提示: expect.stringContaining("按区域自动分配") });
+    const p = await prisma.project.findFirstOrThrow({ where: { customerId: c.id, source: 重复咨询来源 } });
+    expect(p.ownerId).not.toBe(外贸甲.id);
+    expect((await 待补建of(c.id)).记.处理?.线索?.落法).toBe("自动分配");
+  });
+
+  it("已处理的老记录很多（超过 2000 行）：最早那条待补建照样在栏里", async () => {
+    const c = await 到上限留一条();
+    const { 行, 键 } = await 待补建of(c.id);
+    await prisma.entDupeHit.update({ where: { id: 行.id }, data: { createdAt: new Date(Date.now() - 90 * 86_400_000) } });
+    const 处理过 = JSON.stringify({ ...读未建线索(行.unbuilt)[0], 状态: "已关闭", 处理: { 谁: null, 时间: new Date().toISOString(), 原因: "x" } });
+    await prisma.entDupeHit.createMany({
+      data: Array.from({ length: 2001 }, () => ({ userId: 市场.id, keyType: "手机号", keyValue: "1", customerId: c.id, result: "没人接", unbuilt: 处理过 })),
+    });
+    const 栏 = await 读待补建栏(外销管);
+    expect(栏.管!.filter((x) => x.状态 === "待补建").map((x) => x.键)).toEqual([键]);
+  });
+
+  it("手选的人点之前能接、进事务这一刻被停用了：事务里再核，不建、回换一位", async () => {
+    await setSetting(规则.线索分配.key, false);
+    invalidateSettingsCache();
+    const c = await 同事客户(市场管.id);
+    当(市场);
+    expect(await 出口C建线索("手机号", c.号, 沟通, { 渠道: 新渠道, 对接人: { 撞上的: true } })).toMatchObject({ ok: true, 没建: true });
+    const { 键 } = await 待补建of(c.id);
+    钩.事务里 = async (tx) => { await (tx as Prisma.TransactionClient).user.update({ where: { id: 乙.id }, data: { active: false } }); };
+    当(总管);
+    expect(await 补建待补建(键, 乙.id)).toEqual({ ok: false, error: 手选的人接不了话 });
+    expect(钩.事务里).toBeNull();
+    expect(await prisma.project.count({ where: { customerId: c.id, source: 重复咨询来源 } })).toBe(0);
+    expect((await 待补建of(c.id)).记.状态).toBe("待补建");
+  });
+
+  it("补建成了：客户详情页也刷新", async () => {
+    const c = await 到上限留一条();
+    await 上限({});
+    当(外销管);
+    钩.刷新了 = [];
+    expect((await 补建待补建((await 待补建of(c.id)).键)).ok).toBe(true);
+    expect(钩.刷新了).toContain(`/customers/${c.id}`);
+  });
+
+  it("一人补建、一人不补建同时点：只成一次", async () => {
+    const c = await 到上限留一条();
+    await 上限({});
+    const { 键 } = await 待补建of(c.id);
+    当(外销管);
+    const 补 = 补建待补建(键);
+    当(总管);
+    const 关 = 不补建待补建(键, "客户只是问问");
+    const [一, 二] = await Promise.all([补, 关]);
+    expect([一, 二].filter((x) => x.ok)).toHaveLength(1);
+    expect([一, 二].find((x) => !x.ok)).toMatchObject({ ok: false, 刷新: true });
+    const 记 = (await 待补建of(c.id)).记;
+    const 建了 = await prisma.project.count({ where: { customerId: c.id, source: 重复咨询来源 } });
+    if (一.ok) { expect(记.状态).toBe("已补建"); expect(建了).toBe(1); } else { expect(记.状态).toBe("已关闭"); expect(建了).toBe(0); }
+    expect(await prisma.followUp.count({ where: { customerId: c.id } })).toBe(建了);
+  });
+
+  it("核过公海之后、进事务之前客户刚进公海：事务里发现、整笔不建，记录就地关", async () => {
+    const c = await 到上限留一条();
+    await 上限({});
+    const { 键 } = await 待补建of(c.id);
+    钩.交接前 = async () => { await prisma.customerPool.create({ data: { customerId: c.id } }); };
+    当(外销管);
+    expect(await 补建待补建(键)).toEqual({ ok: false, error: 进公海关原因, 刷新: true });
+    expect(钩.交接前).toBeNull();
+    expect(await prisma.project.count({ where: { customerId: c.id, source: 重复咨询来源 } })).toBe(0);
+    expect((await 待补建of(c.id)).记).toMatchObject({ 状态: "已关闭", 处理: { 自动: "进公海" } });
   });
 });
