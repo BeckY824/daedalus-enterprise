@@ -18,7 +18,7 @@ import type { Prisma } from "@/generated/prisma";
 import { prisma } from "../prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 客户编号显示 } from "../customer-no";
-import { dayjs } from "../utils";
+import { beijingWallIso } from "../business-clock";
 
 export const 拦截种类 = ["节点必填", "线索验证", "本节点沟通"] as const;
 export type 拦截种类 = (typeof 拦截种类)[number];
@@ -203,4 +203,5 @@ export function 汇拦截导出(行们: readonly 拦截行[], 关联: 拦截关�
   };
 }
 
-const 时 = (d: Date) => dayjs(d).format("YYYY-MM-DD HH:mm");
+/** 明细、汇总的「时间（北京）」：固定按北京墙钟写，不看服务器 TZ */
+const 时 = (d: Date) => beijingWallIso(d).slice(0, 16).replace("T", " ");

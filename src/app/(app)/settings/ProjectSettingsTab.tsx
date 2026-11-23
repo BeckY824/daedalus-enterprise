@@ -72,6 +72,8 @@ export type 项目设置 = {
   提成比例: 三套提成比例 | null;
   /** 老板、总管理员能改提成比例 */
   能改提成比例: boolean;
+  /** 能导出必填拦截记录：和别的导出同一道门（能导入导出，企业版只给系统管理员）；没给 = 不摆导出 */
+  能导出拦截?: boolean;
   /**
    * 按人单设的提成比例（10-28）：人们 = 组织里的销售管理、销售（和已经单设过的人），范围 = 他的业务线用哪一套；
    * 比例 = 已单设的（离职的不在里面）。不是企业版 = null / 没给，卡片不出
@@ -151,7 +153,7 @@ export default function ProjectSettingsTab({ value, 成员 }: { value: 项目设
       {value.组织规则 && <HoldCapCard 规则={value.组织规则.公海} 持有={value.持有} 成员={成员} 挡={value.挡.持有上限} {...卡("组织规则")} />}
       {value.组织规则 && <PoolRouteCard />}
       {value.组织规则 && <TimeoutCard 规则={value.组织规则.超时回收} 挡={value.挡.节点时限} 范围={value.时限节点 ?? "全部"} {...卡("组织规则")} />}
-      {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} {...卡("组织规则")} />}
+      {value.组织规则 && <AdvanceCard 规则={value.组织规则.节点推进} 挡={value.挡.必填字段} 能导出={!!value.能导出拦截} {...卡("组织规则")} />}
       {value.组织规则 && <StageRuleCard 规则={value.组织规则.阶段} 挡={value.挡.阶段规则} {...卡("组织规则")} />}
       {value.卡点默认 && <BlockerDefaultsCard 默认={value.卡点默认} 挡={卡点挡} {...卡("卡点默认")} />}
       {value.卡点开关 && <BlockerRolesCard 开关={value.卡点开关} 挡={卡点挡} {...卡("卡点开关")} />}
@@ -558,9 +560,9 @@ const 同一份 = (a: string[] = [], b: string[] = []) => a.length === b.length 
  * 改范围当场存（和开关一样），存量项目下次保存或点「完成节点」时按必填走
  */
 function AdvanceCard({
-  规则, 挡, 忙, 跑, 存,
+  规则, 挡, 能导出, 忙, 跑, 存,
 }: {
-  规则: 组织规则["节点推进"]; 挡: string | null; 忙: boolean;
+  规则: 组织规则["节点推进"]; 挡: string | null; 能导出: boolean; 忙: boolean;
   跑: (f: () => 结果, 成了?: string) => Promise<boolean>; 存: 存法;
 }) {
   const [必填, set必填] = useState<Record<string, string[]>>(规则.必填);
@@ -588,7 +590,8 @@ function AdvanceCard({
       <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
         开了以后，给进程配上必填的几样，项目在这个进程上填齐了自动推到下一个进程（一次只推一格），进程变更里记一行「必填齐了，自动推进」。没填齐也能保存，项目页上会列出还差哪几样。配了必填的进程，没填齐谁都不能往前推，往后退照旧；没配的进程照原来手动推。改了清单以后，项目下次保存时按新清单走。默认关。
       </div>
-      <RequiredBlockExport 跑={跑} 忙={忙} />
+      {/* 导不了的人（能导入导出 以外）不摆导出：点了也是服务端回「只有总管理能用」 */}
+      {能导出 && <RequiredBlockExport 跑={跑} 忙={忙} />}
       {规则.开 && (
         <>
           <div className="set-advance-scope">
@@ -642,7 +645,7 @@ function AdvanceCard({
 
 /**
  * 必填拦截记录导出（2026-11-23，lib/project/required-block.ts）：往前推被缺必填拦下的每一次都记着（开关关着也记线索验证那道），
- * 这里导近 N 天的明细、按节点分布、卡超 24 小时的项目数。开关开不开都摆（关着也有线索验证的拦截）。导不导服务端再判一遍
+ * 这里导近 N 天的明细、按节点分布、卡超 24 小时的项目数。开关开不开都摆（关着也有线索验证的拦截）；只摆给能导入导出的人，导不导服务端再判一遍
  */
 function RequiredBlockExport({ 跑, 忙 }: { 跑: (f: () => 结果, 成了?: string) => Promise<boolean>; 忙: boolean }) {
   const [天, set天] = useState(30);
