@@ -73,11 +73,7 @@ export type 项目主题们 = {
   录音?: { 草稿们: 录音给界面[]; 可录: boolean };
 };
 
-/**
- * 人的叫法：主业务角色的显示名（lib/sync/dept-policy.ts 角色名，设置成员表、切换视角同一份）。
- * 写点评框里的「填写人」、发出后主题上的「填写人」、复盘主题列表的「发起人」都用这个（11-23：框里原来按发起身份写「系统管理员」，
- * 发出后写「总管理」，两处对不上）。发起身份（系统管理员 / 条线总管理 / 实线上级……）只管能不能发和留痕
- */
+/** 人的叫法：主业务角色（教练写「销售教练」，兼了总管理的写总管理）；发主题时按发起身份写 */
 const 角色叫法 = (org: 组织, id: string): string => {
   const r = org.成员.get(id)?.bizRole as 业务角色 | null | undefined;
   return r ? 角色名[r] : "—";
@@ -148,7 +144,7 @@ export async function 读项目主题(me: 谁, projectId: string): Promise<项�
   return {
     们,
     能发: 能发主题(me, 判, org),
-    填写人: 身份 && org ? { id: me.id, name: 叫(me.id), 身份: 角色叫法(org, me.id) } : null,
+    填写人: 身份 ? { id: me.id, name: 叫(me.id), 身份 } : null,
     负责人: p.ownerId && !p.pooledAt ? { id: p.ownerId, name: 叫(p.ownerId) } : null,
     项目名: p.name,
     当前节点: p.node,
