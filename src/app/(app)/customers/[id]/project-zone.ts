@@ -2,6 +2,7 @@ import type { SessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 在推项目条件 } from "@/lib/project/active";
+import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 读项目详情 } from "../../projects/[id]/load";
@@ -14,6 +15,28 @@ type 列表项目 = { id: string; name: string; phase: string; node: string; res
 
 
 /**
+ * 客户详情列哪些项目（页签的底）：这位客户名下、过了限定层的，去掉我回避的公海项目（C-01，lib/project/pool-owner.ts；总管理 / 管理员照列，回避豁免）。
+ * 页面（page.tsx）和「历史变更」弹窗的项目块（customer-history.ts 客户页可看项目）都走这里，再各自过 能看的项目
+ */
+export async function 客户页项目列表(me: SessionUser, customerId: string) {
+  const 回避 = (await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id);
+  return prisma.project.findMany({
+    where: { customerId, ...(回避.length ? { id: { notIn: 回避 } } : {}) },
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true, updatedAt: true },
+  });
+}
+
+/** 列表里哪些项目我能看（同项目详情页那道 能看项目）：项目区页签、「历史变更」项目块同一把尺 */
+export async function 能看的项目(me: SessionUser, ids: readonly string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const org = await 权限组织();
+  // 能看项目 要的列同一份（含待分配本线放开那几格，P-转-42）：少带了这里会把项目页刚放行跳过来的那条筛掉
+  const 行 = await prisma.project.findMany({ where: { id: { in: [...ids] } }, select: { id: true, ...权限项目选 } });
+  return new Set(行.filter((r) => 能看项目(me, 带已加入(r), org)).map((r) => r.id));
+}
+
+/**
  * 客户详情的项目区（11-12 客户详情合并第 2 批）：
  *   - 页签 = 这位客户名下我能看的项目（列表已经过限定层、去掉了我回避的公海项目；这里再按 能看项目 挡一遍，同项目详情页）
  *   - 锁数 = 看不到的同事在推项目个数（只给个数，P-看-12）
@@ -21,15 +44,7 @@ type 列表项目 = { id: string; name: string; phase: string; node: string; res
  *   - 不数锁：受限客户详情（restricted.ts，只负责项目的人）连同事在推项目的个数也不给，锁数恒 0
  */
 export async function 读项目区(me: SessionUser, customerId: string, 列表: readonly 列表项目[], 要的: string | null, 选项?: { 不数锁?: boolean }): Promise<项目区数据> {
-  const org = await 权限组织();
-  const 行 = 列表.length
-    ? await prisma.project.findMany({
-        where: { id: { in: 列表.map((p) => p.id) } },
-        // 能看项目 要的列同一份（含待分配本线放开那几格，P-转-42）：少带了这里会把项目页刚放行跳过来的那条筛掉
-        select: { id: true, ...权限项目选 },
-      })
-    : [];
-  const 能看 = new Set(行.filter((r) => 能看项目(me, 带已加入(r), org)).map((r) => r.id));
+  const 能看 = await 能看的项目(me, 列表.map((p) => p.id));
   const 可看 = 列表.filter((p) => 能看.has(p.id));
 
   // 先读要的那个；读不到（看不了、不是这位客户的、删了）就换默认的那个，再不行再往下找，不报「没有找到」

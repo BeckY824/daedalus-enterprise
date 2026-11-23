@@ -6,7 +6,6 @@ import { Button, Dropdown, Input, Modal } from "antd";
 import SaveButton from "@/components/SaveButton";
 import { MoreOutlined } from "@ant-design/icons";
 import type { 三态条, 三态条按钮 } from "@/lib/enterprise/tri-state-detail";
-import { fmtDateTime } from "@/lib/utils";
 import { 三态继续持有, 三态暂缓回收, 三态让同事结束项目 } from "../tri-state-actions";
 import { 三态显示名 } from "@/lib/enterprise/tri-state-label";
 import { 动作出错话 } from "@/lib/stale-deploy";
@@ -104,38 +103,6 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
             />
           )}
         </Modal>
-      )}
-    </div>
-  );
-}
-
-/**
- * 「进程变更」卡里的「客户状态」一段（C13，用户 11-12 选「并进现有的进程变更卡」）：客户层的状态留痕（状态变化、继续持有、暂缓回收、
- * 换负责人归零、撤销转让），新的在前，每条一行（时间、谁、什么事），放不下省略号、悬停看全。默认收起；切项目页签不变（客户层）
- */
-export function TriStateLog({ 行们 }: { 行们: { at: string; 谁: string; 事: string }[] }) {
-  const [开, set开] = useState(false);
-  return (
-    <div className="tri-log">
-      <button type="button" className="tri-log-h" aria-expanded={开} onClick={() => set开((x) => !x)}>
-        <span>客户状态</span>
-        <span className="tri-log-n">{行们.length} 条 {开 ? "▾" : "▸"}</span>
-      </button>
-      {开 && (
-        行们.length ? (
-          <ul className="tri-log-ul">
-            {行们.map((x, i) => {
-              const 时 = fmtDateTime(x.at);
-              return (
-                <li key={`${x.at}-${i}`} className="tri-log-li" title={`${时} · ${x.谁} · ${x.事}`}>
-                  <span className="tri-log-t">{时}</span>
-                  <span className="tri-log-w">{x.谁}</span>
-                  <span className="tri-log-e">{x.事}</span>
-                </li>
-              );
-            })}
-          </ul>
-        ) : <div className="tri-log-empty">还没有客户状态的变化</div>
       )}
     </div>
   );

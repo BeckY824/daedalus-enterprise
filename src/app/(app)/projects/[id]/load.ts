@@ -157,6 +157,9 @@ export const 项目详情字典们: readonly 字典种类[] = ["recycle", "inval
 const 留痕取几条 = 200;
 
 /** 项目详情（团队版项目模式 1a）：改节点、勾尾款 / 验收、节点变更和挂在项目上的沟通。开关关着时不存在 */
+/** 怎么进的公海：超时系统收的 / 办停用时放的（操作人是办的那位管理员，不是离职的人）/ 有人手动放回（QA 第 14 条）。客户详情「历史变更」也用 */
+export const 认放回 = (reason: string | null): 放回方式 => (reason === 超时理由 ? "超时" : reason === 停用项目进公海理由 ? "停用" : "手动");
+
 export async function 读项目详情(me: SessionUser, id: string): Promise<项目详情载入> {
   const p = await prisma.project.findUnique({
     where: { id },
@@ -227,8 +230,6 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 超时回收记在「系统」名下（timeout.ts 系统，QA #16），不是真成员
   // system 不是真账号，按「系统」显示（创建人那一格按 系统补建，见下面 creatorName），共用 人名显示
   const 叫 = (uid: string | null) => (uid ? 人名显示(uid, 名, { 不在: "已不在的成员" }) : null);
-  // 怎么进的公海：超时系统收的 / 办停用时放的（操作人是办的那位管理员，不是离职的人）/ 有人手动放回（QA #14）
-  const 认放回 = (reason: string | null): 放回方式 => (reason === 超时理由 ? "超时" : reason === 停用项目进公海理由 ? "停用" : "手动");
   // 企业版「非原负责人均可领取」：原负责人看得到领取按钮、灰着（pool-rules.ts）
   const 原负责人领不回 = 公海 && me.id === 上一任 && 拦原负责人();
 

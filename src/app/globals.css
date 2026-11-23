@@ -4619,19 +4619,6 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 冷项目（C11）：页签名后一个小灰标「冷」；名字照旧省略号，小标不缩 */
 .cd-cold { flex: none; height: 18px; line-height: 18px; padding: 0 5px; border-radius: var(--r-tag); background: var(--hover); color: var(--text-muted); font-size: var(--fs-min); font-weight: 500; }
 
-/* 「进程变更」卡里的「客户状态」一段（C13）：默认收起，每条一行 */
-.tri-log { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
-.tri-log-h { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; border: 0; background: transparent;
-  color: var(--ink); font-size: var(--fs-note); font-weight: 600; cursor: pointer; }
-.tri-log-h:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.tri-log-n { color: var(--text-muted); font-weight: 400; white-space: nowrap; }
-.tri-log-ul { list-style: none; margin: 6px 0 0; padding: 0; }
-.tri-log-li { display: flex; gap: 8px; min-width: 0; padding: 3px 0; font-size: var(--fs-min); color: var(--ink-soft); white-space: nowrap; }
-.tri-log-t { flex: none; color: var(--text-muted); }
-.tri-log-w { flex: none; max-width: 6em; overflow: hidden; text-overflow: ellipsis; }
-.tri-log-e { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.tri-log-empty { margin-top: 6px; color: var(--text-muted); font-size: var(--fs-min); }
-
 /* 客户列表第 1 页顶上的「仅项目」一小块（customers/ProjectOnlyBlock.tsx）：和下面的客户表格分开，一行省略，不横滚 */
 .cust-ponly { margin-bottom: 12px; min-width: 0; }
 .cust-ponly-h { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-bottom: 6px; font-weight: 600; }

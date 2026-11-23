@@ -81,11 +81,10 @@ import { 登记详情名 } from "@/lib/page-rows";
 import Heat, { 冷热说法, 要看冷热 } from "@/components/Heat";
 import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责人, 转走项目预览of } from "../actions";
 import type { RecordProps, FollowUpRow, ContactRow } from "./types";
-import TriStateBar, { TriStateLog } from "./TriStateBar";
+import TriStateBar from "./TriStateBar";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
-import { 换负责人怎么来的 } from "@/lib/owner-log";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 截止说法, 已过期 } from "@/lib/deadline";
 import { 金额, 金额或空, 合计文字 } from "@/lib/currency";
@@ -223,8 +222,7 @@ export default function RecordView({
   项目页签们 = null,
   抬头节点 = null,
   三态条 = null,
-  三态留痕 = null,
-  留痕放左栏 = false,
+  历史变更 = null,
   当前项目菜单 = null,
   发起点评钮 = null,
   项目动作口 = null,
@@ -837,17 +835,6 @@ export default function RecordView({
     router.refresh();
   }
 
-  /*
-    客户三态状态留痕（C13）：状态留痕 + 归零了的换负责人，新的在前；平时并进项目区「进程变更」卡的「客户状态」一段，
-    没有进程变更卡（没有项目 / 没有我能看的项目）时放左栏客户资料下面（A1）。三态关着不摆
-  */
-  const 状态留痕 = 三态留痕 ? (
-    <TriStateLog 行们={[
-      ...三态留痕,
-      ...换负责人记录.filter((x) => x.三态归零).map((x) => ({ at: x.at, 谁: x.操作人 ?? "已删除的成员", 事: `换负责人（${换负责人怎么来的(x.kind)}${x.到 ? `给 ${x.到}` : ""}），三态钟归零` })),
-    ].sort((a, b) => b.at.localeCompare(a.at))} />
-  ) : null;
-
   /** 推荐关系那一节：个人版 / 团队版摆在基本资料下面，企业版不摆 */
   const 推荐节 = !外贸 && (
           <div className="rec-sec">
@@ -1370,6 +1357,8 @@ export default function RecordView({
             {计划过期天 > 0 ? `下次跟进已过 ${计划过期天} 天` : 冷热说法(customer.lastFollowAt)}
           </span>
         )}
+        {/* 「历史变更」小方框（11-24）：这一行末尾，放不下随这一行折到下一行；点开是弹窗（HistoryChanges.tsx） */}
+        {历史变更}
       </div>
       {就地话 && <div role={就地话.错 ? "alert" : "status"} className={就地话.错 ? "cd-task-err rec-said" : "rec-plan-said rec-said"}>{就地话.话}</div>}
 
@@ -1596,7 +1585,6 @@ export default function RecordView({
               <CustomerResearchTag customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} on记跟进={点跟进} 卡 上次初值={上次背调} />
             </ProjectFold>
           )}
-          {留痕放左栏 && 状态留痕 && <div className="rec-sec tri-log-left" data-testid="tri-log-left">{状态留痕}</div>}
           {!企业 && (
           <div className="rec-sec">
             <div className="rec-sec-t">
@@ -1627,8 +1615,6 @@ export default function RecordView({
           开建项目: 能建项目 ? 开建项目 : null,
           全只读,
           提醒: 提醒条,
-          // C13：状态留痕 + 归零了的换负责人，新的在前，并进「进程变更」卡的「客户状态」一段；三态关着不摆
-          客户状态留痕: 留痕放左栏 ? null : 状态留痕,
         })}
 
         {/* ================= 中栏：时间线 ================= */}
