@@ -132,6 +132,11 @@ export async function 删片(dir: string, 段: number, 片: number): Promise<voi
   await fsp.rm(path.join(dir, 段名(段), 片名(片)), { force: true });
 }
 
+/** 删一整段还没拼的片（连片目录，PR3 丢段：上滑取消、不到 1 秒） */
+export async function 删段片(dir: string, 段: number): Promise<void> {
+  await fsp.rm(path.join(dir, 段名(段)), { recursive: true, force: true });
+}
+
 /**
  * 把一段的片按片号接起来写成 seg-NN.<格式>（.tmp → fsync → 改名），再删片目录。回相对 录音根 的路径。
  * 只是字节相接：传文件切的片接回去就是原文件；网页录 MediaRecorder 的分片接起来也是一份完整的（PR3）。转封装、多段拼接是 PR4 的 ffmpeg

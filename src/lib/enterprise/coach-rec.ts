@@ -23,8 +23,40 @@ export const 片上限字节 = 5 * 1024 * 1024;
 export const 文件上限字节 = 200 * 1024 * 1024;
 /** 单个最长 2 小时：时长 PR4 用 ffprobe 算了才判（不信客户端），这里只给界面写提示 */
 export const 时长上限毫秒 = 2 * 60 * 60 * 1000;
-/** 一段最多几片（200MB / 5MB） */
-export const 每段片数上限 = Math.ceil(文件上限字节 / 片上限字节);
+/**
+ * 一段最多几片：传文件 5MB 一片最多 40 片；按住说话、点按录音边录边传 15 秒一片（PR3），点按录音一段最长 2 小时 = 480 片，留到 600。
+ * 总字节照样不超过 文件上限字节（收一片时判）
+ */
+export const 每段片数上限 = 600;
+/** 网页录边录边传：每片多少毫秒（MediaRecorder timeslice） */
+export const 录音每片毫秒 = 15_000;
+/** 按住说话一条最长（几段合计）10 分钟；点按录音一条最长 2 小时（11-22 Even 线下陪练要长录音） */
+export const 按住上限毫秒 = 10 * 60 * 1000;
+export const 点按上限毫秒 = 时长上限毫秒;
+/** 不到 1 秒的不要 */
+export const 最短录音毫秒 = 1_000;
+/** 录着被打断的原因（前端认出来报上来，只收这几种；给人看「录音在 0:42 被打断（来电或话筒被占用），已录部分已保存」） */
+export const 打断原因们 = ["锁屏或切到后台", "来电或话筒被占用", "录音出错"] as const;
+export type 打断原因 = (typeof 打断原因们)[number];
+export type 打断 = { 段: number; 秒: number; 原因: 打断原因 };
+/** 传完时带上来的打断：原因在名单里、秒数 0–2 小时；不对的当没有 */
+export function 认打断(x: unknown): { 秒: number; 原因: 打断原因 } | null {
+  if (!x || typeof x !== "object") return null;
+  const o = x as Record<string, unknown>;
+  if (!(打断原因们 as readonly unknown[]).includes(o.原因)) return null;
+  const 秒 = Number(o.秒);
+  if (!Number.isFinite(秒) || 秒 < 0 || 秒 > 时长上限毫秒 / 1000) return null;
+  return { 秒: Math.round(秒), 原因: o.原因 as 打断原因 };
+}
+export function 读打断们(x: string | null | undefined): 打断[] {
+  if (!x) return [];
+  try {
+    const v = JSON.parse(x) as unknown;
+    return Array.isArray(v) ? v.filter((t): t is 打断 => !!t && typeof t === "object" && Number.isInteger((t as 打断).段) && (t as 打断).段 >= 1 && !!认打断(t)) : [];
+  } catch {
+    return [];
+  }
+}
 /** 一条最多几段（录音被打断后接着录的；传文件固定 1 段） */
 export const 段数上限 = 20;
 /** 每个进程同时最多收几片（每片边收边写盘，不整片放内存）；满了 429，浏览器隔几秒自己重试 */
@@ -47,6 +79,9 @@ export const 录音状态 = ["上传中", "待提交", "转写中", "整理中",
 export type 录音状态 = (typeof 录音状态)[number];
 /** 草稿：录的人自己看得到、能放弃的 */
 export const 草稿状态: readonly 录音状态[] = ["上传中", "待提交", "待确认", "整理失败"];
+/** 能「再按住补一段」的：录的（不是传的文件）、待提交、段数没到上限（时长上限前端按 按住上限毫秒 / 点按上限毫秒 管，服务端 PR4 规整时按 2 小时判） */
+export const 能补段 = (r: { status: string; sourceKind: string; segCount: number; deletedAt?: Date | null }) =>
+  !r.deletedAt && r.status === "待提交" && r.sourceKind !== "上传" && r.segCount < 段数上限;
 /** 正在转写、整理：放弃要等它跑完 */
 const 处理中状态: readonly 录音状态[] = ["转写中", "整理中"];
 
@@ -173,13 +208,16 @@ export function 开始输入问题(x: { sourceKind?: unknown; bytes?: unknown; f
   return null;
 }
 
-/** 片们齐不齐：每段从 0 号起连着、没有空洞；传文件还要总字节对得上开始时报的。齐了回 null，否则回一句 */
-export function 片们问题(片们: readonly { 段: number; 片: number; 字节: number }[], 来源: string, 报的字节: number | null): string | null {
+/**
+ * 片们齐不齐：每段从 0 号起连着、没有空洞；传文件还要总字节对得上开始时报的。齐了回 null，否则回一句。
+ * 已有段数（PR3「再按住补一段」）：前面已经拼好的段数，这回的片要从下一段起连着
+ */
+export function 片们问题(片们: readonly { 段: number; 片: number; 字节: number }[], 来源: string, 报的字节: number | null, 已有段数 = 0): string | null {
   if (!片们.length) return "还没传任何内容";
   const 按段 = new Map<number, number[]>();
   for (const x of 片们) 按段.set(x.段, [...(按段.get(x.段) ?? []), x.片]);
   const 段们 = [...按段.keys()].sort((a, b) => a - b);
-  if (段们.some((s, i) => s !== i + 1)) return "录音的段不连续，有一段没传上来";
+  if (段们.some((s, i) => s !== 已有段数 + i + 1)) return "录音的段不连续，有一段没传上来";
   for (const s of 段们) {
     const 号 = 按段.get(s)!.sort((a, b) => a - b);
     if (号.some((q, i) => q !== i)) return "还有片没传上来";

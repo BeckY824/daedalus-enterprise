@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import {
   认录音格式, 读段片, 片们问题, 开始输入问题, 规整文件名, 是录音编号, 能传片, 能放弃录音, 不能放弃话, 能听原声, 能看录音进度, 给人看的文件名,
-  文件上限字节, 每段片数上限, 段数上限, 选文件accept,
+  文件上限字节, 每段片数上限, 段数上限, 选文件accept, 认打断, 读打断们, 能补段, 打断原因们,
 } from "@/lib/enterprise/coach-rec";
 import { 签取文件地址, 验取文件签名, 取文件有效秒 } from "@/lib/enterprise/coach-rec-sign";
 import { 文件名打码 } from "@/lib/enterprise/notice-mask";
@@ -39,10 +39,10 @@ describe("编号、段号、片号", () => {
     expect(是录音编号("cmi3x0abc0000def0ghi1jkl2")).toBe(true);
     for (const x of ["../x", "", "A".repeat(25), "a", "cmi3x0abc/../../etc", null, 1]) expect(是录音编号(x)).toBe(false);
   });
-  it("段号 1..20、片号 0..39，只收纯数字", () => {
+  it("段号 1..20、片号 0..599（PR3：点按录音 2 小时 × 15 秒一片 = 480 片），只收纯数字", () => {
     expect(读段片("1", "0")).toEqual({ 段: 1, 片: 0 });
     expect(读段片(String(段数上限), String(每段片数上限 - 1))).toEqual({ 段: 段数上限, 片: 每段片数上限 - 1 });
-    for (const [a, b] of [["0", "0"], ["21", "0"], ["1", "40"], ["1", "-1"], ["1", "1.5"], ["..", "0"], ["1", " 1"], ["01x", "0"]]) expect(读段片(a, b)).toBeNull();
+    for (const [a, b] of [["0", "0"], ["21", "0"], ["1", String(每段片数上限)], ["1", "-1"], ["1", "1.5"], ["..", "0"], ["1", " 1"], ["01x", "0"]]) expect(读段片(a, b)).toBeNull();
   });
 });
 
@@ -60,6 +60,37 @@ describe("片齐不齐", () => {
     expect(片们问题([片(1, 0), 片(1, 1), 片(2, 0)], "网页录", null)).toBeNull();
     expect(片们问题([片(1, 0), 片(3, 0)], "网页录", null)).toBe("录音的段不连续，有一段没传上来");
     expect(片们问题([片(2, 0)], "飞书原生录", null)).toBe("录音的段不连续，有一段没传上来");
+  });
+  it("补段（PR3）：已经拼好 N 段的，这回的片从 N + 1 段起、连着", () => {
+    expect(片们问题([片(2, 0), 片(2, 1)], "网页录", null, 1)).toBeNull();
+    expect(片们问题([片(3, 0)], "网页录", null, 2)).toBeNull();
+    expect(片们问题([片(1, 0)], "网页录", null, 1)).toBe("录音的段不连续，有一段没传上来");
+    expect(片们问题([片(3, 0)], "网页录", null, 1)).toBe("录音的段不连续，有一段没传上来");
+  });
+});
+
+describe("打断、补段（PR3）", () => {
+  it("打断只收白名单原因、0 秒到 2 小时，秒取整；别的一律不记", () => {
+    expect(认打断({ 秒: 42.4, 原因: "来电或话筒被占用" })).toEqual({ 秒: 42, 原因: "来电或话筒被占用" });
+    expect(认打断({ 秒: 0, 原因: "锁屏或切到后台" })).toEqual({ 秒: 0, 原因: "锁屏或切到后台" });
+    for (const 坏 of [null, "x", { 秒: 1, 原因: "<b>随便写</b>" }, { 秒: -1, 原因: "录音出错" }, { 秒: 7201, 原因: "录音出错" }, { 秒: "abc", 原因: "录音出错" }, { 原因: 打断原因们[0], 秒: Infinity }]) {
+      expect(认打断(坏)).toBeNull();
+    }
+  });
+  it("读打断们：坏 JSON、不是数组、里面混了不像样的都只留像样的", () => {
+    expect(读打断们(null)).toEqual([]);
+    expect(读打断们("{坏")).toEqual([]);
+    expect(读打断们('{"a":1}')).toEqual([]);
+    expect(读打断们('[{"段":1,"秒":3,"原因":"录音出错"},{"段":2,"秒":3,"原因":"乱写"},{"段":0,"秒":1,"原因":"录音出错"}]')).toEqual([{ 段: 1, 秒: 3, 原因: "录音出错" }]);
+  });
+  it("能补段：录的（不是传的文件）、待提交、没删、段数没到上限", () => {
+    const 行 = { status: "待提交", sourceKind: "网页录", segCount: 1, deletedAt: null };
+    expect(能补段(行)).toBe(true);
+    expect(能补段({ ...行, sourceKind: "飞书原生录" })).toBe(true);
+    expect(能补段({ ...行, sourceKind: "上传" })).toBe(false);
+    expect(能补段({ ...行, status: "转写中" })).toBe(false);
+    expect(能补段({ ...行, deletedAt: new Date() })).toBe(false);
+    expect(能补段({ ...行, segCount: 段数上限 })).toBe(false);
   });
 });
 

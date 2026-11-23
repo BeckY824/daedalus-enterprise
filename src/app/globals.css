@@ -5396,6 +5396,31 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item:last-child { border-bottom: 0; }
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item:disabled { color: var(--text-muted); cursor: not-allowed; }
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-sheet-item .menu-2l { max-width: none; }
+/* 录音点评 PR3（11-22，components/CoachRecorder/HoldToTalkPanel.tsx）：录音面板。按钮的手势相关（不弹长按菜单、不选中文字、不触摸滚动）不分皮肤都要，外观也一起写在这里。
+   按钮整行宽、高 ≥ 2×触屏点击区；录着变红；上滑到取消区变灰底红字。浮层：红点 + 计时 + 音量条 + 一句（上滑取消 / 还能说 N 秒 / 松手取消） */
+.ptt-panel { display: flex; flex-direction: column; gap: var(--s3, 12px); min-width: 0; }
+.ptt-panel:focus { outline: none; }
+.ptt-row { display: flex; align-items: center; gap: var(--s2, 8px); }
+.ptt-btn { flex: 1; min-height: calc(var(--hit-touch, 44px) * 2); padding: var(--s2, 8px) var(--s4, 16px); border: 1px solid var(--line); border-radius: var(--r-card); background: var(--hover); color: var(--ink); font-size: var(--fs-section); font-weight: 600; cursor: pointer;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+.ptt-btn:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.ptt-btn:disabled { color: var(--text-muted); cursor: progress; }
+.ptt-btn.ptt-on { border-color: var(--danger); background: var(--danger); color: var(--on-ink); }
+.ptt-btn.ptt-cancel { border-color: var(--danger-line); background: var(--danger-bg); color: var(--danger-text); }
+.ptt-cancel-btn { flex: none; min-height: var(--hit-touch, 44px); }
+.ptt-slot { min-height: 40px; display: flex; flex-direction: column; justify-content: flex-end; }
+.ptt-float { min-height: 40px; box-sizing: border-box; white-space: nowrap; display: flex; align-items: center; gap: var(--s2, 8px); padding: var(--s2, 8px) var(--s3, 12px); border-radius: var(--r-ctl); background: var(--hover); min-width: 0; }
+.ptt-float.ptt-cancel { background: var(--danger-bg); color: var(--danger-text); }
+.ptt-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: var(--danger); animation: ptt-blink 1s steps(2, start) infinite; }
+.ptt-time { flex: none; font-variant-numeric: tabular-nums; font-weight: 600; }
+.ptt-level { flex: 1; height: 4px; min-width: 40px; overflow: hidden; border-radius: 999px; background: var(--line); }
+.ptt-level > span { display: block; height: 100%; background: var(--danger); transform-origin: left center; transition: transform 80ms var(--ease); }
+.ptt-float-t { flex: none; font-size: var(--fs-note, 12px); }
+.crec-seg { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ptt-fallback { display: flex; flex-direction: column; gap: var(--s2, 8px); }
+@keyframes ptt-blink { to { visibility: hidden; } }
+@media (prefers-reduced-motion: reduce) { .ptt-dot { animation: none; } .ptt-level > span { transition: none; } }
+.ptt-sheet .ant-drawer-body { padding-bottom: calc(var(--s4, 16px) + env(safe-area-inset-bottom)); }
 /* 录音点评 PR5：确认框里 AI 起草的两格虚线框；转写全文（收起、只读、等宽换行）；沟通卡上「录音点评」标签（话筒、虚线框）和下面的播放 / 转写 */
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-ai.ant-input, :root:is(:not([data-skin]), [data-skin="now"]) .crec-ai.ant-input-affix-wrapper, :root:is(:not([data-skin]), [data-skin="now"]) .crec-ai .ant-input { border-style: dashed; }
 :root:is(:not([data-skin]), [data-skin="now"]) .crec-confirm-audio { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
