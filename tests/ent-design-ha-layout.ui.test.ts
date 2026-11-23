@@ -183,6 +183,35 @@ for (const 宽 of [1024, 1280, 1366, 390]) {
   });
 }
 
+/* 设计语言 D-2 · 方案 A（3703 补点 11-22）：手机白底下问答框和右栏指标都铺满全宽、框里内容左右对称；原底照旧左右各留 12。
+   框本身 width: 100%，光给负外边距只左移不撑宽（390 量到框 0→366、内容 17→349 偏左） */
+it.each([390, 375])("D-2 %ipx（照 AppShell 外壳）：白底问答框、指标铺满全宽，框里内容左右对称；原底左右各留 12", async (宽) => {
+  const { page, errors } = await 开({ 宽, 壳: true });
+  try {
+    await page.evaluate(() => { (document.querySelector(".shell > nav") as HTMLElement).style.display = "none"; });
+    const 量 = () => page.evaluate(() => {
+      const 框 = document.querySelector(".cli-ck .cli-frame")!.getBoundingClientRect();
+      const 行 = document.querySelector(".cli-frame .home-cth-todo")!.getBoundingClientRect();
+      const 指标 = document.querySelector(".home-cards")!.getBoundingClientRect();
+      return { 框左: 框.left, 框右: 框.right, 行左距: 行.left - 框.left, 行右距: 框.right - 行.right, 指标左: 指标.left, 指标右: 指标.right, 页宽: document.documentElement.clientWidth, 横滚: document.documentElement.scrollWidth - document.documentElement.clientWidth };
+    });
+    const 白 = await 量();
+    expect(白.框左, JSON.stringify(白)).toBeCloseTo(0, 0);
+    expect(白.框右, JSON.stringify(白)).toBeCloseTo(白.页宽, 0);
+    expect(白.行左距, JSON.stringify(白)).toBeGreaterThanOrEqual(12);
+    expect(Math.abs(白.行左距 - 白.行右距), JSON.stringify(白)).toBeLessThanOrEqual(1);
+    expect([白.指标左, 白.指标右], JSON.stringify(白)).toEqual([白.框左, 白.框右]);
+    expect(白.横滚).toBeLessThanOrEqual(0);
+    await page.evaluate(() => { document.documentElement.dataset.paper = "tone"; });
+    await page.waitForTimeout(100); // 减弱动态下 transition 还有 0.01ms，改完属性等一帧再量
+    const 原 = await 量();
+    expect(原.框左, JSON.stringify(原)).toBeCloseTo(12, 0);
+    expect(原.框右, JSON.stringify(原)).toBeCloseTo(原.页宽 - 12, 0);
+    expect(原.横滚).toBeLessThanOrEqual(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("H-新4 / 新3 / 新5（1366 高 900）：整块上下居中；开命令表不撑高、顶边不动；只亮一行；多行输入顶边不动；发送钮品牌蓝", async () => {
   const { page } = await 开({ 宽: 1366, 待办: false });
   try {
@@ -344,7 +373,13 @@ it.each([[1, 1024, 768], [1, 1366, 900], [2, 1024, 768], [2, 1366, 900]] as cons
       await page.locator(".home-kpi-body").waitFor();
       await page.waitForTimeout(400);
       const 标 = `${行} 行 ${宽}×${高} ${点法}`;
-      if (行 === 1) expect(await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height), `${标} 这一组变高了`).toBeGreaterThan(组高 + 10);
+      // 设计语言 D-2 方案 A（11-22）：1366 下右栏指标拉满问答区那么高，展开一张在格里摆得下、这一组不变高；1024（右栏落到下面）才量得出变高
+      if (行 === 1 && 宽 === 1024) expect(await page.locator(".cli-ck-g").evaluate((e) => e.getBoundingClientRect().height), `${标} 这一组变高了`).toBeGreaterThan(组高 + 10);
+      // 1366 这一组不变高，就得量展开的那张真摆得下：卡底边不超出 .cli-ck-g（超出就是压到下面去、被截或盖住别的）
+      if (宽 === 1366) {
+        const 底 = await page.evaluate(() => ({ 卡: document.querySelectorAll(".home-kpi-card")[2].getBoundingClientRect().bottom, 组: document.querySelector(".cli-ck-g")!.getBoundingClientRect().bottom }));
+        expect(底.卡, `${标} 展开的卡底边不出 .cli-ck-g`).toBeLessThanOrEqual(底.组 + 0.5);
+      }
       expect(Math.abs(await 顶(page, ".cli-ck-g") - 起), `${标} 展开`).toBeLessThanOrEqual(1);
       expect(Math.abs(await 顶(page, ".cli-frame") - 框起), `${标} 问答卡顶`).toBeLessThanOrEqual(1);
       await 点();
