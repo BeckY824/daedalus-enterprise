@@ -78,18 +78,18 @@ describe("B1 渠道页（2026-10-29 渠道改版后）", () => {
 });
 
 describe("B3 起草转介绍邀请", () => {
-  it("首页 AI 回答的客户行：外贸、企业版都不摆", async () => {
+  // 设计语言 HC-2b（#441）把回答下面的客户卡片（CustomerRow，转介绍邀请就在那里）整个删了，「涉及」一行只有起草跟进话术：
+  // 首页 AI 回答里哪种版本都不再有转介绍邀请，开关也不用再往 TurnLog / TurnView 传
+  it("首页 AI 回答里没有转介绍邀请（客户卡片 HC-2b 已删）", async () => {
     const s = await 读("src/app/(app)/dashboard/TurnView.tsx");
-    expect(s).toContain("{已签 && !外贸精简(b) && !企业版 && (");
-    expect(s).toContain("企业版 = false,");
+    expect(s).not.toContain("转介绍");
+    expect(s).not.toContain("CustomerRow");
   });
 
-  it("开关一路传下去：layout → AppShell → AiDock → HomeChat → TurnLog → TurnView", async () => {
+  it("开关一路传下去：layout → AppShell → AiDock → HomeChat", async () => {
     expect(await 读("src/app/(app)/layout.tsx")).toContain("企业版={企业版()}");
     expect(await 读("src/components/AppShell.tsx")).toContain("企业版={企业版}");
     expect(await 读("src/components/AiDock.tsx")).toMatch(/<HomeChat[\s\S]*?企业版=\{企业版\}/);
-    expect(await 读("src/app/(app)/dashboard/HomeChat.tsx")).toMatch(/<TurnLog[\s\S]*?企业版=\{企业版\}/);
-    expect(await 读("src/app/(app)/dashboard/TurnLog.tsx")).toMatch(/<TurnView[\s\S]*?企业版=\{企业版\}/);
     // 首页那条原本就传
     expect(await 读("src/app/(app)/dashboard/page.tsx")).toContain("企业版={企业版()}");
   });
