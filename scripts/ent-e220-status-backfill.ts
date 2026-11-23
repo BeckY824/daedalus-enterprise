@@ -1,15 +1,15 @@
 /**
- * E-220（Even 11-23，回 E-219 选 B）：库里客户状态（custStatus）为空、名下有项目、不在客户公海的客户，分批把现算的状态写进库，一次性数据脚本。
- *   公海里的（CustomerPool 有行的）一家不动（Even：「公海的随领取和项目变动自然落库」）。
- *   另一组 --set e220-7：「成交→潜在」247 家里近 90 天有跟进的 7 家，改前必须是「成交」（Even：「按 B 的那套约束单独写一批」）。
- * 依据：Even 11-23（E-220）「只写不在公海那 14,342 家」「只写 custStatus 一个字段」「先 1 批 200 家试点……再每批 1,000 家、每天不超过 3 批」
+ * E-220（客户 11-23，回 E-219 选 B）：库里客户状态（custStatus）为空、名下有项目、不在客户公海的客户，分批把现算的状态写进库，一次性数据脚本。
+ *   公海里的（CustomerPool 有行的）一家不动（E-220：「公海的随领取和项目变动自然落库」）。
+ *   另一组 --set e220-7：「成交→潜在」247 家里近 90 天有跟进的 7 家，改前必须是「成交」（E-220：「按 B 的那套约束单独写一批」）。
+ * 依据：E-220（11-23）「只写不在公海那 14,342 家」「只写 custStatus 一个字段」「先 1 批 200 家试点……再每批 1,000 家、每天不超过 3 批」
  *   「任一批抽查对不上，整批撤回并停下报我」「247 家只修近 90 天有跟进的 7 家」。
  *
  * 目标值不手填：读库这一半照 cust-status-auto-db.ts 重算客户状态（PR-A 这一版）、规则用 cust-status-auto.ts 算客户状态（同一个函数）：
  *   - 项目 = Project.customerId 指着它、没软删的；pooledAt 带上（在线索公海的不算在推）
  *   - 不算 = 结局线索流失 + 线索验证终判「无效线索」+ 无效原因是重复线索（dict-invalid-5 现名 + 原名，同 重复线索名们 / 重复线索不算）
  *   - 序号 → 字典 custStatus 这一项现在的名字（同 客户状态名们）
- * 额外一道（Even 要补写不依赖新规则上线）：每家再用 main 上的旧规则（下面 旧规则算客户状态，逐字抄自 ent/main 3e26a613 的
+ * 额外一道（客户要补写不依赖新规则上线）：每家再用 main 上的旧规则（下面 旧规则算客户状态，逐字抄自 ent/main 3e26a613 的
  *   cust-status-auto.ts；读库那一半旧版只取 phase/node/result、不排重复线索）算一次，新旧一致才写；不一致的列出来、不写。
  *
  * 只写 custStatus 一列，不动 updatedAt（和 重算客户状态 不同：那条走 Prisma updateMany 会顶 updatedAt）。理由：
@@ -17,8 +17,10 @@
  *   研究 / AI 助手按 updatedAt 倒序取客户。一次顶 1.4 万家会让这些地方误以为人动过；不顶则状态以外一切照旧。
  *   不顶的代价：编辑表单打开在写之前、保存在写之后，乐观锁看不出这一格变了——企业版状态按项目自动算时表单本来不交 custStatus
  *   （actions.ts 企客状态：改已有客户 = null 不写），所以不会被盖回去。AuditLog 里照样记改前的 updatedAt 备查。
- * 留痕：每改一格写一条 AuditLog（同 ent-e218-two-status-write.ts：userId/userName = 操作人、entity Customer、entityId 客户 id、
- *   detail 带 脚本 / 批次 / 批 / 编号 / 旧 / 新 / 依据）。撤回也逐格记一条（类 = 撤回、撤的批次）。
+ * 留痕：每改一格写一条 AuditLog（同 ent-e218-two-status-write.ts：userId/userName = --操作人 指定的账号（必填）、entity Customer、entityId 客户 id、
+ *   detail 带 脚本 / 批次 / 批 / 编号 / 旧 / 新 / 依据原话）。撤回也逐格记一条（类 = 撤回、撤的批次），撤回自己另起批次「原批次-undo-xxxx」。
+ *   客户 E-244（审计）：写和撤回的每条正文开头都带「[批次 <批次号> · 执行：Becky（服务商）· 依据 <E-编号>]」，detail 带 批次 / 执行 / 依据 / 对应行
+ *  （ent-batch-audit-prefix.ts）；每条命令都要带 --basis；事务里回读逐条核本批日志的前缀和四个键，不对整批回滚。
  *
  * 分批（固定、可复现）：
  *   候选 = 没软删、custStatus 为空、名下有没软删的项目、不在客户公海、新旧规则一致且算出非空。
@@ -31,9 +33,10 @@
  *   写批 n 要求试点和 1..n-1 批都已写（没撤回）；同一北京日写的 1,000 家批（n ≥ 1）不超过 3 批。
  *
  * 用法（本机，代码副本根目录；服务器上用打包的 cjs，见 c2写入步骤.md）：
+ *   （每条命令都要带 --basis <E-编号> --操作人 <userId>，下面省略）
  *   npx tsx scripts/ent-e220-status-backfill.ts <crm.db> --plan [--log <文件>]                        只读：候选数、新旧不一致名单、批数、天数
  *   npx tsx scripts/ent-e220-status-backfill.ts <crm.db> --batch <0|试点|n> --dry-run [--log <文件>]
- *   CONFIRM=yes npx tsx scripts/ent-e220-status-backfill.ts <crm.db> --batch <0|n> --write [--log <文件>] [--操作人 <userId>]
+ *   CONFIRM=yes npx tsx scripts/ent-e220-status-backfill.ts <crm.db> --batch <0|n> --write [--log <文件>]
  *   npx tsx scripts/ent-e220-status-backfill.ts <crm.db> --set e220-7 --dry-run | --write
  *   npx tsx scripts/ent-e220-status-backfill.ts <crm.db> --undo <批次号> --dry-run | --write          整批改回写前的值（空 / 成交）
  * 打包（服务器没有 tsx，只依赖 node:sqlite，Node ≥ 22.13）：
@@ -51,10 +54,11 @@ import { dirname } from "node:path";
 import { 算客户状态, 客户状态id, 客户状态序号, type 算状态的项目, type 客户状态序号 as 序号 } from "@/lib/enterprise/cust-status-auto";
 import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 import { 企业版字典, 本套名, 是交付 } from "@/lib/project/stage-dict";
+import * as 前缀件 from "./ent-batch-audit-prefix";
 
 const 脚本 = "ent-e220-status-backfill.ts";
 const 件名 = "E-220 客户状态补写";
-const 依据 = "Even 11-23（E-220）：「只写不在公海那 14,342 家」「只写 custStatus 一个字段」「先 1 批 200 家试点……每批 1,000 家、每天不超过 3 批」「任一批抽查对不上，整批撤回」「247 家只修近 90 天有跟进的 7 家」";
+const 依据 = "E-220（11-23）：「只写不在公海那 14,342 家」「只写 custStatus 一个字段」「先 1 批 200 家试点……每批 1,000 家、每天不超过 3 批」「任一批抽查对不上，整批撤回」「247 家只修近 90 天有跟进的 7 家」";
 /** 本脚本的 AuditLog 都在这之后（北京 2026-11-23 00:00），按 AuditLog_at_idx 找，不扫全表 */
 const 留痕起点 = 1795363200000;
 const 重复线索id = "dict-invalid-5";
@@ -90,20 +94,22 @@ function 旧规则算客户状态(项目们: readonly 旧项目[]): 序号 | nul
 /* ---------- 参数 ---------- */
 const argv = process.argv.slice(2);
 const 取 = (k: string) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
-const 带值 = new Set(["--log", "--操作人", "--batch", "--set", "--undo"]);
+const 带值 = new Set(["--log", "--操作人", "--batch", "--set", "--undo", "--basis"]);
 const 库 = argv.find((a, i) => !a.startsWith("--") && !(i > 0 && 带值.has(argv[i - 1])));
 const 看计划 = argv.includes("--plan");
 const 空跑 = argv.includes("--dry-run");
 const 要写 = argv.includes("--write");
 const 日志文件 = 取("--log");
 const 批参 = 取("--batch"), 组参 = 取("--set"), 撤参 = 取("--undo");
-const 用法 = "用法：<crm.db> --plan | --batch <0|试点|n> (--dry-run|--write) | --set e220-7 (--dry-run|--write) | --undo <批次号> (--dry-run|--write)；写要带 CONFIRM=yes；可选 --log <文件> --操作人 <userId>";
+const 用法 = "用法：<crm.db> --plan | --batch <0|试点|n> (--dry-run|--write) | --set e220-7 (--dry-run|--write) | --undo <批次号> (--dry-run|--write)；写要带 CONFIRM=yes；必带 --basis <E-编号，如 E-220/E-223> --操作人 <userId>；可选 --log <文件>";
 const 模式数 = [看计划, 批参 != null, 组参 != null, 撤参 != null].filter(Boolean).length;
 if (!库 || 模式数 !== 1 || (!看计划 && 空跑 === 要写) || (看计划 && 要写)) { console.error(用法); process.exit(2); }
 if (组参 != null && 组参 !== 七家批) { console.error(`--set 只认 ${七家批}`); process.exit(2); }
 const 批号 = 批参 == null ? null : 批参 === "试点" ? 0 : /^\d+$/.test(批参) ? Number(批参) : NaN;
 if (批参 != null && !Number.isInteger(批号)) { console.error(用法); process.exit(2); }
 if (要写 && process.env.CONFIRM !== "yes") { console.error("写库要带 CONFIRM=yes"); process.exit(2); }
+const 依据号 = 前缀件.取依据(argv);
+const 操作人id = 前缀件.取操作人(argv);
 
 const 打开 = DatabaseSync as unknown as new (路径: string, 选项: { readOnly: boolean }) => DatabaseSync;
 const db = new 打开(库, { readOnly: !要写 });
@@ -130,10 +136,8 @@ function 落盘() {
   日志行们.length = 0;
 }
 
-const OP = (取("--操作人")
-  ? 一("SELECT id, name FROM User WHERE id = ?", 取("--操作人")!)
-  : 一("SELECT id, name FROM User WHERE role = 'ADMIN' AND active = 1 ORDER BY createdAt LIMIT 1")) as { id: string; name: string } | undefined;
-if (!OP) 停("找不到操作人（系统管理员），用 --操作人 <userId> 指定");
+const OP = 一("SELECT id, name FROM User WHERE id = ?", 操作人id) as { id: string; name: string } | undefined;
+if (!OP) 停(`找不到操作人「${操作人id}」（--操作人 要填账号的 userId）`);
 
 function 状态名们(): string[] {
   const 名 = new Map(全("SELECT id, name FROM EntDictItem WHERE kind = 'custStatus'").map((r) => [String(r.id), String(r.name)]));
@@ -325,9 +329,9 @@ function 七家计划(): 计划行[] {
   return ids.map((id) => {
     const c = 客.get(id)!;
     if (c.删了) 停(`NO.${c.no} 在回收站`);
-    if (c.在公海) 停(`NO.${c.no} 已进客户公海（Even：公海的不动）`);
+    if (c.在公海) 停(`NO.${c.no} 已进客户公海（E-220：公海的不动）`);
     if (c.新 !== c.旧) 停(`NO.${c.no} 新旧规则不一致（旧 ${显(c.旧)} / 新 ${显(c.新)}）`);
-    if (c.新 !== "潜在") 停(`NO.${c.no} 现算是「${显(c.新)}」，预期「潜在」（项目这几天动过，先报 Even）`);
+    if (c.新 !== "潜在") 停(`NO.${c.no} 现算是「${显(c.新)}」，预期「潜在」（项目这几天动过，先报客户）`);
     if (c.存 === "潜在" && 写入.全部.some((w) => w.客户id === id)) return { 客户: c, 改前: "成交", 改后: "潜在", 结果: "已完成", 原因: "已写过" } as 计划行;
     if (c.存 !== "成交") 停(`NO.${c.no} 库里现在是「${显(c.存)}」，不是预期的改前值「成交」`);
     return { 客户: c, 改前: "成交", 改后: "潜在", 结果: "写", 原因: "成交→潜在，近90天有跟进（E-220 只修这 7 家）" } as 计划行;
@@ -345,9 +349,9 @@ function 写入(行们: 计划行[], 批: string, 批次: string): number {
     if (r.结果 !== "写") continue;
     if (Number((写客户.run(r.改后, r.客户.id, r.改前) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${r.客户.no} 改动不是 1 行`);
     写日志.run(新日志id(T), T, OP!.id, OP!.name, "update", "Customer", r.客户.id,
-      `[${件名} 批${批} NO.${r.客户.no}] 客户状态（按项目现算补写）：custStatus ${显(r.改前)} → ${r.改后}`,
-      JSON.stringify({ 脚本, 类: "写", 批次, 批, 编号: `NO.${r.客户.no}`, 客户编号: r.客户.no, 表: "Customer", 键列: "id", 格: "客户状态（按项目现算补写）", 操作: "update",
-        列: ["custStatus"], 旧: { custStatus: r.改前, updatedAt: r.客户.updatedAt }, 新: { custStatus: r.改后 }, 新旧规则: { 旧: r.客户.旧, 新: r.客户.新 }, 原因: r.原因 || "按项目现算补写", 依据 }));
+      前缀件.加前缀(批次, 依据号, `[${件名} 批${批} NO.${r.客户.no}] 客户状态（按项目现算补写）：custStatus ${显(r.改前)} → ${r.改后}`),
+      JSON.stringify(前缀件.加键({ 脚本, 类: "写", 批次, 批, 编号: `NO.${r.客户.no}`, 客户编号: r.客户.no, 表: "Customer", 键列: "id", 格: "客户状态（按项目现算补写）", 操作: "update",
+        列: ["custStatus"], 旧: { custStatus: r.改前, updatedAt: r.客户.updatedAt }, 新: { custStatus: r.改后 }, 新旧规则: { 旧: r.客户.旧, 新: r.客户.新 }, 原因: r.原因 || "按项目现算补写", 依据 }, 批次, 依据号, { Customer: r.客户.id })));
     写了 += 1;
   }
   for (const r of 行们) {
@@ -357,6 +361,9 @@ function 写入(行们: 计划行[], 批: string, 批次: string): number {
   }
   const 日志数 = Number(一("SELECT count(*) n FROM AuditLog WHERE at >= ? AND entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.批次') = ?", 留痕起点, 批次)?.n);
   if (日志数 !== 写了) throw new Error(`操作日志 ${日志数} 条 ≠ 改动 ${写了} 行`);
+  // 客户 E-244：本批每条日志正文带前缀、detail 带 批次 / 执行 / 依据，逐条核，不对整批回滚
+  const 核 = 前缀件.核本批(db, 批次, 依据号, T);
+  if (核.条数 !== 写了 || 核.错) throw new Error(`本批日志前缀 / 批次·执行·依据 不对 ${核.错} 条（共 ${核.条数} 条）`);
   return 写了;
 }
 
@@ -376,7 +383,8 @@ function 小结(行们: 计划行[]) {
 
 function 跑批(批: string, 取计划: () => { 行们: 计划行[]; 总批数?: number }, 守?: () => void) {
   const 批次 = 本次批次(批 === 七家批 ? "7" : 批 === "试点" ? "p" : `b${批}`);
-  记(`# ${件名} · 批 ${批} · ${要写 ? "写" : "空跑（只读）"} · 北京 ${北京(现在)} · 库 ${库} · 操作人 ${OP!.name}${要写 ? ` · 批次号 ${批次}` : ""}`);
+  记(`# ${件名} · 批 ${批} · ${要写 ? "写" : "空跑（只读）"} · 北京 ${北京(现在)} · 库 ${库} · 操作人 ${OP!.name}（执行：${前缀件.执行}）· 依据 ${依据号}${要写 ? ` · 批次号 ${批次}` : ""}`);
+  记(`日志前缀${要写 ? "" : "（写时）"}：${前缀件.前缀(批次, 依据号)}`);
   if (!要写) {
     const { 行们, 总批数 } = 取计划();
     if (总批数 != null) 记(`（1,000 家批按现在的数共 ${总批数} 批）`);
@@ -418,7 +426,7 @@ function 守批(n: number) {
 }
 
 function 撤(批次: string) {
-  记(`# ${件名} · 撤回 ${批次} · ${要写 ? "写" : "空跑（只读）"} · 北京 ${北京(现在)} · 库 ${库} · 操作人 ${OP!.name}`);
+  记(`# ${件名} · 撤回 ${批次} · ${要写 ? "写" : "空跑（只读）"} · 北京 ${北京(现在)} · 库 ${库} · 操作人 ${OP!.name}（执行：${前缀件.执行}）· 依据 ${依据号}`);
   const 跑 = () => {
     const { 写, 已撤批次 } = 读留痕();
     const 这批 = 写.filter((w) => w.批次 === 批次);
@@ -440,9 +448,9 @@ function 撤(批次: string) {
       if (要写) {
         if (Number((改.run(w.旧, w.客户id, w.新) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${w.客户编号} 撤回改动不是 1 行`);
         写日志.run(新日志id(T), T, OP!.id, OP!.name, "update", "Customer", w.客户id,
-          `[${件名} 撤回 ${批次} NO.${w.客户编号}] 客户状态：custStatus ${w.新} → ${显(w.旧)}`,
-          JSON.stringify({ 脚本, 类: "撤回", 批次: 撤号, 撤的批次: 批次, 批: w.批, 编号: `NO.${w.客户编号}`, 客户编号: w.客户编号, 表: "Customer", 键列: "id", 操作: "update",
-            列: ["custStatus"], 旧: { custStatus: w.新 }, 新: { custStatus: w.旧 }, 依据: "Even 11-23（E-220）：「任一批抽查对不上，整批撤回」" }));
+          前缀件.加前缀(撤号, 依据号, `[${件名} 撤回 ${批次} NO.${w.客户编号}] 客户状态：custStatus ${w.新} → ${显(w.旧)}`),
+          JSON.stringify(前缀件.加键({ 脚本, 类: "撤回", 批次: 撤号, 撤的批次: 批次, 批: w.批, 编号: `NO.${w.客户编号}`, 客户编号: w.客户编号, 表: "Customer", 键列: "id", 操作: "update",
+            列: ["custStatus"], 旧: { custStatus: w.新 }, 新: { custStatus: w.旧 }, 依据: "E-220（11-23）：「任一批抽查对不上，整批撤回」" }, 撤号, 依据号, { Customer: w.客户id })));
       }
       撤了 += 1;
       撤的.push({ 改前: w.新, 改后: w.旧 });
@@ -450,10 +458,16 @@ function 撤(批次: string) {
     }
     if (要写 && 不撤 && !撤了) {
       // 全都被改过：也记一条撤回标记，免得这批还算「写过」
-      写日志.run(新日志id(T), T, OP!.id, OP!.name, "update", "Customer", null, `[${件名} 撤回 ${批次}] 全部已被改过，只记撤回`, JSON.stringify({ 脚本, 类: "撤回", 批次: 撤号, 撤的批次: 批次, 依据: "E-220 整批撤回" }));
+      写日志.run(新日志id(T), T, OP!.id, OP!.name, "update", "Customer", null, 前缀件.加前缀(撤号, 依据号, `[${件名} 撤回 ${批次}] 全部已被改过，只记撤回`),
+        JSON.stringify(前缀件.加键({ 脚本, 类: "撤回", 撤的批次: 批次, 依据: "E-220 整批撤回" }, 撤号, 依据号)));
+    }
+    // 撤回批次的日志同样逐条核前缀和四个键，不对整批回滚
+    if (要写) {
+      const 核 = 前缀件.核本批(db, 撤号, 依据号, T);
+      if (核.错) throw new Error(`撤回日志前缀 / 批次·执行·依据 不对 ${核.错} 条（共 ${核.条数} 条）`);
     }
     人数变化(撤的, 前);
-    记(`${要写 ? "已撤" : "空跑：将撤"} ${撤了} 家；不撤 ${不撤} 家（写后已被系统或人改过）${要写 ? `；撤回批次号 ${撤号}` : ""}`);
+    记(`${要写 ? "已撤" : "空跑：将撤"} ${撤了} 家；不撤 ${不撤} 家（写后已被系统或人改过）${要写 ? `；撤回批次号 ${撤号}` : ""}；日志前缀「${前缀件.前缀(撤号, 依据号)}」`);
     return 撤了;
   };
   if (!要写) { 跑(); return; }
