@@ -89,7 +89,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const 待复核 = 待复核们.length ? <VerifyInbox 们={待复核们} 首页 /> : undefined;
   // 首页待办里去项目的（待回复主题 / 客户、新分到你的线索）：直接给项目页会跳去的地址，一次算（跳转优化 PR-A：不经过重定向那段空白；待复核的 待我复核的 自己带着）
   const 能放弃原 = await 能放弃P;
-  const 直达 = 企业版() ? await 项目链接们(user, [待回复主题原?.最早?.projectId, 待回复客户原?.最早?.projectId, ...能放弃原.map((x) => x.projectId)]) : new Map<string, string>();
+  const 直达 = 企业版() ? await 项目链接们(user, [待回复主题原?.最早?.projectId, 待回复客户原?.最早?.projectId, ...能放弃原.map((x) => x.projectId)]).catch((e) => { console.error("[首页待办] 项目直达地址没算出来，照旧去项目页", e); return new Map<string, string>(); }) : new Map<string, string>();
   const 给 = <T extends { projectId: string }>(x: T): T & { 项目去?: string } => (直达.has(x.projectId) ? { ...x, 项目去: 直达.get(x.projectId) } : x);
   const 待回复主题 = 待回复主题原?.最早 ? { ...待回复主题原, 最早: 给(待回复主题原.最早) } : 待回复主题原;
   const 待回复客户 = 待回复客户原?.最早 ? { ...待回复客户原, 最早: 给(待回复客户原.最早) } : 待回复客户原;
