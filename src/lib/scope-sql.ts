@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 读的我, 限定的我, 有市场只读, 现在的公海回避, 现在的组员客户, 客户读条件 } from "@/lib/team-scope";
+import { 读的我, 限定的我, 有市场只读, 现在的公海回避, 现在的组员客户, 现在的组员本人, 客户读条件 } from "@/lib/team-scope";
 import { 缓存分组数 } from "@/lib/enterprise/pool-count-cache";
 import { 在看已删, 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -29,10 +29,13 @@ async function 看得到的(): Promise<{ where: string; 参数: string[]; 名下
   const 回避 = await 现在的公海回避(defaultClient);
   if (回避?.客户 === null) return null;
   const 避 = 回避 ? 回避段(回避.本人, 回避.客户 ?? []) : { sql: "", 参数: [] as string[] };
-  // 企业版项目组员（V3.5.1）：加入的项目挂的客户也看得到，同 team-scope 限定条件——算好的编号名单；过上限（null）退回子查询；不是组员不加
+  // 企业版项目组员（V3.5.1）：加入的项目挂的客户也看得到，同 team-scope 限定条件——算好的编号名单；过上限（null）退回子查询；不是组员不加。
+  // 子查询只认本人进的组（11-24 ②，同 team-scope 限定.本人）：管理者的下属进组不算
   const 组员名单 = 企业版() ? await 现在的组员客户(defaultClient) : undefined;
+  const 组员人 = 组员名单 === null ? await 现在的组员本人(defaultClient) : null;
+  const 组员们 = 组员人 === null ? [] : typeof 组员人 === "string" ? [组员人] : [...组员人];
   const 组员 = 组员名单 === null
-    ? { sql: ` OR c.id IN (SELECT p."customerId" FROM "Project" p JOIN "ProjectMember" m ON m."projectId" = p.id WHERE m."userId" IN (${占}) AND m."inviteStatus" = 'JOINED' AND p."deletedAt" IS NULL)`, 参数: 们 }
+    ? { sql: ` OR c.id IN (SELECT p."customerId" FROM "Project" p JOIN "ProjectMember" m ON m."projectId" = p.id WHERE m."userId" IN (${组员们.map(() => "?").join(",") || "''"}) AND m."inviteStatus" = 'JOINED' AND p."deletedAt" IS NULL)`, 参数: 组员们 }
     : 组员名单?.length ? { sql: ` OR c.id IN (${组员名单.map(() => "?").join(",")})`, 参数: 组员名单 } : { sql: "", 参数: [] as string[] };
   // 企业版不认渠道负责人（11-04，同 team-scope 可见客户）
   const 渠道 = 企业版() ? { sql: "", 参数: [] as string[] } : { sql: ` OR c."channelOwnerId" IN (${占})`, 参数: 们 };

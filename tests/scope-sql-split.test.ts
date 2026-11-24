@@ -120,8 +120,8 @@ async function 开规则(开: boolean) {
   忘掉企业版范围();
 }
 
-/** 组员：外人名下的几位客户挂项目，组员点了同意的算、没同意的和删了的项目不算 */
-async function 设组员(几位: number) {
+/** 组员：外人名下的几位客户挂项目，组员点了同意的算、没同意的和删了的项目不算；谁们 = 进组的人（默认只有 组员） */
+async function 设组员(几位: number, 谁们: string[] = [组员]) {
   await raw.projectMember.deleteMany({});
   await raw.project.deleteMany({});
   // 过上限要的是几百位不同的客户：外人名下不够就补（不跟进、不进公海）
@@ -132,7 +132,7 @@ async function 设组员(几位: number) {
   for (let k = 0; k < 几位; k++) {
     const cid = 外人的[k];
     const p = await raw.project.create({ data: { name: `项目${k}`, customerId: cid, ownerId: 外人, creatorId: 外人, deletedAt: k === 1 ? new Date() : null } });
-    await raw.projectMember.create({ data: { projectId: p.id, userId: 组员, inviteStatus: k === 2 ? "INVITED" : "JOINED" } });
+    for (const u of 谁们) await raw.projectMember.create({ data: { projectId: p.id, userId: u, inviteStatus: k === 2 ? "INVITED" : "JOINED" } });
   }
   忘掉企业版范围();
 }
@@ -241,6 +241,37 @@ describe("可见范围拆两路：拆前拆后结果集完全相同", () => {
     const 组员范围 = await 以谁的身份(组员, 看得到的范围SQL);
     expect(组员范围!.名下.where).toContain(`FROM "Project" p JOIN "ProjectMember" m`);
     await 全对拍();
+  });
+
+  it("下属进组（11-24 ②）：经理看不到实线 / 虚线下属进组的外人客户，名单和过上限退回子查询都只认本人；逐个身份", async () => {
+    await 开规则(true);
+    const 名下of = async (谁: string) =>
+      以谁的身份(谁, async () => {
+        const 范围 = (await 看得到的范围SQL())!;
+        return (await raw.$queryRawUnsafe<{ id: string }[]>(`SELECT c.id FROM "Customer" c WHERE ${范围.名下.where}`, ...范围.名下.参数)).map((r) => r.id);
+      });
+    // 名单：小王（实线）、小张（虚线）进了外人的组，经理自己没进
+    await 设组员(4, [组员, 小王, 小张]);
+    await 全对拍();
+    expect(await 名下of(经理)).not.toContain(外人的[0]);
+    expect(await 名下of(小王)).toContain(外人的[0]);
+    expect(await 名下of(小张)).toContain(外人的[0]);
+    // 过上限：经理自己进了 320 个组（退回子查询），另有一位外人客户只有小王进组
+    await 设组员(320, [组员, 小王, 经理]);
+    const 只下属 = await raw.customer.create({ data: { name: "只下属进组", phone: "13599999999", salesOwnerId: 外人 } });
+    const p = await raw.project.create({ data: { name: "只下属进组", customerId: 只下属.id, ownerId: 外人, creatorId: 外人 } });
+    await raw.projectMember.create({ data: { projectId: p.id, userId: 小王, inviteStatus: "JOINED" } });
+    忘掉企业版范围();
+    const 经理范围 = await 以谁的身份(经理, 看得到的范围SQL);
+    expect(经理范围!.名下.where).toContain(`FROM "Project" p JOIN "ProjectMember" m`);
+    await 全对拍();
+    const 经理的 = await 名下of(经理);
+    expect(经理的).toContain(外人的[0]);
+    expect(经理的).not.toContain(只下属.id);
+    expect(await 名下of(小王)).toContain(只下属.id);
+    await raw.projectMember.deleteMany({ where: { projectId: p.id } });
+    await raw.project.delete({ where: { id: p.id } });
+    await raw.customer.delete({ where: { id: 只下属.id } });
   });
 
   it("按组织看客户关着、有没有项目组员：逐个身份", async () => {

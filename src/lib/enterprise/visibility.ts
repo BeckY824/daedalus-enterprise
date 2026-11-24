@@ -220,21 +220,23 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     const 线 = 按线范围of(org, id);
     const 话 = 只读话of({ id }, org);
     if (!线) return { 我: null, 互看: false, 别人的: new Set(), 只读: 话 };
-    // 设了业务线：按人的那一半走 读 + 市场（看得到客户、raw SQL 回退 Prisma），按标签的那一半走 按线
+    // 设了业务线：按人的那一半走 读 + 市场（看得到客户、raw SQL 回退 Prisma），按标签的那一半走 按线。
+    // 组员的客户只认本人进的组（11-24 ②，同 按线 项目那一支只认 按线.本人；原来按整条线的人认，线上同事进组的客户也露）
     return {
-      我: [id], 读: 线.人们, 市场: 线.人们, 组员客户: await 组员客户of(db, 线.人们), 按线: { 本人: id, 项目: 按线项目(线), 客户: 按线客户(线) },
+      我: [id], 本人: id, 读: 线.人们, 市场: 线.人们, 组员客户: await 组员客户of(db, [id]), 按线: { 本人: id, 项目: 按线项目(线), 客户: 按线客户(线) },
       互看: false, 别人的: new Set(), 全拦: true, 话, 只读: 话,
     };
   }
   // 只看某人（V3.5.1 市管特例，规则开不开都算）：业务数据只看 那个人（和自己）是负责人、或是创建人且不在公海的，公海照常；
-  // 按人的走 读（负责人）+ 市场（11-04：负责的 + 建的且不在公海），都只读。自己没东西能写（permissions.ts 一律拒），写范围只留自己
+  // 按人的走 读（负责人）+ 市场（11-04：负责的 + 建的且不在公海），都只读。自己没东西能写（permissions.ts 一律拒），写范围只留自己。
+  // 不认组员（11-24 ②）：详情 能看项目 只看某人那一支只认负责人 / 创建人，那个人或自己进了组的项目和挂着的客户都不露——组员条件认「__无」、不带组员客户
   const 目标 = 只看的人(org, id);
   if (目标) {
     const 人们 = [id, 目标];
     const 回避 = await 公海回避of(db, id);
     const 那些 = await db.customer.findMany({ where: 市场相关客户(人们), select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
     const 别人的 = new Set(那些.filter((c) => !看得到(c, [id])).map((c) => c.id));
-    return { 我: [id], 读: 人们, 市场: 人们, 组员客户: await 组员客户of(db, 人们), 互看: false, 别人的, 全拦: true, 话: 只看某人话, ...(回避 ? { 公海回避: 回避 } : {}) };
+    return { 我: [id], 本人: "__无", 读: 人们, 市场: 人们, 互看: false, 别人的, 全拦: true, 话: 只看某人话, ...(回避 ? { 公海回避: 回避 } : {}) };
   }
   // 规则关着：原来一律不限定；11-01 起没设业务角色的照样没权限（只看公海）；
   // 原负责人回避（11-03）规则开不开都算，能看全部的（总管理等）不回避
@@ -261,10 +263,11 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   // 市场管理（11-05 客户定）：本人 + 直属下级建的项目（线索）不管什么状态都看得到，只读；直属下级不论是不是市场成员
   const 带市场全看 = 类别.has("市场管理") ? { 市场全看: [id, ...实线下属(org, id, 1)] } : {};
   // 项目组员（V3.5.1）：加入的项目挂的客户级联看得到、只能看（不改；11-17 起沟通能记在自己已进组的在推项目上，见 lib/project/follow-needs-project.ts）。自己（含实线下属）负责的、公海的不降；
-  // 自己负责的项目挂着的也不算只读（被指定为负责人才能编辑，在项目下记沟通）
+  // 自己负责的项目挂着的也不算只读（被指定为负责人才能编辑，在项目下记沟通）。
+  // 只认本人进的组（11-24 ②，P-看-08）：下属、虚线下属、条线成员、停用的下属进组的客户不跟着露，同详情 能看项目 只认 p.已加入.includes(me.id)
   const 写 = 范围.写;
   const 组员只读 = new Set<string>();
-  const 组员编号 = await 组员客户编号(db, [...(范围.读 ?? 写)]);
+  const 组员编号 = await 组员客户编号(db, [id]);
   const 组员的 = 组员编号.length
     ? await db.customer.findMany({
         where: { id: { in: 组员编号 } },
@@ -275,7 +278,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     if (!看得到(c, 写) && !c.projects.some((p) => 写.includes(p.ownerId))) 组员只读.add(c.id);
   }
   const 带组员 = 组员的.length ? { 组员客户: 组员的.length > 组员名单上限 ? null : 组员的.map((c) => c.id) } : {};
-  if (!范围.读 && !市场.length && !组员只读.size) return { 我: 写, 互看: false, 别人的: new Set(), ...线索, ...带市场全看, ...带回避, ...带组员, ...带待分配放开 };
+  if (!范围.读 && !市场.length && !组员只读.size) return { 我: 写, 本人: id, 互看: false, 别人的: new Set(), ...线索, ...带市场全看, ...带回避, ...带组员, ...带待分配放开 };
 
   // 只能看的那些客户的编号：新建前、改客户前按这份判（钩子里不能现查）
   const 别人的 = new Set<string>(组员只读);
@@ -306,7 +309,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   }
   const 话 = 读 && 市场.length ? 虚线或市场只读话 : 读 ? 虚线只读话 : 市场.length ? 市场只读话 : 组员只读话;
   return {
-    我: 范围.写, 互看: false, 别人的, 全拦: true, 话, ...线索,
+    我: 范围.写, 本人: id, 互看: false, 别人的, 全拦: true, 话, ...线索,
     ...(读 ? { 读 } : {}),
     ...(市场.length ? { 市场 } : {}),
     ...带市场全看,
