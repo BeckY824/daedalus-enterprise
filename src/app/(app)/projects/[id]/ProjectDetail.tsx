@@ -185,7 +185,7 @@ export type 项目详情 = {
   /** 数据来源（迁移 151）：历史沟通分析回填的项目是「历史分析」，显示成标签；正常建的不传、不摆这一行 */
   数据来源?: string;
   /** 老客户重复咨询（重复咨询第一步 · 出口 C 建的线索）：这位客户别的在推项目，我看得到的给名字、看不到的只给个数；重复线索名 = 字典现名（load.ts 现算） */
-  重复咨询?: { 看得到: { id: string; name: string }[]; 看不到: number; 重复线索名: string };
+  重复咨询?: { 看得到: { id: string; name: string; 项目去?: string }[]; 看不到: number; 重复线索名: string };
   /** 老客户重复咨询的只读来源（迁移 163，客户 E-218）：原始客户编号、第几次。只读一行，没有编辑入口 */
   重复咨询来自?: { 客户编号: string; 第几次: number | null } | null;
   /**
@@ -1528,7 +1528,7 @@ export default function ProjectDetail({
           <span className="proj-one" title={[p.重复咨询.看得到.map((x) => x.name).join("、"), p.重复咨询.看不到 > 0 ? `另有 ${p.重复咨询.看不到} 个你看不到的` : ""].filter(Boolean).join("；") || undefined}>
             {p.重复咨询.看得到.length === 0 && p.重复咨询.看不到 === 0 ? "—" : (
               <>
-                {p.重复咨询.看得到.map((x, i) => <span key={x.id}>{i > 0 && "、"}<Link href={`/projects/${x.id}`}>{x.name}<LinkPending /></Link></span>)}
+                {p.重复咨询.看得到.map((x, i) => <span key={x.id}>{i > 0 && "、"}<Link href={x.项目去 ?? `/projects/${x.id}`}>{x.name}<LinkPending /></Link></span>)}
                 {p.重复咨询.看不到 > 0 && <span className="muted">{p.重复咨询.看得到.length > 0 && "；"}另有 {p.重复咨询.看不到} 个你看不到的</span>}
               </>
             )}

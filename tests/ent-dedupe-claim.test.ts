@@ -59,12 +59,13 @@ let 序 = 0;
 const 号of = (n: number) => `1390000${String(n).padStart(4, "0")}`;
 /**
  * 客户公海里的客户：负责人还是 原（部署前进公海的老数据，原负责人 = 他）；创建人另记。
- * 来源是老渠道（渠道 + 归属渠道）；主联系人王经理（采购）手机就是查的号，另有一位李工
+ * 来源是老渠道（渠道 + 归属渠道）；主联系人王经理（采购）手机就是查的号，另有一位李工。
+ * 客户电话存空串、号码只挂在主联系人上（E-260 起企业版客户 Customer.phone 都是空串）
  */
 async function 公海客户(原: string, 创建人?: string): Promise<{ id: string; 号: string; 王: string; 李: string }> {
   序 += 1;
   const 号 = 号of(序);
-  const c = await prisma.customer.create({ data: { name: `公海客户${序}`, phone: 号, salesOwnerId: 原, channelId: 老渠道, attributionChannelId: 老渠道 } });
+  const c = await prisma.customer.create({ data: { name: `公海客户${序}`, phone: "", salesOwnerId: 原, channelId: 老渠道, attributionChannelId: 老渠道 } });
   await prisma.customerPool.create({ data: { customerId: c.id, userId: 原, reason: "手动" } });
   if (创建人) await prisma.customerCreator.create({ data: { customerId: c.id, userId: 创建人 } });
   const 李 = await prisma.contact.create({ data: { name: "李工", position: "技术", customerId: c.id, createdAt: new Date("2026-01-02T00:00:00Z") } });
@@ -222,7 +223,7 @@ describe("新建线索项目（用户 11-19：项目来源以每次新建的为�
 
   it("事务里再核对接人：认完到写入之间被删 / 移到别的客户名下，抛作废整笔回滚", async () => {
     const c = await 公海客户(总管.id);
-    const 别家 = await prisma.customer.create({ data: { name: "别家", phone: 号of(801), salesOwnerId: 乙.id } });
+    const 别家 = await prisma.customer.create({ data: { name: "别家", phone: "", salesOwnerId: 乙.id } });
     await prisma.contact.update({ where: { id: c.王 }, data: { deletedAt: new Date() } });
     await expect(prisma.$transaction((tx) => 落对接人(tx, c.id, { 挂: c.王 }, 市场.id))).rejects.toBeInstanceOf(查重领取作废);
     await prisma.contact.update({ where: { id: c.李 }, data: { customerId: 别家.id } });
@@ -231,7 +232,7 @@ describe("新建线索项目（用户 11-19：项目来源以每次新建的为�
 
   it("渠道必填、不默认带客户来源；停用的渠道不认；对接人必填；带出来的那位不在这位客户名下不认：一行不写", async () => {
     const c = await 公海客户(总管.id);
-    const 别家 = await prisma.customer.create({ data: { name: "别家", phone: 号of(800), salesOwnerId: 乙.id } });
+    const 别家 = await prisma.customer.create({ data: { name: "别家", phone: "", salesOwnerId: 乙.id } });
     const 别家人 = await prisma.contact.create({ data: { name: "王经理", customerId: 别家.id } });
     const 停用 = await prisma.channel.create({ data: { name: "停了的", channelOwnerId: 总管.id, active: false } });
     当(市场);
@@ -337,9 +338,13 @@ describe("只领旧项目（查重领取口径.新建线索项目 = false，好�
 
 describe("市场成员查重领公海客户：拦的几种", () => {
   it("号码没撞上公海里的客户：不领（在销售名下的、没人录过的都一样），也不信交来的客户 id", async () => {
-    const 在名下 = await prisma.customer.create({ data: { name: "乙的客户", phone: 号of(900), salesOwnerId: 乙.id } });
+    // 号挂在乙这位客户的主联系人上、客户电话空串（同 E-260）；先核号码真撞上「在销售名下」，不是没人录过
+    const 在名下 = await prisma.customer.create({ data: { name: "乙的客户", phone: "", salesOwnerId: 乙.id } });
+    await prisma.contact.create({ data: { name: "张经理", phone: 号of(900), isPrimary: true, customerId: 在名下.id } });
     const c = await 公海客户(总管.id);
     当(市场);
+    expect(await 查号码("手机号", 号of(900))).toMatchObject({ ok: true, 状态: "重复" });
+    expect(await 查号码("手机号", 号of(901))).toMatchObject({ ok: true, 状态: "首次录入" });
     expect(await 查重领取("手机号", 号of(900), 沟通(), null, 新(c))).toEqual({ ok: false, error: 没撞上公海话 });
     expect(await 查重领取("手机号", 号of(901), 沟通(), null, 新(c))).toEqual({ ok: false, error: 没撞上公海话 });
     // 号码撞的是公海客户 c，交来的 id 却是别的：按最新结论说，不领
