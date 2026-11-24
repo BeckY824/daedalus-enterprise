@@ -5,7 +5,7 @@ import type { Prisma } from "@/generated/prisma";
 import { dayjs, maskPhone } from "@/lib/utils";
 import { 带币种, 签约金额, 签约合计, 签约币种 } from "@/lib/money-db";
 import { 客户关键词条件, 客户关键词SQL, 客户id集合, 客户号码条件, 搜索词 } from "@/lib/search-keyword";
-import { 读的我, 有市场只读, 现在的公海回避, 看全部 } from "@/lib/team-scope";
+import { 读的我, 有市场只读, 现在的公海回避, 现在的条线建的客户, 看全部 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { 项目阶段客户条件, 项目名另比 } from "@/lib/project/customer-list-projects";
 import { 取档案 } from "@/lib/customer-extra-db";
@@ -375,7 +375,10 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
       const ids = typeof 谁 === "string" ? [谁] : [...谁];
       const q = ids.map(() => "?").join(", ");
       // 企业版不认渠道负责人（11-04，同 team-scope 可见客户）
-      if (企业版()) { 段.push(`c."salesOwnerId" IN (${q})`); 值.push(...ids); }
+      // 条线总管理按「创建人在本线」多看得到的客户（P-看-18，同 scope-sql 看得到的）：算好的编号名单；过上限时上面 有市场只读 已走老路
+      const 线建 = 企业版() ? await 现在的条线建的客户(defaultClient) : undefined;
+      if (企业版() && 线建?.length) { 段.push(`(c."salesOwnerId" IN (${q}) OR c.id IN (${线建.map(() => "?").join(", ")}))`); 值.push(...ids, ...线建); }
+      else if (企业版()) { 段.push(`c."salesOwnerId" IN (${q})`); 值.push(...ids); }
       else { 段.push(`(c."salesOwnerId" IN (${q}) OR c."channelOwnerId" IN (${q}))`); 值.push(...ids, ...ids); }
     }
     段.push('NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');

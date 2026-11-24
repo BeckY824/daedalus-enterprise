@@ -51,6 +51,26 @@ export function 条线范围of(org: 组织, id: string): 按线范围 | null {
   return 线 ? 范围(org, id, 线) : null;
 }
 
+/**
+ * 条线总管理按「本线」认项目（P-看-18，用户 11-24）：负责人或创建人是本线的人（条线范围of 的 人们）。详情和列表认同一份：
+ *   - 详情 permissions.ts 能看项目 逐个判，调 本线的项目；
+ *   - 列表（数据层）visibility.ts 把 本线建的项目条件 带进范围（team-scope 限定.条线建的）——负责人在本线那一半数据层早已按 读 认（组织范围of 把 人们 并进 读）；
+ *   - 客户：名下有本线建的、没进回收站的项目就看得到（本线建的客户条件），只读（visibility.ts 并进 别人的），写范围不放宽
+ */
+export function 本线的项目(x: Pick<按线范围, "人们">, p: { ownerId: string; creatorId?: string | null }): boolean {
+  return x.人们.includes(p.ownerId) || (!!p.creatorId && x.人们.includes(p.creatorId));
+}
+
+/** 本线的人建的项目（项目 where）：本线的项目 的创建人那一半 */
+export function 本线建的项目条件(x: Pick<按线范围, "人们">): Record<string, unknown> {
+  return { creatorId: { in: [...x.人们] } };
+}
+
+/** 名下有本线建的项目（没进回收站）的客户（客户 where） */
+export function 本线建的客户条件(x: Pick<按线范围, "人们">): Record<string, unknown> {
+  return { projects: { some: { deletedAt: null, ...本线建的项目条件(x) } } };
+}
+
 function 范围(org: 组织, id: string, 线: 业务线): 按线范围 {
   const 人们 = new Set<string>([id, ...实线下属(org, id)]);
   for (const d of 虚线下属(org, id)) for (const x of [d, ...实线下属(org, d)]) 人们.add(x);

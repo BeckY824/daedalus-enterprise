@@ -29,7 +29,7 @@
 import { 是只读角色们, type 业务角色, type 业务线 } from "@/lib/sync/dept-policy";
 import { 项目业务线 } from "./assign-line";
 import { 本线放开看得到 } from "./await-assign-open";
-import { 按线的线, 按线范围of, 条线范围of } from "./line-viewer";
+import { 按线的线, 按线范围of, 条线范围of, 本线的项目 } from "./line-viewer";
 import { 实线下属, 虚线下属, 是系统管理员of, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
 import { 找条线总管理 } from "./tri-state-people";
@@ -206,8 +206,9 @@ export function 能看项目(me: 谁, p: 权限项目, org: 组织 | null): bool
   if (p.pooledAt) return true;
   if (p.ownerId === me.id) return true;
   if (p.已加入?.includes(me.id)) return true;
+  // 条线总管理：负责人或创建人在本线（P-看-18：列表数据层按同一个 本线的项目 / 本线建的项目条件 认，line-viewer.ts）
   const 条线 = 条线范围of(org, me.id);
-  if (条线 && (条线.人们.includes(p.ownerId) || (!!p.creatorId && 条线.人们.includes(p.creatorId)))) return true;
+  if (条线 && 本线的项目(条线, p)) return true;
   const 按线 = 按线范围of(org, me.id);
   if (按线) return 按线.人们.includes(p.ownerId) || (!!p.creatorId && 按线.人们.includes(p.creatorId)) || 项目业务线(p, org.成员) === 按线.线;
   if (p.creatorId === me.id && 有(org, me.id, 市场角色)) return true;

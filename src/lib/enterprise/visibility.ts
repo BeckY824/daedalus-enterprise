@@ -26,9 +26,9 @@ import { 全进程上下文 } from "@/lib/process-als";
 import { jwtVerify } from "jose";
 import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
-import { 看得到, type 限定, type 公海回避 } from "@/lib/team-scope";
+import { 看得到, type 限定, type 公海回避, type 条线建的读 } from "@/lib/team-scope";
 import { 回收站副手键, 只看某人键, 系统管理员标记键, 填组织设置, 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
-import { 按线范围of, 按线项目, 按线客户, 条线范围of } from "./line-viewer";
+import { 按线范围of, 按线项目, 按线客户, 条线范围of, 本线建的项目条件, 本线建的客户条件 } from "./line-viewer";
 import { 规则, 开关值开着 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票, 会话时刻, 切换视图开着 } from "./view-as";
@@ -278,10 +278,25 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     if (!看得到(c, 写) && !c.projects.some((p) => 写.includes(p.ownerId))) 组员只读.add(c.id);
   }
   const 带组员 = 组员的.length ? { 组员客户: 组员的.length > 组员名单上限 ? null : 组员的.map((c) => c.id) } : {};
-  if (!范围.读 && !市场.length && !组员只读.size) return { 我: 写, 本人: id, 互看: false, 别人的: new Set(), ...线索, ...带市场全看, ...带回避, ...带组员, ...带待分配放开 };
+  // 条线总管理补「创建人在本线」（P-看-18，用户 11-24）：详情 能看项目 认负责人或创建人在本线（line-viewer.ts 本线的项目），
+  // 列表原来只按负责人（读）带。项目补本线建的；客户补名下有本线建的项目的，只读（自己负责的项目挂着的不降，同市场那条）。
+  // 名单只取按负责人（读）、公海还看不到的那几位（现库几十位；名下有本线建的项目的客户大多负责人就在本线），不进回收站的；
+  // 名单不过上限，裸 SQL 快路照走（过上限 有市场只读 让快路走 Prisma，客户条件 那句是全集，OR 起来一样）
+  const 条线 = 条线范围of(org, id);
+  const 线建只读 = new Set<string>();
+  let 带条线: { 条线建的?: 条线建的读 } = {};
+  if (条线) {
+    const 那些 = await db.customer.findMany({
+      where: { ...本线建的客户条件(条线), deletedAt: null, pool: null, salesOwnerId: { notIn: 范围.读 ?? 写 } },
+      select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, projects: { where: { deletedAt: null }, select: { ownerId: true } } },
+    });
+    for (const c of 那些) if (!看得到(c, 写) && !c.projects.some((p) => 写.includes(p.ownerId))) 线建只读.add(c.id);
+    带条线 = { 条线建的: { 项目: 本线建的项目条件(条线), 客户: 那些.length > 组员名单上限 ? null : 那些.map((c) => c.id), 客户条件: 本线建的客户条件(条线) } };
+  }
+  if (!范围.读 && !市场.length && !组员只读.size && !线建只读.size) return { 我: 写, 本人: id, 互看: false, 别人的: new Set(), ...线索, ...带市场全看, ...带回避, ...带组员, ...带待分配放开, ...带条线 };
 
   // 只能看的那些客户的编号：新建前、改客户前按这份判（钩子里不能现查）
-  const 别人的 = new Set<string>(组员只读);
+  const 别人的 = new Set<string>([...组员只读, ...线建只读]);
   const 读 = 范围.读;
   if (读) {
     const 那些 = await db.customer.findMany({
@@ -316,6 +331,7 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     ...带回避,
     ...带组员,
     ...带待分配放开,
+    ...带条线,
   };
 }
 

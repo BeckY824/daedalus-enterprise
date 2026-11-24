@@ -5,7 +5,9 @@
  *   收窄跟详情走：组员条件（项目、组员的客户、卡点、裸 SQL）只认本人；只看某人详情不认组员，数据层也不认。
  * ① 按部门认的市场成员只挂销售角色（现库 0 人）：是否放开待定（口径 M-角色-02 / P-看-05 / P-判定-01 冲突），这个 PR 不改，用 it.fails 记着缺口；
  *   有市场角色的兼任（渠运兼销售、条线总管理 + 销管 + 市场管理）照旧并集，两条回归照跑。
- * 口径：P-看-01（销管看实线下属 + 自己 + 公海）、P-看-08（项目组员只看自己加入的项目，连带看到挂着的客户）、P-看-12（同客户下同事的项目看不到）。
+ * P-看-18（用户 11-24）：条线总管理的列表和详情一致、不收窄详情——项目补「创建人在本线」的（详情 能看项目 早认），
+ *   客户补名下有本线建的项目的，只读（看得到、写范围不放宽）；销管下属建的、负责人不在他管辖的照旧拿不到（详情也不认）。
+ * 口径：P-看-01（销管看实线下属 + 自己 + 公海）、P-看-08（项目组员只看自己加入的项目，连带看到挂着的客户）、P-看-12（同客户下同事的项目看不到）、P-角色-01。
  * 「按组织看客户」开着（c2 的组合）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -23,8 +25,9 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 读组织 } from "@/lib/enterprise/org";
 import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
 import { 看得到的范围SQL } from "@/lib/scope-sql";
-import { 限定条件 } from "@/lib/team-scope";
+import { 限定条件, 只读客户 } from "@/lib/team-scope";
 import { 全局搜索 } from "@/app/(app)/global-search";
+import { 关键词分页 } from "@/app/(app)/customers/query";
 import { TOOLS } from "@/lib/agent/tools";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
 
@@ -79,6 +82,9 @@ async function AI团队客户(谁: 人): Promise<string[]> {
 }
 
 let 链外的: { id: string; customerId: string };
+/** 本线成员建的、负责人是线外同事（P-看-18）；销管下属建的、负责人是线外同事（详情不认建的人，照旧拿不到） */
+let 线内建的: { id: string; customerId: string };
+let 下属建的: { id: string; customerId: string };
 let 盯的人进组的: { id: string; customerId: string };
 
 beforeEach(async () => {
@@ -129,6 +135,8 @@ beforeEach(async () => {
   await 项目("渠运建的", 同事, 渠运);
   await 项目("市管下级建的", 同事, 市管下级);
   await 项目("同事的", 同事);
+  线内建的 = await 项目("线内建的", 同事, 线内);
+  下属建的 = await 项目("下属建的", 同事, 下属);
   忘掉企业版范围();
 });
 afterEach(() => {
@@ -142,6 +150,71 @@ describe("不变式：数据层回的项目每一行都点得进详情（②）"
     const 结果: Record<string, string[]> = {};
     for (const 谁 of 角色们) 结果[谁.名] = await 点不进的(谁);
     expect(结果).toEqual(Object.fromEntries(角色们.map((x) => [x.名, []])));
+  });
+});
+
+describe("不变式：数据层回的客户每一位都进得了客户详情（P-看-18）", () => {
+  it("各角色 prisma.customer.findMany 回的每一位，客户详情那句 findUnique 都拿得到", async () => {
+    const 角色们 = [总管, 销管, 下属, 链外, 同事, 虚线上级, 虚线下属, 线总, 线内, 线读, 盯的人, 被盯, 渠运, 市管, 市管下级, 组合];
+    const 进不去: Record<string, string[]> = {};
+    for (const 谁 of 角色们) {
+      const 列表 = await 客户编号(谁);
+      const 不中: string[] = [];
+      for (const id of 列表) if (!(await 以谁的身份(谁.id, () => prisma.customer.findUnique({ where: { id }, select: { id: true } })))) 不中.push(id);
+      进不去[谁.名] = 不中;
+    }
+    expect(进不去).toEqual(Object.fromEntries(角色们.map((x) => [x.名, []])));
+  });
+});
+
+describe("条线总管理：列表补「创建人在本线」，和详情一致（P-看-18）", () => {
+  it("项目：本线建的、负责人不在本线的进列表，且详情点得进", async () => {
+    expect(await 项目名(线总)).toContain("线内建的");
+    expect(await 点不进的(线总)).toEqual([]);
+  });
+
+  it("客户：名下有本线建的项目的进列表、详情拿得到；裸 SQL 快路同样带上", async () => {
+    expect(await 客户编号(线总)).toContain(线内建的.customerId);
+    expect(await 以谁的身份(线总.id, () => prisma.customer.findUnique({ where: { id: 线内建的.customerId }, select: { id: true } }))).not.toBeNull();
+    const 裸 = await 裸SQL客户(线总);
+    expect(裸).not.toBeNull();
+    expect(裸).toContain(线内建的.customerId);
+  });
+
+  it("只读：客户详情按只读认，updateMany 改到 0 位，单条改抛只读", async () => {
+    expect(await 以谁的身份(线总.id, () => 只读客户(defaultClient, { id: 线内建的.customerId, salesOwnerId: 同事.id, pool: null }))).toBe("全");
+    const 改 = await 以谁的身份(线总.id, () => prisma.customer.updateMany({ where: { id: 线内建的.customerId }, data: { remark: "改" } }));
+    expect(改.count).toBe(0);
+    await expect(以谁的身份(线总.id, () => prisma.customer.update({ where: { id: 线内建的.customerId }, data: { remark: "改" } }))).rejects.toThrow(/只能看/);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 线内建的.customerId }, select: { remark: true } })).remark).not.toBe("改");
+    // 项目照旧改不到（别人负责的只看，P-角色-01）
+    const 改项目 = await 以谁的身份(线总.id, () => prisma.project.updateMany({ where: { id: 线内建的.id }, data: { name: "改" } }));
+    expect(改项目.count).toBe(0);
+  });
+
+  it("入口：全局搜索、AI 找客户（团队范围）都带上", async () => {
+    const 名 = (await prisma.customer.findUniqueOrThrow({ where: { id: 线内建的.customerId }, select: { name: true } })).name;
+    expect(await 搜客户(线总, 名)).toContain(线内建的.customerId);
+    expect(await 搜项目(线总, "线内建的")).toEqual(["线内建的"]);
+    expect(await AI团队客户(线总)).toContain(线内建的.customerId);
+    // 客户列表搜关键词的裸 SQL 快路（customers/query.ts 关键词分页）
+    const 快 = await 以(线总, () => 关键词分页({ keyword: 名 }, 1, 50));
+    expect(快).not.toBeNull();
+    expect(快!.ids).toContain(线内建的.customerId);
+  });
+
+  it("别的角色不变：销管下属建的、负责人不在他管辖的项目和客户照旧拿不到（详情也不认）；线外的人拿不到本线建的", async () => {
+    expect(await 项目名(销管)).not.toContain("下属建的");
+    expect(await 客户编号(销管)).not.toContain(下属建的.customerId);
+    expect(await 裸SQL客户(销管)).not.toContain(下属建的.customerId);
+    expect(await AI团队客户(销管)).not.toContain(下属建的.customerId);
+    const org = await 读组织();
+    const p = await prisma.project.findUniqueOrThrow({ where: { id: 下属建的.id }, select: 权限项目选 });
+    expect(能看项目(销管, 带已加入(p), org)).toBe(false);
+    for (const 谁 of [销管, 虚线上级, 市管, 链外]) {
+      expect({ 谁: 谁.名, 有: (await 项目名(谁)).includes("线内建的") }).toEqual({ 谁: 谁.名, 有: false });
+      expect({ 谁: 谁.名, 有: (await 客户编号(谁)).includes(线内建的.customerId) }).toEqual({ 谁: 谁.名, 有: false });
+    }
   });
 });
 
