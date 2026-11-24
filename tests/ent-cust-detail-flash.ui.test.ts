@@ -2,6 +2,7 @@
  * PR8 新建弹窗落到客户页（?project=<新项目>）：那颗项目卡亮 2 秒（PR7b 做）。
  *   进页面时地址带的那个亮，别的不亮；2 秒后自己收；只有一个项目时那张卡也亮
  *   只动透明度（叠一层 ::after），减弱动态下也照样只是淡入淡出，不缩放不位移
+ * 跳转优化 PR-A：放不下收进「更多」的项目，下拉里点了走 useNavGo 的 replace，地址换成 ?project=<点的那个>
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -11,7 +12,7 @@ import { chromium, type Browser } from "playwright";
 let browser: Browser, 包: string;
 const 桩: Plugin = { name: "flash", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){}});export const useSearchParams=()=>new URLSearchParams(location.search);");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(u,o){(window.__换??=[]).push([u,o])}});export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^next\/link$/, "export default function L({prefetch,scroll,replace,...p}){return <a {...p}/>}");
   stub(/projects\/\[id\]\/ProjectDetail$/, "export default function D(){return null}");
   stub(/projects\/\[id\]\/ProjectFold$/, "export const FoldSplit=()=>null,ProjectFold=({children})=>children,模块钮色={};");
@@ -23,16 +24,16 @@ beforeAll(async () => {
     import {ProjectSwitch} from '@/app/(app)/customers/[id]/ProjectZone';
     const root=createRoot(document.getElementById('root'));
     const 长='某某超长贸易进出口有限公司年度框架采购项目'.repeat(3);
-    window.__render=({个数,当前})=>{
-      const 页签们=[{id:'p1',name:'项目一',节点:'报价',阶段:'商机'},{id:'p2',name:长,节点:'线索验证',阶段:'线索'}].slice(0,个数);
-      root.render(<div style={{width:640}}><ProjectSwitch 数据={{customerId:'c1',页签们,锁数:0}} 当前id={当前}/></div>);
+    window.__render=({个数,当前,宽=640})=>{
+      const 页签们=[{id:'p1',name:'项目一',节点:'报价',阶段:'商机'},{id:'p2',name:长,节点:'线索验证',阶段:'线索'},{id:'p3',name:'第三个'+长,节点:'报价',阶段:'商机'}].slice(0,个数);
+      root.render(<div style={{width:宽}}><ProjectSwitch 数据={{customerId:'c1',页签们,锁数:0}} 当前id={当前}/></div>);
     };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [桩], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 开(查: string, p: { 个数: number; 当前: string }, reducedMotion: "reduce" | "no-preference" = "no-preference") {
+async function 开(查: string, p: { 个数: number; 当前: string; 宽?: number }, reducedMotion: "reduce" | "no-preference" = "no-preference") {
   const page = await browser.newPage({ viewport: { width: 1280, height: 600 }, reducedMotion }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://flash.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
@@ -87,6 +88,24 @@ it("页内落地（客户页「新增项目」建好换到 ?project=新项目&la
     await page.evaluate(() => { history.pushState(null, "", "/customers/c1?project=p1"); (window as unknown as { __render: (x: object) => void }).__render({ 个数: 2, 当前: "p1" }); });
     await page.waitForTimeout(300);
     expect(await page.locator(".cd-pj-flash").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("放不下收进「更多」：下拉里点一个项目 → 同一页换成 ?project=<那个>（replace、不滚动），点的就是那一个", async () => {
+  const { page, errors } = await 开("?project=p1", { 个数: 3, 当前: "p1", 宽: 260 });
+  try {
+    const 更多 = page.locator(".cd-pj-more").first();
+    await expect.poll(() => 更多.isVisible()).toBe(true);
+    // 选中的那颗留在外面，其余至少收走一颗
+    expect(await page.locator('.cd-pj-pills [role=tab][href*="p1"]').count()).toBe(1);
+    const 摆着的 = await page.locator(".cd-pj-pills [role=tab]").count();
+    expect(摆着的).toBeLessThan(3);
+    await 更多.click();
+    const 项 = page.locator(".cd-pj-menu .cd-pj-mi", { hasText: "第三个" });
+    await 项.waitFor();
+    await 项.click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __换?: [string, { scroll?: boolean }][] }).__换 ?? [])).toEqual([["/customers/c1?project=p3", { scroll: false }]]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

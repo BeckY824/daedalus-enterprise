@@ -57,8 +57,26 @@ async function 压慢(page: Page) {
   });
 }
 
+/**
+ * 等 React 接管这块（水合完）：next dev 在 CI 慢机上 goto 回来、服务端那份已经画出来时，水合可能还没跑完。
+ * 这时给服务端的 DOM 打 data-old，水合报属性对不上（CI 日志里抓到过 `- data-old="1"`）；
+ * 点的也可能是水合前那份——项目胶囊水合时才量宽，第二颗收进「更多」，点在被收走的那颗上什么都不发生
+ */
+async function 等水合(page: Page, 选择器: string) {
+  await expect
+    .poll(() => page.locator(选择器).first().evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))).catch(() => false), {
+      message: `${选择器} 一直没被 React 接管`,
+      timeout: 30_000,
+    })
+    .toBe(true);
+}
+
 /** 开始每帧记：旧内容（打了 data-old 的）在不在、新的 h1 出没出、有没有骨架、等待条、名单那一栏是不是原来那个节点 */
-const 开始记 = (page: Page, 旧选择器: string, 新名: string, 去的路径 = "") => page.evaluate(([旧选择器, 新名, 去的路径]) => {
+const 开始记 = async (page: Page, 旧选择器: string, 新名: string, 去的路径 = "") => {
+  await 等水合(page, 旧选择器);
+  await 记(page, 旧选择器, 新名, 去的路径);
+};
+const 记 = (page: Page, 旧选择器: string, 新名: string, 去的路径: string) => page.evaluate(([旧选择器, 新名, 去的路径]) => {
   document.querySelectorAll(旧选择器).forEach((e) => e.setAttribute("data-old", "1"));
   document.querySelector("aside.pane-roster")?.setAttribute("data-mark", "1");
   const w = window as unknown as { __帧: Record<string, boolean | string | number>[] };
@@ -212,6 +230,10 @@ test("项目 A→B（客户详情里点项目胶囊）：不出骨架，客户�
   // 1366 宽时第二个项目收在「更多 1 个」里（ProjectZone 的下拉，走 useNavGo）；摆得下时就是一颗胶囊（Link + LinkPending）
   const 胶囊 = page.locator(`.cd-pj-pill[href*="project=${项目们[1]}"]`);
   const 更多 = page.getByRole("button", { name: /更多 \d+ 个/ });
+  // 先等胶囊量过宽（水合后 ProjectSwitch 的 useLayoutEffect 量完才给每颗写 min-width）再看走哪条：
+  // 服务端那份是全摆，量完 1280 宽收成「1 颗 + 更多」——量之前去数，数到的是要被收走的那颗（CI 红过的就是这样，本机 CPU 压 20 倍复现）
+  await 等水合(page, ".cd-pj-pills");
+  await expect(page.locator(".cd-pj-pills > .cd-pj-pill[role=tab][style*='min-width']").first()).toBeAttached();
   await expect(胶囊.or(更多).first()).toBeVisible();
   await 压慢(page);
   await 开始记(page, "main h1.rec-head-name", "（不换人）");
