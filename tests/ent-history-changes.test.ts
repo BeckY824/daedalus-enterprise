@@ -104,7 +104,7 @@ beforeAll(async () => {
   await raw.project.create({ data: { name: "QA-丙B在推", customerId: 丙, ownerId: 销售B, creatorId: 销售B } });
   await raw.project.create({ data: { name: "QA-丙B丢单", customerId: 丙, ownerId: 销售B, creatorId: 销售B, phase: "商机", node: "方案报价", result: "丢单" } });
   await raw.auditLog.createMany({ data: [
-    { userId: 销售A, userName: 销售A, action: "update", entity: "Customer", entityId: 丙, at: 天(3), summary: "修改客户「QA-丙」：电话", detail: JSON.stringify([{ 字段: "电话", 原值: "13800009991", 新值: "13800009992" }]) },
+    { userId: 销售A, userName: 销售A, action: "update", entity: "Customer", entityId: 丙, at: 天(3), summary: "修改客户「QA-丙」：电话", detail: JSON.stringify([{ 字段: "电话", 原值: "13800009991", 新值: "13800009992" }, { 字段: "联系电话", 原值: "（空）", 新值: "13800009997" }]) },
     { userId: 销售A, userName: 销售A, action: "update", entity: "Customer", entityId: 丙, at: 天(4), summary: "修改客户「QA-丙」：备注、联系电话", detail: JSON.stringify([{ 字段: "备注", 原值: "旧", 新值: "打 13800009993 找他" }, { 字段: "联系电话", 原值: "0571-88889999", 新值: "12345" }]) },
     { userId: "u", userName: "管理员", action: "update", entity: "Customer", entityId: 丙, at: 天(5), summary: "[补号码 NO.1] 号码补成 138 0000 9994" },
   ] });
@@ -246,7 +246,7 @@ describe("历史变更：状态、批量折叠、翻页", () => {
 });
 
 describe("历史变更：号码按看的人打码（审查后补）", () => {
-  const 明文们 = ["13800009991", "13800009992", "13800009993", "88889999", "0000 9994", "13800009995", "66667777", "13800009996"];
+  const 明文们 = ["13800009991", "13800009992", "13800009993", "88889999", "0000 9994", "13800009995", "66667777", "13800009996", "13800009997"];
   /** 客户块翻到底 + 项目块（展开 丙的项目）的整个回包 */
   async function 回包(做: <T>(fn: () => Promise<T>) => Promise<T>) {
     const 客户 = await 翻完(做, "全部", 丙);
@@ -268,6 +268,8 @@ describe("历史变更：号码按看的人打码（审查后补）", () => {
     for (const n of 明文们) expect(包, n).not.toContain(n);
     expect(包).toContain("138****9991");
     expect(包).toContain("电话：138****9991 → 138****9992");
+    // 留痕里存的「（空）」字面量照样写「（空）」，不打成「****」（3703 实操发现）
+    expect(包).toContain("联系电话：（空） → 138****9997");
   });
 
   it("字段权限开着、电话对总管理设成「藏」：回包里搜不到明文号码；关掉规则就原样", async () => {

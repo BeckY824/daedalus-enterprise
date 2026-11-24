@@ -92,7 +92,8 @@ function 改动行们(detail: string | null, 号: 号码器): string[] {
       if (!x || typeof x !== "object") return [];
       const o = x as Record<string, unknown>;
       if (typeof o.字段 !== "string") return [];
-      const 值 = (v: unknown) => (v == null || v === "" ? "（空）" : 号码字段.test(o.字段 as string) ? 号(String(v)) : String(v));
+      // 明细里有的直接存了「（空）」字面量（资料修改留痕写入时就这么记），也算空、不打码
+      const 值 = (v: unknown) => (v == null || v === "" || v === "（空）" ? "（空）" : 号码字段.test(o.字段 as string) ? 号(String(v)) : String(v));
       return [`${o.字段}：${值(o.原值)} → ${值(o.新值)}`];
     });
   } catch {
