@@ -40,9 +40,9 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function open(opt: { width?: number; 项目模式?: boolean; 加?: Record<string, unknown> } = {}) {
+async function open(opt: { width?: number; 项目模式?: boolean; 加?: Record<string, unknown>; 暗?: boolean } = {}) {
   const page = await browser.newPage({ viewport: { width: opt.width ?? 1366, height: 900 } }); page.setDefaultTimeout(5000);
-  await page.route("http://d3.test/**", r => r.fulfill({ contentType: "text/html", body: "<!doctype html><html data-mode='light'><meta charset='utf-8'><div id='root'></div></html>" }));
+  await page.route("http://d3.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html data-mode='${opt.暗 ? "dark" : "light"}'><meta charset='utf-8'><div id='root'></div></html>` }));
   await page.goto("http://d3.test");
   for (const f of ["globals.css", "antd-dark.css", "dark.css"]) await page.addStyleTag({ path: path.resolve("src/app", f) });
   await page.addScriptTag({ content: bundle });
@@ -57,6 +57,28 @@ async function 保护色(page: Page) {
     return { 绿: g > r + 20 && g > b + 20, 灰: Math.max(r, g, b) - Math.min(r, g, b) < 12, 类: el.className.includes("ant-tag-green") };
   });
 }
+/** 号码保护标签字和底的对比度（WCAG 相对亮度）：浅色原来 --text-muted 压 --tag-bg 只有 4.30，要 ≥ 4.5（AA） */
+async function 保护对比(page: Page) {
+  return page.locator(".rec-contact-guard").first().evaluate((el) => {
+    const 亮 = (s: string) => {
+      const [r, g, b] = s.match(/[\d.]+/g)!.slice(0, 3).map((x) => Number(x) / 255).map((c) => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    const cs = getComputedStyle(el);
+    const [a, b] = [亮(cs.color), 亮(cs.backgroundColor)].sort((x, y) => y - x);
+    return Math.round(((a + 0.05) / (b + 0.05)) * 100) / 100;
+  });
+}
+it("号码保护标签字底对比浅深都 ≥ 4.5（AA）", async () => {
+  for (const 暗 of [false, true]) {
+    const page = await open({ 暗 });
+    try {
+      expect(await 保护对比(page), 暗 ? "深色" : "浅色").toBeGreaterThanOrEqual(4.5);
+      // 不是绿（绿只给「完成」）；深色的 --ink-soft 略偏冷，不按「三通道差 < 12」判灰
+      expect((await 保护色(page)).绿).toBe(false);
+    } finally { await page.close(); }
+  }
+}, 60_000);
 it("每人一组、先露 3 位，号码保护灰底加锁，附件「— ＋ 添加」，卡头「＋ 新增」", async () => {
   const page = await open();
   try {

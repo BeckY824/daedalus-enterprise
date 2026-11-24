@@ -5598,11 +5598,12 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
   :root:root .rec-page .rec-contact-acts .rec-contact-menu.ant-btn { width: var(--hit-touch); min-width: var(--hit-touch); height: var(--hit-touch); margin-block: calc((var(--hit) - var(--hit-touch)) / 2); }
 }
 :root:root .rec-page .rec-contact-rest-btn.ant-btn { display: flex; margin: 8px 0 0; padding: 0 8px; height: var(--hit); }
-/* M4-b：名字没填「—」淡色常规字重，头像里的「—」同色（D1 实操遗留）；号码保护灰底 + 锁（绿只给「完成」，D10） */
+/* M4-b：名字没填「—」淡色常规字重，头像里的「—」同色（D1 实操遗留）；号码保护灰底 + 锁（绿只给「完成」，D10）。
+   字接 --tag-fg（同全站中性标签）：原来 --text-muted 压在 --tag-bg 上浅色只有 4.30:1，不到 AA 4.5；--tag-fg 浅 8.49、深 8.94（11-24） */
 :root:root .rec-contact-n.is-empty { color: var(--empty-fg); font-weight: 400; }
 :root:root .rec-contact-av.is-empty { color: var(--empty-fg); }
 :root:root .ant-tag.ant-tag.ant-tag.rec-contact-guard,
-:root:root .ant-tag.ant-tag.ant-tag.rec-contact-guard.ant-tag-green { background: var(--tag-bg); color: var(--text-muted); border-color: transparent; }
+:root:root .ant-tag.ant-tag.ant-tag.rec-contact-guard.ant-tag-green { background: var(--tag-bg); color: var(--tag-fg); border-color: transparent; }
 /* M4-c：附件空格「— ＋ 添加」小字键；挂靠就地表单的格子 32 高（--ctl-h） */
 :root:root .att-empty > .att-add.ant-btn { height: var(--hit); margin-block: -4px; padding: 0 4px; gap: 2px; font-size: var(--fs-note); color: var(--brand); }
 :root:root .rec-contact-pick .ant-select { height: var(--ctl-h); }
