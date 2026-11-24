@@ -60,9 +60,13 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
       timeout: 30_000,
     })
     .toBe(true);
-  await 新建.click();
+  // 接管了也还可能落空（11-24 #451 带着上面这道等待仍红）：点击进行中 RecordView 才首次渲染、挂框的那层重新挂载，开框状态被冲掉。
+  // 点了框没出就再点，30 秒内出来算过；框开着时再点会被遮罩挡住，不会把框关掉。只改用例，产品代码不动
   const 框 = page.getByRole("dialog", { name: "新建沟通" });
-  await expect(框).toBeVisible();
+  await expect(async () => {
+    if (!(await 框.isVisible())) await 新建.click({ timeout: 3_000 });
+    await expect(框).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
 
   // 发起主体字典里有「我方发起」时自动带上；没带上就挑第一项
   // 11-15 起记沟通框是项目那张（F-跟进-06），不是 antd Form.Item：按读屏名认这一格
