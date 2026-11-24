@@ -80,8 +80,11 @@ describe("建档向导：第一行下面多加的号码", () => {
     expect(r).toMatchObject({ ok: true });
     if (!r.ok) return;
     expect(await 联系人的号(r.customerId)).toEqual(["phone:13900000101", "phone:13900000102", "wechat:wx_buyer01"]);
-    // 客户主表电话照旧是第一行
-    expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).phone).toBe("13900000101");
+    // 客户没有电话（E-260）：客户主表电话空着，第一行的号也在主要联系人上（上面那几行里）
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).phone).toBe("");
+    // 只有向导建的那一位主要联系人，第一行的号没另建一位；客户本身不挂号
+    expect(await prisma.contact.count({ where: { customerId: r.customerId } })).toBe(1);
+    expect(await prisma.contactMethod.count({ where: { customerId: r.customerId, contactId: null } })).toBe(0);
   });
 
   it("同一家「手机 = 微信」（微信同号）不撞自己；别人微信格里有这个号就不建（11-20 跨类型）", async () => {

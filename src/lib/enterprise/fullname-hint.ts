@@ -25,8 +25,8 @@ const 单姓 = new Set(
 );
 const 复姓 = ["欧阳", "司马", "上官", "诸葛", "东方", "皇甫", "尉迟", "公孙", "慕容", "长孙", "宇文", "司徒", "夏侯", "令狐", "端木", "独孤"];
 
-/** 一段（全称按「｜」拆开的一段）像不像人名 */
-function 段像人名(s: string): boolean {
+/** 一段（全称按「｜」拆开的一段）像不像人名；客户名拆人名（contact-name-from-customer.ts）也用这一把尺 */
+export function 段像人名(s: string): boolean {
   const t = s.trim();
   if (!t || 单位字样.test(t)) return false;
   // 「张总」「李先生」「王女士」「陈经理」这类称呼

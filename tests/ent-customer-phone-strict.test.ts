@@ -51,6 +51,17 @@ async function 新建(phone: string | null, 名?: string) {
     企业资料: { bizLine: "内贸" },
   } as Parameters<typeof saveCustomer>[0]);
   if (!r.ok) throw new Error(r.error);
+  /*
+    E-260 起新建不写客户电话、号记在主要联系人上。这份测的客户电话格（patchCustomer phone）、客户本身号码几行（saveCustomerNumbers）
+    还在，阶段 2 删入口时这份一起改：这里把刚建的还原成老数据的样子（客户主表有电话、子表那行挂在客户本身上、没有联系人）
+  */
+  const 主联 = await prisma.contact.findFirst({ where: { customerId: r.id }, select: { id: true, phone: true } });
+  if (主联) {
+    await prisma.contactMethod.updateMany({ where: { contactId: 主联.id }, data: { contactId: null } });
+    await prisma.contactCustomer.deleteMany({ where: { contactId: 主联.id } });
+    await prisma.contact.delete({ where: { id: 主联.id } });
+    await prisma.customer.update({ where: { id: r.id }, data: { phone: 主联.phone ?? "" } });
+  }
   return r.id;
 }
 const 读 = (id: string) => prisma.customer.findUniqueOrThrow({ where: { id } });
@@ -79,7 +90,7 @@ describe("症状 1、2：电话格只收手机号，带字母整格拒、不截�
     expect((await 读(id)).phone).toBe("13900001102");
   });
 
-  it("完整表单新建 / 编辑同一套：贴微信号拒，+86 写法规整成 11 位", async () => {
+  it("完整表单新建贴微信号拒、+86 写法规整成 11 位；编辑不认交来的电话（E-260），库不变", async () => {
     await expect(新建("sqin17548955941")).rejects.toThrow(像微信号提示);
     await expect(新建("748392")).rejects.toThrow();
     const id = await 新建("+86 139 0000 1103");
@@ -90,7 +101,7 @@ describe("症状 1、2：电话格只收手机号，带字母整格拒、不截�
       followStatus: c.followStatus, decisionStatus: c.decisionStatus, expectedSignAt: null, remark: null,
       salesOwnerId: "tester-id", channelId: null, referrerCustomerId: null,
     } as Parameters<typeof saveCustomer>[0]);
-    expect(r).toMatchObject({ ok: false, error: 像微信号提示 });
+    expect(r).toMatchObject({ ok: true });
     expect((await 读(id)).phone).toBe("13900001103");
   });
 
@@ -143,7 +154,7 @@ describe("症状 4：清空电话", () => {
     expect((await 客户行(id)).map((r) => r.value).sort()).toEqual(["010-66001304", "13900001305"]);
   });
 
-  it("完整表单清空：同一条", async () => {
+  it("完整表单交空电话：不认（E-260 编辑不写客户电话），库不变", async () => {
     const id = await 新建("13900001306");
     const 存 = async () => {
       const c = await 读(id);
@@ -153,11 +164,9 @@ describe("症状 4：清空电话", () => {
         salesOwnerId: "tester-id", channelId: null, referrerCustomerId: null,
       } as Parameters<typeof saveCustomer>[0]);
     };
-    expect(await 存()).toEqual({ ok: false, error: 清空电话拦话 });
-    expect(await saveCustomerNumbers(id, [{ kind: "email", value: "buyer@example.com" }])).toEqual({ ok: true });
     expect(await 存()).toMatchObject({ ok: true });
-    expect((await 读(id)).phone).toBe("");
-    expect((await 客户行(id)).map((r) => r.kind)).toEqual(["email"]);
+    expect((await 读(id)).phone).toBe("13900001306");
+    expect((await 客户行(id)).map((r) => r.value)).toEqual(["13900001306"]);
   });
 });
 

@@ -531,11 +531,13 @@ function CustomerFormInner({
               <Input placeholder={企业 ? 名称框提示 : "如：张三"} maxLength={企业 ? 200 : undefined} />
             </Form.Item>
           </Col>
-          <Col span={8}>
+          {/* 企业版客户没有电话（E-260，11-24）：编辑不摆这一格（号码在联系人上改）；新建弹窗（项目模式没开时）这一格是主要联系人的电话，
+              服务端建好记到主要联系人身上（saveCustomer → primary-contact-number.ts） */}
+          {企业 && editing ? null : <Col span={8}>
             {/* 和导入、服务端同一条规矩（lib/phone.ts）：收海外号和座机；
                 只有新建、或原来就有号码的才必填——原来没电话的人改个备注不该被它卡住 */}
             <Form.Item
-              label={四选一 ? <>联系电话<认人记号 /></> : "联系电话"}
+              label={四选一 ? <>联系电话<认人记号 /></> : 企业 ? "联系人电话" : "联系电话"}
               name="phone"
               required={电话必填 && !四选一}
               dependencies={外贸档 ? [["extra", "whatsapp"], ["extra", "email"], ["extra", "wechat"], ["extra", "alibabaId"]] : undefined}
@@ -554,7 +556,7 @@ function CustomerFormInner({
                     if (editing && v && v.includes("*") && v === editing.phone) return Promise.resolve();
                     // 企业版（11-17）：和建档向导、联系人表单同一套手机号规矩（带字母汉字整格拒、国内 1[3-9] 开头 11 位）；编辑时清空交给服务端看还有没有别的联系方式
                     if (企业) {
-                      if (!v?.trim()) return !editing && 电话必填 ? Promise.reject(new Error("请输入联系电话")) : Promise.resolve();
+                      if (!v?.trim()) return !editing && 电话必填 ? Promise.reject(new Error("请输入联系人电话")) : Promise.resolve();
                       const 企 = 验客户电话(v);
                       return 企.ok ? Promise.resolve() : Promise.reject(new Error(企.error));
                     }
@@ -566,7 +568,7 @@ function CustomerFormInner({
             >
               <Input placeholder={电话必填 ? "13800001111" : "没有可以先空着"} onBlur={onPhoneBlur} />
             </Form.Item>
-          </Col>
+          </Col>}
           <Col span={8}>
             <Form.Item label={b.fields.school} name="school">
               <Input placeholder={字段是公司(b.fields.school) ? "如：星辰科技" : undefined} />

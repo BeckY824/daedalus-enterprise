@@ -62,7 +62,8 @@ import { 选的原因, 可选项, 客户分配序号 } from "@/lib/enterprise/di
 import { 建档记自持, 补客户分配 } from "@/lib/enterprise/customer-assign-way";
 import { 验号码, 验客户电话 } from "@/lib/enterprise/contact-format";
 import { 客户还有别的联系方式, 同步电话子表, 客户电话撞号, 清空电话拦话, 删光号码拦话, 电话子表键们 } from "@/lib/enterprise/customer-phone-db";
-import { 企业号码查重, 全公司查号, 撞号结论, 记号码, 一行号全公司查, 一行号回收站查, 回收站里有提示 } from "@/lib/enterprise/contact-dedupe";
+import { 企业号码查重, 全公司查号, 撞号结论, 一行号全公司查, 一行号回收站查, 回收站里有提示 } from "@/lib/enterprise/contact-dedupe";
+import { 号码记到主联系人 } from "@/lib/enterprise/primary-contact-number";
 import { 验联系人号码们, 号码种类表, 种类叫法 } from "@/lib/enterprise/customer-v2-db";
 import { 号码撞上, 客户名查重, 名撞说法, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import { setOppStatus } from "../opportunities/actions";
@@ -385,7 +386,11 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     }
   }
   const 企号别的 = 企号?.ok === true && 企号.类型 !== "手机号";
-  const 交的电话 = 企号?.ok && 企号.类型 === "手机号" ? 企号.值 : input.phone;
+  /*
+    企业版客户没有电话这一说法（E-260，11-24）：号码一律在联系人上。编辑时客户电话这一格不认交来的（照库里原样，不写），
+    新建时交来的号（企业号码、电话格）只拿来验格式、查重，建好记到主联系人身上（primary-contact-number.ts），客户主表电话存空串
+  */
+  const 交的电话 = 企业版() && 改前 ? 改前.phone : 企号?.ok && 企号.类型 === "手机号" ? 企号.值 : input.phone;
 
   /*
     电话：和导入、表单同一条规矩（lib/phone.ts）。新建必填；编辑时原来有号码的不许清空，
@@ -688,7 +693,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (!sign) return { ok: false, error: "日期格式不对或日期不存在" };
   const data = {
     name: input.name.trim(),
-    phone,
+    // 企业版新建不写客户电话（E-260）：号码在下面建客户的事务里记到主联系人；编辑时 phone 就是库里原样
+    phone: 企业版() && !改前 ? "" : phone,
     school: input.school?.trim() || null,
     grade: input.grade || null,
     major: input.major?.trim() || null,
@@ -770,11 +776,16 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       // 客户编号（11-17 PR-1）：同一个事务里取号，建不成号跟着回滚
       const created = await tx.customer.create({ data: await 带客户编号(tx, data) });
       if (记自持) await 补客户分配(tx, created.id, 客户分配序号.自持);
-      await 写外贸档案(tx, created.id, { ...档案.data, ...(企号?.类型 === "邮箱" ? { email: 企号.值 } : 企号?.类型 === "微信" ? { wechat: 企号.值 } : {}) }, false);
-      if (企号) await 记号码(tx, { 刚建的: created.id }, null, 企号);
-      // 企业版没选号码类型、填了电话的：电话也记进子表（客户本身的号，带归属地）；和企号同号的 记号码 自己跳过
-      else if (企电话?.ok && 企电话.值) await 记号码(tx, { 刚建的: created.id }, null, { 类型: "手机号", 值: 企电话.值, 键: 企电话.键 });
+      // 企业版选了邮箱 / 微信类型的号不再写进客户档案（E-260：客户本身没有号码，记到主联系人）
+      await 写外贸档案(tx, created.id, 档案.data, false);
       if (认得(接着)) await 接着(tx, created.id);
+      /*
+        企业版交来的号（选了类型的企业号码，或没选类型填的电话格）记到主联系人（E-260）：建档向导 / 只建客户的 接着 已经建好主联系人，
+        记在他身上（联系人那格带进过同一个号的不重复记）；新建弹窗没有联系人的，按客户名称拆姓名新建一位主联系人
+      */
+      const 落号 = 企号 ?? (企电话?.ok && 企电话.值 ? { 类型: "手机号" as const, 值: 企电话.值, 键: 企电话.键 } : null);
+      // 只写刚建的这位客户名下的联系人：放开范围（建档向导指定给了别人时，客户在 接着 里已转走、我这儿只读）
+      if (企业版() && 落号) await 看全部(() => 号码记到主联系人(tx, { 刚建的: created.id }, 落号, created.name));
       // M-公海-14：企业版项目模式下新客户至少带 1 个潜客培育项目（向导已建了项目的不补；老数据不补）
       const 补的 = 要补潜客培育(企业版(), b.projectMode) ? await 补潜客培育(tx, { customerId: created.id, 客户名: 全称或显名(created), ownerId: created.salesOwnerId, creatorId: me.id }) : null;
       // 选了项目分配方式：落在客户自带的潜客培育上（只建客户那条路是 接着 建的，这里补的是 null，按客户找回那一个）

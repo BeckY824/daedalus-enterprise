@@ -96,6 +96,8 @@ async function 改档案(customerId: string, changes: 一处改动[]): Promise<{
 
   const 取值 = (f: string) => changes.find((c) => c.field === f)?.value;
   const 有 = (f: string) => changes.some((c) => c.field === f);
+  // 企业版客户没有电话（E-260，11-24）：号码在联系人上，改客户卡不收电话（saveCustomer 编辑也不认这一格）
+  if (企业版() && 有("phone")) return { ok: false, error: "客户本身没有电话，号码请到联系人上改" };
 
   // 关系字段：模型给的是名字，这里解析成 id。重名直接报错，绝不猜——
   // 猜错就是把客户挂到别人名下，而且没人会发现
