@@ -187,7 +187,7 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
       // 不取留痕：take 0（Prisma 不为它发查询，类型照旧），条数和回收起点走下面 留痕概况 一句
       logs: { orderBy: { at: "desc" }, take: 不取留痕 ? 0 : 留痕取几条 },
       members: { orderBy: { createdAt: "asc" } },
-      followUps: { include: { followUp: { select: { id: true, type: true, title: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, createdAt: true, updatedAt: true } } } },
+      followUps: { include: { followUp: { select: { id: true, type: true, title: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, customerId: true, createdAt: true, updatedAt: true } } } },
     },
   });
   if (!p) return { 种: "无" };
@@ -368,7 +368,11 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   };
   const 项目附件 = 企业 && 露 ? await 项目附件入口(p.id) : null;
   // 企业版沟通记录的截图、录音（F-跟进-07）：和沟通记录同一个口径（露客户才给）；传 = 记这条的本人或能改沟通的，删 = 能改沟通的（api/attachments/access.ts 认沟通）
-  const 沟通附件 = 企业 && 露 && p.followUps.length ? await 沟通附件们(prisma, p.followUps.map((f) => f.followUp.id)) : new Map<string, 附件[]>();
+  // 只给记在本项目客户名下的（11-24，同客户页汇总 customer-follow-feed.ts 带附件）：关联客户带进来、记在别的客户名下的那几条，
+  // 附件接口 认沟通 要看得到那位客户，过不了就是点不开的破图，所以不带
+  const 本客户的 = (f: { followUp: { customerId: string | null } }) => f.followUp.customerId === p.customerId;
+  const 带附件的 = p.followUps.filter(本客户的).map((f) => f.followUp.id);
+  const 沟通附件 = 企业 && 露 && 带附件的.length ? await 沟通附件们(prisma, 带附件的) : new Map<string, 附件[]>();
   // 企业版回款（10-31，迁移 100）：和合同金额一样是项目自己的钱，都给看
   const 回款们 = 企业 ? await 列回款(p.id) : null;
   // 企业版关联客户 / 联系人（P17）：同画像，公海里同事客户的项目没领之前不给
