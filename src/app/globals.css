@@ -6417,6 +6417,9 @@ button.proj-miss-chip { cursor: pointer; }
 @media (max-width: 767px) {
   :root:root .ant-layout:has(> .app-content .cli-paper) { height: 100vh; height: 100dvh; }
   :root:root .app-content:has(.cli-paper) { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 !important; }
+  /* Content 和 .cli-paper 之间隔着换页框（AppShell 的 PageFade，跳转优化 PR-A 起手机也包）：它也得是这条 flex 链上的一环，
+     不然普通 block 按内容高、.cli-paper 的 flex: 1 落空，对话区塌成十几像素、输入框顶在上面（3703 实操 11-24）。同电脑档 .main > div:has(> .cli-paper) */
+  :root:root .app-content:has(.cli-paper) > .page-fade:has(> .cli-paper) { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; }
   :root:root .cli-paper .cli-ck .cli-frame { border: 0; border-radius: 0; }
   :root:root .cli-paper .cli-head { height: 52px; padding: 0 var(--s1); gap: 0; border-bottom-color: var(--line-soft); }
   :root:root .cli-paper .cli-head-ib { width: var(--hit-touch); height: var(--hit-touch); }
