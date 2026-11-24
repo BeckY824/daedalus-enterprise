@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Button, Dropdown, Input, Select, Space, type MenuProps } from "antd";
 import { MoreOutlined } from "@ant-design/icons";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -20,7 +21,7 @@ import type { ContactRow } from "./types";
 type 结果 = { ok: true } | { ok: false; error: string };
 
 const 客户链接 = (x: { id: string; name: string; 看得到: boolean }) =>
-  x.看得到 ? <Link href={`/customers/${encodeURIComponent(x.id)}`}>{x.name}</Link> : <span title="不在你的范围，只显示名字">{x.name}</span>;
+  x.看得到 ? <Link href={`/customers/${encodeURIComponent(x.id)}`}>{x.name}<LinkPending /></Link> : <span title="不在你的范围，只显示名字">{x.name}</span>;
 
 /**
  * 头 / children（设计语言 D3 · M4-c，客户页联系人一组）：给了 头 就把「挂到别的客户 / 换主客户 / 改说明 / 改到这位名下 / 解除挂靠」

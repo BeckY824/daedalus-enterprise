@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Button, Card, Space, Tag } from "antd";
 import { fmtDate } from "@/lib/utils";
 import { 回项目邀请 } from "./actions";
@@ -17,6 +18,8 @@ export type 邀请行 = { id: string; projectId: string; 项目: string; 负责�
  */
 export default function InviteInbox({ 邀请们 }: { 邀请们: 邀请行[] }) {
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const [忙, set忙] = useState<string | null>(null);
   // 没回成的原因写在那一行下面（原型 g.notice：不弹顶部提示），再点一次时清掉
   const [错, set错] = useState<Record<string, string>>({});
@@ -32,7 +35,7 @@ export default function InviteInbox({ 邀请们 }: { 邀请们: 邀请行[] }) {
       const x = await 回项目邀请(r.id, true);
       // 同意了直接打开项目，项目页本身就是「已加入」的回执，不再弹顶部提示
       if (!x.ok) 记错(r.id, x.error ?? "没回成，请稍后再试");
-      else router.push(`/projects/${r.projectId}`);
+      else 去页.push(("去" in x && x.去) || `/projects/${r.projectId}`);
     } catch (出错) {
       记错(r.id, 动作出错话(出错, "没回成，请稍后再试"));
     } finally {

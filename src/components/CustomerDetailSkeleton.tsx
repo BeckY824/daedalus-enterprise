@@ -1,4 +1,6 @@
 /**
+ * 客户详情的骨架（原 customers/[id]/loading.tsx，跳转优化 PR-A 起不再是那一层的 loading：换客户、列表进详情时旧内容留到新内容就绪，
+ * 只在整页打开（服务端流式首屏）时由 <槽位 名="main"> 里的 Suspense 出它，站内跳转不出，见 components/SlotSkeleton.tsx）。
  * 客户详情加载中（设计语言 D5 · M12-a，规范 D07）：出和页面同形的骨架——页头（头像 + 名字 + 一行小字）+ 三栏卡
  * （左栏客户资料 / 联系人，中栏进程卡 / 沟通，右栏项目资料），--skel-delay（180ms）后才出，快的不闪；减弱动态下灰条不扫光（.skel-bar 那条全局规则）。
  */
@@ -13,7 +15,7 @@ function 卡({ 行 }: { 行: number }) {
   );
 }
 
-export default function Loading() {
+export default function CustomerDetailSkeleton() {
   return (
     <div className="cd-skel" role="status" aria-label="正在打开客户" data-testid="customer-skeleton">
       <div className="cd-skel-head">

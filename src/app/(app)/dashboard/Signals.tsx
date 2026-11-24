@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import CountUp from "@/components/CountUp";
 import { 金额, 合计文字 } from "@/lib/currency";
 import { useBusiness } from "@/lib/business-client";
@@ -73,6 +74,7 @@ export default function Signals({ 信号 }: { 信号: 首页信号 }) {
             </b>
             <em>{x.去处}</em>
           </span>
+          <LinkPending />
         </Link>
       ))}
     </div>

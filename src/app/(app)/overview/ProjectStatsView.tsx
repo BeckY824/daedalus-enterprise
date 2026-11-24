@@ -3,6 +3,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Button, Card, Row, Col, Table, Typography } from "antd";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import type { EChartsCoreOption } from "echarts/core";
 import Chart from "@/components/Chart";
 import EmptyState, { 表格空态 } from "@/components/EmptyState";
@@ -51,6 +52,7 @@ const 名字列 = (去: (id: string) => string) => ({
       <Link href={去(r.id)} className="link-strong stat-who" title={v}>
         {m ? m[1] : v}
         {m && <span className="stat-who-sub">{m[2]}</span>}
+        <LinkPending />
       </Link>
     );
   },

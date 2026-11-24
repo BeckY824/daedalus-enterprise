@@ -4,7 +4,9 @@ import Shortcut from "./Shortcut";
 
 import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
+import { useFreshRoster } from "@/lib/roster-refresh";
 import { Tag, Drawer } from "antd";
 import { CloseOutlined, SearchOutlined, TableOutlined } from "@ant-design/icons";
 import { FOLLOW_STATUS_COLOR } from "@/lib/constants";
@@ -75,9 +77,10 @@ function 搜名单(xs: CustomerRosterData["rows"], q: string) {
 /**
  * 默认页签：企业版里销售（没有管理范围）默认「我的」，和客户页「范围」默认「我负责的」对齐（客户 11-18 第 12 题）；不给 = 「全部」
  */
-export default function CustomerRoster({ data, 默认页签 = "全部" }: { data: CustomerRosterData; 默认页签?: "全部" | "我的" }) {
+export default function CustomerRoster({ data: 服务端给的, 默认页签 = "全部" }: { data: CustomerRosterData; 默认页签?: "全部" | "我的" }) {
   const b = useBusiness();
-  const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const pathname = usePathname();
   const [q, setQ] = useState("");
   // 窗口太窄、或者人自己点了收起：名单收成抽屉（lib/middle-pane.ts）
@@ -91,6 +94,8 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
   usePaneShortcut(中栏.切换);
   const 搜索框 = useRef<HTMLInputElement>(null);
   const activeId = pathname.startsWith("/customers/") ? pathname.split("/")[2] : "";
+  // 名单在 layout 里、换人不重查：切回标签页、隔了 60 秒以上又换了一位时后台换新（lib/roster-refresh.ts）
+  const data = useFreshRoster(服务端给的, "/api/roster/customers", activeId);
 
   const rows = useMemo(() => 搜名单(data.rows, q), [data.rows, q]);
   const 我的rows = useMemo(() => (data.mineRows ? 搜名单(data.mineRows, q) : null), [data.mineRows, q]);
@@ -278,7 +283,7 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
             if (!去) return;
             e.preventDefault();
             if (抽屉开着) 关名单();
-            router.push(去);
+            去页.push(去);
           }}
         />
         <kbd className="pane-kbd"><Shortcut>⌘K</Shortcut></kbd>
@@ -364,33 +369,7 @@ export default function CustomerRoster({ data, 默认页签 = "全部" }: { data
   );
 }
 
-/**
- * 名单还在路上时中栏摆的骨架（11-22 切页卡顿：@pane/customers/[id]/loading.tsx）。
- * 名单原来不在任何 Suspense 里，点一位客户要等名单那几句查询算完整页才切过去，客户详情自己的骨架也出不来；
- * 有了它，切页在服务端吐出外壳时就提交，名单和详情各自晚到。
- * 和 CustomerRoster 同一个判法：名单收在抽屉里（窄窗、人自己收起、手机底部抽屉）时什么都不摆，只在整栏露着时摆同宽的一栏——
- * 栏的底色和边线立刻就有（正文不左右跳），里面的灰条照 --skel-delay 晚 180ms 才淡入，快的看不见
- */
-export function CustomerRosterSkeleton() {
-  const 中栏 = useMiddlePane("roster");
-  if (!中栏.露着) return null;
-  return (
-    <aside className="pane pane-roster pane-roster-cust" aria-busy="true" aria-label="正在载入名单">
-      <div className="roster-skel" data-testid="roster-skeleton">
-        <div className="skel-bar roster-skel-h" />
-        {Array.from({ length: 8 }, (_, i) => (
-          <div key={i} className="roster-skel-row">
-            <div className="roster-skel-av" />
-            <div className="roster-skel-m">
-              <div className="skel-bar" />
-              <div className="skel-bar" />
-            </div>
-          </div>
-        ))}
-      </div>
-    </aside>
-  );
-}
+/* 名单还在路上时中栏摆的骨架挪到 components/RosterSkeleton.tsx（审查补：骨架被壳里的 SlotSkeleton 带进每页首屏包，不能连着名单的 Drawer、dayjs 一起带） */
 
 /** 服务端没有 layout 阶段，退回 useEffect（只为不报警告；宽度首帧前已由 外观预设脚本 挂好） */
 const useIsoLayoutEffect = typeof window === "undefined" ? useEffect : useLayoutEffect;

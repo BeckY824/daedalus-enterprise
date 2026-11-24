@@ -4,6 +4,8 @@ import { 缓存着 } from "@/lib/home-cache";
 import { 未完成轻列表, 取详情 } from "@/lib/plans-page";
 import { 看得到的客户 } from "@/lib/project/db";
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
+import type { 谁 } from "@/lib/enterprise/permissions";
+import { 项目链接们 } from "./customer-detail-direct";
 import { dayjs } from "@/lib/utils";
 import type { 组 } from "@/lib/plans-groups";
 import {
@@ -29,31 +31,35 @@ export async function 复盘待办计数(只看?: string | readonly string[], no
 
 export async function 复盘待办of(
   只看?: string | readonly string[],
-  q: { 卡?: 待办卡; 页?: number; now?: ReturnType<typeof dayjs>; 每页?: number; 我id?: string } = {},
+  q: { 卡?: 待办卡; 页?: number; now?: ReturnType<typeof dayjs>; 每页?: number; 我id?: string; 我?: 谁 } = {},
 ): Promise<复盘待办> {
   const 共用 = (await 限定的我(defaultClient)) ? undefined : 缓存着;
   const 全部 = await 未完成轻列表(prisma, 共用);
   const { 计数, 总数, 页, 要 } = 挑一页(全部, { 只看, 卡: q.卡, 页: q.页, now: q.now ?? dayjs(), 每页: q.每页 ?? 复盘待办每页 });
-  return { 计数, 总数, 页, 行: await 补详情(要, q.我id) };
+  return { 计数, 总数, 页, 行: await 补详情(要, q.我id, q.我) };
 }
 
 /** 「全部待办」的三列看板（挑看板）：同一份轻列表、同一层限定，三列各取前几条的详情，一次查 */
 export async function 复盘看板of(
   只看?: string | readonly string[],
-  q: { now?: ReturnType<typeof dayjs>; 每列?: number; 我id?: string } = {},
+  q: { now?: ReturnType<typeof dayjs>; 每列?: number; 我id?: string; 我?: 谁 } = {},
 ): Promise<复盘看板> {
   const 共用 = (await 限定的我(defaultClient)) ? undefined : 缓存着;
   const 全部 = await 未完成轻列表(prisma, 共用);
   const { 计数, 列 } = 挑看板(全部, { 只看, now: q.now ?? dayjs(), 每列: q.每列 ?? 看板每列 });
-  const 行们 = await 补详情(看板列们.flatMap((k) => 列[k].要), q.我id);
+  const 行们 = await 补详情(看板列们.flatMap((k) => 列[k].要), q.我id, q.我);
   const 按键 = new Map(行们.map((r) => [r.key, r]));
   const 摆 = (k: 看板列) => ({ 总数: 列[k].总数, 行: 列[k].要.flatMap((x) => (按键.has(x.key) ? [按键.get(x.key)!] : [])) });
   return { 计数, 列: { overdue: 摆("overdue"), today: 摆("today"), later: 摆("later") } };
 }
 
-/** 挑出来的那几条取详情 + 客户的进行中项目（名字、级别、去哪）；顺序照 要 */
-async function 补详情(要: readonly { key: string; 组: 组 }[], 我id?: string): Promise<复盘待办行[]> {
+/**
+ * 挑出来的那几条取详情 + 客户的进行中项目（名字、级别、去哪）；顺序照 要。
+ * 给了 我（id + 角色）：去项目页的直接给它会跳去的客户页地址（customer-detail-direct.ts 项目链接们，跳转优化 PR-A：不经过重定向那段空白）
+ */
+async function 补详情(要: readonly { key: string; 组: 组 }[], 给的我id?: string, 我?: 谁): Promise<复盘待办行[]> {
   if (!要.length) return [];
+  const 我id = 我?.id ?? 给的我id;
   const { plans, tasks } = await 取详情(prisma, 要.map((x) => x.key));
   const 客户们 = [...new Set([...plans.map((p) => p.customerId), ...tasks.map((t) => t.customerId)])];
   // Task / FollowPlan 不挂项目：客户有进行中的项目就带它的名字、点了去项目页；同一个客户几个都在进行的，取最近动过的那个
@@ -77,10 +83,13 @@ async function 补详情(要: readonly { key: string; 组: 组 }[], 我id?: stri
     }))
       if (!退路.has(p.customerId)) 退路.set(p.customerId, p.id);
   const 项目id们 = [...[...项目of.values()].map((p) => p.id), ...退路.values()];
-  const 市场挡 = 我id && 项目id们.length ? await 市场进不了详情的(我id, 项目id们) : new Set<string>();
+  const [市场挡, 直达] = await Promise.all([
+    我id && 项目id们.length ? 市场进不了详情的(我id, 项目id们) : new Set<string>(),
+    我 && 项目id们.length ? 项目链接们(我, 项目id们) : new Map<string, string>(),
+  ]);
   const 去处 = (customerId: string): string | null => {
     const 项目id = 项目of.get(customerId)?.id ?? 退路.get(customerId);
-    if (项目id && !市场挡.has(项目id)) return `/projects/${encodeURIComponent(项目id)}`;
+    if (项目id && !市场挡.has(项目id)) return 直达.get(项目id) ?? `/projects/${encodeURIComponent(项目id)}`;
     return 进得去.has(customerId) ? `/customers/${encodeURIComponent(customerId)}` : null;
   };
   const 挂 = (customerId: string) => {

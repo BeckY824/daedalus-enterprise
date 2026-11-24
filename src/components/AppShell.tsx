@@ -51,7 +51,10 @@ import type { 全局搜索结果 } from "@/app/(app)/global-search";
 import Shortcut, { useModifierKey } from "./Shortcut";
 import { useBusiness } from "@/lib/business-client";
 import { DockOpenContext, useNarrow, usePageOwnsCmdK } from "@/lib/roster";
-import { 默认过渡, 跟随过渡 } from "@/lib/motion";
+import { 跟随过渡 } from "@/lib/motion";
+import NavProgress, { LinkPending, PageFade } from "@/components/NavProgress";
+import { NavGoProvider, useNavGo } from "@/lib/nav-pending";
+import { 槽位 } from "@/components/SlotSkeleton";
 import NoticeBell from "@/components/NoticeBell";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
 import { 切换视图Provider } from "@/components/ViewAsContext";
@@ -76,8 +79,8 @@ type Props = {
   workspace?: { name: string };
   /** 左栏「收藏的客户」（lib/favorites.ts）。没收藏过就整栏不出现 */
   收藏?: { id: string; name: string }[];
-  /** 左栏「收藏的项目」（11-02）。同上，没收藏过就没有这一栏 */
-  项目收藏?: { id: string; name: string }[];
+  /** 左栏「收藏的项目」（11-02）。同上，没收藏过就没有这一栏。去 = 点了去哪（lib/favorites.ts 读项目收藏：项目页会跳去的客户页地址；没给 = /projects/<id>） */
+  项目收藏?: { id: string; name: string; 去?: string }[];
   /** 导航项右边的数（2026-10-02 照毛玻璃原型）：客户总数、在谈的商机。只给有意义的那几项 */
   计数?: Partial<Record<string, number>>;
   /**
@@ -187,6 +190,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   const b = useBusiness();
   const modifier = useModifierKey();
   const router = useRouter();
+  /** 手机菜单、顶栏日历这些 router.push 的跳转：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 跳 = useNavGo();
   const pathname = usePathname();
   const 页内占着CmdK = usePageOwnsCmdK();
   /** 从详情页点左栏「客户」「公海」：回记住的那一屏（员工反馈 1A，components/ListReturn.tsx） */
@@ -304,7 +309,19 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   // 选中项取最长匹配前缀，/customers/xxx 也算在客户管理下
   const 少动 = useReducedMotion();
   // 公海是客户页带 pool=1（P7 之前），只看路径分不出来；企业版项目模式才读
-  const pool = useSearchParams()?.get("pool") ?? null;
+  const 查询 = useSearchParams();
+  const pool = 查询?.get("pool") ?? null;
+  /**
+   * 左栏收藏这一行亮不亮：在它那页上。收藏的项目直达客户页（/customers/<客户>?project=<项目>，跳转优化 PR-A）：
+   * 路径对上、?project 也对上才亮——同一位客户的别的项目页签、客户本身那页不算这个项目
+   */
+  const 收藏亮 = (c: { id: string; 去?: string }, 路: string): boolean => {
+    if (pathname === `${路}/${c.id}`) return true;
+    if (!c.去) return false;
+    const [去路, 去查 = ""] = c.去.split("?");
+    const 要的项目 = new URLSearchParams(去查).get("project");
+    return !!要的项目 && pathname === 去路 && 查询?.get("project") === 要的项目;
+  };
   /**
    * 企业版项目模式右下角的 AI 浮标（定稿 #13 / #14，见 AiFab、lib/enterprise/ai-fab.ts）。
    * 看的是地址栏：设置浮层开着时地址是 /settings，浮标让开，不压在设置上面。
@@ -479,6 +496,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       )}
       {/* 灰的数只是「有多少」，不是「要处理」：和上面那个红的分开，红的才催人。企业版不摆（10-30：几千个客户的总数没人看，只占地方） */}
       {!企业版 && (计数[n.key] ?? 0) > 0 && <span className="rail-num">{计数[n.key]}</span>}
+      <LinkPending />
     </Link>
   ));
 
@@ -637,7 +655,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   if (小屏) {
     // 底色走 --page-bg：外观选白底时地面跟着变白（antd 的 bodyBg 是 JS 里写死的色值，读不到外观）
     return (
-      <切换视图Provider value={!!正在视图}>
+      <切换视图Provider value={!!正在视图}><NavGoProvider>
       <Layout className={显示浮标 ? "has-ai-fab" : undefined} style={{ minHeight: "100vh", background: "var(--page-bg)" }}>
         {视图条}
         {挑人框}
@@ -648,8 +666,12 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             menu={{
               /* 整行可点：label 里塞 <Link> 的话，点在图标或右边空白上只会把菜单关掉 */
               items: [...nav.map(({ key, icon, label }) => ({ key, icon, label })), { key: "/settings", icon: <SettingOutlined />, label: "设置" }],
-              selectedKeys: [selectedKey],
-              onClick: ({ key }) => router.push(左栏地址(key)),
+              /* 点的那一项立刻算选中（同电脑左栏的 去向）：新页慢、人再打开菜单，亮的是刚点的那项，不是还没离开的那页 */
+              selectedKeys: [亮项],
+              onClick: ({ key }) => {
+                if (key !== selectedKey) set去向(key);
+                跳.push(左栏地址(key));
+              },
             }}
           >
             <Button type="text" icon={<MenuOutlined />} aria-label="打开导航菜单" />
@@ -664,7 +686,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           {反馈去向 !== "none" && <FeedbackButton 去向={反馈去向} />}
           {通知未读 !== undefined && <NoticeBell 初始未读={通知未读} 手机 />}
           <Badge count={要跟数} size="small" color={要跟.逾期 > 0 ? "var(--danger)" : "var(--text-muted)"}>
-            <Button type="text" icon={<CalendarOutlined />} aria-label={要跟说法 ? `跟进计划，${要跟说法}` : "跟进计划"} onClick={() => router.push("/follow-ups/plans")} />
+            <Button type="text" icon={<CalendarOutlined />} aria-label={要跟说法 ? `跟进计划，${要跟说法}` : "跟进计划"} onClick={() => 跳.push("/follow-ups/plans")} />
           </Badge>
           <Dropdown trigger={["click"]} menu={userMenu}>
             <Button type="text" aria-label={`${user.name}，账号菜单`}>
@@ -674,7 +696,9 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         </Header>
         <Content className="app-content" style={{ padding: "22px 26px" }}>
           <ListMemory />
-          <我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider>
+          <PageFade 页={底下那页}>
+            <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider></槽位>
+          </PageFade>
         </Content>
         {/* 企业版项目模式：手机上也能问一句。点浮标，面板铺满屏（globals.css 的手机 .dock），× 收起 */}
         {ai && 企业版项目 && (
@@ -683,18 +707,19 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         {显示浮标 && <AiFab onClick={() => set手机开在(底下那页)} />}
         {/* 设计语言 D2 · M2-c（K8）：客户详情页头那颗「显示客户名单」在手机上开底部抽屉——名单得挂上才开得出来。
             只挂客户详情这一处（槽位在手机上是一只关着的抽屉，不占地方）；别的页的中栏手机上照旧不挂 */}
-        {/^\/customers\/[^/]+$/.test(pathname) && pane}
+        {/^\/customers\/[^/]+$/.test(pathname) && <槽位 名="pane">{pane}</槽位>}
         {/* 设计语言 HC-1（C13-A）：首页对话栏左边那颗「对话列表」在手机上开左抽屉——列表得挂上才开得出来（关着不占地方） */}
-        {pathname === "/dashboard" && pane}
+        {pathname === "/dashboard" && <槽位 名="pane" 有AI={Boolean(ai)}>{pane}</槽位>}
         {/* D28：跳转单挂上，顶栏搜索才开得出来 */}
         <CommandBar 有AI={Boolean(ai)} 企业版项目={企业版项目} 全局搜索={全局搜索} />
+        <NavProgress />
       </Layout>
-      </切换视图Provider>
+      </NavGoProvider></切换视图Provider>
     );
   }
 
   return (
-    <切换视图Provider value={!!正在视图}>
+    <切换视图Provider value={!!正在视图}><NavGoProvider>
     <DockOpenContext.Provider value={面板占着地方}>
     <div className={`shell${desktop ? " shell-desktop" : ""}${面板开着 && !浮窗 && 底下那页 !== "/dashboard" ? " shell-dock-open" : ""}${留AI位 ? " has-ai-fab" : ""}${从浮标开 ? " shell-fab-opened" : ""}${窄栏 ? " rail-mini" : ""}${宽窄切换中 ? " rail-anim" : ""}`}>
       {视图条}
@@ -740,12 +765,13 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
             ].filter((栏) => 栏.项.length > 0).map((栏) => (
               <div key={栏.路} className="rail-fav" aria-label={栏.标}>
                 <div className="rail-fav-h">{栏.名}</div>
-                {栏.项.map((c) => 带名(c.id, c.name, (
-                  <Link href={`${栏.路}/${c.id}`} className={`rail-fav-i${pathname === `${栏.路}/${c.id}` ? " on" : ""}`} aria-label={c.name}>
+                {栏.项.map((c: { id: string; name: string; 去?: string }) => 带名(c.id, c.name, (
+                  <Link href={c.去 ?? `${栏.路}/${c.id}`} className={`rail-fav-i${收藏亮(c, 栏.路) ? " on" : ""}`} aria-label={c.name}>
                     <span className="rail-fav-av" style={{ background: avatarColor(c.name), color: AVATAR_TEXT }}>
                       {initial(c.name)}
                     </span>
                     <span className="rail-fav-n">{c.name}</span>
+                    <LinkPending />
                   </Link>
                 )))}
               </div>
@@ -812,35 +838,32 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
 
       {/* ⌘K：跳页或问一句。挂在壳上，哪一页都在 */}
       <CommandBar 有AI={Boolean(ai)} 企业版项目={企业版项目} 全局搜索={全局搜索} />
+      {/* 跳转等待条：新页慢于 150ms 才出，顶上 2px（lib/nav-pending.ts） */}
+      <NavProgress />
       {/* 我们回了你的反馈、还没看：左下角一条轻提示（一次一条，可关） */}
       {反馈去向 !== "none" && <FeedbackReplyToast 去向={反馈去向} />}
 
 
-      {/* 中栏：槽位自己带 <aside class="pane">，没有中栏的路由返回 null */}
-      {pane}
+      {/* 中栏：槽位自己带 <aside class="pane">，没有中栏的路由返回 null；整页打开时槽位里的 Suspense 按中栏画骨架（SlotSkeleton） */}
+      <槽位 名="pane" 有AI={Boolean(ai)}>{pane}</槽位>
 
       {/* antd 的 Content 自己就渲染成 <main>，外面不能再包一层：
           一个文档只能有一个 main，两个会让读屏和测试都认不出正文是哪块 */}
       <main className="main app-content" style={{ padding: 正在视图 ? "44px 26px 22px" : "22px 26px" }}>
         {/*
-          换页时正文淡进来、抬 4px（PR2 外壳 g.nav：原来 6px + 180ms 曲线，改成 ui 那档不回弹弹簧，和底块一起到位）。**只有正文**——
+          换页时正文淡进来（跳转优化 PR-A：180ms 只淡不移；原来 PR2 外壳 g.nav 还抬 4px）。**只有正文**——
           左栏和中栏不动，动的只是"这一页的内容换了"这件事本身。
           在这之前换页是硬切：上一页的表格原地变成下一页的表格，人得自己确认屏幕真的换了。
 
-          key 挂在底下那页上：同一页里改筛选、翻页走的是 query，不会重来一遍；
-          开设置浮层也不算换页——挂在 pathname 上的话，一开设置底下整页重挂、状态丢掉。
+          看的是底下那页：同一页里改筛选、翻页走的是 query，不会重来一遍；开设置浮层也不算换页。
+          不再用 key 重挂整块正文（那样换客户时新挂的 Suspense 边界会先出骨架、旧内容立刻没了），见 NavProgress.tsx 的 PageFade。
+          正文的首屏骨架在 <槽位 名="main"> 里（一直挂着，站内跳转不出，见 SlotSkeleton.tsx）。
           超宽屏下限制正文宽度并居中，避免表格被拉得过于稀疏。
         */}
         <ListMemory />
-        <motion.div
-          key={底下那页}
-          initial={{ opacity: 0, y: 少动 ? 0 : 4 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={默认过渡}
-          style={{ maxWidth: 1720, margin: "0 auto" }}
-        >
-          <我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider>
-        </motion.div>
+        <PageFade 页={底下那页} style={{ maxWidth: 1720, margin: "0 auto" }}>
+          <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider></槽位>
+        </PageFade>
       </main>
       {/*
         全局 AI 面板（⌘J）。挂在壳上所以切页不断流——正在跑的那一问跟着你走。
@@ -859,6 +882,6 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       )}
     </div>
     </DockOpenContext.Provider>
-    </切换视图Provider>
+    </NavGoProvider></切换视图Provider>
   );
 }

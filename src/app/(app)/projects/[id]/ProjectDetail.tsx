@@ -4,7 +4,9 @@ import { 留落地话 } from "@/lib/landing-note";
 import { 位置文字, 换人文字, type 放回方式 } from "@/lib/project/node-log-text";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { CommentOutlined, DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps, type PopoverProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
@@ -50,6 +52,7 @@ import { 两行, 等复核说法, 能项目转让, type 项目动作键 } from "
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
+import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import AddressInput from "@/components/AddressInput";
 import { 三种业务线, 建议业务线, 所在地提示 } from "@/lib/enterprise/assign-line";
@@ -564,6 +567,8 @@ export default function ProjectDetail({
   p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 教练主题 = null, 嵌入,
 }: 项目详情Props & { 嵌入?: 嵌在客户页 }) {
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   // 不弹顶部提示（原型 g.save / g.notice）：页面上做的事成没成写在正文底部的就地小条；弹框里的原因写在框里（跑 的 报错）
   const [就地, 回执条] = useDetailNote();
   const b = useBusiness();
@@ -931,7 +936,7 @@ export default function ProjectDetail({
             return;
           }
         } else if (p.customer && (p.客户入口 ?? "详情") === "详情") {
-          router.push(`/customers/${p.customer.id}#field-${客户资料格[键]}`);
+          去页.push(`/customers/${p.customer.id}#field-${客户资料格[键]}`);
           return;
         }
       }
@@ -1005,8 +1010,8 @@ export default function ProjectDetail({
     if (嵌入?.走后去) {
       // 这一下就跳去客户列表（受限详情里最后一个项目走了），本页没地方写：带一句过去，客户列表落地后在原处说（lib/landing-note.ts、LandingNote）
       留落地话(嵌入.走后去.到, 嵌入.走后去.说法);
-      router.push(嵌入.走后去.到);
-    } else router.push(嵌入?.客户页 ?? "/projects");
+      去页.push(嵌入.走后去.到);
+    } else 去页.push(嵌入?.客户页 ?? "/projects");
   };
   const 确认转给 = async (新: string) => {
     const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
@@ -1845,7 +1850,7 @@ export default function ProjectDetail({
           </Space>
         ) : p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条</Button>
           // 别的版本照旧给「去客户页记一条」
-          : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条</Link>
+          : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条<LinkPending /></Link>
       }
     >
       {沟通身()}
@@ -2069,7 +2074,7 @@ export default function ProjectDetail({
       )}
 
       {后果框}
-      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} 回执={就地} />}
+      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} 回执={就地} 回处={嵌入 && p.customer ? 客户页项目地址(p.customer.id, p.id) : undefined} />}
 
       <Modal
         open={!!异常框}
@@ -2246,7 +2251,7 @@ export default function ProjectDetail({
   const 正文 = (
     <div className={p.企业版 ? "proj-wrap" : undefined} style={{ maxWidth: p.企业版 ? 1200 : 960 }}>
       {p.企业版 ? (
-        /* 企业版（P11）：项目名单在中栏（@pane/projects/[id]，components/ProjectRoster.tsx）。
+        /* 企业版（P11）：项目名单在中栏（@pane/projects/(detail)/layout.tsx，components/ProjectRoster.tsx）。
            它收起或收成抽屉时，标题最左边补一颗侧栏图标把它叫回来，和客户详情页同一颗（components/PaneToggle.tsx） */
         <>
         {/* 回到进来前那张列表（员工反馈 1A，components/BackToList.tsx）；企业版没有项目列表入口，没记过回客户列表 */}
@@ -2507,7 +2512,7 @@ function 存录入模式(v: 录入模式) {
   try { if (v === "AI") localStorage.setItem(录入模式键, "AI"); else localStorage.removeItem(录入模式键); } catch { /* 无痕、禁用：只这一次 */ }
 }
 
-function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑, 回执 }: {
+function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑, 回执, 回处 }: {
   p: 项目详情;
   外贸: boolean;
   /** 能发卡点才给（企业版）；null = 不摆卡点那一块 */
@@ -2518,6 +2523,8 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   跑: 跑法;
   /** 记完框就关：回执（短沟通、卡点生成 / 没生成、附件没传上）写在详情正文底部的就地小条 */
   回执: 就地回执;
+  /** AI 任务列表里点这条回哪：嵌在客户页时就是这一页（客户页 + ?project，跳转优化 PR-A：不经过 /projects/<id> 再跳）；不给 = /projects/<id> */
+  回处?: string;
 }) {
   const 能选类型 = 跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   /** D4 · M7-b：「保存」一直能点、格子下报红 */
@@ -2595,7 +2602,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     const 起 = Date.now();
     set解析({ 起 });
     const 请求 = parseFollowUpDraft({ customerId: p.customer.id, text: 原话 });
-    runJob<null>(任务键, () => 请求.then((r) => (r.ok ? { ok: true as const, value: null } : { ok: false as const, error: r.error })), undefined, { 名: "解析项目沟通", 去: `/projects/${p.id}` });
+    runJob<null>(任务键, () => 请求.then((r) => (r.ok ? { ok: true as const, value: null } : { ok: false as const, error: r.error })), undefined, { 名: "解析项目沟通", 去: 回处 ?? `/projects/${p.id}` });
     let r: Awaited<typeof 请求>;
     try {
       r = await 请求;

@@ -95,6 +95,8 @@ export type 复盘沟通行 = {
   编号: string | null;
   /** 挂了几个附件 */
   附件: number;
+  /** 点这一行去哪：项目页会跳去的最终地址（lib/project/customer-detail-direct.ts 项目链接们）；没给 = /projects/<id>，项目页自己判 */
+  项目去?: string;
 };
 export type 复盘沟通 = { 总数: number; 页: number; 行: 复盘沟通行[] };
 
@@ -128,5 +130,7 @@ export type 复盘主题行 = {
   发起人: string;
   身份: string;
   回复数: number;
+  /** 点这一行去哪：项目页会跳去的最终地址（lib/project/customer-detail-direct.ts 项目链接们）；没给 = /projects/<id>，项目页自己判 */
+  项目去?: string;
 };
 export type 复盘主题 = { 总数: number; 页: number; 行: 复盘主题行[] };

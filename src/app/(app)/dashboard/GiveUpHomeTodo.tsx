@@ -8,12 +8,15 @@
  */
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Alert, Button } from "antd";
 import type { 我能放弃的线索 } from "@/lib/enterprise/lead-giveup-core";
 import GiveUpDialog from "../projects/[id]/GiveUpDialog";
 
 export default function GiveUpHomeTodo({ 们 }: { 们: readonly 我能放弃的线索[] | null | undefined }) {
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const [走了, set走了] = useState<ReadonlySet<string>>(() => new Set());
   const [开, set开] = useState<string | null>(null);
   const [成, set成] = useState<string | null>(null);
@@ -32,7 +35,7 @@ export default function GiveUpHomeTodo({ 们 }: { 们: readonly 我能放弃的�
             <div className="home-giveup-s" data-testid="home-giveup-left">{x.时限话} · 跟不了可以放弃（豁免），每月 1 次</div>
           </div>
           <div className="home-giveup-a">
-            <Button type="primary" size="large" className="home-giveup-btn" onClick={() => router.push(`/projects/${encodeURIComponent(x.projectId)}`)} data-testid="home-giveup-go">
+            <Button type="primary" size="large" className="home-giveup-btn" onClick={() => 去页.push(x.项目去 ?? `/projects/${encodeURIComponent(x.projectId)}`)} data-testid="home-giveup-go">
               去跟进
             </Button>
             <Button size="large" className="home-giveup-btn" onClick={() => { set成(null); set开(x.projectId); }} data-testid="home-giveup-open">放弃（豁免）</Button>
@@ -42,7 +45,7 @@ export default function GiveUpHomeTodo({ 们 }: { 们: readonly 我能放弃的�
       {正放 && (
         <GiveUpDialog
           key={正放.projectId}
-          projectId={正放.projectId} 开 关={() => set开(null)} 判无效去={`/projects/${encodeURIComponent(正放.projectId)}`}
+          projectId={正放.projectId} 开 关={() => set开(null)} 判无效去={正放.项目去 ?? `/projects/${encodeURIComponent(正放.projectId)}`}
           成={(接手人) => {
             set走了((原) => new Set([...原, 正放.projectId]));
             set开(null);

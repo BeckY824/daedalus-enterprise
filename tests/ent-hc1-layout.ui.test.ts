@@ -117,11 +117,11 @@ async function 开(o: 开参): Promise<{ page: Page; errors: string[] }> {
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const 手机 = o.宽 < 768;
-  // 照 AppShell：电脑 = 左栏 220 + 中栏 232（开着、够宽时）+ main（内边距 22 / 26，里面一层换页 div）；手机 = 顶栏 48 + Content（.cli 直接挂在里面）
+  // 照 AppShell：电脑 = 左栏 220 + 中栏 232（开着、够宽时）+ main（内边距 22 / 26，里面一层换页框 .page-fade）；手机 = 顶栏 48 + Content，里面同样一层 .page-fade（跳转优化 PR-A 起两边都是 NavProgress.tsx 的 PageFade）
   const 中栏 = !手机 && !o.收列表 && o.宽 >= 220 + 232 + 640;
   const 壳 = 手机
-    ? `<section class='ant-layout' style='min-height:100vh;display:flex;flex-direction:column'><header style='height:48px;flex:none;border-bottom:1px solid #eee'></header><main class='app-content' id='root' style='padding:22px 26px'></main></section>`
-    : `<div class='shell'><nav style='width:220px;flex:none'></nav>${中栏 ? "<aside class='pane' style='width:232px'></aside>" : ""}<main class='main app-content' style='padding:22px 26px'><div id='root' style='max-width:1720px;margin:0 auto'></div></main></div>`;
+    ? `<section class='ant-layout' style='min-height:100vh;display:flex;flex-direction:column'><header style='height:48px;flex:none;border-bottom:1px solid #eee'></header><main class='app-content' style='padding:22px 26px'><div class='page-fade' id='root'></div></main></section>`
+    : `<div class='shell'><nav style='width:220px;flex:none'></nav>${中栏 ? "<aside class='pane' style='width:232px'></aside>" : ""}<main class='main app-content' style='padding:22px 26px'><div class='page-fade' id='root' style='max-width:1720px;margin:0 auto'></div></main></div>`;
   await page.route("http://hc1.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html><meta charset='utf-8'><body style='margin:0'>${壳}</body></html>` }));
   await page.goto("http://hc1.test/dashboard");
   if (o.收列表) await page.evaluate(() => localStorage.setItem("pane.chat.collapsed", "true"));
@@ -566,6 +566,23 @@ it("C13（390，触屏点击区）：框头标题改名钮、「待办 N」、�
     expect((await 盒(宽屏.page, ".cli-head-t")).h).toBe(28);
     expect(宽屏.errors).toEqual([]);
   } finally { await 宽屏.page.close(); }
+});
+
+it("C13（390）：正文外那层换页框（AppShell 的 PageFade，.page-fade）不断手机那条 flex 链：框铺满、对话区撑开（3703 实操 11-24：.cli-log 只剩 12 高、输入框顶在上面）", async () => {
+  const { page, errors } = await 开({ 宽: 390, 高: 844, 轮数: 10 });
+  try {
+    // 真壳里 .cli 不是 Content 的直接孩子，中间隔着 .page-fade
+    expect(await page.locator("main.app-content > .page-fade > .cli-paper").count()).toBe(1);
+    const 层 = await 盒(page, ".page-fade");
+    expect(Math.abs(层.b - 844)).toBeLessThanOrEqual(1);
+    expect(层.h).toBeGreaterThan(700);
+    const log = await page.locator(".cli-log").evaluate((e) => e.clientHeight);
+    expect(log).toBeGreaterThan(200);
+    const 输 = await 盒(page, ".cli-frame .cli-input");
+    expect(844 - 输.b).toBeLessThan(80);
+    expect(await 不整页滚(page)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
 
 it("C13（390）：全站顶栏下一条对话栏 52 高、钮 44；框铺满、在框里滚，输入框贴视口底；不横滚、不整页滚", async () => {

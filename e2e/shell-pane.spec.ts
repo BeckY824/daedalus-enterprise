@@ -134,6 +134,14 @@ test.describe("中栏跟着路由走", () => {
     await 进第一位客户(page);
     const 点进来的 = await 中栏(page).locator(".pane-t").innerText();
     await page.reload();
+    /*
+      整页打开是流式首屏：壳里中栏槽位的 Suspense 先流出名单骨架（SlotSkeleton），名单所在 layout 自带的 Suspense 再流出一份，
+      React 19.2 把完成的边界攒着、按节流（第一批下一帧，之后 ≤300ms 一批）才换上，换上之前已到的内容和里层骨架都在 hidden 的
+      <div id="S:…"> 里等着。所以刷新后头几百毫秒 DOM 里会有「骨架 + 藏着的骨架 + 藏着的真名单」三个 aside.pane（只有一个看得见），
+      CI 机慢、这一段更长，直接按 aside.pane 断言会撞上严格模式（11-24 CI 红过）。
+      先等骨架全部离开 DOM——这同时钉住「真名单出来后骨架不留」——再看中栏
+    */
+    await expect(page.locator('aside.pane[aria-busy="true"]')).toHaveCount(0);
     await expect(中栏(page)).toBeVisible();
     expect(await 中栏(page).locator(".pane-t").innerText()).toBe(点进来的);
   });

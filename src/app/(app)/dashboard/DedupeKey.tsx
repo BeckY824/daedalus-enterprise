@@ -7,6 +7,7 @@
  */
 import { useImperativeHandle, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Alert, Button, Input, Popover, Select, Space, type PopoverProps } from "antd";
 import { FileSearchOutlined } from "@ant-design/icons";
 import { 查号码, type 查号码结果 } from "../customers/number-actions";
@@ -86,7 +87,7 @@ export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
               : 结果.市场可领 ? <DedupeClaimKey 类型={类型} 值={结果.值} 客户id={结果.撞?.id} />
               : 结果.撞?.id || 结果.归属地 ? (
               <span>
-                {结果.撞?.id && <><Link href={`/customers/${结果.撞.id}`} onClick={() => set开(false)}>{结果.撞.name}</Link>{结果.撞.school ? ` · ${结果.撞.school}` : ""} · 在 {结果.撞.salesOwnerName} 名下</>}
+                {结果.撞?.id && <><Link href={`/customers/${结果.撞.id}`} onClick={() => set开(false)}>{结果.撞.name}<LinkPending /></Link>{结果.撞.school ? ` · ${结果.撞.school}` : ""} · 在 {结果.撞.salesOwnerName} 名下</>}
                 {结果.撞?.id && 结果.归属地 ? " · " : ""}
                 {结果.归属地 ? `归属地：${结果.归属地}` : ""}
               </span>

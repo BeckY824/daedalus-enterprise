@@ -2,7 +2,9 @@
 
 import { useOptimistic, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Pagination, Segmented, Select, Tooltip } from "antd";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
@@ -33,6 +35,8 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
   有主题?: boolean;
 }) {
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const sp = useSearchParams();
   // 设计语言 R-B（R3）：「沟通 / 主题」和时间段挪到卡外筛选条（最左是沟通 / 主题，R-新9），卡头「项目沟通（N）」+ 方式下拉；
   // 每条末行灰字「方式 · 发起 · 附件 · 记录人」，编号悬停看
@@ -66,7 +70,7 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
       router.replace(`/overview${t ? `?${t}` : ""}`, { scroll: false });
     });
   };
-  const 去 = (x: 复盘沟通行) => router.push(`/projects/${encodeURIComponent(x.projectId)}`);
+  const 去 = (x: 复盘沟通行) => 去页.push(x.项目去 ?? `/projects/${encodeURIComponent(x.projectId)}`);
 
   const 方式下拉 = (
       <Select<沟通方式 | "">
@@ -197,11 +201,12 @@ function 缺沟通块({ 缺 }: { 缺: 缺沟通 }) {
         <ul className="rtalk-miss">
           {缺.行.map((p) => (
             <li key={p.id}>
-              <Link href={`/projects/${encodeURIComponent(p.id)}`} className="rtalk-miss-a">
+              <Link href={p.项目去 ?? `/projects/${encodeURIComponent(p.id)}`} className="rtalk-miss-a">
                 <Tooltip title={`${p.名} · ${p.客户}`} placement="topLeft" mouseEnterDelay={0.4}>
                   <span className="rtalk-miss-n">{p.名}</span>
                 </Tooltip>
                 <span className="rtalk-miss-s">{p.节点} · {p.负责人}</span>
+                <LinkPending />
               </Link>
             </li>
           ))}

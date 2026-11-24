@@ -16,6 +16,7 @@ import { 能改后台设置 } from "@/lib/enterprise/permissions";
 import { 我的通知, 未读通知数, 标通知已读, 全部通知已读, type 通知行 } from "@/lib/enterprise/notify";
 import { 飞书推送开着, 飞书推送开关键, 推送凭据 } from "@/lib/enterprise/feishu-push";
 import { 我能放弃的, 放弃链接项目 } from "@/lib/enterprise/lead-giveup";
+import { 改直达链接们 } from "@/lib/project/customer-detail-direct";
 
 /** 铃铛里一批最多判几条能放弃（通知最近 30 条，带放弃链接的只是其中一部分） */
 const 铃铛放弃最多 = 30;
@@ -26,12 +27,16 @@ export async function 读我的通知(): Promise<{ 行们: 通知行[]; 未读: 
   const [行们, 未读] = await Promise.all([我的通知(me.id), 未读通知数(me.id)]);
   // 带「放弃（豁免）」的（分到我的线索、超时提醒，11-21）：此刻还能放弃的才给按钮（发的时候能、现在不能了的不给）。
   // 一条都没带就不查；带了的一批判（lead-giveup.ts 我能放弃的，只查本人）
-  if (!行们.some((r) => 放弃链接项目(r.link))) return { 行们, 未读 };
-  const 能 = new Set((await 我能放弃的(me, new Date(), 铃铛放弃最多)).map((x) => x.projectId));
+  const 能 = 行们.some((r) => 放弃链接项目(r.link))
+    ? new Set((await 我能放弃的(me, new Date(), 铃铛放弃最多)).map((x) => x.projectId))
+    : new Set<string>();
+  // 去项目页的链接换成项目页会跳去的最终地址（跳转优化 PR-A：点了不经过重定向那段空白；?giveup=1 照样带着，同项目页那条跳转）。
+  // 放弃项目 按原链接认，先认再换
+  const 到 = await 改直达链接们(me, 行们.map((r) => r.link));
   return {
-    行们: 行们.map((r) => {
+    行们: 行们.map((r, i) => {
       const id = 放弃链接项目(r.link);
-      return id && 能.has(id) ? { ...r, 放弃项目: id } : r;
+      return { ...r, link: 到[i], ...(id && 能.has(id) ? { 放弃项目: id } : {}) };
     }),
     未读,
   };

@@ -3,7 +3,7 @@ import { useModifierKey } from "./Shortcut";
 import { 交给首页问 } from "@/lib/home-ask";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Modal } from "antd";
 import { LayoutGroup, motion } from "motion/react";
 import { 默认过渡, 跟随过渡, 重排上限 } from "@/lib/motion";
@@ -45,7 +45,8 @@ function 在输入框里(e: KeyboardEvent) {
 }
 
 export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜索 }: { 有AI: boolean; 企业版项目?: boolean; 全局搜索?: (q: string) => Promise<全局搜索结果> }) {
-  const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const b = useBusiness();
   /** 悬停说明是纯文字，不能套 <Shortcut>：按平台换成 ⌘ / Ctrl+（Windows 上原来悬停里写的是 ⌘K，CI platform-shortcuts 挡下） */
   const 修饰键 = useModifierKey();
@@ -186,12 +187,12 @@ export default function CommandBar({ 有AI, 企业版项目 = false, 全局搜�
       // 带着问题去首页问：答案、过程、建议卡都在那儿，不在一个浮层里
       // 先说一声「这句是我交过去的」：首页只自动发本应用交过去的，外面来的链接只填进框里（J-158）
       交给首页问(q);
-      router.push(`/dashboard?q=${encodeURIComponent(q.trim())}`);
+      去页.push(`/dashboard?q=${encodeURIComponent(q.trim())}`);
     } else {
       // 回车 = 过滤后的第一项（11-03 C1-2；打字时 idx 归零）；列表刚变短、高亮那条没了也落回第一项
       const p = 行们[i] ?? 行们[0];
       if (!p) return;
-      router.push(p.去);
+      去页.push(p.去);
     }
     setOpen(false);
   }

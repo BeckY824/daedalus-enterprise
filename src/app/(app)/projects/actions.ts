@@ -75,6 +75,7 @@ import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 超时短沟通提示 } from "@/lib/enterprise/reply-overdue";
 import { 存沟通后重算三态, 三态改天数预览 } from "@/lib/enterprise/tri-state-db";
 import { 新建后定线 } from "@/lib/enterprise/flow-line";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
 
@@ -333,7 +334,9 @@ export async function 建档向导(输入: 建档向导输入) {
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
     // 首条沟通的截图 / 附件（11-18）：建好这一刻签票给录入人，浏览器凭票接着传（建好就分走了也传得上）
     const 附件票 = 企业版() && 输入.要传附件 === true && 建了.followUpId ? { followUpId: 建了.followUpId, 票: await 签首条附件票(me.id, 建了.followUpId) } : null;
-    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}), ...(附件票 ? { 附件票 } : {}) };
+    // 去：整页建档建好了去哪——项目页会跳去客户页的直接给那个地址（跳转优化 PR-A：不经过 /projects/<id> 的重定向那段空白）；不跳的不带
+    const 去 = 企业版() && !分了?.转走 ? (await 项目链接们(me, [建了.projectId!])).get(建了.projectId!) : undefined;
+    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}), ...(附件票 ? { 附件票 } : {}), ...(去 && !去.startsWith("/projects/") ? { 去 } : {}) };
   } catch (e) { return 不在了(e); }
 }
 
@@ -961,6 +964,9 @@ export async function 回项目邀请(memberId: string, 同意: boolean) {
       await recordAudit({ user: me, action: "update", entity: "ProjectMember", entityId: r.projectId, summary: `${同意 === true ? "同意加入" : "拒绝加入"}${await 组员说法(r.projectId, me.id)}` });
       刷新项目(r.projectId);
     }
+    // 同意了：给项目页会跳去的地址（加入以后现算，跳转优化 PR-A：打开项目不经过 /projects/<id> 的重定向那段空白）
+    const 去 = r.ok && r.projectId && 同意 === true ? (await 项目链接们(me, [r.projectId])).get(r.projectId) : undefined;
+    if (去 && !去.startsWith("/projects/")) return { ok: true as const, 去 };
     return r.ok ? { ok: true as const } : r;
   } catch (e) { return 不在了(e); }
 }

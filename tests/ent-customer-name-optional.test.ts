@@ -324,7 +324,7 @@ describe("没名客户：名单、挂联系人、公海、建项目、AI 找人�
   it("学员名单（客户详情中栏）：没全称叫客户编号、有简称叫简称，名单内筛也按它", async () => {
     await 光客户(31);
     await 光客户(32, { shortName: "编的简称" });
-    const { 学员名单 } = await import("@/app/(app)/@pane/panes");
+    const { 学员名单 } = await import("@/app/(app)/@pane/roster-panes");
     const 树 = (await 学员名单()) as unknown as { props: Record<string, unknown> };
     const 找行 = (x: unknown): { name: string }[] | null => {
       if (!x || typeof x !== "object") return null;

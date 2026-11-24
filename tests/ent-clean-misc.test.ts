@@ -115,7 +115,8 @@ describe("B3 起草转介绍邀请", () => {
 
 describe("B6 客户侧栏名字上方", () => {
   it("企业版显示客户所在国家地区（11-04 用户：从「来源」改成国家地区）；关着照旧 渠道 > 转介绍 > 跟进方式", async () => {
-    const s = await 读("src/app/(app)/@pane/panes.tsx");
+    // 名单的数据跳转优化 PR-A 起挪进 @pane/roster-data.ts（layout 和名单接口共用一个函数）
+    const s = await 读("src/app/(app)/@pane/roster-data.ts");
     expect(s).toContain("const 企业 = 企业版();");
     expect(s).toContain(
       'source: 企业 ? 拼地址({ addrCountry: c.addrCountry, addrProvince: c.addrProvince, addrCity: c.addrCity }) || null : c.channel?.name ?? (c.referrerCustomerId ? "转介绍" : c.followUps[0] ? (FOLLOW_TYPE_MAP[c.followUps[0].type]?.label ?? null) : null),',

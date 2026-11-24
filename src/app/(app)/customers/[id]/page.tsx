@@ -57,6 +57,7 @@ import { 页面看得到的客户 } from "@/lib/project/visible-customers";
 import { 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
 import { 读客户三态, 读冷项目 } from "@/lib/enterprise/tri-state-detail";
 import { 三态开着 } from "@/lib/enterprise/tri-state-db";
+import { 补项目去 } from "@/lib/project/customer-detail-direct";
 
 export const dynamic = "force-dynamic";
 
@@ -180,7 +181,8 @@ export default async function CustomerDetailPage({
     // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
     项目们P,
     // 企业版项目关联（P17）：这位关联在哪些项目上、什么身份；只列看得到的项目（限定层），概览名称按后台改过的出口叫法叫
-    规则P ? 规则P.then((r) => 客户参与的项目(customer.id, 字典of(true, r.阶段.出口叫法))) : null,
+    // 不是主客户的那几行点了去别家客户页：直接给项目页会跳去的地址（跳转优化 PR-A）；没有这种行不多查
+    规则P ? 规则P.then((r) => 客户参与的项目(customer.id, 字典of(true, r.阶段.出口叫法))).then((rs) => (rs?.some((x) => !x.主) ? 补项目去(me, rs, (x) => (x.主 ? null : x.projectId)) : rs)) : null,
     // 团队开了互看、这位是同事的：只能看和加跟进（lib/team-scope.ts）
     只读客户(defaultClient, customer),
     // 企业版客户状态（字典 custStatus，10-28 去遗留 A1）：标签行一枚章点了能改

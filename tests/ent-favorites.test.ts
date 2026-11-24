@@ -103,7 +103,8 @@ describe("项目收藏", () => {
   it("普通账号：能收、左栏读得到、星亮；再点拿掉", async () => {
     await 登录成(人.甲);
     expect(await 切换项目收藏(甲的项目)).toEqual({ ok: true, 收藏了: true });
-    expect(await 读项目收藏(甲())).toEqual([{ id: 甲的项目, name: "甲的项目" }]);
+    // 去 = 点了去哪：项目页会跳去的客户页（跳转优化 PR-A，详见 ent-project-direct-link.test.ts）
+    expect(await 读项目收藏(甲())).toEqual([{ id: 甲的项目, name: "甲的项目", 去: `/customers/${甲的客户}?project=${甲的项目}` }]);
     expect(await 项目收藏了吗(人.甲, 甲的项目)).toBe(true);
     expect(await 切换项目收藏(甲的项目)).toEqual({ ok: true, 收藏了: false });
     expect(await 读项目收藏(甲())).toEqual([]);

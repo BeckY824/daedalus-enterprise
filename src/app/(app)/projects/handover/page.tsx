@@ -8,6 +8,7 @@ import { 能改后台设置, 只读角色, 是总管理 } from "@/lib/enterprise
 import { 读离职交接 } from "@/lib/enterprise/offboard-handover";
 import { 公海分配候选 } from "@/lib/owners";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 import HandoverView from "./HandoverView";
 
 export const dynamic = "force-dynamic";
@@ -38,9 +39,11 @@ export default async function HandoverPage() {
     // 客户三态开着才摆「待交接」那张表（M-公海-52，设置缓存里读）
     生效组织规则(),
   ]);
+  // 项目名直接链到项目页会跳去的地址（跳转优化 PR-A：不经过 /projects/<id> 的重定向那段空白）
+  const 链 = await 项目链接们(me, 人们.flatMap((p) => p.项目.map((x) => x.id)));
   return (
     <HandoverView
-      人们={人们}
+      人们={人们.map((p) => ({ ...p, 项目: p.项目.map((x) => ({ ...x, 项目去: 链.get(x.id) })) }))}
       候选={候选.map((u) => ({ id: u.id, name: u.name }))}
       项目模式={项目模式}
       三态开={项目模式 && 规则.三态.开}

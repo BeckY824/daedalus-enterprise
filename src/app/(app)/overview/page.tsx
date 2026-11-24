@@ -24,6 +24,7 @@ import { 卡点看板, 卡点给界面 } from "@/lib/project/blocker";
 import BoardBlockers from "./BoardBlockers";
 import BoardTalks from "./BoardTalks";
 import BoardTopics from "./BoardTopics";
+import { 项目链接们, 补项目去 } from "@/lib/project/customer-detail-direct";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 只读角色 } from "@/lib/enterprise/permissions";
@@ -92,9 +93,10 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
       // 「全部待办」默认三列看板（lay=list 回到表格）；四张卡筛的时候照旧是表格（首页链接 f=today 落表格）
     const 布局 = 卡 === "all" ? 读布局(sp.lay) : "list";
     const [d, 板, 回公海, 只读] = await Promise.all([
-      布局 === "list" ? 复盘待办of(范围, { 卡, 页: 读页码(sp.p), 我id: user.id }) : undefined,
-      布局 === "board" ? 复盘看板of(范围, { 我id: user.id }) : undefined,
-      将回公海of(范围),
+      // 我 = 去项目的直接给客户页地址（跳转优化 PR-A：不经过 /projects/<id> 的重定向，那段正文空约 130ms）
+      布局 === "list" ? 复盘待办of(范围, { 卡, 页: 读页码(sp.p), 我: user }) : undefined,
+      布局 === "board" ? 复盘看板of(范围, { 我: user }) : undefined,
+      将回公海of(范围, undefined, user),
       // 只读角色（业务角色只读管理员 / 销售教练）不摆「勾完成」：只认业务角色，同服务端那道（permissions.ts 只读角色）
       权限组织().then((org) => 只读角色(user, org)),
     ]);
@@ -112,12 +114,15 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
   if (页签 === "block") {
     const 筛 = 读卡点看板筛(sp);
     const d = await 卡点看板(user, 筛);
+    // 卡上的项目名直接链到项目页会跳去的地址（同上）：三栏一次算
+    const 链 = await 项目链接们(user, [...d.栏.待接受, ...d.栏.处理中, ...d.栏.已解决].map((b) => b.projectId));
+    const 给界面 = (b: Parameters<typeof 卡点给界面>[0]) => ({ ...卡点给界面(b), 项目去: 链.get(b.projectId) });
     return (
       <DataShell view={view} 项目 选人={选人} 页签="block">
         <BoardBlockers
           开={d.开}
           全部={d.全部}
-          栏={{ 待接受: d.栏.待接受.map(卡点给界面), 处理中: d.栏.处理中.map(卡点给界面), 已解决: d.栏.已解决.map(卡点给界面) }}
+          栏={{ 待接受: d.栏.待接受.map(给界面), 处理中: d.栏.处理中.map(给界面), 已解决: d.栏.已解决.map(给界面) }}
           已解决共={d.已解决共}
           统计={d.统计}
           项目们={d.项目们}
@@ -132,7 +137,8 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
     // 「沟通」页签里的「主题」一档（教练主题，11-17）：全部 = 这一圈负责的项目上的，每条再过 能看主题
     const 档 = 读主题范围(sp.tw);
     const 状态 = 读主题状态(sp.ts);
-    const d = await 复盘主题of(user, 谁, { 范围: 档, 状态, 页: 读页码(sp.p) });
+    const 原 = await 复盘主题of(user, 谁, { 范围: 档, 状态, 页: 读页码(sp.p) });
+    const d = { ...原, 行: await 补项目去(user, 原.行, (r) => r.projectId) };
     return (
       <DataShell view={view} 项目 选人={选人} 页签="talk">
         <BoardTopics 数={d} 范围={档} 状态={状态} />
@@ -144,7 +150,8 @@ async function 项目数据({ view, user, sp }: { view: 视图; user: { id: stri
     // 自定义（t=custom）：tf= tt= 两头都算，缺 / 错 = 本月 1 号到今天
     const 区间 = 段 === "custom" ? 读日期段(sp.tf, sp.tt) : undefined;
     const 方式 = 读沟通方式(sp.m);
-    const [d, 缺] = await Promise.all([复盘沟通of(谁, { 段, 区间, 方式, 页: 读页码(sp.p) }), 缺沟通of(范围)]);
+    const [原, 缺] = await Promise.all([复盘沟通of(谁, { 段, 区间, 方式, 页: 读页码(sp.p) }), 缺沟通of(范围, user)]);
+    const d = { ...原, 行: await 补项目去(user, 原.行, (r) => r.projectId) };
     return (
       <DataShell view={view} 项目 选人={选人} 页签="talk">
         <BoardTalks 数={d} 段={段} 区间={区间} 方式={方式} 缺={缺} 只看自己={只看 === user.id} 有主题={企业版()} />

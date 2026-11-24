@@ -194,6 +194,7 @@
   --card-gap: 12px;                    /* 卡与卡之间 */
   --edge-fade: 24px;                   /* 横滑条两端渐隐宽度（节点条） */
   --skel-delay: 180ms;                 /* 加载多久后才出骨架：快的不闪（D07）。是延迟不是过渡，所以不叫 --t-* */
+  --nav-wait-delay: 150ms;             /* 跳转等多久后顶上才出等待条（跳转优化 PR-A）：快的跳转看不见它。是延迟不是过渡 */
   --ai-safe: 72px;                     /* 滚动区底部留白，不让右下 AI 球盖住末行（D40） */
   /* 浮层层级（D22，设计语言 E4）：自绘的浮层按 antd 的刻度排——弹框 1000、气泡 1030、下拉 1050、提示 1070。
      --z-sheet 整页浮层（设置）在弹框之下：设置里开的弹框、下拉、气泡总在它上面，不靠谁后挂进页面；
@@ -687,7 +688,7 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 /* 选中的底色是一块会滑动的层（AppShell 里的 layoutId），压在图标和字下面 */
 .rail-on-bg { position: absolute; inset: 0; border-radius: var(--r-card); background: var(--nav-on-bg); z-index: 0; }
 /* 明亮下的选中块：白底 + 一圈 0.5px 发丝描边 + 1px 软影（原型 g.feel）。暗黑不挂，走自己的底色 */
-:root:root:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on) {
+:root:root:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on, .rail-item:has(> .nav-pend), .rail-fav-i:has(> .nav-pend)) {
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 6%, transparent), 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
 }
 .rail-item > :not(.rail-on-bg) { position: relative; z-index: 1; }
@@ -3390,6 +3391,8 @@ button.ais-hd-b { cursor: pointer; }
 /* 骨架屏晚 180ms 再出现：这段时间内页面要是已经好了，就一眼都不会看见它。
    原来快的那几页也会闪一下灰块，闪一下比等一下更像出了问题。 */
 .app-loading { animation: app-loading-in var(--t) var(--ease) var(--t) both; }
+/* 通用正文骨架的标题条（原来写在 (app)/loading.tsx 的行内样式，PR-A 挪到 SlotSkeleton；11-24 二轮起 loading.tsx 撤了） */
+.slot-skel-title { max-width: 420px; margin-bottom: 20px; }
 @keyframes app-loading-in { from { opacity: 0; } to { opacity: 1; } }
 
 
@@ -6415,6 +6418,9 @@ button.proj-miss-chip { cursor: pointer; }
 @media (max-width: 767px) {
   :root:root .ant-layout:has(> .app-content .cli-paper) { height: 100vh; height: 100dvh; }
   :root:root .app-content:has(.cli-paper) { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 !important; }
+  /* Content 和 .cli-paper 之间隔着换页框（AppShell 的 PageFade，跳转优化 PR-A 起手机也包）：它也得是这条 flex 链上的一环，
+     不然普通 block 按内容高、.cli-paper 的 flex: 1 落空，对话区塌成十几像素、输入框顶在上面（3703 实操 11-24）。同电脑档 .main > div:has(> .cli-paper) */
+  :root:root .app-content:has(.cli-paper) > .page-fade:has(> .cli-paper) { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; }
   :root:root .cli-paper .cli-ck .cli-frame { border: 0; border-radius: 0; }
   :root:root .cli-paper .cli-head { height: 52px; padding: 0 var(--s1); gap: 0; border-bottom-color: var(--line-soft); }
   :root:root .cli-paper .cli-head-ib { width: var(--hit-touch); height: var(--hit-touch); }
@@ -6863,3 +6869,36 @@ button.proj-miss-chip { cursor: pointer; }
    「列表 | 看板」挪进筛选行；手机宽筛选摆法、K3 页头标题独占一行并进上面 L-A 那两段的选择器） ---------- */
 /* K5 补填框：挂在「完成节点」下面那 4px 间距从浮层偏移挪进外框（ProjectDetail 补填框不偏移）——浮层库往屏里挪时把它也算进去，外框下沿不再出屏 3–4px */
 :root:root .pd-fill-pop.ant-popover:is(.ant-popover-placement-bottom, .ant-popover-placement-bottomLeft, .ant-popover-placement-bottomRight) { padding-top: 4px; }
+
+/* ---------- 跳转等待（跳转优化 PR-A，11-24；lib/nav-pending.ts、components/NavProgress.tsx） ----------
+   换客户、列表进详情时旧内容留到新内容就绪，中间靠这两样告诉人「点到了、在开」：
+   1. 顶上一根 2px 的条：挂上后晚 --nav-wait-delay（150ms）才淡出来，快的跳转看不见；一段亮条来回扫（环境动画，infinite）。
+      浮在一切之上（提示层 1070 之上），不挡点击
+   2. 点的那一行立刻高亮：链接里的 .nav-pend（useLinkStatus）/ 表格行的 .row-going（useNavGo 的 pending） */
+.nav-prog { position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 1100; pointer-events: none; overflow: hidden; background: var(--brand-line); animation: app-loading-in var(--t) var(--ease) var(--nav-wait-delay) both; }
+.nav-prog::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; background: var(--brand); animation: nav-prog-sweep 1.2s var(--ease-morph) infinite; }
+@keyframes nav-prog-sweep { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+/* 减弱动态：不扫，整条同色，只淡入（全局那条 transform: none 也会把它钉住，这里直接撤掉动画、铺满） */
+@media (prefers-reduced-motion: reduce) { .nav-prog::before { animation: none; width: 100%; } }
+/* 名单行：点的那一行立刻是选中的样子，原来选中的那一行先让出来（新页一提交 .on 就换过去，两边对得上） */
+:root:root .roster-row:has(> .nav-pend), :root:root .roster-row:has(> .nav-pend):hover { background: var(--brand-bg); }
+:root:root .roster-row:has(> .nav-pend)::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 999px; background: var(--brand); }
+:root:root .pane-rows:has(.nav-pend) .roster-row.on:not(:has(> .nav-pend)) { background: transparent; }
+:root:root .pane-rows:has(.nav-pend) .roster-row.on:not(:has(> .nav-pend))::before { content: none; }
+/* 左栏（审查补）：点的那一项立刻是选中的样子，原来选中的那项同时退掉，照名单行的写法。
+   选中底色平时是一块在各项之间滑的层（.rail-on-bg，layoutId）：等新页的这段时间不滑，
+   直接画在点的那一项上、那块层先藏起来；新页一提交 .nav-pend 撤了，层已经在新的一项里（AppShell 的 去向）。
+   收藏的客户 / 项目各管各的：点收藏不动主导航那一项（去的还是「客户」底下）。明亮下的发丝描边 + 软影并在上面 .rail-on-bg 那条里 */
+:root:root .rail-item:has(> .nav-pend), :root:root .rail-item:has(> .nav-pend):hover { background: var(--nav-on-bg); color: var(--nav-on-fg); }
+:root:root .rail-item:has(> .nav-pend) b { font-weight: 600; }
+:root:root .rail:has(.rail-item > .nav-pend) .rail-on-bg { visibility: hidden; }
+:root:root .rail:has(.rail-item > .nav-pend) .rail-item.on:not(:has(> .nav-pend)) { color: var(--text-muted); }
+:root:root .rail:has(.rail-item > .nav-pend) .rail-item.on:not(:has(> .nav-pend)) b { font-weight: 500; }
+:root:root .rail-fav-i:has(> .nav-pend), :root:root .rail-fav-i:has(> .nav-pend):hover { background: var(--nav-on-bg); color: var(--nav-on-fg); }
+:root:root .rail-favs:has(.nav-pend) .rail-fav-i.on:not(:has(> .nav-pend)) { background: transparent; color: var(--ink-soft); box-shadow: none; }
+.ant-table-wrapper .ant-table-tbody > tr.row-going > td, .ant-table-wrapper .ant-table-tbody > tr:has(.nav-pend) > td { background: var(--brand-bg); }
+/* 审查补（PR-A）：看板点的那张卡（客户看板、项目看板，.is-going = useNavGo 在等）、客户页「关联客户」那一小行先高亮；
+   .nav-pend 本身永远不占地方（链接里的子元素选择器不该把它撑出来） */
+:root:root .nav-pend { display: none; }
+:root:root .pipe-card.is-going, :root:root .pipe-card.is-going:hover { background: var(--brand-bg); border-top-color: var(--brand); border-right-color: var(--brand); border-bottom-color: var(--brand); }
+:root:root .rec-mini:has(.nav-pend) { background: var(--brand-bg); }
