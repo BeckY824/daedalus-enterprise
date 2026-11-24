@@ -3,18 +3,17 @@
  * 如果不为空且正确的话，可以退；如果为空、不为空但错误，则都退不了。」「也包括客户联系人、项目」）。机制总表 M-公海-15。
  *
  * 查哪些（都是页面上看得到、自己改得了的号码）：
- *   1. 客户本身的「电话」（Customer.phone）：填了就要过 查电话（和客户页改电话同一套）；
- *   2. 这位客户名下每位联系人（没删的）的每个号码：按号码类型过 验一行号码（和联系人表单同一套）；
- *   3. 项目挂的联系人（主联系人 Project.contactId + 项目联系人表，可能是挂靠过来的别家联系人）：退项目时查这个项目的；
+ *   1. 这位客户名下每位联系人（没删的）的每个号码：按号码类型过 验一行号码（和联系人表单同一套）；
+ *   2. 项目挂的联系人（主联系人 Project.contactId + 项目联系人表，可能是挂靠过来的别家联系人）：退项目时查这个项目的；
  *      退客户时查跟着一起进项目公海的那些项目（没结束、不在公海）的。
  * 一个号码都没有 → 退不了；有一个不对 → 退不了（「全部正确」才放行，不是「至少一个对」）。
- * 客户本身挂在 ContactMethod 上、contactId 为空的号码页面上不显示、改不了，不查。
+ * 客户本身没有电话（E-260，客户「客户没有电话这一说法」）：Customer.phone、客户本身挂在 ContactMethod 上 contactId 为空的号码都不查，
+ * 号码一律按联系人判（数据脚本已把客户电话、客户本身的号挪到主联系人）。
  *
  * 谁都一样（所有角色）；只管手动退回：客户「放回公海」（单个、批量）、项目「放回项目公海」、线索验证「退回公海」。
  * 超时回收、离职交接、导入、撤销、跟着客户 / 项目一起进公海的、建项目向导「公海捞取」（分配放行）不走这里。
  */
 import type { Prisma } from "@/generated/prisma";
-import { 查电话 } from "@/lib/phone";
 import { 验一行号码, type 号码种类 } from "./customer-v2";
 import { 号码种类表, 种类叫法, 联系人号码们 } from "./customer-v2-db";
 
@@ -22,7 +21,7 @@ type 库 = Pick<Prisma.TransactionClient, "customer" | "project">;
 type 种类表 = readonly 号码种类[];
 
 export const 退回补号尾 = "，改好再退回公海";
-export const 联系方式空话 = "联系方式是空的，先补上客户电话或联系人号码再退回公海";
+export const 联系方式空话 = "联系方式是空的，先给联系人补上号码再退回公海";
 
 /** 事务外先读号码类型字典（要读设置），再把表交给下面两个 */
 export const 退回号码种类表 = 号码种类表;
@@ -50,15 +49,9 @@ function 查联系人(表: 种类表, c: 联系人行): [number, string | null] 
   return [号们.length, null];
 }
 
-/** 客户电话 + 一串联系人：没错没空返回 null */
-function 判(phone: string, 联系人们: readonly 联系人行[], 表: 种类表): string | null {
+/** 一串联系人：没错没空返回 null */
+function 判(联系人们: readonly 联系人行[], 表: 种类表): string | null {
   let 个数 = 0;
-  const 电 = phone.trim();
-  if (电) {
-    个数++;
-    const r = 查电话(电, { 必填: true, 放过占位: true });
-    if (!r.ok) return `客户电话「${电}」不对：${r.error}${退回补号尾}`;
-  }
   for (const c of 联系人们) {
     const [n, 错] = 查联系人(表, c);
     if (错) return 错;
@@ -74,7 +67,7 @@ export async function 客户退回前查联系方式(db: 库, customerIds: reado
   const 客户们 = await db.customer.findMany({
     where: { id: { in: [...customerIds] } },
     select: {
-      id: true, phone: true,
+      id: true,
       contacts: { where: { deletedAt: null }, select: 联系人字段 },
       // 跟着客户一起进项目公海的那些项目（没结束、不在公海）挂的联系人也算
       projects: { where: { pooledAt: null, result: null, deletedAt: null }, select: 项目联系人 },
@@ -83,23 +76,23 @@ export async function 客户退回前查联系方式(db: 库, customerIds: reado
   for (const c of 客户们) {
     const 们 = new Map<string, 联系人行>(c.contacts.map((x) => [x.id, x]));
     for (const p of c.projects) 并进(们, p);
-    const 错 = 判(c.phone ?? "", [...们.values()], 表);
+    const 错 = 判([...们.values()], 表);
     if (错) 错们.set(c.id, 错);
   }
   return 错们;
 }
 
-/** 项目放回公海前：客户电话 + 客户名下联系人 + 项目挂的联系人（去重）。能退返回 null */
+/** 项目放回公海前：客户名下联系人 + 项目挂的联系人（去重）。能退返回 null */
 export async function 项目退回前查联系方式(db: 库, projectId: string, 表: 种类表): Promise<string | null> {
   const p = await db.project.findUnique({
     where: { id: projectId },
     select: {
       ...项目联系人,
-      customer: { select: { phone: true, contacts: { where: { deletedAt: null }, select: 联系人字段 } } },
+      customer: { select: { contacts: { where: { deletedAt: null }, select: 联系人字段 } } },
     },
   });
   if (!p) return null;
   const 们 = new Map<string, 联系人行>(p.customer.contacts.map((c) => [c.id, c]));
   并进(们, p);
-  return 判(p.customer.phone ?? "", [...们.values()], 表);
+  return 判([...们.values()], 表);
 }

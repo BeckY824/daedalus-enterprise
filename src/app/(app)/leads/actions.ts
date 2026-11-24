@@ -42,6 +42,7 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 线索附件转给联系人 } from "@/lib/attachments";
 import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 客户名拆人名 } from "@/lib/enterprise/contact-name-from-customer";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 import { 带客户编号 } from "@/lib/customer-no";
@@ -301,10 +302,17 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
 
     // 线索名 → 公司、联系人 → 姓名、行业和来源一起带过去（审查 M13），规则在 lib/lead-convert.ts
     const 档案 = 线索转档案(lead, b.fields, b.template === "trade");
+    /*
+      企业版客户没有电话（E-260，客户「客户没有电话这一说法」）：客户主表电话存空串，号记在主要联系人上；
+      线索没写联系人、带着号的也建一位主要联系人，姓名按客户名拆（同老线索转项目 lead-to-project.ts）。企业版只用项目时这条路挡着，项目模式关着才走得到
+    */
+    const 企 = 企业版();
+    const 建联系人 = Boolean(lead.contact?.trim()) || (企 && Boolean(phone || lead.email?.trim()));
+    const 联系人名 = lead.contact?.trim() || 客户名拆人名(档案.name);
     const customer = await tx.customer.create({
       data: await 带客户编号(tx, {
         name: 档案.name,
-        phone,
+        phone: 企 ? "" : phone,
         school: 档案.school,
         grade: null,
         major: 档案.major,
@@ -313,12 +321,12 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
         remark: 档案.remark,
         salesOwnerId: lead.ownerId ?? user.id,
         // 只有空格的联系人当没有（2026-10-04 L-016）：和 线索转档案 一个判法，邮箱那时已进了备注
-        contacts: lead.contact?.trim()
+        contacts: 建联系人
           ? {
               create: {
-                name: lead.contact.trim(),
+                name: 联系人名,
                 // 联系人就是客户本人时写明「本人」，联系人表里一眼看得出这条是谁
-                position: 档案.name === lead.contact.trim() && 档案.school ? "本人" : null,
+                position: lead.contact?.trim() && 档案.name === lead.contact.trim() && 档案.school ? "本人" : null,
                 phone: phone || null,
                 email: lead.email,
                 isPrimary: true,

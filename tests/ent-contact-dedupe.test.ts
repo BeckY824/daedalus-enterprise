@@ -14,10 +14,11 @@ vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { saveCustomer, checkDuplicate, saveCustomerNumbers, type CustomerInput } from "@/app/(app)/customers/actions";
+import { saveCustomer, checkDuplicate, type CustomerInput } from "@/app/(app)/customers/actions";
+import { saveContact } from "@/app/(app)/customers/[id]/actions";
 import { 查号码, 从回收站捞回 } from "@/app/(app)/customers/number-actions";
 import { 全公司查号, 撞号结论, 回收站里有提示, 联系人查重, 联系人撞号话, 联系人回收站撞, 一行号全公司查, 一行号回收站查, 跨类键, 跨类SQL } from "@/lib/enterprise/contact-dedupe";
-import { 号键索引名, 号键SQL } from "@/lib/phone-dedupe";
+import { 号键SQL } from "@/lib/phone-dedupe";
 import fs from "node:fs";
 import path from "node:path";
 import { 档案格索引名 } from "@/lib/email-dedupe";
@@ -35,8 +36,14 @@ const 客户 = (补: Partial<CustomerInput> = {}): CustomerInput => ({
   // 客户业务线必填（M-必填-13）：没另给按内贸
   企业资料: { bizLine: "内贸" }, ...补,
 });
-const 建 = (name: string, salesOwnerId: string, 补: Record<string, unknown> = {}) =>
-  prisma.customer.create({ data: { name, phone: "", followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId, ...补 } });
+/** 补里给了 phone 的：E-260 起客户没有电话，号记在这位的主要联系人上（数据脚本挪过以后的样子），客户电话存空串 */
+const 建 = async (name: string, salesOwnerId: string, 补: Record<string, unknown> = {}) => {
+  const { phone, ...余 } = 补;
+  const c = await prisma.customer.create({ data: { name, phone: "", followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId, ...余 } });
+  // 删了的客户：联系人记同一个 deletedAt（soft-delete.ts 客户连带）
+  if (typeof phone === "string" && phone) await prisma.contact.create({ data: { customerId: c.id, name: "", phone, isPrimary: true, ...(余.deletedAt ? { deletedAt: 余.deletedAt as Date } : {}) } });
+  return c;
+};
 const 当 = (id: string) => { mocks.user = { ...mocks.user, id }; };
 
 afterEach(() => { vi.unstubAllEnvs(); });
@@ -238,7 +245,6 @@ describe("跨类型全局查重（11-20：号码不分类型，全公司唯一�
 
   it("跨类型那几句裸 SQL 走索引（不在 SQL 里加回收站条件，查出来再滤）", async () => {
     const 计划 = async (sql: string, n: number) => (await prisma.$queryRawUnsafe<{ detail: string }[]>(`EXPLAIN QUERY PLAN ${sql}`, ...Array.from({ length: n }, (_, i) => `k${i}`))).map((x) => x.detail).join(" | ");
-    expect(await 计划(跨类SQL.客户电话(2), 2)).toContain(号键索引名);
     const 档 = await 计划(跨类SQL.档案原样(2), 6);
     // 阿里国际站ID 那句不硬钉（库里全空时 ANALYZE 的统计会让它整表扫）；邮箱、微信两句必须走索引
     expect(档).toContain(档案格索引名.email);
@@ -278,21 +284,21 @@ describe("跨类型全局查重（11-20：号码不分类型，全公司唯一�
     expect(JSON.stringify(r)).not.toContain("甲的大客户");
   });
 
-  it("客户号码几行（saveCustomerNumbers）跨类型整条走通：撞了在用的说重复，撞了回收站说回收站，别的类型也拦", async () => {
+  it("联系人卡号码（saveContact）跨类型整条走通：撞了在用的拦，撞了回收站拦，别的类型也拦（E-260 客户本身号码几行删了）", async () => {
     const 别家 = await 建("别家", 乙);
     await prisma.contactMethod.create({ data: { customerId: 别家.id, kind: "wechat", value: "13900000430", numberKey: "13900000430" } });
     const 删 = await 建("删了的", 乙, { deletedAt: new Date() });
     await prisma.contactMethod.create({ data: { customerId: 删.id, kind: "wechat", value: "13900000431", numberKey: "13900000431" } });
     await prisma.contactMethod.create({ data: { customerId: 删.id, kind: "wechat", value: "wx_gone_01", numberKey: "wx_gone_01" } });
     const 我的 = await 建("我的客户", 甲, { phone: "13900000439" });
-    const 存 = (kind: string, value: string) => saveCustomerNumbers(我的.id, [{ kind, value }]);
+    const 存 = (kind: string, value: string) => saveContact({ customerId: 我的.id, name: "新联系人", isPrimary: false, 企业: { 号码们: [{ kind, value }] } });
     const 撞 = await 存("landline", "139 0000 0430");
     expect(撞).toMatchObject({ ok: false });
-    expect(!撞.ok && 撞.error).toContain("号码重复：客户「别家」已有此号码");
-    expect(await 存("fax", "13900000431")).toMatchObject({ ok: false, error: expect.stringContaining(回收站里有提示) });
-    expect(await 存("telegram", "@wx_gone_01")).toMatchObject({ ok: false, error: expect.stringContaining(回收站里有提示) });
+    expect(!撞.ok && 撞.error).toContain("别家");
+    expect(await 存("fax", "13900000431")).toMatchObject({ ok: false });
+    expect(await 存("telegram", "@wx_gone_01")).toMatchObject({ ok: false });
     expect(await 联系人回收站撞(prisma, [{ kind: "telegram", value: "@wx_gone_01", numberKey: "wx_gone_01" }])).toEqual({ 类型: "微信", 值: "wx_gone_01" });
-    expect(await prisma.contactMethod.count({ where: { customerId: 我的.id } })).toBe(0);
+    expect(await prisma.contact.count({ where: { customerId: 我的.id, name: "新联系人" } })).toBe(0);
     expect(await 存("landline", "010-6600 0439")).toMatchObject({ ok: true });
   });
 
@@ -352,7 +358,9 @@ describe("跨类型全局查重（11-20：号码不分类型，全公司唯一�
   });
 
   it("同一位客户的联系人和客户本身同号：只报联系人一行；看不到的客户（id 抹成 null）也不列两行（3703 实操 #384）", async () => {
-    const c = await 建("甲的大客户", 甲, { phone: "13900000420" });
+    // 客户本身的号 = 子表里没挂联系人的老行（E-260 客户电话格不再比，数据脚本挪之前的样子）
+    const c = await 建("甲的大客户", 甲);
+    await prisma.contactMethod.create({ data: { customerId: c.id, contactId: null, kind: "phone", value: "13900000420", numberKey: "13900000420" } });
     const 人 = await prisma.contact.create({ data: { customerId: c.id, name: "", phone: "13900000420" } });
     const 行 = [{ kind: "phone", value: "13900000420", numberKey: "13900000420" }];
     // 看得到（读的我 = null 看全部）：联系人一行，客户本身那行不另报

@@ -259,7 +259,7 @@ export async function 改客户挡(me: 谁, id?: string | null): Promise<string 
 
 /**
  * 改客户挡 的判断本身（已有客户，不查库）：客户详情页拿现成的负责人、公海标记和组织算「资料格给不给点」，
- * 和服务端 patchCustomer / patchCustomerRegion / saveCustomerNumbers 走同一段（PR #401：不为它多查库）。不是企业版 null
+ * 和服务端 patchCustomer / patchCustomerRegion 走同一段（PR #401：不为它多查库）。不是企业版 null
  */
 export function 改客户挡of(me: 谁, c: { salesOwnerId: string | null; 在公海: boolean }, org: Awaited<ReturnType<typeof 权限组织>>): string | null {
   if (!企业版()) return null;

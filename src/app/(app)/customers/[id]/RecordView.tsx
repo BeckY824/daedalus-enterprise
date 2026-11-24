@@ -56,7 +56,6 @@ import ContactLinks from "./ContactLinks";
 import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
-import CustomerNumbers from "./CustomerNumbers";
 import RegionInlineField from "./RegionInlineField";
 import AiPanel from "./AiPanel";
 import { 登记智能总结 } from "@/lib/ai-float";
@@ -208,7 +207,6 @@ export default function RecordView({
   联系人分类附件数 = null,
   关联们 = null,
   号码种类,
-  客户号码们,
   职务选项,
   分配方式选项 = [],
   客户类型选项 = [],
@@ -314,20 +312,24 @@ export default function RecordView({
   const 没填几项 = 企业
     ? (摆法.旧字段
         ? [
-            customer.phone, customer.school, customer.major, customer.grade,
+            customer.school, customer.major, customer.grade,
             档?.country, 档?.whatsapp, 档?.email, 档?.wechat, 档?.alibabaId, 档?.source, 档?.level, 档?.website,
             ...(摆渠道负责人 ? [customer.channelOwnerId] : []),
             ...(!外贸 ? [customer.expectedSignAt] : []),
             customer.remark,
           ]
         // 简称固定摆第二行、「公司」格不摆（11-17 客户抬头 PR-1b），都不算进「展开更多」
-        : [customer.phone, 级别值, customer.customerType, customer.customerAttr, 地址文字, 档?.website, customer.assignWay, customer.remark]
+        : [级别值, customer.customerType, customer.customerAttr, 地址文字, 档?.website, customer.assignWay, customer.remark]
       ).filter((v) => 是空值(v)).length
     : 0;
-  /** 右栏「背调」查谁（lib/research/subject.ts）：公司那一栏 + 国家 / 官网 / 电话 / WhatsApp */
+  /**
+   * 右栏「背调」查谁（lib/research/subject.ts）：公司那一栏 + 国家 / 官网 / 电话 / WhatsApp。
+   * 企业版客户没有电话（E-260）：电话取主联系人的（没有主联系人取第一位）
+   */
+  const 背调电话 = 企业 ? ((contacts.find((c) => c.isPrimary && !c.挂靠) ?? contacts.find((c) => !c.挂靠))?.phone ?? null) : customer.phone;
   const 背调档案 = useMemo(
-    () => ({ company: customer.school, country: 档?.country, website: 档?.website, phone: customer.phone, whatsapp: 档?.whatsapp }),
-    [customer.school, customer.phone, 档?.country, 档?.website, 档?.whatsapp],
+    () => ({ company: customer.school, country: 档?.country, website: 档?.website, phone: 背调电话, whatsapp: 档?.whatsapp }),
+    [customer.school, 背调电话, 档?.country, 档?.website, 档?.whatsapp],
   );
   /** 下次跟进过了几天（按日历天；今天到期不算过） */
   /** 已签约按币种分开写（「US$ 3,200 · ¥ 18,000」）——不同币种不能加在一起。老调用方没给 signedTotals 就按人民币 */
@@ -1400,13 +1402,9 @@ export default function RecordView({
                 不按名字查重（同完整表单编辑，见 patchCustomer）；11-19 起企业版全称选填、能清空（空着写「—」，页头照抬头兜底）。一行放不下省略号、悬停看全（TruncTip） */}
             {摆法.新字段 && <InlineField 空时横线={企业} customerId={customer.id} field="name" label="全称" value={customer.name} 可清空={企业} />}
             {摆法.新字段 && <InlineField 空时横线={企业} customerId={customer.id} field="shortName" label="简称" value={customer.shortName ?? null} placeholder={`最多 ${简称上限} 个字`} 可清空 />}
-            {摆(customer.phone) && (
-              <InlineField 空时横线={企业} customerId={customer.id} field="phone" label="电话" value={customer.phone}
-                显示={企业 ? (v) => <CopyValue 叫法="电话" value={v} /> : undefined} />
-            )}
-            {/* 客户本身的号码（11-17）：导入、建档时记在客户身上的座机、WhatsApp、第二个手机……一类一行，点了按「类型 + 号码」改；电话照旧是上面那格 */}
-            {企业 && 号码种类 && 客户号码们 && (客户号码们.length > 0 || 摆(null)) && (
-              <CustomerNumbers customerId={customer.id} 号码们={客户号码们} 号码种类={号码种类} />
+            {/* 企业版客户没有电话（E-260，客户「客户没有电话这一说法」）：电话格、客户本身号码几行都不摆，号码一律在下面的联系人上 */}
+            {!企业 && 摆(customer.phone) && (
+              <InlineField customerId={customer.id} field="phone" label="电话" value={customer.phone} />
             )}
             {sourceLead && <div className="rec-field" style={{cursor:"default"}} data-testid="customer-lead-origin">
               <div className="rec-field-k">来源线索</div>

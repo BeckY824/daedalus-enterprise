@@ -24,6 +24,7 @@ import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, �
 import { 看得到的客户, 露客户 } from "../project/db";
 import { 不算历史分析, 历史分析的, 是历史分析, 来源字, 并条件, 人名显示 } from "../project/system-created";
 import { 企业版 } from "../enterprise/switch";
+import { 主联系人号码选, 主联系人电话, 客户电话 } from "../enterprise/primary-contact-phone";
 import { 启用渠道条件 } from "../enterprise/channel-main";
 import { 渠道启用 } from "../enterprise/channel-main-core";
 import { 无负责人占位邮箱 } from "../pool";
@@ -86,6 +87,7 @@ export type ToolContext = {
    */
   号?: <T extends string | null>(p: T) => T;
 };
+
 
 /** ctx 没带脱敏器时原样返回。自部署实例本来就该看见真号 */
 export const 脱敏 = (ctx: ToolContext) => ctx.号 ?? (<T extends string | null>(p: T): T => p);
@@ -261,7 +263,7 @@ export const TOOLS: Tool[] = [
       const 我的条件 = { salesOwnerId: me, pool: { is: null } } satisfies Prisma.CustomerWhereInput;
       const 我的 = { AND: [where, 我的条件] };
       const 别的 = { AND: [where, { OR: [{ salesOwnerId: { not: me } }, { pool: { isNot: null } }] }] };
-      const select = { id: true, name: true, shortName: true, customerNo: true, phone: true, school: true, grade: true, major: true, followStatus: true, decisionStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } }, channel: { select: { name: true } }, expectedSignAt: true, expectedSignOn: true, createdAt: true, lastFollowAt: true } as const;
+      const select = { id: true, name: true, shortName: true, customerNo: true, phone: true, contacts: 主联系人号码选, school: true, grade: true, major: true, followStatus: true, decisionStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } }, channel: { select: { name: true } }, expectedSignAt: true, expectedSignOn: true, createdAt: true, lastFollowAt: true } as const;
       const read = (args: unknown) => prisma.customer.findMany({ ...(args as Prisma.CustomerFindManyArgs), select });
       type 行 = Awaited<ReturnType<typeof read>>;
       const 取 = (w: Prisma.CustomerWhereInput, n: number): Promise<行> =>
@@ -282,7 +284,7 @@ export const TOOLS: Tool[] = [
         范围: 范围说法[范围],
         分组: { [归属叫法.我]: 我的数, [归属叫法.别人]: total - 我的数 - 公海数, [归属叫法.公海]: 公海数 },
         ...(另有 ? { 另有, 另有说明: `另有 ${另有} 位你看得到、但不归你负责（同事或下属负责的、你在组里的项目挂的）；用户问团队 / 下属 / 同事的才用 scope=team 查，别混进「我的客户」` } : {}),
-        customers: rows.map((r) => ({ id: r.id, name: 客户显名(r), 归属: 客户归属(me, r), phone: 号(r.phone), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 客户负责人名(r), channel: r.channel?.name ?? null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
+        customers: rows.map((r) => ({ id: r.id, name: 客户显名(r), 归属: 客户归属(me, r), phone: 号(客户电话(r)), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 客户负责人名(r), channel: r.channel?.name ?? null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
       };
       const 区间说法 = (r: { from?: Dayjs; to?: Dayjs }, 名: string) =>
         r.from || r.to ? `${名} ${r.from ? r.from.format("YYYY-MM-DD") : "最早"}~${r.to ? r.to.format("YYYY-MM-DD") : "今天"}` : "";
@@ -376,7 +378,7 @@ export const TOOLS: Tool[] = [
           where: 客户按名条件(name),
           take: 6,
           orderBy: { lastFollowAt: "desc" },
-          select: { ...显名列, school: true, phone: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
+          select: { ...显名列, school: true, phone: true, contacts: 主联系人号码选, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
         });
         if (!候选.length) {
           // 和 search_customers 同一条：查无此人时把别的表一起看了，别让模型只会说「没有」
@@ -390,7 +392,7 @@ export const TOOLS: Tool[] = [
         if (候选.length > 1)
           return {
             summary: `叫「${name}」的有 ${候选.length} 位，要哪一位`,
-            data: { 需要挑一位: 候选.map((c) => ({ id: c.id, 姓名: 客户显名(c), 学校: c.school, 电话: 号(c.phone), 负责人: 客户负责人名(c) })) },
+            data: { 需要挑一位: 候选.map((c) => ({ id: c.id, 姓名: 客户显名(c), 学校: c.school, 电话: 号(客户电话(c)), 负责人: 客户负责人名(c) })) },
           };
         id = 候选[0].id;
       }
@@ -461,7 +463,7 @@ export const TOOLS: Tool[] = [
         // 电话一定要给：不给的话模型会如实说「系统里没存电话」，
         // 然后建议人去补一条**本来就存在**的数据——比缺功能更伤，
         // 它是在向用户断言 CRM 丢了东西
-        profile: `${[c.school, c.grade, c.major].filter(Boolean).join(" / ") || "档案未填"}；电话 ${号(c.phone) || "未填"}；${外贸说法(c.extra && { ...c.extra, whatsapp: c.extra.whatsapp && 号(c.extra.whatsapp) })}跟进状态「${statusLabel(b, c.followStatus)}」，决策状态「${statusLabel(b, c.decisionStatus)}」；负责人 ${负责人显示名(c.salesOwner.name)}；${
+        profile: `${[c.school, c.grade, c.major].filter(Boolean).join(" / ") || "档案未填"}；${企业版() ? `电话（主联系人的，客户本身没有电话）${号(主联系人电话(c.contacts)) || "未填"}` : `电话 ${号(c.phone) || "未填"}`}；${外贸说法(c.extra && { ...c.extra, whatsapp: c.extra.whatsapp && 号(c.extra.whatsapp) })}跟进状态「${statusLabel(b, c.followStatus)}」，决策状态「${statusLabel(b, c.decisionStatus)}」；负责人 ${负责人显示名(c.salesOwner.name)}；${
           外贸精简(b)
             ? // 外贸模版（2026-10-05）：不说推荐来源、预计签约（界面上没有）；签约就叫订单（订单号那张表 2026-10-29 删了）
               `订单 ${c.contracts.length ? 合计文字(签约合计(c.contracts)) : "无"}`
@@ -574,7 +576,7 @@ export const TOOLS: Tool[] = [
           where: 我新建的,
           orderBy: { createdAt: "desc" },
           take: 30,
-          select: { ...显名列, phone: true, followStatus: true, createdAt: true },
+          select: { ...显名列, phone: true, contacts: 主联系人号码选, followStatus: true, createdAt: true },
         }),
         prisma.followPlan.count({ where: { ownerId: ctx.userId, done: true, doneAt: 时间范围 } }),
       ]);
@@ -613,7 +615,7 @@ export const TOOLS: Tool[] = [
           跟过的人: [...按人.values()],
           签约: 签约.map((c) => ({ 客户: 客户显名(c.customer), 金额: 签约金额(c), 币种: 签约币种(c), 签约日: dayjs(c.signedAt).format("YYYY-MM-DD") })),
           签约合计: 金额,
-          新建的客户: 新建.map((c) => ({ 姓名: 客户显名(c), 电话: 号(c.phone), 跟进状态: statusLabel(ctx.b, c.followStatus), 建档日: dayjs(c.createdAt).format("YYYY-MM-DD") })),
+          新建的客户: 新建.map((c) => ({ 姓名: 客户显名(c), 电话: 号(客户电话(c)), 跟进状态: statusLabel(ctx.b, c.followStatus), 建档日: dayjs(c.createdAt).format("YYYY-MM-DD") })),
         },
       };
     },

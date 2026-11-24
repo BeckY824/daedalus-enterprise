@@ -52,7 +52,8 @@ async function 现场(opt: { 客户渠道?: string; 项目?: boolean } = {}) {
   const 销售 = await 人("sales2", "小丁", "sales");
   const 渠道老 = await prisma.channel.create({ data: { name: opt.客户渠道 ?? "展会", channelOwnerId: 市场.id } });
   const 渠道新 = await prisma.channel.create({ data: { name: "转介绍", channelOwnerId: 市场.id } });
-  const 客户 = await prisma.customer.create({ data: { name: "编的客户甲", phone: 号码, salesOwnerId: 负责人.id, channelId: 渠道老.id } });
+  // E-260 客户没有电话：号记在主要联系人上（数据脚本挪过以后的样子）
+  const 客户 = await prisma.customer.create({ data: { name: "编的客户甲", phone: "", salesOwnerId: 负责人.id, channelId: 渠道老.id, contacts: { create: { name: "", phone: 号码, isPrimary: true } } } });
   const 项目 = opt.项目 === false ? null : await prisma.project.create({
     data: { name: "编的项目甲", customerId: 客户.id, ownerId: 负责人.id, creatorId: 负责人.id, channelId: 渠道老.id, phase: "线索", node: "潜客培育" },
   });
@@ -243,7 +244,8 @@ describe("同号再次录入", () => {
     }));
     expect(r.见客户?.id).toBe(x.客户.id); // V3.5.1：加入的项目挂的客户级联看得到（只读）
     expect(r.数据.有客户).toBe(true);
-    expect(r.数据.客户.phone).toBe(号码);
+    // E-260 客户没有电话：号在主要联系人上，客户电话那格空串
+    expect(r.数据.客户.phone).toBe("");
   });
 
   it("组员在级联看到的客户下：沟通记得上、挂在进组的项目上（11-17 客户定组员能记）；待办照旧拦下说只能看，不说客户不在了（11-03 B5-6）", async () => {
@@ -446,6 +448,8 @@ describe("导入走完整流程", () => {
 
   it("线索撞有人在跟的客户：已有项目多一条备注，不发邀请不通知、不续最近跟进；整批撤回一起退", async () => {
     const x = await 现场();
+    // 导入查重还按客户电话认人（导入改走联系人是另一单）：这条照老数据的样子，客户电话那格带号
+    await prisma.customer.update({ where: { id: x.客户.id }, data: { phone: 号码 } });
     const 操作人 = { id: "imp1", name: "导入员" };
     await prisma.user.create({ data: { id: 操作人.id, email: "imp@x.test", name: 操作人.name, title: "", role: "ADMIN", password: "x" } });
     const { 批次Id } = await 试跑({ 来源: "excel", 用户Id: 操作人.id, 表: [线索表([["L1", "同号的线索", "编的联系人", 号码, "小甲", "待跟进"]])] as never, 建议器: null });
@@ -472,7 +476,7 @@ describe("撞到待分配项目（X-87，P-挂靠-01）：按没有负责人处�
     const 市管 = await 人("mmgr9", "小辛", "marketing_mgr");
     const 销管 = await 人("smgr9", "小壬", "sales_mgr");
     const 销售 = await 人("sales9", "小癸", "sales");
-    const 客户 = await prisma.customer.create({ data: { name: "编的客户庚", phone: 号码, salesOwnerId: 建的人.id } });
+    const 客户 = await prisma.customer.create({ data: { name: "编的客户庚", phone: "", salesOwnerId: 建的人.id, contacts: { create: { name: "", phone: 号码, isPrimary: true } } } });
     const 项目 = await prisma.project.create({
       data: { name: "编的线索庚", customerId: 客户.id, ownerId: 建的人.id, creatorId: 建的人.id, phase: "线索", node: "潜客培育", awaitAssignAt: new Date() },
     });

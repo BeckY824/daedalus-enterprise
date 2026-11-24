@@ -7,6 +7,8 @@ import { requireUser } from "@/lib/auth";
 import { 客户跟进可见条件 } from "@/lib/enterprise/customer-follow-feed";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
+// 附注里的号：企业版客户没有电话（E-260），取主联系人的第一个号
+import { 主联系人号码选, 客户电话 } from "@/lib/enterprise/primary-contact-phone";
 
 /**
  * 列表页上「新建计划 / 记录跟进」先挑人用的两个读取（2026-09-29）。
@@ -31,21 +33,21 @@ export async function 搜客户(关键词: string): Promise<可挑客户[]> {
     where: await 客户关键词条件(词, true),
     orderBy: [{ lastFollowAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
     take: 词 ? 20 : 8,
-    select: { ...显名列, school: true, phone: true },
+    select: { ...显名列, school: true, phone: true, contacts: 主联系人号码选 },
   });
   // 同名的人靠公司和号码分；电话设成看不到的角色号码照样打码（lib/enterprise/phone-mask.ts）
   // 全称选填（11-19）：没全称的显示显名（简称 → 编号），下拉里不出空白项
-  return rows.map((c) => ({ id: c.id, name: 客户显名(c), 附注: [c.school, 号(c.phone)].filter(Boolean).join(" · ") || null }));
+  return rows.map((c) => ({ id: c.id, name: 客户显名(c), 附注: [c.school, 号(客户电话(c))].filter(Boolean).join(" · ") || null }));
 }
 
 /** 编辑已选客户时补回单个显示标签，仍经过租户/业务员限定及共享号码打码。 */
 export async function 取客户选项(id: string): Promise<可挑客户 | null> {
   await requireUser();
   if (typeof id !== "string" || !id || id.length > 256) return null;
-  const c = await prisma.customer.findUnique({ where: { id }, select: { ...显名列, school: true, phone: true } });
+  const c = await prisma.customer.findUnique({ where: { id }, select: { ...显名列, school: true, phone: true, contacts: 主联系人号码选 } });
   if (!c) return null;
   const 号 = await 号码脱敏器();
-  return { id: c.id, name: 客户显名(c), 附注: [c.school, 号(c.phone)].filter(Boolean).join(" · ") || null };
+  return { id: c.id, name: 客户显名(c), 附注: [c.school, 号(客户电话(c))].filter(Boolean).join(" · ") || null };
 }
 
 export type 客户近况 = {
