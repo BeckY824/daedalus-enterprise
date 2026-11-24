@@ -254,13 +254,18 @@ async function 汇总一页(customerId: string, 项目们: Map<string, string>, 
     沟通上的截图、录音（F-047）：只给挂在 项目们 上的那几条——项目们 就是限定层 + 露客户 + 公海回避滤过的，和附件接口 认沟通 → 认项目看 同一把尺；
     不挂项目的、挂在删了的项目上的，接口本来就不给看，这里也不带。这一页一句（IN），没有挂项目的就不查
   */
-  const 挂项目的 = 页.filter((f) => 项目of(f)).map((f) => f.id);
+  /*
+    只给记在这位客户名下的（审查建议 1）：附件接口 认沟通 用带限定的 followUp 查，还要求「沟通记在哪位客户名下、我也看得到那位」；
+    别的客户名下那几条（关联项目带进来的）不一定过得了，带了会是点不开的破图，所以不带
+  */
+  const 带附件 = (f: (typeof 页)[number]) => f.customerId === customerId && !!项目of(f);
+  const 挂项目的 = 页.filter(带附件).map((f) => f.id);
   const [改过的, 附件表] = await Promise.all([改过的沟通们(页.map((f) => f.id)), 挂项目的.length ? 沟通附件们(prisma, 挂项目的) : Promise.resolve(new Map<string, 附件[]>())]);
   return {
     rows: 页.map((f) => {
       const pid = 项目of(f);
       const 行 = serializeFollowHistory(f);
-      const 附 = pid ? 附件表.get(f.id) : undefined;
+      const 附 = 带附件(f) ? 附件表.get(f.id) : undefined;
       // 别的客户名下的记录（关联项目的）：商机是那家客户的，不在这里露
       return { ...行, opportunity: f.customerId === customerId ? 行.opportunity : null, 项目: pid ? { id: pid, 名: 项目们.get(pid) ?? "" } : null, ...(改过的.has(f.id) ? { 已修改: true } : {}), ...(附?.length ? { 附件: 附 } : {}) };
     }),

@@ -180,4 +180,21 @@ describe("F-047 客户页沟通记录带沟通附件（真库）", () => {
     const 二 = await 看汇总(渠运, 甲, { occurredAt: 末.occurredAt, id: 末.id });
     expect(附件of(二.rows)).toEqual({ 潜客培育: ["潜客培育-0.png", "潜客培育-1.png"] });
   });
+
+  it("关联项目带进来、记在别的客户名下的沟通：不带附件（接口 认沟通 要看得到那位客户，带了会是破图）", async () => {
+    // 销售负责项目 P，P 的主客户 丙 归同事、销售看不到 丙；甲 是 P 的关联客户。P 上记在 丙 名下、带附件的那条，汇总在 甲 页里出，但不带附件
+    const 丙 = (await raw.customer.create({ data: { name: "QA-同事的客户", phone: "13800004703", salesOwnerId: 同事, creator: { create: { userId: 同事 } } } })).id;
+    const P = (await raw.project.create({ data: { name: "跨客户项目", customerId: 丙, ownerId: 销售, creatorId: 销售 } })).id;
+    await raw.projectCustomer.create({ data: { projectId: P, customerId: 甲 } });
+    忘掉企业版范围();
+    await 记(丙, 销售, "记在别的客户名下", 200, P, 1);
+    const r = await 看汇总(销售, 甲);
+    const 行 = r.rows.find((x) => x.title === "记在别的客户名下");
+    expect(行, "这条沟通照旧出现在汇总里").toBeTruthy();
+    expect(行).not.toHaveProperty("附件");
+    // 前提成立：接口那边这条沟通的附件销售确实看不了（不带才对）
+    当(销售);
+    const 看 = await 以谁的身份(销售, () => 认附件父记录({ opportunityId: null, leadId: null, contactId: null, projectId: null, followUpId: 沟通["记在别的客户名下"] }, false));
+    expect("错" in 看).toBe(true);
+  });
 });
