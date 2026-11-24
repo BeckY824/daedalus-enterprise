@@ -5,7 +5,7 @@ import type { Prisma } from "@/generated/prisma";
 import { dayjs, maskPhone } from "@/lib/utils";
 import { 带币种, 签约金额, 签约合计, 签约币种 } from "@/lib/money-db";
 import { 客户关键词条件, 客户关键词SQL, 客户id集合, 客户号码条件, 搜索词 } from "@/lib/search-keyword";
-import { 读的我, 有市场只读, 现在的公海回避, 现在的条线建的客户, 看全部 } from "@/lib/team-scope";
+import { 读的我, 有市场只读, 现在的公海回避, 现在的条线建的客户, 现在的组员客户, 现在的组员本人, 看全部 } from "@/lib/team-scope";
 import { requireUser } from "@/lib/auth";
 import { 项目阶段客户条件, 项目名另比 } from "@/lib/project/customer-list-projects";
 import { 取档案 } from "@/lib/customer-extra-db";
@@ -334,7 +334,7 @@ const 企业版才筛: readonly string[] = ["custStatus", "customerType", "archi
  * 10 万客户搜「138」要 1.6–1.9 s；这样写 60–75 ms（老板）、7–10 ms（业务员）。
  *
  * 范围和 lib/team-scope.ts 的 可见客户(读的我) ∧ 公海条件 是同一个口径，化简后：
- * 「客户」页签 = 我负责（销售或渠道；企业版只认销售负责人，11-04）∧ 不在公海；「公海」页签 = 在公海（公海人人看得到，原负责人回避的除外，11-03）；老板只剩页签条件。
+ * 「客户」页签 = 我负责（销售或渠道；企业版只认销售负责人，11-04；企业版另加本人进组的项目挂着的客户，同 scope-sql 组员那支）∧ 不在公海；「公海」页签 = 在公海（公海人人看得到，原负责人回避的除外，11-03）；老板只剩页签条件。
  * **那边的可见范围改了，这里要跟着改**（customer-keyword-page.test.ts 拿 Prisma 老路逐页对拍守着）。
  * 这里只给 id，行由调用方经限定层再取一次：范围就算写宽了，也只会多算总数，不会多给行。
  *
@@ -375,11 +375,18 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
       const ids = typeof 谁 === "string" ? [谁] : [...谁];
       const q = ids.map(() => "?").join(", ");
       // 企业版不认渠道负责人（11-04，同 team-scope 可见客户）
-      // 条线总管理按「创建人在本线」多看得到的客户（P-看-18，同 scope-sql 看得到的）：算好的编号名单；过上限时上面 有市场只读 已走老路
-      const 线建 = 企业版() ? await 现在的条线建的客户(defaultClient) : undefined;
-      if (企业版() && 线建?.length) { 段.push(`(c."salesOwnerId" IN (${q}) OR c.id IN (${线建.map(() => "?").join(", ")}))`); 值.push(...ids, ...线建); }
-      else if (企业版()) { 段.push(`c."salesOwnerId" IN (${q})`); 值.push(...ids); }
-      else { 段.push(`(c."salesOwnerId" IN (${q}) OR c."channelOwnerId" IN (${q}))`); 值.push(...ids, ...ids); }
+      if (企业版()) {
+        // 项目组员（V3.5.1）：本人进的组挂着的客户也算（11-24 ②只认本人），同 scope-sql 看得到的 / team-scope 限定条件的组员那支。
+        // 原来这里只按负责人算，组员的客户带关键词搜不出、不带又看得到（11-24 审查）
+        const 组员 = await 组员客户段();
+        // 条线总管理按「创建人在本线」多看得到的客户（P-看-18，同 scope-sql 看得到的）：算好的编号名单；过上限时上面 有市场只读 已走老路
+        const 线建 = (await 现在的条线建的客户(defaultClient)) ?? [];
+        const 线建sql = 线建.length ? ` OR c.id IN (${线建.map(() => "?").join(", ")})` : "";
+        段.push(`(c."salesOwnerId" IN (${q})${组员.sql}${线建sql})`);
+        值.push(...ids, ...组员.参数, ...线建);
+        // 带了 OR：deletedAt 前加 +，不然没统计信息的 SQLite 嫌 OR 贵、改顺 deletedAt 索引扫整表（同 scope-sql 名下那句）
+        if (组员.sql || 线建sql) 段[1] = '+c."deletedAt" IS NULL';
+      } else { 段.push(`(c."salesOwnerId" IN (${q}) OR c."channelOwnerId" IN (${q}))`); 值.push(...ids, ...ids); }
     }
     段.push('NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
   }
@@ -401,6 +408,22 @@ SELECT n.total AS total, p.id AS id FROM n LEFT JOIN (
   const total = Number(rows[0]?.total ?? 0);
   const page = Math.min(请求页, Math.max(1, Math.ceil(total / pageSize)));
   return { total, page, ids: rows.flatMap((r) => (r.id ? [r.id] : [])) };
+}
+
+/**
+ * 关键词快路「客户」页签要并进去的组员那一段（` OR c.id IN (…)`），和 scope-sql.ts 看得到的 的组员同一个口径：
+ * 范围里算好的编号名单（现在的组员客户，只认本人进的组）；名单过上限（null）退回子查询，组员条件认 现在的组员本人；不是组员不加
+ */
+async function 组员客户段(): Promise<{ sql: string; 参数: string[] }> {
+  const 名单 = await 现在的组员客户(defaultClient);
+  if (名单 === undefined || (名单 && !名单.length)) return { sql: "", 参数: [] };
+  if (名单) return { sql: ` OR c.id IN (${名单.map(() => "?").join(", ")})`, 参数: 名单 };
+  const 人 = await 现在的组员本人(defaultClient);
+  const 人们 = 人 === null ? [] : typeof 人 === "string" ? [人] : [...人];
+  return {
+    sql: ` OR c.id IN (SELECT p."customerId" FROM "Project" p JOIN "ProjectMember" m ON m."projectId" = p.id WHERE m."userId" IN (${人们.map(() => "?").join(", ") || "''"}) AND m."inviteStatus" = 'JOINED' AND p."deletedAt" IS NULL)`,
+    参数: 人们,
+  };
 }
 
 /** 按给定的 id 顺序取行（经限定层）。关键词快路径用 */
