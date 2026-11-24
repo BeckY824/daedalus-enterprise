@@ -393,7 +393,7 @@ const 标签后起点 = (page: Page, sel: string) => page.locator(sel).evaluateA
   return Math.round(r.getBoundingClientRect().x - k.closest(".ant-card")!.getBoundingClientRect().x);
 }));
 
-it("右栏其余卡（1280 / 390）对齐到 68 / 92：回款「当前回款」、交付三行、项目组「组长」和组员、提成各行、关联客户 / 联系人；字段名 13 灰；底价框不被挤截；不横滚", async () => {
+it("右栏其余卡（1280 / 390）对齐到 68 / 92：回款「当前回款」、交付三行、项目组组长和组员（名字左边缘 = 字段名左边缘）、提成各行、关联客户 / 联系人；字段名 13 灰；底价框不被挤截；不横滚", async () => {
   for (const w of [1280, 390]) {
     const { page, errors, close } = await 开(w, { 全: true, 单: true }, 2400);
     try {
@@ -402,8 +402,6 @@ it("右栏其余卡（1280 / 390）对齐到 68 / 92：回款「当前回款」�
       const 起点: Record<string, number[]> = {
         当前回款: await 标签后起点(page, ".cd-side .pd-pay-sum > .proj-info-k"),
         交付: await 标签后起点(page, ".cd-side .proj-stock-rows .proj-info-row > .proj-info-k"),
-        组长: await 标签后起点(page, ".cd-side .pd-team-lead > .proj-info-k"),
-        组员: await 标签后起点(page, ".cd-side .pd-team-row > .pd-team-name"),
         // 项目底价那一行在 1280 右栏放不下，整组落到下一行，不算
         提成: await 标签后起点(page, ".cd-side .pd-cm-row:not(:has(> .ant-space-compact)) > .pd-cm-k"),
         关联: await 标签后起点(page, ".cd-side .proj-rel-field > .proj-rel-key"),
@@ -414,10 +412,15 @@ it("右栏其余卡（1280 / 390）对齐到 68 / 92：回款「当前回款」�
       }
       expect(起点.交付.length).toBe(3);
       expect(起点.关联.length).toBeGreaterThanOrEqual(5);
-      for (const sel of [".cd-side .pd-cm-k", ".cd-side .proj-rel-key", ".cd-side .pd-pay-sum > .proj-info-k", ".cd-side .pd-team-lead > .proj-info-k"])
+      for (const sel of [".cd-side .pd-cm-k", ".cd-side .proj-rel-key", ".cd-side .pd-pay-sum > .proj-info-k"])
         expect(await 字(page, sel), sel).toEqual({ 号: "13px", 重: "400", 色: 灰 });
-      // 组员名落在 68 列里（长了省略、悬停看全），角色下拉从 92 起
-      expect((await 框(page.locator(".cd-side .pd-team-name").first())).w).toBe(68);
+      // 项目组（11-23 改排版）：组长、组员同一种行，名字从字段名那一列的左边起（和「当前回款」等字段名同一个左边缘），名字不截
+      const 离卡左 = (sel: string) => page.locator(sel).evaluateAll(es => es.map(e => Math.round(e.getBoundingClientRect().x - e.closest(".ant-card")!.getBoundingClientRect().x)));
+      const 字段名左 = await 离卡左(".cd-side .pd-pay-sum > .proj-info-k");
+      const 组名左 = await 离卡左(".cd-side .pd-team-row .pd-team-name");
+      expect(组名左.length, `宽 ${w}`).toBeGreaterThan(0);
+      expect(new Set(组名左), `宽 ${w}`).toEqual(new Set(字段名左));
+      expect(await page.locator(".cd-side .pd-team-name").evaluateAll(es => es.filter(e => e.scrollWidth > e.clientWidth + 1).length), `宽 ${w}`).toBe(0);
       // 项目底价：数字不被挤截，框不出卡
       const 底价 = page.locator(".cd-side .pd-cm-row input[aria-label=项目底价]");
       expect(await 底价.evaluate(e => (e as HTMLInputElement).scrollWidth <= (e as HTMLInputElement).clientWidth), `宽 ${w}`).toBe(true);

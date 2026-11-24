@@ -60,7 +60,7 @@ async function 开(画: string, 参: unknown, width: number, 上次?: string): P
 const 不横溢 = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 const 下拉项 = async (page: Page) => (await page.locator(".ant-select-dropdown:visible .ant-select-item-option").allInnerTexts()).map(x => x.trim());
 
-it("批量转让框：预看给了定向——方向格默认内贸、下拉只列内贸能接的；改外贸只列外贸销售（不含外贸销售管理）、清掉不合的人；交上去带方向", async () => {
+it("批量转让框：预看给了定向——方向格默认内贸、下拉只列内贸能接的；改外贸只列外贸能接的（11-23 起含外贸销售管理）、清掉不合的人；交上去带方向", async () => {
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await 开("__转", { 定向: { 候选表: { 内贸: ["u2"], 外贸: ["u3"] }, 默认线: "内贸" } }, w);
     try {
@@ -74,7 +74,7 @@ it("批量转让框：预看给了定向——方向格默认内贸、下拉只�
       await 框.getByTestId("transfer-direction").click();
       await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: /^外贸$/ }).click();
       expect(await 框.getByTestId("transfer-direction-why").innerText()).toContain("你改成了外贸");
-      expect(await 框.getByTestId("transfer-direction-why").innerText()).toContain("不含外贸销售管理");
+      expect(await 框.getByTestId("transfer-direction-why").innerText()).toContain("只能指定给外贸事业部的销售、销售管理");
       expect(await 框.locator(".ant-select-selection-item").filter({ hasText: "内贸小张" }).count()).toBe(0);
       await page.locator(".ant-select-dropdown:visible").waitFor({ state: "hidden" });
       await 框.getByRole("combobox", { name: "转给谁" }).click();

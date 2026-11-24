@@ -440,7 +440,7 @@ describe("3703 实操 r22", () => {
     expect(mocks.revalidatePath).toHaveBeenCalledWith("/leads");
   });
 
-  it("[实操 4] 放弃资格看「是不是本线自动分配候选」：内贸纯销售管理（不兼销售）给；外贸销售管理在外贸线上不给；外贸销售照给", async () => {
+  it("[实操 4] 放弃资格看「是不是本线自动分配候选」：内贸纯销售管理（不兼销售）给；外贸销售管理在外贸线上也给（11-23）、在内贸线上不给；外贸销售照给", async () => {
     const 内管 = await 造人("neiguan", "SALES", "sales_mgr", "内贸");
     const 外管 = await 造人("waiguan", "SALES", "sales_mgr", "外贸");
     const 外销 = await 造人("waixiao", "SALES", "sales", "外贸");
@@ -448,8 +448,10 @@ describe("3703 实操 r22", () => {
     const 内 = await 分来的(内管 as 人, 京("2026-11-20 10:00"));
     expect(await 以(内管, () => 放弃资格(内管, 内.id, 现在))).toMatchObject({ 可: true });
     const 外 = await 分来的(外管, 京("2026-11-20 10:00"), { bizLine: "外贸", flowLine: "外贸" });
-    expect(await 以(外管, () => 放弃资格(外管, 外.id, 现在))).toBeNull();
-    expect(await 放弃(外管, 外.id, 现在)).toMatchObject({ ok: false });
+    expect(await 以(外管, () => 放弃资格(外管, 外.id, 现在))).toMatchObject({ 可: true });
+    // 不混线：外贸销售管理拿着一条内贸流转线的线索，不是内贸线的候选，不给
+    const 外在内 = await 分来的(外管, 京("2026-11-20 10:00"), { bizLine: "内贸", flowLine: "内贸" });
+    expect(await 以(外管, () => 放弃资格(外管, 外在内.id, 现在))).toBeNull();
     const 外2 = await 分来的(外销, 京("2026-11-20 10:00"), { bizLine: "外贸", flowLine: "外贸" });
     expect(await 以(外销, () => 放弃资格(外销, 外2.id, 现在))).toMatchObject({ 可: true });
     // 内贸销售管理点了照常转给本线下一位

@@ -291,21 +291,27 @@ it("窄宽：700 / 800 / 1024 两颗按钮在客户名那一行右端、不折�
     } finally { await page.close(); }
   }
 });
-/* 10-31：企业版联系人卡上的「号码保护」小标签——只展示，不能点；判定见 tests/ent-contact-guard.test.ts */
-const 保护 = (page: import("playwright").Page) => page.locator(".rec-contact .rec-contact-guard").evaluateAll((ts: HTMLElement[]) => ts.map(t => [t.innerText, t.getAttribute("title"), t.tagName, t.querySelector("button, a, input") ? "可点" : ""]));
+/* 10-31：企业版联系人卡上的「号码保护」小标签——只展示，不能点；判定见 tests/ent-contact-guard.test.ts。
+   11-24 起单独一行：字段名「号码保护」，值那一列放标签、标签里只写状态；紧跟号码那几行 */
+const 保护 = (page: import("playwright").Page) => page.locator(".rec-contact .rec-contact-guard").evaluateAll((ts: HTMLElement[]) => ts.map(t => {
+  const 行 = t.closest(".rec-contact-line"), 前 = 行?.previousElementSibling;
+  return [t.innerText, t.getAttribute("title"), t.tagName, t.querySelector("button, a, input") ? "可点" : "",
+    行?.querySelector(":scope > .rec-contact-k")?.textContent ?? "", t.parentElement === 行?.querySelector(":scope > .rec-contact-v") ? "在值列" : "",
+    前?.classList.contains("rec-contact-num") ? "跟在号码后" : ""];
+}));
 it("号码保护：每张卡一枚；有电话 + 客户有负责人 → 已开启，没电话 → 已关闭；公海 / 没负责人都关；不能点；开关关闭不摆", async () => {
   const page = await open(true);
   try {
     expect(await 保护(page)).toEqual([
-      ["号码保护：已开启", "有电话、客户有负责人", "SPAN", ""],
-      ["号码保护：已开启", "有电话、客户有负责人", "SPAN", ""],
-      ["号码保护：已关闭", "这位联系人没留电话", "SPAN", ""],
+      ["已开启", "有电话、客户有负责人", "SPAN", "", "号码保护", "在值列", "跟在号码后"],
+      ["已开启", "有电话、客户有负责人", "SPAN", "", "号码保护", "在值列", "跟在号码后"],
+      ["已关闭", "这位联系人没留电话", "SPAN", "", "号码保护", "在值列", "跟在号码后"],
     ]);
     expect(await page.locator(".rec-contact-guard").evaluateAll((ts: HTMLElement[]) => ts.map(t => getComputedStyle(t).cursor))).not.toContain("pointer");
   } finally { await page.close(); }
   const 公海 = await open(true, 1366, false, { 客户改: { pool: { reason: "手动" } } });
   try {
-    expect((await 保护(公海)).map(x => x[0] + "|" + x[1])).toEqual(Array(2).fill("号码保护：已关闭|客户在公海里").concat("号码保护：已关闭|这位联系人没留电话"));
+    expect((await 保护(公海)).map(x => x[0] + "|" + x[1])).toEqual(Array(2).fill("已关闭|客户在公海里").concat("已关闭|这位联系人没留电话"));
   } finally { await 公海.close(); }
   const 没负责人 = await open(true, 1366, false, { 客户改: { salesOwnerId: null, salesOwnerName: null } });
   try {
@@ -360,9 +366,13 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 不打省略号（D3 · M3-
       // 放得下的「+86 138-0013-8000」一行，不在连字符处断开；超长的那几串比整格宽，才在里面断
       expect(量.find(x => x.文字 === "+86 138-0013-8000")!.行数, `宽 ${w}`).toBe(1);
       expect(量.filter(y => !y.无键 && (y.行数 ?? 0) > 1).length).toBeGreaterThan(0);
-      // 号码保护一枚一行、不在「：」后折开，不出卡
-      const 保 = await page.locator(".rec-contact-guard").evaluateAll((ts: HTMLElement[]) => ts.map(t => { const r = t.getBoundingClientRect(); return { 高: Math.round(r.height), 出卡: r.right > t.closest(".rec-contact")!.getBoundingClientRect().right + 0.5 }; }));
-      for (const g of 保) expect(g, `宽 ${w}`).toEqual({ 高: expect.any(Number), 出卡: false });
+      // 号码保护一枚一行，不出卡、不被省略（11-24 起单独一行，标签只写状态）
+      const 保 = await page.locator(".rec-contact-guard").evaluateAll((ts: HTMLElement[]) => ts.map(t => {
+        const r = t.getBoundingClientRect(), 卡 = t.closest<HTMLElement>(".rec-contact")!, 卡框 = 卡.getBoundingClientRect(), 格 = t.parentElement!;
+        return { 高: Math.round(r.height), 出卡: r.right > 卡框.right - parseFloat(getComputedStyle(卡).paddingRight) + 0.5, 截: t.scrollWidth > t.clientWidth || 格.scrollWidth > 格.clientWidth };
+      }));
+      expect(保.length, `宽 ${w}`).toBe(3);
+      for (const g of 保) expect(g, `宽 ${w}`).toEqual({ 高: expect.any(Number), 出卡: false, 截: false });
       expect(Math.max(...保.map(g => g.高)), `宽 ${w} 号码保护一行`).toBeLessThanOrEqual(22);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
     } finally { await page.close(); }
