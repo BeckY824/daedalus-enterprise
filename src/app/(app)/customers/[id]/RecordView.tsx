@@ -10,6 +10,7 @@ import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo,
 import { 只读上下文, 只能看的格上下文, 资料改挡上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, Select, Typography, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import { 原负责人不能领回提示, 公海客户先领取话, 无效客户不能领短话 } from "@/lib/enterprise/pool-rules";
@@ -284,7 +285,13 @@ export default function RecordView({
   const 其他起点 = 项目联系人 && 排好的联系人.some((c) => 联系人档(c) < 2) ? 排好的联系人.find((c) => 联系人档(c) === 2)?.id ?? null : null;
   // 时间线「项目：X」：是项目区页签里的项目就直接切到那个页签的沟通卡（同一页软跳、保住 #project-follow），别的照旧去 /projects/<id> 让服务端判（审查 #3）
   const 页签集 = new Set(项目页签们 ?? []);
-  const 时间线项目地址 = (id: string) => (页签集.has(id) ? 客户页项目地址(customer.id, id, "#project-follow") : 项目页地址(id));
+  /**
+   * 这位作为关联客户参与的项目：服务端已算好项目页会跳去的地址（page.tsx 补项目去，跳转优化 PR-A），时间线、待办里那行点了直接去，
+   * 不经过 /projects/<id> 再 replace 那段空正文。拿不准的服务端给的就是 /projects/<id>，和原来一样
+   */
+  const 参与去 = new Map((参与项目们 ?? []).flatMap((x) => (!x.主 && x.项目去 ? [[x.projectId, x.项目去] as const] : [])));
+  const 别家项目地址 = (id: string, hash = "#project-follow") => { const 到 = 参与去.get(id); return 到 ? `${到}${hash}` : `/projects/${encodeURIComponent(id)}${hash}`; };
+  const 时间线项目地址 = (id: string) => (页签集.has(id) ? 客户页项目地址(customer.id, id, "#project-follow") : 别家项目地址(id));
   const [资料全开, set资料全开] = useState(false);
   /*
     外贸模版（2026-10-05 外贸客户建议）：签约就是订单——左栏「签约」那一节叫「订单」（订单号那几格 2026-10-29 随订单表删了）；
@@ -1025,8 +1032,9 @@ export default function RecordView({
       {下一步行.map((p) => (
         <div key={`next-${p.id}`} className="rec-task">
           <span className="rec-task-k">项目</span>
-          <Link className="rec-task-t" href={p.主 ? 客户页项目地址(customer.id, p.id, "#project-follow") : `/projects/${encodeURIComponent(p.id)}#project-follow`} title={`项目「${p.名}」的下一步计划${p.下一步文字 ? `：${p.下一步文字}` : ""}`}>
+          <Link className="rec-task-t" href={p.主 ? 客户页项目地址(customer.id, p.id, "#project-follow") : 别家项目地址(p.id)} title={`项目「${p.名}」的下一步计划${p.下一步文字 ? `：${p.下一步文字}` : ""}`}>
             {p.下一步文字 ? `${p.名} · ${p.下一步文字}` : p.名}
+            <LinkPending />
           </Link>
           {p.下一步 && (
             <span className="rec-task-due" title={fmtDateTime(p.下一步)} style={{ color: 已过期(p.下一步) ? "var(--danger)" : undefined }}>
@@ -1575,7 +1583,7 @@ export default function RecordView({
           {/* 企业版项目关联（P17）：这位作为关联客户（不是主客户）参与的项目和身份。只读，身份在项目页「关联客户」里改 */}
           {参与项目们 && 参与项目们.some((x) => !x.主) && 节("参与的项目", 参与项目们.filter((x) => !x.主).length, null, <>
               {参与项目们.filter((x) => !x.主).map((x) => (
-                <RowLink key={x.projectId} href={`/projects/${encodeURIComponent(x.projectId)}`} className="rec-mini rec-mini-2">
+                <RowLink key={x.projectId} href={x.项目去 ?? `/projects/${encodeURIComponent(x.projectId)}`} className="rec-mini rec-mini-2">
                   <span className="rec-mini-n" title={x.名}>{x.名}</span>
                   <span className="rec-mini-sub">
                     {x.身份.length ? x.身份.map((t) => <Tag key={t} style={{ margin: 0 }}>{t}</Tag>) : <span className="rec-mini-m">没勾身份</span>}

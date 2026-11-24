@@ -18,7 +18,7 @@ import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
-import { 学员名单 } from "@/app/(app)/@pane/panes";
+import { 学员名单 } from "@/app/(app)/@pane/roster-panes";
 import { 客户页签数 } from "@/lib/pool-db";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
 import type { CustomerRosterData } from "@/components/CustomerRoster";

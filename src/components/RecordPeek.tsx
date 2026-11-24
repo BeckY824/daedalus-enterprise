@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Popover } from "antd";
 import { RightOutlined } from "@ant-design/icons";
 import { useNarrow } from "@/lib/roster";
@@ -59,6 +60,7 @@ export default function RecordPeek({
   const 链 = (
     <Link ref={名} href={`/customers/${客户.id}`} className="md-ent" data-peek={客户.id}>
       {children}
+      <LinkPending />
     </Link>
   );
   if (触屏) return 链;
@@ -116,6 +118,7 @@ export default function RecordPeek({
               {动作}
               <Link href={`/customers/${客户.id}`} className="peek-go">
                 打开{客户叫} <RightOutlined />
+                <LinkPending />
               </Link>
             </div>
           </div>

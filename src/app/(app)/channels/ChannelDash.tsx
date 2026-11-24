@@ -20,6 +20,7 @@ import {
 } from "@/lib/enterprise/channel-dash";
 import { 名单段 } from "@/lib/enterprise/channel-stats";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { RosterNote } from "./RosterNote";
 import CountUp from "@/components/CountUp";
 import Skeleton from "@/components/Skeleton";
@@ -350,7 +351,7 @@ export default function ChannelDash({
                 // 数字点进去：这个渠道 + 同一段创建时间（11-11）；项目列表里一条没有、全在公海的直接去公海页。对不上的悬停里拆开说
                 const 链 = { 列表: 榜链接(x.id, 时段, "列表"), 公海: 榜链接(x.id, 时段, "公海") };
                 const 去 = x.名单 && x.名单.列表 === 0 && x.名单.公海 > 0 ? 链.公海 : 链.列表;
-                const 数字 = <Link href={去} className="chan-dash-top-n"><b>{数(x.线索)}</b></Link>;
+                const 数字 = <Link href={去} className="chan-dash-top-n"><b>{数(x.线索)}</b><LinkPending /></Link>;
                 return (
                   <li key={x.id}>
                     <button type="button" className="link-plain chan-dash-ell" title={x.name} onClick={() => 看详情(x.id)}>{x.name}</button>

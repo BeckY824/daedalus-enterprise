@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { useRouter } from "next/navigation";
 import { Button, Card, Dropdown, Empty, Tag } from "antd";
 import { DownOutlined } from "@ant-design/icons";
@@ -53,6 +54,7 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
             <span>{f.who}</span>
             <Link href={客户页项目地址(客户.id, f.项目.id, "#project-follow")} scroll={false} title={f.项目.名} className="rcd-follow-proj">
               {f.项目.名}
+              <LinkPending />
             </Link>
           </div>
           <div className="rcd-follow-body">{f.content}</div>

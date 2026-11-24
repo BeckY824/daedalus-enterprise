@@ -7,6 +7,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Button, Card, Input, Select, Space } from "antd";
 import { DeleteOutlined, EditOutlined, PlusOutlined } from "@ant-design/icons";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -110,7 +111,7 @@ export default function LinkedCustomers({ customerId, 关联们, 只读, 起手 
         ) : (
           <div key={x.id} className="rec-mini rec-mini-2">
             <span className="rec-mini-n" title={x.otherName}>
-              {x.看得到 ? <Link href={`/customers/${encodeURIComponent(x.otherId)}`}>{x.otherName}</Link> : x.otherName}
+              {x.看得到 ? <Link href={`/customers/${encodeURIComponent(x.otherId)}`}>{x.otherName}<LinkPending /></Link> : x.otherName}
             </span>
             <span className="rec-mini-sub">
               <span className="rec-mini-m" title={x.note ?? undefined}>{x.note ?? (x.看得到 ? "" : "不在你的范围，只显示名字")}</span>

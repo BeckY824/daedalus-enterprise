@@ -9,6 +9,7 @@ import { 首页卡条件, 即将逾期, 即将逾期紧筛 } from "./home-cards"
 import { 暂未跟进负责人们 } from "./home-cards-db";
 import { 卡点看板范围 } from "./blocker";
 import { 复盘待办计数 } from "./board-todos-db";
+import { 补项目去 } from "./customer-detail-direct";
 
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 type 谁 = { id: string; role: string };
@@ -36,7 +37,7 @@ async function 叫们(ids: readonly string[]): Promise<Map<string, string>> {
  * 3 天内回公海的项目：任务页签的「回收提醒」（按节点几条）和数据页签的「超时预警」（最早的几个）同一次查。
  * 库里先用首页卡同一个筛（即将逾期紧筛），再逐个算回收日（同 即将逾期的项目）
  */
-export async function 将回公海of(范围: 范围, 今: Date = new Date()): Promise<{ 提醒: 回收提醒; 预警: 预警行[] }> {
+export async function 将回公海of(范围: 范围, 今: Date = new Date(), 我?: 谁): Promise<{ 提醒: 回收提醒; 预警: 预警行[] }> {
   const 规则 = await 生效组织规则();
   const 字典 = 字典of(企业版());
   const 粗 = 即将逾期紧筛(规则, 字典, 今);
@@ -52,12 +53,12 @@ export async function 将回公海of(范围: 范围, 今: Date = new Date()): Pr
   const 叫 = await 叫们(前几.map((x) => x.p.ownerId));
   return {
     提醒: 回收条们(规则, 字典, 按节点数(们.map((x) => x.p), 字典)),
-    预警: 前几.map(({ p, 日 }) => ({ id: p.id, 名: p.name, 节点: p.node, 负责人: 叫.get(p.ownerId) ?? "—", 回收日: 日, 阶段: p.phase })),
+    预警: await 直达(我, 前几.map(({ p, 日 }) => ({ id: p.id, 名: p.name, 节点: p.node, 负责人: 叫.get(p.ownerId) ?? "—", 回收日: 日, 阶段: p.phase }))),
   };
 }
 
 /** 还没沟通过的项目：首页「暂未跟进」同一个条件，这一圈负责的，最近建的在前 */
-export async function 缺沟通of(范围: 范围): Promise<缺沟通> {
+export async function 缺沟通of(范围: 范围, 我?: 谁): Promise<缺沟通> {
   const 规则 = await 生效组织规则();
   const 人 = 负责人条件(范围);
   // 只认现负责人记的沟通（同首页卡，home-cards.ts 现负责人没记过沟通）：这一圈负责人；不限 = 在推项目的全部负责人
@@ -75,9 +76,13 @@ export async function 缺沟通of(范围: 范围): Promise<缺沟通> {
   const 叫 = await 叫们(们.map((p) => p.ownerId));
   return {
     总数,
-    行: 们.map((p) => ({ id: p.id, 名: p.name, 客户: p.customer ? 客户显名(p.customer) : "—", 节点: p.node, 负责人: 叫.get(p.ownerId) ?? "—", 建于: p.createdAt.toISOString() })),
+    行: await 直达(我, 们.map((p) => ({ id: p.id, 名: p.name, 客户: p.customer ? 客户显名(p.customer) : "—", 节点: p.node, 负责人: 叫.get(p.ownerId) ?? "—", 建于: p.createdAt.toISOString() }))),
   };
 }
+
+/** 给了 我：每行补上 项目去（项目页会跳去的最终地址，跳转优化 PR-A：点了不经过重定向那段空白）；没给照原样 */
+const 直达 = <T extends { id: string }>(我: 谁 | undefined, 行们: T[]): Promise<(T & { 项目去?: string })[]> | T[] =>
+  我 ? 补项目去(我, 行们, (r) => r.id) : 行们;
 
 /** 卡点分布：未解决的，同卡点看板那一圈（卡点看板范围），按阻碍主体、按状态各一次 groupBy；卡点没开 = 空 */
 export async function 卡点分布of(me: 谁): Promise<卡点分布> {
@@ -126,7 +131,7 @@ export async function 复盘概况of(
       where: 圈({ pooledAt: null, OR: [{ contractAmount: { gt: 0 } }, { entPayments: { some: {} } }] }),
       select: { contractAmount: true, contractCurrency: true, currency: true, result: true, entPayments: { select: { currency: true, amount: true } } },
     }),
-    将回公海of(范围, now.toDate()),
+    将回公海of(范围, now.toDate(), me),
     生效组织规则(),
   ]);
   const 回款 = 算回款(钱们, 本位币);

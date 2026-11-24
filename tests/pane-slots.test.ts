@@ -25,7 +25,8 @@ function 路由集(根: string, 跳过槽位: boolean): string[] {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       if (e.isDirectory()) {
         if (跳过槽位 && e.name.startsWith("@")) continue;
-        走(path.join(dir, e.name), `${前缀}/${e.name}`);
+        // 路由组 (xxx) 不进地址（跳转优化 PR-A：@pane/customers/(detail)/[id] 就是 /customers/[id]）；拦截路由 (.)xxx 不算组
+        走(path.join(dir, e.name), /^\([^.)][^)]*\)$/.test(e.name) ? 前缀 : `${前缀}/${e.name}`);
       } else if (e.name === "page.tsx") {
         出.push(前缀 || "/");
       }

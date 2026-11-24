@@ -33,7 +33,7 @@ const plugin: Plugin = { name: "d5-boundaries", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import CustomerLoading from '@/app/(app)/customers/[id]/loading';import StatePage from '@/components/StatePage';import TaskForm from '@/app/(app)/customers/[id]/TaskForm';import ProjectRoster from '@/components/ProjectRoster';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';
+    import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import CustomerLoading from '@/components/CustomerDetailSkeleton';import StatePage from '@/components/StatePage';import TaskForm from '@/app/(app)/customers/[id]/TaskForm';import ProjectRoster from '@/components/ProjectRoster';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';
     const root=createRoot(document.getElementById('root'));
     const 长='超长项目名字'.repeat(8), 串='X'.repeat(90);
     /* 11-01 权限只认业务角色：「项目转让」按 能转让 给（总管理 / 上级），fixture 里看的人能转让 */

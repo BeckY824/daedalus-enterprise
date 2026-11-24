@@ -792,6 +792,8 @@ export type 名单项目 = {
   nextAt: string | null;
   /** 项目的下一步做什么（10-29，一句话）；老数据、有结局或在公海是空 */
   nextText: string | null;
+  /** 点这一行去哪：项目页会跳去的最终地址（@pane/roster-data.ts 项目名单数据 补的，customer-detail-direct.ts 项目链接们）；没给 = /projects/<id>，项目页自己判 */
+  项目去?: string;
 };
 
 /**

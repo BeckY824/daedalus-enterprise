@@ -29,6 +29,7 @@ import { ShortcutProvider } from "@/components/Shortcut";
 import { 背调有入口 } from "@/lib/research/channel";
 import { ResearchEntryProvider } from "@/components/research/ResearchEntry";
 import TruncTip from "@/components/TruncTip";
+import { 槽位 } from "@/components/SlotSkeleton";
 import { 读预热设置 } from "@/lib/nav-prewarm";
 import UpdateBanner from "@/components/UpdateBanner";
 import ErrorReporter from "@/components/ErrorReporter";
@@ -155,7 +156,8 @@ export default async function AppLayout({
       >
         {children}
       </AppShell>
-      {modal}
+      {/* 浮层槽位：首屏骨架在这里什么都不画（components/SlotSkeleton.tsx） */}
+      <槽位 名="modal">{modal}</槽位>
       <TruncTip />
       {/* 发过版了、这一页还是老的：顶上提示刷新（lib/stale-deploy.ts）。编号是这一次渲染时的，客户端只认第一次拿到的 */}
       <UpdateBanner 载入时={本次构建号()} />

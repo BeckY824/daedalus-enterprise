@@ -3,6 +3,7 @@
 import { 空值符 } from "@/lib/empty-value";
 import { useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { useRouter } from "next/navigation";
 import { Button, Card, Empty, Modal, Select, Space, Table, Tag, Typography } from "antd";
 import type { ColumnsType } from "antd/es/table";
@@ -162,12 +163,12 @@ function PersonCard({ p, 候选, 项目模式 }: { p: 离职待交接; 候选: �
   });
 
   const 客户列: ColumnsType<交接客户> = [
-    { title: b.customer, dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={`/customers/${r.id}`} title={v} style={省略}>{v}</Link> },
+    { title: b.customer, dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={`/customers/${r.id}`} title={v} style={省略}>{v}<LinkPending /></Link> },
     ...(项目模式 ? [{ title: "项目", dataIndex: "项目数", width: 72, render: (n: number) => (n ? `${n} 个` : "—") }] : []),
     接手列<交接客户>("c"),
   ];
   const 项目列: ColumnsType<交接项目> = [
-    { title: "项目", dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={`/projects/${r.id}`} title={v} style={省略}>{v}</Link> },
+    { title: "项目", dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={r.项目去 ?? `/projects/${r.id}`} title={v} style={省略}>{v}<LinkPending /></Link> },
     { title: b.customer, dataIndex: "客户", ellipsis: true, width: "28%", render: (v: string) => <span title={v} style={省略}>{v}</span> },
     接手列<交接项目>("p"),
   ];
@@ -351,7 +352,7 @@ function TriPending({ 人们 }: { 人们: 离职待交接[] }) {
   if (!行们.length) return null;
   const 超期数 = 行们.filter((r) => r.超期).length;
   const 列: ColumnsType<待交接行> = [
-    { title: "待交接", dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={`/customers/${r.id}`} title={v} style={省略}>{v}</Link> },
+    { title: "待交接", dataIndex: "name", ellipsis: true, render: (v: string, r) => <Link href={`/customers/${r.id}`} title={v} style={省略}>{v}<LinkPending /></Link> },
     { title: "状态", dataIndex: "状态", width: "18%", ellipsis: true, render: (v: string, r) => <span title={r.状态说明} style={省略}>{v}</span> },
     {
       // 超期的行除了底色，格子里也写「超期」（不靠颜色认），放最前免得窄屏被省略掉

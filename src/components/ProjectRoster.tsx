@@ -4,7 +4,9 @@ import Shortcut from "./Shortcut";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
+import { useFreshRoster } from "@/lib/roster-refresh";
 import { Tag, Drawer } from "antd";
 import { SearchOutlined, TableOutlined } from "@ant-design/icons";
 import { 跟进方式名 } from "@/lib/follow-method";
@@ -24,7 +26,7 @@ const 叫 = "项目列表";
 
 /**
  * 企业版项目详情页的中栏名单（P11）：照客户记录页的 CustomerRoster——应用导航 | 这条名单 | 项目详情，三个竖条。
- * 只在 /projects/[id] 出现（@pane/projects/[id]），列表页 /projects 本身就是全宽的表，不挂。
+ * 只在 /projects/[id] 出现（@pane/projects/(detail)/layout.tsx），列表页 /projects 本身就是全宽的表，不挂。
  *
  * 范围和项目页一样（lib/project/list.ts 读名单项目）：业务员只看自己的 + 能看的，最多 项目上限 个。
  * 收起 / 抽屉 / ⌘\ / ⌘K 全走客户名单那套（lib/middle-pane.ts、lib/roster.ts），收起记在同一个开关上：
@@ -33,8 +35,9 @@ const 叫 = "项目列表";
  * 不搜时按「当前阶段」分组（线索 / 商机 / 订单，三大阶段的顺序，lib/roster-groups.ts 项目名单分组），
  * 组头写阶段名和条数，可以折叠（记在这台电脑上）；每行右边写当前进程（阶段里的节点，有结局写结局）。
  */
-export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
-  const router = useRouter();
+export default function ProjectRoster({ data: 服务端给的 }: { data: ProjectRosterData }) {
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const pathname = usePathname();
   const [q, setQ] = useState("");
   const 中栏 = useMiddlePane("roster");
@@ -43,6 +46,8 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
   usePaneShortcut(中栏.切换);
   const 搜索框 = useRef<HTMLInputElement>(null);
   const activeId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : "";
+  // 同客户名单：切回标签页、隔了 60 秒以上又换了一个项目时后台换新（lib/roster-refresh.ts）
+  const data = useFreshRoster(服务端给的, "/api/roster/projects", activeId);
 
   const rows = useMemo(() => {
     const k = q.trim().toLowerCase();
@@ -92,7 +97,7 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
     const 方式 = r.lastType ? 跟进方式名({ type: r.lastType, method: r.lastMethod }, "") : null;
     const 进程 = r.结局 ?? r.进程;
     return (
-      <RowLink key={r.id} href={`/projects/${r.id}`} className={`roster-row${activeId === r.id ? " on" : ""}`} onClick={() => 抽屉开着 && 关名单()}>
+      <RowLink key={r.id} href={r.项目去 ?? `/projects/${r.id}`} className={`roster-row${activeId === r.id ? " on" : ""}`} onClick={() => 抽屉开着 && 关名单()}>
         <span className="roster-av" style={{ background: avatarColor(r.name), color: AVATAR_TEXT }}>
           {initial(r.name)}
         </span>
@@ -152,11 +157,12 @@ export default function ProjectRoster({ data }: { data: ProjectRosterData }) {
           onKeyDown={(e) => {
             // 回车：搜出来的第一位直接进（11-03 C1-2）；名单里一位都没有的，去全量表格里搜（lib/cmdk.ts）
             if (e.key !== "Enter" || e.nativeEvent.isComposing) return;
-            const 去 = 名单回车去处(q, 页签里, rows.length, "/projects");
+            // 第一行服务端给了最终地址（项目去，跳转优化 PR-A）就直接去，不经过 /projects/<id> 再跳
+            const 去 = (q.trim() && 页签里[0]?.项目去) || 名单回车去处(q, 页签里, rows.length, "/projects");
             if (!去) return;
             e.preventDefault();
             if (抽屉开着) 关名单();
-            router.push(去);
+            去页.push(去);
           }}
         />
         <kbd className="pane-kbd">

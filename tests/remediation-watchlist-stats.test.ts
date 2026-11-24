@@ -14,7 +14,8 @@ vi.mock("@/components/ui", async () => {
 });
 vi.mock("next/link", async () => {
   const { createElement } = await import("react");
-  return { default: (p: object) => createElement("a", p) };
+  // useLinkStatus：链接里挂的 <LinkPending />（跳转优化 PR-A）要它
+  return { default: (p: object) => createElement("a", p), useLinkStatus: () => ({ pending: false }) };
 });
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";

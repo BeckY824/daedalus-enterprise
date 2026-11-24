@@ -16,7 +16,8 @@
  * 没红点照旧弹写反馈的框，框的右上角有「我的反馈」进去看发过的。看过了红点就没了（已读记在本机）。
  */
 import { useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
+import { useShellNavGo } from "@/lib/nav-pending";
 import { Modal, Input, Button } from "antd";
 import SaveButton from "@/components/SaveButton";
 import { useBusiness } from "@/lib/business-client";
@@ -50,7 +51,8 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
   // 写了没发的留草稿（复盘第 1 类：刷新、发版后再点开带回）；发出去了就删
   const 稿 = useFormDraft({ 键: "反馈", 开: open, 值: { 文字 }, 带回: (v) => { if (v.文字 !== undefined) set文字(v.文字); } });
   const pathname = usePathname();
-  const router = useRouter();
+  /** 去「我的反馈」：弹窗关了等待条照样挂到新页提交（壳里那份 useNavGo，lib/nav-pending.ts） */
+  const 去页 = useShellNavGo();
   const 在我的反馈 = pathname === "/feedback";
   const b = useBusiness();
   /** ⌘Enter 也走「发送」那颗键：转圈、对勾、没发出去的原因都在键上（原型 g.save） */
@@ -64,7 +66,7 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
       return;
     }
     if (头一条没看的) {
-      router.push(`/feedback?id=${encodeURIComponent(头一条没看的.id)}`);
+      去页.push(`/feedback?id=${encodeURIComponent(头一条没看的.id)}`);
       return;
     }
     setOpen(true);
@@ -129,7 +131,7 @@ export default function FeedbackButton({ 去向 }: { 去向: "cloud" | "github" 
                 className="fb-title-link"
                 onClick={() => {
                   setOpen(false);
-                  router.push("/feedback");
+                  去页.push("/feedback");
                 }}
               >
                 我的反馈 ›

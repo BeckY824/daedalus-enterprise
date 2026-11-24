@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Pagination, Segmented, Select, Tag } from "antd";
 import { fmtDateTime } from "@/lib/utils";
 import EmptyState from "@/components/EmptyState";
@@ -49,6 +50,8 @@ const 状态色: Record<string, string> = { 待回复: "orange", 已回复: "blu
 export default function BoardTopics({ 数, 范围, 状态 = "" }: { 数: 复盘主题; 范围: 主题范围; 状态?: 主题状态筛 | "" }) {
   // 设计语言 R-B（R3）：「沟通 / 主题」和「谁的主题」挪到卡外筛选条，卡头「教练主题（N）」+ 状态下拉
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const sp = useSearchParams();
   const [换着, start] = useTransition();
   const 改 = (k: { tw?: 主题范围; ts?: 主题状态筛 | ""; p?: number }) => {
@@ -66,7 +69,7 @@ export default function BoardTopics({ 数, 范围, 状态 = "" }: { 数: 复盘�
     const t = q.toString();
     start(() => router.replace(`/overview${t ? `?${t}` : ""}`, { scroll: false }));
   };
-  const 去 = (x: 复盘主题行) => router.push(`/projects/${encodeURIComponent(x.projectId)}`);
+  const 去 = (x: 复盘主题行) => 去页.push(x.项目去 ?? `/projects/${encodeURIComponent(x.projectId)}`);
   const 状态下拉 = (
             <Select<主题状态筛 | "">
               size="small"

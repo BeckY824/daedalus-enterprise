@@ -10,6 +10,7 @@ import { useMotionTheme } from "@/components/MotionTheme";
 import { 量变形起点, 放变形 } from "../projects/view-morph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Button, Select, Space, Dropdown, Tag, Segmented, Tooltip, type MenuProps, type SelectProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
@@ -348,6 +349,9 @@ export default function CustomersView({
   rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 自动分配预看, 批量自动分配客户, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 抬头节点, 仅项目行 = [], 仅项目超了 = false, 待复核, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false, 客户范围,
 }: Props) {
   const router = useRouter();
+  /** 看板卡进详情：等新页时顶上的条亮、点的那张卡先高亮（lib/nav-pending.ts，跳转优化 PR-A 审查补） */
+  const 去页 = useNavGo();
+  const [去的卡, set去的卡] = useState<string | null>(null);
   const 只读的 = new Set(只读ids);
   const 删不了 = new Set(删不了ids);
   const 放不了 = new Set(放不了ids);
@@ -1575,7 +1579,7 @@ export default function CustomersView({
           if (key === "createdAt") apply({ sort: order === "ascend" ? "created-asc" : order === "descend" ? "created-desc" : "" });
           if (key === "lastFollowAt") apply({ sort: order === "ascend" ? "follow-asc" : order === "descend" ? "follow-desc" : "" });
         }}
-        替表格={看板体 !== undefined ? 看板体 : 看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => router.push(`/customers/${id}`)} 抬头节点={抬头节点} /> : undefined}
+        替表格={看板体 !== undefined ? 看板体 : 看法 === "看板" ? <CustomerBoard 行们={rows} 字典={客户属性字典} 加载中={pending} 页={page} 每页={pageSize} 总数={total} 翻页={翻页} 去={(id) => { set去的卡(id); 去页.push(`/customers/${id}`); }} 去的={去页.pending ? 去的卡 : null} 抬头节点={抬头节点} /> : undefined}
         汇总={<>{看板体 === undefined && 看法 !== "看板" && 待复核}{看板体 === undefined && 看法 !== "看板" && <ProjectOnlyBlock 行们={仅项目行} 超了={仅项目超了} />}{金额排序 && <Space wrap style={{ marginBottom: 12 }}><span>金额按</span><CurrencySelect aria-label="金额排序币种" value={f.sortCurrency || b.currency} onChange={v => apply({ sortCurrency: v })}/><span>在全部筛选结果中{金额排序 === "amount-asc" ? "升序" : "降序"}排列；其他币种不相加</span></Space>}</>}
         分页={{
           当前页: page,

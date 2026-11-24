@@ -8,6 +8,7 @@
  * 窄屏放不下就折行、时间不截（globals.css）；没有 最早At 时照摆服务端写好的短串
  */
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { 待分配链接, 待分配筛名, type 待分配数 } from "@/lib/enterprise/await-assign-core";
 import { smartTime } from "@/lib/utils";
 
@@ -17,7 +18,7 @@ export default function AwaitAssignTodo({ 数据 }: { 数据: 待分配数 | nul
     <div className="home-cth-todo home-cth-todo-one" role="status" data-testid="home-await-assign">
       <span className="home-cth-todo-t">{待分配筛名} {数据.条数} 条</span>
       {数据.最早 ? <span className="home-cth-todo-s">最早 <span className="home-cth-todo-time">{数据.最早At ? smartTime(数据.最早At) : 数据.最早}</span></span> : null}
-      <Link className="link-strong home-cth-todo-a" href={待分配链接}>去分配 ›</Link>
+      <Link className="link-strong home-cth-todo-a" href={待分配链接}>去分配 ›<LinkPending /></Link>
     </div>
   );
 }

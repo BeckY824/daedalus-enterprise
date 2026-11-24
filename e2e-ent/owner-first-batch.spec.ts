@@ -150,7 +150,7 @@ async function 能点(page: Page, loc: ReturnType<Page["locator"]>, 标签: stri
 /**
  * 等地址停下来：隔 1.2 秒连着两次读到同一个地址才算。
  * 为什么要等（11-18，A2 在 PR 和 main 上各红过一次「Execution context was destroyed」）：
- * (app)/loading.tsx 让页面先流出骨架，页面里再 redirect()（如只负责项目的人进 /projects/<id> → 客户详情）就不是 307，
+ * 整页打开时先流出骨架（11-18 是 (app)/loading.tsx，11-24 起是壳里 <槽位> 的 Suspense，components/SlotSkeleton.tsx），页面里再 redirect()（如只负责项目的人进 /projects/<id> → 客户详情）就不是 307，
  * 而是 200 + `<meta http-equiv="refresh" content="1;url=…">`，客户端看到这个标记也走整页跳转。
  * goto 在第一份文档 load 时就回来，networkidle 可能赶在这次整页跳转之前，紧接着取链接就撞上导航。1.2 秒 > meta 的 1 秒
  */
