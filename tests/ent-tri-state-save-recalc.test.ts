@@ -86,7 +86,8 @@ beforeEach(async () => {
   乙 = (await prisma.user.create({ data: { email: "乙", name: "乙", title: "", role: "SALES", password: "x" } })).id;
   await prisma.entMember.create({ data: { userId: 乙, bizRole: "sales", line: "内贸" } });
   mocks.user = { ...mocks.user, id: 乙 };
-  客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 乙, createdAt: 那天(400) } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上
+  客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 乙, createdAt: 那天(400), contacts: { create: { name: "甲联系人", phone: "13800000001", isPrimary: true, createdAt: 那天(400) } } } })).id;
   // 11-17 沟通必须挂项目：客户页记的沟通要有一个在推项目（一个就自动挂它），和客户一样是 400 天前建的
   await prisma.project.create({ data: { name: "项目", customerId: 客户, ownerId: 乙, creatorId: 乙, phase: "商机", node: "明确需求", createdAt: 那天(400), updatedAt: 那天(400) } });
   invalidateSettingsCache();
@@ -366,7 +367,7 @@ describe("存了又撤：本轮已发的提醒和没发生过一样（第三轮�
 
   it("回到的不是进活跃之前那个状态不算同一轮（第四轮第 2 条）：待回收时记当天沟通变活跃、再把日期改早落到沉睡 = 直接补录同日期沟通", async () => {
     await 开三态(195);
-    const 另一位 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 乙, createdAt: 那天(400) } })).id;
+    const 另一位 = (await prisma.customer.create({ data: { name: "客户乙", phone: "", salesOwnerId: 乙, createdAt: 那天(400), contacts: { create: { name: "乙联系人", phone: "13800000002", isPrimary: true, createdAt: 那天(400) } } } })).id;
     await 三态夜扫();
     // 两位都待回收、第 190 天（5 天前）发过 1 次待回收提醒
     await prisma.entCustomerClock.updateMany({ where: { customerId: { in: [客户, 另一位] } }, data: { noticeCount: 1, lastNoticeDay: 前(5) } });

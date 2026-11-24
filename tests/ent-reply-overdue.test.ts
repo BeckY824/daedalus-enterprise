@@ -61,7 +61,8 @@ let 序 = 0;
  */
 async function 建线索(owner: 人, 补: Record<string, unknown> = {}, customerId?: string, o: { 不分配?: boolean; 分于?: Date } = {}) {
   序++;
-  const cid = customerId ?? (await prisma.customer.create({ data: { name: `客户${序}`, phone: `1390000${String(序).padStart(4, "0")}`, salesOwnerId: owner.id } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上
+  const cid = customerId ?? (await prisma.customer.create({ data: { name: `客户${序}`, phone: "", salesOwnerId: owner.id, contacts: { create: { name: `联系人${序}`, phone: `1390000${String(序).padStart(4, "0")}`, isPrimary: true } } } })).id;
   const p = await prisma.project.create({ data: { name: `线索${序}`, customerId: cid, ownerId: owner.id, creatorId: 老板.id, phase: "线索", node: "潜客培育", bizLine: "内贸", ...补 } });
   if (!o.不分配 && p.creatorId !== owner.id) {
     await prisma.entLeadAssign.create({ data: { projectId: p.id, toUserId: owner.id, fromUserId: p.creatorId, byUserId: p.creatorId, month: "2026-11", counted: false, createdAt: o.分于 ?? p.createdAt } });
@@ -400,7 +401,7 @@ describe("钟上走一遍（到点提醒、自动转）", () => {
       throw new Error("15 天内找不到工作日");
     })();
     const { id, customerId } = await 建线索(甲, { replyEndAt: 京(`${日} 15:00`) });
-    const c = await prisma.customer.findUniqueOrThrow({ where: { id: customerId } });
+    const c = await prisma.contact.findFirstOrThrow({ where: { customerId, isPrimary: true } });
     const 号 = 验号码("手机号", c.phone);
     if (!号.ok) throw new Error("号码样例没过格式");
     /** 按系统时钟拨到 时刻 再录：同号再次录入的写入时刻取系统时钟 */

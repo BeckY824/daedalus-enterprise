@@ -69,7 +69,8 @@ let 序号 = 0;
 const 客户 = async (ownerId: string, name = "矩阵客户", extra: Record<string, unknown> = {}) => {
   序号 += 1;
   return (await prisma.customer.create({
-    data: { name: `${name}${序号}`, phone: `139${String(序号).padStart(8, "0")}`, salesOwnerId: ownerId, ...extra },
+    // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+    data: { name: `${name}${序号}`, phone: "", salesOwnerId: ownerId, contacts: { create: { name: `主联系人${序号}`, phone: `139${String(序号).padStart(8, "0")}`, isPrimary: true } }, ...extra },
   })).id;
 };
 const 项目 = async (customerId: string, ownerId: string, extra: Record<string, unknown> = {}) =>
@@ -84,7 +85,8 @@ const 联系人 = async (customerId: string, name: string, position = "采购") 
 const 客户负责人 = async (c: string) => (await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId;
 const 项目of = (p: string) => prisma.project.findUniqueOrThrow({ where: { id: p } });
 const 客户在公海 = async (c: string) => !!(await prisma.customerPool.findUnique({ where: { customerId: c } }));
-const 联系人们 = async (c: string) => (await prisma.contact.findMany({ where: { customerId: c }, select: { id: true } })).map((x) => x.id).sort();
+// 只数用例自己加的联系人（isPrimary 默认 false）；造客户带的主要联系人（E-260 号记在他身上）另算
+const 联系人们 = async (c: string) => (await prisma.contact.findMany({ where: { customerId: c, isPrimary: false }, select: { id: true } })).map((x) => x.id).sort();
 const 历史条数 = (c: string) => prisma.customerOwnerLog.count({ where: { customerId: c } });
 const 项目转手痕 = (p: string) => prisma.projectNodeLog.count({ where: { projectId: p, kind: { in: ["transfer", "pool-claim", "undo"] } } });
 
@@ -699,7 +701,9 @@ describe("E① 只负责项目的人：只读卡，不进客户层", () => {
     const { p, 客户名 } = await 搭();
     const 卡 = await 读卡(乙, p);
     expect(卡?.客户.name).toBe(客户名);
-    expect(卡?.联系人.map((x) => [x.name, x.position]).sort()).toEqual([["李联系", "财务"], ["王联系", "总经理"]]);
+    // 造客户带的主要联系人（E-260）也在卡上
+    const 主 = await prisma.contact.findFirstOrThrow({ where: { customer: { name: 客户名 }, isPrimary: true } });
+    expect(卡?.联系人.map((x) => [x.name, x.position]).sort()).toEqual([["李联系", "财务"], [主.name, null], ["王联系", "总经理"]].sort());
   });
 
   it("E① 只有自己项目的联系人显示联系方式，别的联系人不给", async () => {

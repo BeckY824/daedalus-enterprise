@@ -57,7 +57,8 @@ const 导入时刻 = new Date("2026-11-14T13:00:00Z");
 /** 11-14 全量导入的公海客户：负责人挂占位账号、客户公海一行（放的人记占位账号、原因 = 导入时没有负责人），没有换负责人记录 */
 async function 导入的公海客户(): Promise<string> {
   序号 += 1;
-  const c = await prisma.customer.create({ data: { name: `导入公海客户${序号}`, phone: `137${String(序号).padStart(8, "0")}`, salesOwnerId: 占位, bizLine: "内贸" } });
+  // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+  const c = await prisma.customer.create({ data: { name: `导入公海客户${序号}`, phone: "", salesOwnerId: 占位, bizLine: "内贸", contacts: { create: { name: `联系人${序号}`, phone: `137${String(序号).padStart(8, "0")}`, isPrimary: true } } } });
   await prisma.customerPool.create({ data: { customerId: c.id, userId: 占位, reason: 无主入池理由, at: 导入时刻 } });
   return c.id;
 }
@@ -164,7 +165,7 @@ describe("原负责人名下导入客户超过回避名单上限（宽条件那�
     for (let i = 0; i < 101; i++) 们.push(await 导入的公海客户());
     for (const c of 们) await 补记(c, 甲.id);
     // 甲名下没补记的一位：乙放进公海的，甲不该被挡
-    const 乙的 = (await prisma.customer.create({ data: { name: "乙的客户", phone: "13600000001", salesOwnerId: 乙.id, bizLine: "内贸" } })).id;
+    const 乙的 = (await prisma.customer.create({ data: { name: "乙的客户", phone: "", salesOwnerId: 乙.id, bizLine: "内贸", contacts: { create: { name: "乙的联系人", phone: "13600000001", isPrimary: true } } } })).id;
     expect((await 以(乙, () => 放进公海([乙的], "客户主动终止"))).ok).toBe(true);
     忘掉企业版范围();
 

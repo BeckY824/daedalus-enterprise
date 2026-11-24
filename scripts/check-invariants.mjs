@@ -300,16 +300,14 @@ export const 不变量们 = [
           GROUP BY cm.kind, cm.numberKey HAVING COUNT(DISTINCT cm.customerId) > 1`,
   },
   {
-    键: "客户电话不在号码库",
-    项: "客户电话那格的号在这位客户的号码库里有一行（手机 / 座机 / WhatsApp，值或查重键对得上）",
+    键: "客户电话没清空",
+    项: "企业版客户没有电话（E-260）：客户电话那格是空串，号码都在联系人上",
     级别: "待核",
     仅提示: true,
-    // customer-phone-db.ts 同步电话子表：电话换了、清了，子表里客户本身那行跟着换（导入 apply.ts 同）。附录 C 待核 159
-    依据: "customer-phone-db.ts 同步电话子表；enterprise-import/apply.ts；复盘 附录 C",
-    sql: `SELECT c.id FROM "Customer" c
-          WHERE c.deletedAt IS NULL AND trim(c.phone) <> ''
-            AND NOT EXISTS (SELECT 1 FROM "ContactMethod" cm WHERE cm.customerId = c.id AND cm.kind IN ('phone', 'landline', 'whatsapp')
-              AND (cm.value = trim(c.phone) OR cm.numberKey = trim(c.phone) OR cm.numberKey = replace(trim(c.phone), '+', '')))`,
+    // 数据脚本把客户电话、客户本身的号挪到主联系人并清空 Customer.phone；新建写入（saveCustomer、建档向导、老线索转项目）不再写这一格。
+    // 导入 / 增量导入 / 飞书钉钉同步改走联系人之前（另一单），导进来的会落在这里
+    依据: "customers/actions.ts saveCustomer；primary-contact-number.ts；E-260",
+    sql: `SELECT c.id FROM "Customer" c WHERE c.deletedAt IS NULL AND trim(c.phone) <> ''`,
   },
   {
     键: "最近跟进对不上",

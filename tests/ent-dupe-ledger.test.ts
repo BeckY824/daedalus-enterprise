@@ -41,7 +41,8 @@ async function 现场() {
   const 乙 = await 人("sales2", "小乙", "sales");
   const 丙 = await 人("sales3", "小丙", "sales");
   const 丁 = await 人("sales4", "小丁", "sales");
-  const 客户 = await prisma.customer.create({ data: { name: "编的客户 甲", school: "编的公司甲", phone: "13800138000", salesOwnerId: 负责人.id } });
+  // 企业版客户没有电话（E-260）：号记在主要联系人上
+  const 客户 = await prisma.customer.create({ data: { name: "编的客户 甲", school: "编的公司甲", phone: "", salesOwnerId: 负责人.id, contacts: { create: { name: "编的联系人", phone: "13800138000", isPrimary: true } } } });
   return { 主管, 负责人, 乙, 丙, 丁, 客户 };
 }
 

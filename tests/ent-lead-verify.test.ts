@@ -67,7 +67,8 @@ describe("企业版线索有效性验证", () => {
         { userId: 丙.id, bizRole: "sales" },
       ],
     });
-    客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13900001234", salesOwnerId: 乙.id } })).id;
+    // 企业版客户没有电话（E-260）：号记在主要联系人上（退回公海查联系方式按联系人的号判）
+    客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 乙.id, contacts: { create: { name: "甲联系人", phone: "13900001234", isPrimary: true } } } })).id;
   });
   afterEach(() => { vi.unstubAllEnvs(); invalidateSettingsCache(); });
 
@@ -188,7 +189,8 @@ describe("企业版线索有效性验证", () => {
       await 市场复核(市场, id, true);
       await 销售终验(乙, id, false, "还是无效");
       await 总管理终判(老板, id, true);
-      await prisma.customer.update({ where: { id: 客户 }, data: { phone: "" } });
+      // 号码在主要联系人上（E-260）：清掉他的号 = 联系方式空
+      await prisma.contact.updateMany({ where: { customerId: 客户 }, data: { phone: null } });
       const r = await 销售认领(乙, id, false);
       expect(r.ok).toBe(false);
       expect(!r.ok && r.error).toMatch(/联系方式是空的/);

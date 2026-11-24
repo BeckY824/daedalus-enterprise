@@ -133,12 +133,13 @@ describe("写法不一样也搜得到（复现：改前这几条都是空的）"
   });
 
   it("像号码、像客户编号的整串不拆：「138 0000」照旧按号码比", async () => {
-    await raw.customer.update({ where: { id: "far" }, data: { phone: "13800001234" } });
+    // 企业版客户没有电话（E-260）：号码记在主要联系人上
+    const 联 = await raw.contact.create({ data: { name: "前台", phone: "13800001234", isPrimary: true, customerId: "far" } });
     try {
       expect(await 搜("138 0000")).toEqual(["far"]);
       expect(await 搜("（138）0000")).toEqual(["far"]);
     } finally {
-      await raw.customer.update({ where: { id: "far" }, data: { phone: "" } });
+      await raw.contact.delete({ where: { id: 联.id } });
     }
   });
 

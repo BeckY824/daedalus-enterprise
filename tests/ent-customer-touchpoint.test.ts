@@ -77,14 +77,17 @@ describe("保存客户（企业版）", () => {
     const 介绍人 = await 建介绍人();
     const r = await 存客户({ phone: "13900001102", touchpoint: "客户介绍", referrerCustomerId: 介绍人.id });
     expect(r.ok).toBe(true);
-    const c = await prisma.customer.findFirstOrThrow({ where: { phone: "13900001102" } });
+    // 客户没有电话（E-260）：按返回的 id 找，号在主要联系人上
+    const c = await prisma.customer.findUniqueOrThrow({ where: { id: r.ok ? r.id : "" } });
+    expect(c.phone).toBe("");
+    expect((await prisma.contact.findFirstOrThrow({ where: { customerId: c.id } })).phone).toBe("13900001102");
     expect(c).toMatchObject({ touchpoint: "客户介绍", channelId: null, referrerCustomerId: 介绍人.id });
   });
 
   it("触点 = 公司资源、没渠道：建好", async () => {
     const r = await 存客户({ phone: "13900001103", touchpoint: "公司资源" });
     expect(r.ok).toBe(true);
-    expect((await prisma.customer.findFirstOrThrow({ where: { phone: "13900001103" } })).touchpoint).toBe("公司资源");
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.ok ? r.id : "" } })).touchpoint).toBe("公司资源");
   });
 
   it("认不出的触点拦下、不建", async () => {

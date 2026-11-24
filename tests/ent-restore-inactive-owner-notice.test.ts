@@ -49,7 +49,8 @@ let 序号 = 0;
 const 删于 = new Date();
 const 删了的客户 = async (ownerId: string, name: string) => {
   const phone = `139${String(++序号).padStart(8, "0")}`;
-  const c = await raw.customer.create({ data: { name, phone, salesOwnerId: ownerId, deletedAt: 删于 } });
+  // 企业版客户没有电话（E-260）：号记在主要联系人上，客户删了的联系人同一时刻删
+  const c = await raw.customer.create({ data: { name, phone: "", salesOwnerId: ownerId, deletedAt: 删于, contacts: { create: { name: `${name}联系人`, phone, isPrimary: true, deletedAt: 删于 } } } });
   return { id: c.id, phone };
 };
 /** 跟着客户一起删的项目（同一个删除时刻，恢复客户时一起回来） */
@@ -88,10 +89,12 @@ describe("P-删-06 恢复客户、原负责人已停用：清空负责人进客�
     const c = await 删了的客户(乙.id, "恢复回来的客户");
     const p = await 删了的项目(乙.id, c.id, "跟着回来的项目");
     await 停用(乙);
-    expect(await 以(总管, () => 恢复回收站("Customer", c.id))).toMatchObject({ ok: true, 连带: 1 });
+    // 连带两样：跟着回来的项目 + 客户的主要联系人（E-260 号记在他身上，和客户同一时刻删的）
+    expect(await 以(总管, () => 恢复回收站("Customer", c.id))).toMatchObject({ ok: true, 连带: 2 });
     const 现 = await 客户现状(c.id);
     expect(现?.deletedAt).toBeNull();
     expect(现?.salesOwnerId).toBe(占位);
+    expect((await raw.contact.findFirstOrThrow({ where: { customerId: c.id, isPrimary: true } })).deletedAt).toBeNull();
     expect(现?.pool).toEqual({ reason: 恢复进公海理由, userId: 总管.id });
     expect(await raw.customerOwnerLog.findMany({ where: { customerId: c.id }, select: { fromOwnerId: true, toOwnerId: true, kind: true } })).toEqual([{ fromOwnerId: 乙.id, toOwnerId: 占位, kind: "pool-release" }]);
     const 项 = await raw.project.findUnique({ where: { id: p }, select: { deletedAt: true, pooledAt: true, ownerId: true } });

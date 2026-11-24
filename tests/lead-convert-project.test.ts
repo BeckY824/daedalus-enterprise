@@ -70,15 +70,20 @@ describe("企业版 + 项目模式", () => {
     expect(await prisma.lead.findUniqueOrThrow({ where: { id: l.id } })).toMatchObject({ status: "已转化", customerId: r.customerId });
   });
 
-  it("没联系人、没负责人：项目照建，联系人空着，负责人是转的人；线索名超长截到 60 字", async () => {
+  // E-260 客户没有电话：带号的线索没写联系人也建一位主要联系人（号记在他身上），项目挂他
+  it("没写联系人、没负责人：带号就建主要联系人记号，项目挂他；负责人是转的人；线索名超长截到 60 字", async () => {
     const l = await 线索({ contact: null, ownerId: null, name: "长".repeat(80) });
     const r = await convertLead(l.id, 首条());
     if (!r.ok) throw Error(r.error);
-    expect(await prisma.project.findUniqueOrThrow({ where: { id: r.projectId! } })).toMatchObject({ contactId: null, ownerId: 甲, name: "长".repeat(60) });
+    const p = await prisma.project.findUniqueOrThrow({ where: { id: r.projectId! }, include: { contact: true } });
+    expect(p).toMatchObject({ contactId: expect.any(String), ownerId: 甲, name: "长".repeat(60) });
+    expect(p.contact).toMatchObject({ customerId: r.customerId, isPrimary: true, phone: "13800001111" });
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).phone).toBe("");
   });
 
   it("撞号：客户、项目都不建；并到那位客户时给他建项目", async () => {
-    const c = await prisma.customer.create({ data: { name: "老客户", phone: "13800001111", salesOwnerId: 甲, contacts: { create: { name: "老联系人", isPrimary: true } } } });
+    // 企业版客户没有电话（E-260）：号在老客户的主要联系人上
+    const c = await prisma.customer.create({ data: { name: "老客户", phone: "", salesOwnerId: 甲, contacts: { create: { name: "老联系人", phone: "13800001111", isPrimary: true } } } });
     const l = await 线索();
     const r = await convertLead(l.id, 首条());
     expect(r).toMatchObject({ ok: false, 撞号: { 能并: true } });
@@ -94,7 +99,7 @@ describe("企业版 + 项目模式", () => {
   });
 
   it("撞上的客户在客户公海里（P-公海-08）：转时说先领取、不给并；直接并也拦，线索、项目、公海都不动；领出来之后能并", async () => {
-    const c = await prisma.customer.create({ data: { name: "公海老客户", phone: "13800001111", salesOwnerId: 甲, pool: { create: { reason: "手动", userId: 甲 } } } });
+    const c = await prisma.customer.create({ data: { name: "公海老客户", phone: "", salesOwnerId: 甲, pool: { create: { reason: "手动", userId: 甲 } }, contacts: { create: { name: "老联系人", phone: "13800001111", isPrimary: true } } } });
     const l = await 线索();
     const r = await convertLead(l.id, 首条());
     expect(r).toMatchObject({ ok: false, error: expect.stringContaining(公海线索先领取话), 撞号: { 在公海: true, 先领取: true } });
@@ -114,7 +119,7 @@ describe("企业版 + 项目模式", () => {
   it("线索负责人到了持有上限：整个不转，客户、项目都不建，线索不动", async () => {
     await setSetting("orgRules", { 公海: { 持有上限开: true, 默认上限: 1 } });
     invalidateSettingsCache();
-    const c = await prisma.customer.create({ data: { name: "别家", phone: "13900000091", salesOwnerId: 乙 } });
+    const c = await prisma.customer.create({ data: { name: "别家", phone: "", salesOwnerId: 乙 } });
     await prisma.project.create({ data: { name: "手上一个", customerId: c.id, ownerId: 乙, creatorId: 乙 } });
     const l = await 线索();
     expect(await convertLead(l.id, 首条())).toMatchObject({ ok: false, error: expect.stringContaining("持有上限（1 个）") });
@@ -158,13 +163,62 @@ describe("企业版 + 项目模式", () => {
     invalidateSettingsCache();
     const l = await 线索();
     expect(await convertLead(l.id, 首条())).toMatchObject({ ok: false, error: expect.stringContaining("下一步时间") });
-    const c = await prisma.customer.create({ data: { name: "老客户", phone: "13600000061", salesOwnerId: 甲 } });
+    const c = await prisma.customer.create({ data: { name: "老客户", phone: "", salesOwnerId: 甲, contacts: { create: { name: "老联系人", phone: "13600000061", isPrimary: true } } } });
     const l2 = await 线索({ phone: "13600000061" });
     expect(await mergeLeadInto(l2.id, c.id, 首条())).toMatchObject({ ok: false, error: expect.stringContaining("下一步时间") });
     expect(await prisma.project.count()).toBe(0);
     expect(await prisma.followUp.count()).toBe(0);
     const ok = await convertLead(l.id, 首条(dayjs().add(1, "day").format("YYYY-MM-DD")));
     expect(ok.ok).toBe(true);
+  });
+});
+
+describe("企业版查重按联系人号码（E-260 客户没有电话、P-全局-09 联系人号码全公司查重）", () => {
+  it("只有残留的客户电话格对得上：不算撞，照转；并到那位说对不上", async () => {
+    const 老 = await prisma.customer.create({ data: { name: "残留电话的", phone: "13800001111", salesOwnerId: 甲 } });
+    const l = await 线索();
+    const r = await convertLead(l.id, 首条());
+    if (!r.ok) throw Error(r.error);
+    expect(r.customerId).not.toBe(老.id);
+    const l2 = await 线索();
+    expect(await mergeLeadInto(l2.id, 老.id, 首条())).toEqual({ ok: false, error: expect.stringContaining("对不上") });
+  });
+
+  it("号在联系人号码几行里（带格式存的）：撞，能并；并过去建项目", async () => {
+    const c = await prisma.customer.create({ data: { name: "子表那位", phone: "", salesOwnerId: 甲 } });
+    const 联 = await prisma.contact.create({ data: { name: "采购", customerId: c.id, isPrimary: true } });
+    await prisma.contactMethod.create({ data: { customerId: c.id, contactId: 联.id, kind: "phone", value: "138 0000 1111", numberKey: "13800001111" } });
+    const l = await 线索({ phone: "+86 138-0000-1111" });
+    expect(await convertLead(l.id, 首条())).toMatchObject({ ok: false, 撞号: { 能并: true, customerId: c.id, 客户名: "子表那位" } });
+    expect(await prisma.customer.count()).toBe(1);
+    const m = await mergeLeadInto(l.id, c.id, 首条());
+    if (!m.ok) throw Error(m.error);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: m.projectId! } })).customerId).toBe(c.id);
+  });
+
+  it("号记成了别的类型（微信格里的手机号）也算撞（号码不分类型全公司唯一）", async () => {
+    const c = await prisma.customer.create({ data: { name: "微信那位", phone: "", salesOwnerId: 甲 } });
+    await prisma.contact.create({ data: { name: "老板", customerId: c.id, isPrimary: true, wechat: "13800001111" } });
+    const l = await 线索();
+    expect(await convertLead(l.id, 首条())).toMatchObject({ ok: false, 撞号: { 能并: true, customerId: c.id } });
+    expect((await mergeLeadInto(l.id, c.id, 首条())).ok).toBe(true);
+  });
+
+  it("删进回收站的联系人的号不算撞；并也对不上", async () => {
+    const c = await prisma.customer.create({ data: { name: "删了联系人的", phone: "", salesOwnerId: 甲 } });
+    await prisma.contact.create({ data: { name: "离职的", customerId: c.id, phone: "13800001111", deletedAt: new Date() } });
+    const l = await 线索();
+    const l2 = await 线索();
+    expect(await mergeLeadInto(l2.id, c.id, 首条())).toEqual({ ok: false, error: expect.stringContaining("对不上") });
+    const r = await convertLead(l.id, 首条());
+    if (!r.ok) throw Error(r.error);
+    expect(r.customerId).not.toBe(c.id);
+  });
+
+  it("撞了好几位认建档最早的那位", async () => {
+    const 早 = await prisma.customer.create({ data: { name: "早的", phone: "", salesOwnerId: 甲, createdAt: new Date("2026-01-01T00:00:00Z"), contacts: { create: { name: "甲联系人", phone: "13800001111", isPrimary: true } } } });
+    await prisma.customer.create({ data: { name: "晚的", phone: "", salesOwnerId: 甲, createdAt: new Date("2026-06-01T00:00:00Z"), contacts: { create: { name: "乙联系人", phone: "138 0000 1111", isPrimary: true } } } });
+    expect(await convertLead((await 线索()).id, 首条())).toMatchObject({ ok: false, 撞号: { customerId: 早.id, 客户名: "早的" } });
   });
 });
 
@@ -181,7 +235,7 @@ describe("开关关着：和原来一样只转客户", () => {
     mocks.开 = false;
     const r = await convertLead((await 线索()).id);
     expect(r).toEqual({ ok: true, customerId: expect.any(String) });
-    const c = await prisma.customer.create({ data: { name: "老客户", phone: "13700000071", salesOwnerId: 甲 } });
+    const c = await prisma.customer.create({ data: { name: "老客户", phone: "", salesOwnerId: 甲, contacts: { create: { name: "老联系人", phone: "13700000071", isPrimary: true } } } });
     const l = await 线索({ phone: "13700000071" });
     expect(await mergeLeadInto(l.id, c.id)).toEqual({ ok: true, customerId: c.id });
     expect(await prisma.project.count()).toBe(0);
@@ -192,7 +246,7 @@ describe("线索页（10-26：企业版只用项目时 /leads = 项目的线索�
   type 交出的 = { type: unknown; props: { 阶段?: string; 行?: { name: string; phase: string }[] } };
   const 交出 = async () => (await LeadsPage({ searchParams: Promise.resolve({}) })) as unknown as 交出的;
   it("企业版 + 项目模式 → 交给项目列表、阶段=线索，只列线索阶段的项目（含已线索流失的）", async () => {
-    const c = await prisma.customer.create({ data: { name: "某客户", phone: "13900000001", salesOwnerId: 甲 } });
+    const c = await prisma.customer.create({ data: { name: "某客户", phone: "", salesOwnerId: 甲 } });
     const 建 = (name: string, phase: string, node: string, result: string | null = null) =>
       prisma.project.create({ data: { name, customerId: c.id, ownerId: 甲, creatorId: 甲, phase, node, result } });
     await 建("线索一", "线索", "潜客培育");

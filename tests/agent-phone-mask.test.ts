@@ -117,6 +117,7 @@ describe("别再长出第六个出口", () => {
     const 例外 = [
       { 记: '"phone": "电话，可空"', 因: "propose_lead 的 args 样例，是给模型看的输入说明，不是输出" },
       { 记: '"ownerName": "新的渠道负责人姓名，可空"', 因: "propose_channel_update 的 args 样例，同上" },
+      { 记: 'from "../enterprise/primary-contact-phone"', 因: "导入取主联系人号的函数（E-260 企业版客户电话取主联系人的），取出来的号照样过 号()" },
       // 建议卡的现值：2026-10-02 起电话也打码（tools.ts 里 phone: 号(表.phone)，排查 AI A3），不再是例外
     ];
     const 可疑: string[] = [];

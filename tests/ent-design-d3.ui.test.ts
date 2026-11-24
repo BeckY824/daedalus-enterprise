@@ -19,7 +19,7 @@ const plugin: Plugin = { name: "d3-boundaries", setup(b) {
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({});export const ContactRemoveInline=({c,只删})=><span data-testid='contact-remove' data-only-delete={只删?'1':'0'} hidden>{c.id}</span>;");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
-  stub(/^\.\.\/actions$/, "export const saveCustomerNumbers=async()=>({ok:true}),转走项目预览of=async()=>({项目数:0,项目:[]}),patchCustomer=async()=>({ok:true}),deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
+  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>({项目数:0,项目:[]}),patchCustomer=async()=>({ok:true}),deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
   stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/projects\/actions$/, "export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true});");
@@ -96,19 +96,15 @@ it("每人一组、先露 3 位，号码保护灰底加锁，附件「— ＋ �
   } finally { await page.close(); }
 }, 60_000);
 
+// E-260（11-24 客户「客户没有电话这一说法」）：资料卡不摆「电话」格，客户电话那格还有老值也不摆，号码都在联系人卡上
 for (const width of [1366, 1024])
-  for (const 号 of ["+905079844574", "13800138000"])
-    it(`${width} 宽：资料「电话」${号.length} 位号码整串一行，复制键跟在号码后面同一行`, async () => {
-      const page = await open({ width, 项目模式: true, 加: { 客户改: { phone: 号 } } });
-      try {
-        const r = await page.locator("[data-field='phone']").evaluate((el) => {
-          const t = el.querySelector(".copy-val-t")!.getBoundingClientRect(); const b = el.querySelector(".copy-val-b")!.getBoundingClientRect();
-          return { 号高: Math.round(t.height), 同行: Math.abs((b.top + b.bottom) / 2 - (t.top + t.bottom) / 2) < 6, 在后面: b.left >= t.right - 1, 不出格: b.right <= el.getBoundingClientRect().right };
-        });
-        // 卡片改进（11-23）：现状主题 + 原底下字段值行高 24
-        expect(r).toEqual({ 号高: 24, 同行: true, 在后面: true, 不出格: true });
-      } finally { await page.close(); }
-    }, 60_000);
+  it(`${width} 宽：资料卡没有「电话」格（客户电话有老值也不摆）`, async () => {
+    const page = await open({ width, 项目模式: true, 加: { 客户改: { phone: "13800138000" } } });
+    try {
+      expect(await page.locator("aside [data-field='phone']").count()).toBe(0);
+      expect(await page.locator("aside .rec-field-k").filter({ hasText: /^电话$/ }).count()).toBe(0);
+    } finally { await page.close(); }
+  }, 60_000);
 
 it("改不了资料（总管理看别人的客户）：资料格不是 role=button、没有笔，悬停说为什么", async () => {
   const 话 = "只有负责人或系统管理员能改客户资料（上级、条线总管理只能看、转让）";

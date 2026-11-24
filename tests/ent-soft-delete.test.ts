@@ -3,7 +3,7 @@
  * 钉的是：删了的从列表 / 详情 / 统计里消失（Prisma 扩展统一滤 + 裸 SQL 各自带条件）；客户连带联系人、项目、沟通记录
  * 同一时刻进回收站、一起回来；单独删的所属客户还在回收站里先不让恢复；30 天到期真删、线索退回；
  * 只认业务角色（V3.5.1）：删除 = 负责人本人或系统管理员；回收站看 / 恢复 = 系统管理员 + 回收站副手；彻底删除只给系统管理员；账号 ADMIN / MANAGER、管理员都不算；
- * 查重不把回收站里的当在用的撞（全公司查号 / checkDuplicate 照旧不算），另由 回收站里查号 认出来拦下（客户 11-05（X-10））；不是企业版照旧真删。
+ * 查重不把回收站里的当在用的撞（全公司查号照旧不算；客户没有电话（E-260），号码都在联系人上），另由 回收站里查号 认出来拦下（客户 11-05（X-10））；不是企业版照旧真删。
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
@@ -18,7 +18,7 @@ vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 
 
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { deleteCustomers, 删除前清点, checkDuplicate } from "@/app/(app)/customers/actions";
+import { deleteCustomers, 删除前清点 } from "@/app/(app)/customers/actions";
 import { deleteContact, deleteFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { 关键词分页 } from "@/app/(app)/customers/query";
 import { 删项目, 项目不能删提示 } from "@/lib/project/db";
@@ -31,9 +31,11 @@ import { 删除项目 } from "@/app/(app)/projects/actions";
 import { 只读角色话 } from "@/lib/enterprise/permissions";
 
 let 老板: string, 管员: string, 总管: string, 销售经理: string, 市场: string, 销售: string, 主管: string;
-let 张三: string, 李四: string, 联系人: string, 记录: string, 项目: string;
+let 张三: string, 李四: string, 联系人: string, 李四本人: string, 记录: string, 项目: string;
 const 当 = (id: string, role = "SALES") => { mocks.user = { ...mocks.user, id, role }; };
 const 天 = 86_400_000;
+/** 数联系人时不算李四的主联系人（E-260 起李四的号记在他身上，和张三那几条无关） */
+const 不算李四 = () => ({ id: { not: 李四本人 } });
 
 beforeEach(async () => {
   await resetDb();
@@ -58,9 +60,13 @@ beforeEach(async () => {
     ],
   });
   当(老板, "ADMIN");
-  张三 = (await prisma.customer.create({ data: { name: "张三", phone: "13800000001", salesOwnerId: 销售 } })).id;
-  李四 = (await prisma.customer.create({ data: { name: "李四", phone: "13800000002", salesOwnerId: 销售 } })).id;
+  // 企业版客户没有电话（E-260）：「客户的号」记在联系人上，Customer.phone 空串——13800000001 是张妈妈号码几行里的第二个号（跟张妈妈同一时刻删），
+  // 13800000002 是李四的主联系人「李四本人」的号
+  张三 = (await prisma.customer.create({ data: { name: "张三", phone: "", salesOwnerId: 销售 } })).id;
+  李四 = (await prisma.customer.create({ data: { name: "李四", phone: "", salesOwnerId: 销售 } })).id;
   联系人 = (await prisma.contact.create({ data: { customerId: 张三, name: "张妈妈", phone: "13900000001", email: "z@x.com", isPrimary: true } })).id;
+  await prisma.contactMethod.create({ data: { customerId: 张三, contactId: 联系人, kind: "phone", value: "13800000001", numberKey: "13800000001" } });
+  李四本人 = (await prisma.contact.create({ data: { customerId: 李四, name: "李四本人", phone: "13800000002", isPrimary: true } })).id;
   记录 = (await prisma.followUp.create({ data: { customerId: 张三, ownerId: 销售, type: "CALL", title: "电话", content: "聊了", status: "已完成", occurredAt: new Date(Date.now() - 天) } })).id;
   项目 = (await prisma.project.create({ data: { customerId: 张三, ownerId: 销售, creatorId: 销售, name: "官网改版", phase: "售前", node: "初步接洽" } })).id;
   await prisma.lead.create({ data: { name: "张三线索", phone: "13800000001", ownerId: 销售, customerId: 张三, status: "已转化", convertedAt: new Date() } });
@@ -80,7 +86,7 @@ describe("删客户进回收站：列表 / 详情 / 统计里都没了", () => {
     expect((await prisma.customer.findMany({ select: { id: true } })).map((c) => c.id)).toEqual([李四]);
     expect(await prisma.customer.findUnique({ where: { id: 张三 } })).toBeNull();
     expect(await prisma.customer.count()).toBe(1);
-    expect(await prisma.contact.count()).toBe(0);
+    expect(await prisma.contact.count({ where: 不算李四() })).toBe(0);
     expect(await prisma.project.count()).toBe(0);
     expect(await prisma.followUp.count()).toBe(0);
     expect(await prisma.project.findFirst({ where: { id: 项目 } })).toBeNull();
@@ -126,7 +132,7 @@ describe("回收站列表与恢复", () => {
 
     expect(await 恢复({ id: 老板, role: "ADMIN" }, "Customer", 张三)).toMatchObject({ ok: true, 连带: 3 });
     expect(await prisma.customer.count()).toBe(2);
-    expect(await prisma.contact.count()).toBe(1);
+    expect(await prisma.contact.count({ where: 不算李四() })).toBe(1);
     expect(await prisma.project.count()).toBe(1);
     expect(await prisma.followUp.count()).toBe(1);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 张三 } })).lastFollowAt).not.toBeNull();
@@ -147,9 +153,9 @@ describe("回收站列表与恢复", () => {
     expect(!不让.ok && 不让.error).toContain("先恢复客户");
 
     expect(await 恢复({ id: 老板, role: "ADMIN" }, "Customer", 张三)).toMatchObject({ ok: true, 连带: 2 });
-    expect(await prisma.contact.count()).toBe(0);
+    expect(await prisma.contact.count({ where: 不算李四() })).toBe(0);
     expect(await 恢复({ id: 老板, role: "ADMIN" }, "Contact", 联系人)).toMatchObject({ ok: true, 连带: 0 });
-    expect(await prisma.contact.count()).toBe(1);
+    expect(await prisma.contact.count({ where: 不算李四() })).toBe(1);
   });
 
   it("单独删的项目（老数据）、沟通记录各自进回收站，各自恢复", async () => {
@@ -234,7 +240,7 @@ describe("30 天到期清理", () => {
     const r = await 清过期(new Date(Date.now() + 31 * 天));
     expect(r).toMatchObject({ Customer: 1, FollowUp: 2, Contact: 1, Project: 1 });
     expect(await raw.customer.count()).toBe(1);
-    expect(await raw.contact.count()).toBe(0);
+    expect(await raw.contact.count({ where: 不算李四() })).toBe(0);
     expect(await raw.project.count()).toBe(0);
     expect(await raw.followUp.count()).toBe(0);
     expect(await raw.lead.findFirstOrThrow()).toMatchObject({ customerId: null, status: "跟进中", convertedAt: null });
@@ -282,7 +288,7 @@ describe("谁能看、恢复、彻底删除", () => {
     expect(await 回收站列表动作()).toMatchObject({ ok: true, 能彻底删除: true });
     expect(await 彻底删除回收站("Customer", 张三)).toEqual({ ok: true });
     expect(await raw.customer.count()).toBe(1);
-    expect(await raw.contact.count()).toBe(0);
+    expect(await raw.contact.count({ where: 不算李四() })).toBe(0);
     expect(await raw.lead.findFirstOrThrow()).toMatchObject({ customerId: null, status: "跟进中" });
     expect(await prisma.auditLog.count({ where: { action: "purge", entityId: 张三 } })).toBe(1);
   });
@@ -305,21 +311,25 @@ describe("谁能看、恢复、彻底删除", () => {
 });
 
 describe("查重不算回收站里的", () => {
-  it("同号 checkDuplicate、全公司查号：删了的客户、联系人的号能再录", async () => {
-    expect(await checkDuplicate("13800000001")).toMatchObject({ name: "张三" });
+  // 企业版客户没有电话（E-260）：号码查重走全公司查号（比联系人号码、号码几行）；checkDuplicate 只比 Customer.phone，企业版不走
+  it("同号全公司查号：删了的客户、联系人的号能再录", async () => {
+    expect(await 全公司查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([张三]);
     expect(await 全公司查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([张三]);
     await deleteCustomers([张三]);
-    expect(await checkDuplicate("13800000001")).toBeNull();
     expect(await 全公司查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([]);
     expect(await 全公司查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([]);
     expect(await 全公司查号(prisma, "邮箱", "z@x.com", "z@x.com")).toEqual([]);
     // 没删的照旧查得到
-    expect(await checkDuplicate("13800000002")).toMatchObject({ name: "李四" });
+    expect(await 全公司查号(prisma, "手机号", "13800000002", "13800000002")).toEqual([李四]);
   });
 
   it("回收站里查号（客户 11-05（X-10））：删了的客户、联系人的号认得出；在用的不算；恢复了就回到在用的", async () => {
     expect(await 回收站里查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([]);
     await deleteCustomers([张三]);
+    // 13800000001 在张妈妈的号码几行里：张妈妈跟客户同一时刻进回收站
+    const 删时 = (await raw.customer.findUniqueOrThrow({ where: { id: 张三 } })).deletedAt;
+    expect(删时).toBeInstanceOf(Date);
+    expect((await raw.contact.findUniqueOrThrow({ where: { id: 联系人 } })).deletedAt).toEqual(删时);
     expect(await 回收站里查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([张三]);
     expect(await 回收站里查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([张三]);
     expect(await 回收站里查号(prisma, "邮箱", "z@x.com", "z@x.com")).toEqual([张三]);
@@ -329,11 +339,14 @@ describe("查重不算回收站里的", () => {
     expect(await 全公司查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([张三]);
   });
 
-  it("客户还在、只删了联系人：联系人的号算回收站里的，客户自己的号照旧在用", async () => {
+  it("客户还在、只删了联系人：这位联系人的号（主表电话、号码几行）都算回收站里的，别家的号照旧在用", async () => {
     expect((await deleteContact(联系人)).ok).toBe(true);
     expect(await 全公司查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([]);
     expect(await 回收站里查号(prisma, "手机号", "13900000001", "13900000001")).toEqual([张三]);
-    expect(await 回收站里查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([]);
+    expect(await 全公司查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([]);
+    expect(await 回收站里查号(prisma, "手机号", "13800000001", "13800000001")).toEqual([张三]);
+    expect(await 回收站里查号(prisma, "手机号", "13800000002", "13800000002")).toEqual([]);
+    expect(await 全公司查号(prisma, "手机号", "13800000002", "13800000002")).toEqual([李四]);
   });
 });
 

@@ -21,7 +21,7 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   stub(/^\.\/useContactRemoval$/, "export const useContactRemoval=()=>({});export const ContactRemoveInline=()=>null;");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
-  stub(/^\.\.\/actions$/, "export const saveCustomerNumbers=async()=>({ok:true});export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const patchCustomer=async(...a)=>{(window.__改??=[]).push(a);return{ok:true}};export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
+  stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const patchCustomer=async(...a)=>{(window.__改??=[]).push(a);return{ok:true}};export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
   // 历史变更入口（11-24）：真 HistoryChanges 挂在标签行末尾，动作只在点开时才调，这里空跑
   stub(/^\.\/history-actions$/, 补全动作桩("src/app/(app)/customers/[id]/history-actions.ts", "", "async()=>({ok:false,error:''})"));
   stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
@@ -93,11 +93,8 @@ it("企业版：联系人一人一卡，电话 / 邮箱 / 微信都在；电话�
     // 11-01 会议：未填一律写 —，悬停说没留联系方式
     expect(await cards.nth(2).innerText()).toMatch(/联系方式\s*—/);
     expect(await cards.nth(2).getByTitle("没留联系方式").count()).toBe(1);
-    // 客户电话也是文字 + 复制键；联系方式子表里的旺旺号摆出来，10-29 起叫「阿里国际站ID」
-    const 客户电话 = page.locator("[data-field='phone']");
-    expect(await 客户电话.innerText()).toContain("13800138000");
-    expect(await 客户电话.locator("a").count()).toBe(0);
-    expect(await 客户电话.getByRole("button", { name: "复制电话" }).count()).toBe(1);
+    // E-260 客户没有电话：资料卡不摆电话格（客户电话那格有老值也不摆）；联系方式子表里的旺旺号摆出来，10-29 起叫「阿里国际站ID」
+    expect(await page.locator("[data-field='phone']").count()).toBe(0);
     expect(await page.getByText("ww_buyer").count()).toBe(1);
     expect(await page.getByText("阿里国际站ID", { exact: true }).count()).toBe(1);
     expect(await page.getByText("旺旺 ID").count()).toBe(0);

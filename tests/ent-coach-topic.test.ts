@@ -107,10 +107,11 @@ async function 建() {
     ],
   });
   const 时 = new Date("2026-11-01T08:00:00Z");
-  客户 = (await raw.customer.create({ data: { name: "甲的客户", phone: "13800001111", salesOwnerId: 人.甲, bizLine: "外贸", lastFollowAt: 时 } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+  客户 = (await raw.customer.create({ data: { name: "甲的客户", phone: "", salesOwnerId: 人.甲, bizLine: "外贸", lastFollowAt: 时, contacts: { create: { name: "甲的联系人", phone: "13800001111", isPrimary: true } } } })).id;
   项目 = (await raw.project.create({ data: { name: "甲的项目", customerId: 客户, ownerId: 人.甲, creatorId: 人.甲, bizLine: "外贸", phase: "线索", node: "线索验证", nextStepAt: 时, nextStepText: "周三再打" } })).id;
   await raw.projectMember.create({ data: { projectId: 项目, userId: 人.组员, inviteStatus: "JOINED" } });
-  const 乙客户 = (await raw.customer.create({ data: { name: "乙的客户", phone: "13800002222", salesOwnerId: 人.乙, bizLine: "内贸" } })).id;
+  const 乙客户 = (await raw.customer.create({ data: { name: "乙的客户", phone: "", salesOwnerId: 人.乙, bizLine: "内贸", contacts: { create: { name: "乙的联系人", phone: "13800002222", isPrimary: true } } } })).id;
   乙项目 = (await raw.project.create({ data: { name: "乙的项目", customerId: 乙客户, ownerId: 人.乙, creatorId: 人.乙, bizLine: "内贸", phase: "线索", node: "线索验证" } })).id;
   公海项目 = (await raw.project.create({ data: { name: "公海项目", customerId: 乙客户, ownerId: 人.乙, creatorId: 人.乙, bizLine: "内贸", phase: "线索", node: "线索验证", pooledAt: new Date() } })).id;
   await raw.setting.upsert({ where: { key: 规则.按组织看客户.key }, update: { value: "true" }, create: { key: 规则.按组织看客户.key, value: "true" } });

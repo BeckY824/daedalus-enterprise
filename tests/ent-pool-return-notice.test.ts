@@ -39,7 +39,8 @@ async function 造人(email: string, name: string, role: string, bizRole: string
 const 当 = (u: 人) => { mocks.user = { ...mocks.user, id: u.id, name: u.name, role: u.role }; };
 const 以 = <T,>(u: 人, fn: () => Promise<T>): Promise<T> => { 当(u); return 以谁的身份(u.id, fn); };
 let 序号 = 0;
-const 客户 = async (ownerId: string, name: string) => (await raw.customer.create({ data: { name, phone: `139${String(++序号).padStart(8, "0")}`, salesOwnerId: ownerId } })).id;
+// 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+const 客户 = async (ownerId: string, name: string) => (await raw.customer.create({ data: { name, phone: "", salesOwnerId: ownerId, contacts: { create: { name: `${name}联系人`, phone: `139${String(++序号).padStart(8, "0")}`, isPrimary: true } } } })).id;
 const 项目 = async (ownerId: string, customerId: string, name: string) => (await raw.project.create({ data: { name, customerId, ownerId, creatorId: ownerId } })).id;
 const 通知of = async (u: 人) => {
   await 等通知推完();

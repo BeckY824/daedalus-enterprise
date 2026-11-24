@@ -366,8 +366,11 @@ describe("离职交接看板", () => {
 /* P-转-05 通知接手人：11-13 起交了只是发起，「等你确认」的通知、确认后告诉发起人见 tests/ent-offboard-confirm.test.ts */
 
 describe("查重：负责人已离职指直属上级（C4-5）", () => {
+  /** E-260：企业版客户没有电话，号在主联系人身上（新建弹窗失焦查重 checkDuplicate 按联系人号码查） */
+  const 号挂联系人 = (c: { id: string; phone: string }) => prisma.contact.create({ data: { name: "联系人", phone: c.phone, isPrimary: true, customerId: c.id } });
   it("撞号结论、checkDuplicate：指他的直属上级", async () => {
     const c = await 建客户(离职);
+    await 号挂联系人(c);
     当(系统, "ADMIN");
     await deactivateUser(离职, "");
     当(别的销售);
@@ -381,6 +384,7 @@ describe("查重：负责人已离职指直属上级（C4-5）", () => {
   it("没填上级、上级也走了：指系统管理员；负责人在职照原来的说法", async () => {
     const c = await 建客户(离职);
     const 在职的 = await 建客户(接手);
+    await 号挂联系人(在职的);
     当(系统, "ADMIN");
     await deactivateUser(离职, "");
     await prisma.user.update({ where: { id: 上级 }, data: { active: false } });
@@ -389,7 +393,9 @@ describe("查重：负责人已离职指直属上级（C4-5）", () => {
     const 照旧 = await 撞号结论(prisma, [在职的.id], 别的销售, 别的销售);
     expect(照旧.提示).not.toContain("已离职");
     expect(照旧.撞).not.toHaveProperty("负责人已离职找");
-    expect(await checkDuplicate(在职的.phone)).not.toHaveProperty("负责人已离职找");
+    const 在职撞 = await checkDuplicate(在职的.phone);
+    expect(在职撞).toMatchObject({ salesOwnerName: expect.any(String) });
+    expect(在职撞).not.toHaveProperty("负责人已离职找");
   });
 });
 

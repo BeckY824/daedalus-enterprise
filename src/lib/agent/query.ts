@@ -33,6 +33,7 @@ import {
   FOLLOW_RECORD_STATUSES,
 } from "../constants";
 import { 同名们 } from "../project/stage-dict";
+import { 企业版 } from "../enterprise/switch";
 import { 项目画像项, 字典定义 } from "../enterprise/dict-kinds";
 import { 不算补建, 不算历史分析, 历史分析留痕人 } from "../project/system-created";
 
@@ -410,10 +411,14 @@ export type 表名 = keyof typeof 表们;
 /** 每个请求独立生成显示字段，不修改跨租户共享的静态白名单。只读查询允许历史自由文本职位。 */
 export function 查询表(表: 表名, b?: BusinessConfig): { 模型: string; 名: string; 主键?: string; 字段: Record<string, 字段> } {
   const original = 表们[表];
-  if (!b || 表 !== "客户") return original;
+  if (表 !== "客户") return original;
+  // 企业版客户没有电话（E-260，客户「客户没有电话这一说法」）：客户表不开「电话」，号码都在联系人表上（认字段 另给一句指路）
+  const { 电话: _电话, ...除电话 } = 表们.客户.字段;
+  const 开的: Record<string, 字段> = 企业版() ? 除电话 : 表们.客户.字段;
+  if (!b) return { ...original, 字段: 开的 };
   const fields = b.fields ?? DEFAULT_BUSINESS.fields;
   return { ...original, 名: b.customer, 字段: {
-    ...original.字段,
+    ...开的,
     学校: { ...表们.客户.字段.学校, 名: fields.school },
     年级: { 列: "grade", 名: fields.grade, 型: "文本" },
     专业: { ...表们.客户.字段.专业, 名: fields.major },
@@ -544,6 +549,8 @@ export function 认字段(表: 表名, v: unknown, b?: BusinessConfig): 字段 {
   const 组 = 字段同义组.find((g) => g.some((w) => w.toLowerCase() === s.toLowerCase()));
   const 同义 = 组 ? 对得上(组) : null;
   if (同义) return 同义;
+  if (表 === "客户" && 企业版() && 组?.includes("电话"))
+    throw 错(`企业版${表定义.名}没有电话，号码都记在联系人上：改查「联系人」表的「电话」，要${表定义.名}就带上关联「联系人.客户」`);
   // 写多了或写少了几个字（「跟进状态值」「预计签约」）：包含关系正好对上一个才认
   const 近 = s.length >= 2 ? 全部.filter(([k, f]) => f.名.includes(s) || k.includes(s) || (k.length >= 2 && s.includes(k))) : [];
   const 近字段 = [...new Set(近.map(([, f]) => f))];

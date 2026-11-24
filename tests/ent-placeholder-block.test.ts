@@ -80,13 +80,13 @@ describe("保存客户、联系人（企业版）", () => {
     expect(await prisma.customer.count()).toBe(0);
   });
 
-  it("编辑：库里本来就是占位号、这次没动电话的照存；改成占位号的拦下", async () => {
+  it("编辑：库里本来就是占位号、这次没动电话的照存；交来的电话不认（E-260 客户没有电话，库里不变）", async () => {
     const c = await prisma.customer.create({ data: { name: "示例老客户", phone: "00000000", salesOwnerId: "tester-id", followStatus: "待跟进" } });
     const 改备注 = await 存客户({ id: c.id, name: "示例老客户", phone: "00000000", remark: "改了备注", updatedAt: c.updatedAt.toISOString() });
     expect(改备注.ok).toBe(true);
     const c2 = await prisma.customer.create({ data: { name: "示例客户二", phone: "13900000902", salesOwnerId: "tester-id", followStatus: "待跟进" } });
     const 改号 = await 存客户({ id: c2.id, name: "示例客户二", phone: "12345", updatedAt: c2.updatedAt.toISOString() });
-    expect(改号.ok).toBe(false);
+    expect(改号.ok).toBe(true);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c2.id } })).phone).toBe("13900000902");
   });
 

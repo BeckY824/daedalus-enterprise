@@ -47,10 +47,13 @@ import { 认人表, 分机留存起, 同号条件, 这一批同号的 } from "@/
 import { 查完再写 } from "@/lib/check-then-write";
 import { 收块, 取暂存, type 一块 } from "@/lib/import/staging";
 import { 名键, 公司名键, 归档号键, 撞已有客户 } from "@/lib/enterprise-import/clean";
-import { 读导入查重索引, type 导入查重索引 } from "@/lib/enterprise-import/dedup";
+import { 读导入查重索引, 读回收站号键, type 导入查重索引 } from "@/lib/enterprise-import/dedup";
 import { 带客户编号 } from "@/lib/customer-no";
 import { 客户显名 } from "@/lib/enterprise/customer-title";
 import { hasVisibleText } from "@/lib/form-validation";
+import { 全公司查号, 记号码 } from "@/lib/enterprise/contact-dedupe";
+import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 客户名拆人名 } from "@/lib/enterprise/contact-name-from-customer";
 
 /** 一次导入最多落多少条。和 parse.ts 的行数上限一致，服务端再收一道 */
 const 落库上限 = 10000;
@@ -214,8 +217,12 @@ async function 排好(方案: 导入方案, 查重: 导入查重索引 | null = 
   return { b, 表, 行, 合掉几行 };
 }
 
-/** 只认长号 = 企业版（M-导入-29）：电话那格也按 #207 的口径，不到 10 位的号不拿来认人、不比回收站 */
-async function 导入匹配(行: ReturnType<typeof 摊开>, 只认长号 = false) {
+/**
+ * 查重 = 企业版查重索引（M-导入-29）：给了 = 只认长号，电话那格也按 #207 的口径，不到 10 位的号不拿来认人、不比回收站；
+ * 电话那格比回收站也按它：号在在用客户（联系人）上的不算回收站
+ */
+async function 导入匹配(行: ReturnType<typeof 摊开>, 查重: 导入查重索引 | null = null) {
+  const 只认长号 = !!查重;
   // 带分机的号也认老库里只存了主号的那位（第三轮 B4）；库里老写法「138 0000 1111」按号键认（R-067 / R-069，见 lib/phone-dedupe）
   const 这一批 = 行.filter((r) => !r.进不了 && r.值.phone).map((r) => r.值.phone!);
   const 邮命中 = await 按邮箱找(prisma, 邮箱那一批(行));
@@ -255,9 +262,22 @@ async function 导入匹配(行: ReturnType<typeof 摊开>, 只认长号 = false
         return { 表: 认人表(删了的, 这一批, null), 邮表: 邮箱认人表(挑(邮命中)), 微表: 邮箱认人表(挑(微命中)), 阿表: 邮箱认人表(挑(阿命中)) };
       })()
     : null;
+  /*
+    企业版电话那格（E-260 审查单 A-2）：客户没有电话，号都在联系人上，上面按客户电话格查不出删了的客户——
+    改比回收站号键（dedup.ts 读回收站号键：删了的客户身上的号连联系人、子表、没挪走的客户电话格，加在用客户名下删了的联系人的号），
+    和迁移导入试跑同一份。号还在在用客户（联系人）上的按在用的算，不算回收站
+  */
+  const 回收站号 = 企业版() ? await 读回收站号键() : null;
   /** 在用的认不到的这一行，号码在不在回收站里 */
-  const 在回收站 = (r: { 值: { phone?: string; email?: string; wechat?: string; alibabaId?: string } }) =>
-    !!回收站 && !(只认长号 && r.值.phone && !归档号键(r.值.phone)) && (r.值.phone ? 回收站.表.认(r.值.phone) : r.值.email ? 回收站.邮表.认(r.值.email) : r.值.wechat ? 回收站.微表.认(r.值.wechat) : 回收站.阿表.认(r.值.alibabaId ?? "")).n > 0;
+  const 在回收站 = (r: { 值: { phone?: string; email?: string; wechat?: string; alibabaId?: string } }): boolean => {
+    const { phone } = r.值;
+    if (phone && 只认长号 && !归档号键(phone)) return false;
+    if (phone && 回收站号) {
+      const k = 归档号键(phone);
+      return !!k && 回收站号.has(k) && !查重?.归档号?.has(k);
+    }
+    return !!回收站 && (phone ? 回收站.表.认(phone) : r.值.email ? 回收站.邮表.认(r.值.email) : r.值.wechat ? 回收站.微表.认(r.值.wechat) : 回收站.阿表.认(r.值.alibabaId ?? "")).n > 0;
+  };
 
   return { 表, 邮表, 微表, 阿表, 档案们, 限定我, 命中ids: 命中.map((c) => c.id), 在回收站 };
 }
@@ -311,7 +331,7 @@ export async function 预览导入(原方案: 导入方案): Promise<{ ok: true;
   const { 行, 合掉几行 } = await 排好(方案, 查重);
   if (行.length > 落库上限) return { ok: false, error: `一次最多导 ${落库上限} 行，这份表有 ${行.length} 行` };
 
-  const { 表, 邮表, 微表, 阿表, 档案们, 限定我, 在回收站 } = await 导入匹配(行, !!查重);
+  const { 表, 邮表, 微表, 阿表, 档案们, 限定我, 在回收站 } = await 导入匹配(行, 查重);
   const 撞了: 撞已有[] = [];
   const 记撞 = (行号: number, 原因: string) => {
     if (撞了.length < 撞已有上限) 撞了.push({ 行号, 原因 });
@@ -447,7 +467,7 @@ async function 落库准备(行: 排好的行, me: Awaited<ReturnType<typeof req
  * 接着导（续上断掉的那一段）时，这一批自己已经写过的那几位跳过、不重复计数
  */
 async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = false): Promise<几条> {
-  const { 表, 邮表, 微表, 阿表, 档案们, 限定我, 命中ids, 在回收站 } = await 导入匹配(行, !!现场.查重);
+  const { 表, 邮表, 微表, 阿表, 档案们, 限定我, 命中ids, 在回收站 } = await 导入匹配(行, 现场.查重);
   const 本批写过 = new Set(
     续接 ? (await prisma.importRow.findMany({ where: { batchId: 现场.batchId, customerId: { in: 命中ids }, kind: { not: 同号备注行 } }, select: { customerId: true } })).map((x) => x.customerId) : [],
   );
@@ -556,13 +576,21 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
         在开头的认人表里已经算过了。一行一个小事务，不攥着写锁不放（文件头「不放在一个大事务里」那条照旧）
       */
       const c = await 查完再写(async (tx) => {
+        /*
+          企业版客户没有电话（E-260）：号都在联系人上，按联系人号码全公司查（contact-dedupe.ts 全公司查号），不比客户电话格。
+          接着导时撞到的是这一批自己前几趟建的那位（断在半路、游标没往前走）：算写过了，不再记一次跳过
+        */
+        const 号 = phone && 企业版() ? 验号码("手机号", phone) : null;
+        const 撞的 = 号 ? await 看全部(async () => 全公司查号(tx, "手机号", 号.ok ? 号.值 : phone, 号.ok ? 号.键 : "")) : [];
+        if (撞的.length && 续接 && (await tx.importRow.findFirst({ where: { batchId: 现场.batchId, kind: "create", customerId: { in: 撞的 } }, select: { id: true } }))) return "写过" as const;
         // 企业版不到 10 位的号不比（M-导入-29），短号不拦
-        if (!短号 && await 看全部(async () => tx.customer.findFirst({ where: phone ? await 同号条件(tx, phone, null) : email ? await 同邮箱条件(tx, email) : wechat ? await 同微信条件(tx, wechat) : await 同阿里条件(tx, alibabaId), select: { id: true } }))) return null;
+        if (!短号 && (号 ? 撞的.length > 0 : await 看全部(async () => tx.customer.findFirst({ where: phone ? await 同号条件(tx, phone, null) : email ? await 同邮箱条件(tx, email) : wechat ? await 同微信条件(tx, wechat) : await 同阿里条件(tx, alibabaId), select: { id: true } })))) return null;
         const c = await tx.customer.create({
           data: await 带客户编号(tx, {
             // 只有空白 / 零宽字符的当没填（和 saveCustomer 同一条 hasVisibleText）
             name: hasVisibleText(r.值.name) ? r.值.name.trim() : "",
-            phone,
+            // 企业版客户没有电话（E-260）：存空串，号落到下面建的主联系人
+            phone: 企业版() ? "" : phone,
             school: r.值.school ?? null,
             grade: r.值.grade ?? null,
             major: r.值.major ?? null,
@@ -579,10 +607,20 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
           }),
         });
         await 写外贸档案(tx, c.id, Object.fromEntries(外贸导入字段.filter((k) => r.值[k]).map((k) => [k, r.值[k]!])), false);
-        // 企业版「联系人 / 姓名」列（11-19，P-抬头-13）：落成这位客户的主要联系人，号码一并带上；记进导入记录，撤销时不当「名下挂了东西」
-        const 联系人 = 企业版() && hasVisibleText(r.值.contactName)
-          ? await tx.contact.create({ data: { name: r.值.contactName.trim(), phone: phone || null, email: email || null, wechat: wechat || null, isPrimary: true, customerId: c.id }, select: { id: true, updatedAt: true } })
+        /*
+          企业版「联系人 / 姓名」列（11-19，P-抬头-13）：落成这位客户的主要联系人，号码一并带上；记进导入记录，撤销时不当「名下挂了东西」。
+          客户没有电话（E-260）：没填联系人、有电话的也建一位主联系人带上号，姓名按客户名称拆（拆不出留空）；号照原样存（同以前的客户电话格），验得过的同时记进联系方式子表
+        */
+        const 有名 = hasVisibleText(r.值.contactName);
+        const 联系人 = 企业版() && (有名 || phone)
+          ? await tx.contact.create({
+              data: 有名
+                ? { name: r.值.contactName!.trim(), phone: phone || null, email: email || null, wechat: wechat || null, isPrimary: true, customerId: c.id }
+                : { name: 客户名拆人名(r.值.name), phone, isPrimary: true, customerId: c.id },
+              select: { id: true, updatedAt: true },
+            })
           : null;
+        if (联系人 && 号?.ok && 号.键) await 记号码(tx, { 刚建的: c.id }, 联系人.id, { 类型: 号.类型, 值: 号.值, 键: 号.键 });
         await tx.importRow.create({ data: { batchId: 现场.batchId, customerId: c.id, kind: "create", writtenAt: c.updatedAt, ...(联系人 ? { before: JSON.stringify({ [导入联系人键]: 联系人.id, [导入联系人写后键]: 联系人.updatedAt.toISOString() }) } : {}) } });
         return c;
       });
@@ -591,6 +629,7 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
         跳过++;
         continue;
       }
+      if (c === "写过") continue;
       新建++;
       // 同一份表里后面还有同号的行（并重复行已合过，这里是防御），别再建一条
       const 记 = { id: c.id, phone, school: c.school, grade: c.grade, major: c.major, expectedSignAt: c.expectedSignAt, expectedSignOn: c.expectedSignOn, remark: c.remark, createdAt: c.createdAt, updatedAt: c.updatedAt, salesOwnerId: c.salesOwnerId, channelOwnerId: c.channelOwnerId, pool: null };

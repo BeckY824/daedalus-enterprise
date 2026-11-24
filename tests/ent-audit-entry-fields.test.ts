@@ -267,9 +267,12 @@ describe("要库", () => {
   });
 
   describe("P1-3 企业版导入拦回收站里的号码", () => {
-    it("号码撞上回收站里的客户（客户本身的号、名下联系人的号、在用客户名下删了的联系人的号）：这一行不导，提示去捞回", async () => {
-      await prisma.customer.create({ data: { name: "回收站客户", phone: "13755550001", salesOwnerId: 销售, deletedAt: new Date() } });
-      const 在用 = await prisma.customer.create({ data: { name: "在用客户", phone: "13755550009", salesOwnerId: 销售 } });
+    it("号码撞上回收站里的客户（删了的客户名下联系人的号、在用客户名下删了的联系人的号）：这一行不导，提示去捞回", async () => {
+      // 企业版客户没有电话（E-260）：号在联系人上
+      const 回收站客户 = await prisma.customer.create({ data: { name: "回收站客户", phone: "", salesOwnerId: 销售, deletedAt: new Date() } });
+      await prisma.contact.create({ data: { name: "回收站联系人", phone: "13755550001", customerId: 回收站客户.id } });
+      const 在用 = await prisma.customer.create({ data: { name: "在用客户", phone: "", salesOwnerId: 销售 } });
+      await prisma.contact.create({ data: { name: "在用联系人", phone: "13755550009", customerId: 在用.id } });
       const 删人 = await prisma.contact.create({ data: { name: "删了的联系人", customerId: 在用.id, deletedAt: new Date() } });
       await prisma.contactMethod.create({ data: { customerId: 在用.id, contactId: 删人.id, kind: "phone", value: "13755550002", numberKey: "13755550002" } });
       const 索引 = await 读本地索引("excel");
@@ -283,7 +286,8 @@ describe("要库", () => {
       for (const id of ["R1", "R2"]) expect(r.问题.find((q) => q.外部ID === id && q.级别 === "跳过")?.说明).toMatch(/回收站里的客户，这一条不导.*捞回/);
     });
     it("对照：在用的撞了照旧按在用的报；回收站里没有的不拦；不是企业版不查", async () => {
-      await prisma.customer.create({ data: { name: "在用的", phone: "13755550011", salesOwnerId: 销售 } });
+      const 在用的 = await prisma.customer.create({ data: { name: "在用的", phone: "", salesOwnerId: 销售 } });
+      await prisma.contact.create({ data: { name: "在用的联系人", phone: "13755550011", customerId: 在用的.id } });
       const 索引: 本地索引 = { ...(await 读本地索引("excel")) };
       const r = 清洗([条({ 外部: "S1", 名称: "别的名字", 电话: "13755550011" })], 映射样({ 电话: "phone" }), 索引);
       expect(r.问题.find((q) => q.外部ID === "S1")?.说明).toMatch(/和我们这边已有的客户撞了/);

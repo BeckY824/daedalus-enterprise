@@ -196,7 +196,7 @@ describe("新字段导进来", () => {
 });
 
 describe("号码进 ContactMethod 子表", () => {
-  it("新客户的手机号记一行（不挂联系人）；联系人的手机、邮箱带上联系人；座机不进", async () => {
+  it("企业版客户没有电话：客户的号落到主联系人（有联系人补到他身上、没有新建一位）；联系人的手机、邮箱带上联系人；座机不进子表", async () => {
     await 导([
       客户表(),
       联系人表([
@@ -210,16 +210,23 @@ describe("号码进 ContactMethod 子表", () => {
     expect(钱.phone).toBe("057188886666");
     // 邮箱存原样，查重用的键是小写
     expect(await prisma.contactMethod.findFirstOrThrow({ where: { kind: "email" } })).toMatchObject({ numberKey: "wang@example.test" });
+    // 客户主表电话空串；客户的号补到主联系人王经理身上（他电话格已有自己的号，客户的号记进子表挂他身上）
+    expect(甲.phone).toBe("");
+    expect(王).toMatchObject({ phone: "13700000001" });
     expect(await 号们(甲.id)).toEqual([
       { contactId: 王.id, kind: "email", value: "Wang@Example.test" },
       { contactId: 王.id, kind: "phone", value: "13700000001" },
-      { contactId: null, kind: "phone", value: "13800000001" },
+      { contactId: 王.id, kind: "phone", value: "13800000001" },
     ]);
+    // 乙没有联系人：建一位主联系人带上号（客户名是单位名、拆不出人名，姓名留空）
     const 乙 = (await 客户("测试乙贸易公司"))!;
-    expect(await 号们(乙.id)).toEqual([{ contactId: null, kind: "phone", value: "13800000002" }]);
+    expect(乙.phone).toBe("");
+    const 乙主 = await prisma.contact.findFirstOrThrow({ where: { customerId: 乙.id } });
+    expect(乙主).toMatchObject({ name: "", phone: "13800000002", isPrimary: true });
+    expect(await 号们(乙.id)).toEqual([{ contactId: 乙主.id, kind: "phone", value: "13800000002" }]);
   });
 
-  it("同步改了号：客户、联系人的旧号换成新号，不留重复", async () => {
+  it("同步改了号：联系人的旧号换成新号；客户的新号补到主联系人身上，旧号留在他身上（号归联系人了），不记冲突", async () => {
     await 导([客户表(), 联系人表()]);
     await 导([
       客户表([["C1", ...甲行.slice(1, 3), "13800000009", ...甲行.slice(4)], 乙行]),
@@ -227,12 +234,15 @@ describe("号码进 ContactMethod 子表", () => {
     ]);
     const 甲 = (await 客户("测试甲科技有限公司"))!;
     const 王 = await prisma.contact.findFirstOrThrow({ where: { name: "虚构王经理" } });
-    expect(甲.phone).toBe("13800000009");
+    expect(甲.phone).toBe("");
+    expect(王.phone).toBe("13700000009");
     expect(await 号们(甲.id)).toEqual([
       { contactId: 王.id, kind: "email", value: "wang@example.test" },
       { contactId: 王.id, kind: "phone", value: "13700000009" },
-      { contactId: null, kind: "phone", value: "13800000009" },
+      { contactId: 王.id, kind: "phone", value: "13800000001" },
+      { contactId: 王.id, kind: "phone", value: "13800000009" },
     ]);
+    expect(await prisma.entConflict.count()).toBe(0);
   });
 });
 
@@ -296,9 +306,12 @@ describe("新列三方比对", () => {
   });
 
   it("撞了我们早有的同号客户：整条跳过，新几格不补、渠道不挂，老客户一格不动（M-导入-29）", async () => {
-    const 甲老 = await prisma.customer.create({ data: { name: "甲（老档）", phone: "13800000001", salesOwnerId: 张伟, followStatus: "跟进中", addrCity: "我们填的城市" } });
-    const 推荐人 = await prisma.customer.create({ data: { name: "虚构推荐人", phone: "13912000000", salesOwnerId: 张伟, followStatus: "跟进中" } });
-    const 乙老 = await prisma.customer.create({ data: { name: "乙（老档）", phone: "13800000002", salesOwnerId: 李娜, followStatus: "跟进中", referrerCustomerId: 推荐人.id } });
+    // 企业版客户没有电话（E-260）：老客户的号在联系人上
+    const 甲老 = await prisma.customer.create({ data: { name: "甲（老档）", phone: "", salesOwnerId: 张伟, followStatus: "跟进中", addrCity: "我们填的城市" } });
+    await prisma.contact.create({ data: { name: "虚构甲老联系人", phone: "13800000001", isPrimary: true, customerId: 甲老.id } });
+    const 推荐人 = await prisma.customer.create({ data: { name: "虚构推荐人", phone: "", salesOwnerId: 张伟, followStatus: "跟进中" } });
+    const 乙老 = await prisma.customer.create({ data: { name: "乙（老档）", phone: "", salesOwnerId: 李娜, followStatus: "跟进中", referrerCustomerId: 推荐人.id } });
+    await prisma.contact.create({ data: { name: "虚构乙老联系人", phone: "13800000002", isPrimary: true, customerId: 乙老.id } });
     const 乙改 = [...乙行];
     乙改[7] = "虚构渠道甲";
     const { r } = await 导([客户表([甲行, 乙改])]);
@@ -320,12 +333,13 @@ describe("整批撤回 / 恢复带上新列和子表的号", () => {
     const { id } = await 导([客户表(), 联系人表()]);
     expect(await prisma.contactMethod.count()).toBe(4);
 
-    expect(await 撤回一批(id, 我)).toMatchObject({ 状态: "reverted", 完了: true, 删掉: 3, 留下数: 0 });
+    // 两位客户 + 王经理 + 给乙落号建的主联系人
+    expect(await 撤回一批(id, 我)).toMatchObject({ 状态: "reverted", 完了: true, 删掉: 4, 留下数: 0 });
     expect(await prisma.customer.count()).toBe(0);
     expect(await prisma.contact.count()).toBe(0);
     expect(await prisma.contactMethod.count()).toBe(0);
 
-    expect(await 恢复一批(id, 我)).toMatchObject({ 状态: "done", 完了: true, 恢复: 3 });
+    expect(await 恢复一批(id, 我)).toMatchObject({ 状态: "done", 完了: true, 恢复: 4 });
     const 甲 = (await 客户("测试甲科技有限公司"))!;
     expect(甲).toMatchObject({ shortName: "测试甲", addrProvince: "浙江省", assignWay: "自持", custStatus: "意向", channelId: 渠道甲, attributionChannelId: 渠道甲 });
     expect(甲.extra?.level).toBe("S");
@@ -334,12 +348,12 @@ describe("整批撤回 / 恢复带上新列和子表的号", () => {
     expect(await 号们(甲.id)).toEqual([
       { contactId: 王.id, kind: "email", value: "wang@example.test" },
       { contactId: 王.id, kind: "phone", value: "13700000001" },
-      { contactId: null, kind: "phone", value: "13800000001" },
+      { contactId: 王.id, kind: "phone", value: "13800000001" },
     ]);
     expect(await prisma.contactMethod.count()).toBe(4);
 
     // 再撤一次照样干净
-    expect(await 撤回一批(id, 我)).toMatchObject({ 状态: "reverted", 删掉: 3 });
+    expect(await 撤回一批(id, 我)).toMatchObject({ 状态: "reverted", 删掉: 4 });
     expect(await prisma.contactMethod.count()).toBe(0);
   });
 
@@ -354,16 +368,27 @@ describe("整批撤回 / 恢复带上新列和子表的号", () => {
       联系人表([["P1", "C1", "虚构王经理", "采购", "13700000001", "wang@example.test", "女", "1990-05-06", "爬山", "杭州市西湖区虚构路 1 号"]]),
     ]);
     const 甲 = (await 客户("测试甲科技有限公司"))!;
-    expect(甲).toMatchObject({ shortName: "原系统简称", addrCity: "宁波市", phone: "13800000009" });
+    expect(甲).toMatchObject({ shortName: "原系统简称", addrCity: "宁波市", phone: "" });
+    const 王 = await prisma.contact.findFirstOrThrow({ where: { name: "虚构王经理" } });
+    expect((await 号们(甲.id)).filter((x) => x.kind === "phone").map((x) => x.value)).toEqual(["13700000001", "13800000001", "13800000009"]);
 
     expect(await 撤回一批(id, 我)).toMatchObject({ 状态: "reverted", 还原: 2, 留下数: 0 });
-    expect(await prisma.customer.findUniqueOrThrow({ where: { id: 甲.id } })).toMatchObject({ shortName: "测试甲", addrCity: "杭州市", phone: "13800000001" });
+    expect(await prisma.customer.findUniqueOrThrow({ where: { id: 甲.id } })).toMatchObject({ shortName: "测试甲", addrCity: "杭州市", phone: "" });
     expect(await prisma.contact.findFirstOrThrow({ where: { name: "虚构王经理" } })).toMatchObject({ gender: "男", hobby: "钓鱼" });
-    expect((await 号们(甲.id)).filter((x) => x.contactId === null)).toEqual([{ contactId: null, kind: "phone", value: "13800000001" }]);
+    // 这一批补到王经理身上的新号摘掉，第一批的照旧
+    expect(await 号们(甲.id)).toEqual([
+      { contactId: 王.id, kind: "email", value: "wang@example.test" },
+      { contactId: 王.id, kind: "phone", value: "13700000001" },
+      { contactId: 王.id, kind: "phone", value: "13800000001" },
+    ]);
+    // 恢复：新号再记回他身上
+    await 恢复一批(id, 我);
+    expect((await 号们(甲.id)).filter((x) => x.kind === "phone").map((x) => x.value)).toEqual(["13700000001", "13800000001", "13800000009"]);
   });
 
   it("撞了早有的同号客户、整条跳过的：撤回 / 恢复都不碰老客户（M-导入-29）", async () => {
-    const 老 = await prisma.customer.create({ data: { name: "甲（老档）", phone: "13800000001", salesOwnerId: 张伟, followStatus: "跟进中" } });
+    const 老 = await prisma.customer.create({ data: { name: "甲（老档）", phone: "", salesOwnerId: 张伟, followStatus: "跟进中" } });
+    await prisma.contact.create({ data: { name: "虚构甲老联系人", phone: "13800000001", isPrimary: true, customerId: 老.id } });
     const id = await 跑([客户表([甲行])]);
     await 写一批(id, 我);
     const 原样 = { shortName: null, addrCountry: null, addrCity: null, assignWay: null, channelId: null, attributionChannelId: null };
