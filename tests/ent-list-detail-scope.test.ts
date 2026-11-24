@@ -4,7 +4,9 @@
  * ② 管理者按下属认组员：数据层组员条件原来按「本人 + 实线 / 虚线下属 + 条线成员」整串人认，详情 能看项目 只认本人进组（p.已加入.includes(me.id)）。
  *   收窄跟详情走：组员条件（项目、组员的客户、卡点、裸 SQL）只认本人。
  * P-看-19（用户 11-24，照 P-看-08）：设了「只看某人」的人，自己进组的项目和挂着的客户列表、详情都能看；被盯的人进组、自己没进的照旧不露。
- * ① 按部门认的市场成员只挂销售角色（现库 0 人）：是否放开待定（口径 M-角色-02 / P-看-05 / P-判定-01 冲突），这个 PR 不改，用 it.fails 记着缺口；
+ * ① P-看-17（用户 11-24）：按部门认的市场成员只挂销售角色（现库 0 人），列表照 P-看-05 放开（自己建的、分给同事的项目和客户看得到）；
+ *   项目详情照旧进不去（P-看-06），点进去不落 404、跳市场视角页（P-界面-11，load.ts 市场去向）。所以不变式对他放宽成「详情过，或者落到这条跳转」：
+ *   列表里有、详情进不去的那几行正是 P-看-06 定的「分配后只看进度」，跳转落点就是列表里的那一行，不借跳转露出列表外的项目。
  *   有市场角色的兼任（渠运兼销售、条线总管理 + 销管 + 市场管理）照旧并集，两条回归照跑。
  * P-看-18（用户 11-24）：条线总管理的列表和详情一致、不收窄详情——项目补「创建人在本线」的（详情 能看项目 早认），
  *   客户补名下有本线建的项目的，只读（看得到、写范围不放宽）；销管下属建的、负责人不在他管辖的照旧拿不到（详情也不认）。
@@ -25,6 +27,7 @@ import { 只看某人键 } from "@/lib/enterprise/org-core";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
+import { 项目页去向 } from "@/app/(app)/projects/[id]/load";
 import { 看得到的范围SQL } from "@/lib/scope-sql";
 import { 限定条件, 只读客户 } from "@/lib/team-scope";
 import { 全局搜索 } from "@/app/(app)/global-search";
@@ -347,14 +350,34 @@ describe("其他管辖类角色：组员条件只认本人", () => {
   });
 });
 
-describe("① 按部门认的市场成员只挂销售角色（待定，这个 PR 不改）", () => {
-  // 口径定了、改了 市场的人 之后改回 it
-  it.fails("待定：部门认的市场成员只挂销售是否放开，口径 M-角色-02 / P-看-05 / P-判定-01 冲突，未定——市场部销售自己建的、已分给同事的项目和客户不出", async () => {
+/** 点项目详情（/projects/<id> 先走的 项目页去向）：转向 = 跳哪儿，无 = 404 */
+const 去向 = (谁: 人, id: string) => 以(谁, () => 项目页去向({ id: 谁.id, role: 谁.role, name: 谁.名 } as never, id));
+
+describe("① 按部门认的市场成员只挂销售角色（P-看-17，用户 11-24）", () => {
+  it("列表照 P-看-05 放开：自己建的、分给同事的项目和客户都出；客户详情进得去（X-163：客户详情照 P-看-05）", async () => {
     const p = await 项目("市场部销售建的", 同事, 市场部销售);
     忘掉企业版范围();
-    expect(await 点不进的(市场部销售)).toEqual([]);
-    expect(await 项目名(市场部销售)).not.toContain("市场部销售建的");
-    expect(await 客户编号(市场部销售)).not.toContain(p.customerId);
+    expect(await 项目名(市场部销售)).toContain("市场部销售建的");
+    expect(await 客户编号(市场部销售)).toContain(p.customerId);
+    expect(await 以谁的身份(市场部销售.id, () => prisma.customer.findUnique({ where: { id: p.customerId }, select: { id: true } }))).not.toBeNull();
+  });
+
+  it("不变式放宽：列表里每一行，详情过或者落到市场视角跳转（P-界面-11），不落 404", async () => {
+    const p = await 项目("市场部销售建的 A&B/二期", 同事, 市场部销售);
+    忘掉企业版范围();
+    // 进不去详情的只有自己建的、分给同事的那一行（P-看-06 分配后只看进度）
+    expect(await 点不进的(市场部销售)).toEqual(["市场部销售建的 A&B/二期"]);
+    const 名 = "市场部销售建的 A&B/二期";
+    expect(await 去向(市场部销售, p.id)).toEqual({ 种: "转向", 到: `/customers?q=${encodeURIComponent(名)}&hl=${encodeURIComponent(p.id)}` });
+  });
+
+  it("不借跳转露项目名：同事建的、分给同事的照旧 404；不在市场部的销售自己建的、分给同事的也照旧 404", async () => {
+    const 别人的 = await 项目("同事建的", 同事, 链外);
+    const 普通销售建的 = await 项目("普通销售建的", 同事, 链外);
+    忘掉企业版范围();
+    expect(await 去向(市场部销售, 别人的.id)).toEqual({ 种: "无" });
+    expect(await 项目名(链外)).not.toContain("普通销售建的");
+    expect(await 去向(链外, 普通销售建的.id)).toEqual({ 种: "无" });
   });
 
   it("市场部销售自己负责的照出（P-看-01 回归）", async () => {

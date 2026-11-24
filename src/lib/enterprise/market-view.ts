@@ -71,3 +71,26 @@ export function 市场挡详情(
   if (!视角 || !org || p.pooledAt) return false;
   return 只看进度(市场圈(org, 我, 视角), 我, p, 等我复核);
 }
+
+/**
+ * 按部门认的市场成员、只挂销售（P-看-17，用户 11-24）：在市场成员名单里（M-角色-02 按部门认，或逐人设的），业务角色有销售、
+ * 没有市场角色（市场管理、渠运）也没有总管理 / 销管 / 教练 / 只读管理员。市场视角of 因为兼着销售不认他（项目页按销售那套画、列表不收窄），
+ * 列表按 P-看-05 放开（visibility.ts 市场的人 给 [id]），详情 能看项目 只认业务角色，自己建的、已分给别人的进不去
+ */
+export function 部门市场销售(org: 组织 | null, id: string, 市场成员集: ReadonlySet<string>): boolean {
+  if (!org || 只看的人(org, id) || !市场成员集.has(id)) return false;
+  const 们 = org.成员.get(id)?.角色们 ?? [];
+  return 们.includes("sales") && !们.some((r) => r === "director" || r === "sales_mgr" || r === "coach" || r === "admin" || r === "marketing_mgr" || r === "channel_ops");
+}
+
+/**
+ * 这条是不是「部门市场销售」点进来、该跳市场视角页（P-界面-11）而不是 404 的那种：自己建的、已分给别人（有负责人、不在公海）、自己也没进组。
+ * 只认列表里真有这一行的（同 市场项目条件 的「建的人在圈里、已有负责人」），调用方另判 能看项目 不过才跳
+ */
+export function 部门市场销售该转向(
+  org: 组织 | null, 我: string, 市场成员集: ReadonlySet<string>,
+  p: { ownerId: string; creatorId?: string | null; pooledAt?: Date | null; 已加入?: readonly string[] },
+): boolean {
+  if (p.pooledAt || !p.ownerId || p.ownerId === 我 || p.creatorId !== 我 || p.已加入?.includes(我)) return false;
+  return 部门市场销售(org, 我, 市场成员集);
+}

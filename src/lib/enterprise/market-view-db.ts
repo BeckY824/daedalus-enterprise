@@ -6,7 +6,7 @@ import { 企业版 } from "./switch";
 import { 读组织 } from "./org";
 import { 读市场成员们 } from "./market-db";
 import { 能市场复核, 市场复核要读的, type 组织 } from "./org-core";
-import { 市场视角of, 市场圈, 市场挡详情, type 市场视角 } from "./market-view";
+import { 市场视角of, 市场圈, 市场挡详情, 部门市场销售, type 市场视角 } from "./market-view";
 import { 无效交给 } from "@/lib/project/lead-verify";
 
 export type 市场身份 = { 视角: 市场视角; 圈: string[]; org: 组织; 成员集: Set<string> };
@@ -19,6 +19,13 @@ export const 读市场身份 = cache(async (我: string): Promise<市场身份 |
   const 视角 = 市场视角of(org, 我, 成员集);
   return 视角 ? { 视角, 圈: 市场圈(org, 我, 视角), org, 成员集 } : null;
 });
+
+/** 是不是按部门认的市场成员、只挂销售（P-看-17，market-view.ts 部门市场销售）；不是企业版 = false */
+export async function 是部门市场销售(我: string): Promise<boolean> {
+  if (!企业版()) return false;
+  const org = await 读组织();
+  return 部门市场销售(org, 我, await 读市场成员们(org));
+}
 
 /** 等「市场复核」、我是市场管理能拍板的那几条（只看进度的例外：复核要进详情） */
 export async function 等我复核的(我: string, org: 组织, projectIds?: string[]): Promise<Set<string>> {

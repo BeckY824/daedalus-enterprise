@@ -8,7 +8,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { 组织, 组织成员 } from "@/lib/enterprise/org-core";
-import { 市场视角of, 市场圈, 市场项目条件, 只看进度, 市场挡详情 } from "@/lib/enterprise/market-view";
+import { 市场视角of, 市场圈, 市场项目条件, 只看进度, 市场挡详情, 部门市场销售, 部门市场销售该转向 } from "@/lib/enterprise/market-view";
 
 const 人 = (userId: string, 角色们: string[], o: Partial<组织成员> = {}): [string, 组织成员] => [
   userId,
@@ -52,6 +52,22 @@ describe("市场视角", () => {
     // 销售教练、只读管理员放在市场部门里也不算（看全部那一类，11-22 录音点评跟进）
     expect(市场视角of(org, "c", 市场成员集)).toBeNull();
     expect(市场视角of(org, "adm", 市场成员集)).toBeNull();
+  });
+
+  it("部门认的市场成员只挂销售（P-看-17）：名单里、有销售、没市场角色 / 管理角色；该转向只认自己建的、分给别人、没进组、不在公海", () => {
+    const o: 组织 = { ...org, 成员: new Map([...org.成员, 人("ms", ["sales"]), 人("mo", ["channel_ops", "sales"]), 人("mm", ["sales", "sales_mgr"])]) };
+    const 集 = new Set([...市场成员集, "ms", "mo", "mm", "s"]);
+    expect(["ms", "mo", "mm", "a", "c", "s"].map((x) => 部门市场销售(o, x, 集))).toEqual([true, false, false, false, false, true]);
+    expect(部门市场销售(o, "s", 市场成员集)).toBe(false);
+    expect(部门市场销售(null, "ms", 集)).toBe(false);
+    expect([
+      部门市场销售该转向(o, "ms", 集, { ownerId: "x", creatorId: "ms" }),
+      部门市场销售该转向(o, "ms", 集, { ownerId: "ms", creatorId: "ms" }),
+      部门市场销售该转向(o, "ms", 集, { ownerId: "x", creatorId: "y" }),
+      部门市场销售该转向(o, "ms", 集, { ownerId: "x", creatorId: "ms", 已加入: ["ms"] }),
+      部门市场销售该转向(o, "ms", 集, { ownerId: "x", creatorId: "ms", pooledAt: new Date() }),
+      部门市场销售该转向(o, "ms", 集, { ownerId: "", creatorId: "ms" }),
+    ]).toEqual([true, false, false, false, false, false]);
   });
 
   it("圈：市场成员只有自己；市场管理 = 自己 + 实线下属逐级（虚线不算）", () => {
