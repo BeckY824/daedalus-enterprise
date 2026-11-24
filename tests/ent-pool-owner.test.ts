@@ -43,7 +43,8 @@ async function 造人(email: string, name: string, role: string): Promise<人> {
   return { id: u.id, name, role };
 }
 async function 客户(ownerId: string, name = "测试客户") {
-  return (await prisma.customer.create({ data: { name, phone: `139${Math.floor(Math.random() * 1e8).toString().padStart(8, "0")}`, salesOwnerId: ownerId } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+  return (await prisma.customer.create({ data: { name, phone: "", salesOwnerId: ownerId, contacts: { create: { name: `${name}联系人`, phone: `139${Math.floor(Math.random() * 1e8).toString().padStart(8, "0")}`, isPrimary: true } } } })).id;
 }
 async function 项目(ownerId: string, customerId: string, name = "一号项目") {
   return (await prisma.project.create({ data: { name, customerId, ownerId, creatorId: ownerId } })).id;

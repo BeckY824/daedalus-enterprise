@@ -39,11 +39,22 @@ beforeEach(async () => {
   销售 = await 建人("s1", "SALES", "sales");
   教练 = await 建人("coach", "SALES", "coach");
   藏号的 = await 建人("cs", "SALES", "sales_ops");
-  await prisma.customer.create({ data: { name: "手上的", phone: 手上的号, salesOwnerId: 销售, extra: { create: { whatsapp: 手上的WA } } } });
-  await prisma.customer.create({ data: { name: "座机的", phone: 座机, salesOwnerId: 销售 } });
-  const 公海 = await prisma.customer.create({ data: { name: "公海的", phone: 公海的号, salesOwnerId: 销售, extra: { create: { whatsapp: 公海的WA } } } });
+  // 企业版客户没有电话（E-260）：列表「联系电话」取主联系人的第一个号，Customer.phone 空串
+  const 手上 = await prisma.customer.create({ data: { name: "手上的", phone: "", salesOwnerId: 销售, extra: { create: { whatsapp: 手上的WA } } } });
+  // 先建的普通联系人号不同：取的是主联系人的号，不是先建的
+  await prisma.contact.create({ data: { name: "助理", phone: "13700000000", customerId: 手上.id, createdAt: new Date("2026-01-01T00:00:00Z") } });
+  await prisma.contact.create({ data: { name: "老板", phone: 手上的号, isPrimary: true, customerId: 手上.id } });
+  // 主联系人主表电话格空、号在号码几行里：取第一个号码类（座机），邮箱不算
+  const 座 = await prisma.customer.create({ data: { name: "座机的", phone: "", salesOwnerId: 销售 } });
+  const 座联 = await prisma.contact.create({ data: { name: "前台", phone: null, isPrimary: true, customerId: 座.id } });
+  await prisma.contactMethod.create({ data: { customerId: 座.id, contactId: 座联.id, kind: "email", value: "a@b.com", numberKey: "a@b.com", createdAt: new Date("2026-01-01T00:00:00Z") } });
+  await prisma.contactMethod.create({ data: { customerId: 座.id, contactId: 座联.id, kind: "landline", value: 座机, numberKey: 座机 } });
+  const 公海 = await prisma.customer.create({ data: { name: "公海的", phone: "", salesOwnerId: 销售, extra: { create: { whatsapp: 公海的WA } } } });
+  await prisma.contact.create({ data: { name: "联系人", phone: 公海的号, isPrimary: true, customerId: 公海.id } });
   await prisma.customerPool.create({ data: { customerId: 公海.id } });
-  await prisma.customer.create({ data: { name: "没号的", phone: "", salesOwnerId: 销售 } });
+  // 只有邮箱的联系人、库里残留的客户电话：都不算号，还是空
+  const 没号 = await prisma.customer.create({ data: { name: "没号的", phone: "13955550000", salesOwnerId: 销售 } });
+  await prisma.contact.create({ data: { name: "只有邮箱", email: "x@y.com", isPrimary: true, customerId: 没号.id } });
   invalidateSettingsCache();
   忘掉企业版范围();
 });

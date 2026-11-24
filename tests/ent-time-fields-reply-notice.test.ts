@@ -26,7 +26,8 @@ const 京 = (s: string) => new Date(`${s.replace(" ", "T")}:00+08:00`);
 let 销售: string, 市场管: string, 总管: string, 停用: string;
 const 建人 = async (email: string, active = true) => (await prisma.user.create({ data: { email, name: email, title: "", role: "SALES", password: "x", active } })).id;
 const 项目 = async (ownerId: string, 补: Record<string, unknown> = {}) => {
-  const c = await prisma.customer.create({ data: { name: `客户${Math.random()}`, phone: `139${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`, salesOwnerId: ownerId } });
+  // 企业版客户没有电话（E-260）：号记在主要联系人上
+  const c = await prisma.customer.create({ data: { name: `客户${Math.random()}`, phone: "", salesOwnerId: ownerId, contacts: { create: { name: "联系人", phone: `139${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`, isPrimary: true } } } });
   return (await prisma.project.create({ data: { name: `项目${Math.random().toString(36).slice(2, 6)}`, customerId: c.id, ownerId, creatorId: ownerId, phase: "线索", node: "潜客培育", ...补 } })).id;
 };
 const 通知们 = (userId?: string) => prisma.entNotice.findMany({ where: { kind: "指定回复", ...(userId ? { userId } : {}) } });
@@ -92,7 +93,8 @@ describe("到点提醒（钟上每分钟一遍）", () => {
   it("同号再次录入（别人又录了这个号）写进项目的那条系统留痕不算回复：照提醒、待办照在；负责人自己记一条有内容的沟通才算", async () => {
     const 日 = 北京日期(-1);
     const 号码 = "13912345678";
-    const c = await prisma.customer.create({ data: { name: "编的客户乙", phone: 号码, salesOwnerId: 销售 } });
+    // 企业版客户没有电话（E-260）：号记在主要联系人上
+    const c = await prisma.customer.create({ data: { name: "编的客户乙", phone: "", salesOwnerId: 销售, contacts: { create: { name: "编的联系人乙", phone: 号码, isPrimary: true } } } });
     const id = (await prisma.project.create({
       data: { name: "编的项目乙", customerId: c.id, ownerId: 销售, creatorId: 销售, phase: "线索", node: "潜客培育", replyStartAt: 京(`${日} 15:00`), replyEndAt: 京(`${日} 17:00`) },
     })).id;
@@ -122,7 +124,7 @@ describe("到点提醒（钟上每分钟一遍）", () => {
 
   it("负责人记了一条沟通又删掉：不算回复，待办照在、照常提醒", async () => {
     const 日 = 北京日期(-1);
-    const c = await prisma.customer.create({ data: { name: "编的客户丙", phone: "13912345679", salesOwnerId: 销售 } });
+    const c = await prisma.customer.create({ data: { name: "编的客户丙", phone: "", salesOwnerId: 销售, contacts: { create: { name: "编的联系人丙", phone: "13912345679", isPrimary: true } } } });
     const id = (await prisma.project.create({
       data: { name: "编的项目丙", customerId: c.id, ownerId: 销售, creatorId: 销售, phase: "线索", node: "潜客培育", replyStartAt: 京(`${日} 15:00`), replyEndAt: 京(`${日} 17:00`) },
     })).id;

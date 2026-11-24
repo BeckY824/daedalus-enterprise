@@ -42,7 +42,8 @@ export async function 全局搜索(关键词: string): Promise<全局搜索结�
       where: 客户条件,
       orderBy: [{ lastFollowAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
       take: 每组上限,
-      select: { ...显名列, school: true, phone: true },
+      // 企业版客户没有电话（E-260）：附注不带号，号码按联系人那一组搜、那一组带
+      select: { ...显名列, school: true },
     }),
     prisma.project.findMany({
       where: { AND: 项目条件 },
@@ -67,7 +68,7 @@ export async function 全局搜索(关键词: string): Promise<全局搜索结�
   const 拼 = (...xs: (string | null | undefined)[]) => xs.filter(Boolean).join(" · ") || null;
   return {
     // 全称选填（11-19）：名字空着的客户给显名（简称 → 全称 → 客户编号），结果里不出空白行
-    客户: 客户们.map((c) => ({ id: c.id, name: 客户显名(c), 附注: 拼(c.school, 号(c.phone)), 去: `/customers/${c.id}` })),
+    客户: 客户们.map((c) => ({ id: c.id, name: 客户显名(c), 附注: 拼(c.school), 去: `/customers/${c.id}` })),
     项目: 能开项目.map((p) => ({ id: p.id, name: p.name, 附注: 拼(p.customer ? 客户显名(p.customer) : null, p.phase, p.node), 去: 链.get(p.id) ?? `/projects/${p.id}` })),
     // 联系人没有自己的详情页，点了去所属客户
     联系人: 联系人们.map((c) => ({ id: c.id, name: c.name, 附注: 拼(c.customer ? 客户显名(c.customer) : null, c.position, 号(c.phone)), 去: `/customers/${c.customerId}` })),

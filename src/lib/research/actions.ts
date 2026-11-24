@@ -86,6 +86,10 @@ export async function 新建客户并存背调(
   const 国家 = (input.country ?? s.fields.country?.value ?? "").split(/[·,，、/]/)[0].trim();
   // 企业版客户业务线必填（M-必填-13）：这里没有这一格，同首页建档卡——跟我自己的内贸 / 外贸，我没设线就「暂不分配」，要改到客户编辑里改
   const 我的线 = 企业版() ? (await prisma.entMember.findUnique({ where: { userId: me.id }, select: { line: true } }))?.line : undefined;
+  /*
+    E-260（客户「客户没有电话这一说法」）只管电话：电话照旧交给 saveCustomer（企业版新建时落到主联系人），
+    邮箱照旧写客户档案（审查 13：原来跟着把邮箱也挪去主联系人，超出需求，撤回）
+  */
   const 建 = await saveCustomer({
     ...(企业版() ? { 企业资料: { bizLine: 是业务线(我的线) ? 我的线 : "暂不分配" } } : {}),
     name: (input.name || s.目标.name).trim(),

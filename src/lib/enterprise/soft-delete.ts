@@ -30,6 +30,7 @@ import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import { 企业版只用项目 } from "./project-only";
 import { 客户显名, 客户引, 全称或显名, 显名列 } from "./customer-title";
 import { 不是同号留痕 } from "./same-number-mark";
+import { 捞回客户号落主联系人 } from "./restore-number-to-contact";
 
 export { 看已删, 回收站保留天数, 软删表, type 软删表名 } from "./soft-delete-core";
 
@@ -187,6 +188,8 @@ async function 只恢复(t: 软删表名, id: string, 操作人 = ""): Promise<�
       for (const x of 客户连带) 连带 += (await 看全部(() => 表(tx, x).updateMany({ where: { customerId: id, deletedAt: 时刻 }, data: { deletedAt: null } }))).count;
     }
     if (t === "Customer" || t === "Contact") await 只留一个关键(tx, customerId, t === "Contact" ? id : null);
+    // E-260：回收站里的客户没经过数据脚本，客户电话、客户本身的号码行这会儿落到主联系人，客户电话清空（同一笔事务，审查 4b）
+    if (t === "Customer" && 企业版()) await 捞回客户号落主联系人(tx, customerId);
     if (t === "Customer" || t === "FollowUp") await 重算最近跟进(tx, customerId);
     await 跟着项目重算(tx, 状态开, [customerId]);
     return { ok: true as const, 连带, customerId };

@@ -253,13 +253,11 @@ describe("附录 C 补的 13 条（待核·仅提示）：命中 1 行、对照 
       命中: "cm1",
     },
     {
-      键: "客户电话不在号码库",
-      // cB 电话带 +，号码库查重键不带 + → 对得上；cC 电话空 → 不查
+      键: "客户电话没清空",
+      // cA 电话还有号 → 命中；cB 只剩空白 → 算清空了；cC 电话空串 → 不算
       造: (db) => {
         db.prepare(`UPDATE "Customer" SET phone = '13800000001' WHERE id = 'cA'`).run();
-        db.prepare(`UPDATE "Customer" SET phone = '+85291234567' WHERE id = 'cB'`).run();
-        插号(db, "cm1", "cB", "phone", "85291234567");
-        插号(db, "cm2", "cA", "wechat", "13800000001x");
+        db.prepare(`UPDATE "Customer" SET phone = '  ' WHERE id = 'cB'`).run();
         插客户(db, "cC");
       },
       命中: "cA",

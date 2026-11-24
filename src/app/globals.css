@@ -1267,18 +1267,6 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 }
 .rec-field:hover { background: var(--row-hover); }
 .rec-field-editing { background: var(--row-hover); cursor: default; }
-/* 客户资料卡上客户本身的号码（CustomerNumbers，11-17）：只读不给手型；编辑时「类型 + 号码」一行一行 */
-.rec-field.cn-ro { cursor: default; }
-/* 编辑态上下排（11-20 3703 实操：左栏卡里号码框原来只剩 ~24 宽）：标签一行、编辑区占满卡宽；
-   一行放不下「类型 92 + 号码 150 + 去掉 32」就折成两行（类型一行，号码 + 去掉一行），号码框至少放得下十五六位数字 */
-.rec-field.cn-editing, .rec-page .rec-field.cn-editing { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-.cn-edit { min-width: 0; }
-.cn-row { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
-.cn-row .cn-kind { width: 92px; flex: none; }
-.cn-row .cn-val-line { display: flex; gap: 4px; flex: 1 1 186px; min-width: 0; }
-.cn-row .cn-val { flex: 1 1 auto; min-width: 0; }
-.cn-row .cn-val-line > .ant-btn { flex: none; }
-.cn-add { margin-bottom: 6px; }
 .rec-field-k { font-size: var(--fs-note); color: var(--text-muted); line-height: 22px; overflow-wrap: anywhere; } /* 不再 nowrap：自定义的长字段名在 66px 里折行，不压到右边的值上；内置最长的「渠道负责人」65px 照旧一行 */
 .rec-field-v { font-size: var(--fs-body); color: var(--ink); line-height: 22px; word-break: break-word; }
 .rec-field-empty { color: var(--empty-fg); }

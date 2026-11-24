@@ -69,8 +69,14 @@ const 以 = <T,>(u: 人, fn: () => Promise<T>): Promise<T> => { mocks.user = { .
 
 let 序号 = 0;
 const 号 = () => { 序号 += 1; return String(序号).padStart(8, "0"); };
+// 企业版客户没有电话（E-260）：「客户手机」记在主要联系人上；读客户行时 phone 换成主要联系人的号（客户行 用）
 const 客户 = async (ownerId: string, extra: Record<string, unknown> = {}) =>
-  (await prisma.customer.create({ data: { name: `仅项目客户${号()}`, phone: `139${号()}`, salesOwnerId: ownerId, ...extra } })).id;
+  (await prisma.customer.create({ data: { name: `仅项目客户${号()}`, phone: "", salesOwnerId: ownerId, contacts: { create: { name: "主联系人", phone: `139${号()}`, isPrimary: true } }, ...extra } })).id;
+const 客户行 = async (id: string) => {
+  const r = await prisma.customer.findUniqueOrThrow({ where: { id } });
+  const 主 = await prisma.contact.findFirstOrThrow({ where: { customerId: id, isPrimary: true } });
+  return { ...r, phone: 主.phone };
+};
 const 项目 = async (customerId: string, ownerId: string, extra: Record<string, unknown> = {}) =>
   (await prisma.project.create({ data: { name: `仅项目项目${号()}`, customerId, ownerId, creatorId: ownerId, ...extra } })).id;
 const 联系人 = async (customerId: string, name: string, extra: Record<string, unknown> = {}) => {
@@ -284,7 +290,7 @@ describe("客户页看板（提交 3）", () => {
     const 王 = await 联系人(c, "王联系", { phone: "13711112222" });
     await 挂项目(p, 王);
     忘掉企业版范围();
-    const 行 = await prisma.customer.findUniqueOrThrow({ where: { id: c } });
+    const 行 = await 客户行(c);
     return { c, p, 名: 行.name, 手机: 行.phone! };
   };
 
@@ -340,7 +346,7 @@ describe("客户列表「仅项目」一小块（收尾 7）", () => {
     await 挂项目(p, await 联系人(c, "王块联系", { phone: "13744445555" }));
     const 乙自己 = await 客户(乙.id);
     忘掉企业版范围();
-    return { c, p, 乙自己, 行: await prisma.customer.findUniqueOrThrow({ where: { id: c } }) };
+    return { c, p, 乙自己, 行: await 客户行(c) };
   };
 
   it("乙：第 1 页顶上一块，只有白名单字段，不进 total / rows；名字、简称、公司、客户类型能搜", async () => {
@@ -398,7 +404,7 @@ describe("项目列表 /projects 的关键词、手机号（收尾 9）", () => 
     await 挂项目(p, 王);
     const 甲项目 = await 项目(c, 甲.id);
     忘掉企业版范围();
-    const 行 = await prisma.customer.findUniqueOrThrow({ where: { id: c } });
+    const 行 = await 客户行(c);
     for (const q of [{ phone: 行.phone! }, { phone: "13722223333" }, { keyword: 行.phone! }, { keyword: "13722223333" }, { keyword: "列表特征备注" }] as Record<string, string>[]) {
       expect(await 列表(乙, q), JSON.stringify(q)).not.toContain(p);
     }

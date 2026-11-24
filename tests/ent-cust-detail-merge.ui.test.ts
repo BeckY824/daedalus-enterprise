@@ -32,7 +32,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   // customers/actions（RecordView 的 ../actions）和 projects/actions（ProjectDetail 的 ../actions）都是 ../actions：并成一份桩
   stub(/^\.\.\/actions$|projects\/actions$/, `const f=${空跑};
-    export const saveCustomerNumbers=async()=>({ok:true});export const 转走项目预览of=async()=>({项目数:0,项目:[]}),deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=f;
+    export const 转走项目预览of=async()=>({项目数:0,项目:[]}),deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=f;
     export const 项目沟通须知=async()=>({ok:true,能记:false}),记项目沟通Action=async()=>({ok:true,followUpId:'f1'});
     export const 编辑项目=f,改项目沟通=f,改项目节点=f,记完成节点被拦=f,终止项目进程=f,勾项目交付=f,删除项目=f,放回项目公海=(...a)=>window.__挂起?new Promise(()=>{}):f(...a),领取项目=f,判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,改项目画像Action=f,删项目沟通=f,加项目组员=f,换项目组员角色=f,移出项目组员=f;`);
   stub(/^\.\/actions$/, `
@@ -110,7 +110,7 @@ beforeAll(async () => {
           只读={o.只读?'全':false} {...(o.不能转?{能转让客户:false}:{})} {...(o.不能放?{能放公海:false}:{})}
           三态条={o.提醒?{状态:'沉睡',文字:'满 90 天没有有效沟通，也可以用右上角「客户操作」转让或退回公海',悬停:'满 90 天没有有效沟通',旁注:null,按钮们:[{动作:'继续持有',字:'我还在跟',说明:'顺延 30 天',要理由:false,主:true}]}:null}
           项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}
-          {...(o.号码?{号码种类:[{名:'手机',kind:'phone',active:true},{名:'座机',kind:'landline',active:true},{名:'WhatsApp',kind:'whatsapp',active:true}],客户号码们:[{kind:'landline',value:'010-66001234'},{kind:'whatsapp',value:'+44 20 7946 0958'}]}:{})}/>
+          {...(o.号码?{号码种类:[{名:'手机',kind:'phone',active:true},{名:'座机',kind:'landline',active:true},{名:'WhatsApp',kind:'whatsapp',active:true}]}:{})}/>
       </div></main></div></BusinessProvider></App></ConfigProvider>));
     };
     // 受限客户详情（只负责项目的人）：同一套项目区 + 嵌入版 ProjectDetail，左栏客户只读卡
@@ -864,48 +864,6 @@ it("受限客户详情：最后一个项目退回公海后回客户列表、带�
       else expect(带的).toMatchObject({ 到: "/customers", 话: "这位客户下已经没有你负责的项目了，已回到客户列表" });
       await page.evaluate(() => sessionStorage.removeItem("crm:landing-note"));
     }
-    expect(errors).toEqual([]);
-  } finally { await page.close(); }
-});
-
-/* 11-20 3703 实操：左栏「客户资料」卡里号码格编辑时，号码框只剩 ~24 宽（1366 / 1024），打的号看不见。
-   改成编辑态上下排、放不下就折行：1366 / 1024 / 390 / 375 号码框都 ≥ 140、十五位号整个看得见，类型、号码、去掉不互相叠、不出卡，页不横滚 */
-it.each([1366, 1024, 390, 375])("号码格编辑态 %ipx：号码框看得清，类型和号码不互相挤掉，不横滚", async (w) => {
-  const { page, errors } = await 开(w, { 号码: true }, 900);
-  try {
-    /*
-      点这一行的标签进编辑，不点行中心（CI #384 只在 390 红）：行里号码后面紧跟复制键，复制键按设计拦住点击（点复制不算点这一行）；
-      Linux 字体数字窄一点，390 下行中心正好落在复制键上 → 复制了、没进编辑。点标签那一格才是稳定的「点这一行」
-    */
-    await page.getByRole("button", { name: "编辑号码" }).first().locator(".rec-field-k").click();
-    await page.getByRole("button", { name: "加一个号码" }).waitFor();
-    await page.getByRole("textbox", { name: "号码" }).first().fill("+86 13912345678");
-    const m = await page.evaluate(() => {
-      const 块 = document.querySelector("[data-testid=customer-numbers]") as HTMLElement;
-      const 卡框 = (块.closest(".ant-card") as HTMLElement).getBoundingClientRect();
-      const 叠 = (a: DOMRect, b: DOMRect) => a.left < b.right - 0.5 && b.left < a.right - 0.5 && a.top < b.bottom - 0.5 && b.top < a.bottom - 0.5;
-      const 行们 = [...块.querySelectorAll(".cn-row")].map((行) => {
-        const 类 = 行.querySelector(".cn-kind")!.getBoundingClientRect();
-        const 框 = 行.querySelector("input.cn-val") as HTMLInputElement;
-        const 号 = 框.getBoundingClientRect();
-        const 去 = 行.querySelector("button")!.getBoundingClientRect();
-        return {
-          类宽: 类.width, 号宽: 号.width, 截了: 框.scrollWidth > 框.clientWidth + 1,
-          互叠: 叠(类, 号) || 叠(号, 去) || 叠(类, 去),
-          出卡: [类, 号, 去].some((r) => r.right > 卡框.right + 0.5 || r.left < 卡框.left - 0.5),
-        };
-      });
-      return { 卡宽: 卡框.width, 行们, 页横滚: document.documentElement.scrollWidth - window.innerWidth };
-    });
-    expect(m.行们.length, `${w}`).toBe(2);
-    for (const [i, r] of m.行们.entries()) {
-      expect(r.号宽, `${w} 第 ${i + 1} 行号码框宽（卡宽 ${m.卡宽}）`).toBeGreaterThanOrEqual(140);
-      expect(r.类宽, `${w} 第 ${i + 1} 行类型没被挤`).toBeGreaterThanOrEqual(80);
-      expect(r.互叠, `${w} 第 ${i + 1} 行类型、号码、去掉不叠`).toBe(false);
-      expect(r.出卡, `${w} 第 ${i + 1} 行不出卡`).toBe(false);
-    }
-    expect(m.行们[0].截了, `${w} 十五位号（+86 13912345678）整个看得见`).toBe(false);
-    expect(m.页横滚, `${w}`).toBeLessThanOrEqual(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

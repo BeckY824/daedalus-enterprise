@@ -163,17 +163,20 @@ describe("企业版：转客户、并进老客户", () => {
     expect((await 客户附件个数(prisma, [r.customerId], false)).get(r.customerId)).toBeUndefined();
   });
 
-  it("线索没写联系人就转：附件只留在线索上，导出按客户照样数到", async () => {
+  // E-260 客户没有电话：线索没写联系人、带着号转，也建一位主要联系人记号（姓名按客户名拆），名片跟到他身上
+  it("线索没写联系人就转：建出的主要联系人接住附件，导出按客户照样数到", async () => {
     const l = await 线索({ contact: null });
     await 传一个(`leadId=${l.id}`, 字节("卡"));
     const r = await convertLead(l.id);
     if (!r.ok) throw Error(r.error);
-    expect((await prisma.attachment.findFirstOrThrow({ where: { leadId: l.id } })).contactId).toBeNull();
+    const 主 = await prisma.contact.findFirstOrThrow({ where: { customerId: r.customerId, isPrimary: true } });
+    expect(主.phone).toBe("13900001111");
+    expect((await prisma.attachment.findFirstOrThrow({ where: { leadId: l.id } })).contactId).toBe(主.id);
     expect((await 客户附件个数(prisma, [r.customerId], true)).get(r.customerId)?.联系人).toBe(1);
   });
 
   it("并进老客户：挂到电话对得上的那位联系人，不挂关键联系人", async () => {
-    const c = await prisma.customer.create({ data: { name: "QA-老客户", phone: "13700000071", salesOwnerId: 我 } });
+    const c = await prisma.customer.create({ data: { name: "QA-老客户", phone: "", salesOwnerId: 我 } });
     const 关键 = await prisma.contact.create({ data: { name: "QA-关键", customerId: c.id, isPrimary: true, phone: "13600000061" } });
     const 对上 = await prisma.contact.create({ data: { name: "QA-对上", customerId: c.id, phone: "13700000071" } });
     const l = await 线索({ phone: "13700000071" });

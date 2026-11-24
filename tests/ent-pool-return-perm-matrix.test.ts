@@ -47,7 +47,8 @@ const 以 = <T,>(u: 人, fn: () => Promise<T>): Promise<T> => { mocks.user = { .
 let 序号 = 0;
 const 客户 = async (ownerId: string) => {
   序号 += 1;
-  return (await prisma.customer.create({ data: { name: `放回矩阵客户${序号}`, phone: `139${String(序号).padStart(8, "0")}`, salesOwnerId: ownerId } })).id;
+  // E-260 客户没有电话：号记在主要联系人上（退回公海按联系人号码判）
+  return (await prisma.customer.create({ data: { name: `放回矩阵客户${序号}`, phone: "", salesOwnerId: ownerId, contacts: { create: { name: "", phone: `139${String(序号).padStart(8, "0")}`, isPrimary: true } } } })).id;
 };
 const 在公海 = async (c: string) => !!(await prisma.customerPool.findUnique({ where: { customerId: c } }));
 

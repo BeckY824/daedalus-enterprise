@@ -38,8 +38,13 @@ const 人 = async (name: string, bizRole: string | null, 补: { line?: string | 
   return u.id;
 };
 const 当 = (id: string) => { 当前.me = { ...当前.me, id, name: id }; };
-const 客户 = async (salesOwnerId: string, 补: Record<string, unknown> = {}) =>
-  (await prisma.customer.create({ data: { name: `示例客户${++序}`, phone: "", salesOwnerId, ...补 } })).id;
+/** 造客户：补里给了 phone 就记在主要联系人上（E-260 客户没有电话），客户删了的联系人同一时刻删 */
+const 客户 = async (salesOwnerId: string, 补: Record<string, unknown> = {}) => {
+  const { phone, ...余 } = 补 as { phone?: string; deletedAt?: Date };
+  const id = (await prisma.customer.create({ data: { name: `示例客户${++序}`, phone: "", salesOwnerId, ...余 } })).id;
+  if (phone) await prisma.contact.create({ data: { customerId: id, name: "主联系人", phone, isPrimary: true, deletedAt: 余.deletedAt ?? null } });
+  return id;
+};
 
 beforeEach(async () => {
   vi.stubEnv("CRM_ENTERPRISE", "1");

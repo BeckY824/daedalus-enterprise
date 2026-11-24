@@ -161,8 +161,9 @@ describe("确认后：按类型落库", () => {
     ].map((x) => JSON.stringify(x))));
     // 都挂在这位联系人身上（退回公海前查联系方式、教练打码都按联系人的这几行看）
     expect(await prisma.contactMethod.count({ where: { contactId: null } })).toBe(0);
+    // 企业版客户没有电话（E-260）：客户电话存空串，号只在联系人上
     const 客 = await prisma.customer.findFirstOrThrow();
-    expect(客.phone).toBe("13800000104");
+    expect(客.phone).toBe("");
   });
 
   it("只有座机：也能建（M-必填-01），客户电话空着；节点必填「联系方式」认联系人的座机", async () => {
@@ -211,6 +212,7 @@ describe("老卡（只有 phone 那几格）照常确认", () => {
     const { c, 行们 } = await 联系人号();
     expect(c).toMatchObject({ phone: "13800000108", wechat: "wx_test08" });
     expect(行们.map((x) => x[0]).sort()).toEqual(["phone", "wechat", "whatsapp"]);
-    expect((await prisma.customer.findFirstOrThrow()).phone).toBe("13800000108");
+    // 企业版客户没有电话（E-260）：客户电话存空串，号只在联系人上
+    expect((await prisma.customer.findFirstOrThrow()).phone).toBe("");
   });
 });

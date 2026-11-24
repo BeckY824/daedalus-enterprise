@@ -8,6 +8,8 @@ import { consumeUserAiQuota } from "../ai-quota";
 import { recordAiUse } from "../ai-usage";
 import { chatMessagesJSON, chatTools } from "../llm";
 import { prisma } from "../prisma";
+import { 企业版 } from "../enterprise/switch";
+import { 主联系人号码选, 客户电话 } from "../enterprise/primary-contact-phone";
 import { 选通道 } from "./channel";
 import { 老客户清单 } from "./similar";
 import { 跑背调 } from "./run";
@@ -144,10 +146,16 @@ export async function 背调一次(
   if (typeof body.customerId === "string" && body.customerId) {
     const c = await prisma.customer.findUnique({
       where: { id: body.customerId },
-      select: { id: true, name: true, school: true, remark: true, phone: true, extra: { select: { country: true, email: true, whatsapp: true, website: true } } },
+      select: {
+        id: true, name: true, school: true, remark: true, phone: true, extra: { select: { country: true, email: true, whatsapp: true, website: true } },
+        contacts: { ...主联系人号码选, select: { ...主联系人号码选.select, email: true } },
+      },
     });
     if (c) {
-      const 对象 = 客户背调对象({ name: c.name, company: c.school, country: c.extra?.country, website: c.extra?.website, phone: c.phone, whatsapp: c.extra?.whatsapp }, b.fields.school);
+      // 企业版客户没有电话（E-260）：电话、邮箱取主联系人的（档案里的邮箱照旧先用）
+      const 电话 = 客户电话(c);
+      const 邮箱 = c.extra?.email || (企业版() ? c.contacts[0]?.email : null) || null;
+      const 对象 = 客户背调对象({ name: c.name, company: c.school, country: c.extra?.country, website: c.extra?.website, phone: 电话, whatsapp: c.extra?.whatsapp }, b.fields.school);
       if (对象.种类 === "公司") {
         公司 = 对象.公司;
         联系人 = 对象.联系人;
@@ -156,12 +164,12 @@ export async function 背调一次(
         return { ok: false, error: 对象.种类 === "找人" ? "这位客户没填公司：要先按名字和电话找到他在哪家公司（没扣次数）" : `${对象.原因}（没扣次数）` };
       }
       档案线索 = {
-        邮箱: c.extra?.email ? [c.extra.email] : [],
-        电话: [c.phone, c.extra?.whatsapp].filter((x): x is string => Boolean(x?.trim())),
+        邮箱: 邮箱 ? [邮箱] : [],
+        电话: [电话, c.extra?.whatsapp].filter((x): x is string => Boolean(x?.trim())),
         官网: c.extra?.website ?? undefined,
         国家: c.extra?.country ?? undefined,
       };
-      const 邮箱域 = c.extra?.email?.split("@")[1];
+      const 邮箱域 = 邮箱?.split("@")[1];
       客户 = {
         id: c.id,
         已知: [联系人 && `联系人 ${联系人}（这家公司里的人，不是公司名，别拿去当公司查）`, c.extra?.country && `国家 ${c.extra.country}`, 邮箱域 && `邮箱域名 ${邮箱域}`, c.remark && `备注 ${c.remark.slice(0, 120)}`].filter(Boolean).join("；") || "（档案里没有别的线索）",

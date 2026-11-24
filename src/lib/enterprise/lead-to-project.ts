@@ -4,7 +4,7 @@
  * 企业版只用项目以后，「新线索」页只列线索阶段的项目，老 Lead 表里还在推的线索就看不见了。
  * 这里把它们照导入那样（enterprise-import/apply.ts 线索落项目）一条条建成线索阶段的项目：
  *   - 客户：线索已经连着客户就用它；否则唯一的同号客户挂它；都没有按线索名新建一位
- *   - 联系人：新建的客户、线索上有联系人名字才建一位主要联系人，项目挂上它
+ *   - 联系人：新建的客户、线索上有联系人名字或带着号才建一位主要联系人，项目挂上它；线索的号只记在联系人上（E-260 客户没有电话）
  *   - 项目负责人跟线索负责人走（线索没负责人：最早的管理员）；没有首条沟通，项目不带下一步时间；来源线索记这条 Lead
  * 已转化 / 已放弃的不转；已经有项目记它为来源线索的跳过（导入建过的、转化建过的、上次转过的）。
  * 要挂的客户（连着的、唯一同号的）在客户公海里：这条不转，记进「跳过」写原因，别的照转（P-公海-08，同单条转项目：先领取）。
@@ -21,6 +21,7 @@ import { 企业版只用项目 } from "./project-only";
 import { 重算客户状态 } from "./cust-status-auto-db";
 import { 公海客户要先领取, 公海客户先领取说 } from "./pool-customer-guard";
 import { 带客户编号 } from "@/lib/customer-no";
+import { 客户名拆人名 } from "./contact-name-from-customer";
 
 export const 转项目记号键 = "entLeadToProject.v1";
 
@@ -66,13 +67,15 @@ export async function 老线索转项目(): Promise<转项目计数 | null> {
         }
         if (!customerId) {
           // 企业版客户业务线必填（M-必填-13）：老线索没有业务线，新建的记「暂不分配」（同归档导入没选线时）；挂已有客户的不动它的线
-          customerId = (await tx.customer.create({ data: await 带客户编号(tx, { name: l.name, phone: l.phone?.trim() ?? "", salesOwnerId: 负责人, bizLine: "暂不分配" }), select: { id: true } })).id;
+          // 客户没有电话（E-260，11-24）：客户主表电话存空串，线索的号记在主要联系人上
+          customerId = (await tx.customer.create({ data: await 带客户编号(tx, { name: l.name, phone: "", salesOwnerId: 负责人, bizLine: "暂不分配" }), select: { id: true } })).id;
           计.新客户++;
           联系人Id = null;
-          if (l.contact?.trim()) {
+          // 有联系人名字、或带着号（电话 / 邮箱）就建主要联系人；没写名字的按线索名拆人名，拆不出留空（contact-name-from-customer.ts）
+          if (l.contact?.trim() || l.phone?.trim() || l.email?.trim()) {
             联系人Id = (
               await tx.contact.create({
-                data: { name: l.contact.trim(), phone: l.phone, email: l.email, isPrimary: true, customerId },
+                data: { name: l.contact?.trim() || 客户名拆人名(l.name), phone: l.phone?.trim() || null, email: l.email, isPrimary: true, customerId },
                 select: { id: true },
               })
             ).id;

@@ -62,8 +62,9 @@ beforeEach(async () => {
   子渠道 = (await prisma.channel.create({ data: { name: "抖音|官方号", platform: "抖音", mainId: 主1, channelOwnerId: 老板.id } })).id;
   只主 = (await prisma.channel.create({ data: { name: "展厅", platform: "展厅", mainId: 主2, channelOwnerId: 老板.id } })).id;
 
+  // 企业版客户没有电话（E-260）：号记在主要联系人上，项目列表按客户的联系人号码筛
   const 客 = async (name: string, phone: string, owner: 人, channelId: string) =>
-    (await prisma.customer.create({ data: { name, phone, salesOwnerId: owner.id, channelId } })).id;
+    (await prisma.customer.create({ data: { name, phone: "", salesOwnerId: owner.id, channelId, contacts: { create: { name: `${name}联系人`, phone, isPrimary: true } } } })).id;
   const c1 = await 客("客户一", "13912340001", 销售, 子渠道);
   const c2 = await 客("客户二", "13912340002", 销售乙, 子渠道);
   const c3 = await 客("客户三", "13912340003", 销售, 只主);

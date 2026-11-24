@@ -105,4 +105,44 @@ describe("导入撞上回收站里的号码", () => {
     expect(r).toMatchObject({ 新建: 0, 回收站里: 1 });
     expect(await prisma.customer.count({ where: { name: "张三" } })).toBe(0);
   });
+
+  describe("号在联系人上（E-260 审查单 A-2 / A-4a）", () => {
+    const 看预览 = async (行: string[][]) => {
+      const 看 = await 预览导入(await 方案(行));
+      if (!看.ok) throw new Error(看.error);
+      return 看.预览;
+    };
+
+    it("删了的客户主表电话空串、号在主联系人上：认得出在回收站，执行不新建", async () => {
+      const 甲 = await prisma.customer.create({ data: { name: "虚构甲", phone: "", salesOwnerId: 老板 } });
+      await prisma.contact.create({ data: { name: "虚构甲联系人", phone: "13800000005", isPrimary: true, customerId: 甲.id } });
+      expect(await deleteCustomers([甲.id])).toMatchObject({ ok: true, deleted: 1 });
+      expect(await 看预览([["虚构甲新写法", "138 0000 0005", ""]])).toMatchObject({ 新建: 0, 回收站里: 1, 回收站行号: [2] });
+      const r = await 执行导入(await 方案([["虚构甲新写法", "138 0000 0005", ""]]), "a.xlsx");
+      if (!r.ok) throw new Error(r.error);
+      expect(r).toMatchObject({ 新建: 0, 回收站里: 1 });
+    });
+
+    it("在用客户名下删了的联系人的号：也算回收站里", async () => {
+      const 乙 = await prisma.customer.create({ data: { name: "虚构乙", phone: "", salesOwnerId: 老板 } });
+      await prisma.contact.create({ data: { name: "虚构乙删了的", phone: "13800000007", customerId: 乙.id, deletedAt: new Date() } });
+      expect(await 看预览([["虚构乙新", "13800000007", ""]])).toMatchObject({ 新建: 0, 回收站里: 1 });
+    });
+
+    it("回收站客户还留着没挂联系人的子表号（旧数据，A-4a）：也认得出", async () => {
+      const 丙 = await prisma.customer.create({ data: { name: "虚构丙", phone: "", salesOwnerId: 老板 } });
+      await prisma.contactMethod.create({ data: { customerId: 丙.id, kind: "phone", value: "13800000006", numberKey: "13800000006" } });
+      expect(await deleteCustomers([丙.id])).toMatchObject({ ok: true, deleted: 1 });
+      expect(await 看预览([["虚构丙新", "13800000006", ""]])).toMatchObject({ 新建: 0, 回收站里: 1 });
+    });
+
+    it("在用联系人上也有这个号：照旧按在用的算（撞上已有），不算回收站", async () => {
+      const 甲 = await prisma.customer.create({ data: { name: "虚构甲", phone: "", salesOwnerId: 老板 } });
+      await prisma.contact.create({ data: { name: "虚构甲联系人", phone: "13800000005", isPrimary: true, customerId: 甲.id } });
+      expect(await deleteCustomers([甲.id])).toMatchObject({ ok: true, deleted: 1 });
+      const 丁 = await prisma.customer.create({ data: { name: "虚构丁", phone: "", salesOwnerId: 老板 } });
+      await prisma.contact.create({ data: { name: "虚构丁联系人", phone: "13800000005", isPrimary: true, customerId: 丁.id } });
+      expect(await 看预览([["虚构新", "13800000005", ""]])).toMatchObject({ 新建: 0, 回收站里: 0 });
+    });
+  });
 });

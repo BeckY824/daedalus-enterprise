@@ -50,7 +50,8 @@ async function 造人(email: string, name: string, role: string): Promise<人> {
 let 序 = 0;
 async function 客户(ownerId: string, 补: Record<string, unknown> = {}) {
   序++;
-  return (await prisma.customer.create({ data: { name: `客户${序}`, phone: `1390000${String(序).padStart(4, "0")}`, salesOwnerId: ownerId, ...补 } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上，退回公海查联系方式按联系人的号判
+  return (await prisma.customer.create({ data: { name: `客户${序}`, phone: "", salesOwnerId: ownerId, contacts: { create: { name: `联系人${序}`, phone: `1390000${String(序).padStart(4, "0")}`, isPrimary: true } }, ...补 } })).id;
 }
 async function 项目(ownerId: string, customerId: string, 补: Record<string, unknown> = {}) {
   return (await prisma.project.create({ data: { name: `项目${++序}`, customerId, ownerId, creatorId: ownerId, ...补 } })).id;
@@ -618,7 +619,8 @@ describe("直接指定给某人：联系人、项目、沟通记录跟着客户�
       await prisma.followUp.count({ where: { customerId: c } }),
       await prisma.project.count({ where: { id: p } }),
     ]);
-    expect(await 看(丙)).toEqual([1, 1, 1, 1]);
+    // 联系人两位：造客户带的主要联系人（E-260 号记在他身上）+ 张经理
+    expect(await 看(丙)).toEqual([1, 2, 1, 1]);
     expect(await 看(乙)).toEqual([0, 0, 0, 0]);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(丙.id);
     expect((await prisma.followUp.findUniqueOrThrow({ where: { id: 跟进.id } })).ownerId).toBe(乙.id);
