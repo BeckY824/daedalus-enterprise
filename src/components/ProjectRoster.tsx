@@ -12,7 +12,7 @@ import { SearchOutlined, TableOutlined } from "@ant-design/icons";
 import { 跟进方式名 } from "@/lib/follow-method";
 import { 项目名单分组, 未填写组 } from "@/lib/roster-groups";
 import { avatarColor, initial, smartTime, AVATAR_TEXT } from "@/lib/utils";
-import { 开名单, 关名单, 登记换一位 } from "@/lib/roster";
+import { 开名单, 关名单, 登记换一位, useNarrow } from "@/lib/roster";
 import { 名单回车去处 } from "@/lib/cmdk";
 import { useMiddlePane, usePaneShortcut } from "@/lib/middle-pane";
 import PaneToggle from "@/components/PaneToggle";
@@ -79,9 +79,11 @@ export default function ProjectRoster({ data: 服务端给的 }: { data: Project
       }),
     [抽屉里],
   );
+  // 手机（≤767）上打开不抢焦点：一聚焦键盘弹起来，半张名单被盖住（同客户名单 CustomerRoster）
+  const 手机 = useNarrow("(max-width: 767px)");
   useEffect(() => {
-    if (抽屉开着) setTimeout(() => 搜索框.current?.focus(), 80);
-  }, [抽屉开着]);
+    if (抽屉开着 && !手机) setTimeout(() => 搜索框.current?.focus(), 80);
+  }, [抽屉开着, 手机]);
 
   // 圆点和客户名单同一套：橙 = 下一步到期了（今天或更早），灰 = 一个月没沟通，绿 = 正常
   const 今天末 = dayjs().endOf("day");
