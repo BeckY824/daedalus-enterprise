@@ -50,7 +50,14 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
   // 11-15 起客户档案里在推的项目整块摆出来（region「项目：X」），「新建沟通」在这个项目的沟通记录卡头：从哪个项目点开就记在哪个项目上，框里不再另挑「关联项目」
   const 项目块 = 正文.getByRole("region", { name: `项目：记沟通项目${后缀}` });
   await expect(项目块).toBeVisible();
-  await 项目块.getByRole("button", { name: /新建沟通/ }).first().click();
+  // 等水合完再点（11-24：CI 慢机上偶发框没出）：服务端那份按钮已经画出来，React 还没接管时点了没有 onClick、框不出；
+  // 认按钮上挂没挂 __reactProps（同 nav-smooth 的 等水合、main-flow「⋯」）。只改用例，产品代码不动
+  const 新建 = 项目块.getByRole("button", { name: /新建沟通/ }).first();
+  await expect(新建).toBeVisible();
+  await expect
+    .poll(() => 新建.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))).catch(() => false), { message: "「新建沟通」一直没被 React 接管", timeout: 30_000 })
+    .toBe(true);
+  await 新建.click();
   const 框 = page.getByRole("dialog", { name: "新建沟通" });
   await expect(框).toBeVisible();
 
