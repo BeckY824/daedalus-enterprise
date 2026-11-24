@@ -8,7 +8,7 @@
  * 只用 tx，调用方在自己的事务里调；查重由调用方先做（这里只写）。
  */
 import type { Prisma } from "@/generated/prisma";
-import { 记号码, type 记到, type 验好的号 } from "./contact-dedupe";
+import { 记号码, 号码库类型, type 记到, type 验好的号 } from "./contact-dedupe";
 import { 客户名拆人名 } from "./contact-name-from-customer";
 import { 验号码 } from "./contact-format";
 import { 号键 } from "../phone";
@@ -75,6 +75,13 @@ export type 导入落号 =
   | { 怎么: "进备注"; contactId: string; 原: string | null; 新: string }
   | { 怎么: "进客户备注"; 原: string | null; 新: string };
 
+/**
+ * 能补主表格的那位：不是原系统同步来的（对照表没连着 entity=contact）。原系统同步来的联系人主表那几格不补：
+ * 补了下次同步那一格会算我们这边改过、记冲突（导入落号 apply.ts、回收站捞回 restore-number-to-contact.ts 共用）
+ */
+export const 不是同步来的 = (tx: Prisma.TransactionClient) => async (contactId: string): Promise<boolean> =>
+  !(await tx.entExternalRef.findFirst({ where: { entity: "contact", targetId: contactId }, select: { id: true } }));
+
 /** 备注里添的那一行 */
 export const 号进备注行 = (号: string) => `电话：${号}`;
 
@@ -102,7 +109,8 @@ export async function 导入号落主联系人(
     select: { id: true, phone: true, remark: true },
   });
   if (们.some((c) => 同号(c.phone))) return { 怎么: "已有" };
-  if (号 && (await tx.contactMethod.findFirst({ where: { customerId, kind: { in: [...号码类子表种类] }, numberKey: 号.键 }, select: { id: true } }))) return { 怎么: "已有" };
+  // 号码行只算挂在没删的联系人身上的、或客户本身的（复审 3）：只挂在早先单独删掉的联系人身上不算已有，不然号只剩在回收站
+  if (号 && (await tx.contactMethod.findFirst({ where: { customerId, kind: { in: [...号码类子表种类] }, numberKey: 号.键, ...活的行 }, select: { id: true } }))) return { 怎么: "已有" };
   const 主 = 们[0];
   if (!主) {
     const c = await tx.contact.create({ data: { name: 客户名拆人名(客户名), isPrimary: true, phone: 值, customerId }, select: { id: true } });
@@ -118,7 +126,7 @@ export async function 导入号落主联系人(
     return { 怎么: "补主表", contactId: 主.id, 原: 主.phone };
   }
   if (号) {
-    await 看全部(() => 记号码(tx, { 已有: customerId }, 主.id, 号));
+    await 记到他身上(tx, customerId, 主.id, 号);
     return { 怎么: "进子表", contactId: 主.id, 号 };
   }
   const 行 = 号进备注行(原);
@@ -135,6 +143,25 @@ export async function 导入号落主联系人(
   if (新 === null) return { 怎么: "已有" };
   await tx.contact.update({ where: { id: 主.id }, data: { remark: 新 } });
   return { 怎么: "进备注", contactId: 主.id, 原: 主.remark, 新 };
+}
+
+/** 号码行挂在没删的联系人身上的、或客户本身的（contactId 空）：只挂在早先单独删掉的联系人身上的不算（复审 3） */
+const 活的行 = { OR: [{ contactId: null }, { contact: { deletedAt: null } }] } satisfies Prisma.ContactMethodWhereInput;
+
+/**
+ * 号记进子表、挂到这位联系人身上。记号码 见这位客户名下同号已有一行就不另记：那一行只挂在早先单独删掉的联系人身上时，
+ * 号就只剩在回收站（复审 3）——这时照那一行另记一行挂到他身上，删掉那位的那行不动（他恢复回来照旧带着）
+ */
+async function 记到他身上(tx: Prisma.TransactionClient, customerId: string, contactId: string, 号: 验好的号): Promise<void> {
+  const kind = (号码库类型 as Partial<Record<string, string>>)[号.类型];
+  if (kind && !(await tx.contactMethod.findFirst({ where: { customerId, kind, numberKey: 号.键, ...活的行 }, select: { id: true } }))) {
+    const 删了的 = await tx.contactMethod.findFirst({ where: { customerId, kind, numberKey: 号.键 }, select: { value: true, formatStatus: true, region: true } });
+    if (删了的) {
+      await tx.contactMethod.create({ data: { customerId, contactId, kind, value: 删了的.value, numberKey: 号.键, formatStatus: 删了的.formatStatus, region: 删了的.region } });
+      return;
+    }
+  }
+  await 看全部(() => 记号码(tx, { 已有: customerId }, contactId, 号));
 }
 
 /** 子表里算「电话」的几种：手机、座机、WhatsApp 共用号键（11-17） */

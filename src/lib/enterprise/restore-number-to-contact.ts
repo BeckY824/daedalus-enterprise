@@ -7,14 +7,15 @@
  *   - 主联系人 = 没删的联系人里主联系人优先、再按建的先后、id（主联系人of）；一位都没有就按客户名拆姓名新建一位主联系人，补主客户挂靠行
  *   - 客户本身的号码行：同一号（同类型同查重键；号码类也比联系人电话格）已在这位客户哪位没删的联系人身上 → 摘掉这一行；
  *     不在 → 改挂到主联系人身上（不复制），他主表对应那格（电话 / 邮箱 / 微信）空着就补上，有值的不动
- *   - Customer.phone：按 导入号落主联系人 落（已有不重复记；主联系人电话格空着补主表；有别的号进号码行；格式验不过进他的备注）
+ *   - Customer.phone：按 导入号落主联系人 落（已有不重复记；主联系人电话格空着补主表；有别的号进号码行；格式验不过进他的备注）；
+ *     主联系人是原系统同步来的（对照表连着）主表那几格都不补、号进号码行（复审 2，同导入落号）
  *   - Customer.phone 置空串
  * 再删：联系人随客户一起进回收站，号在联系人身上；再捞回时客户本身已没有号，这里什么都不做。
  * 回收站恢复本身没有撤回，挪过去的号不会退回客户电话格（客户本来就不该有电话）。
  * 只用 tx：调用方在恢复的事务里调（看已删 里，所以这里每条查联系人都自己带 deletedAt: null）
  */
 import type { Prisma } from "@/generated/prisma";
-import { 主联系人of, 导入号落主联系人 } from "./primary-contact-number";
+import { 主联系人of, 导入号落主联系人, 不是同步来的 } from "./primary-contact-number";
 import { 客户名拆人名 } from "./contact-name-from-customer";
 import { 号键 } from "../phone";
 
@@ -50,6 +51,7 @@ export async function 捞回客户号落主联系人(tx: Tx, customerId: string)
     return n;
   };
 
+  const 能补 = 不是同步来的(tx);
   if (散行.length) {
     const 在用 = await tx.contact.findMany({ where: { customerId, deletedAt: null }, select: { id: true, phone: true } });
     const 已挂 = 在用.length
@@ -67,7 +69,8 @@ export async function 捞回客户号落主联系人(tx: Tx, customerId: string)
       await tx.contactMethod.update({ where: { id: m.id }, data: { contactId: p.id } });
       已有键.add(键);
       const 格 = 主表哪格[m.kind];
-      if (格 && !String(p[格] ?? "").trim()) {
+      // 原系统同步来的主联系人主表那几格也不补（复审 2）：号照样挂在他身上
+      if (格 && !String(p[格] ?? "").trim() && (await 能补(p.id))) {
         await tx.contact.update({ where: { id: p.id }, data: { [格]: m.value } });
         主 = { ...p, [格]: m.value };
       }
@@ -77,7 +80,8 @@ export async function 捞回客户号落主联系人(tx: Tx, customerId: string)
 
   if (电话) {
     await 要主联系人();
-    await 导入号落主联系人(tx, customerId, 电话, c.name);
+    // 原系统同步来的主联系人电话格不补（复审 2，同 apply.ts 补号码待补的）：补了下次同步那一格会记冲突
+    await 导入号落主联系人(tx, customerId, 电话, c.name, 不是同步来的(tx));
   }
   if (c.phone !== "") await tx.customer.update({ where: { id: customerId }, data: { phone: "" } });
 }

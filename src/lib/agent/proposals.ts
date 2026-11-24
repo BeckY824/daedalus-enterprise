@@ -79,7 +79,11 @@ export const 可改字段名单 = Object.keys(可改字段) as 可改字段名[]
 export function 档案能改的字段(): 可改字段名[] {
   return 企业版() ? 可改字段名单.filter((f) => f !== "phone") : 可改字段名单;
 }
-export const 客户卡不收电话话 = "客户本身没有电话，号码记在联系人上：改号请用 propose_contact_update 改联系人";
+/**
+ * 不指向任何工具（复审 1）：propose_contact_update 不改电话 / 邮箱 / 微信（project-tools.ts 联系人可改），也只在项目模式有；
+ * AI 不改号码，叫人自己到客户详情的联系人卡上改
+ */
+export const 客户卡不收电话话 = "客户本身没有电话，号码在联系人上；AI 不改号码，请到客户详情的联系人卡上改";
 export type 一处改动 = { field: 可改字段名; value: string };
 
 type Base = {
@@ -412,7 +416,7 @@ export function buildProposal(
     const changes: 一处改动[] = [];
     for (const [k, v] of 条目) {
       if (!(k in 可改字段) || (k === "phone" && 企业版())) {
-        // 企业版客户没有电话（E-260）：号码在联系人上，改号走联系人卡（落库那一步 dashboard/apply.ts 改档案 同样拦）
+        // 企业版客户没有电话（E-260）：号码在联系人上，AI 不改号码、叫人到联系人卡上改（落库那一步 dashboard/apply.ts 改档案 同样拦）
         if (k === "phone") return { ok: false, error: 客户卡不收电话话 };
         return { ok: false, error: `没有「${k}」这个字段。能改的是：${档案能改的字段().join("、")}` };
       }

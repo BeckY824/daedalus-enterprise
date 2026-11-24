@@ -32,7 +32,7 @@ import { 写外贸档案 } from "../customer-extra-db";
 import { 同号条件, 分机留存起 } from "../phone-dedupe";
 import { 看全部 } from "../team-scope";
 import { 记号码, 号码库类型, 全公司查号, 跨类键, type 验好的号 } from "../enterprise/contact-dedupe";
-import { 导入号落主联系人 } from "../enterprise/primary-contact-number";
+import { 导入号落主联系人, 不是同步来的 } from "../enterprise/primary-contact-number";
 import { 客户名拆人名 } from "../enterprise/contact-name-from-customer";
 import { 验号码 } from "../enterprise/contact-format";
 import { 客户附加列, 客户新列, 联系人新列 } from "./clean";
@@ -839,7 +839,7 @@ export async function 补号码待补的(tx: Tx, 批次Id: string, 最多?: numb
     const 号 = String(解<{ 号?: string }>(r.written, {}).号 ?? "");
     const c = await tx.customer.findUnique({ where: { id: customerId }, select: { name: true } });
     const 落 = c
-      ? await 导入号落主联系人(tx, customerId, 号, c.name, async (contactId) => !(await tx.entExternalRef.findFirst({ where: { entity: "contact", targetId: contactId }, select: { id: true } })))
+      ? await 导入号落主联系人(tx, customerId, 号, c.name, 不是同步来的(tx))
       : ({ 怎么: "已有" } as const);
     const externalId = 号码带出(customerId);
     if (落.怎么 === "新建") {

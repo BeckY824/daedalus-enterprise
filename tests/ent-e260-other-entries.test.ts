@@ -34,7 +34,8 @@ import { 找人详 } from "@/lib/agent/find-name";
 import { TOOLS, proposalVocab } from "@/lib/agent/tools";
 import { buildProposal } from "@/lib/agent/proposals";
 import { saveCustomer, checkDuplicate } from "@/app/(app)/customers/actions";
-import { 软删客户, 恢复 } from "@/lib/enterprise/soft-delete";
+import { 软删客户, 软删一条, 恢复 } from "@/lib/enterprise/soft-delete";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 详情背调电话 } from "@/lib/enterprise/primary-contact-phone";
 import { 新建客户并存背调 } from "@/lib/research/actions";
 import { 初始状态 } from "@/lib/research/state";
@@ -117,6 +118,38 @@ describe("4b 回收站捞回客户：客户电话、客户本身的号码行落�
     expect(await prisma.contact.findUniqueOrThrow({ where: { id: 主.id } })).toMatchObject({ phone: "13700000000", email: "a@b.com" });
   });
 
+  it("复审 2：主联系人是原系统同步来的（对照表连着）、电话格空着：不补他的电话格（下次同步会记冲突），号进号码行挂他身上", async () => {
+    const c = await 客户({ phone: "13855556666" });
+    const 主 = await prisma.contact.create({ data: { name: "同步来的", isPrimary: true, customerId: c.id } });
+    await prisma.entExternalRef.create({ data: { source: "excel", entity: "contact", externalId: "P1", targetId: 主.id, fingerprint: "f", written: "{}", raw: "{}" } });
+    // 客户本身的邮箱行改挂过去时也一样：他主表邮箱格不补
+    await prisma.contactMethod.create({ data: { customerId: c.id, contactId: null, kind: "email", value: "s@b.com", numberKey: "s@b.com" } });
+    await 删了(c.id);
+    expect((await 恢复(管, "Customer", c.id)).ok).toBe(true);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).phone).toBe("");
+    expect(await prisma.contact.findUniqueOrThrow({ where: { id: 主.id } })).toMatchObject({ phone: null, email: null });
+    expect(await prisma.contactMethod.findMany({ where: { customerId: c.id }, select: { contactId: true, kind: true, value: true }, orderBy: { kind: "asc" } })).toEqual([
+      { contactId: 主.id, kind: "email", value: "s@b.com" },
+      { contactId: 主.id, kind: "phone", value: "13855556666" },
+    ]);
+  });
+
+  it("复审 3：同号只在一位早先单独删掉的联系人身上：不算已有，号落到没删的主联系人身上", async () => {
+    const c = await 客户({ phone: "13866667777" });
+    const 主 = await prisma.contact.create({ data: { name: "主联系人", phone: "13700000000", isPrimary: true, customerId: c.id } });
+    const 旧 = await prisma.contact.create({ data: { name: "早删的", phone: "13866667777", customerId: c.id } });
+    await prisma.contactMethod.create({ data: { customerId: c.id, contactId: 旧.id, kind: "phone", value: "13866667777", numberKey: "13866667777" } });
+    await prisma.$transaction((tx) => 软删一条(tx, "Contact", 旧.id, new Date(Date.now() - 60_000)));
+    await 删了(c.id);
+    expect((await 恢复(管, "Customer", c.id)).ok).toBe(true);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).phone).toBe("");
+    // 主联系人电话格有别的号：号进号码行挂他身上（不是只剩在回收站里那位身上）
+    expect(await prisma.contactMethod.count({ where: { customerId: c.id, contactId: 主.id, kind: "phone", numberKey: "13866667777" } })).toBe(1);
+    // 早删的那位还在回收站，他那行不动（回收站里的要包在 看已删 里才看得到）
+    expect(await 看已删(() => prisma.contactMethod.count({ where: { customerId: c.id, contactId: 旧.id } }))).toBe(1);
+    expect((await 看已删(() => prisma.contact.findUniqueOrThrow({ where: { id: 旧.id } }))).deletedAt).not.toBeNull();
+  });
+
   it("客户电话、号码行都空的：照旧恢复，不建联系人", async () => {
     const c = await 客户();
     await 删了(c.id);
@@ -163,6 +196,10 @@ describe("8 AI 改客户卡：企业版不收电话", () => {
     const r = buildProposal("p1", "update_customer", { id: "c1", name: "x" }, { changes: { phone: "13800000001" }, reason: "补号" }, DEFAULT_BUSINESS);
     expect(r.ok).toBe(false);
     expect(!r.ok && r.error).toContain("联系人");
+    // 复审 1：不指向任何工具（propose_contact_update 不改号码、也只在项目模式有），叫人到客户详情的联系人卡上改
+    expect(!r.ok && r.error).not.toMatch(/propose_|工具/);
+    expect(!r.ok && r.error).toContain("AI 不改号码");
+    expect(!r.ok && r.error).toContain("客户详情的联系人卡上改");
     expect(proposalVocab(DEFAULT_BUSINESS)).not.toContain("phone（");
     // 别的字段照旧
     expect(buildProposal("p2", "update_customer", { id: "c1", name: "x" }, { changes: { remark: "备注" }, reason: "r" }, DEFAULT_BUSINESS).ok).toBe(true);
