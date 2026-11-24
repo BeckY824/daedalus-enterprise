@@ -54,7 +54,7 @@ import { DockOpenContext, useNarrow, usePageOwnsCmdK } from "@/lib/roster";
 import { 跟随过渡 } from "@/lib/motion";
 import NavProgress, { LinkPending, PageFade } from "@/components/NavProgress";
 import { NavGoProvider, useNavGo } from "@/lib/nav-pending";
-import { 槽位 } from "@/components/SlotSkeleton";
+import { 槽位, 名单详情页 } from "@/components/SlotSkeleton";
 import NoticeBell from "@/components/NoticeBell";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
 import { 切换视图Provider } from "@/components/ViewAsContext";
@@ -707,8 +707,9 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         {显示浮标 && <AiFab onClick={() => set手机开在(底下那页)} />}
         {/* 设计语言 D2 · M2-c（K8）：客户详情页头那颗「显示客户名单」在手机上开底部抽屉——名单得挂上才开得出来。
             挂客户详情和项目详情两处（槽位在手机上是一只关着的抽屉，不占地方）；项目详情页头那颗「显示项目列表」同理，
-            原来没挂，390 下点了只把抽屉开关置成开、名单不在，什么都不出（小修 11-25）。别的页的中栏手机上照旧不挂 */}
-        {/^\/(customers|projects)\/[^/]+$/.test(pathname) && <槽位 名="pane">{pane}</槽位>}
+            原来没挂，390 下点了只把抽屉开关置成开、名单不在，什么都不出（小修 11-25）。别的页的中栏手机上照旧不挂。
+            判定和 SlotSkeleton 摆名单骨架同一个（名单详情页：/projects/attach、handover、new 不算，那几页本来就没中栏） */}
+        {名单详情页(pathname) && <槽位 名="pane">{pane}</槽位>}
         {/* 设计语言 HC-1（C13-A）：首页对话栏左边那颗「对话列表」在手机上开左抽屉——列表得挂上才开得出来（关着不占地方） */}
         {pathname === "/dashboard" && <槽位 名="pane" 有AI={Boolean(ai)}>{pane}</槽位>}
         {/* D28：跳转单挂上，顶栏搜索才开得出来 */}

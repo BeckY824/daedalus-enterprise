@@ -35,7 +35,7 @@ import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
 import { 落印行们 } from "@/lib/agent/seal-lines";
-import { 沟通卡太短, 沟通卡太短话 } from "@/lib/enterprise/tri-state-quota";
+import { 沟通卡灰字of } from "@/lib/enterprise/tri-state-quota";
 import dynamic from "next/dynamic";
 import DedupeClaimKey from "@/app/(app)/customers/DedupeClaimKey";
 import RescueKey from "@/app/(app)/customers/RescueKey";
@@ -609,8 +609,8 @@ export default function ProposalCard({
                 onChange={(e) => setDraft({ ...draft, content: e.target.value })}
               />
             </Field>
-            {/* 不足 4 个字照样能确认（E-259），灰字说一句不算有效沟通；判定口径在 tri-state-quota（有内容的沟通） */}
-            {沟通卡太短(draft.content) && <div className="prop-name-hint" data-testid="prop-short-follow-hint">{沟通卡太短话}</div>}
+            {/* 不算有效沟通的照样能确认（E-259），灰字按原因（太短 / 占位词）说一句；判定口径在 tri-state-quota（无效沟通原因of），以服务端词表为准 */}
+            {沟通卡灰字of(draft.content) && <div className="prop-name-hint" data-testid="prop-short-follow-hint">{沟通卡灰字of(draft.content)}</div>}
             {要挂项目 && 跟进项目们!.length > 1 && (
               <Field label="关联项目">
                 <Select

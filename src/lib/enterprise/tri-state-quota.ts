@@ -10,6 +10,7 @@
  */
 import type { 推后记录 } from "./tri-state";
 import { beijingDay } from "@/lib/business-clock";
+import { hasVisibleText } from "@/lib/form-validation";
 
 /**
  * 沟通生效日（M-公海-54，客户 11-12 定）：一条沟通算哪天的动静，取「沟通日期」（occurredAt）和「记录写入时间」（createdAt）里较早的那个；
@@ -126,14 +127,28 @@ export const 无效原因话: Record<无效沟通原因, string> = {
   太短: `不足 ${有效沟通最少字数} 个字`,
 };
 /**
- * 首页 AI 记沟通卡确认前那句灰字（E-259）：不足 4 个字（英文不足 2 个单词）的照样能存，卡上先说一句这条不算有效沟通。
- * 只看字数这一条（和 有内容的沟通 同一套 中文字数 / 英文单词数），判定口径不动；空的照旧拦（missingFields）
+ * 首页 AI 记沟通卡确认前那句灰字（E-259）：不算有效沟通的照样能存，卡上先说一句为什么不算。
+ * 判定和 无效沟通原因of 同一套（太短 / 占位词各出各的话），口径不动。前提是 hasVisibleText——和 missingFields 拦空的同一个判定：
+ * 「👍」「。。。」「!!!!」能存、照样出灰字；只有零宽字符的存不了（卡上是「还差沟通内容」），灰字不出。
+ * 只有链接的不出（照旧）。
+ * 注意：前端只拿得到默认占位词表；后台改过的占位词表（Setting 占位词键）前端拿不到，以服务端为准——
+ * 保存后服务端按实际词表回的「短沟通 / 超时短沟通」那句才算数，这里的灰字只是确认前的预告
  */
-export const 沟通卡太短话 = `不足 ${有效沟通最少字数} 个字，不算有效沟通，不会重置跟进倒计时`;
-export function 沟通卡太短(内容: string | null | undefined): boolean {
+export type 沟通卡灰字原因 = Extract<无效沟通原因, "太短" | "占位词">;
+export const 沟通卡灰字话: Record<沟通卡灰字原因, string> = {
+  太短: `不足 ${有效沟通最少字数} 个字（英文不足 ${有效沟通最少单词} 个单词），不算有效沟通`,
+  占位词: `${无效原因话.占位词}，不算有效沟通`,
+};
+export function 沟通卡灰字原因of(内容: string | null | undefined): 沟通卡灰字原因 | null {
   const 原 = (内容 ?? "").trim();
-  return !!去杂(原) && 中文字数(原) < 有效沟通最少字数 && 英文单词数(原) < 有效沟通最少单词;
+  if (!hasVisibleText(原)) return null;
+  const k = 无效沟通原因of(原);
+  return k === "太短" || k === "占位词" ? k : null;
 }
+export const 沟通卡灰字of = (内容: string | null | undefined): string | null => {
+  const k = 沟通卡灰字原因of(内容);
+  return k ? 沟通卡灰字话[k] : null;
+};
 /**
  * 超时未跟进计时中的线索上，负责人本人记了一条无效沟通（E-259）：保存后那句提示，不看三态开关（超时转不管三态开着没有都按同一判定）。
  * 三态那句（短沟通话）同时成立时只出这一句

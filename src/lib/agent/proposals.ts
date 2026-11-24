@@ -524,7 +524,7 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
   if (是项目卡(p.kind)) return 项目卡缺(p as 项目卡);
   const miss: string[] = [];
   if (p.kind === "set_status" && !p.to) miss.push("新状态");
-  // 不足 4 个字的照样能存（E-259：「加微信」这类），只是不算有效沟通——卡上灰字说一句（沟通卡太短话），这里只拦空的，同 saveFollowUp
+  // 不足 4 个字的照样能存（E-259：「加微信」这类），只是不算有效沟通——卡上灰字说一句（沟通卡灰字of），这里只拦空的，同 saveFollowUp
   if (p.kind === "add_followup" && !hasVisibleText(p.content)) miss.push("沟通内容");
   if (p.kind === "add_plan") {
     if (!p.subject.trim()) miss.push("谈什么");

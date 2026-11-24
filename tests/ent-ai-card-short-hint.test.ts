@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { 落印行们 } from "@/lib/agent/seal-lines";
-import { 超时短沟通话, 短沟通话, 沟通卡太短, 沟通卡太短话, 有内容的沟通 } from "@/lib/enterprise/tri-state-quota";
+import { 超时短沟通话, 短沟通话, 沟通卡灰字of, 沟通卡灰字原因of, 沟通卡灰字话, 有内容的沟通 } from "@/lib/enterprise/tri-state-quota";
 
 const 超时 = 超时短沟通话("太短").replace(/^已保存。/u, "");
 const 推 = "项目「某项目」必填齐了，自动推进到 方案敲定（撤销这条沟通不会把进程退回去）";
@@ -62,19 +62,32 @@ describe("短沟通 / 卡点没发那句交到卡上", () => {
   });
 });
 
-describe("记沟通卡确认前的灰字：不足 4 个字照样存（E-259）", () => {
-  it("不足 4 个字 / 英文不足 2 个单词：出灰字；够了、空的不出", () => {
-    for (const t of ["加微信", "嗯", "ok", "报价 3 万"]) expect(沟通卡太短(t), t).toBe(true);
-    for (const t of ["加了微信", "Sent quote", "", "   ", "！！"]) expect(沟通卡太短(t), t).toBe(false);
+describe("记沟通卡确认前的灰字：不算有效沟通的照样存、按原因出话（E-259）", () => {
+  it("太短：不足 4 个字 / 英文不足 2 个单词，只有表情 / 标点的也算", () => {
+    for (const t of ["加微信", "嗯", "ok", "报价 3 万", "👍", "。。。", "!!!!", "！！"]) expect(沟通卡灰字原因of(t), t).toBe("太短");
   });
 
-  it("口径没动：出灰字的都不算有效沟通", () => {
-    for (const t of ["加微信", "嗯", "ok"]) expect(有内容的沟通(t)).toBe(false);
-    expect(沟通卡太短话).toBe("不足 4 个字，不算有效沟通，不会重置跟进倒计时");
+  it("占位词：默认占位词拼成的（够 4 个字也算）出占位词那句", () => {
+    for (const t of ["已联系跟进", "跟进跟进", "跟进", "已联系", "1"]) expect(沟通卡灰字原因of(t), t).toBe("占位词");
   });
 
-  it("ProposalCard：内容框下按 沟通卡太短 出灰字", () => {
+  it("不出：够了的、空的、只有零宽字符的（存不了，卡上是「还差沟通内容」）、只有链接的", () => {
+    for (const t of ["加了微信", "Sent quote", "", "   ", "\u200b", "\u200b\u200d", "https://example.com/a"]) expect(沟通卡灰字of(t), t).toBeNull();
+  });
+
+  it("口径没动：出灰字的都不算有效沟通；话不提倒计时", () => {
+    for (const t of ["加微信", "嗯", "ok", "👍", "已联系跟进"]) expect(有内容的沟通(t), t).toBe(false);
+    expect(沟通卡灰字话).toEqual({
+      太短: "不足 4 个字（英文不足 2 个单词），不算有效沟通",
+      占位词: "只有「跟进」「已联系」这类占位词，不算有效沟通",
+    });
+    expect(沟通卡灰字of("加微信")).toBe(沟通卡灰字话.太短);
+    expect(沟通卡灰字of("跟进跟进")).toBe(沟通卡灰字话.占位词);
+    for (const v of Object.values(沟通卡灰字话)) expect(v).not.toMatch(/倒计时|重置/u);
+  });
+
+  it("ProposalCard：内容框下按 沟通卡灰字of 出灰字", () => {
     const s = readFileSync("src/components/ProposalCard.tsx", "utf8");
-    expect(s).toMatch(/\{沟通卡太短\(draft\.content\) && <div className="prop-name-hint" data-testid="prop-short-follow-hint">\{沟通卡太短话\}<\/div>\}/);
+    expect(s).toMatch(/\{沟通卡灰字of\(draft\.content\) && <div className="prop-name-hint" data-testid="prop-short-follow-hint">\{沟通卡灰字of\(draft\.content\)\}<\/div>\}/);
   });
 });

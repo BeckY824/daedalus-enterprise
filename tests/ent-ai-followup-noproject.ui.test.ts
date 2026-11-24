@@ -95,7 +95,7 @@ it("内容不足 4 个字（E-259「加微信」）：照样能确认、原样�
     try {
       const 灰 = page.getByTestId("prop-short-follow-hint");
       await 灰.waitFor();
-      expect(await 灰.innerText()).toBe("不足 4 个字，不算有效沟通，不会重置跟进倒计时");
+      expect(await 灰.innerText()).toBe("不足 4 个字（英文不足 2 个单词），不算有效沟通");
       const 量 = await page.evaluate(() => {
         const 卡 = document.querySelector(".prop")!.getBoundingClientRect();
         const n = document.querySelector("[data-testid=prop-short-follow-hint]")!;
@@ -105,9 +105,20 @@ it("内容不足 4 个字（E-259「加微信」）：照样能确认、原样�
       expect(量).toEqual({ 页: true, 在卡里: true, 灰: true });
       expect(await page.locator(".prop-ok").isDisabled()).toBe(false);
       if (w === 1280) {
-        await page.locator(".prop textarea").first().fill("加了微信");
+        const 框 = page.locator(".prop textarea").first();
+        await 框.fill("加了微信");
         await 灰.waitFor({ state: "detached" });
-        await page.locator(".prop textarea").first().fill("加微信");
+        // 只有表情 / 标点：能存、灰字照出（太短）
+        await 框.fill("👍");
+        await 灰.waitFor();
+        expect(await 灰.innerText()).toBe("不足 4 个字（英文不足 2 个单词），不算有效沟通");
+        // 占位词连写（够 4 个字也不算）：出占位词那句
+        await 框.fill("已联系跟进");
+        await page.getByText("只有「跟进」「已联系」这类占位词，不算有效沟通").waitFor();
+        // 只有零宽字符：存不了（还差沟通内容），灰字不出
+        await 框.fill("\u200b");
+        await 灰.waitFor({ state: "detached" });
+        await 框.fill("加微信");
         await page.locator(".prop-ok").click();
         await page.waitForFunction(() => Reflect.get(window, "__交"));
         expect(await page.evaluate(() => (Reflect.get(window, "__交") as { content: string }).content)).toBe("加微信");
