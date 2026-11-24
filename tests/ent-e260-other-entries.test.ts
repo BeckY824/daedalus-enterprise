@@ -71,7 +71,8 @@ describe("3 AI 找人：客户那张的电话取主联系人的号", () => {
     await prisma.contact.create({ data: { name: "主联系人", phone: "13800000001", isPrimary: true, customerId: c.id } });
     const r = await 找人详("青松贸易", 原样, (v) => v, "tester-id");
     const 客户张 = r.命中.find((h) => h.表 === "客户");
-    expect(客户张?.记录[0]).toMatchObject({ 电话: "13800000001" });
+    expect(客户张?.记录[0]).toMatchObject({ 主联系人电话: "13800000001" });
+    expect(客户张?.记录[0]).not.toHaveProperty("电话"); // 企业版叫「主联系人电话」，免得 AI 说成「档案里的电话」（3704 实操 11-24）
   });
 });
 

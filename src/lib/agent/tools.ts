@@ -392,7 +392,7 @@ export const TOOLS: Tool[] = [
         if (候选.length > 1)
           return {
             summary: `叫「${name}」的有 ${候选.length} 位，要哪一位`,
-            data: { 需要挑一位: 候选.map((c) => ({ id: c.id, 姓名: 客户显名(c), 学校: c.school, 电话: 号(客户电话(c)), 负责人: 客户负责人名(c) })) },
+            data: { 需要挑一位: 候选.map((c) => ({ id: c.id, 姓名: 客户显名(c), 学校: c.school, [企业版() ? "主联系人电话" : "电话"]: 号(客户电话(c)), 负责人: 客户负责人名(c) })) },
           };
         id = 候选[0].id;
       }
@@ -619,7 +619,7 @@ export const TOOLS: Tool[] = [
           跟过的人: [...按人.values()],
           签约: 签约.map((c) => ({ 客户: 客户显名(c.customer), 金额: 签约金额(c), 币种: 签约币种(c), 签约日: dayjs(c.signedAt).format("YYYY-MM-DD") })),
           签约合计: 金额,
-          新建的客户: 新建.map((c) => ({ 姓名: 客户显名(c), 电话: 号(客户电话(c)), 跟进状态: statusLabel(ctx.b, c.followStatus), 建档日: dayjs(c.createdAt).format("YYYY-MM-DD") })),
+          新建的客户: 新建.map((c) => ({ 姓名: 客户显名(c), [企业版() ? "主联系人电话" : "电话"]: 号(客户电话(c)), 跟进状态: statusLabel(ctx.b, c.followStatus), 建档日: dayjs(c.createdAt).format("YYYY-MM-DD") })),
         },
       };
     },
