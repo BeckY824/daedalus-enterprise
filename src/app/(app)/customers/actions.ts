@@ -224,7 +224,17 @@ async function 撞号说法(依据: string, dup: 撞到的, 我: 谁 | null, 客
 
 /** 按手机号查重。手机号唯一性最可靠，姓名可能重名。和保存那一步一样先规整：「138 0000 1111」就是 13800001111 */
 export async function checkDuplicate(phone: string, excludeId?: string): Promise<DuplicateHit> {
-  await requireUser();
+  const me = await requireUser();
+  /*
+    企业版客户没有电话（E-260）：客户电话格不再存号，新建弹窗电话失焦按联系人号码查（全公司查号：联系人电话格、号码几行、跨类型），
+    撞到的说法同保存时（撞号结论：看得到的说是谁，看不到的只说负责人）。格式不对的不查（保存时会拦）。审查 6
+  */
+  if (企业版()) {
+    const 验 = 验客户电话(phone);
+    if (!验.ok || !验.值) return null;
+    const ids = await 全公司查号(prisma, "手机号", 验.值, 验.键, excludeId);
+    return (await 撞号结论(prisma, ids, me.id, await 读的我(defaultClient))).撞;
+  }
   const 号 = 规整手机号(phone);
   if (!号) return null;
   const 起 = await 分机留存起();
@@ -759,9 +769,13 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
         const dup = await 看全部(async () => tx.customer.findFirst({ where: await 同邮箱条件(tx, 交的邮箱), select: 撞到的字段 }));
         if (dup) return { 撞号: dup } as const;
       }
-      // 企业版选了号码类型的：事务里再全公司比一次（同上，两个窗口同时建）
-      if (企号) {
-        const ids = await 全公司查号(tx, 企号.类型, 企号.值, 企号.键);
+      /*
+        企业版交来的号：事务里再全公司比一次（同上，两个窗口同时建）。选了号码类型的（企号）和没选类型、填在电话格的（企电话）都比——
+        E-260 起客户电话格不再存号，上面 同号条件 那次只比客户电话格、比不到联系人号码，电话格这一支只能靠这里（审查 5）
+      */
+      const 事务里查的号 = 企号 ?? (企电话?.ok && 企电话.值 ? { 类型: "手机号" as const, 值: 企电话.值, 键: 企电话.键 } : null);
+      if (事务里查的号) {
+        const ids = await 全公司查号(tx, 事务里查的号.类型, 事务里查的号.值, 事务里查的号.键);
         if (ids.length) return { 企撞: ids } as const;
       }
       // 客户编号（11-17 PR-1）：同一个事务里取号，建不成号跟着回滚
@@ -774,7 +788,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
         企业版交来的号（选了类型的企业号码，或没选类型填的电话格）记到主联系人（E-260）：建档向导 / 只建客户的 接着 已经建好主联系人，
         记在他身上（联系人那格带进过同一个号的不重复记）；新建弹窗没有联系人的，按客户名称拆姓名新建一位主联系人
       */
-      const 落号 = 企号 ?? (企电话?.ok && 企电话.值 ? { 类型: "手机号" as const, 值: 企电话.值, 键: 企电话.键 } : null);
+      const 落号 = 事务里查的号;
       // 只写刚建的这位客户名下的联系人：放开范围（建档向导指定给了别人时，客户在 接着 里已转走、我这儿只读）
       if (企业版() && 落号) await 看全部(() => 号码记到主联系人(tx, { 刚建的: created.id }, 落号, created.name));
       // M-公海-14：企业版项目模式下新客户至少带 1 个潜客培育项目（向导已建了项目的不补；老数据不补）

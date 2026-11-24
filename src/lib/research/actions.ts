@@ -17,7 +17,7 @@
  */
 import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
-import { prisma, defaultClient } from "../prisma";
+import { prisma } from "../prisma";
 import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { 不挂项目也能存 } from "@/lib/project/follow-needs-project";
 import { saveCustomer } from "@/app/(app)/customers/actions";
@@ -28,10 +28,6 @@ import { 读最近背调, type 最近背调结果 } from "./latest";
 import { 认号码, type 号码信息 } from "./person";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 是业务线 } from "@/lib/enterprise/assign-line";
-import { 验号码 } from "@/lib/enterprise/contact-format";
-import { 企业号码查重 } from "@/lib/enterprise/contact-dedupe";
-import { 号码记到主联系人 } from "@/lib/enterprise/primary-contact-number";
-import { 读的我 } from "@/lib/team-scope";
 
 export async function 背调价目(): Promise<{ 可用: true; 扣次: number; 还剩: number | null; 模拟: boolean } | { 可用: false; 原因: string }> {
   await requireUser();
@@ -90,24 +86,14 @@ export async function 新建客户并存背调(
   const 国家 = (input.country ?? s.fields.country?.value ?? "").split(/[·,，、/]/)[0].trim();
   // 企业版客户业务线必填（M-必填-13）：这里没有这一格，同首页建档卡——跟我自己的内贸 / 外贸，我没设线就「暂不分配」，要改到客户编辑里改
   const 我的线 = 企业版() ? (await prisma.entMember.findUnique({ where: { userId: me.id }, select: { line: true } }))?.line : undefined;
-  const 名 = (input.name || s.目标.name).trim();
-  const 电话 = (input.phone ?? "").trim();
   /*
-    企业版客户没有号码（E-260，客户「客户没有电话这一说法」）：邮箱不写客户档案，记到主联系人（同电话，saveCustomer 新建时落到主联系人）。
-    没电话只有邮箱的：邮箱当企业号码交（saveCustomer 验格式、查重、落主联系人）；两样都有的：邮箱先在这里查重，客户建好再记上
+    E-260（客户「客户没有电话这一说法」）只管电话：电话照旧交给 saveCustomer（企业版新建时落到主联系人），
+    邮箱照旧写客户档案（审查 13：原来跟着把邮箱也挪去主联系人，超出需求，撤回）
   */
-  const 邮 = 企业版() && (input.email ?? "").trim() ? 验号码("邮箱", (input.email ?? "").trim()) : null;
-  if (邮 && !邮.ok) return { ok: false, error: 邮.提示 };
-  const 后记邮箱 = 邮?.ok && 电话 ? 邮 : null;
-  if (后记邮箱) {
-    const 论 = await 企业号码查重(prisma, 后记邮箱, me.id, await 读的我(defaultClient));
-    if (论.状态 !== "首次录入") return { ok: false, error: `邮箱 ${后记邮箱.值}：${论.提示}` };
-  }
   const 建 = await saveCustomer({
     ...(企业版() ? { 企业资料: { bizLine: 是业务线(我的线) ? 我的线 : "暂不分配" } } : {}),
-    ...(邮?.ok && !电话 ? { 企业号码: { 类型: "邮箱", 值: 邮.值 } } : {}),
-    name: 名,
-    phone: 电话,
+    name: (input.name || s.目标.name).trim(),
+    phone: (input.phone ?? "").trim(),
     school: null,
     grade: null,
     major: null,
@@ -119,10 +105,9 @@ export async function 新建客户并存背调(
     salesOwnerId: me.id,
     channelId: null,
     referrerCustomerId: null,
-    extra: { country: 国家 || null, email: 企业版() ? null : (input.email ?? "").trim() || null, source: "AI 背调" },
+    extra: { country: 国家 || null, email: (input.email ?? "").trim() || null, source: "AI 背调" },
   });
   if (!建.ok) return { ok: false, error: 建.error };
-  if (后记邮箱) await prisma.$transaction((tx) => 号码记到主联系人(tx, { 已有: 建.id }, 后记邮箱, 名));
   const 存 = await 存背调到客户(建.id, s);
   return 存.ok ? { ok: true, id: 建.id } : { ok: false, error: `客户建好了，但报告没存上：${存.error}` };
 }
