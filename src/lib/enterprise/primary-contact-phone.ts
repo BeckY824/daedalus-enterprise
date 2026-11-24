@@ -38,3 +38,16 @@ export function 主联系人电话(联系人们: readonly 带号的联系人[] |
 export function 客户电话(r: { phone: string | null; contacts?: readonly 带号的联系人[] | null }): string {
   return 企业版() ? 主联系人电话(r.contacts) : (r.phone ?? "");
 }
+
+/**
+ * 客户详情页（RecordView）背调用的电话（E-260 审查 12）：同 主联系人电话 一个口径。
+ * 页面交来的联系人里挂来的（别家客户的联系人挂到这位）不算；号码几行（号码们）已按建的先后排好、号码类照旧打过码。
+ * 主联系人优先（页面已按 主联系人优先、建的先后、id 排好，这里再稳排一次防调用方漏排）
+ */
+export function 详情背调电话(
+  联系人们: readonly { phone: string | null; isPrimary: boolean; 挂靠?: unknown; 号码们?: readonly { kind: string; value: string }[] }[],
+): string {
+  const 本客户的 = 联系人们.filter((c) => !c.挂靠);
+  const 排好 = [...本客户的.filter((c) => c.isPrimary), ...本客户的.filter((c) => !c.isPrimary)];
+  return 主联系人电话(排好.slice(0, 1).map((c) => ({ phone: c.phone, contactMethods: c.号码们 ?? [] })));
+}

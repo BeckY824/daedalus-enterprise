@@ -97,6 +97,7 @@ import { useDeleteCustomers } from "../useDeleteCustomers";
 import { 释义下拉宽 } from "@/components/DictNote";
 import { 客户编号显示 } from "@/lib/customer-no";
 import { 客户抬头, 客户显名 } from "@/lib/enterprise/customer-title";
+import { 详情背调电话 } from "@/lib/enterprise/primary-contact-phone";
 import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
 
@@ -324,9 +325,9 @@ export default function RecordView({
     : 0;
   /**
    * 右栏「背调」查谁（lib/research/subject.ts）：公司那一栏 + 国家 / 官网 / 电话 / WhatsApp。
-   * 企业版客户没有电话（E-260）：电话取主联系人的（没有主联系人取第一位）
+   * 企业版客户没有电话（E-260）：电话取主联系人的第一个号（主表电话格空着取号码几行里第一个号码类），口径同 primary-contact-phone.ts
    */
-  const 背调电话 = 企业 ? ((contacts.find((c) => c.isPrimary && !c.挂靠) ?? contacts.find((c) => !c.挂靠))?.phone ?? null) : customer.phone;
+  const 背调电话 = 企业 ? 详情背调电话(contacts) || null : customer.phone;
   const 背调档案 = useMemo(
     () => ({ company: customer.school, country: 档?.country, website: 档?.website, phone: 背调电话, whatsapp: 档?.whatsapp }),
     [customer.school, 背调电话, 档?.country, 档?.website, 档?.whatsapp],

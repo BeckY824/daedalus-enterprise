@@ -48,7 +48,7 @@ import { 限定的我 } from "../team-scope";
 import { 字段权限of } from "../enterprise/field-perm";
 import { 能看提成 } from "../project/commission-db";
 import { 读组织 } from "../enterprise/org";
-import { buildProposal, 默认填到客户, describeProposal, missingFields, 可改字段表, 可改字段名单, type Proposal, type ProposalKind } from "./proposals";
+import { buildProposal, 默认填到客户, describeProposal, missingFields, 可改字段表, 档案能改的字段, type Proposal, type ProposalKind } from "./proposals";
 import { FOLLOW_TYPES, FOLLOW_METHODS, FOLLOW_STATUSES, DECISION_STATUSES, LEAD_STATUSES } from "../constants";
 import { 项目写工具 } from "./project-tools";
 import { 常用沟通方式of } from "../follow-habit-db";
@@ -409,7 +409,11 @@ export const TOOLS: Tool[] = [
           extra: true,
           // 联系人是另一张表。不给的话，问「张三家长的微信是多少」时模型只能说没有——
           // 而数据就在库里，等于向用户断言 CRM 丢了东西（同下面电话那条的道理）
-          contacts: { select: { name: true, position: true, phone: true, wechat: true, email: true, isPrimary: true }, orderBy: { isPrimary: "desc" } },
+          // 排序同 主联系人号码选（主联系人优先、再按建的先后、id 兜底），带上号码几行：第一位就是主联系人，电话取 主联系人电话（E-260 审查 12）
+          contacts: {
+            select: { name: true, position: true, phone: true, wechat: true, email: true, isPrimary: true, contactMethods: 主联系人号码选.select.contactMethods },
+            orderBy: 主联系人号码选.orderBy,
+          },
           tasks: { where: { done: false }, select: { title: true, dueAt: true, dueOn: true } },
           plans: { where: { done: false }, select: { id: true, subject: true, plannedAt: true, plannedOn: true, method: true } },
           followUps: { orderBy: { occurredAt: "desc" }, take: 20, select: { id: true, type: true, title: true, content: true, occurredAt: true, duration: true, owner: { select: { name: true } }, source: { select: { text: true } } } },
@@ -1389,7 +1393,7 @@ export function proposalVocab(b: BusinessConfig): string {
 决策状态：${DECISION_STATUSES.map(带值).join(" / ")}
 跟进类型：${FOLLOW_TYPES.map((t) => t.label).join(" / ")}
 计划方式：${FOLLOW_METHODS.join(" / ")}
-档案里能改的字段：${可改字段名单.map((f) => `${f}（${字段表[f].label}）`).join("、")}
+档案里能改的字段：${档案能改的字段().map((f) => `${f}（${字段表[f].label}）`).join("、")}
 渠道负责人有两种改法，别混：
   改**某一位**${b.customer ?? "客户"}的渠道负责人（登记错误、单个订正）→ propose_customer_update 的 channelOwnerName，只动这一位
   改**渠道本身**的负责人（换人接手）→ propose_channel_update，只影响之后新增的${b.customer ?? "客户"}，已有的不动；直接提，不用先 list_channels 查名字

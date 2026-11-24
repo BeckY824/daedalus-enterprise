@@ -22,6 +22,7 @@ import { 字典定义 } from "../enterprise/dict-kinds";
 import { 认出备注里的号码 } from "../enterprise/remark-numbers";
 import { 没国家认得出 } from "../enterprise/cn-place";
 import { 对得上的方式 } from "../follow-method";
+import { 企业版 } from "../enterprise/switch";
 
 export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel"
   /** 全页面 AI 写入的项目类卡（企业版只用项目，见 project-proposals.ts） */
@@ -71,6 +72,14 @@ export function 可改字段表(b: Pick<BusinessConfig, "fields" | "grades"> | n
 
 export type 可改字段名 = keyof typeof 可改字段;
 export const 可改字段名单 = Object.keys(可改字段) as 可改字段名[];
+/**
+ * AI 改客户卡能提的字段（服务端用：拼提示词、校验）。企业版客户没有电话（E-260，客户「客户没有电话这一说法」），不列 phone；
+ * 卡片展示照旧用 可改字段表（老卡上带的 phone 也叫得出名字，落库时 dashboard/apply.ts 拦）
+ */
+export function 档案能改的字段(): 可改字段名[] {
+  return 企业版() ? 可改字段名单.filter((f) => f !== "phone") : 可改字段名单;
+}
+export const 客户卡不收电话话 = "客户本身没有电话，号码记在联系人上：改号请用 propose_contact_update 改联系人";
 export type 一处改动 = { field: 可改字段名; value: string };
 
 type Base = {
@@ -402,7 +411,11 @@ export function buildProposal(
       : Object.entries(raw as Record<string, unknown>);
     const changes: 一处改动[] = [];
     for (const [k, v] of 条目) {
-      if (!(k in 可改字段)) return { ok: false, error: `没有「${k}」这个字段。能改的是：${可改字段名单.join("、")}` };
+      if (!(k in 可改字段) || (k === "phone" && 企业版())) {
+        // 企业版客户没有电话（E-260）：号码在联系人上，改号走联系人卡（落库那一步 dashboard/apply.ts 改档案 同样拦）
+        if (k === "phone") return { ok: false, error: 客户卡不收电话话 };
+        return { ok: false, error: `没有「${k}」这个字段。能改的是：${档案能改的字段().join("、")}` };
+      }
       const f = k as 可改字段名;
       const spec = 可改字段表(b)[f];
       // 枚举给错当场拒，让模型重说；给空是"还没填"，照样出卡片让人补

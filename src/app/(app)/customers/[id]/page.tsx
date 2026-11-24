@@ -95,7 +95,7 @@ export default async function CustomerDetailPage({
         include: 带币种.签约,
       },
       // 企业版联系人的号码几行（定稿 P5 第 24 条）；别的版本这张子表里没有挂联系人的行，带上也是空
-      contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }], include: { contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true } } } },
+      contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }, { id: "asc" }], include: { contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true } } } },
       tasks: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },
       plans: { where: { done: false, ...(要看的计划 ? { id: 要看的计划 } : {}) }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }] },
       followUps: { orderBy: followHistoryOrder, take: 只项目 ? 0 : 51, include: followHistoryInclude },
