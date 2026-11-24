@@ -11,6 +11,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+const mocks = vi.hoisted(() => ({ user: { id: "", role: "SALES", name: "" } }));
+vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user, getCurrentUser: async () => mocks.user }));
 
 import { prisma, defaultClient } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -21,6 +23,9 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 读组织 } from "@/lib/enterprise/org";
 import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
 import { 看得到的范围SQL } from "@/lib/scope-sql";
+import { 全局搜索 } from "@/app/(app)/global-search";
+import { TOOLS } from "@/lib/agent/tools";
+import { DEFAULT_BUSINESS } from "@/lib/business-config";
 
 type 人 = { id: string; role: string; 名: string };
 let 总管: 人, 销管: 人, 下属: 人, 链外: 人, 同事: 人, 虚线上级: 人, 虚线下属: 人, 线总: 人, 线内: 人, 线读: 人, 盯的人: 人, 被盯: 人, 渠运: 人, 市管: 人, 市管下级: 人, 市场部销售: 人, 渠运兼销售: 人, 组合: 人, 组合下级: 人;
@@ -57,6 +62,19 @@ async function 裸SQL客户(谁: 人): Promise<string[] | null> {
     if (!范围) return null;
     return (await defaultClient.$queryRawUnsafe<{ id: string }[]>(`SELECT c.id FROM "Customer" c WHERE ${范围.名下.where}`, ...范围.名下.参数)).map((r) => r.id);
   });
+}
+
+/** 入口层：顶部全局搜索、首页 AI 找客户（scope=team）都按 以谁的身份 + requireUser 跑 */
+const 以 = <T,>(谁: 人, fn: () => Promise<T>): Promise<T> => {
+  mocks.user = { id: 谁.id, role: 谁.role, name: 谁.名 };
+  return 以谁的身份(谁.id, fn);
+};
+const 搜项目 = async (谁: 人, 词: string) => (await 以(谁, () => 全局搜索(词))).项目.map((p) => p.name);
+const 搜客户 = async (谁: 人, 词: string) => (await 以(谁, () => 全局搜索(词))).客户.map((c) => c.id);
+async function AI团队客户(谁: 人): Promise<string[]> {
+  const 工具 = TOOLS.find((t) => t.name === "search_customers")!;
+  const r = await 以(谁, () => 工具.run({ scope: "team" }, { userId: 谁.id, userName: 谁.名, b: { ...DEFAULT_BUSINESS, projectMode: true }, recordOffset: 0, proposals: [] } as never));
+  return ((r as { data?: { customers?: { id: string }[] } }).data?.customers ?? []).map((c) => c.id);
 }
 
 let 链外的: { id: string; customerId: string };
@@ -144,6 +162,22 @@ describe("销售管理：下属进组、负责人不在他管辖的项目不出�
     expect(await 项目名(下属)).toContain("链外的");
     expect(await 客户编号(下属)).toContain(链外的.customerId);
     expect(await 裸SQL客户(下属)).toContain(链外的.customerId);
+  });
+});
+
+describe("入口：销管场景（下属进组、负责人不在他管辖）", () => {
+  it("顶部全局搜索：销管搜不到链外的项目和客户，自己进组的搜得到；进组的下属本人搜得到", async () => {
+    const 链外客户名 = (await prisma.customer.findUniqueOrThrow({ where: { id: 链外的.customerId }, select: { name: true } })).name;
+    expect(await 搜项目(销管, "链外的")).toEqual([]);
+    expect(await 搜客户(销管, 链外客户名)).not.toContain(链外的.customerId);
+    expect(await 搜项目(销管, "销管进组的")).toEqual(["销管进组的"]);
+    expect(await 搜项目(下属, "链外的")).toEqual(["链外的"]);
+    expect(await 搜客户(下属, 链外客户名)).toContain(链外的.customerId);
+  });
+
+  it("首页 AI 找客户（团队范围）：销管不出链外那位客户；进组的下属本人照出", async () => {
+    expect(await AI团队客户(销管)).not.toContain(链外的.customerId);
+    expect(await AI团队客户(下属)).toContain(链外的.customerId);
   });
 });
 
