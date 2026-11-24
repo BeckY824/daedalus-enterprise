@@ -229,14 +229,16 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   }
   // 只看某人（V3.5.1 市管特例，规则开不开都算）：业务数据只看 那个人（和自己）是负责人、或是创建人且不在公海的，公海照常；
   // 按人的走 读（负责人）+ 市场（11-04：负责的 + 建的且不在公海），都只读。自己没东西能写（permissions.ts 一律拒），写范围只留自己。
-  // 不认组员（11-24 ②）：详情 能看项目 只看某人那一支只认负责人 / 创建人，那个人或自己进了组的项目和挂着的客户都不露——组员条件认「__无」、不带组员客户
+  // 组员只认本人（P-看-19，用户 11-24，照 P-看-08）：自己进了组的项目和挂着的客户看得到（只读，全拦），同详情 能看项目 只看某人那一支认 p.已加入.includes(me.id)；
+  // 被盯的那个人进了组、自己没进的照旧不露（组员条件认本人，不认 目标）
   const 目标 = 只看的人(org, id);
   if (目标) {
     const 人们 = [id, 目标];
-    const 回避 = await 公海回避of(db, id);
+    const [回避, 组员客户] = await Promise.all([公海回避of(db, id), 组员客户of(db, [id])]);
     const 那些 = await db.customer.findMany({ where: 市场相关客户(人们), select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
     const 别人的 = new Set(那些.filter((c) => !看得到(c, [id])).map((c) => c.id));
-    return { 我: [id], 本人: "__无", 读: 人们, 市场: 人们, 互看: false, 别人的, 全拦: true, 话: 只看某人话, ...(回避 ? { 公海回避: 回避 } : {}) };
+    for (const c of 组员客户 ?? []) 别人的.add(c);
+    return { 我: [id], 本人: id, 读: 人们, 市场: 人们, 组员客户, 互看: false, 别人的, 全拦: true, 话: 只看某人话, ...(回避 ? { 公海回避: 回避 } : {}) };
   }
   // 规则关着：原来一律不限定；11-01 起没设业务角色的照样没权限（只看公海）；
   // 原负责人回避（11-03）规则开不开都算，能看全部的（总管理等）不回避

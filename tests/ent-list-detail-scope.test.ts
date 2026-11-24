@@ -2,7 +2,8 @@
  * 列表（数据层）不比详情宽（可见范围修复单 11-24 ②）：各角色在 以谁的身份 下 prisma.project.findMany 回来的每一行都过详情的 能看项目，
  * 列表看得到、点进去 404 的不许有。
  * ② 管理者按下属认组员：数据层组员条件原来按「本人 + 实线 / 虚线下属 + 条线成员」整串人认，详情 能看项目 只认本人进组（p.已加入.includes(me.id)）。
- *   收窄跟详情走：组员条件（项目、组员的客户、卡点、裸 SQL）只认本人；只看某人详情不认组员，数据层也不认。
+ *   收窄跟详情走：组员条件（项目、组员的客户、卡点、裸 SQL）只认本人。
+ * P-看-19（用户 11-24，照 P-看-08）：设了「只看某人」的人，自己进组的项目和挂着的客户列表、详情都能看；被盯的人进组、自己没进的照旧不露。
  * ① 按部门认的市场成员只挂销售角色（现库 0 人）：是否放开待定（口径 M-角色-02 / P-看-05 / P-判定-01 冲突），这个 PR 不改，用 it.fails 记着缺口；
  *   有市场角色的兼任（渠运兼销售、条线总管理 + 销管 + 市场管理）照旧并集，两条回归照跑。
  * P-看-18（用户 11-24）：条线总管理的列表和详情一致、不收窄详情——项目补「创建人在本线」的（详情 能看项目 早认），
@@ -126,7 +127,7 @@ beforeEach(async () => {
   // 管理者自己进组的照常看得到（P-看-08）
   await 项目("销管进组的", 链外, 链外, [销管]);
   await 项目("市管进组的", 链外, 链外, [市管]);
-  // 只看某人详情不认组员（permissions.ts 能看项目「只看某人」那一支），自己进组的也点不进
+  // 只看某人自己进组的（P-看-19）：列表、详情都认
   盯的人进组的 = await 项目("盯的人进组的", 链外, 链外, [盯的人]);
   await 项目("下属的", 下属);
   await 项目("虚线下属的", 虚线下属);
@@ -319,14 +320,25 @@ describe("其他管辖类角色：组员条件只认本人", () => {
     }
   });
 
-  it("只看某人：被盯的人进组的、自己进组的都不出（详情不认组员）；被盯的人负责的照出", async () => {
+  it("只看某人（P-看-19）：自己进组的项目和挂着的客户出、详情点得进、客户只读；被盯的人进组、自己没进的不出；被盯的人负责的照出", async () => {
     const 名 = await 项目名(盯的人);
     expect(名).not.toContain("链外的");
-    expect(名).not.toContain("盯的人进组的");
+    expect(名).toContain("盯的人进组的");
     expect(名).toContain("被盯的");
+    expect(await 点不进的(盯的人)).toEqual([]);
     const 客户 = await 客户编号(盯的人);
     expect(客户).not.toContain(链外的.customerId);
-    expect(客户).not.toContain(盯的人进组的.customerId);
+    expect(客户).toContain(盯的人进组的.customerId);
+    // 客户详情那句 findUnique 拿得到；裸 SQL 快路同样带上
+    expect(await 以谁的身份(盯的人.id, () => prisma.customer.findUnique({ where: { id: 盯的人进组的.customerId }, select: { id: true } }))).not.toBeNull();
+    const 裸 = await 裸SQL客户(盯的人);
+    if (裸) {
+      expect(裸).toContain(盯的人进组的.customerId);
+      expect(裸).not.toContain(链外的.customerId);
+    }
+    // 只读：改不到
+    expect(await 以谁的身份(盯的人.id, () => 只读客户(defaultClient, { id: 盯的人进组的.customerId, salesOwnerId: 链外.id, pool: null }))).toBeTruthy();
+    expect((await 以谁的身份(盯的人.id, () => prisma.customer.updateMany({ where: { id: 盯的人进组的.customerId }, data: { remark: "x" } }))).count).toBe(0);
   });
 
   it("渠运建的、分给同事的照出（详情认市场角色的建档人）；市管下级建的市场管理照出", async () => {

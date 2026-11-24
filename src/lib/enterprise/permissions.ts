@@ -198,9 +198,9 @@ export function 能看项目(me: 谁, p: 权限项目, org: 组织 | null): bool
   if (老()) return 老管(me) || me.id === p.ownerId || !!p.pooledAt;
   // 没设角色：只看公海（V3.5.1）
   if (!org || 没设业务角色(org, me.id)) return !老() && !!org && !!p.pooledAt;
-  // 只看某人：那个人（和自己）是负责人或创建人的，加上公海
+  // 只看某人：那个人（和自己）是负责人或创建人的，加上公海；自己进了组的也看得到（P-看-19，照 P-看-08；被盯的人进组、自己没进的不算）
   const 目标 = 只看的人(org, me.id);
-  if (目标) return !!p.pooledAt || [目标, me.id].some((x) => x === p.ownerId || x === p.creatorId);
+  if (目标) return !!p.pooledAt || [目标, me.id].some((x) => x === p.ownerId || x === p.creatorId) || !!p.已加入?.includes(me.id);
   if (能看全部(me, org)) return true;
   // 项目公海：谁都看得到才能领（历史负责人不能领、不能看另由公海那条规则管）
   if (p.pooledAt) return true;
