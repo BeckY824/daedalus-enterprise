@@ -1606,6 +1606,8 @@ export default function ProjectDetail({
   );
   // 客户详情嵌入版的叫法（11-12，card-names.tsx）：右栏卡名补「项目」、卡点写「当前卡点」；项目详情页原样
   const 卡名 = (名: string) => (嵌入 ? 项目卡名(名) : 名);
+  // 异常 / 没走成的弹窗里说「记在哪」：客户详情里右栏没有进程变更卡（11-24 挪进客户名下那一行的「历史变更」），说历史变更；独立页、受限客户详情照旧
+  const 变更记在 = 嵌入 && !嵌入.进程变更卡 ? "历史变更" : "进程变更";
   const 卡点名 = 嵌入 ? 客户详情卡点 : "卡点";
   /** 交付卡备货 / 物流三行：和项目资料同一套字段行（标签 68 列、值离卡左 92） */
   const 交付行 = 资料行();
@@ -2082,7 +2084,7 @@ export default function ProjectDetail({
           if (ok) set异常框(null);
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>选一个异常类别，看板上这张卡会标红；处理好了把进程改回去就算恢复，类别和备注留在进程变更里。</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>选一个异常类别，看板上这张卡会标红；处理好了把进程改回去就算恢复，类别和备注留在{变更记在}里。</div>
         <Select
           style={{ width: "100%", marginBottom: 12 }}
           placeholder={类别们.length ? "选异常类别" : "没有在用的异常类别，请管理员在设置里加"}
@@ -2111,7 +2113,7 @@ export default function ProjectDetail({
           if (ok) set没成框(null);
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>{选无效原因 ? "选一个无效原因，或写一句为什么没成（至少一样），会记在进程变更里；以后捡回来把进程改回去就行。" : "写一句为什么没成，会记在进程变更里；以后捡回来把进程改回去就行。"}</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>{选无效原因 ? `选一个无效原因，或写一句为什么没成（至少一样），会记在${变更记在}里；以后捡回来把进程改回去就行。` : `写一句为什么没成，会记在${变更记在}里；以后捡回来把进程改回去就行。`}</div>
         {选无效原因 && (
           <DictSelect style={{ width: "100%", marginBottom: 8 }} placeholder="无效原因" aria-label="无效原因" value={无效原因} onChange={set无效原因} options={p.原因选项.无效} />
         )}

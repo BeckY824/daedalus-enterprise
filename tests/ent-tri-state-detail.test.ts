@@ -36,7 +36,18 @@ const 按钮 = async (k: keyof typeof 人, n: number) => ((await 条(k, n))?.按
 /** 照客户详情页那样：客户行连钟读一次递进去 */
 const 页面三态 = async (k: keyof typeof 人, n: number) => {
   const c = (await prisma.customer.findUnique({ where: { id: 客户 }, select: { id: true, name: true, salesOwnerId: true, bizLine: true, poolInvalidAt: true, pool: { select: { customerId: true } }, entClock: true } }))!;
-  return 读客户三态(人[k], c, new Map(Object.values(人).map((u) => [u.id, u.name])), 白天(n));
+  return 读客户三态(人[k], c, 白天(n));
+};
+/**
+ * 状态留痕每一行怎么说（11-24 起客户详情首屏不读留痕，在「历史变更」弹窗里点开才取，customers/[id]/history-data.ts）：
+ * 和弹窗同一套——库里按时间倒序、留痕说法 + 能看理由（B1）
+ */
+const 留痕们 = async (k: keyof typeof 人) => {
+  const c = (await prisma.customer.findUnique({ where: { id: 客户 }, select: { salesOwnerId: true, bizLine: true } }))!;
+  const 带理由 = 能看理由(人[k], await 读组织(), c);
+  const 名 = new Map(Object.values(人).map((u) => [u.id, u.name]));
+  const 行们 = await prisma.entCustomerStateLog.findMany({ where: { customerId: 客户 }, orderBy: [{ at: "desc" }, { id: "desc" }] });
+  return 行们.map((x) => ({ 谁: x.userId ? 名.get(x.userId) ?? "已删除的成员" : "系统", 事: 留痕说法(x, 带理由) }));
 };
 
 beforeEach(async () => {
@@ -264,7 +275,7 @@ describe("C13 状态留痕 / C12 短沟通", () => {
     expect(留痕说法({ fromState: null, toState: "活跃", via: "撤销转让·计次", reason: null, holdDays: null })).toBe("撤销转让（计入 7 天内撤销次数）");
     await 三态夜扫(早(95));
     await 继续持有(人.乙, 客户, null, 白天(95));
-    const 行们 = (await 页面三态("乙", 95))!.留痕;
+    const 行们 = await 留痕们("乙");
     expect(行们.slice(0, 2)).toEqual(expect.arrayContaining([
       expect.objectContaining({ 谁: "乙", 事: "继续持有，顺延 30 天：我还在跟" }),
       expect.objectContaining({ 谁: "系统", 事: "沉睡待定 → 正常跟进（继续持有顺延 30 天，三个节点一起往后挪）" }),
@@ -277,7 +288,7 @@ describe("C13 状态留痕 / C12 短沟通", () => {
   it("B1：理由原文只有本人、上级链、本线总管理、系统管理员看得到；别线总管理、同事只看做了什么", async () => {
     await 三态夜扫(早(185));
     expect(await 继续持有(人.总内, 客户, "下周签合同", 白天(185))).toMatchObject({ ok: true });
-    const 那条 = async (k: keyof typeof 人) => (await 页面三态(k, 186))!.留痕.find((x) => x.事.startsWith("继续持有"))!.事;
+    const 那条 = async (k: keyof typeof 人) => (await 留痕们(k)).find((x) => x.事.startsWith("继续持有"))!.事;
     for (const k of ["乙", "甲", "总内", "系"] as const) expect(await 那条(k)).toBe("继续持有，顺延 30 天：由 总内 代选：下周签合同");
     for (const k of ["总外", "丙"] as const) expect(await 那条(k)).toBe("继续持有，顺延 30 天");
     expect(留痕说法({ fromState: "待回收", toState: "待回收", via: "总管理裁决", reason: "暂缓回收：月底前结项", holdDays: null }, false)).toBe("暂缓回收");

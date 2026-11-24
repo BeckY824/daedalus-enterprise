@@ -6,8 +6,10 @@
  *   - 项目块：我看得到的每个项目一节，建档一格 + 节点 / 转让 / 公海 / 领取（ProjectNodeLog 全部 kind）、线索验证每一步、卡点流转
  *
  * 权限都在服务端判：客户块跟客户详情同一道（限定层 findUnique 看得到这位客户）；项目块按项目可见（project-zone.ts 客户页项目列表 + 能看的项目，
- * 和客户详情项目页签同一把尺），看不到的项目只回个数，名字、变更都不出。
- * 查询数固定（每页每个来源一句，人名一句），按 (时刻, id) 游标翻页，每页 30 条，大客户上千条也不一次取完
+ * 和客户详情项目页签同一份名单），看不到的同事在推项目只回个数（和项目区锁数同一个函数，P-看-12），名字、变更都不出。
+ * 号码：回包里的文字都过 号码脱敏器（电话设成「藏」的角色、销售教练打码，同客户详情别处）——资料修改里电话类字段的原值 / 新值整格打，
+ * 说明、批量说明、理由里像手机 / 座机的串按 notice-mask.ts 的认法替换。
+ * 查询数固定（每页每个来源一句，人名一句；状态留痕筛掉「没变不记」后不够一页才往前接着取），按 (时刻, id) 游标翻页，每页 30 条，大客户上千条也不一次取完
  */
 import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/auth";
@@ -29,8 +31,9 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典, 本套位置 } from "@/lib/project/nodes";
 import { 节点字 } from "@/lib/project/customer-list-projects";
 import { 动作叫法 } from "@/lib/project/blocker-rules";
+import { 逐个号码, 号码数字 } from "@/lib/enterprise/notice-mask";
 import { 认放回 } from "../../projects/[id]/load";
-import { 客户页项目列表, 能看的项目 } from "./project-zone";
+import { 客户页项目列表, 能看的项目, 看不到的在推数 } from "./project-zone";
 import { 历史每页, type 历史筛选, type 历史事件, type 历史行, type 历史游标, type 建档格, type 历史页, type 项目概要, type 历史摘要 } from "./history-types";
 
 /** 首页对话（AI）新建线索时首条沟通的开头（dashboard/apply.ts 建成项目 写的那句）：客户建档入口认「AI 建档」靠它 */
@@ -39,17 +42,48 @@ export const AI建档首条开头 = "在首页对话里新建的线索";
 export const 重复咨询来源 = "repeat-inquiry";
 
 /**
+ * 「没写理由」认哪些空白：半角空格、Tab、换行、回车、不换行空格、全角空格。JS（状态记不记）和 SQL（状态记SQL 的 TRIM 第二参数）用同一组，
+ * 不用 JS 的 trim()（它认的空白比 SQLite TRIM 多，两边数出来会差）
+ */
+const 理由空白码 = [32, 9, 10, 13, 160, 12288] as const;
+const 只有空白 = new RegExp(`^[${理由空白码.map((c) => `\\u${c.toString(16).padStart(4, "0")}`).join("")}]*$`);
+
+/**
  * 三态状态留痕记不记：钟按事实重算、状态没变、也没写因为什么（via 自动、from = to、没有理由）的不记（原型「状态重算了但没变的不记」）。
  * 同一状态但有事的照记：继续持有、暂缓回收、让同事结束项目、撤销转让（人点的，via 不是自动）；被挡、解除、待交接（系统写了理由）
  */
 export function 状态记不记(r: { fromState: string | null; toState: string; via: string; reason: string | null }): boolean {
-  return !(r.fromState !== null && r.fromState === r.toState && r.via === "自动" && !r.reason?.trim());
+  return !(r.fromState !== null && r.fromState === r.toState && r.via === "自动" && 只有空白.test(r.reason ?? ""));
 }
 /** 同一条规矩的 SQL 版（摘要那一句数条数用；表别名 s）。改了上面要一起改，tests/ent-history-changes.test.ts 两边对着数 */
-const 状态记SQL = `NOT (s."fromState" IS NOT NULL AND s."fromState" = s."toState" AND s."via" = '自动' AND TRIM(COALESCE(s."reason", '')) = '')`;
+const 状态记SQL = `NOT (s."fromState" IS NOT NULL AND s."fromState" = s."toState" AND s."via" = '自动' AND TRIM(COALESCE(s."reason", ''), char(${理由空白码.join(", ")})) = '')`;
 
-/** 资料修改：界面写的是 [{字段, 原值, 新值}]，拆成「字段：原值 → 新值」几行；别的明细不拆 */
-function 改动行们(detail: string | null): string[] {
+/* ============================ 号码打码 ============================ */
+
+/** 号码脱敏器 回的那个函数（电话没设「藏」= 原样返回） */
+export type 号码器 = <T extends string | null>(p: T) => T;
+/** 资料修改里哪些字段是号码：原值、新值整格过 号码脱敏器（同 utils.ts 文字里号码打码 的电话格名，加传真） */
+const 号码字段 = /电话|手机|号码|传真|phone|mobile|tel|whatsapp|fax/i;
+
+/** 文字里像手机 / 座机的串（notice-mask.ts 的认法）交给 号码脱敏器；一个都没换的原样回（不动全角数字） */
+function 文字打码(s: string, 号: 号码器): string {
+  if (!s || !/\d|[０-９]/.test(s)) return s;
+  let 换了 = false;
+  const 出 = 逐个号码(s, (m) => {
+    const 数字 = 号码数字(m);
+    const 打 = 号(数字);
+    if (打 === 数字) return m;
+    换了 = true;
+    return 打;
+  });
+  return 换了 ? 出 : s;
+}
+
+const 事件打码 = (e: 历史事件, 号: 号码器): 历史事件 => ({ ...e, 文: 文字打码(e.文, 号), 谁: 文字打码(e.谁, 号), 因: e.因.map((x) => 文字打码(x, 号)) });
+const 建档打码 = (g: 建档格 | null, 号: 号码器): 建档格 | null => (g ? { ...g, 行们: g.行们.map((r) => ({ ...r, 值: 文字打码(r.值, 号) })) } : null);
+
+/** 资料修改：界面写的是 [{字段, 原值, 新值}]，拆成「字段：原值 → 新值」几行；别的明细不拆。号码类字段的原值、新值整格过 号码脱敏器 */
+function 改动行们(detail: string | null, 号: 号码器): string[] {
   if (!detail || detail[0] !== "[") return [];
   try {
     const v: unknown = JSON.parse(detail);
@@ -58,7 +92,8 @@ function 改动行们(detail: string | null): string[] {
       if (!x || typeof x !== "object") return [];
       const o = x as Record<string, unknown>;
       if (typeof o.字段 !== "string") return [];
-      return [`${o.字段}：${String(o.原值 ?? "（空）")} → ${String(o.新值 ?? "（空）")}`];
+      const 值 = (v: unknown) => (v == null || v === "" ? "（空）" : 号码字段.test(o.字段 as string) ? 号(String(v)) : String(v));
+      return [`${o.字段}：${值(o.原值)} → ${值(o.新值)}`];
     });
   } catch {
     return [];
@@ -74,19 +109,21 @@ const 倒序 = [{ at: "desc" as const }, { id: "desc" as const }];
 /** 新的在前；同一刻按 id 倒序（id 是 ASCII，和 SQLite BINARY 一致） */
 const 比 = (a: { at: Date; id: string }, b: { at: Date; id: string }) => +b.at - +a.at || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0);
 
-/** 人名：一次查齐；system 叫「系统」，查不到叫「已不在的成员」，公海占位账号叫「无负责人」 */
-async function 人名们(ids: Iterable<string | null | undefined>): Promise<(id: string | null | undefined, 创建人?: boolean) => string | null> {
+/** 人名：一次查齐；system 叫「系统」，查不到叫「已不在的成员」，公海占位账号叫「无负责人」。原名 = 账号现在的名字原样（认批量用），查不到 null */
+type 叫人 = ((id: string | null | undefined, 创建人?: boolean) => string | null) & { 原名: (id: string | null | undefined) => string | null };
+async function 人名们(ids: Iterable<string | null | undefined>): Promise<叫人> {
   const 要 = [...new Set([...ids].filter((x): x is string => !!x))];
   const 名 = new Map(要.length ? (await 看全部(() => prisma.user.findMany({ where: { id: { in: 要 } }, select: { id: true, name: true } }))).map((u) => [u.id, u.name]) : []);
-  return (id, 创建人) => {
+  const 叫 = (id: string | null | undefined, 创建人?: boolean) => {
     if (!id) return null;
     const n = 人名显示(id, 名, { 创建人, 不在: "已不在的成员" });
     return n === 无负责人占位名 ? "无负责人" : n;
   };
+  return Object.assign(叫, { 原名: (id: string | null | undefined) => (id ? 名.get(id) ?? null : null) });
 }
 
-/** 来源行（合并排序、取一页前的样子）：at / id 排序用，做 = 拿到人名后变成事件 */
-type 原 = { at: Date; id: string; 批?: string | null; 做: (叫: Awaited<ReturnType<typeof 人名们>>) => 历史事件 | null; 人: (string | null)[] };
+/** 来源行（合并排序、取一页前的样子）：at / id 排序用，做 = 拿到人名后变成事件；批 = 拿到人名后认是不是系统批量修正（要账号现名） */
+type 原 = { at: Date; id: string; 批?: (叫: 叫人) => string | null; 做: (叫: 叫人) => 历史事件 | null; 人: (string | null)[] };
 
 function 截一页(们: 原[]): { 页: 原[]; 更早: 历史游标 | null } {
   const 排 = [...们].sort(比);
@@ -95,14 +132,17 @@ function 截一页(们: 原[]): { 页: 原[]; 更早: 历史游标 | null } {
   return { 页, 更早: 排.length > 历史每页 && 末 ? { at: 末.at.toISOString(), id: 末.id } : null };
 }
 
-async function 成行(页: 原[]): Promise<历史行[]> {
+async function 成行(页: 原[], 号: 号码器): Promise<历史行[]> {
   const 叫 = await 人名们(页.flatMap((r) => r.人));
-  const 事件们 = 页.map((r) => ({ at: r.at, r, e: r.做(叫) })).filter((x): x is { at: Date; r: 原; e: 历史事件 } => !!x.e);
-  return 折批量(事件们, (x) => x.r.批 ?? null).map((g) =>
+  const 事件们 = 页.flatMap((r) => { const e = r.做(叫); return e ? [{ at: r.at, 批: r.批?.(叫) ?? null, e: 事件打码(e, 号) }] : []; });
+  return 折批量(事件们, (x) => x.批).map((g) =>
     g.种 === "单" ? { 种: "事件" as const, 事件: g.行.e } : { 种: "批量" as const, 键: g.键, 说明: g.行们[0].e.文, 事件们: g.行们.map((x) => x.e) });
 }
 
 /* ============================ 摘要（页面首屏） ============================ */
+
+/** 客户块数进来的审计动作：资料修改、标无效 / 恢复（和 客户历史页 的 审计动作 同一组） */
+const 客户审计动作 = ["update", "pool-invalid", "pool-restore"] as const;
 
 
 /**
@@ -111,13 +151,14 @@ async function 成行(页: 原[]): Promise<历史行[]> {
  */
 export async function 历史变更摘要(customerId: string, 可看项目: readonly string[]): Promise<历史摘要> {
   const ids = JSON.stringify(可看项目);
+  // 审计动作名走参数、不写进 SQL 原文：原文里出现 update 这类词，切换视图 / 只读账号的守卫（view-as.ts 会写库的SQL）会当成写库拦掉
   // 三态关着不碰三态的表（同原来项目进程变更卡：关着不摆「客户状态」那段；tests/ent-cust-detail-queries.test.ts 锁着）
   const 状态 = await 三态开着();
   const rows = await 看全部(() => prisma.$queryRawUnsafe<{ part: string; n: bigint | number; t: bigint | number | null }[]>(
     `SELECT part, COUNT(*) AS n, MAX(at) AS t FROM (
        SELECT 'c' AS part, o."at" AS at FROM "CustomerOwnerLog" o WHERE o."customerId" = ?
        ${状态 ? `UNION ALL SELECT 'c', s."at" FROM "EntCustomerStateLog" s WHERE s."customerId" = ? AND ${状态记SQL}` : ""}
-       UNION ALL SELECT 'c', a."at" FROM "AuditLog" a WHERE a."entity" = 'Customer' AND a."entityId" = ? AND a."action" IN ('update', 'pool-invalid', 'pool-restore')
+       UNION ALL SELECT 'c', a."at" FROM "AuditLog" a WHERE a."entity" = 'Customer' AND a."entityId" = ? AND a."action" IN (?, ?, ?)
        UNION ALL SELECT 'c', f."createdAt" FROM "FollowUp" f LEFT JOIN "FollowUpProject" fl ON fl."followUpId" = f."id"
          WHERE f."customerId" = ? AND f."deletedAt" IS NULL AND f."title" LIKE '${同号标题}%'
            AND (fl."projectId" IS NULL OR fl."projectId" IN (SELECT value FROM json_each(?))
@@ -126,7 +167,7 @@ export async function 历史变更摘要(customerId: string, 可看项目: reado
        UNION ALL SELECT 'p', v."at" FROM "EntLeadVerifyLog" v WHERE v."projectId" IN (SELECT value FROM json_each(?))
        UNION ALL SELECT 'p', bl."at" FROM "EntBlockerLog" bl JOIN "EntBlocker" b ON b."id" = bl."blockerId" WHERE b."projectId" IN (SELECT value FROM json_each(?))
      ) GROUP BY part`,
-    ...(状态 ? [customerId, customerId] : [customerId]), customerId, customerId, ids, customerId, ids, ids, ids,
+    ...(状态 ? [customerId, customerId] : [customerId]), customerId, ...客户审计动作, customerId, ids, customerId, ids, ids, ids,
   ));
   const 取 = (k: string) => rows.find((r) => r.part === k);
   const 最近 = Math.max(...rows.map((r) => Number(r.t ?? 0)));
@@ -155,8 +196,9 @@ async function 客户建档(c: 客户行): Promise<建档格> {
     prisma.customerOwnerLog.findFirst({ where: { customerId: c.id }, orderBy: [{ at: "asc" }, { id: "asc" }], select: { fromOwnerId: true } }),
   ]));
   const 首任id = 首条换人 ? 首条换人.fromOwnerId : c.salesOwnerId;
-  const 叫 = await 人名们([建的人?.userId, 首任id]);
-  const 入口 = 导入 ? "导入" : 建档痕 && 批量批次(建档痕) ? "导入（后台补录）" : AI首条 ? "AI 建档" : 建档痕 ? "手建" : null;
+  const 叫 = await 人名们([建的人?.userId, 首任id, 建档痕?.userId]);
+  // 显示名带全角括号的员工手建的：userName 就是他现在的名字，不按括号认成后台补录
+  const 入口 = 导入 ? "导入" : 建档痕 && 批量批次(建档痕, 叫.原名(建档痕.userId)) ? "导入（后台补录）" : AI首条 ? "AI 建档" : 建档痕 ? "手建" : null;
   const 行们: 建档格["行们"] = [];
   const 建档人 = 叫(建的人?.userId);
   if (建档人) 行们.push({ 键: "建档人", 值: 建档人 });
@@ -168,11 +210,30 @@ async function 客户建档(c: 客户行): Promise<建档格> {
   return { 时间: c.createdAt.toISOString(), 行们 };
 }
 
+/** 状态留痕往前接着取时一次取几条（筛掉「没变不记」的以后不够一页才接着取） */
+const 状态接着取 = 100;
+
+/**
+ * 状态留痕一页：「没变不记」的取回来就筛掉，筛完不够 要 条、库里还有更早的，就从这批最后一条往前接着取，直到够数或到底。
+ * 这样合并排序后一页一定满 30 条或已到底，空页不会还出「更早的」
+ */
+async function 记的状态留痕(customerId: string, 游: 游标条件 | null, 要: number) {
+  const 留: Awaited<ReturnType<typeof prisma.entCustomerStateLog.findMany>> = [];
+  let 接 = 游;
+  for (let 批大小 = 要; ; 批大小 = 状态接着取) {
+    const 批 = await 看全部(() => prisma.entCustomerStateLog.findMany({ where: 接 ? { AND: [{ customerId }, 接] } : { customerId }, orderBy: 倒序, take: 批大小 }));
+    留.push(...批.filter(状态记不记));
+    const 末 = 批[批.length - 1];
+    if (留.length >= 要 || 批.length < 批大小 || !末) return 留.slice(0, 要);
+    接 = { OR: [{ at: { lt: 末.at } }, { at: 末.at, id: { lt: 末.id } }] };
+  }
+}
+
 /**
  * 客户块一页。调用方先用 看得到的客户 确认看得到（客户详情同一道）。
- * 可看项目：同号再次录入挂在我看不到的项目上的不出（同客户页沟通记录，进了回收站的项目上的照出）
+ * 可看项目：同号再次录入挂在我看不到的项目上的不出（同客户页沟通记录，进了回收站的项目上的照出）。号 = 号码脱敏器（调用方按看的人取一次）
  */
-export async function 客户历史页(me: SessionUser, c: 客户行, 筛: 历史筛选, 可看项目: readonly string[], before?: 历史游标 | null): Promise<历史页 & { 建档: 建档格 | null }> {
+export async function 客户历史页(me: SessionUser, c: 客户行, 筛: 历史筛选, 可看项目: readonly string[], 号: 号码器, before?: 历史游标 | null): Promise<历史页 & { 建档: 建档格 | null }> {
   const 游 = 游标of(before);
   const where = <T extends object>(w: T) => (游 ? { AND: [w, 游] } : w);
   const 要 = (k: 历史筛选) => 筛 === "全部" || 筛 === k;
@@ -181,7 +242,7 @@ export async function 客户历史页(me: SessionUser, c: 客户行, 筛: 历史
   const take = 历史每页 + 1;
   const [换人, 状态, 审计, 同号, 建档] = await Promise.all([
     要("负责人") ? 看全部(() => prisma.customerOwnerLog.findMany({ where: where({ customerId: c.id }), orderBy: 倒序, take })) : [],
-    状态开 ? 看全部(() => prisma.entCustomerStateLog.findMany({ where: where({ customerId: c.id }), orderBy: 倒序, take })) : [],
+    状态开 ? 记的状态留痕(c.id, 游, take) : [],
     审计动作.length ? 看全部(() => prisma.auditLog.findMany({ where: where({ entity: "Customer", entityId: c.id, action: { in: 审计动作 } }), orderBy: 倒序, take })) : [],
     要("同号录入")
       ? 看全部(async () => {
@@ -217,16 +278,17 @@ export async function 客户历史页(me: SessionUser, c: 客户行, 筛: 历史
     })),
     ...状态.map((r): 原 => ({
       at: r.at, id: r.id, 人: [r.userId],
-      做: (叫) => (状态记不记(r) ? { id: r.id, at: r.at.toISOString(), 标: "状态", 文: 留痕说法(r, 带理由), 谁: 叫(r.userId) ?? "系统", 因: [] } : null),
+      做: (叫) => ({ id: r.id, at: r.at.toISOString(), 标: "状态", 文: 留痕说法(r, 带理由), 谁: 叫(r.userId) ?? "系统", 因: [] }),
     })),
     ...审计.map((r): 原 => {
-      const 批 = r.action === "update" ? 批量批次(r) : null;
+      // 认批量要这条 userId 那个账号现在的名字（显示名本身带括号的员工不算脚本），所以等人名查齐了再认
+      const 批 = (叫: 叫人) => (r.action === "update" ? 批量批次(r, 叫.原名(r.userId)) : null);
       return {
-        at: r.at, id: r.id, 人: [], 批,
-        做: () => {
+        at: r.at, id: r.id, 人: [r.userId], 批,
+        做: (叫) => {
           if (r.action !== "update") return { id: r.id, at: r.at.toISOString(), 标: "公海", 文: 去客户引(r.summary), 谁: r.userName, 因: [] };
-          if (批) return { id: r.id, at: r.at.toISOString(), 标: "资料修改", 文: 批量说明(r.summary), 谁: r.userName, 因: [] };
-          const 行 = 改动行们(r.detail);
+          if (批(叫)) return { id: r.id, at: r.at.toISOString(), 标: "资料修改", 文: 批量说明(r.summary), 谁: r.userName, 因: [] };
+          const 行 = 改动行们(r.detail, 号);
           return { id: r.id, at: r.at.toISOString(), 标: "资料修改", 文: 行.length === 1 ? 行[0] : 去客户引(r.summary), 谁: r.userName, 因: 行.length > 1 ? 行 : [] };
         },
       };
@@ -240,7 +302,7 @@ export async function 客户历史页(me: SessionUser, c: 客户行, 筛: 历史
     })),
   ];
   const { 页, 更早 } = 截一页(们);
-  return { 建档, 行们: await 成行(页), 更早 };
+  return { 建档: 建档打码(建档, 号), 行们: await 成行(页, 号), 更早 };
 }
 
 /* ============================ 项目块 ============================ */
@@ -253,23 +315,26 @@ export async function 客户页可看项目(me: SessionUser, customerId: string)
   return 列表.filter((p) => 能看.has(p.id)).map((p) => 本套位置(p, 企业版字典));
 }
 
-/** 项目页签：每个看得到的项目一节（名字、阶段节点、条数），看不到的只给个数 */
-export async function 历史项目们(me: SessionUser, customerId: string): Promise<{ 项目们: 项目概要[]; 看不到: number }> {
+/**
+ * 项目页签：每个看得到的项目一节（名字、阶段节点、条数）；看不到的只给个数——只数同事在推的（P-看-12），
+ * 和客户详情项目区的锁数同一个函数（project-zone.ts 看不到的在推数），结束了的、公海里的不数
+ */
+export async function 历史项目们(me: SessionUser, customerId: string, 号: 号码器): Promise<{ 项目们: 项目概要[]; 看不到: number }> {
   const 可看 = await 客户页可看项目(me, customerId);
   const ids = 可看.map((p) => p.id);
   const [节点, 验证, 卡点, 共] = await 看全部(() => Promise.all([
     ids.length ? prisma.projectNodeLog.groupBy({ by: ["projectId"], where: { projectId: { in: ids } }, _count: { _all: true } }) : [],
     ids.length ? prisma.entLeadVerifyLog.groupBy({ by: ["projectId"], where: { projectId: { in: ids } }, _count: { _all: true } }) : [],
     ids.length ? prisma.entBlocker.findMany({ where: { projectId: { in: ids } }, select: { projectId: true, _count: { select: { logs: true } } } }) : [],
-    prisma.project.count({ where: { customerId, deletedAt: null } }),
+    看不到的在推数(customerId, ids),
   ]));
   const 数 = new Map<string, number>();
   for (const r of 节点) 数.set(r.projectId, (数.get(r.projectId) ?? 0) + r._count._all);
   for (const r of 验证) 数.set(r.projectId, (数.get(r.projectId) ?? 0) + r._count._all);
   for (const r of 卡点) 数.set(r.projectId, (数.get(r.projectId) ?? 0) + r._count.logs);
   return {
-    项目们: 可看.map((p) => ({ id: p.id, 名: p.name, 阶段: `${p.phase} · ${节点字(p)}`, 条数: 数.get(p.id) ?? 0 })),
-    看不到: Math.max(0, 共 - 可看.length),
+    项目们: 可看.map((p) => ({ id: p.id, 名: 文字打码(p.name, 号), 阶段: `${p.phase} · ${节点字(p)}`, 条数: 数.get(p.id) ?? 0 })),
+    看不到: 共,
   };
 }
 
@@ -285,12 +350,12 @@ async function 项目建档(projectId: string): Promise<建档格 | null> {
   if (!p) return null;
   const 字典 = 字典of(true, (await 生效组织规则()).阶段.出口叫法);
   const 首任id = 首换人 ? 首换人.fromOwnerId : p.awaitAssignAt ? null : p.ownerId;
-  const 叫 = await 人名们([p.creatorId, 首任id]);
+  const 叫 = await 人名们([p.creatorId, 首任id, 建档痕?.userId]);
   const 怎么来 = p.source === 重复咨询来源 ? "重复咨询"
     : p.source === 历史分析来源 ? "导入（历史沟通分析回填）"
     : p.creatorId === 补建创建人 || p.importBatch === 补建批次 ? "系统补建（潜客培育）"
     : 导入 ? "导入"
-    : 建档痕 && 批量批次(建档痕) ? "导入（后台补录）"
+    : 建档痕 && 批量批次(建档痕, 叫.原名(建档痕.userId)) ? "导入（后台补录）"
     : p.source ? 来源字(p.source) : "普通";
   // 首个节点：建档那一行（没有来处）落在哪；第一行就是换节点的，换之前那格就是首个；一次没换过 = 现在这格
   const 首 = 首节点
@@ -308,9 +373,9 @@ async function 项目建档(projectId: string): Promise<建档格 | null> {
 
 /**
  * 一个项目的一页：节点记录全部 kind（文案同项目详情「进程变更」卡，lib/project/node-log-text.ts）、线索验证每一步、卡点流转。
- * 调用方先确认这个项目在 客户页可看项目 里
+ * 调用方先确认这个项目在 客户页可看项目 里。号 = 号码脱敏器（理由、说明、卡点标题里像号码的串打码）
  */
-export async function 项目历史页(projectId: string, before?: 历史游标 | null): Promise<历史页 & { 建档: 建档格 | null }> {
+export async function 项目历史页(projectId: string, 号: 号码器, before?: 历史游标 | null): Promise<历史页 & { 建档: 建档格 | null }> {
   const 游 = 游标of(before);
   const where = <T extends object>(w: T) => (游 ? { AND: [w, 游] } : w);
   const take = 历史每页 + 1;
@@ -369,5 +434,5 @@ export async function 项目历史页(projectId: string, before?: 历史游标 |
     })),
   ];
   const { 页, 更早 } = 截一页(们);
-  return { 建档, 行们: await 成行(页), 更早 };
+  return { 建档: 建档打码(建档, 号), 行们: await 成行(页, 号), 更早 };
 }

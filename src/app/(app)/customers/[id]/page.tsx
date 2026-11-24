@@ -139,7 +139,8 @@ export default async function CustomerDetailPage({
     ? 客户页项目列表(me, customer.id).then((ps) => ps.map(({ updatedAt: _u, ...p }) => 本套位置(p, 企业版字典)))
     : null;
   // 客户详情合并（11-12 第 2 批）：企业版项目模式下右边是项目区，?project=<id> 选页签；按项目详情页同一个取数读当前项目
-  const 项目区P = 项目们P ? 项目们P.then((ps) => 读项目区(me, customer.id, ps, sp.project ?? null)) : Promise.resolve(null);
+  // 右栏不摆「项目进程变更」卡（11-24 挪进「历史变更」弹窗）：当前项目不取那 200 条节点记录
+  const 项目区P = 项目们P ? 项目们P.then((ps) => 读项目区(me, customer.id, ps, sp.project ?? null, { 不取留痕: true })) : Promise.resolve(null);
   const aiP = llmEnabled();
   const [
     号, users, channels, 挂来的, 另挂, 只项目几样,
@@ -202,12 +203,11 @@ export default async function CustomerDetailPage({
     企 ? 页面可选项("custAttr") : undefined,
     企 ? 页面客户释义() : undefined,
     项目区P,
-    // 客户三态（P-界面-19，C10 / C13 / C11）：关着不查库；开着、活跃的客户只多 3 条（客户钟、状态留痕、冷项目一句 SQL）。
-    // 冷项目只在客户活跃时标（M-公海-22「客户还活跃」），所以接在状态后面
+    // 客户三态（P-界面-19，C10 / C11）：关着不查库；开着、活跃的客户只多冷项目一句 SQL（客户钟跟着客户行读）。
+    // 状态留痕（C13）首屏不读，11-24 挪进「历史变更」弹窗点开才取。冷项目只在客户活跃时标（M-公海-22「客户还活跃」），所以接在状态后面
     三态开
-      ? Promise.all([负责人候选().then((们) => 读客户三态(me, customer, new Map(们.map((u) => [u.id, u.name])))), 项目区P]).then(async ([t, z]) => ({
+      ? Promise.all([读客户三态(me, customer), 项目区P]).then(async ([t, z]) => ({
           条: t?.条 ?? null,
-          留痕: t?.留痕 ?? null,
           冷: t?.活跃 && z ? await 读冷项目(z.页签们.map((x) => x.id)) : ({} as Record<string, number>),
         }))
       : null,

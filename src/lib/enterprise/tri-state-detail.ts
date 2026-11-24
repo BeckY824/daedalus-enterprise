@@ -6,7 +6,7 @@
  *     系统管理员），暂缓回收、让同事结束项目看 permissions.ts 能裁决三态 + 暂缓回收不给——界面给的都能调，能调的界面都给（11-12 第二轮）
  *   - 冷项目（C11，M-公海-22）：只在客户活跃时标。线索 / 商机阶段、没结束、没进公海的项目，最近一次换节点、最近一条挂在它上面的
  *     有效沟通（同客户钟那个判定，含占位词表，同号再次录入的系统留痕不算；沟通生效日 = 沟通日期和写入时间取早的，M-公海-54）、建档三者取最晚，再不早于系统起算日；没动静满「标冷」天数（默认 90）标冷。一句 SQL
- *   - 状态留痕（C13）：最近 100 条，客户详情页现在不摆（11-24 挪进「历史变更」弹窗，customers/[id]/history-data.ts 用这里的 留痕说法 / 能看理由）。理由原文（继续持有写的、
+ *   - 状态留痕（C13）：客户详情页不再摆、首屏也不再读（11-24 挪进「历史变更」弹窗，点开才取，customers/[id]/history-data.ts 用这里的 留痕说法 / 能看理由）。理由原文（继续持有写的、
  *     裁决写的、「由某某代选」）只有负责人本人、他的上级链、本线条线总管理、系统管理员看得到，别人只看谁、什么时候、做了什么（B1）
  *   - 短沟通提示（C12）：保存成功后按库里存下的内容判无效，回原因给前端一句轻提示；判的时候出错当没有，不影响保存结果
  *
@@ -23,7 +23,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 无负责人占位Id只读 } from "@/lib/no-owner-db";
 import { 换负责人原行of } from "@/lib/owner-log-db";
 import { 算三态, 差天, 待回收提醒次数, 三态起算日 } from "./tri-state";
-import { 收三态客户, 三态开着, 读占位词, 待交接理由, type 三态客户, type 痕原行 } from "./tri-state-db";
+import { 收三态客户, 三态开着, 读占位词, 待交接理由, type 三态客户 } from "./tri-state-db";
 import { 继续持有身份, 暂缓回收不给, 能代选了, 代选起始, type 在计时 } from "./tri-state-hold";
 import { 无效沟通原因of, 有内容的沟通, 沟通生效时刻, 沟通生效时刻SQL, 生效时刻余量, 规整占位词, 默认占位词, 占位词键, 暂缓回收, 让同事结束项目, type 无效沟通原因 } from "./tri-state-quota";
 import { 能裁决三态, 能继续持有三态, 能代选三态, 是市场角色, 是销售角色, type 谁 } from "./permissions";
@@ -151,21 +151,20 @@ export type 页面客户 = {
 
 export type 客户三态 = {
   条: 三态条 | null;
-  留痕: 三态留痕行[];
   /** 这位客户现在活跃（冷项目只在活跃时标，M-公海-22「客户还活跃」） */
   活跃: boolean;
 };
 
 /**
- * 客户详情的状态条 + 状态留痕：三态关着回 null、不查库。钟上是沉睡 / 待回收才收齐事实现算，留痕用收出来的那份；
- * 别的情况只读一句留痕
+ * 客户详情的状态条：三态关着回 null、不查库。钟上是沉睡 / 待回收才收齐事实现算；别的情况不查库。
+ * 状态留痕不在这里读（11-24 起在「历史变更」弹窗里点开才取）
  */
-export async function 读客户三态(me: 谁, 客户: 页面客户, 人名: ReadonlyMap<string, string>, 现在: Date = new Date()): Promise<客户三态 | null> {
+export async function 读客户三态(me: 谁, 客户: 页面客户, 现在: Date = new Date()): Promise<客户三态 | null> {
   const 规则 = await 生效组织规则();
   if (!(await 三态开着(规则))) return null;
   const org = await 读组织();
   const 钟 = 客户.entClock ?? null;
-  let 条: 三态条 | null = null, 活跃 = 钟?.state === "活跃", 痕: 痕原行[] | null = null;
+  let 条: 三态条 | null = null, 活跃 = 钟?.state === "活跃";
   if (钟 && (钟.state === "沉睡" || 钟.state === "待回收")) {
     const [换人, 占位Id, 占位词] = await Promise.all([换负责人原行of(客户.id), 页面占位Id(), 页面占位词()]);
     const c = (await 看全部(() => 收三态客户(prisma, [客户.id], 规则, org, 现在, { 客户们: [{ ...客户, entClock: 钟 }], 换人, 占位词, 占位Id }))).get(客户.id);
@@ -174,14 +173,9 @@ export async function 读客户三态(me: 谁, 客户: 页面客户, 人名: Rea
       const r = 算三态(c.事实, 规则.三态, 今天);
       条 = r.计时 ? 拼三态条(me, c, r, org, 规则, 今天) : null;
       活跃 = r.计时 && r.状态 === "活跃";
-      痕 = [...c.痕行们].reverse().slice(0, 100);
     }
   }
-  痕 ??= await 看全部(() => prisma.entCustomerStateLog.findMany({
-    where: { customerId: 客户.id }, orderBy: [{ at: "desc" }, { id: "desc" }], take: 100,
-    select: { id: true, customerId: true, at: true, userId: true, fromState: true, toState: true, via: true, reason: true, holdDays: true, fromOwnerId: true },
-  }));
-  return { 条, 留痕: await 留痕行们(痕, 人名, 能看理由(me, org, 客户)), 活跃 };
+  return { 条, 活跃 };
 }
 
 /** 状态条单读（测试、别的页面用）：同 读客户三态，客户行现读 */
@@ -191,7 +185,7 @@ export async function 读三态条(me: 谁, customerId: string, 现在: Date = n
     where: { id: customerId },
     select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, bizLine: true, poolInvalidAt: true, pool: { select: { customerId: true } }, entClock: true },
   }));
-  return 客户 ? (await 读客户三态(me, 客户, new Map(), 现在))?.条 ?? null : null;
+  return 客户 ? (await 读客户三态(me, 客户, 现在))?.条 ?? null : null;
 }
 
 const 转时刻 = (v: unknown): number | null => {
@@ -286,9 +280,6 @@ SELECT 'f' AS t, x.pid AS id, x.at AS a, x.cat AS b, x.content AS content, x.src
   return 出;
 }
 
-/** 状态留痕的一行（并进「进程变更」卡的「客户状态」一段） */
-export type 三态留痕行 = { at: string; 谁: string; 事: string };
-
 /**
  * 留痕的 via / reason 换成一句话。带理由 = false 时去掉人写的理由（继续持有、裁决写的、「由某某代选」），只留做了什么；
  * 自动的那几行理由是系统写的（满几天、待交接），照留
@@ -334,17 +325,6 @@ function 上级链(org: 组织, userId: string): Set<string> {
     当前 = 上;
   }
   return 链;
-}
-
-/** 留痕原行 → 一行一句；名字先从人名表找，找不到的一次补查 */
-async function 留痕行们(行们: readonly 痕原行[], 人名: ReadonlyMap<string, string>, 带理由: boolean): Promise<三态留痕行[]> {
-  const 缺 = [...new Set(行们.map((x) => x.userId).filter((id): id is string => !!id && !人名.has(id)))];
-  const 补 = 缺.length ? new Map((await prisma.user.findMany({ where: { id: { in: 缺 } }, select: { id: true, name: true } })).map((u) => [u.id, u.name])) : new Map<string, string>();
-  return 行们.map((x) => ({
-    at: x.at.toISOString(),
-    谁: x.userId ? (人名.get(x.userId) ?? 补.get(x.userId) ?? "已删除的成员") : "系统",
-    事: 留痕说法(x, 带理由),
-  }));
 }
 
 /**

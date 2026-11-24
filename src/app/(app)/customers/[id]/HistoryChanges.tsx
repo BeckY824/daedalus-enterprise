@@ -10,7 +10,7 @@
  * 原来项目区右栏「项目进程变更」卡、卡里「客户状态」一段、没项目时左栏的状态留痕，都挪到这里
  */
 import "./history-changes.css";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { Drawer, Grid, Modal } from "antd";
 import { ClockCircleOutlined, DownOutlined, RightOutlined } from "@ant-design/icons";
 import { dayjs, fmtDateTime, smartTime } from "@/lib/utils";
@@ -19,6 +19,8 @@ import { 历史筛选们, type 历史筛选, type 历史行, type 历史事件, 
 import { 读客户历史, 读项目历史, 读项目历史们 } from "./history-actions";
 
 const 读不到话 = "没读到历史变更，请稍后再试";
+/** 只用来认「水合完了没有」（同 CustomersView 已水合）：入口上的「· 最近」是相对时间，按浏览器的钟算，服务端和首帧不画，免得水合对不上 */
+const 无订阅 = () => () => {};
 
 type Props = { customerId: string; 摘要: 历史摘要; 当前项目: string | null; 客户名: string };
 
@@ -29,7 +31,8 @@ export default function HistoryChanges({ customerId, 摘要, 当前项目, 客�
   const [开, set开] = useState(false);
   const 钮 = useRef<HTMLButtonElement>(null);
   const 条数 = 摘要.客户 + 摘要.项目;
-  const 最近 = 摘要.最近 ? smartTime(摘要.最近) : null;
+  const 已水合 = useSyncExternalStore(无订阅, () => true, () => false);
+  const 最近 = 已水合 && 摘要.最近 ? smartTime(摘要.最近) : null;
   // 关掉焦点回入口：antd 6 的 Drawer 带 destroyOnHidden 时不回 afterOpenChange，焦点会掉到 body 上，所以关的那一下记一笔、渲染后自己放回
   const 刚关 = useRef(false);
   const 关 = () => { 刚关.current = true; set开(false); };
@@ -56,7 +59,7 @@ export default function HistoryChanges({ customerId, 摘要, 当前项目, 客�
         aria-haspopup="dialog"
         aria-expanded={开}
         aria-label={`历史变更，共 ${条数} 条${最近 ? `，最近一条 ${最近}` : ""}`}
-        title={摘要.最近 ? `最近一条：${fmtDateTime(摘要.最近)}` : "还没有变更记录"}
+        title={!摘要.最近 ? "还没有变更记录" : 已水合 ? `最近一条：${fmtDateTime(摘要.最近)}` : undefined}
         onClick={() => set开(true)}
       >
         <ClockCircleOutlined className="hist-entry-i" aria-hidden />
@@ -135,15 +138,20 @@ function CustomerPanel({ customerId, 有状态 }: { customerId: string; 有状�
   const [错, set错] = useState<string | null>(null);
   // 快速换筛选时只认最后一次的回包
   const 第几次 = useRef(0);
-  const 取 = useCallback(async (这筛: 历史筛选, 游标: 历史游标 | null) => {
+  /** 原筛 = 换筛选前那个：这次没取成就把「筛」退回去（列表还是原来那一类的），再报没取成 */
+  const 取 = useCallback(async (这筛: 历史筛选, 游标: 历史游标 | null, 原筛?: 历史筛选) => {
     const 次 = ++第几次.current;
+    const 没取成 = (话: string) => {
+      if (原筛) { set筛(原筛); set错(`没换成「${这筛}」，还是看「${原筛}」：${话}`); }
+      else set错(话);
+    };
     try {
       const r = await 读客户历史(customerId, 这筛, 游标);
       if (次 !== 第几次.current) return;
-      if (!r.ok) { set错(r.error); return; }
+      if (!r.ok) { 没取成(r.error); return; }
       set数据((旧) => (游标 && 旧 ? { 建档: 旧.建档, 行们: 接上(旧.行们, r.行们), 更早: r.更早 } : { 建档: r.建档 ?? 旧?.建档 ?? null, 行们: r.行们, 更早: r.更早 }));
     } catch (e) {
-      if (次 === 第几次.current) set错(动作出错话(e, 读不到话));
+      if (次 === 第几次.current) 没取成(动作出错话(e, 读不到话));
     } finally {
       if (次 === 第几次.current) set忙(false);
     }
@@ -164,8 +172,9 @@ function CustomerPanel({ customerId, 有状态 }: { customerId: string; 有状�
   }, [customerId]);
   const 换筛 = (t: 历史筛选) => {
     if (t === 筛) return;
+    const 原 = 筛;
     set筛(t); set忙(true); set错(null);
-    void 取(t, null);
+    void 取(t, null, 原);
   };
   const 往下 = () => {
     if (!数据?.更早) return;
@@ -252,7 +261,7 @@ function ProjectsPanel({ customerId, 当前项目 }: { customerId: string; 当�
           </section>
         );
       })}
-      {概要.看不到 > 0 && <p className="hist-lock" data-testid="history-hidden">还有 {概要.看不到} 个项目你看不到，变更不显示。</p>}
+      {概要.看不到 > 0 && <p className="hist-lock" data-testid="history-hidden">还有 {概要.看不到} 个同事在推的项目你看不到，变更不显示。</p>}
     </>
   );
 }

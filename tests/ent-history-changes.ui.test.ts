@@ -19,7 +19,7 @@ const 动作 = `
     更早:{at:时(400),id:'e36'}};
   const 客户页2={ok:true,建档:null,行们:Array.from({length:5},(_,i)=>行(事(100+i,'负责人','更早的一条 '+i,500+i))),更早:null};
   const 项目页=(id)=>({建档:{时间:时(24*30),行们:[{键:'怎么来的',值:'普通'},{键:'首个节点',值:'线索·潜客培育'}]},行们:[行(事(200,'节点','线索·潜客培育 → 商机·方案报价',3))].map(r=>({...r,事件:{...r.事件,id:id+r.事件.id}})),更早:null});
-  export const 读客户历史=async(id,筛,前)=>{(window.__调??=[]).push(['客户',筛,!!前]);return 前?客户页2:筛==='全部'?客户页1:{ok:true,建档:null,行们:[],更早:null}};
+  export const 读客户历史=async(id,筛,前)=>{(window.__调??=[]).push(['客户',筛,!!前]);return 前?客户页2:筛==='全部'?客户页1:筛==='资料修改'?{ok:false,error:'服务忙'}:{ok:true,建档:null,行们:[],更早:null}};
   export const 读项目历史们=async(id,展开)=>{(window.__调??=[]).push(['项目们',展开]);return {ok:true,项目们:[
       {id:'p1',名:'${"超长的项目名称".repeat(8)}',阶段:'商机 · 方案报价',条数:12},{id:'p2',名:'第二个项目',阶段:'线索 · 潜客培育',条数:3}],
     看不到:2,展开:展开?{id:展开,...项目页(展开)}:null}};
@@ -30,11 +30,13 @@ const plugin: Plugin = { name: "history-changes", setup(b) {
 } };
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
-    import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
+    import React from 'react';import {createRoot,hydrateRoot} from 'react-dom/client';import {renderToString} from 'react-dom/server';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import HistoryChanges from '@/app/(app)/customers/[id]/HistoryChanges';
-    const root=createRoot(document.getElementById('root'));
-    window.__render=()=>root.render(<ConfigProvider locale={zhCN}><App><div className="rec-tags"><span className="rec-tags-n">客户来源：展会</span>
-      <HistoryChanges customerId="a" 摘要={{客户:36,项目:15,项目数:2,最近:new Date(Date.now()-3600_000).toISOString(),状态:true}} 当前项目="p1" 客户名="${"超长客户名称".repeat(8)} · KH-0001"/></div></App></ConfigProvider>);
+    const 树=()=><ConfigProvider locale={zhCN}><App><div className="rec-tags"><span className="rec-tags-n">客户来源：展会</span>
+      <HistoryChanges customerId="a" 摘要={{客户:36,项目:15,项目数:2,最近:new Date(Date.now()-3600_000).toISOString(),状态:true}} 当前项目="p1" 客户名="${"超长客户名称".repeat(8)} · KH-0001"/></div></App></ConfigProvider>;
+    window.__render=()=>createRoot(document.getElementById('root')).render(树());
+    // 服务端先画一遍再水合（入口上的相对时间按浏览器的钟算，服务端那一版不带）
+    window.__hydrate=()=>{const el=document.getElementById('root');el.innerHTML=renderToString(树());window.__ssr=el.innerHTML;hydrateRoot(el,树(),{onRecoverableError:(e)=>console.error('水合错：'+e)});};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, loader: { ".css": "empty" }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -99,6 +101,12 @@ it("没点开一次都不取；入口写条数和相对时间；点开电脑居�
     await page.getByRole("button", { name: "同号录入", exact: true }).click();
     await page.getByText("这一类还没有变更").waitFor();
     expect((await 调(page)).at(-1)).toEqual(["客户", "同号录入", false]);
+    // 换筛选没取成（审查后补）：「筛」退回上一个，报没换成
+    await page.getByRole("button", { name: "资料修改", exact: true }).click();
+    await page.getByRole("alert").filter({ hasText: "没换成「资料修改」" }).waitFor();
+    expect(await page.getByRole("alert").innerText()).toBe("没换成「资料修改」，还是看「同号录入」：服务忙");
+    expect(await page.getByRole("button", { name: "资料修改", exact: true }).getAttribute("aria-pressed")).toBe("false");
+    expect(await page.getByRole("button", { name: "同号录入", exact: true }).getAttribute("aria-pressed")).toBe("true");
     await page.keyboard.press("Escape");
     await 窗.waitFor({ state: "detached" });
     expect(await page.evaluate(() => document.activeElement?.getAttribute("data-testid"))).toBe("history-entry");
@@ -121,7 +129,7 @@ it("项目块：点到才取；当前项目默认展开、别的点开才取；�
     expect(await 节.nth(0).innerText()).toContain("当前项目");
     expect(await 节.nth(0).getByTestId("history-event").count()).toBe(1);
     expect(await 节.nth(1).getAttribute("data-open")).toBe("false");
-    expect(await page.getByTestId("history-hidden").innerText()).toBe("还有 2 个项目你看不到，变更不显示。");
+    expect(await page.getByTestId("history-hidden").innerText()).toBe("还有 2 个同事在推的项目你看不到，变更不显示。");
     const 名 = 节.nth(0).locator(".hist-sec-n");
     expect(await 名.evaluate(e => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth])).toEqual(["ellipsis", true]);
     expect(await 横滚(page)).toEqual([false, false]);
@@ -183,5 +191,24 @@ it("暗色：弹窗底、字、小标都跟着 token 变，不是写死的浅色
     expect(色.建档[0]).toBe(色.建档[1]);
     expect(色.字[0]).toBe(色.字[1]);
     expect(色.白).toBe(false);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("服务端先画再水合：服务端那一版入口不带「· 最近」（相对时间按浏览器的钟），水合不报对不上，水合完再补上", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
+  const 错: string[] = [];
+  page.on("pageerror", e => 错.push(String(e)));
+  page.on("console", m => { if (m.type() === "error") 错.push(m.text()); });
+  try {
+    await page.route("http://hist.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+    await page.goto("http://hist.test");
+    await page.addScriptTag({ content: bundle });
+    await page.evaluate(() => (window as unknown as { __hydrate: () => void }).__hydrate());
+    const ssr = await page.evaluate(() => (window as unknown as { __ssr: string }).__ssr);
+    expect(ssr).toContain("历史变更");
+    expect(ssr).not.toContain("hist-entry-ago");
+    await page.locator(".hist-entry-ago").waitFor();
+    expect(await page.locator(".hist-entry-ago").innerText()).toMatch(/^· (今天|昨天) \d\d:\d\d$/);
+    expect(错.filter((x) => /水合|hydrat|Hydrat/.test(x))).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
