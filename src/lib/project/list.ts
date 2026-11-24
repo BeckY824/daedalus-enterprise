@@ -32,6 +32,8 @@ import { 指定回复文字, 短时刻 } from "./time-fields";
 import { 客户显名 } from "@/lib/enterprise/customer-title";
 import { 待分配范围 } from "@/lib/enterprise/await-assign-scope";
 import { 待分配筛, type 待分配数 } from "@/lib/enterprise/await-assign-core";
+import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
+import { 权限组织 } from "@/lib/enterprise/org";
 
 /** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
 const 带原因的叫法: ReadonlySet<验证结果叫法> = new Set<验证结果叫法>(["初验无效", "终验无效", "无效线索"]);
@@ -803,15 +805,19 @@ export async function 读名单项目(me: { id: string; role?: string }, 字典:
     orderBy: { updatedAt: "desc" },
     take: 项目上限,
     select: {
-      id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, nextStepAt: true, nextStepText: true,
+      id: true, name: true, node: true, customerId: true, nextStepAt: true, nextStepText: true, ...权限项目选,
       customer: { select: { name: true, shortName: true, customerNo: true } },
       followUps: { orderBy: { followUp: { occurredAt: "desc" } }, take: 1, select: { followUp: { select: { type: true, method: true, content: true, occurredAt: true } } } },
     },
   });
-  const 可见 = await 看得到的客户(rows.map((r) => r.customerId));
+  // 名单只列点得进详情的（11-24）：数据层的读范围比详情 能看项目 宽几处（按部门认的市场成员带出自己建的、管理者带出下属进组的），
+  // 那几行点进去是 404「没有找到这条记录」。照详情同一个判断再筛一遍（P-看-02 销售看自己负责的 + 公海；P-看-12 同客户下同事的项目看不到）
+  const org = 企业版() ? await 权限组织() : null;
+  const 进得去 = org ? rows.filter((r) => 能看项目(me, 带已加入(r), org)) : rows;
+  const 可见 = await 看得到的客户(进得去.map((r) => r.customerId));
   return {
     取到上限: rows.length >= 项目上限,
-    rows: rows.map((r) => {
+    rows: 进得去.map((r) => {
       const 露 = 露客户(me, r, 可见);
       const f = 露 ? r.followUps[0]?.followUp : undefined;
       return {
