@@ -3,7 +3,8 @@
  * 列表看得到、点进去 404 的不许有。
  * ② 管理者按下属认组员：数据层组员条件原来按「本人 + 实线 / 虚线下属 + 条线成员」整串人认，详情 能看项目 只认本人进组（p.已加入.includes(me.id)）。
  *   收窄跟详情走：组员条件（项目、组员的客户、卡点、裸 SQL）只认本人；只看某人详情不认组员，数据层也不认。
- * ① 按部门认的市场成员只挂销售角色（现库 0 人）：阶段二修，这里先用 it.fails 记着缺口。
+ * ① 按部门认的市场成员只挂销售角色（现库 0 人）：市场的人 只给有市场角色、或在项目页算市场视角的放开；
+ *   有市场角色的兼任（渠运兼销售、条线总管理 + 销管 + 市场管理）照旧并集。
  * 口径：P-看-01（销管看实线下属 + 自己 + 公海）、P-看-08（项目组员只看自己加入的项目，连带看到挂着的客户）、P-看-12（同客户下同事的项目看不到）。
  * 「按组织看客户」开着（c2 的组合）
  */
@@ -22,15 +23,20 @@ import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/pe
 import { 看得到的范围SQL } from "@/lib/scope-sql";
 
 type 人 = { id: string; role: string; 名: string };
-let 总管: 人, 销管: 人, 下属: 人, 链外: 人, 同事: 人, 虚线上级: 人, 虚线下属: 人, 线总: 人, 线内: 人, 线读: 人, 盯的人: 人, 被盯: 人, 渠运: 人, 市管: 人, 市管下级: 人, 市场部销售: 人;
+let 总管: 人, 销管: 人, 下属: 人, 链外: 人, 同事: 人, 虚线上级: 人, 虚线下属: 人, 线总: 人, 线内: 人, 线读: 人, 盯的人: 人, 被盯: 人, 渠运: 人, 市管: 人, 市管下级: 人, 市场部销售: 人, 渠运兼销售: 人, 组合: 人, 组合下级: 人;
 let 序 = 0;
 
-const 建客户 = async (负责人: 人) => {
+// 客户的建档人 = 项目的建的人（市场相关客户按客户建档人认）
+const 建客户 = async (负责人: 人, 建的人: 人) => {
   序++;
-  return (await prisma.customer.create({ data: { name: `客户${序}`, phone: `1390000${String(序).padStart(4, "0")}`, salesOwnerId: 负责人.id } })).id;
+  return (
+    await prisma.customer.create({
+      data: { name: `客户${序}`, phone: `1390000${String(序).padStart(4, "0")}`, salesOwnerId: 负责人.id, creator: { create: { userId: 建的人.id } } },
+    })
+  ).id;
 };
 async function 项目(name: string, 负责人: 人, 建的人: 人 = 负责人, 组员: 人[] = []) {
-  const customerId = await 建客户(负责人);
+  const customerId = await 建客户(负责人, 建的人);
   const p = await prisma.project.create({ data: { name, customerId, ownerId: 负责人.id, creatorId: 建的人.id } });
   for (const u of 组员) await prisma.projectMember.create({ data: { projectId: p.id, userId: u.id, inviteStatus: "JOINED" } });
   return { id: p.id, customerId };
@@ -82,6 +88,10 @@ beforeEach(async () => {
   市管 = await 建("mktmgr", "marketing_mgr");
   市管下级 = await 建("mktsub", "sales", { managerId: 市管.id });
   市场部销售 = await 建("mkts", "sales", { deptId: 市场部 });
+  渠运兼销售 = await 建("chansales", "channel_ops,sales", { deptId: 市场部 });
+  // 条线总管理 + 销管 + 市场管理（同现库那位总管理的组合），挂在市场部
+  组合 = await 建("combo", "director,sales_mgr,marketing_mgr", { line: "内贸", deptId: 市场部 });
+  组合下级 = await 建("combosub", "sales", { managerId: 组合.id, line: "内贸", deptId: 市场部 });
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await setSetting(规则.按组织看客户.key, true);
   await setSetting(只看某人键, JSON.stringify({ [盯的人.id]: 被盯.id }));
@@ -161,12 +171,35 @@ describe("其他管辖类角色：组员条件只认本人", () => {
   });
 });
 
-describe("① 按部门认的市场成员只挂销售角色（阶段二修）", () => {
-  // 修好后改成 it：市场部销售自己建的、已分给同事的项目和客户不出
-  it.fails("市场部销售：自己建的、已分给同事的项目和客户不出", async () => {
+describe("① 按部门认的市场成员只挂销售角色", () => {
+  it("市场部销售：自己建的、已分给同事的项目和客户不出", async () => {
     const p = await 项目("市场部销售建的", 同事, 市场部销售);
     忘掉企业版范围();
     expect(await 点不进的(市场部销售)).toEqual([]);
+    expect(await 项目名(市场部销售)).not.toContain("市场部销售建的");
     expect(await 客户编号(市场部销售)).not.toContain(p.customerId);
+  });
+
+  it("市场部销售自己负责的照出（P-看-01 回归）", async () => {
+    const p = await 项目("市场部销售负责的", 市场部销售);
+    忘掉企业版范围();
+    expect(await 项目名(市场部销售)).toContain("市场部销售负责的");
+    expect(await 客户编号(市场部销售)).toContain(p.customerId);
+  });
+
+  it("渠运兼销售（有市场角色）：自己建的、分给同事的项目和客户照出，且都点得进", async () => {
+    const p = await 项目("渠运兼销售建的", 同事, 渠运兼销售);
+    忘掉企业版范围();
+    expect(await 项目名(渠运兼销售)).toContain("渠运兼销售建的");
+    expect(await 客户编号(渠运兼销售)).toContain(p.customerId);
+    expect(await 点不进的(渠运兼销售)).toEqual([]);
+  });
+
+  it("条线总管理 + 销管 + 市场管理：直属下级建的、分给同事的照出（市场管理那一支不动），且都点得进", async () => {
+    const p = await 项目("组合下级建的", 同事, 组合下级);
+    忘掉企业版范围();
+    expect(await 项目名(组合)).toContain("组合下级建的");
+    expect(await 客户编号(组合)).toContain(p.customerId);
+    expect(await 点不进的(组合)).toEqual([]);
   });
 });
