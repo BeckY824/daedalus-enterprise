@@ -37,7 +37,7 @@ describe("落印行们", () => {
   });
 });
 
-describe("短沟通那句交到卡上", () => {
+describe("短沟通 / 卡点没发那句交到卡上", () => {
   const 读 = (p: string) => readFileSync(p, "utf8");
 
   it("记沟通卡：apply.ts 把 短话 作为 提示 交回（推话不重复，另走 推进）", () => {
@@ -48,7 +48,9 @@ describe("短沟通那句交到卡上", () => {
 
   it("项目沟通卡：apply-project.ts 把 短话 作为 提示 交回、做项目卡透传", () => {
     const s = 读("src/lib/agent/apply-project.ts");
-    expect(s).toMatch(/\.\.\.\(短话 \? \{ 提示: 短话 \} : \{\}\)/);
+    // 卡点没发出去那句也进 提示（卡上看得见，不只在 message 里）
+    expect(s).toContain('const 卡上提示 = [没发话, 短话].filter(Boolean).join("；");');
+    expect(s).toMatch(/\.\.\.\(卡上提示 \? \{ 提示: 卡上提示 \} : \{\}\)/);
     expect(s).toMatch(/\.\.\.\(done\.提示 \? \{ 提示: done\.提示 \} : \{\}\)/);
   });
 
