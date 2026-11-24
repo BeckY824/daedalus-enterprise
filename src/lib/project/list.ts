@@ -20,7 +20,8 @@ import { 待我复核的, 验证结果叫法, 实际待, 无效交给 } from "./
 import { 看全部, 照限定, 客户读条件 } from "../team-scope";
 import { 仅项目客户们 } from "@/lib/enterprise/project-only-customers";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
-import { 市场项目条件, 只看进度 } from "@/lib/enterprise/market-view";
+import { 市场项目条件, 只看进度, 部门市场销售, 部门市场销售该转向 } from "@/lib/enterprise/market-view";
+import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 历史负责人们, 我回避的公海项目, 回避豁免 } from "./pool-owner";
 import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 企业级别 } from "@/lib/enterprise/customer-v2";
@@ -478,6 +479,27 @@ export async function 读看板一列(me: Parameters<typeof 公海超时收回>[
 }
 
 /**
+ * 按部门认的市场成员、只挂销售（P-看-17）：这一批里点进去会被 projects/[id]/load.ts 市场去向 转回客户页这一行的那几条（同一个判定：
+ * 部门市场销售该转向，且 能看项目 不过）。列表上照市场视角标「只看进度」、点不进，不然点了跳回同一页像没反应。只改能不能点，行照旧。
+ * 先按项目本身筛（自己建的、分给别人、不在公海），绝大多数销售不多读市场成员设置
+ */
+async function 部门市场销售转向行(me: Parameters<typeof 能看项目>[0], rows: 行带include[]): Promise<Set<string>> {
+  const 候选 = rows.filter((p) => p.creatorId === me.id && p.ownerId && p.ownerId !== me.id && !p.pooledAt);
+  if (!候选.length) return new Set();
+  const org = await 权限组织();
+  if (!org) return new Set();
+  const 成员集 = await 读市场成员们(org);
+  if (!部门市场销售(org, me.id, 成员集)) return new Set();
+  const 进组 = new Set((await 看全部(() => prisma.projectMember.findMany({
+    where: { userId: me.id, inviteStatus: "JOINED", projectId: { in: 候选.map((p) => p.id) } }, select: { projectId: true },
+  }))).map((m) => m.projectId));
+  return new Set(候选.filter((p) => {
+    const 带 = { ...p, 已加入: 进组.has(p.id) ? [me.id] : [] };
+    return 部门市场销售该转向(org, me.id, 成员集, 带) && !能看项目(me, 带, org);
+  }).map((p) => p.id));
+}
+
+/**
  * 一批取回的项目拼成 项目行（列表、看板、「再看」共用）：负责人名字、客户露不露、收回次数、市场视角的验证结果都按这一批一次取，不按行查。
  * 待复核：调用方已经取过（项目页要拿它给页上的待复核清单）就传进来，不再取一遍
  */
@@ -508,8 +530,9 @@ async function 拼项目行(
   const 交给 = 市场 ? await 无效交给(市场.org) : "总管理终判";
   // 验证结果悬停看全过程（客户 11-05（X-09））：这一页的痕一次取、经手人名字一次取，不按行查
   const 痕们 = 市场 ? await 读验证痕们(rows.filter((r) => (r as { entLeadVerify?: unknown }).entLeadVerify).map((r) => r.id)) : new Map<string, string>();
+  const 转向行 = 企 && !市场 ? await 部门市场销售转向行(me, rows) : new Set<string>();
   const 市场格 = (p: 行带include): Pick<项目行, "只看进度" | "验证结果" | "验证全文"> => {
-    if (!市场) return {};
+    if (!市场) return 转向行.has(p.id) ? { 只看进度: true } : {};
     const v = (p as { entLeadVerify?: { verdict: string; pending: string | null; salesAck: string | null; invalidReason: string | null } | null }).entLeadVerify;
     const 已加入 = ((p as { members?: { userId: string }[] }).members ?? []).map((m) => m.userId);
     const 叫法 = v ? 验证结果叫法({ 判定: v.verdict, 待: 实际待(v.pending, 交给), 终验: v.salesAck }) : null;

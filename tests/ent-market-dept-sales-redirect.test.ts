@@ -41,6 +41,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import ProjectPage from "@/app/(app)/projects/[id]/page";
 import CustomersPage from "@/app/(app)/customers/page";
+import { 读项目列表 } from "@/lib/project/list";
 
 let 市场部销售: string, 渠运兼销售: string, 普通销售: string, 同事: string;
 let 序 = 0;
@@ -65,7 +66,7 @@ async function 打开(谁: string, id: string) {
     return (e as Error).message;
   }
 }
-type 页属性 = { 高亮?: string; 行?: { id: string; name: string }[]; total?: number };
+type 页属性 = { 高亮?: string; 行?: { id: string; name: string; 只看进度?: boolean }[]; total?: number };
 async function 客户页(谁: string, sp: Record<string, string>): Promise<页属性> {
   当(谁);
   mocks.在请求 = true;
@@ -108,6 +109,27 @@ describe("部门认的市场成员只挂销售：点进已分给同事的项目�
     const 平常 = await 客户页(市场部销售, {});
     expect(平常.高亮).toBeUndefined();
     expect(typeof 平常.total).toBe("number");
+  });
+
+  it("落地页那一行标「只看进度」、点不进（同市场视角 P-看-06）；同页别的行、普通销售、渠运兼销售的行不受影响", async () => {
+    const 转 = await 项目("华东一期", 同事, 市场部销售);
+    const 进组 = await 项目("华东二期", 同事, 市场部销售);
+    await prisma.projectMember.create({ data: { projectId: 进组, userId: 市场部销售, inviteStatus: "JOINED" } });
+    const 自己 = await 项目("华东三期", 市场部销售, 市场部销售);
+    const 落 = await 客户页(市场部销售, { q: "华东", hl: 转 });
+    const 标 = Object.fromEntries((落.行 ?? []).map((r) => [r.id, !!r.只看进度]));
+    // 列表条数和内容不变：三行都在，只有转回这一页的那行点不进
+    expect(标).toEqual({ [转]: true, [进组]: false, [自己]: false });
+    // 点得进的照旧进详情，标点不进的那行点进去确实跳回这一页
+    expect(await 打开(市场部销售, 进组)).toMatch(/^REDIRECT:\/customers\/[^?]+\?project=/);
+    expect(await 打开(市场部销售, 转)).toMatch(/^REDIRECT:\/customers\?q=/);
+    const 渠 = await 项目("渠运兼销售建的", 同事, 渠运兼销售);
+    const 普 = await 项目("普通销售建的", 同事, 普通销售);
+    for (const [谁, id] of [[渠运兼销售, 渠], [普通销售, 普]] as const) {
+      当(谁);
+      const 行 = (await 以谁的身份(谁, () => 读项目列表(mocks.user, { pageSize: "100" }))).行;
+      expect(行.find((r) => r.id === id)?.只看进度 ?? false).toBe(false);
+    }
   });
 
   it("不相干的照旧 404（不借跳转露项目名）：同事建的；自己负责的照常进客户页项目页签", async () => {
