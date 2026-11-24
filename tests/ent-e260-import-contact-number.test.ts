@@ -231,6 +231,30 @@ describe("增量导入 / 同步", () => {
     expect(await prisma.contactCustomer.findMany({ select: { contactId: true, customerId: true, note: true } })).toEqual([{ contactId: 王.id, customerId: 甲.id, note: "采购负责人" }]);
   });
 
+  it("复审 7：数据脚本之前撤回的批次（快照里客户电话不是空的）恢复：号落到主联系人（这一批的联系人建回之后），客户电话置空", async () => {
+    const { id } = await 导([客户表([["C1", "虚构远帆科技有限公司", "", "张伟", ""], ["C2", "虚构海川贸易", "", "张伟", ""]]), 联系人表([["P1", "C1", "虚构王经理", "13700000001"]])]);
+    expect(await 撤回一批(id, 我)).toMatchObject({ 完了: true, 留下数: 0 });
+    // 当时的快照：客户电话格还有号
+    for (const [名, 号] of [["虚构远帆科技有限公司", "13800000001"], ["虚构海川贸易", "13800000002"]]) {
+      const t = (await prisma.entTrash.findMany({ where: { batchId: id, entity: "customer" } })).find((x) => (JSON.parse(x.data) as { name: string }).name === 名)!;
+      await prisma.entTrash.update({ where: { id: t.id }, data: { data: JSON.stringify({ ...JSON.parse(t.data), phone: 号 }) } });
+    }
+    expect(await 恢复一批(id, 我)).toMatchObject({ 完了: true, 留下数: 0 });
+    const 甲 = await 客户("虚构远帆科技有限公司");
+    expect(甲.phone).toBe("");
+    // 甲：这一批的联系人建回了，号落到他身上（他电话格有别的号，进号码行），不另建一位
+    const 甲们 = await 联系人们(甲.id);
+    expect(甲们.map((c) => c.name)).toEqual(["虚构王经理"]);
+    expect(await 子表号(甲.id)).toEqual([{ contactId: 甲们[0].id, value: "13700000001" }, { contactId: 甲们[0].id, value: "13800000001" }]);
+    // 乙：没联系人，按客户名建一位主联系人带号
+    const 乙 = await 客户("虚构海川贸易");
+    expect(乙.phone).toBe("");
+    const 乙们 = await 联系人们(乙.id);
+    expect(乙们).toHaveLength(1);
+    expect(乙们[0]).toMatchObject({ isPrimary: true, phone: "13800000002" });
+    expect(await prisma.contactMethod.count({ where: { contactId: null } })).toBe(0);
+  });
+
   it("落号建的主联系人之后被人改过：撤回留下他，客户也留下", async () => {
     const { id } = await 导([客户表([["C1", "张三｜美国", "13800000001", "张伟", ""]])]);
     const 甲 = await 客户("张三｜美国");

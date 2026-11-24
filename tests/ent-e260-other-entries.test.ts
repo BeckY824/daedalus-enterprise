@@ -134,6 +134,17 @@ describe("4b 回收站捞回客户：客户电话、客户本身的号码行落�
     ]);
   });
 
+  it("复审 5：号验不过（座机）、主联系人是原系统同步来的：回收站没有批次可记明细，号添进客户备注（不丢号），他的电话格、备注不动", async () => {
+    const c = await 客户({ phone: "0571-88889999" });
+    await prisma.customer.update({ where: { id: c.id }, data: { remark: "老备注" } });
+    const 主 = await prisma.contact.create({ data: { name: "同步来的", phone: "13700000000", isPrimary: true, customerId: c.id } });
+    await prisma.entExternalRef.create({ data: { source: "excel", entity: "contact", externalId: "P1", targetId: 主.id, fingerprint: "f", written: "{}", raw: "{}" } });
+    await 删了(c.id);
+    expect((await 恢复(管, "Customer", c.id)).ok).toBe(true);
+    expect(await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).toMatchObject({ phone: "", remark: "老备注\n电话：0571-88889999" });
+    expect(await prisma.contact.findUniqueOrThrow({ where: { id: 主.id } })).toMatchObject({ phone: "13700000000", remark: null });
+  });
+
   it("复审 3：同号只在一位早先单独删掉的联系人身上：不算已有，号落到没删的主联系人身上", async () => {
     const c = await 客户({ phone: "13866667777" });
     const 主 = await prisma.contact.create({ data: { name: "主联系人", phone: "13700000000", isPrimary: true, customerId: c.id } });

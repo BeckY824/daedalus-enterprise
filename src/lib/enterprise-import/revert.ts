@@ -37,6 +37,8 @@ import { 沟通挂潜客培育 } from "../project/nurture";
 import { 要挂项目的类型 } from "../project/follow-needs-project-text";
 import { 企业版字典, 本套名 } from "../project/stage-dict";
 import { 不是同号留痕SQL } from "../enterprise/same-number-mark";
+import { 企业版 } from "../enterprise/switch";
+import { 捞回客户号落主联系人 } from "../enterprise/restore-number-to-contact";
 
 type Tx = Prisma.TransactionClient;
 type 引用行 = Prisma.EntExternalRefGetPayload<object>;
@@ -652,6 +654,11 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
     return 结果(批次Id);
   }
 
+  // 企业版客户没有电话（E-260）：数据脚本之前撤回的批次，快照里客户电话不是空的，建回来又带着号（建回 照快照写）。
+  // 整批都建回完再挪（这一批的联系人也建回了，号落到他们身上，不另按客户名建一位）：照回收站捞回那样落到主联系人、客户电话置空。
+  // 每 100 位一个小事务；断了再调一次接着来（挪过的客户电话已经空了，不会再挪）
+  if (企业版()) await 建回的客户号落主联系人(批次Id);
+
   const n = await prisma.$transaction(async (tx) => {
     const n = await tx.entImportBatch.updateMany({ where: { id: 批次Id, status: "restoring" }, data: { status: "done", revertedAt: null } });
     if (n.count !== 1) return n;
@@ -683,6 +690,20 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
     for (const p of ["/customers", "/leads", "/projects", "/dashboard"]) revalidatePath(p);
   }
   return 结果(批次Id);
+}
+
+/** 这一批回收区里建回 / 改回的客户，客户电话不是空的：号落到主联系人、客户电话置空（restore-number-to-contact.ts，同回收站捞回） */
+async function 建回的客户号落主联系人(批次Id: string): Promise<void> {
+  const ids = [...new Set((await prisma.entTrash.findMany({ where: { batchId: 批次Id, entity: "customer" }, select: { targetId: true } })).map((t) => t.targetId))];
+  for (let i = 0; i < ids.length; i += 100) {
+    const 有号 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids.slice(i, i + 100) }, phone: { not: "" } }, select: { id: true } }));
+    if (!有号.length) continue;
+    await 查完再写((tx) =>
+      看全部(async () => {
+        for (const c of 有号) await 捞回客户号落主联系人(tx, c.id);
+      }),
+    );
+  }
 }
 
 /* ───────────────────────── 冲突处理那一批 ───────────────────────── */
