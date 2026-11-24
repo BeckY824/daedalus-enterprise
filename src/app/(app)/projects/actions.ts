@@ -72,6 +72,7 @@ import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/pro
 import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们, 发卡点预检 } from "@/lib/project/blocker";
 import { 沟通卡点, 规整原因们, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
+import { 超时短沟通提示 } from "@/lib/enterprise/reply-overdue";
 import { 存沟通后重算三态, 三态改天数预览 } from "@/lib/enterprise/tri-state-db";
 import { 新建后定线 } from "@/lib/enterprise/flow-line";
 
@@ -1114,9 +1115,11 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       await 存沟通后重算三态(p?.customerId);
       刷新项目(projectId, p?.customerId);
     }
-    // 客户三态（C12）：这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
-    const 短沟通 = r.ok ? await 短沟通提示(r.followUpId).catch(() => null) : null;
-    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...(r.推前 ? { 推前: r.推前 } : {}), ...卡点结果, ...(短沟通 ? { 短沟通 } : {}) } : r;
+    // 这条不算有效沟通，回原因给前端一句轻提示（不拦）：线索正在超时未跟进计时的，不看三态开关、说计时不会停（E-259）；
+    // 不然按客户三态（C12，三态关着不查库）。两句只出一句，超时那句为准
+    const 超时短沟通 = r.ok ? await 超时短沟通提示(r.followUpId) : null;
+    const 短沟通 = r.ok && !超时短沟通 ? await 短沟通提示(r.followUpId).catch(() => null) : null;
+    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...(r.推前 ? { 推前: r.推前 } : {}), ...卡点结果, ...(超时短沟通 ? { 超时短沟通 } : {}), ...(短沟通 ? { 短沟通 } : {}) } : r;
   } catch (e) { return 不在了(e); }
 }
 
