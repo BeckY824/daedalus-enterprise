@@ -31,7 +31,8 @@ export async function 读导入查重索引(不算: ReadonlySet<string> = new Se
     else 客户名.set(k, [c.id]);
   }
   const 归档号 = 归档号索引(new Set(算的.map((c) => c.id)), [
-    ...算的.map((c) => ({ v: c.phone, customerId: c.id })),
+    // 企业版客户没有电话（E-260）：不比客户电话格，号都在联系人主表 / 子表上
+    ...(企业版() ? [] : 算的.map((c) => ({ v: c.phone, customerId: c.id }))),
     ...客户WA.map((x) => ({ v: x.whatsapp, customerId: x.customerId })),
     ...联系人们.map((c) => ({ v: c.phone, customerId: c.customerId })),
     ...子表号.map((x) => ({ v: x.value, customerId: x.customerId })),
@@ -59,7 +60,7 @@ export async function 读回收站号键(): Promise<Set<string>> {
     ]),
   ));
   const 键们 = new Set<string>();
-  for (const v of [...客户们.map((c) => c.phone), ...客户WA.map((x) => x.whatsapp), ...联系人们.map((c) => c.phone), ...子表号.map((x) => x.value)]) {
+  for (const v of [...(企业版() ? [] : 客户们.map((c) => c.phone)), ...客户WA.map((x) => x.whatsapp), ...联系人们.map((c) => c.phone), ...子表号.map((x) => x.value)]) {
     const k = 归档号键(v);
     if (k) 键们.add(k);
   }

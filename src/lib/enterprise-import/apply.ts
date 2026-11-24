@@ -19,6 +19,9 @@
  *
  * P8（10-29）：客户简称 / 地址四格 / 分配方式、联系人性别 / 生日 / 爱好 / 地址照三方比对，但只在表里给了才比（空的不算冲突）；
  * 来源对上的渠道只补空、归属没定的才挂，不记冲突；客户 / 联系人的号同时记进 ContactMethod 子表（照 P5 记号码）
+ *
+ * 企业版客户没有电话（E-260，11-24 客户「客户没有电话这一说法」）：客户主表电话存空串，原系统交来的客户电话落到主联系人（见 号码待补）。
+ * 对照表里照旧记原系统的客户电话（三方比对靠它认原系统改没改号）；导入记录里客户那一行记库里真写的（电话空），撤回比对才对得上
  */
 import { revalidatePath } from "next/cache";
 import type { Prisma } from "@/generated/prisma";
@@ -28,7 +31,9 @@ import { 查完再写 } from "../check-then-write";
 import { 写外贸档案 } from "../customer-extra-db";
 import { 同号条件, 分机留存起 } from "../phone-dedupe";
 import { 看全部 } from "../team-scope";
-import { 记号码, 号码库类型, type 验好的号 } from "../enterprise/contact-dedupe";
+import { 记号码, 号码库类型, 全公司查号, type 验好的号 } from "../enterprise/contact-dedupe";
+import { 导入号落主联系人 } from "../enterprise/primary-contact-number";
+import { 客户名拆人名 } from "../enterprise/contact-name-from-customer";
 import { 验号码 } from "../enterprise/contact-format";
 import { 客户附加列, 客户新列, 联系人新列 } from "./clean";
 import { 客户类型未定 } from "./mapping";
@@ -348,7 +353,8 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
         // 全称可以空（P-抬头-16）：清洗时没带这一格，落空串，不补名
         // 只有空白 / 零宽字符的当没填（和 saveCustomer 同一条 hasVisibleText）
         name: hasVisibleText(串(v.name ?? null)) ? 串(v.name ?? null)! : "",
-        phone: 串(v.phone) ?? "",
+        // 企业版客户没有电话：存空串，号由调用方记成待补、整批写完落到主联系人（号码待补）
+        phone: 企业版() ? "" : (串(v.phone) ?? ""),
         salesOwnerId: String(v.salesOwnerId),
         followStatus: 串(v.followStatus) ?? "待跟进",
         custStatus: 串(v.custStatus ?? null),
@@ -362,8 +368,8 @@ export async function 建(tx: Tx, e: 实体, v: 值表, 现在: string, 项目?:
     });
     // 刚建出来的不用推版本（同大批导入）
     await 写外贸档案(tx, c.id, Object.fromEntries(客户附加列.filter((k) => !空(v[k])).map((k) => [k, String(v[k])])), false);
-    // 号记进联系方式子表（同 P5 建档：客户本人的号 contactId 空）；座机 / 格式不对的不进
-    await 记客户号(tx, c.id, v.phone);
+    // 号记进联系方式子表（同 P5 建档：客户本人的号 contactId 空）；座机 / 格式不对的不进。企业版客户没有号，不记
+    if (!企业版()) await 记客户号(tx, c.id, v.phone);
     return c.id;
   }
   if (e === "lead") {
@@ -555,7 +561,8 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     const data: Prisma.CustomerUncheckedUpdateInput = {};
     let 出了公海 = false;
     if (有("name")) data.name = String(改动.name);
-    if (有("phone")) data.phone = 串(改动.phone) ?? "";
+    // 企业版客户没有电话：这一格不写（原系统改了号由 对照 / 定冲突记成待补落到主联系人，不走这里）
+    if (有("phone") && !企业版()) data.phone = 串(改动.phone) ?? "";
     if (有("salesOwnerId")) {
       data.salesOwnerId = String(改动.salesOwnerId);
       // 无主客户后来有了负责人（指定默认负责人后再导）就出公海；撤回、采用原系统改回占位账号就回公海。别的原因进公海的不碰
@@ -581,7 +588,7 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     if (data.salesOwnerId && 旧负责人 && data.salesOwnerId !== 旧负责人) await 导入换客户负责人(tx, id, 旧负责人, String(data.salesOwnerId), 批);
     // 出公海：先记待补，整批处理完再补（补的时候项目负责人认客户那时的负责人）
     if (出了公海 && 批?.补培育) await 记出公海待补(tx, 批.批次Id, id);
-    if (有("phone") && 串(改动.phone) !== 串(现值.phone ?? null)) {
+    if (有("phone") && !企业版() && 串(改动.phone) !== 串(现值.phone ?? null)) {
       // 换了号：子表里客户本人的旧号删掉（联系人也挂着的那行留给联系人），新号记上
       const 旧 = 验成("手机号", 现值.phone);
       if (旧) await tx.contactMethod.deleteMany({ where: { customerId: id, contactId: null, kind: 号码库类型.手机号, numberKey: 旧.键 } });
@@ -733,14 +740,31 @@ async function 写一条(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
 /** 写之前在事务里再查一次这个号有没有客户（一位、几位都算撞） */
 async function 有同号客户(tx: Tx, 现: 现场, phone: string): Promise<boolean> {
   if (!phone) return false;
+  if (企业版()) return (await 联系人号码撞的客户(tx, phone)).length > 0;
   return Boolean(await tx.customer.findFirst({ where: await 同号条件(tx, phone, 现.分机起), select: { id: true } }));
 }
 
 /** 线索落项目用：写之前在事务里认这个号的客户。只认唯一的那位，多位同号照新建 */
 async function 再认同号(tx: Tx, 现: 现场, phone: string): Promise<string | null> {
   if (!phone) return null;
+  if (企业版()) {
+    const ids = await 联系人号码撞的客户(tx, phone);
+    return ids.length === 1 ? ids[0] : null;
+  }
   const 有 = await tx.customer.findMany({ where: await 同号条件(tx, phone, 现.分机起), select: { id: true }, take: 2 });
   return 有.length === 1 ? 有[0].id : null;
+}
+
+/**
+ * 企业版认「同一客户」的号（E-260）：客户没有电话，不比客户电话格，比联系人号码——联系人主表、联系方式子表、跨类全公司查
+ * （contact-dedupe.ts 全公司查号，同手工录入、线索转客户的查重）。格式验不过的号（座机这类）按原样比联系人电话格和跨类。
+ * 回收站里的客户不算（这条路另有回收站里的提示）
+ */
+async function 联系人号码撞的客户(tx: Tx, phone: string): Promise<string[]> {
+  const r = 验号码("手机号", phone);
+  const ids = await 全公司查号(tx, "手机号", r.ok ? r.值 : phone, r.ok ? r.键 : "");
+  if (!ids.length) return [];
+  return (await tx.customer.findMany({ where: { id: { in: ids } }, select: { id: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((c) => c.id);
 }
 
 async function 新建(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
@@ -749,10 +773,95 @@ async function 新建(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
   await tx.entExternalRef.create({
     data: { source: 现.源, entity: w.实体, externalId: w.外部ID, targetId: id, fingerprint: w.指纹, written: J(v), raw: J(w.原始), batchId: 现.批次Id },
   });
-  await tx.entImportRow.create({ data: { batchId: 现.批次Id, entity: w.实体, externalId: w.外部ID, targetId: id, kind: "create", written: J(v) } });
-  if (w.实体 === "customer") await 无主客户进公海(tx, 现, id, v);
+  await tx.entImportRow.create({ data: { batchId: 现.批次Id, entity: w.实体, externalId: w.外部ID, targetId: id, kind: "create", written: J(库里样(w.实体, v)) } });
+  if (w.实体 === "customer") {
+    await 无主客户进公海(tx, 现, id, v);
+    await 号码待补(tx, 现.批次Id, id, v.phone);
+  }
   if (w.实体 === "lead" && 现.项目) await 线索落项目(tx, 现, w, id, v);
   return "新建";
+}
+
+/** 导入记录里记库里真写成的样子：企业版客户电话存空串（对照表照旧记原系统的号，三方比对用） */
+export function 库里样(e: 实体, v: 值表): 值表 {
+  return e === "customer" && 企业版() ? { ...v, phone: null } : v;
+}
+
+/* ───────────────────────── 企业版客户电话落主联系人（E-260） ───────────────────────── */
+
+/**
+ * 导入记录里这几种行（entity = 号码行）：
+ *   - kind = pending：原系统交来的客户电话，等整批写完落到主联系人（同一批后面的联系人行可能正是那位主联系人，逐行落会多建一位）；
+ *   - kind = create：落的时候主联系人电话格已有别的号、号记进了联系方式子表挂在他身上（targetId = 联系人，externalId = 客户，written = 那个号）。
+ * 落成新建主联系人、补了他电话格 / 备注的，照联系人那一类记（externalId 加 号码带出 前缀），整批撤回、恢复按联系人逐行退、建回
+ */
+export const 号码行 = "contact-number";
+const 号码待补种 = "pending";
+export const 号码带出 = (customerId: string) => `号码:${customerId}`;
+
+/** 原系统交来（或改成）这个客户电话：企业版记一行待补；同一批同一位同一个号只记一次。非企业版、空号不记 */
+export async function 号码待补(tx: Tx, 批次Id: string, customerId: string, phone: unknown): Promise<void> {
+  const 号 = 串(规(phone))?.trim();
+  if (!企业版() || !号) return;
+  const written = J({ 号 });
+  if (await tx.entImportRow.findFirst({ where: { batchId: 批次Id, entity: 号码行, kind: 号码待补种, externalId: customerId, written }, select: { id: true } })) return;
+  await tx.entImportRow.create({ data: { batchId: 批次Id, entity: 号码行, kind: 号码待补种, externalId: customerId, targetId: customerId, written } });
+}
+
+/**
+ * 把这一批待补的客户电话落到主联系人（primary-contact-number.ts 导入号落主联系人：已有不重复、没联系人新建、只补空、没对上的进子表 / 备注）。
+ * 原系统同步来的联系人（对照表连着）电话格不补、号进子表：补了下次同步那一格会算我们这边改过、记冲突。
+ * 最多 = 这一趟处理几行（收尾分几个小事务补，不攥着写锁）；返回还有没有没补的
+ */
+export async function 补号码待补的(tx: Tx, 批次Id: string, 最多?: number): Promise<boolean> {
+  const 行们 = await tx.entImportRow.findMany({ where: { batchId: 批次Id, entity: 号码行, kind: 号码待补种 }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], ...(最多 ? { take: 最多 } : {}) });
+  const 记 = (data: Omit<Prisma.EntImportRowUncheckedCreateInput, "batchId">) => tx.entImportRow.create({ data: { batchId: 批次Id, ...data } });
+  for (const r of 行们) {
+    const customerId = r.externalId;
+    const 号 = String(解<{ 号?: string }>(r.written, {}).号 ?? "");
+    const c = await tx.customer.findUnique({ where: { id: customerId }, select: { name: true } });
+    const 落 = c
+      ? await 导入号落主联系人(tx, customerId, 号, c.name, async (contactId) => !(await tx.entExternalRef.findFirst({ where: { entity: "contact", targetId: contactId }, select: { id: true } })))
+      : ({ 怎么: "已有" } as const);
+    const externalId = 号码带出(customerId);
+    if (落.怎么 === "新建") {
+      await 记({ entity: "contact", externalId, targetId: 落.contactId, kind: "create", written: J(await 读现值(tx, "contact", 落.contactId)) });
+    } else if (落.怎么 === "补主表" || 落.怎么 === "进备注") {
+      const 格 = 落.怎么 === "补主表" ? "phone" : "remark";
+      const 现 = await 读现值(tx, "contact", 落.contactId);
+      await 记({ entity: "contact", externalId, targetId: 落.contactId, kind: "update", before: J({ [格]: 规(落.原) }), written: J({ [格]: 现?.[格] ?? null }) });
+    } else if (落.怎么 === "进子表") {
+      await 记({ entity: 号码行, externalId: customerId, targetId: 落.contactId, kind: "create", written: J(落.号) });
+    }
+    await tx.entImportRow.delete({ where: { id: r.id } });
+  }
+  return !!最多 && 行们.length === 最多;
+}
+
+/** 整批撤回：落号时记进子表的那几个号摘掉（还挂在那位联系人身上、他电话格不是这个号的才摘）。联系人、客户那几类已经逐行退过 */
+export async function 撤回补的子表号(tx: Tx, 批次Id: string): Promise<void> {
+  const 行们 = await tx.entImportRow.findMany({ where: { batchId: 批次Id, entity: 号码行, kind: "create", undo: null } });
+  for (const r of 行们) {
+    const 号 = 解<验好的号 | null>(r.written, null);
+    if (号?.键) {
+      const 人 = await tx.contact.findUnique({ where: { id: r.targetId }, select: { phone: true } });
+      if (!人 || 验成("手机号", 人.phone)?.键 !== 号.键) {
+        await tx.contactMethod.deleteMany({ where: { customerId: r.externalId, contactId: r.targetId, kind: 号码库类型.手机号, numberKey: 号.键 } });
+      }
+    }
+    await tx.entImportRow.update({ where: { id: r.id }, data: { undo: "撤了" } });
+  }
+}
+
+/** 撤回后恢复：那几个号再记回那位联系人身上（联系人、客户还在才记） */
+export async function 恢复补的子表号(tx: Tx, 批次Id: string): Promise<void> {
+  const 行们 = await tx.entImportRow.findMany({ where: { batchId: 批次Id, entity: 号码行, kind: "create", undo: "撤了" } });
+  for (const r of 行们) {
+    const 号 = 解<验好的号 | null>(r.written, null);
+    const 人 = await tx.contact.findFirst({ where: { id: r.targetId, customerId: r.externalId, deletedAt: null }, select: { id: true } });
+    if (号?.键 && 人) await 看全部(() => 记号码(tx, { 已有: r.externalId }, r.targetId, 号));
+    await tx.entImportRow.update({ where: { id: r.id }, data: { undo: null } });
+  }
 }
 
 /** 线索顺手建出来的那几条在导入记录里的 externalId：加前缀，和原系统真的客户 / 联系人 / 商机行的对照键不撞 */
@@ -788,8 +897,11 @@ async function 线索落项目(tx: Tx, 现: 现场, w: 待写, leadId: string, v
     customerId = await 建(tx, "customer", { name: v.name, phone: v.phone, salesOwnerId: 客户负责人, followStatus: null, remark: null }, 现.现在, 现.项目, 现.业务线);
     if (!负责人) await 无主客户进公海(tx, 现, customerId, { salesOwnerId: 客户负责人 });
     await 记("customer", customerId);
-    if (!空(v.contact)) {
-      联系人Id = await 建(tx, "contact", { name: v.contact, position: null, phone: v.phone, email: v.email, wechat: null, isPrimary: true, remark: null, customerId }, 现.现在);
+    // 企业版客户没有电话（E-260）：线索的号落到主联系人——写了联系人名字用它，没写按线索名拆人名（拆不出留空）。
+    // 这位客户是刚建的、本批别的行挂不上它（对照键加了前缀），当场建，不用等整批写完
+    if (!空(v.contact) || (企业版() && !空(v.phone))) {
+      const 名 = 空(v.contact) ? 客户名拆人名(串(v.name ?? null)) : v.contact;
+      联系人Id = await 建(tx, "contact", { name: 名, position: null, phone: v.phone, email: v.email, wechat: null, isPrimary: true, remark: null, customerId }, 现.现在);
       await 记("contact", 联系人Id);
     }
   }
@@ -858,6 +970,13 @@ async function 对照(tx: Tx, 现: 现场, w: 待写, ref: 引用行): Promise<�
     const l = 规格(上次[k]);
     const c = 规格(现值[k]);
     if (同(n, l)) continue; // 原系统没改
+    if (w.实体 === "customer" && k === "phone" && 企业版()) {
+      // 企业版客户没有电话（E-260）：原系统改了号 / 新给了号，记成待补、整批写完落到主联系人（只补空、同号不重复），客户主表不写、不记冲突；
+      // 原系统清空了号，联系人身上的号不动（号码归联系人了，由人管）
+      if (n !== null) await 号码待补(tx, 现.批次Id, ref.targetId, n);
+      新上次[k] = n;
+      continue;
+    }
     if (k === "channelId") {
       // 渠道只补空：我们这边空着、归属也没定才挂；挂了别的渠道不动、不记冲突（归属固化）
       if (c === null && n !== null && (await 可挂渠道(tx, ref.targetId))) {
@@ -1102,6 +1221,9 @@ function 原因(e: unknown): string {
 
 /** 写完：出了公海的零项目客户补潜客培育，给碰过的客户补「最近跟进」，项目动过的客户重算客户状态，批次记 done，记操作日志 */
 async function 收尾(批次Id: string, 用户: Actor): Promise<void> {
+  // 企业版客户电话落主联系人（E-260）：整批行都写完再落（同一批的联系人行已经建好，补到他身上，不另建一位）；
+  // 每 100 位一个小事务，断了下次续写进来接着补（待补行补完就删）
+  for (let 还有 = true; 还有; ) 还有 = await 查完再写((tx) => 看全部(() => 补号码待补的(tx, 批次Id, 100)));
   // 整批行都处理完再补（nurture-rows.ts）：同一批的商机行已经建了项目的不再补；没待补的行就是空跑一句。别处已经收过尾 = 待补行已经清掉
   await 查完再写((tx) => 看全部(() => 补待补的(tx, 批次Id, 用户.id)));
   await 项目客户重算状态(批次Id);

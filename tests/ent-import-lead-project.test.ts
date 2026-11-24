@@ -69,23 +69,38 @@ describe("企业版只用项目：导入线索建线索阶段的项目", () => {
     expect(项目.followUps).toHaveLength(0);
     expect(项目.logs).toHaveLength(1);
     const 客户 = await prisma.customer.findUniqueOrThrow({ where: { id: 项目.customerId } });
-    expect(客户).toMatchObject({ name: "温州小厂", phone: "13600000001", salesOwnerId: 李娜 });
+    // 企业版客户没有电话（E-260）：号在主要联系人上
+    expect(客户).toMatchObject({ name: "温州小厂", phone: "", salesOwnerId: 李娜 });
     const 联系人 = await prisma.contact.findFirstOrThrow({ where: { customerId: 客户.id } });
     expect(联系人).toMatchObject({ name: "陈总", phone: "13600000001", isPrimary: true });
     expect(项目.contactId).toBe(联系人.id);
     expect(await prisma.followUp.count()).toBe(0);
   });
 
+  it("线索没写联系人：号落一位主要联系人，姓名按线索名拆（E-260 客户没有电话），项目挂上他", async () => {
+    await 导([线索表([["L1", "陈经理｜外贸", "", "13600000001", "李娜", "待跟进"]])]);
+    const 项目 = await prisma.project.findFirstOrThrow();
+    const 客户 = await prisma.customer.findUniqueOrThrow({ where: { id: 项目.customerId } });
+    expect(客户.phone).toBe("");
+    const 联系人 = await prisma.contact.findFirstOrThrow({ where: { customerId: 客户.id } });
+    expect(联系人).toMatchObject({ name: "陈经理", phone: "13600000001", isPrimary: true });
+    expect(项目.contactId).toBe(联系人.id);
+    expect(await prisma.contactMethod.findMany({ where: { customerId: 客户.id }, select: { contactId: true, value: true } })).toEqual([{ contactId: 联系人.id, value: "13600000001" }]);
+  });
+
   it("有唯一同号客户：挂到已有客户上，不新建客户 / 联系人", async () => {
-    const 老 = await prisma.customer.create({ data: { name: "已有客户", phone: "13600000001", salesOwnerId: 我.id } });
+    // 企业版客户没有电话（E-260）：认同号按联系人号码
+    const 老 = await prisma.customer.create({ data: { name: "已有客户", phone: "", salesOwnerId: 我.id } });
+    await prisma.contact.create({ data: { name: "老联系人", phone: "13600000001", isPrimary: true, customerId: 老.id } });
     await 导([线索表([["L1", "温州小厂", "陈总", "13600000001", "李娜", ""]])]);
     expect(await prisma.customer.count()).toBe(1);
-    expect(await prisma.contact.count()).toBe(0);
+    expect(await prisma.contact.count()).toBe(1);
     expect((await prisma.project.findFirstOrThrow()).customerId).toBe(老.id);
   });
 
   it("同号客户在客户公海里：有负责人的这条不导、记原因，别的照写；没负责人的照挂进公海", async () => {
-    const 公海客户 = await prisma.customer.create({ data: { name: "公海里的客户", phone: "13600000001", salesOwnerId: 我.id } });
+    const 公海客户 = await prisma.customer.create({ data: { name: "公海里的客户", phone: "", salesOwnerId: 我.id } });
+    await prisma.contact.create({ data: { name: "公海联系人", phone: "13600000001", isPrimary: true, customerId: 公海客户.id } });
     await prisma.customerPool.create({ data: { customerId: 公海客户.id, userId: 我.id } });
     const { 批次Id } = await 试跑({
       来源: "excel",

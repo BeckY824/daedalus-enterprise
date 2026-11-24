@@ -59,7 +59,9 @@ describe("冲突处理批在批次列表里", () => {
     const 行 = (await 企业版导入概况()).批次们.find((b) => b.id === r.批次Id);
     expect(行).toMatchObject({ 类型: "resolve", 状态: "done", 新建: 1 });
 
-    expect(await 撤回一批(行!.id, 我)).toMatchObject({ 状态: "reverted", 删掉: 1 });
+    // 建回来的客户 + 给它落号建的主联系人（企业版客户没有电话，E-260）
+    expect(await 撤回一批(行!.id, 我)).toMatchObject({ 状态: "reverted", 删掉: 2 });
     expect(await prisma.customer.findFirst({ where: { name: "宁波海川贸易" } })).toBeNull();
+    expect(await prisma.contact.count({ where: { phone: "13800000002" } })).toBe(0);
   });
 });

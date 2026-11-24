@@ -120,7 +120,20 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
   };
   for (const c of 客户们) {
     加(索引.客户名, 名键(c.name), c.id);
-    if (c.phone) 加(索引.客户号, 号键(c.phone), c.id);
+    // 企业版客户没有电话（E-260）：整串比的客户号改取联系人的电话（主表 + 子表手机号），同一位客户同一个键只记一次
+    if (c.phone && !企业版()) 加(索引.客户号, 号键(c.phone), c.id);
+  }
+  if (企业版()) {
+    const 看得见 = new Set(客户们.map((c) => c.id));
+    const 记过 = new Set<string>();
+    const 加号 = (v: string | null, customerId: string) => {
+      const k = v ? 号键(v) : "";
+      if (!k || !看得见.has(customerId) || 记过.has(`${k}|${customerId}`)) return;
+      记过.add(`${k}|${customerId}`);
+      加(索引.客户号, k, customerId);
+    };
+    for (const c of 联系人们) 加号(c.phone, c.customerId);
+    for (const x of 归档子表号) 加号(x.value, x.customerId);
   }
   for (const o of 商机们) 加(索引.商机名, `${o.customerId}|${名键(o.name)}`, o.id);
   // 联系人号码查重（P13 第 2 条）：老三格 + 子表，同一位同一个号只记一次
@@ -140,7 +153,8 @@ export async function 读本地索引(源: 来源): Promise<本地索引> {
   // 导入查重的号（M-导入-24 / 29）：客户电话、客户 WhatsApp、联系人手机、子表的手机 / 座机 / WhatsApp，都按 联系人号查重键 规整；
   // 只算看得见的客户（删了进回收站的不算撞）
   索引.归档号 = 归档号索引(new Set(客户们.map((c) => c.id)), [
-    ...客户们.map((c) => ({ v: c.phone, customerId: c.id })),
+    // 企业版客户没有电话（E-260）：不比客户电话格
+    ...(企业版() ? [] : 客户们.map((c) => ({ v: c.phone, customerId: c.id }))),
     ...客户WA.map((x) => ({ v: x.whatsapp, customerId: x.customerId })),
     ...联系人们.map((c) => ({ v: c.phone, customerId: c.customerId })),
     ...归档子表号.map((x) => ({ v: x.value, customerId: x.customerId })),

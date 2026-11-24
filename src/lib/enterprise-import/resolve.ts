@@ -12,7 +12,8 @@ import { prisma } from "../prisma";
 import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
-import { 开现场, 落值, 建, 改, 读现值, 引用键, 无主客户进公海, 换人带走键, type 现场, type 改的批 } from "./apply";
+import { 开现场, 落值, 建, 改, 读现值, 引用键, 无主客户进公海, 换人带走键, 号码待补, 补号码待补的, 库里样, type 现场, type 改的批 } from "./apply";
+import { 企业版 } from "../enterprise/switch";
 import { 写不进, 规, type 值表 } from "./values";
 import { 别的在写, 重算最近跟进, type 定的一笔 } from "./revert";
 import { 来源名, 实体名, type 来源, type 实体, type 映射, type 待写 } from "./types";
@@ -149,9 +150,13 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
         if (c.localDeleted) {
           if (选 === "保留我们") continue; // 删了就是删了：不建、对照行不动，原系统再改时还会问
           const 新id = await 建(tx, e, v!, 现.现在, 现.项目, 现.业务线, 现.操作人, w.原始);
-          if (e === "customer") await 无主客户进公海(tx, 现, 新id, v!);
+          if (e === "customer") {
+            await 无主客户进公海(tx, 现, 新id, v!);
+            // 企业版客户没有电话（E-260）：原系统的号记成待补，这一笔全部定完再落到主联系人
+            await 号码待补(tx, 批.id, 新id, v!.phone);
+          }
           await tx.entExternalRef.update({ where: { id: ref.id }, data: { targetId: 新id, written: J(v), batchId: 批.id } });
-          await tx.entImportRow.create({ data: { batchId: 批.id, entity: e, externalId: c.externalId, targetId: 新id, kind: "create", written: J(v), refBefore: J(ref) } });
+          await tx.entImportRow.create({ data: { batchId: 批.id, entity: e, externalId: c.externalId, targetId: 新id, kind: "create", written: J(库里样(e, v!)), refBefore: J(ref) } });
           if (e === "followup" && v!.customerId) 碰过.add(String(v!.customerId));
           建了++;
           continue;
@@ -164,6 +169,11 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
         const before: 值表 = {};
         for (const k of Object.keys(字段)) {
           新上次[k] = 原系统(k);
+          // 企业版客户没有电话（E-260）：老冲突里的客户电话采用原系统 = 号记成待补落到主联系人，客户主表不写
+          if (e === "customer" && k === "phone" && 企业版()) {
+            if (选 === "采用原系统") await 号码待补(tx, 批.id, c.targetId, 原系统(k));
+            continue;
+          }
           if (选 === "采用原系统" && 原系统(k) !== 规(现值![k])) {
             改动[k] = 原系统(k);
             before[k] = 现值![k];
@@ -193,6 +203,8 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
       await 重算最近跟进(tx, 碰过);
       // 采用原系统让无主客户出了公海的：这一笔全部定完、同一个事务末尾再补潜客培育（nurture-rows.ts）
       await 补待补的(tx, 批.id, 用户.id);
+      // 客户电话落主联系人（E-260）：这一笔全部定完、同一个事务末尾落（新建的主联系人、补的号记进这一批，整批撤回一起退）
+      await 补号码待补的(tx, 批.id);
       await tx.entImportBatch.update({
         where: { id: 批.id },
         data: { status: "done", finishedAt: new Date(), plan: J(计划), total: 结果.定了, cursor: 结果.定了, created: 建了, updated: 改了, skipped: 结果.定了 - 建了 - 改了 },

@@ -10,6 +10,9 @@
 import type { Prisma } from "@/generated/prisma";
 import { 记号码, type 记到, type 验好的号 } from "./contact-dedupe";
 import { 客户名拆人名 } from "./contact-name-from-customer";
+import { 验号码 } from "./contact-format";
+import { 号键 } from "../phone";
+import { 看全部 } from "../team-scope";
 
 type 主表格 = "phone" | "email" | "wechat";
 const 主表哪格: Partial<Record<验好的号["类型"], 主表格>> = { 手机号: "phone", 邮箱: "email", 微信: "wechat" };
@@ -50,3 +53,75 @@ export async function 号码记到主联系人(
   await 记号码(tx, 到, c.id, 号);
   return { contactId: c.id, 新建: true };
 }
+
+/* ───────────────────────── 导入 / 定时同步交来的客户电话 ───────────────────────── */
+
+/**
+ * 导入、增量导入、飞书 / 钉钉定时同步、客户页 Excel 导入交来的「客户电话」怎么落（导入规矩：只补空、逐格留空、没对上的并进备注、整批可撤销）：
+ *   - 这位客户名下（没删的联系人主表电话格、联系方式子表）已经有这个号 → 已有，什么都不写（同号不重复）；
+ *   - 一位联系人都没有 → 新建：建一位主联系人，姓名按客户名拆（拆不出留空），号写进他的电话格；
+ *   - 有主联系人（主联系人优先、再按建的先后），他电话格空着、调用方说能补（能补主表格）→ 补主表：号写进那一格；
+ *   - 电话格有别的号、或不让补主表（原系统同步来的联系人：补了下次同步那一格会算我们这边改过、记冲突）：
+ *     号格式验得过 → 进子表：记进联系方式子表、挂在他身上；验不过（座机这类，照旧不进子表）→ 进备注：他的备注后面添一行「电话：…」。
+ * 号格式验不过的照旧原样存（以前原样进客户电话格，现在原样进联系人电话格）。返回落成什么样，调用方据此记导入记录（撤回用）。
+ * 只用 tx；记子表不限范围（导入、同步都是调用方明说看全部的）
+ */
+export type 导入落号 =
+  | { 怎么: "已有" }
+  | { 怎么: "新建"; contactId: string }
+  | { 怎么: "补主表"; contactId: string; 原: string | null }
+  | { 怎么: "进子表"; contactId: string; 号: 验好的号 }
+  | { 怎么: "进备注"; contactId: string; 原: string | null; 新: string };
+
+/** 备注里添的那一行 */
+export const 号进备注行 = (号: string) => `电话：${号}`;
+
+export async function 导入号落主联系人(
+  tx: Prisma.TransactionClient,
+  customerId: string,
+  原号: string,
+  客户名: string | null | undefined,
+  能补主表格: (contactId: string) => Promise<boolean> = async () => true,
+): Promise<导入落号> {
+  const 原 = 原号.trim();
+  if (!原) return { 怎么: "已有" };
+  const r = 验号码("手机号", 原);
+  const 号: 验好的号 | null = r.ok && r.键 ? { 类型: r.类型, 值: r.值, 键: r.键 } : null;
+  const 值 = 号?.值 ?? 原;
+  const 同号 = (p: string | null | undefined) => {
+    if (!p?.trim()) return false;
+    if (号键(p) === 号键(原)) return true;
+    const x = 号 ? 验号码("手机号", p) : null;
+    return !!x?.ok && x.键 === 号!.键;
+  };
+  const 们 = await tx.contact.findMany({
+    where: { customerId, deletedAt: null },
+    orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }, { id: "asc" }],
+    select: { id: true, phone: true, remark: true },
+  });
+  if (们.some((c) => 同号(c.phone))) return { 怎么: "已有" };
+  if (号 && (await tx.contactMethod.findFirst({ where: { customerId, kind: { in: [...号码类子表种类] }, numberKey: 号.键 }, select: { id: true } }))) return { 怎么: "已有" };
+  const 主 = 们[0];
+  if (!主) {
+    const c = await tx.contact.create({ data: { name: 客户名拆人名(客户名), isPrimary: true, phone: 值, customerId }, select: { id: true } });
+    if (号) await 看全部(() => 记号码(tx, { 已有: customerId }, c.id, 号));
+    return { 怎么: "新建", contactId: c.id };
+  }
+  if (!主.phone?.trim() && (await 能补主表格(主.id))) {
+    await tx.contact.update({ where: { id: 主.id }, data: { phone: 值 } });
+    if (号) await 看全部(() => 记号码(tx, { 已有: customerId }, 主.id, 号));
+    return { 怎么: "补主表", contactId: 主.id, 原: 主.phone };
+  }
+  if (号) {
+    await 看全部(() => 记号码(tx, { 已有: customerId }, 主.id, 号));
+    return { 怎么: "进子表", contactId: 主.id, 号 };
+  }
+  const 行 = 号进备注行(原);
+  if ((主.remark ?? "").split("\n").some((l) => l.trim() === 行)) return { 怎么: "已有" };
+  const 新 = 主.remark ? `${主.remark}\n${行}` : 行;
+  await tx.contact.update({ where: { id: 主.id }, data: { remark: 新 } });
+  return { 怎么: "进备注", contactId: 主.id, 原: 主.remark, 新 };
+}
+
+/** 子表里算「电话」的几种：手机、座机、WhatsApp 共用号键（11-17） */
+const 号码类子表种类 = ["phone", "landline", "whatsapp"] as const;

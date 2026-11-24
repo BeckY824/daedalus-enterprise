@@ -22,7 +22,7 @@ import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
 import { 外贸键 } from "../customer-extra";
-import { 读现值, 改, 引用键, 摘联系人号, 记客户号, 记联系人号, 沟通没对上项目话, 读换人带走, 换人带走键, type 改的批 } from "./apply";
+import { 读现值, 改, 引用键, 摘联系人号, 记客户号, 记联系人号, 沟通没对上项目话, 读换人带走, 换人带走键, 撤回补的子表号, 恢复补的子表号, type 改的批 } from "./apply";
 import { 带过来对不上 } from "../carry-over-db";
 import { 规, type 值表 } from "./values";
 import { 来源名, 实体名, 实体顺序, type 来源, type 实体 } from "./types";
@@ -560,6 +560,8 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
     if (n.count !== 1) return n;
     // 撤回 / 恢复让无主客户出了公海的：整批行都处理完、同一个事务末尾再补潜客培育（nurture-rows.ts）
     await 补待补的(tx, 批次Id, 用户.id);
+    // 客户电话落主联系人时记进子表的号（E-260，apply.ts 号码行）：联系人、客户逐行退完再摘
+    await 撤回补的子表号(tx, 批次Id);
     await tx.entConflict.updateMany({ where: { batchId: 批次Id, status: "待定" }, data: { status: "已撤回" } });
     if (批.kind === "resolve") await 定的冲突回待定(tx, 批次Id);
     return n;
@@ -648,6 +650,8 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
     if (n.count !== 1) return n;
     // 撤回 / 恢复让无主客户出了公海的：整批行都处理完、同一个事务末尾再补潜客培育（nurture-rows.ts）
     await 补待补的(tx, 批次Id, 用户.id);
+    // 客户电话落主联系人时记进子表的号（E-260）：联系人、客户都建回了再记回去
+    await 恢复补的子表号(tx, 批次Id);
     // 撤回时留下没动的那几行：恢复完又是这一批的了，下次撤回照常处理
     await tx.entImportRow.updateMany({ where: { batchId: 批次Id, undo: "留下" }, data: { undo: null } });
     // 冲突回到待定；同一条原系统记录之后又有一笔待定的，就不再翻出这一笔

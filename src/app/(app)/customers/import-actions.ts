@@ -51,6 +51,9 @@ import { 读导入查重索引, type 导入查重索引 } from "@/lib/enterprise
 import { 带客户编号 } from "@/lib/customer-no";
 import { 客户显名 } from "@/lib/enterprise/customer-title";
 import { hasVisibleText } from "@/lib/form-validation";
+import { 全公司查号, 记号码 } from "@/lib/enterprise/contact-dedupe";
+import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 客户名拆人名 } from "@/lib/enterprise/contact-name-from-customer";
 
 /** 一次导入最多落多少条。和 parse.ts 的行数上限一致，服务端再收一道 */
 const 落库上限 = 10000;
@@ -556,13 +559,21 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
         在开头的认人表里已经算过了。一行一个小事务，不攥着写锁不放（文件头「不放在一个大事务里」那条照旧）
       */
       const c = await 查完再写(async (tx) => {
+        /*
+          企业版客户没有电话（E-260）：号都在联系人上，按联系人号码全公司查（contact-dedupe.ts 全公司查号），不比客户电话格。
+          接着导时撞到的是这一批自己前几趟建的那位（断在半路、游标没往前走）：算写过了，不再记一次跳过
+        */
+        const 号 = phone && 企业版() ? 验号码("手机号", phone) : null;
+        const 撞的 = 号 ? await 看全部(async () => 全公司查号(tx, "手机号", 号.ok ? 号.值 : phone, 号.ok ? 号.键 : "")) : [];
+        if (撞的.length && 续接 && (await tx.importRow.findFirst({ where: { batchId: 现场.batchId, kind: "create", customerId: { in: 撞的 } }, select: { id: true } }))) return "写过" as const;
         // 企业版不到 10 位的号不比（M-导入-29），短号不拦
-        if (!短号 && await 看全部(async () => tx.customer.findFirst({ where: phone ? await 同号条件(tx, phone, null) : email ? await 同邮箱条件(tx, email) : wechat ? await 同微信条件(tx, wechat) : await 同阿里条件(tx, alibabaId), select: { id: true } }))) return null;
+        if (!短号 && (号 ? 撞的.length > 0 : await 看全部(async () => tx.customer.findFirst({ where: phone ? await 同号条件(tx, phone, null) : email ? await 同邮箱条件(tx, email) : wechat ? await 同微信条件(tx, wechat) : await 同阿里条件(tx, alibabaId), select: { id: true } })))) return null;
         const c = await tx.customer.create({
           data: await 带客户编号(tx, {
             // 只有空白 / 零宽字符的当没填（和 saveCustomer 同一条 hasVisibleText）
             name: hasVisibleText(r.值.name) ? r.值.name.trim() : "",
-            phone,
+            // 企业版客户没有电话（E-260）：存空串，号落到下面建的主联系人
+            phone: 企业版() ? "" : phone,
             school: r.值.school ?? null,
             grade: r.值.grade ?? null,
             major: r.值.major ?? null,
@@ -579,10 +590,20 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
           }),
         });
         await 写外贸档案(tx, c.id, Object.fromEntries(外贸导入字段.filter((k) => r.值[k]).map((k) => [k, r.值[k]!])), false);
-        // 企业版「联系人 / 姓名」列（11-19，P-抬头-13）：落成这位客户的主要联系人，号码一并带上；记进导入记录，撤销时不当「名下挂了东西」
-        const 联系人 = 企业版() && hasVisibleText(r.值.contactName)
-          ? await tx.contact.create({ data: { name: r.值.contactName.trim(), phone: phone || null, email: email || null, wechat: wechat || null, isPrimary: true, customerId: c.id }, select: { id: true, updatedAt: true } })
+        /*
+          企业版「联系人 / 姓名」列（11-19，P-抬头-13）：落成这位客户的主要联系人，号码一并带上；记进导入记录，撤销时不当「名下挂了东西」。
+          客户没有电话（E-260）：没填联系人、有电话的也建一位主联系人带上号，姓名按客户名称拆（拆不出留空）；号照原样存（同以前的客户电话格），验得过的同时记进联系方式子表
+        */
+        const 有名 = hasVisibleText(r.值.contactName);
+        const 联系人 = 企业版() && (有名 || phone)
+          ? await tx.contact.create({
+              data: 有名
+                ? { name: r.值.contactName!.trim(), phone: phone || null, email: email || null, wechat: wechat || null, isPrimary: true, customerId: c.id }
+                : { name: 客户名拆人名(r.值.name), phone, isPrimary: true, customerId: c.id },
+              select: { id: true, updatedAt: true },
+            })
           : null;
+        if (联系人 && 号?.ok && 号.键) await 记号码(tx, { 刚建的: c.id }, 联系人.id, { 类型: 号.类型, 值: 号.值, 键: 号.键 });
         await tx.importRow.create({ data: { batchId: 现场.batchId, customerId: c.id, kind: "create", writtenAt: c.updatedAt, ...(联系人 ? { before: JSON.stringify({ [导入联系人键]: 联系人.id, [导入联系人写后键]: 联系人.updatedAt.toISOString() }) } : {}) } });
         return c;
       });
@@ -591,6 +612,7 @@ async function 落这些行(现场: 落库现场, 行: 排好的行, 续接 = fa
         跳过++;
         continue;
       }
+      if (c === "写过") continue;
       新建++;
       // 同一份表里后面还有同号的行（并重复行已合过，这里是防御），别再建一条
       const 记 = { id: c.id, phone, school: c.school, grade: c.grade, major: c.major, expectedSignAt: c.expectedSignAt, expectedSignOn: c.expectedSignOn, remark: c.remark, createdAt: c.createdAt, updatedAt: c.updatedAt, salesOwnerId: c.salesOwnerId, channelOwnerId: c.channelOwnerId, pool: null };
