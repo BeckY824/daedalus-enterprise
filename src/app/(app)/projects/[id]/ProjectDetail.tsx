@@ -1528,7 +1528,7 @@ export default function ProjectDetail({
           <span className="proj-one" title={[p.重复咨询.看得到.map((x) => x.name).join("、"), p.重复咨询.看不到 > 0 ? `另有 ${p.重复咨询.看不到} 个你看不到的` : ""].filter(Boolean).join("；") || undefined}>
             {p.重复咨询.看得到.length === 0 && p.重复咨询.看不到 === 0 ? "—" : (
               <>
-                {p.重复咨询.看得到.map((x, i) => <span key={x.id}>{i > 0 && "、"}<Link href={`/projects/${x.id}`}>{x.name}</Link></span>)}
+                {p.重复咨询.看得到.map((x, i) => <span key={x.id}>{i > 0 && "、"}<Link href={`/projects/${x.id}`}>{x.name}<LinkPending /></Link></span>)}
                 {p.重复咨询.看不到 > 0 && <span className="muted">{p.重复咨询.看得到.length > 0 && "；"}另有 {p.重复咨询.看不到} 个你看不到的</span>}
               </>
             )}

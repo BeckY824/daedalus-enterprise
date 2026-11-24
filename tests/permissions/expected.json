@@ -155,7 +155,6 @@
     "动作 app/(app)/customers/actions.ts#patchCustomerRegion": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/actions.ts#saveContract": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/actions.ts#saveCustomer": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
-    "动作 app/(app)/customers/actions.ts#saveCustomerNumbers": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/actions.ts#删签约前清点": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/actions.ts#删除前清点": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/actions.ts#客户删除预检": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},

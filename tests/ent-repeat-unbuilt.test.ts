@@ -95,7 +95,7 @@ let 序 = 0;
 async function 同事客户(owner: string): Promise<{ id: string; 号: string; 王: string }> {
   序 += 1;
   const 号 = `1390000${String(序).padStart(4, "0")}`;
-  const c = await prisma.customer.create({ data: { name: `老客户${序}`, phone: 号, salesOwnerId: owner, channelId: 老渠道, attributionChannelId: 老渠道, customerNo: 序 } });
+  const c = await prisma.customer.create({ data: { name: `老客户${序}`, phone: "", salesOwnerId: owner, channelId: 老渠道, attributionChannelId: 老渠道, customerNo: 序 } });
   const 王 = await prisma.contact.create({ data: { name: "王经理", position: "采购", phone: 号, isPrimary: true, customerId: c.id } });
   await prisma.project.create({ data: { name: `旧项目${序}`, customerId: c.id, ownerId: owner, creatorId: owner, phase: "商机", node: "明确需求", channelId: 老渠道 } });
   return { id: c.id, 号, 王: 王.id };
