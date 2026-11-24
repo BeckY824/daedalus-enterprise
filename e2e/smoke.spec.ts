@@ -120,7 +120,8 @@ test("5. 给客户录一条跟进，时间线上要看得见", async ({ page }) 
     const db = 连库();
     try {
       const 张三 = await db.user.findFirstOrThrow({ where: { email: 账号.用户名 } });
-      企业客户id = (await db.customer.create({ data: { name: 客户名, phone: 手机号, salesOwnerId: 张三.id, channelOwnerId: 张三.id } })).id;
+      // 企业版客户没有电话（E-260）：号记在主要联系人上，客户电话那格空串
+      企业客户id = (await db.customer.create({ data: { name: 客户名, phone: "", salesOwnerId: 张三.id, channelOwnerId: 张三.id, contacts: { create: { name: "", phone: 手机号, isPrimary: true } } } })).id;
       // 这条的界面部分企业版跳过（见下），第 9 条「跟进记录在第二张表」要这位真有一条跟进，照原来界面记的那条在库里补上
       await db.followUp.create({ data: { type: "PHONE", title: "首次电话沟通", content: "介绍了课程与价格", customerId: 企业客户id, ownerId: 张三.id } });
     } finally {

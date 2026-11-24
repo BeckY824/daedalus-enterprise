@@ -929,14 +929,20 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
 
     // 共享区打开表单时看到的号码是打了码的：快照里的也认回原号，不然一碰上并发就误报「你们都改了手机号」（排查 A2）
     const baseRow = { ...input.base, phone: 认回打码号(input.base.phone, 改前?.phone) } as unknown as Record<string, unknown>;
-    const theirs = diffKeys(baseRow, currentRow);
-    const 改了推荐链 = diffKeys(baseRow, data).some((k) => (REFERRER_KEYS as readonly string[]).includes(k));
+    /*
+      企业版客户没有电话（E-260）：编辑时客户电话格不认交来的、照库里原样写（见上 交的电话），谁也改不动它；
+      可快照里那格是列表行给的（主联系人的号，见 query.ts 客户电话），和库里客户电话那格（空串 / 老数据的号）对不上，
+      两边一比都算「动了联系电话」，两人先后存不同的格也被拦成「两边都动了：联系电话」。企业版这格不进并发比对
+    */
+    const 比 = (from: Record<string, unknown>, to: Record<string, unknown>) => diffKeys(from, to).filter((k) => !(企业版() && k === "phone"));
+    const theirs = 比(baseRow, currentRow);
+    const 改了推荐链 = 比(baseRow, data).some((k) => (REFERRER_KEYS as readonly string[]).includes(k));
     /*
       渠道负责人是派生值：没动推荐链、也没单独订正时，data 里那一格是从库里现值抄来的（上面「原样保留」那支），
       拿它和 base 比会把同事刚改的值算成「我改的」，于是我只改备注也被判「两边都动了：渠道负责人」。
       只有我真动了它（显式订正 / 改推荐链连带重算）才算我的（2026-10-04 L-048）
     */
-    const mine = diffKeys(baseRow, data).filter(
+    const mine = 比(baseRow, data).filter(
       (k) => k !== "channelOwnerId" || input.channelOwnerId !== undefined || 改了推荐链,
     );
     const overlap = mine.filter((k) => theirs.includes(k));

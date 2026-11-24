@@ -51,7 +51,8 @@ test.beforeAll(async () => {
     原在职 = await db.user.findMany({ where: { email: { in: ["zhangsan", "lisi"] } }, select: { email: true, active: true } });
     await db.user.updateMany({ where: { email: { in: ["zhangsan", "lisi"] } }, data: { active: true } });
     const 张 = await db.user.findUniqueOrThrow({ where: { email: "zhangsan" } });
-    await db.customer.create({ data: { name: 客户名, phone: "13755550061", salesOwnerId: 张.id } });
+    // 企业版客户没有电话（E-260）：号记在主要联系人上（退回公海查联系方式按联系人的号判）
+    await db.customer.create({ data: { name: 客户名, phone: "", salesOwnerId: 张.id, contacts: { create: { name: "", phone: "13755550061", isPrimary: true } } } });
   } finally {
     await db.$disconnect();
   }
