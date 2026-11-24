@@ -3,8 +3,8 @@
  * 列表看得到、点进去 404 的不许有。
  * ② 管理者按下属认组员：数据层组员条件原来按「本人 + 实线 / 虚线下属 + 条线成员」整串人认，详情 能看项目 只认本人进组（p.已加入.includes(me.id)）。
  *   收窄跟详情走：组员条件（项目、组员的客户、卡点、裸 SQL）只认本人；只看某人详情不认组员，数据层也不认。
- * ① 按部门认的市场成员只挂销售角色（现库 0 人）：市场的人 只给有市场角色、或在项目页算市场视角的放开；
- *   有市场角色的兼任（渠运兼销售、条线总管理 + 销管 + 市场管理）照旧并集。
+ * ① 按部门认的市场成员只挂销售角色（现库 0 人）：是否放开待定（口径 M-角色-02 / P-看-05 / P-判定-01 冲突），这个 PR 不改，用 it.fails 记着缺口；
+ *   有市场角色的兼任（渠运兼销售、条线总管理 + 销管 + 市场管理）照旧并集，两条回归照跑。
  * 口径：P-看-01（销管看实线下属 + 自己 + 公海）、P-看-08（项目组员只看自己加入的项目，连带看到挂着的客户）、P-看-12（同客户下同事的项目看不到）。
  * 「按组织看客户」开着（c2 的组合）
  */
@@ -23,6 +23,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 读组织 } from "@/lib/enterprise/org";
 import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
 import { 看得到的范围SQL } from "@/lib/scope-sql";
+import { 限定条件 } from "@/lib/team-scope";
 import { 全局搜索 } from "@/app/(app)/global-search";
 import { TOOLS } from "@/lib/agent/tools";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
@@ -165,6 +166,62 @@ describe("销售管理：下属进组、负责人不在他管辖的项目不出�
   });
 });
 
+describe("销售管理：卡点、写范围的组员条件也只认本人（team-scope 组员人、写范围条件 传 本人）", () => {
+  let 序号 = 0;
+  /** 卡点建的人 = 项目负责人（链外），没人认领：销管只能按组员那一支沾上 */
+  const 建卡点 = async (项: { id: string; customerId: string }, 建的人: 人) => {
+    序号++;
+    const k = await prisma.entBlocker.create({
+      data: {
+        code: `BLK-20261124-${String(序号).padStart(3, "0")}`, title: `卡点${序号}`, projectId: 项.id, customerId: 项.customerId, phase: "线索", type: "中度卡点", impact: "短期不影响",
+        obstacle: "其他", description: "x", dueDays: 3, dueAt: new Date(), creatorId: 建的人.id,
+      },
+    });
+    await prisma.entBlockerLog.create({ data: { blockerId: k.id, userId: 建的人.id, action: "发布" } });
+    return k.id;
+  };
+  const 名下项目 = async (name: string) => {
+    const p = await prisma.project.findFirstOrThrow({ where: { name }, select: { id: true, customerId: true } });
+    return { id: p.id, customerId: p.customerId };
+  };
+
+  it("entBlocker / entBlockerLog：下属进组的链外项目的卡点拿不到，自己进组的拿得到", async () => {
+    const 链外卡 = await 建卡点(链外的, 链外);
+    const 自己卡 = await 建卡点(await 名下项目("销管进组的"), 链外);
+    忘掉企业版范围();
+    const 卡 = (await 以谁的身份(销管.id, () => prisma.entBlocker.findMany({ select: { id: true } }))).map((k) => k.id);
+    expect(卡).not.toContain(链外卡);
+    expect(卡).toContain(自己卡);
+    const 日志 = (await 以谁的身份(销管.id, () => prisma.entBlockerLog.findMany({ select: { blockerId: true } }))).map((l) => l.blockerId);
+    expect(日志).not.toContain(链外卡);
+    expect(日志).toContain(自己卡);
+    // 进组的下属本人照拿得到（P-看-08 回归）
+    expect((await 以谁的身份(下属.id, () => prisma.entBlocker.findMany({ select: { id: true } }))).map((k) => k.id)).toContain(链外卡);
+  });
+
+  it("互看读那一支（企业版不开互看，直接调 限定条件）：传 本人 后同样只认本人进的组", async () => {
+    const 链外卡 = await 建卡点(链外的, 链外);
+    const 自己卡 = await 建卡点(await 名下项目("销管进组的"), 链外);
+    const 谁们 = [销管.id, 下属.id];
+    const 卡 = (await prisma.entBlocker.findMany({ where: 限定条件("EntBlocker", 谁们, true, undefined, undefined, undefined, undefined, undefined, false, undefined, 销管.id)!, select: { id: true } })).map((k) => k.id);
+    expect(卡).not.toContain(链外卡);
+    expect(卡).toContain(自己卡);
+    const 日志 = (await prisma.entBlockerLog.findMany({ where: 限定条件("EntBlockerLog", 谁们, true, undefined, undefined, undefined, undefined, undefined, false, undefined, 销管.id)!, select: { blockerId: true } })).map((l) => l.blockerId);
+    expect(日志).not.toContain(链外卡);
+    expect(日志).toContain(自己卡);
+  });
+
+  it("写范围：销管对下属进组的链外项目改不到，下属负责的照改得到", async () => {
+    忘掉企业版范围();
+    const 改链外 = await 以谁的身份(销管.id, () => prisma.project.updateMany({ where: { id: 链外的.id }, data: { name: "链外的-改" } }));
+    expect(改链外.count).toBe(0);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 链外的.id }, select: { name: true } })).name).toBe("链外的");
+    const 下属的 = await 名下项目("下属的");
+    const 改下属 = await 以谁的身份(销管.id, () => prisma.project.updateMany({ where: { id: 下属的.id }, data: { name: "下属的-改" } }));
+    expect(改下属.count).toBe(1);
+  });
+});
+
 describe("入口：销管场景（下属进组、负责人不在他管辖）", () => {
   it("顶部全局搜索：销管搜不到链外的项目和客户，自己进组的搜得到；进组的下属本人搜得到", async () => {
     const 链外客户名 = (await prisma.customer.findUniqueOrThrow({ where: { id: 链外的.customerId }, select: { name: true } })).name;
@@ -205,8 +262,9 @@ describe("其他管辖类角色：组员条件只认本人", () => {
   });
 });
 
-describe("① 按部门认的市场成员只挂销售角色", () => {
-  it("市场部销售：自己建的、已分给同事的项目和客户不出", async () => {
+describe("① 按部门认的市场成员只挂销售角色（待定，这个 PR 不改）", () => {
+  // 口径定了、改了 市场的人 之后改回 it
+  it.fails("待定：部门认的市场成员只挂销售是否放开，口径 M-角色-02 / P-看-05 / P-判定-01 冲突，未定——市场部销售自己建的、已分给同事的项目和客户不出", async () => {
     const p = await 项目("市场部销售建的", 同事, 市场部销售);
     忘掉企业版范围();
     expect(await 点不进的(市场部销售)).toEqual([]);

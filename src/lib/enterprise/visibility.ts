@@ -32,8 +32,7 @@ import { 按线范围of, 按线项目, 按线客户, 条线范围of } from "./li
 import { 规则, 开关值开着 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票, 会话时刻, 切换视图开着 } from "./view-as";
-import { 能看全部, 只读角色, 只读话of, 只看的人, 只看某人话, 没设业务角色, 业务线放行, 是市场角色 } from "./permissions";
-import { 市场视角of } from "./market-view";
+import { 能看全部, 只读角色, 只读话of, 只看的人, 只看某人话, 没设业务角色, 业务线放行 } from "./permissions";
 import { 读纪元, 加纪元 } from "./scope-epoch";
 import { 本线放开的线, 本线放开条件 } from "./await-assign-open";
 import { 读通道不限定 } from "@/lib/read-pool";
@@ -461,8 +460,5 @@ function 市场的人(org: 组织, id: string, 是市场管理: boolean, 存的:
     const 下 = 实线下属(org, id, 1);
     return [...成员].filter((x) => x === id || 下.has(x));
   }
-  // ①（11-24 修复单）：按部门认进来、只挂销售等业务角色的不放开（详情 能看项目 只认市场角色的建档人，列表放开就点进去 404）。
-  // 有市场角色的（渠运兼销售等）照旧；部门认的、在项目页算市场视角的（项目组员等）照旧
-  if (!成员.has(id)) return [];
-  return 是市场角色(org, id) || 市场视角of(org, id, 成员) !== null ? [id] : [];
+  return 成员.has(id) ? [id] : [];
 }
