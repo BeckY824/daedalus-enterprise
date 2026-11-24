@@ -335,7 +335,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 线索验证面板的「判定依据」照组织规则里「线索验证」节点配的必填写（员工反馈 #7；和 有效沟通差 同一份配置）
   const 线索验证必填 = 线索验证 ? 节点必填(规则, 有效线索节点) : [];
   // 企业版项目画像、项目附件（P11）：画像和附件是客户那边的资料，公海里同事客户的项目没领之前不给（同 联系人附件）。
-  // 项目名单在中栏（@pane/projects/(detail)/layout.tsx → panes.tsx 项目名单），不在这页里读
+  // 项目名单在中栏（@pane/projects/(detail)/layout.tsx → roster-panes.tsx 项目名单），不在这页里读
   const 存的需求 = 读产品需求(p.productNeeds);
   const 画像: 项目画像 | null = !企业 || !露 ? null : {
     项们: await Promise.all(项目画像项.map(async (项) => {

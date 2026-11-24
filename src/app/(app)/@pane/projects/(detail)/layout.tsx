@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import { CustomerRosterSkeleton } from "@/components/RosterSkeleton";
-import { 项目名单 } from "../../panes";
+import { 项目名单 } from "../../roster-panes";
 
 /**
  * 项目详情的中栏名单（跳转优化 PR-A）：同 @pane/customers/(detail)/layout.tsx——换项目只换 [id]，名单不重挂不重查；

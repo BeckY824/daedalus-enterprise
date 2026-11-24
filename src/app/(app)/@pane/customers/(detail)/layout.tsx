@@ -2,7 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { Suspense } from "react";
 import { CustomerRosterSkeleton } from "@/components/RosterSkeleton";
-import { 学员名单 } from "../../panes";
+import { 学员名单 } from "../../roster-panes";
 
 /**
  * 客户详情的中栏名单（跳转优化 PR-A，11-24）：名单放在 layout 里，不放在 [id] 的 page 里。

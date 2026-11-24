@@ -1,10 +1,7 @@
 import { requireUser } from "@/lib/auth";
-import CustomerRoster from "@/components/CustomerRoster";
 import ConversationList from "@/app/(app)/dashboard/ConversationList";
 import { 列对话 } from "@/app/(app)/dashboard/threads";
 import { llmEnabled } from "@/lib/llm";
-import ProjectRoster from "@/components/ProjectRoster";
-import { 客户名单数据, 项目名单数据 } from "./roster-data";
 
 /**
  * 中栏（312px）的内容。眼下**只有一种**：学员记录页的窄名单。
@@ -25,34 +22,12 @@ import { 客户名单数据, 项目名单数据 } from "./roster-data";
  * 而是渲染出应用外壳。2026-09-16 被 hosted 那条「/demo 的路由该删干净了」抓到。
  * 不值得为省几个文件换掉 404。
  *
+ * 客户 / 项目详情的窄名单在 roster-panes.tsx：名单是一大块客户端组件，写在这个文件里的话，
+ * 凡是引了这里（无中栏、对话列表）的槽位页都会把名单的客户端代码带进首屏包（首页多出名单、项目名单那一套，11-24 首屏 JS 闸门红过）。
+ *
  * `<aside class="pane">` 由槽位渲染而不是由壳渲染：没有中栏的页面要一个节点都不出，
  * 否则壳那边拿到的永远是个「渲染结果为 null 的元素」，会留一列 312px 的空白。
  */
-
-/**
- * 记录页的窄名单：最近跟进过的 50 位（不含公海，P-看-03）。
- *
- * **只在 `/customers/[id]` 出现，列表页没有**（批 2）。列表页已经是一张全宽的表，
- * 旁边再挂一条同样内容的名单等于把同一件事画两遍；而记录页缺的正是「换一个人」
- * 这条路——原来从林夏切到陈航要退回列表再进去。
- *
- * 它自己渲染 <aside>，不走 包一层：窄屏下整条要变成抽屉，那时不能留一个空的 aside。
- */
-export async function 学员名单() {
-  const { data, 默认页签 } = await 客户名单数据();
-  return <CustomerRoster data={data} 默认页签={默认页签} />;
-}
-
-/**
- * 企业版项目详情页的中栏：项目名单（P11，照上面的学员名单）。应用导航 | 项目名单 | 项目详情，三个竖条。
- *
- * 只在 `/projects/[id]` 出现，列表页和新建页没有（理由同学员名单）。只在企业版且开了项目模式时出：
- * 别的版本、项目模式关着，这一格和原来一样是空的。范围走带限定的 prisma，和项目页同一个口径（lib/project/list.ts 读名单项目）
- */
-export async function 项目名单() {
-  const data = await 项目名单数据();
-  return data ? <ProjectRoster data={data} /> : null;
-}
 
 /**
  * 没有中栏的页面**也要有自己的槽位页**，不能只靠 default.tsx。

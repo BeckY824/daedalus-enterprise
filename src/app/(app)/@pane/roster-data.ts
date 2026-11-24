@@ -23,7 +23,7 @@ import type { CustomerRosterData } from "@/components/CustomerRoster";
 import type { ProjectRosterData } from "@/components/ProjectRoster";
 
 /**
- * 客户详情中栏名单的数据（原来写在 @pane/panes.tsx 学员名单 里）。拆出来是为了两处共用（跳转优化 PR-A 审查补）：
+ * 客户详情中栏名单的数据（原来写在 @pane/panes.tsx 学员名单 里，名单现在在 roster-panes.tsx）。拆出来是为了两处共用（跳转优化 PR-A 审查补）：
  *   - 进详情时 @pane/customers/(detail)/layout.tsx → 学员名单 在服务端算一遍
  *   - 名单挪进 layout 以后换人不再重查：切回标签页、或隔了 60 秒以上又换了一位时，名单自己在后台拉 /api/roster/customers 换上新的
  *     （lib/roster-refresh.ts）。不用 router.refresh：那会清掉整个路由缓存（预取的、后退要用的都没了）

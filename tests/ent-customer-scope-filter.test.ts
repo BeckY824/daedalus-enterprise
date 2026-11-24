@@ -39,7 +39,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import CustomersPage from "@/app/(app)/customers/page";
-import { 学员名单 } from "@/app/(app)/@pane/panes";
+import { 学员名单 } from "@/app/(app)/@pane/roster-panes";
 import type { CustomerRosterData } from "@/components/CustomerRoster";
 import { 生效客户范围, 客户范围选项, 名单底句 } from "@/lib/enterprise/customer-scope";
 

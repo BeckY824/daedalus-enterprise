@@ -114,8 +114,8 @@ it("客户名单、项目名单都接上了后台换新，接口和服务端名�
   expect(读("src/components/ProjectRoster.tsx")).toMatch(/useFreshRoster\(服务端给的, "\/api\/roster\/projects", activeId\)/);
   expect(读("src/app/api/roster/customers/route.ts")).toMatch(/客户名单数据\(\)/);
   expect(读("src/app/api/roster/projects/route.ts")).toMatch(/项目名单数据\(\)/);
-  expect(读("src/app/(app)/@pane/panes.tsx")).toMatch(/await 客户名单数据\(\)/);
-  expect(读("src/app/(app)/@pane/panes.tsx")).toMatch(/await 项目名单数据\(\)/);
+  expect(读("src/app/(app)/@pane/roster-panes.tsx")).toMatch(/await 客户名单数据\(\)/);
+  expect(读("src/app/(app)/@pane/roster-panes.tsx")).toMatch(/await 项目名单数据\(\)/);
   // 不靠整页 router.refresh 换名单（会清掉整个路由缓存）
   expect(读("src/lib/roster-refresh.ts")).not.toMatch(/router\.refresh\(/);
 });
