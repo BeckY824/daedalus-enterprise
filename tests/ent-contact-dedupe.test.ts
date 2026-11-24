@@ -17,7 +17,7 @@ import { resetDb } from "./reset";
 import { saveCustomer, checkDuplicate, type CustomerInput } from "@/app/(app)/customers/actions";
 import { saveContact } from "@/app/(app)/customers/[id]/actions";
 import { 查号码, 从回收站捞回 } from "@/app/(app)/customers/number-actions";
-import { 全公司查号, 撞号结论, 回收站里有提示, 联系人查重, 联系人撞号话, 联系人回收站撞, 一行号全公司查, 一行号回收站查, 跨类键, 跨类SQL } from "@/lib/enterprise/contact-dedupe";
+import { 全公司查号, 撞号结论, 回收站里有提示, 联系人查重, 联系人撞号话, 联系人回收站撞, 一行号全公司查, 一行号回收站查, 跨类键, 跨类SQL, 回收站里查号, 回收站撞没撞 } from "@/lib/enterprise/contact-dedupe";
 import { 号键SQL } from "@/lib/phone-dedupe";
 import fs from "node:fs";
 import path from "node:path";
@@ -398,6 +398,33 @@ describe("跨类型全局查重（11-20：号码不分类型，全公司唯一�
     expect(await prisma.contact.findUniqueOrThrow({ where: { id: 人.id }, select: { deletedAt: true } })).toEqual({ deletedAt: null });
     expect(await 从回收站捞回("手机号", "13900000404")).toMatchObject({ ok: true });
     expect(await prisma.customer.findUniqueOrThrow({ where: { id: c.id }, select: { deletedAt: true } })).toEqual({ deletedAt: null });
+  });
+});
+
+describe("回收站里的客户没挪号（E-260 审查单 A-4a：数据脚本只挪在用客户的号）", () => {
+  beforeEach(() => { vi.stubEnv("CRM_ENTERPRISE", "1"); });
+
+  it("删了的客户还留着客户电话格：回收站里查号、跨类型一行号、联系人表单、建档查重都认得出；在用客户的电话格照旧不比", async () => {
+    const 删 = new Date();
+    const c = await prisma.customer.create({ data: { name: "删了的老档", phone: "139 0000 0501", salesOwnerId: 乙, deletedAt: 删 } });
+    expect(await 回收站里查号(prisma, "手机号", "13900000501", "13900000501")).toEqual([c.id]);
+    expect(await 回收站里查号(prisma, "手机号", "+86 139-0000-0501", "13900000501")).toEqual([c.id]);
+    expect(await 一行号回收站查(prisma, { kind: "whatsapp", value: "+8613900000501", numberKey: "13900000501" })).toEqual([c.id]);
+    expect(await 一行号回收站查(prisma, { kind: "wechat", value: "13900000501", numberKey: "13900000501" })).toEqual([c.id]);
+    expect(await 联系人回收站撞(prisma, [{ kind: "phone", value: "13900000501", numberKey: "13900000501" }])).toEqual({ 类型: "手机号", 值: "13900000501" });
+    expect(await 回收站撞没撞(prisma, { 类型: "手机号", 值: "13900000501", 键: "13900000501" })).toMatchObject({ 状态: "回收站里有" });
+    // 在用的客户电话格（没挪干净的）不算撞：E-260 起号只在联系人上
+    await prisma.customer.create({ data: { name: "在用老档", phone: "13900000502", salesOwnerId: 乙 } });
+    expect(await 全公司查号(prisma, "手机号", "13900000502", "13900000502")).toEqual([]);
+    expect(await 回收站里查号(prisma, "手机号", "13900000502", "13900000502")).toEqual([]);
+  });
+
+  it("删了的客户名下没挂联系人的子表号：回收站里查号、一行号回收站查都认得出", async () => {
+    const c = await prisma.customer.create({ data: { name: "删了的子表号", phone: "", salesOwnerId: 乙, deletedAt: new Date() } });
+    await prisma.contactMethod.create({ data: { customerId: c.id, kind: "phone", value: "13900000503", numberKey: "13900000503" } });
+    expect(await 回收站里查号(prisma, "手机号", "13900000503", "13900000503")).toEqual([c.id]);
+    expect(await 一行号回收站查(prisma, { kind: "landline", value: "139 0000 0503", numberKey: "13900000503" })).toEqual([c.id]);
+    expect(await 联系人回收站撞(prisma, [{ kind: "phone", value: "13900000503", numberKey: "13900000503" }])).toEqual({ 类型: "手机号", 值: "13900000503" });
   });
 });
 

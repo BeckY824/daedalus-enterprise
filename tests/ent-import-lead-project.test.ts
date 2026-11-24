@@ -98,6 +98,16 @@ describe("企业版只用项目：导入线索建线索阶段的项目", () => {
     expect((await prisma.project.findFirstOrThrow()).customerId).toBe(老.id);
   });
 
+  it("同一批的客户行刚建、号还记着待补（E-260 审查单 A-1）：后面同号的线索挂到它上面，不另建客户 / 联系人", async () => {
+    const 客户表: 读出的表 = { 名: "客户.xlsx", 实体: "customer", 表头: ["记录ID", "客户名称", "手机号码", "客户负责人"], 行: [["C1", "虚构远帆科技", "13600000009", "李娜"]], 行号: [2], 提醒: [] };
+    await 导([客户表, 线索表([["L1", "虚构远帆线索", "", "136 0000 0009", "李娜", ""]])]);
+    const 客户们 = await prisma.customer.findMany();
+    expect(客户们.map((c) => c.name)).toEqual(["虚构远帆科技"]);
+    expect((await prisma.project.findFirstOrThrow()).customerId).toBe(客户们[0].id);
+    // 收尾落号：客户行的号落到一位主联系人，线索没另建联系人
+    expect(await prisma.contact.findMany({ select: { phone: true, customerId: true } })).toEqual([{ phone: "13600000009", customerId: 客户们[0].id }]);
+  });
+
   it("同号客户在客户公海里：有负责人的这条不导、记原因，别的照写；没负责人的照挂进公海", async () => {
     const 公海客户 = await prisma.customer.create({ data: { name: "公海里的客户", phone: "", salesOwnerId: 我.id } });
     await prisma.contact.create({ data: { name: "公海联系人", phone: "13600000001", isPrimary: true, customerId: 公海客户.id } });

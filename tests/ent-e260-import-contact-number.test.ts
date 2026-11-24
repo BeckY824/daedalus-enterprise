@@ -14,7 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 试跑 } from "@/lib/enterprise-import/report";
-import { 写一批 as 只写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
+import { 写一批 as 只写一批, 定这批业务线, 号码待补 } from "@/lib/enterprise-import/apply";
 import { 撤回一批, 恢复一批 } from "@/lib/enterprise-import/revert";
 import type { 读出的表 } from "@/lib/enterprise-import/excel";
 import type { 实体 } from "@/lib/enterprise-import/types";
@@ -189,5 +189,22 @@ describe("增量导入 / 同步", () => {
     expect(r).toMatchObject({ 完了: true, 删掉: 0 });
     expect(r.留下数).toBe(2);
     expect(await prisma.contact.count()).toBe(1);
+  });
+});
+
+describe("待补行按号键记（审查单 A-1 / A-9）", () => {
+  it("同一位同一个号（写法不同）只记一行；targetId 是号键，同号认人和去重走 (entity, targetId) 索引，不逐行扫这一批", async () => {
+    const 批 = await prisma.entImportBatch.create({ data: { source: "excel", status: "done", userId: 我.id } });
+    const 甲 = await prisma.customer.create({ data: { name: "虚构远帆科技有限公司", phone: "", salesOwnerId: 张伟 } });
+    await 号码待补(prisma as never, 批.id, 甲.id, "138 0000 0001");
+    await 号码待补(prisma as never, 批.id, 甲.id, "13800000001");
+    await 号码待补(prisma as never, 批.id, 甲.id, "13800000002");
+    const 行们 = await prisma.entImportRow.findMany({ where: { batchId: 批.id, entity: "contact-number", kind: "pending" }, orderBy: { targetId: "asc" } });
+    expect(行们.map((r) => [r.externalId, r.targetId])).toEqual([[甲.id, "13800000001"], [甲.id, "13800000002"]]);
+    // 去重、认同号那两句的查法：走 entity + targetId 的索引
+    const 计划 = await prisma.$queryRawUnsafe<{ detail: string }[]>(
+      `EXPLAIN QUERY PLAN SELECT "id" FROM "EntImportRow" WHERE "entity" = ? AND "targetId" = ? AND "batchId" = ? AND "kind" = ? AND "externalId" = ? LIMIT 1`,
+      "contact-number", "13800000001", 批.id, "pending", 甲.id);
+    expect(计划.map((r) => r.detail).join(" ")).toMatch(/EntImportRow_entity_targetId_idx/);
   });
 });

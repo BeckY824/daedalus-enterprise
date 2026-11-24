@@ -42,7 +42,9 @@ export async function 读导入查重索引(不算: ReadonlySet<string> = new Se
 
 /**
  * 回收站里的号（企业版，P-删-08 导入查重也算回收站里的号码；审核 11-18 P1-3：设置 → 企业版导入原来只比在用的）：
- * 删了的客户的电话 / WhatsApp / 名下联系人 / 子表号，加上在用客户名下删了的联系人的电话和子表号，按 归档号键 规整（同 归档号索引 的口径）。
+ * 删了的客户的电话 / WhatsApp / 名下联系人 / 子表号（没挂联系人的行也算），加上在用客户名下删了的联系人的电话和子表号，按 归档号键 规整（同 归档号索引 的口径）。
+ * 企业版客户没有电话（E-260），但回收站里的客户没挪号（数据脚本只挪在用的），他们的客户电话格照旧算（审查单 A-4a）。
+ * 客户页 Excel 导入（customers/import-actions.ts 导入匹配）、迁移导入试跑（report.ts）共用这一份
  * 回收站过了 30 天清掉的就不在了，自然不算。不是企业版 = 空
  */
 export async function 读回收站号键(): Promise<Set<string>> {
@@ -60,7 +62,8 @@ export async function 读回收站号键(): Promise<Set<string>> {
     ]),
   ));
   const 键们 = new Set<string>();
-  for (const v of [...(企业版() ? [] : 客户们.map((c) => c.phone)), ...客户WA.map((x) => x.whatsapp), ...联系人们.map((c) => c.phone), ...子表号.map((x) => x.value)]) {
+  // 回收站里的客户电话照旧比（审查单 A-4a）：数据脚本只挪在用客户的号，删了的客户 Customer.phone 还留着；子表行 customer 删了的连没挂联系人的一起算
+  for (const v of [...客户们.map((c) => c.phone), ...客户WA.map((x) => x.whatsapp), ...联系人们.map((c) => c.phone), ...子表号.map((x) => x.value)]) {
     const k = 归档号键(v);
     if (k) 键们.add(k);
   }

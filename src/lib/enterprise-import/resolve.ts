@@ -153,7 +153,7 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
           if (e === "customer") {
             await 无主客户进公海(tx, 现, 新id, v!);
             // 企业版客户没有电话（E-260）：原系统的号记成待补，这一笔全部定完再落到主联系人
-            await 号码待补(tx, 批.id, 新id, v!.phone);
+            await 号码待补(tx, 批.id, 新id, v!.phone, true);
           }
           await tx.entExternalRef.update({ where: { id: ref.id }, data: { targetId: 新id, written: J(v), batchId: 批.id } });
           await tx.entImportRow.create({ data: { batchId: 批.id, entity: e, externalId: c.externalId, targetId: 新id, kind: "create", written: J(库里样(e, v!)), refBefore: J(ref) } });

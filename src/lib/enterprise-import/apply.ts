@@ -31,7 +31,7 @@ import { 查完再写 } from "../check-then-write";
 import { 写外贸档案 } from "../customer-extra-db";
 import { 同号条件, 分机留存起 } from "../phone-dedupe";
 import { 看全部 } from "../team-scope";
-import { 记号码, 号码库类型, 全公司查号, type 验好的号 } from "../enterprise/contact-dedupe";
+import { 记号码, 号码库类型, 全公司查号, 跨类键, type 验好的号 } from "../enterprise/contact-dedupe";
 import { 导入号落主联系人 } from "../enterprise/primary-contact-number";
 import { 客户名拆人名 } from "../enterprise/contact-name-from-customer";
 import { 验号码 } from "../enterprise/contact-format";
@@ -758,13 +758,21 @@ async function 再认同号(tx: Tx, 现: 现场, phone: string): Promise<string 
 /**
  * 企业版认「同一客户」的号（E-260）：客户没有电话，不比客户电话格，比联系人号码——联系人主表、联系方式子表、跨类全公司查
  * （contact-dedupe.ts 全公司查号，同手工录入、线索转客户的查重）。格式验不过的号（座机这类）按原样比联系人电话格和跨类。
+ * 再加上还记着待补的客户（审查单 A-1）：本批前面刚建的客户，号要等整批写完才落到主联系人，这时联系人上还查不到——
+ * 按号键（待补行的 targetId）把它们也算进来，和库里撞到的合并后再数「唯一一位」。
+ * 不只认本批：别的批次写到一半（还没收尾）记着的待补行也算，那位客户也是带着这个号建的。
+ * 并发两批：每一行都在 查完再写 的写事务里查（SQLite 写事务串行），别的批次已经提交的待补行 / 收尾落好的联系人号都看得见；
+ * 收尾落号和删待补行在同一个小事务里，中间没有两边都查不到的空档。
+ * 部署前就记下、还没收尾的老待补行 targetId 是客户 id（不是号键），认不到——只影响部署那一刻写到一半的批次，收尾照旧落号。
  * 回收站里的客户不算（这条路另有回收站里的提示）
  */
 async function 联系人号码撞的客户(tx: Tx, phone: string): Promise<string[]> {
   const r = 验号码("手机号", phone);
-  const ids = await 全公司查号(tx, "手机号", r.ok ? r.值 : phone, r.ok ? r.键 : "");
-  if (!ids.length) return [];
-  return (await tx.customer.findMany({ where: { id: { in: ids } }, select: { id: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((c) => c.id);
+  const ids = new Set(await 全公司查号(tx, "手机号", r.ok ? r.值 : phone, r.ok ? r.键 : ""));
+  const 键 = 待补键(phone);
+  if (键) for (const p of await tx.entImportRow.findMany({ where: { entity: 号码行, targetId: 键, kind: 号码待补种 }, select: { externalId: true } })) ids.add(p.externalId);
+  if (!ids.size) return [];
+  return (await tx.customer.findMany({ where: { id: { in: [...ids] } }, select: { id: true }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] })).map((c) => c.id);
 }
 
 async function 新建(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
@@ -776,7 +784,7 @@ async function 新建(tx: Tx, 现: 现场, w: 待写): Promise<结果> {
   await tx.entImportRow.create({ data: { batchId: 现.批次Id, entity: w.实体, externalId: w.外部ID, targetId: id, kind: "create", written: J(库里样(w.实体, v)) } });
   if (w.实体 === "customer") {
     await 无主客户进公海(tx, 现, id, v);
-    await 号码待补(tx, 现.批次Id, id, v.phone);
+    await 号码待补(tx, 现.批次Id, id, v.phone, true);
   }
   if (w.实体 === "lead" && 现.项目) await 线索落项目(tx, 现, w, id, v);
   return "新建";
@@ -792,6 +800,7 @@ export function 库里样(e: 实体, v: 值表): 值表 {
 /**
  * 导入记录里这几种行（entity = 号码行）：
  *   - kind = pending：原系统交来的客户电话，等整批写完落到主联系人（同一批后面的联系人行可能正是那位主联系人，逐行落会多建一位）；
+ *     externalId = 客户，targetId = 号的 跨类键（待补键），written = { 号 }；
  *   - kind = create：落的时候主联系人电话格已有别的号、号记进了联系方式子表挂在他身上（targetId = 联系人，externalId = 客户，written = 那个号）。
  * 落成新建主联系人、补了他电话格 / 备注的，照联系人那一类记（externalId 加 号码带出 前缀），整批撤回、恢复按联系人逐行退、建回
  */
@@ -799,13 +808,22 @@ export const 号码行 = "contact-number";
 const 号码待补种 = "pending";
 export const 号码带出 = (customerId: string) => `号码:${customerId}`;
 
-/** 原系统交来（或改成）这个客户电话：企业版记一行待补；同一批同一位同一个号只记一次。非企业版、空号不记 */
-export async function 号码待补(tx: Tx, 批次Id: string, customerId: string, phone: unknown): Promise<void> {
+/**
+ * 待补行的 targetId 记号的 跨类键（和 验号码 的键同一个空间；格式验不过的号去空白转小写）：
+ * 写之前认同号（联系人号码撞的客户）和同一位去重都走 (entity, targetId) 索引，不逐行扫这一批的待补行（审查单 A-1 / A-9）
+ */
+const 待补键 = (号: string): string => 跨类键(号).键;
+
+/**
+ * 原系统交来（或改成）这个客户电话：企业版记一行待补；同一批同一位同一个号只记一次。非企业版、空号不记。
+ * 刚建 = 这位客户这一趟才新建（新建、冲突里新建那一支）：还不会有他的待补行，不查（审查单 A-9）
+ */
+export async function 号码待补(tx: Tx, 批次Id: string, customerId: string, phone: unknown, 刚建 = false): Promise<void> {
   const 号 = 串(规(phone))?.trim();
   if (!企业版() || !号) return;
-  const written = J({ 号 });
-  if (await tx.entImportRow.findFirst({ where: { batchId: 批次Id, entity: 号码行, kind: 号码待补种, externalId: customerId, written }, select: { id: true } })) return;
-  await tx.entImportRow.create({ data: { batchId: 批次Id, entity: 号码行, kind: 号码待补种, externalId: customerId, targetId: customerId, written } });
+  const 键 = 待补键(号) || 号;
+  if (!刚建 && (await tx.entImportRow.findFirst({ where: { entity: 号码行, targetId: 键, batchId: 批次Id, kind: 号码待补种, externalId: customerId }, select: { id: true } }))) return;
+  await tx.entImportRow.create({ data: { batchId: 批次Id, entity: 号码行, kind: 号码待补种, externalId: customerId, targetId: 键, written: J({ 号 }) } });
 }
 
 /**

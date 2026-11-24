@@ -154,7 +154,7 @@ export const 跨类SQL = {
 /**
  * 跨类型撞到的（11-20）：号码不分类型，和全公司所有类型的号比，只按 跨类键 比（两边同一个规整）。
  * - 客户 = 号记在客户本身上的：档案（CustomerExtra）的邮箱 / 微信 / 阿里国际站ID / WhatsApp、子表里没挂联系人的行
- *   （客户电话格不比：E-260 客户没有电话，数据脚本已挪到主联系人）
+ *   （客户电话格不比：E-260 客户没有电话，数据脚本已挪到主联系人；回收站里的客户没挪，连回收站查时比它们的电话格，审查单 A-4a）
  * - 联系人 = 号记在联系人身上的（联系人 id → 客户 id）：联系人老三格、子表里挂了联系人的行
  * 子表按 numberKey 比（Telegram、自定类型按 value 现算）；老列像电话的按号键比（库里带空格、横杠、+86 的写法都认），别的去空格不分大小写。
  * 裸 SQL 自己认回收站（同 联系人里的：包在 看已删 里连回收站一起算）；子表走 db（企业版 prisma 的软删层滤掉父行删了的，
@@ -211,6 +211,13 @@ async function 跨类查(db: 库, 值: string): Promise<{ 客户: Set<string>; �
     for (const r of 留) 档ids.add(r.id);
   }
   for (const id of 档ids) 客户.add(id);
+
+  // 4. 回收站里的客户电话格（审查单 A-4a）：数据脚本只把在用客户的电话挪到主联系人，删了的客户 Customer.phone 还留着。
+  //    只在连回收站一起查（看已删）时比、只比删了的：在用客户照 E-260 不比电话格。删了的客户不多，按 deletedAt 索引筛完再比号键
+  if (删 && k.电话) {
+    for (const r of await db.$queryRawUnsafe<{ id: string }[]>(
+      `SELECT "id" FROM "Customer" WHERE "deletedAt" IS NOT NULL AND ${号键SQL('"phone"')} IN (${占位(号键们.length)})`, ...号键们)) 客户.add(r.id);
+  }
   return { 客户, 联系人 };
 }
 
