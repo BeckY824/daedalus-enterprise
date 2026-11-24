@@ -368,11 +368,15 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   };
   const 项目附件 = 企业 && 露 ? await 项目附件入口(p.id) : null;
   // 企业版沟通记录的截图、录音（F-跟进-07）：和沟通记录同一个口径（露客户才给）；传 = 记这条的本人或能改沟通的，删 = 能改沟通的（api/attachments/access.ts 认沟通）
-  // 只给记在本项目客户名下的（11-24，同客户页汇总 customer-follow-feed.ts 带附件）：关联客户带进来、记在别的客户名下的那几条，
-  // 附件接口 认沟通 要看得到那位客户，过不了就是点不开的破图，所以不带
-  const 本客户的 = (f: { followUp: { customerId: string | null } }) => f.followUp.customerId === p.customerId;
-  const 带附件的 = p.followUps.filter(本客户的).map((f) => f.followUp.id);
-  const 沟通附件 = 企业 && 露 && 带附件的.length ? await 沟通附件们(prisma, 带附件的) : new Map<string, 附件[]>();
+  // 记在本项目客户名下的，或记在别的客户名下、那位客户我也看得到的才给（11-24 审查后改）：关联客户带进来的那几条，
+  // 附件接口 认沟通 用带限定的 followUp 查（FollowUp 跟客户走，lib/team-scope.ts），看不到那位客户就拒——
+  // 这里用同一把尺（看得到的客户：带限定的 customer 查），总管理这类看得到对方客户的照给，界面和接口一致。
+  // 给不了的那几条不带 附件 这一格（不是给空的）：界面就不出附件框和「加截图 / 录音」入口（ProjectDetail 里 f.附件 && …），不然传了也被拒
+  const 别的客户们 = 企业 && 露 ? [...new Set(p.followUps.map((f) => f.followUp.customerId).filter((c): c is string => !!c && c !== p.customerId))] : [];
+  const 看得到别的 = 别的客户们.length ? await 页面看得到的客户(别的客户们) : new Set<string>();
+  const 给附件 = (c: string | null) => 企业 && 露 && !!c && (c === p.customerId || 看得到别的.has(c));
+  const 带附件的 = new Set(p.followUps.filter((f) => 给附件(f.followUp.customerId)).map((f) => f.followUp.id));
+  const 沟通附件 = 带附件的.size ? await 沟通附件们(prisma, [...带附件的]) : new Map<string, 附件[]>();
   // 企业版回款（10-31，迁移 100）：和合同金额一样是项目自己的钱，都给看
   const 回款们 = 企业 ? await 列回款(p.id) : null;
   // 企业版关联客户 / 联系人（P17）：同画像，公海里同事客户的项目没领之前不给
@@ -466,7 +470,7 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
         return {
           id: f.followUp.id, type: f.followUp.type, method: f.followUp.method, initiator: f.followUp.initiator, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
           ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限标签(编.nextAt) : null } : {}),
-          ...(企业 ? { 附件: 沟通附件.get(f.followUp.id) ?? [], 我记的: f.followUp.ownerId === me.id, 接手前: f.followUp.ownerId !== p.ownerId } : {}),
+          ...(企业 ? { ...(带附件的.has(f.followUp.id) ? { 附件: 沟通附件.get(f.followUp.id) ?? [] } : {}), 我记的: f.followUp.ownerId === me.id, 接手前: f.followUp.ownerId !== p.ownerId } : {}),
           ...(本人可改 ? { 本人可改到: 本人可改到(f.followUp.createdAt).toISOString() } : {}),
           ...(跟着改下一步 ? { 下一步: { 文字: p.nextStepText ?? "", 时间: 编?.nextAt ? dayjs(编.nextAt).format("YYYY-MM-DD") : null } } : {}),
           ...(改过的.has(f.followUp.id) ? { 已修改: true } : {}),
