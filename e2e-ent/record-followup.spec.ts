@@ -50,16 +50,23 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
   // 11-15 起客户档案里在推的项目整块摆出来（region「项目：X」），「新建沟通」在这个项目的沟通记录卡头：从哪个项目点开就记在哪个项目上，框里不再另挑「关联项目」
   const 项目块 = 正文.getByRole("region", { name: `项目：记沟通项目${后缀}` });
   await expect(项目块).toBeVisible();
-  // 等水合完再点（11-24：CI 慢机上偶发框没出）：服务端那份按钮已经画出来，React 还没接管时点了没有 onClick、框不出；
-  // 认按钮上挂没挂 __reactProps（同 nav-smooth 的 等水合、main-flow「⋯」）。只改用例，产品代码不动
   const 新建 = 项目块.getByRole("button", { name: /新建沟通/ }).first();
-  await expect(新建).toBeVisible();
+  // 整页打开是流式首屏：服务端那份先画出来、按钮就在，React 接管（挂上 onClick）之前点下去会落空、框不出来。
+  // 11-24 CI 红过：trace 里点击动作进行中才出 RecordView 首次渲染的 antd 警告（TransferBox 一直挂着），焦点落在按钮上但框没开。
+  // 等按钮身上有了 React 的属性再点，同 main-flow.spec.ts 的「⋯」、nav-smooth.spec.ts 的 等水合
   await expect
-    .poll(() => 新建.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))).catch(() => false), { message: "「新建沟通」一直没被 React 接管", timeout: 30_000 })
+    .poll(() => 新建.evaluate((el) => Object.keys(el).some((k) => k.startsWith("__reactProps"))).catch(() => false), {
+      message: "「新建沟通」一直没被 React 接管",
+      timeout: 30_000,
+    })
     .toBe(true);
-  await 新建.click();
+  // 接管了也还可能落空（11-24 #451 带着上面这道等待仍红）：点击进行中 RecordView 才首次渲染、挂框的那层重新挂载，开框状态被冲掉。
+  // 点了框没出就再点，30 秒内出来算过；框开着时再点会被遮罩挡住，不会把框关掉。只改用例，产品代码不动
   const 框 = page.getByRole("dialog", { name: "新建沟通" });
-  await expect(框).toBeVisible();
+  await expect(async () => {
+    if (!(await 框.isVisible())) await 新建.click({ timeout: 3_000 });
+    await expect(框).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
 
   // 发起主体字典里有「我方发起」时自动带上；没带上就挑第一项
   // 11-15 起记沟通框是项目那张（F-跟进-06），不是 antd Form.Item：按读屏名认这一格
