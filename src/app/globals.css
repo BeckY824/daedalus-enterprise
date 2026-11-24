@@ -5529,7 +5529,7 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* ---------- 客户资料、联系人、背调（D3 · 设计语言 11-21，规范 M3–M5）----------
    外观规则一律挂 :root:root。
    不带限定的只有几条结构规则：新元素（行尾笔、手机「变更记录」键、联系人组头右端操作、附件空格「＋ 添加」、新建联系人的规矩行、
-   挂靠就地表单的标签 / 报错、变更记录面板头、头像空名字的字色回退）不排就挤在一起；号码保护挪到号码后面要那一格能折行 */
+   挂靠就地表单的标签 / 报错、变更记录面板头、头像空名字的字色回退）不排就挤在一起；号码那一格要能折行 */
 .rec-field-pen { display: none; }
 .rec-field-pen.anticon { display: none; } /* 压过 antd 图标自带的 display：水合前也不露笔 */
 .rec-hist-btn.ant-btn { display: none; }
@@ -5539,11 +5539,9 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .rec-contact-acts { display: inline-flex; align-items: center; flex: none; margin-left: auto; }
 .rec-contact-av.is-empty { color: var(--ink-soft); }
 .rec-contact-num { flex-wrap: nowrap; align-items: flex-start; }
-/* 号码 + 号码保护：值那一列里自己折行，保护标签放不下整枚挪到号码下面（11-23 起不回到字段名底下） */
+/* 号码那一列（值那一列里自己折行）。号码保护 11-24 起单独一行（字段名「号码保护」+ 状态标签），不再跟在号码后面：1280 卡宽 232 放不下 */
 .rec-contact-nv { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
 .rec-contact-nv > .rec-contact-v { flex: 0 1 auto; max-width: 100%; }
-/* 保护标签挪到号码下面后仍比值那一列宽时（1280 卡宽 232、Linux 字体宽几像素）：内边距已收到 3px（RecordView 号码保护标签）；还放不下才打省略号，悬停看原因，不伸出卡 */
-.rec-contact-nv > .ant-tag { flex: 0 1 auto; min-width: 0; max-width: 100%; margin-inline-end: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-empty { display: inline-flex; align-items: center; gap: 6px; }
 .cf-rule { margin: -4px 0 12px; font-size: var(--fs-note); color: var(--text-muted); }
 .rec-contact-pick { display: grid; gap: 4px; }

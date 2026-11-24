@@ -1060,7 +1060,7 @@ it("[D3 · M4-a 方案 A] 四个宽度 × 8 位联系人：先摆前 3 位（关
           操作看不见: [...document.querySelectorAll("#cust-contacts .rec-contact-acts")].filter(e => getComputedStyle(e).opacity !== "1" || getComputedStyle(e).visibility === "hidden").length,
           线: [...document.querySelectorAll("#cust-contacts .rec-cg")].map(e => getComputedStyle(e, "::before").height),
           长号在: document.querySelector("#cust-contacts .rec-cg")!.textContent!.includes("+86 138-0013-8000 转 1234"),
-          // 号码保护一枚一行（不在「：」后折开），放不下整枚挪到下一行
+          // 号码保护一枚一行（11-24 起单独一行，标签只写状态）
           保护最高: Math.max(...[...document.querySelectorAll("#cust-contacts .rec-contact-guard")].map(t => Math.round(t.getBoundingClientRect().height))),
         };
       });
@@ -1080,7 +1080,7 @@ it("[D3 · M4-a 方案 A] 四个宽度 × 8 位联系人：先摆前 3 位（关
   }
 }, 90_000);
 
-it("[D3 · M4-b] 没填名字的联系人：「—」淡色（--empty-fg）常规字重，头像里的「—」同色；超长名字一行省略、title 给全名；号码保护灰底 + 锁、在号码后面", async () => {
+it("[D3 · M4-b] 没填名字的联系人：「—」淡色（--empty-fg）常规字重，头像里的「—」同色；超长名字一行省略、title 给全名；号码保护灰底 + 锁、单独一行紧跟号码", async () => {
   const { page, errors } = await 开(1366, { 八人: true });
   try {
     await 展开其余(page);
@@ -1091,9 +1091,13 @@ it("[D3 · M4-b] 没填名字的联系人：「—」淡色（--empty-fg）常�
     expect(await page.locator(".rec-contact-av.is-empty").evaluate(e => getComputedStyle(e).color)).toBe(淡);
     const 长 = page.locator(".rec-contact-n", { hasText: "超长联系人名字超长" });
     expect(await 长.evaluate(e => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth, e.getAttribute("title")])).toEqual(["ellipsis", true, "超长联系人名字".repeat(4)]);
-    // 号码保护：跟在第一个号码后面那一格里，灰底（--tag-bg）、带锁
+    // 号码保护：单独一行（字段名「号码保护」、值那一列放标签，只写状态），紧跟号码那几行；灰底（--tag-bg）、带锁
     const 保护 = page.locator(".rec-cg").first().locator(".rec-contact-guard");
-    expect(await 保护.evaluate(e => !!e.closest(".rec-contact-num") && !!e.querySelector(".anticon-lock"))).toBe(true);
+    expect(await 保护.evaluate(e => {
+      const 行 = e.closest(".rec-contact-line")!;
+      return [!e.closest(".rec-contact-num"), 行.querySelector(":scope > .rec-contact-k")?.textContent, e.parentElement === 行.querySelector(":scope > .rec-contact-v"),
+        !!行.previousElementSibling?.classList.contains("rec-contact-num"), e.textContent, !!e.querySelector(".anticon-lock")];
+    })).toEqual([true, "号码保护", true, true, "已开启", true]);
     expect(await 保护.evaluate(e => getComputedStyle(e).backgroundColor)).toBe(await 取色(page, "--tag-bg", "background-color"));
     expect(errors).toEqual([]);
   } finally { await page.close(); }
@@ -1361,8 +1365,13 @@ const 排版量 = (page: Page) => page.evaluate(() => {
     人名宽: [...new Set(人行.map(e => Math.round(e.getBoundingClientRect().width)))],
     人值左: [...new Set(人行.map(e => 离卡左(e.nextElementSibling!)))],
     人行字: 人行.map(e => e.textContent),
-    // 号码保护：在值那一列，不回到字段名底下
+    // 号码保护（11-24 起单独一行）：标签左边缘 = 值那一列左边缘；字段名「号码保护」在 人行 里，和其他字段名同一个左边缘
     保护左: [...new Set([...document.querySelectorAll(".rec-rail .rec-cg .rec-contact-guard")].map(离卡左))],
+    // 标签右沿不出组的内容区，也不被省略（1280 卡宽 232）
+    保护出界: [...document.querySelectorAll<HTMLElement>(".rec-rail .rec-cg .rec-contact-guard")].filter(t => {
+      const 组 = t.closest<HTMLElement>(".rec-cg")!, 右 = 组.getBoundingClientRect().right - parseFloat(getComputedStyle(组).paddingRight);
+      return t.getBoundingClientRect().right > 右 + 0.5 || t.scrollWidth > t.clientWidth || t.parentElement!.scrollWidth > t.parentElement!.clientWidth;
+    }).map(t => t.textContent),
     横滚: document.documentElement.scrollWidth > innerWidth + 1,
   };
 });
@@ -1404,7 +1413,7 @@ for (const 色 of ["light", "dark"] as const) {
 }
 
 for (const 色 of ["light", "dark"] as const) {
-  it(`${色}：联系人卡（1280 / 1366 / 1920 / 390）——名字下面各行字段名 68 列、左边缘和「客户资料」字段名齐，值那一列和客户资料的值齐，号码保护在值那一列；号码不截`, async () => {
+  it(`${色}：联系人卡（1280 / 1366 / 1920 / 390）——名字下面各行字段名 68 列、左边缘和「客户资料」字段名齐，值那一列和客户资料的值齐，号码保护单独一行、标签在值那一列不出界不省略；号码不截`, async () => {
     for (const w of [1280, 1366, 1920, 390]) {
       const { page, errors } = await 开(w, { 名片: true, 号码: true }, 2400);
       try {
@@ -1414,11 +1423,12 @@ for (const 色 of ["light", "dark"] as const) {
         const 标 = `${色} ${w}`;
         expect(m.资料名左.length, `${标} ${JSON.stringify(m)}`).toBe(1);
         expect(m.资料值左.length, 标).toBe(1);
-        expect(m.人行字, 标).toEqual(expect.arrayContaining(["职务", "本项目", "电话", "名片", "相册"]));
+        expect(m.人行字, 标).toEqual(expect.arrayContaining(["职务", "本项目", "电话", "号码保护", "名片", "相册"]));
         expect(m.人名左, 标).toEqual(m.资料名左);
         expect(m.人名宽, 标).toEqual([68]);
         expect(m.人值左, 标).toEqual(m.资料值左);
         expect(m.保护左, 标).toEqual(m.资料值左);
+        expect(m.保护出界, 标).toEqual([]);
         // 号码一整串不截
         const 号 = await page.locator(".rec-rail .rec-cg .rec-contact-num").evaluateAll(ls => ls.map(l => {
           const t = l.querySelector(".copy-val-t")!, b = l.querySelector(".copy-val-b")!;

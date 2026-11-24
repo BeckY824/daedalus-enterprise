@@ -65,6 +65,9 @@ it("每人一组、先露 3 位，号码保护灰底加锁，附件「— ＋ �
     expect(await page.locator(".rec-contact-rest-btn").innerText()).toBe("展开其余 1 位");
     expect(await 保护色(page)).toEqual({ 绿: false, 灰: true, 类: true });
     expect(await page.locator(".rec-contact-guard .anticon-lock").count()).toBe(2);
+    // 11-24 起号码保护单独一行：字段名「号码保护」，标签里只写状态
+    expect(await page.locator(".rec-contact-line", { has: page.locator(".rec-contact-guard") }).locator(".rec-contact-k").allInnerTexts()).toEqual(Array(3).fill("号码保护"));
+    expect((await page.locator(".rec-contact-guard").allInnerTexts()).every(t => t === "已开启" || t === "已关闭")).toBe(true);
     expect((await page.getByRole("button", { name: "新增联系人" }).innerText()).trim()).toBe("新增");
     expect(await page.locator(".att-empty").count()).toBeGreaterThan(0);
     expect(await page.getByRole("button", { name: /^展开没填的 \d+ 项$/ }).count()).toBe(1);
