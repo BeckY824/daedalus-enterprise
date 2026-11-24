@@ -12,6 +12,7 @@ import { useFormDraft } from "@/components/FormDraft";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { 记项目沟通Action } from "../projects/actions";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
+import { 超时短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 跟进类型们 } from "@/lib/constants";
 import type { 预警行 } from "@/lib/project/review-extras";
@@ -453,7 +454,9 @@ function RecycleProjectRow({ p, 只读 = false }: { p: 预警行; 只读?: boole
       阶段: p.阶段, 下一步, 下一步时间: 下一步时间 ? 下一步时间.format("YYYY-MM-DD") : null,
     });
     if (!r.ok) return { ok: false, error: "error" in r ? r.error : "没记上，请刷新后重试" };
-    set推话(自动推进话of(r));
+    // 顺带推了一格、这条不算有效沟通（超时未跟进计时中的线索 E-259）：记完那一行一起说。
+    // 只出超时那句：旁边「还剩 N 天」看客户最近跟进时间、短沟通照样更新，三态那句「不会重置回收倒计时」在这里不对
+    set推话([自动推进话of(r), 超时短沟通话of(r)].filter(Boolean).join("；") || null);
     return { ok: true };
   }
   return (

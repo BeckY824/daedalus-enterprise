@@ -123,10 +123,12 @@ import { 系统, 超时自动转理由, 是超时自动转痕 } from "@/lib/proj
 import { 指定回复文字, 短时刻, 客户在谁名下话, 分配后未跟进话 } from "@/lib/project/time-fields";
 import { 超时转出 } from "@/app/(app)/leads/assign-actions";
 import { notify } from "./notify";
+import { 通知文字打码 } from "./notice-mask";
 import { 分配通知, 带放弃链接 } from "./notice-sources";
 import { 企业版 } from "./switch";
 import { 视图中跳过 } from "./view-as";
-import { 已回复的, 是有效沟通, 不是沟通的类型 } from "./reply-notice";
+import { 已回复的, 是有效沟通, 不是沟通的类型, 回复提醒时刻 } from "./reply-notice";
+import { 无效沟通原因of, 无效原因话, type 无效沟通原因 } from "./tri-state-quota";
 import { 系统操作人 } from "./scheduled-assign";
 import { 超时转令牌 } from "./scheduled-assign-token";
 import { 规则开着 } from "./rules";
@@ -858,8 +860,104 @@ async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: �
     await 改链若持有人是(p.id, p.ownerId, { anchorAt: 基, holderId: p.ownerId, since, overdueAt: 现在, tried: 试过, transfers });
     明细.提醒++;
   } else if (步 === "转" && 分来) {
-    if (await 转出去(p, 基, 试过, transfers, 现在)) 明细.转出++;
+    if (await 转出去(p, 基, 试过, transfers, 现在, since)) 明细.转出++;
     else 明细.没转成++;
+  }
+}
+
+/** 超时提醒里引那条无效沟通的内容最多几个字（多了截断、末尾「…」） */
+export const 无效沟通引用字数 = 20;
+// 先打码再截断：号码被截掉一半以后 notify() 那层兜底就认不出来了
+const 引用 = (内容: string): string => {
+  const 字 = Array.from(通知文字打码(内容.replace(/\s+/gu, " ").trim()));
+  return 字.length > 无效沟通引用字数 ? `${字.slice(0, 无效沟通引用字数 - 1).join("")}…` : 字.join("");
+};
+/**
+ * 「你 11-24 10:36 记的「加微信」不足 4 个字，不算有效沟通。」（E-259，原因四类同 无效沟通原因of）。
+ * 只有链接的不引原文（链接本身没什么可看、还可能带参数），写「那条只有链接」
+ */
+export function 无效沟通话(f: { 记于: Date; 内容: string; 原因: 无效沟通原因 }, 现在: Date = new Date()): string {
+  const 时 = 短时刻(f.记于, 现在);
+  if (f.原因 === "只有链接") return `你 ${时} 记的那条只有链接，不算有效沟通。`;
+  const 引 = 引用(f.内容);
+  return f.原因 === "空" || !引 ? `你 ${时} 记的那条沟通没有文字，不算有效沟通。` : `你 ${时} 记的「${引}」${无效原因话[f.原因]}，不算有效沟通。`;
+}
+
+/**
+ * 负责人本人在这一位计时以后、挂在这条项目上记过的最近一条无效沟通（E-259）：超时提醒、收回通知里说清它为什么不算。
+ * 从 = 这一位的计时起点；按时的从提醒时刻（指定回复时间前 30 分钟）起就算回复（同 已回复的），取早的。
+ * 不算沟通的（跟进任务 / 提醒、同号留痕）不提；判定同 是有效沟通（占位词表同一份）。没有 = null
+ */
+export async function 最近无效沟通of(
+  p: 两格 & { id: string; ownerId: string; 按分配: boolean }, 从: Date,
+): Promise<{ 记于: Date; 内容: string; 原因: 无效沟通原因 } | null> {
+  const 提 = p.按分配 ? null : 回复提醒时刻(p);
+  const 起 = 提 && 提.getTime() < 从.getTime() ? 提 : 从;
+  const [挂的, 词] = await Promise.all([
+    prisma.followUpProject.findMany({
+      where: {
+        projectId: p.id, node: { not: 同号节点 },
+        followUp: { ownerId: p.ownerId, deletedAt: null, createdAt: { gte: 起 }, type: { notIn: [...不是沟通的类型] }, NOT: { title: { startsWith: 同号标题 } } },
+      },
+      orderBy: { followUp: { createdAt: "desc" } },
+      take: 20,
+      select: { followUp: { select: { content: true, createdAt: true } } },
+    }),
+    读占位词(),
+  ]);
+  for (const { followUp: f } of 挂的) {
+    const 原因 = 无效沟通原因of(f.content, { 占位词: 词 });
+    if (原因) return { 记于: f.createdAt, 内容: f.content ?? "", 原因 };
+  }
+  return null;
+}
+
+/** 超时提醒 / 收回通知正文里那句（有的话，带句号）；没有、查出错 = 空串，不挡通知 */
+async function 无效沟通话of(p: 链项目, since: Date, 现在: Date): Promise<string> {
+  try {
+    const f = await 最近无效沟通of(p, since);
+    return f ? 无效沟通话(f, 现在) : "";
+  } catch (e) {
+    console.error(`[超时自动转] ${p.id} 没查出无效沟通，正文照旧`, e);
+    return "";
+  }
+}
+
+/**
+ * 保存一条新沟通后（E-259）：这条挂的项目正在超时未跟进的链上计时（现负责人本人记的、这一位还在计时：同首页 超时时限们；
+ * 线索阶段、没结局、不在公海、不在待分配；负责人还没在这位客户上记过有效沟通——记过的链下一遍就停）、
+ * 而这条按 是有效沟通 不算（同号留痕、跟进任务 / 提醒不算沟通，不提），回原因给前端一句提示（tri-state-quota.ts 超时短沟通话）。
+ * 不看三态开关；超时转关着、不是企业版、出任何错都回 null（沟通已经存了，不能让提示把保存说成失败）
+ */
+export async function 超时短沟通提示(followUpId: string | null | undefined, 现在: Date = new Date()): Promise<无效沟通原因 | null> {
+  try {
+    if (!followUpId || typeof followUpId !== "string" || !企业版() || !(await 超时自动转开着())) return null;
+    return await 看全部(async () => {
+      const f = await prisma.followUp.findUnique({
+        where: { id: followUpId },
+        select: {
+          ownerId: true, type: true, title: true, content: true, deletedAt: true,
+          projectNode: {
+            select: {
+              node: true,
+              project: { select: { id: true, ownerId: true, customerId: true, phase: true, result: true, pooledAt: true, awaitAssignAt: true, deletedAt: true, customer: { select: { pool: { select: { customerId: true } } } } } },
+            },
+          },
+        },
+      });
+      const 挂 = f?.projectNode;
+      if (!f || f.deletedAt || !挂 || 不是沟通的类型.includes(f.type) || (f.title ?? "").startsWith(同号标题) || 挂.node === 同号节点) return null;
+      const p = 挂.project;
+      if (p.ownerId !== f.ownerId || p.phase !== "线索" || p.result || p.pooledAt || p.awaitAssignAt || p.deletedAt || p.customer.pool) return null;
+      const 原因 = 无效沟通原因of(f.content, { 占位词: await 读占位词() });
+      if (!原因) return null;
+      if (!(await 超时时限们([{ id: p.id, 接手于: 现在 }], 现在)).has(p.id)) return null;
+      // 负责人在这位客户上已经记过有效沟通（之前的跟进也算）：链下一遍就停，不说「计时不会停」
+      if ((await 负责人跟过的([p])).has(p.id)) return null;
+      return 原因;
+    });
+  } catch {
+    return null;
   }
 }
 
@@ -879,10 +977,12 @@ async function 发超时提醒(p: 链项目, since: Date, 接手的: boolean, �
     : p.历史 ? `这条线索从 ${短时刻(p.基, 现在)} 起按规则计时（你在这位客户上还没有跟进记录），已满 ${超时提醒分钟 / 60} 小时还没记有效沟通`
     : p.按分配 ? `${分配后未跟进话(超时提醒分钟)}（${短时刻(p.基, 现在)} 分给你），还没记有效沟通`
     : `指定回复时间 ${指定回复文字(p.replyStartAt, p.replyEndAt, 现在)} 已过，还没记有效沟通`;
+  // 负责人本人在这一位计时以后记过、但不算有效沟通的（E-259）：说清那条为什么不算，不然人以为记过了
+  const 无效话 = await 无效沟通话of(p, since, 现在);
   await notify([p.ownerId], {
     kind: 超时通知种类,
     title: `超时未跟进：${p.name}`,
-    body: 分来 ? `${头}。${重计话}${本人记话}，${再提醒话}${转时} 前还没记，这条线索会自动收回、分给其他成员` : `${头}。${本人记话}。${自留超时话}`,
+    body: 分来 ? `${头}。${无效话}${重计话}${本人记话}，${再提醒话}${转时} 前还没记，这条线索会自动收回、分给其他成员` : `${头}。${无效话}${本人记话}。${自留超时话}`,
     // 发这一刻他还能放弃（11-21）：带 ?giveup=1，飞书、铃铛多一个「放弃（豁免）」
     link: await 带放弃链接(p.ownerId, p.id, `/projects/${encodeURIComponent(p.id)}`, 现在),
     key: `reply-overdue:${p.id}:${p.ownerId}:${since.toISOString()}${重计于 ? `:重计:${重计于.toISOString()}` : ""}`,
@@ -890,7 +990,7 @@ async function 发超时提醒(p: 链项目, since: Date, 接手的: boolean, �
 }
 
 /** 自动转一次；转成了回 true */
-async function 转出去(p: 链项目, 基: Date, 试过: string[], transfers: number, 现在: Date): Promise<boolean> {
+async function 转出去(p: 链项目, 基: Date, 试过: string[], transfers: number, 现在: Date, since: Date): Promise<boolean> {
   const 原 = p.ownerId;
   const 原名 = (await prisma.user.findUnique({ where: { id: 原 }, select: { name: true } }))?.name ?? "原负责人";
   const 附 = `${超时转理由}（原负责人 ${原名} 超时没记有效沟通）`;
@@ -923,10 +1023,12 @@ async function 转出去(p: 链项目, 基: Date, 试过: string[], transfers: n
     : null;
   await 分配通知(系统操作人, [{ projectId: p.id, toUserId: 新, ...(r.留下 ? { 留下: r.留下 } : {}) }], true, 客户名下 ? `${附}；${客户在谁名下话(客户名下)}` : 附);
   const 客户话 = 客户.去向 === "留给原负责人" ? "；你手上还有这位客户别的项目，客户还在你名下" : 客户.去向 === "跟着走" ? "；客户一起给了接手人" : "";
+  // 同超时提醒（E-259）：原负责人记过、但不算有效沟通的那条，说清为什么不算（查不出不挡通知）
+  const 无效话 = await 无效沟通话of(p, since, 现在);
   await notify([原], {
     kind: 超时通知种类,
     title: `${收回话}：${p.name}`,
-    body: `${p.历史 ? "按规则开始计时以后" : p.按分配 ? "分到你手上以后" : `指定回复时间 ${指定回复文字(p.replyStartAt, p.replyEndAt, 现在)} 过后`}一直没记有效沟通，系统已自动收回，分给了 ${r.接手人}${客户话}`,
+    body: `${p.历史 ? "按规则开始计时以后" : p.按分配 ? "分到你手上以后" : `指定回复时间 ${指定回复文字(p.replyStartAt, p.replyEndAt, 现在)} 过后`}一直没记有效沟通，系统已自动收回，分给了 ${r.接手人}${客户话}${无效话 ? `。${无效话.replace(/。$/u, "")}` : ""}`,
     key: `reply-overdue-out:${p.id}:${原}:${现在.toISOString()}`,
   });
   return true;
