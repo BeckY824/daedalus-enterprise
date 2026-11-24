@@ -28,7 +28,8 @@ type 我 = { id: string; name: string; role: string };
 /** 和 apply.ts ApplyResult 一个形状（那边 "use server" 文件不能导出类型以外的东西，这里自己写一份） */
 export type 项目卡落库 =
   /** 推进：这张卡写进去时顺带按必填把项目推了一格，推到哪（卡上落印下面那一行，不悄悄推，11-20） */
-  | { ok: true; message: string; 撤销?: { kind: "payment_add"; customerId: string; projectId: string; id: string }; 项目?: string; 推进?: string }
+  /** 提示：这条沟通不算有效沟通的那句（E-259，已去掉「已保存。」），卡上落印下面一行 */
+  | { ok: true; message: string; 撤销?: { kind: "payment_add"; customerId: string; projectId: string; id: string }; 项目?: string; 推进?: string; 提示?: string }
   | { ok: false; error: string };
 
 const 话 = (r: unknown, 兜底 = "没写成"): string =>
@@ -48,10 +49,10 @@ export async function 做项目卡(input: 项目卡, me: 我, b: BusinessConfig)
   if (!done.ok) return done;
   const summary = `确认 AI 建议：${描述项目卡(p)}`;
   await recordAudit({ user: me, action: "ai_apply", entity: "Ai", entityId: p.kind, summary, detail: { 对象: p.targetName, 理由: p.reason } });
-  return { ok: true, message: summary.replace("确认 AI 建议：", "已") + (done.补话 ?? ""), ...(done.撤销 ? { 撤销: done.撤销 } : {}), ...(done.项目 ? { 项目: done.项目 } : {}), ...(done.推进 ? { 推进: done.推进 } : {}) };
+  return { ok: true, message: summary.replace("确认 AI 建议：", "已") + (done.补话 ?? ""), ...(done.撤销 ? { 撤销: done.撤销 } : {}), ...(done.项目 ? { 项目: done.项目 } : {}), ...(done.推进 ? { 推进: done.推进 } : {}), ...(done.提示 ? { 提示: done.提示 } : {}) };
 }
 
-type 分派结果 = { ok: true; 补话?: string; 撤销?: { kind: "payment_add"; customerId: string; projectId: string; id: string }; 项目?: string; 推进?: string } | { ok: false; error: string };
+type 分派结果 = { ok: true; 补话?: string; 撤销?: { kind: "payment_add"; customerId: string; projectId: string; id: string }; 项目?: string; 推进?: string; 提示?: string } | { ok: false; error: string };
 
 async function 分派(p: 项目卡, me: 我): Promise<分派结果> {
   switch (p.kind) {
@@ -95,7 +96,7 @@ async function 分派(p: 项目卡, me: 我): Promise<分派结果> {
       const 推进 = 自动推进话of(结);
       // 这条不算有效沟通（超时未跟进计时中的线索 E-259 / 客户三态 C12）：卡上一起说（「已保存」那半句卡上已经有了）
       const 短话 = 短沟通话of(结)?.replace(/^已保存。/u, "");
-      return { ok: true, 项目: p.targetId, 补话: 卡 + 没发 + (推进 ? `；${推进}` : "") + (短话 ? `；${短话}` : ""), ...(推进 ? { 推进: `${推进}（这张卡不能撤销，要退回去到项目页改进程）` } : {}) };
+      return { ok: true, 项目: p.targetId, 补话: 卡 + 没发 + (推进 ? `；${推进}` : "") + (短话 ? `；${短话}` : ""), ...(推进 ? { 推进: `${推进}（这张卡不能撤销，要退回去到项目页改进程）` } : {}), ...(短话 ? { 提示: 短话 } : {}) };
     }
     case "blocker_resolve": {
       const 卡点 = await prisma.entBlocker.findUnique({ where: { id: p.targetId }, select: { projectId: true } });
