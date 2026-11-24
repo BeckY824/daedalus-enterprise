@@ -1,7 +1,8 @@
 /**
  * 客户列表 11-11 补的筛选：
  * - 「手机号」（地址栏 phone=）：只比号码，和搜索框像号码的那一半同一套——去空格、横杠、括号、明写的 +86 / 0086，包含就算；
- *   比客户电话、WhatsApp、没删的联系人的电话、联系人号码子表里的手机号 / WhatsApp；删进回收站的联系人的号不算；
+ *   比 WhatsApp、没删的联系人的电话、联系人号码子表里的手机号 / WhatsApp；删进回收站的联系人的号不算；
+ *   企业版客户没有电话（E-260）：号码造在主要联系人上，Customer.phone 存空串；库里残留的 Customer.phone 不比；
  *   电话「藏」着的人（字段权限 Y27）不按号码比（当没筛），可见范围不因筛选放宽；
  * - 「创建时间」（createdFrom / createdTo）：北京日 00:00 到 23:59:59.999，两头都算，和手机号叠加；
  * - 搜索框（关键词）：联系人电话按号键比、子表里的手机号也搜得到；
@@ -46,8 +47,9 @@ beforeEach(async () => {
   invalidateSettingsCache();
   忘掉企业版范围();
 
+  // 号码记在主要联系人上（E-260：客户没有电话）
   const 客 = (name: string, phone: string, owner: string, createdAt: string) =>
-    prisma.customer.create({ data: { name, phone, salesOwnerId: owner, createdAt: new Date(createdAt) } });
+    prisma.customer.create({ data: { name, phone: "", salesOwnerId: owner, createdAt: new Date(createdAt), contacts: { create: { name: "主联系人", phone, isPrimary: true } } } });
   // 北京 03-01 00:00 = UTC 02-28 16:00
   await 客("A主号", "13912345678", 销售, "2026-02-28T16:00:00.000Z");
   const b = await 客("B联系人", "15000000101", 销售, "2026-02-28T15:59:59.999Z");
@@ -62,7 +64,7 @@ beforeEach(async () => {
   const d = await 客("D删了的联系人", "15000000103", 销售, "2026-06-30T16:00:00.000Z");
   const 删 = await prisma.contact.create({ data: { name: "离职的", phone: "13377778888", customerId: d.id, deletedAt: new Date() } });
   await prisma.contactMethod.create({ data: { customerId: d.id, contactId: 删.id, kind: "phone", value: "13377778888", numberKey: "13377778888" } });
-  await prisma.customer.create({ data: { name: "E外贸", phone: "15000000104", salesOwnerId: 销售, extra: { create: { whatsapp: "+86 131-1111-2222" } }, createdAt: new Date("2026-04-01T00:00:00Z") } });
+  await prisma.customer.create({ data: { name: "E外贸", phone: "", salesOwnerId: 销售, extra: { create: { whatsapp: "+86 131-1111-2222" } }, createdAt: new Date("2026-04-01T00:00:00Z") } });
   // 别人的客户：同一个号段，销售甲按号码筛不出来
   await 客("F同事的", "13912349999", 销售乙, "2026-04-01T00:00:00Z");
 });
@@ -73,7 +75,7 @@ afterEach(() => {
 afterAll(() => prisma.$disconnect());
 
 describe("手机号筛选", () => {
-  it("客户电话：完整号、后 4 位、带空格横杠、+86 / 0086 写法都中", async () => {
+  it("主要联系人电话：完整号、后 4 位、带空格横杠、+86 / 0086 写法都中", async () => {
     for (const k of ["13912345678", "5678", "139 1234 5678", "139-1234-5678", "+86 139 1234 5678", "0086-13912345678", "(+86)1391234", "+86 1391"]) {
       expect(await 名们(老板, { phone: k }), k).toContain("A主号");
     }
@@ -87,8 +89,11 @@ describe("手机号筛选", () => {
     expect(await 名们(老板, { phone: "88889999" })).toEqual([]);
   });
 
-  it("没有：删进回收站的联系人的号不算；不像号码的、不到 3 位的谁都不中", async () => {
+  it("没有：删进回收站的联系人的号不算；库里残留的客户电话不算；不像号码的、不到 3 位的谁都不中", async () => {
     expect(await 名们(老板, { phone: "13377778888" })).toEqual([]);
+    await prisma.customer.create({ data: { name: "G老客户电话", phone: "13955550000", salesOwnerId: 销售 } });
+    expect(await 名们(老板, { phone: "13955550000" })).toEqual([]);
+    expect(await 名们(老板, { keyword: "13955550000" })).toEqual([]);
     expect(await 名们(老板, { phone: "abc" })).toEqual([]);
     expect(await 名们(老板, { phone: "12" })).toEqual([]);
   });

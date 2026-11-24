@@ -98,7 +98,8 @@ const 以 = <T,>(u: 人, fn: () => Promise<T>): Promise<T> => { 当(u); return �
 let 序号 = 0;
 const 客户 = async (ownerId: string) => {
   序号 += 1;
-  return (await prisma.customer.create({ data: { name: `客户${序号}`, phone: `139${String(序号).padStart(8, "0")}`, salesOwnerId: ownerId } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+  return (await prisma.customer.create({ data: { name: `客户${序号}`, phone: "", salesOwnerId: ownerId, contacts: { create: { name: `联系人${序号}`, phone: `139${String(序号).padStart(8, "0")}`, isPrimary: true } } } })).id;
 };
 const 项目 = async (customerId: string, ownerId: string, extra: Record<string, unknown> = {}) => {
   序号 += 1;

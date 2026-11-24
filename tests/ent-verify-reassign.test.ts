@@ -36,8 +36,9 @@ async function 建(email: string, role = "SALES"): Promise<人> {
   return { id: u.id, role };
 }
 const 当 = (p: 人) => { mocks.user = { ...mocks.user, id: p.id, role: p.role, name: p.id }; };
+// 企业版客户没有电话（E-260）：号记在主要联系人上，退回公海查联系方式按联系人的号判
 const 客户 = async (salesOwnerId: string) =>
-  (await prisma.customer.create({ data: { name: `客户${++号}`, phone: `1390000${String(号).padStart(4, "0")}`, salesOwnerId } })).id;
+  (await prisma.customer.create({ data: { name: `客户${++号}`, phone: "", salesOwnerId, contacts: { create: { name: `联系人${号}`, phone: `1390000${String(号).padStart(4, "0")}`, isPrimary: true } } } })).id;
 const 项目 = async (customerId: string, ownerId: string, 补: Record<string, unknown> = {}) =>
   (await prisma.project.create({ data: { name: `项目${++号}`, customerId, ownerId, creatorId: 市场.id, phase: "线索", node: "线索验证", ...补 } })).id;
 const 挂验证 = (projectId: string, pending = "市场复核") =>

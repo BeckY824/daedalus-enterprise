@@ -52,7 +52,8 @@ async function 建人(email: string, name: string, bizRole: string, deptId: stri
   return { id: u.id, name, role };
 }
 const 建客户 = async (owner: string, creator?: string) => {
-  const c = await prisma.customer.create({ data: { name: `客户${++序}`, phone: `1390000${String(序).padStart(4, "0")}`, salesOwnerId: owner, addrCountry: "美国", bizLine: "外贸" } });
+  // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+  const c = await prisma.customer.create({ data: { name: `客户${++序}`, phone: "", salesOwnerId: owner, addrCountry: "美国", bizLine: "外贸", contacts: { create: { name: `联系人${序}`, phone: `1390000${String(序).padStart(4, "0")}`, isPrimary: true } } } });
   if (creator) await prisma.customerCreator.create({ data: { customerId: c.id, userId: creator } });
   return c.id;
 };

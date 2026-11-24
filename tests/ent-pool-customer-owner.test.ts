@@ -58,7 +58,8 @@ let 序号 = 0;
 const 客户 = async (ownerId: string) => {
   序号 += 1;
   return (await prisma.customer.create({
-    data: { name: `公海客户${序号}`, phone: `139${String(序号).padStart(8, "0")}`, salesOwnerId: ownerId },
+    // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+    data: { name: `公海客户${序号}`, phone: "", salesOwnerId: ownerId, contacts: { create: { name: `联系人${序号}`, phone: `139${String(序号).padStart(8, "0")}`, isPrimary: true } } },
   })).id;
 };
 const 负责人of = async (c: string) => (await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId;

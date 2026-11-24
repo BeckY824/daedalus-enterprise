@@ -78,7 +78,8 @@ const 当 = (p: 人) => { mocks.user = { ...mocks.user, id: p.id, name: p.name, 
 let 序 = 0;
 async function 线索(owner: string, 补: Record<string, unknown> = {}) {
   序++;
-  const c = (await prisma.customer.create({ data: { name: `客户${序}`, phone: `1390000${String(序).padStart(4, "0")}`, salesOwnerId: owner } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+  const c = (await prisma.customer.create({ data: { name: `客户${序}`, phone: "", salesOwnerId: owner, contacts: { create: { name: `联系人${序}`, phone: `1390000${String(序).padStart(4, "0")}`, isPrimary: true } } } })).id;
   const p = (await prisma.project.create({
     data: { name: `线索${序}`, customerId: c, ownerId: owner, creatorId: 老板.id, phase: "线索", node: "潜客培育", bizLine: "内贸", ...补 },
   })).id;

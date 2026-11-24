@@ -39,7 +39,8 @@ async function 造人(email: string, name: string, role: string): Promise<人> {
 }
 async function 客户(ownerId: string) {
   序++;
-  return (await prisma.customer.create({ data: { name: `客户${序}`, phone: `1390000${String(序).padStart(4, "0")}`, salesOwnerId: ownerId } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上，退回公海查联系方式按联系人的号判
+  return (await prisma.customer.create({ data: { name: `客户${序}`, phone: "", salesOwnerId: ownerId, contacts: { create: { name: `联系人${序}`, phone: `1390000${String(序).padStart(4, "0")}`, isPrimary: true } } } })).id;
 }
 async function 项目(ownerId: string, customerId: string, 补: Record<string, unknown> = {}) {
   return (await prisma.project.create({ data: { name: `项目${++序}`, customerId, ownerId, creatorId: ownerId || 老板.id, ...补 } })).id;

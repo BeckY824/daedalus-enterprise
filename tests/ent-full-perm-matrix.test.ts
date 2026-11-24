@@ -113,9 +113,10 @@ async function 重建() {
       { userId: 人.教练, bizRole: "coach" },
     ],
   });
-  客户.甲的 = (await raw.customer.create({ data: { name: "甲的客户", phone: "13800330001", salesOwnerId: 人.销售甲 } })).id;
-  客户.乙的 = (await raw.customer.create({ data: { name: "乙的客户", phone: "13800330002", salesOwnerId: 人.销售乙 } })).id;
-  客户.丙的 = (await raw.customer.create({ data: { name: "丙的客户", phone: "13800330003", salesOwnerId: 人.销售丙 } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+  客户.甲的 = (await raw.customer.create({ data: { name: "甲的客户", phone: "", salesOwnerId: 人.销售甲, contacts: { create: { name: "甲的联系人", phone: "13800330001", isPrimary: true } } } })).id;
+  客户.乙的 = (await raw.customer.create({ data: { name: "乙的客户", phone: "", salesOwnerId: 人.销售乙, contacts: { create: { name: "乙的联系人", phone: "13800330002", isPrimary: true } } } })).id;
+  客户.丙的 = (await raw.customer.create({ data: { name: "丙的客户", phone: "", salesOwnerId: 人.销售丙, contacts: { create: { name: "丙的联系人", phone: "13800330003", isPrimary: true } } } })).id;
   项目.甲的 = (await raw.project.create({ data: { name: "甲的项目", customerId: 客户.甲的, ownerId: 人.销售甲, creatorId: 人.销售甲 } })).id;
   await 存设置(规则.按组织看客户.key, true);
   invalidateSettingsCache();

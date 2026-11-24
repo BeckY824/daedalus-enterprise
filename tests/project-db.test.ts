@@ -38,7 +38,8 @@ beforeEach(async () => {
   老板 = await 人("boss", "ADMIN");
   乙 = await 人("yi", "SALES");
   丙 = await 人("bing", "SALES");
-  客户甲 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 老板.id } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+  客户甲 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 老板.id, contacts: { create: { name: "甲联系人", phone: "13800000001", isPrimary: true } } } })).id;
   // 企业版那几段（11-01 权限只认业务角色）：老板 = 总管理，乙丙 = 销售成员；不是企业版不看这张表
   await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 乙.id, bizRole: "sales" }, { userId: 丙.id, bizRole: "sales" }] });
 });
@@ -407,7 +408,7 @@ describe("项目公海", () => {
 
 describe("客户的项目数", () => {
   it("按客户数，没项目的不出现", async () => {
-    const 客户乙 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 乙.id } })).id;
+    const 客户乙 = (await prisma.customer.create({ data: { name: "客户乙", phone: "", salesOwnerId: 乙.id, contacts: { create: { name: "乙联系人", phone: "13800000002", isPrimary: true } } } })).id;
     await 项目(乙.id);
     await 项目(老板.id);
     const n = await 客户的项目数([客户甲, 客户乙]);
@@ -419,7 +420,7 @@ describe("客户的项目数", () => {
 
 describe("业务员看得到哪些项目（团队范围）", () => {
   it("自己客户下的、自己负责的看得到；同事客户下同事负责的看不到；组员、节点变更跟着项目走", async () => {
-    const 客户乙 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 乙.id } })).id;
+    const 客户乙 = (await prisma.customer.create({ data: { name: "客户乙", phone: "", salesOwnerId: 乙.id, contacts: { create: { name: "乙联系人", phone: "13800000002", isPrimary: true } } } })).id;
     const 自己客户 = await 项目(老板.id, 客户乙);
     const 自己负责 = await 项目(乙.id, 客户甲);
     const 看不到 = await 项目(老板.id, 客户甲);
@@ -483,7 +484,7 @@ describe("编辑项目", () => {
   it("主联系人只能是这位客户的；清空也行", async () => {
     const p = await 项目(乙.id);
     const 本家 = await prisma.contact.create({ data: { customerId: 客户甲, name: "王" } });
-    const 别家客户 = await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 老板.id } });
+    const 别家客户 = await prisma.customer.create({ data: { name: "客户乙", phone: "", salesOwnerId: 老板.id } });
     const 别家 = await prisma.contact.create({ data: { customerId: 别家客户.id, name: "李" } });
     expect(await 改项目(乙, p.id, { name: "一号项目", contactId: 别家.id })).toMatchObject({ ok: false, error: expect.stringContaining("联系人") });
     expect(await 改项目(乙, p.id, { name: "一号项目", contactId: 本家.id })).toEqual({ ok: true, 变了: ["contactId"] });

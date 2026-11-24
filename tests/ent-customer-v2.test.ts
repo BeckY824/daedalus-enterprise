@@ -277,7 +277,8 @@ describe("saveContact 企业版", () => {
       企业: { gender: "男", birthday: "1990-05-01", hobby: "钓鱼", address: "某路 1 号", 号码们: [{ kind: "phone", value: "13900000001" }, { kind: "landline", value: "021-12345678" }, { kind: "email", value: "z@x.com" }] },
     });
     expect(r.ok).toBe(true);
-    const c = await prisma.contact.findFirstOrThrow({ where: { customerId: cid }, include: { contactMethods: true } });
+    // 新建客户顺带建了带号的主要联系人（E-260）：按名字认这一位
+    const c = await prisma.contact.findFirstOrThrow({ where: { customerId: cid, name: "张三" }, include: { contactMethods: true } });
     expect([c.gender, c.birthday, c.hobby, c.address, c.phone, c.email, c.wechat]).toEqual(["男", "1990-05-01", "钓鱼", "某路 1 号", "13900000001", "z@x.com", null]);
     expect(c.contactMethods.map((x) => x.kind).sort()).toEqual(["email", "landline", "phone"]);
 
@@ -293,14 +294,15 @@ describe("saveContact 企业版", () => {
     expect(await saveContact({ customerId: cid, name: "李四", isPrimary: false, 企业: { gender: "未知" } })).toMatchObject({ ok: false });
     expect(await saveContact({ customerId: cid, name: "李四", isPrimary: false, 企业: { birthday: "2001-02-30" } })).toMatchObject({ ok: false });
     expect(await saveContact({ customerId: cid, name: "李四", isPrimary: false, 企业: { 号码们: [{ kind: "landline", value: "abc" }] } })).toMatchObject({ ok: false });
-    expect(await prisma.contact.count({ where: { customerId: cid } })).toBe(0);
+    expect(await prisma.contact.count({ where: { customerId: cid, name: "李四" } })).toBe(0);
+    expect(await prisma.contact.count({ where: { customerId: cid } })).toBe(1);
   });
 
   it("非企业版交了企业几格也不写", async () => {
     const cid = await 新建id();
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect((await saveContact({ customerId: cid, name: "王五", phone: "13900000005", isPrimary: false, 企业: { gender: "女" } })).ok).toBe(true);
-    const c = await prisma.contact.findFirstOrThrow({ where: { customerId: cid } });
+    const c = await prisma.contact.findFirstOrThrow({ where: { customerId: cid, name: "王五" } });
     expect([c.gender, c.phone]).toEqual([null, "13900000005"]);
   });
 });
@@ -366,7 +368,8 @@ describe("客户页新建项目", () => {
 
   it("建在线索阶段，挂主要联系人，首条沟通挂上项目，客户最近跟进往后挪", async () => {
     const cid = await 新建id();
-    const 主 = (await prisma.contact.create({ data: { customerId: cid, name: "主联系人", isPrimary: true } })).id;
+    // 新建客户顺带建的主要联系人（E-260，号记在他身上）
+    const 主 = (await prisma.contact.findFirstOrThrow({ where: { customerId: cid, isPrimary: true } })).id;
     const r = await 给客户建项目(输入(cid));
     expect(r.ok).toBe(true);
     if (!r.ok) return;
