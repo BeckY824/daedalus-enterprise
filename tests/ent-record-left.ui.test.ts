@@ -64,6 +64,8 @@ afterAll(async () => { await browser?.close(); });
 async function open(企业: boolean, width = 1366, 项目模式 = false, 加?: Record<string, unknown>) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://left.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+  // 沟通附件缩略图（F-047）：给一张 1×1 的 PNG，别让图片请求落到上面那页 HTML
+  await page.route("http://left.test/api/attachments/**", r => r.fulfill({ contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64") }));
   await page.goto("http://left.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ path: path.resolve("src/app/(app)/customers/[id]/history-changes.css") }); await page.addScriptTag({ content: bundle });
   await page.evaluate(([e, p, a]) => (window as unknown as { __render: (x: boolean, y: boolean, z?: unknown) => void }).__render(e, p, a), [企业, 项目模式, 加] as const);
@@ -180,6 +182,61 @@ it("企业版项目模式（P14 → U-客户-03）：没有记录输入、沟通
     expect(await page.evaluate(() => location.pathname)).toBe("/");
     expect(await 框.evaluate(el => el.getBoundingClientRect().right)).toBeLessThanOrEqual(1024);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  } finally { await page.close(); }
+});
+/*
+  F-047：市场成员看分出去的客户，只剩汇总时间线——沟通上的截图、录音也摆在这条时间线里（照项目详情的 FollowAttachments），
+  只看、看大图、下载，没有「加截图 / 录音」、没有删除；1280 / 390 不横滚；暗黑下颜色走 token（没有写死的白底）
+*/
+const 带附件的沟通 = (n: number) => ({
+  followUps: [
+    { id: "f9", type: "PHONE", title: "潜客培育", content: "首次沟通，客户发来了需求截图", status: "已完成", duration: null, occurredAt: "2026-11-20T02:00:00.000Z", dueAt: null, participants: null, sourceText: null, ownerName: "渠运", contactName: null, contactPosition: null, contactId: null, opportunityId: null, updatedAt: "2026-11-20T02:00:00.000Z", 项目: { id: "p1", 名: "渠运建的项目" },
+      附件: [
+        ...Array.from({ length: n }, (_, i) => ({ id: `a${i}`, name: `需求截图${i}-${"很长的文件名".repeat(6)}.png`, mime: "image/png", size: 2048, width: 1, height: 1, createdAt: "2026-11-20T02:00:00.000Z", 有文件: true })),
+        { id: "au", name: `通话录音-${"很长的文件名".repeat(8)}.m4a`, mime: "audio/mp4", size: 40960, width: null, height: null, createdAt: "2026-11-20T02:00:00.000Z", 有文件: true },
+      ] },
+    { id: "f8", type: "EMAIL", title: "没附件的", content: "老记录", status: "已完成", duration: null, occurredAt: "2026-11-01T02:00:00.000Z", dueAt: null, participants: null, sourceText: null, ownerName: "QA", contactName: null, contactPosition: null, contactId: null, opportunityId: null, updatedAt: "2026-11-01T02:00:00.000Z", 项目: null },
+  ],
+});
+it("汇总时间线带沟通附件（F-047）：缩略图 + 点开大图 + 录音下载；没有上传、删除；没附件的那条不摆；1280 / 390 不横滚", async () => {
+  for (const 宽 of [1280, 390]) {
+    const page = await open(true, 宽, true, { ...带附件的沟通(6), 只读: true });
+    try {
+      const 条 = page.locator("#fu-f9");
+      const 块 = 条.locator("[data-testid='follow-attachments']");
+      expect(await 块.count()).toBe(1);
+      expect(await page.locator("#fu-f8 [data-testid='follow-attachments']").count()).toBe(0);
+      expect(await 块.locator(".follow-att-pic img").count()).toBe(6);
+      expect(await 块.locator(".follow-att-pic img").first().getAttribute("src")).toBe("/api/attachments/a0");
+      // 录音就地播放、旁边给下载
+      expect(await 块.locator("audio").count()).toBe(1);
+      expect(await 块.locator("a[download]").getAttribute("href")).toBe("/api/attachments/au?download");
+      // 只读：没有加截图 / 录音、没有删除，也不接粘贴
+      expect(await 块.getByRole("button", { name: /加截图|删掉/ }).count()).toBe(0);
+      expect(await 块.getByText("也可以直接粘贴截图").count()).toBe(0);
+      expect(await 块.evaluate((el) => el.hasAttribute("data-paste-scope"))).toBe(false);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `${宽} 宽不横滚`).toBe(true);
+      expect(await 条.evaluate((el) => el.scrollWidth <= el.clientWidth + 1), `${宽} 宽这一条不撑出`).toBe(true);
+      // 点缩略图看大图
+      await 块.locator(".follow-att-pic img").first().click();
+      await page.locator(".ant-image-preview").first().waitFor();
+      expect(await page.locator(".ant-image-preview img").first().getAttribute("src")).toBe("/api/attachments/a0");
+    } finally { await page.close(); }
+  }
+});
+it("汇总时间线的沟通附件：暗黑下颜色都走 token（文件名是暗黑的字色，块里没有写死的白底）", async () => {
+  const page = await open(true, 1280, true, { ...带附件的沟通(2), 只读: true });
+  try {
+    await page.addStyleTag({ path: path.resolve("src/app/dark.css") });
+    await page.evaluate(() => document.documentElement.setAttribute("data-mode", "dark"));
+    const r = await page.locator("#fu-f9 [data-testid='follow-attachments']").evaluate((el) => {
+      const 量 = (v: string) => { const s = document.createElement("span"); s.style.color = v; document.body.append(s); const c = getComputedStyle(s).color; s.remove(); return c; };
+      const 白底 = [el, ...el.querySelectorAll("*")].filter((x) => ["rgb(255, 255, 255)", "rgba(255, 255, 255, 1)"].includes(getComputedStyle(x).backgroundColor)).length;
+      return { 字: getComputedStyle(el.querySelector(".follow-att-name")!).color, ink: 量("var(--ink)"), 浅色ink: "rgb(29, 29, 31)", 白底 };
+    });
+    expect(r.字).toBe(r.ink);
+    expect(r.字).not.toBe(r.浅色ink);
+    expect(r.白底).toBe(0);
   } finally { await page.close(); }
 });
 /* 10-31 改版 R6：企业版客户页头的具名按钮（照项目详情）。原来收在「跟进」旁边的下拉里 */

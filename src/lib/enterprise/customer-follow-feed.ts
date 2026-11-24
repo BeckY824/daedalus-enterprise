@@ -11,6 +11,7 @@
  * 项目 id 已经是上面滤过的，跟项目详情页「沟通」卡给的是同一批。
  */
 import { 改过的沟通们 } from "./follow-edited";
+import { 沟通附件们 } from "@/lib/attachments";
 import { prisma } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
@@ -25,6 +26,7 @@ export type 可见法 = (ids: string[]) => Promise<Set<string>>;
 import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "@/app/(app)/customers/[id]/follow-history-query";
 import type { FollowUpRow } from "@/app/(app)/customers/[id]/types";
+import type { 附件 } from "@/lib/attachment-rules";
 import { 是同号留痕 } from "./same-number-mark";
 
 export type 沟通游标 = { occurredAt: string; id: string };
@@ -244,15 +246,23 @@ async function 汇总一页(customerId: string, 项目们: Map<string, string>, 
     ...别的客户.map((c) => 一位(c, { projectNode: { projectId: { in: ids } } })),
   ]);
   const rows = 各句.length === 1 ? 各句[0] : 各句.flat().sort(按时间线顺序).slice(0, 汇总每页 + 1);
-  // 「已修改」小字（11-19 记录人 30 分钟内能改）：这一页一句留痕
-  const 改过的 = await 改过的沟通们(rows.slice(0, 汇总每页).map((f) => f.id));
+  const 页 = rows.slice(0, 汇总每页);
+  // 删了的项目不标（上面的 删了的）
+  const 项目of = (f: (typeof 页)[number]) => (f.projectNode && 项目们.has(f.projectNode.projectId) ? f.projectNode.projectId : null);
+  /*
+    「已修改」小字（11-19 记录人 30 分钟内能改）：这一页一句留痕。
+    沟通上的截图、录音（F-047）：只给挂在 项目们 上的那几条——项目们 就是限定层 + 露客户 + 公海回避滤过的，和附件接口 认沟通 → 认项目看 同一把尺；
+    不挂项目的、挂在删了的项目上的，接口本来就不给看，这里也不带。这一页一句（IN），没有挂项目的就不查
+  */
+  const 挂项目的 = 页.filter((f) => 项目of(f)).map((f) => f.id);
+  const [改过的, 附件表] = await Promise.all([改过的沟通们(页.map((f) => f.id)), 挂项目的.length ? 沟通附件们(prisma, 挂项目的) : Promise.resolve(new Map<string, 附件[]>())]);
   return {
-    rows: rows.slice(0, 汇总每页).map((f) => {
-      // 删了的项目不标（上面的 删了的）
-      const pid = f.projectNode && 项目们.has(f.projectNode.projectId) ? f.projectNode.projectId : null;
+    rows: 页.map((f) => {
+      const pid = 项目of(f);
       const 行 = serializeFollowHistory(f);
+      const 附 = pid ? 附件表.get(f.id) : undefined;
       // 别的客户名下的记录（关联项目的）：商机是那家客户的，不在这里露
-      return { ...行, opportunity: f.customerId === customerId ? 行.opportunity : null, 项目: pid ? { id: pid, 名: 项目们.get(pid) ?? "" } : null, ...(改过的.has(f.id) ? { 已修改: true } : {}) };
+      return { ...行, opportunity: f.customerId === customerId ? 行.opportunity : null, 项目: pid ? { id: pid, 名: 项目们.get(pid) ?? "" } : null, ...(改过的.has(f.id) ? { 已修改: true } : {}), ...(附?.length ? { 附件: 附 } : {}) };
     }),
     hasMore: rows.length > 汇总每页,
   };
