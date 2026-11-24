@@ -5542,6 +5542,8 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* 号码 + 号码保护：值那一列里自己折行，保护标签放不下整枚挪到号码下面（11-23 起不回到字段名底下） */
 .rec-contact-nv { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
 .rec-contact-nv > .rec-contact-v { flex: 0 1 auto; max-width: 100%; }
+/* 保护标签挪到号码下面后仍比值那一列宽时（1280 卡宽 232、Linux 字体宽几像素）：内边距已收到 3px（RecordView 号码保护标签）；还放不下才打省略号，悬停看原因，不伸出卡 */
+.rec-contact-nv > .ant-tag { flex: 0 1 auto; min-width: 0; max-width: 100%; margin-inline-end: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-empty { display: inline-flex; align-items: center; gap: 6px; }
 .cf-rule { margin: -4px 0 12px; font-size: var(--fs-note); color: var(--text-muted); }
 .rec-contact-pick { display: grid; gap: 4px; }

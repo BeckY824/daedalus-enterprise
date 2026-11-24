@@ -131,7 +131,7 @@ function 号码保护标签({ c, 客户 }: { c: ContactRow; 客户: Parameters<t
   // 已开启照旧 color="green"；设计语言 D3 · M4-b（D10）加锁、摆在号码后面，
   // 绿压成灰底由 globals.css 里的 .rec-contact-guard.ant-tag-green 管（绿只给「完成」）
   return (
-    <Tag className="rec-contact-guard" color={状态 === "已开启" ? "green" : undefined} icon={状态 === "已开启" ? <LockOutlined /> : <UnlockOutlined />} title={原因} style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
+    <Tag className="rec-contact-guard" color={状态 === "已开启" ? "green" : undefined} icon={状态 === "已开启" ? <LockOutlined /> : <UnlockOutlined />} title={原因} style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 3px" }}>
       号码保护：{状态}
     </Tag>
   );
