@@ -51,7 +51,7 @@ export function 看不到的在推数(customerId: string, 可看ids: readonly st
  *   - 当前 = 选中那个项目的详情数据，和项目详情页同一个取数（projects/[id]/load.ts），权限 props 一个算法
  *   - 不数锁：受限客户详情（restricted.ts，只负责项目的人）连同事在推项目的个数也不给，锁数恒 0
  *   - 不取留痕：客户详情右栏不摆「项目进程变更」卡（挪进「历史变更」弹窗，11-24），当前项目不取那 200 条节点记录（load.ts 读项目详情）
- *   - 页签 = 可看（不再去掉读详情时读不了的那几个）：和「历史变更」弹窗项目块、入口小方框上的数同一份名单（history-data.ts 客户页可看项目）
+ *   - 页签 = 可看去掉读详情时读不了的那几个（过得了能看、读详情被拦的转向类，点了会跳回默认项目，不摆）；「历史变更」弹窗按可看算，极少数情况下比页签多几条（11-24 定，不改现有页签行为）
  */
 export async function 读项目区(me: SessionUser, customerId: string, 列表: readonly 列表项目[], 要的: string | null, 选项?: { 不数锁?: boolean; 不取留痕?: boolean }): Promise<项目区数据> {
   const 能看 = await 能看的项目(me, 列表.map((p) => p.id));
@@ -67,10 +67,13 @@ export async function 读项目区(me: SessionUser, customerId: string, 列表: 
   const 锁数P = 选项?.不数锁 ? Promise.resolve(0) : 看不到的在推数(customerId, 可看.map((p) => p.id));
   锁数P.catch(() => undefined); // 下面读详情先抛错时别留一个没人接的 rejection；结果照样在后面 await
   let 当前: 项目区数据["当前"] = null;
+  const 读不了 = new Set<string>();
   for (const id of [...new Set(顺序)]) {
     const r = await 读项目详情(me, id, { 不取留痕: 选项?.不取留痕 });
     if (r.种 === "有" && r.customerId === customerId) { 当前 = r.props; break; }
+    读不了.add(id);
   }
+  const 页签们 = 可看.filter((p) => !读不了.has(p.id));
   const 锁数 = await 锁数P;
-  return { customerId, 页签们: 可看.map((p) => ({ id: p.id, name: p.name, 节点: 节点字(p), 阶段: p.phase, 结局: p.result })), 锁数, 当前 };
+  return { customerId, 页签们: 页签们.map((p) => ({ id: p.id, name: p.name, 节点: 节点字(p), 阶段: p.phase, 结局: p.result })), 锁数, 当前 };
 }
