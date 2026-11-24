@@ -134,15 +134,23 @@ export const 超时短沟通话 = (k: 无效沟通原因): string => `已保存�
  * 保存动作回来的结果里有「超时短沟通」（E-259）就给超时那句，否则有「短沟通」给三态那句（客户端拿去就地提示），都没有回 null。
  * 记沟通的入口（客户详情速记 / 记跟进、项目页、完成计划、回收预警、首页 AI 卡）都认这一处
  */
+const 取原因 = (r: unknown, 键: "超时短沟通" | "短沟通"): 无效沟通原因 | null => {
+  const k = r && typeof r === "object" && 键 in r ? (r as Record<string, unknown>)[键] : null;
+  return typeof k === "string" && k in 短沟通话 ? (k as 无效沟通原因) : null;
+};
 export const 短沟通话of = (r: unknown): string | null => {
-  const 取 = (键: "超时短沟通" | "短沟通"): 无效沟通原因 | null => {
-    const k = r && typeof r === "object" && 键 in r ? (r as Record<string, unknown>)[键] : null;
-    return typeof k === "string" && k in 短沟通话 ? (k as 无效沟通原因) : null;
-  };
-  const 超时 = 取("超时短沟通");
+  const 超时 = 取原因(r, "超时短沟通");
   if (超时) return 超时短沟通话(超时);
-  const 三态 = 取("短沟通");
+  const 三态 = 取原因(r, "短沟通");
   return 三态 ? 短沟通话[三态] : null;
+};
+/**
+ * 只取超时那句（E-259）：回收预警「记一条沟通」用——那一行旁边是项目超时回收的「还剩 N 天」，它看客户最近跟进时间、短沟通照样更新，
+ * 三态那句「不会重置回收倒计时」放在这里会误导，所以不出；没有「超时短沟通」回 null
+ */
+export const 超时短沟通话of = (r: unknown): string | null => {
+  const 超时 = 取原因(r, "超时短沟通");
+  return 超时 ? 超时短沟通话(超时) : null;
 };
 
 /** 这条沟通拨不拨钟（T1：和回满额度同源，无效沟通对客户状态一律不生效） */

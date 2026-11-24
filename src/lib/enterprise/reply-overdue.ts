@@ -123,6 +123,7 @@ import { 系统, 超时自动转理由, 是超时自动转痕 } from "@/lib/proj
 import { 指定回复文字, 短时刻, 客户在谁名下话, 分配后未跟进话 } from "@/lib/project/time-fields";
 import { 超时转出 } from "@/app/(app)/leads/assign-actions";
 import { notify } from "./notify";
+import { 通知文字打码 } from "./notice-mask";
 import { 分配通知, 带放弃链接 } from "./notice-sources";
 import { 企业版 } from "./switch";
 import { 视图中跳过 } from "./view-as";
@@ -866,13 +867,18 @@ async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: �
 
 /** 超时提醒里引那条无效沟通的内容最多几个字（多了截断、末尾「…」） */
 export const 无效沟通引用字数 = 20;
+// 先打码再截断：号码被截掉一半以后 notify() 那层兜底就认不出来了
 const 引用 = (内容: string): string => {
-  const 字 = Array.from(内容.replace(/\s+/gu, " ").trim());
+  const 字 = Array.from(通知文字打码(内容.replace(/\s+/gu, " ").trim()));
   return 字.length > 无效沟通引用字数 ? `${字.slice(0, 无效沟通引用字数 - 1).join("")}…` : 字.join("");
 };
-/** 「你 11-24 10:36 记的「加微信」不足 4 个字，不算有效沟通。」（E-259，原因四类同 无效沟通原因of） */
+/**
+ * 「你 11-24 10:36 记的「加微信」不足 4 个字，不算有效沟通。」（E-259，原因四类同 无效沟通原因of）。
+ * 只有链接的不引原文（链接本身没什么可看、还可能带参数），写「那条只有链接」
+ */
 export function 无效沟通话(f: { 记于: Date; 内容: string; 原因: 无效沟通原因 }, 现在: Date = new Date()): string {
   const 时 = 短时刻(f.记于, 现在);
+  if (f.原因 === "只有链接") return `你 ${时} 记的那条只有链接，不算有效沟通。`;
   const 引 = 引用(f.内容);
   return f.原因 === "空" || !引 ? `你 ${时} 记的那条沟通没有文字，不算有效沟通。` : `你 ${时} 记的「${引}」${无效原因话[f.原因]}，不算有效沟通。`;
 }

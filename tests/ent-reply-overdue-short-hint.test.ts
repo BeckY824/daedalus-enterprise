@@ -3,6 +3,8 @@
  *   - 保存后那句提示不看三态开关：三态关着、负责人本人在计时中的线索上记了太短 / 占位 / 只有链接的沟通，保存动作回「超时短沟通」，
  *     前端那句（短沟通话of）说计时不会停；有效沟通、不在链上的（自留不计时、链已停、别人记的、超时转关着）不提示
  *   - 超时提醒（1 小时那条）、自动收回给原负责人那条的正文：负责人本人计时以后记过、但判无效的最近一条，补一句它为什么不算
+ *     （引用先打码再截断；只有链接的不引原文）
+ *   - 回收预警「记一条沟通」只出超时那句（超时短沟通话of），不出三态那句：旁边的回收倒计时看客户最近跟进时间，短沟通照样更新它
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -22,7 +24,8 @@ import { 等通知推完 } from "@/lib/enterprise/notify";
 import {
   超时转扫一遍, 超时转生效key, 超时通知种类, 收回话, 超时短沟通提示, 最近无效沟通of, 无效沟通话, 无效沟通引用字数,
 } from "@/lib/enterprise/reply-overdue";
-import { 短沟通话of, 超时短沟通话, 短沟通话 } from "@/lib/enterprise/tri-state-quota";
+import { 短沟通话of, 超时短沟通话of, 超时短沟通话, 短沟通话 } from "@/lib/enterprise/tri-state-quota";
+import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules";
 import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { 记项目沟通Action } from "@/app/(app)/projects/actions";
 
@@ -90,6 +93,11 @@ describe("E-259 保存后提示（不看三态开关）", () => {
     expect(短沟通话of({ ok: true, 超时短沟通: "太短", 短沟通: "太短" })).toBe(超时短沟通话("太短"));
     expect(短沟通话of({ ok: true, 短沟通: "太短" })).toBe(短沟通话.太短);
     expect(短沟通话of({ ok: true, 超时短沟通: "别的" })).toBeNull();
+    // 回收预警只取超时那句：只有三态那句时不出
+    expect(超时短沟通话of({ ok: true, 超时短沟通: "太短", 短沟通: "太短" })).toBe(超时短沟通话("太短"));
+    expect(超时短沟通话of({ ok: true, 短沟通: "太短" })).toBeNull();
+    expect(超时短沟通话of({ ok: true, 超时短沟通: "别的" })).toBeNull();
+    expect(超时短沟通话of(null)).toBeNull();
   });
 
   it("三态关着：分来 30 分钟、负责人本人在客户页记「加微信」→ 回超时短沟通（太短），提示说计时不会停；占位词、只有链接同样；有效沟通不提示", async () => {
@@ -117,7 +125,57 @@ describe("E-259 保存后提示（不看三态开关）", () => {
     expect(短沟通话of(r)).toBe(超时短沟通话("太短"));
   });
 
-  it("不在链上不提示：自留不计时的（非销售自建自留）、链已停的、负责人以前在这位客户上记过有效沟通的、别人记的、已发提醒后换了别人记、超时转关着", async () => {
+  it("已发提醒（overdueAt 有值）后：本人再记短沟通仍提示（计时没停、等着转走）；别人记的不提示", async () => {
+    const 分于 = 分钟前(70);
+    const a = await 分来(甲, 分于);
+    await prisma.entReplyOverdue.create({ data: { projectId: a.id, anchorAt: 分于, holderId: 甲.id, since: 分于, overdueAt: 分钟前(10) } });
+    expect(await 超时短沟通提示(await 记(a.id, 甲.id, "加微信", new Date()))).toBe("太短");
+    expect(await 超时短沟通提示(await 记(a.id, 丙.id, "加微信", new Date()))).toBeNull();
+  });
+
+  it("待分配、公海里的（项目进公海 / 客户进公海）不提示", async () => {
+    const 待 = await 分来(甲, 分钟前(30));
+    await prisma.project.update({ where: { id: 待.id }, data: { awaitAssignAt: 分钟前(5) } });
+    expect(await 超时短沟通提示(await 记(待.id, 甲.id, "加微信", new Date()))).toBeNull();
+    const 项目公海 = await 分来(甲, 分钟前(30));
+    await prisma.project.update({ where: { id: 项目公海.id }, data: { pooledAt: 分钟前(5) } });
+    expect(await 超时短沟通提示(await 记(项目公海.id, 甲.id, "加微信", new Date()))).toBeNull();
+    const 客户公海 = await 分来(甲, 分钟前(30));
+    await prisma.customerPool.create({ data: { customerId: 客户公海.customerId } });
+    expect(await 超时短沟通提示(await 记(客户公海.id, 甲.id, "加微信", new Date()))).toBeNull();
+    // 对照：同样的线索不在待分配、公海 = 提示
+    const 对照 = await 分来(甲, 分钟前(30));
+    expect(await 超时短沟通提示(await 记(对照.id, 甲.id, "加微信", new Date()))).toBe("太短");
+  });
+
+  it("三态开着：链上的经 action 只回超时短沟通（不带三态那句）；不在链上的回三态那句，回收预警那行不出", async () => {
+    await setSetting("orgRules", { ...默认组织规则, 三态: { ...默认三态规则, 开: true } });
+    invalidateSettingsCache();
+    const 钟 = (customerId: string) => prisma.entCustomerClock.create({ data: { customerId, state: "活跃", enteredDay: "2026-11-24" } });
+    const 链上 = await 分来(甲, 分钟前(30));
+    await 钟(链上.customerId);
+    const r = await 记项目沟通Action(链上.id, { type: "WECHAT", content: "加微信", occurredAt: new Date().toISOString(), 阶段: "线索", 下一步: "明天再打一次", 下一步时间: null });
+    expect(r).toMatchObject({ ok: true, 超时短沟通: "太短" });
+    expect(r).not.toHaveProperty("短沟通");
+    expect(超时短沟通话of(r)).toBe(超时短沟通话("太短"));
+    const 链上2 = await 分来(甲, 分钟前(30));
+    await 钟(链上2.customerId);
+    const r2 = await saveFollowUp({ customerId: 链上2.customerId, projectId: 链上2.id, type: "WECHAT", title: "", content: "加微信", status: "已完成", occurredAt: new Date().toISOString() });
+    expect(r2).toMatchObject({ ok: true, 超时短沟通: "太短" });
+    expect(r2).not.toHaveProperty("短沟通");
+    // 不在链上（链已停）：三态那句照旧，回收预警只取超时那句 = 不出
+    const 停于 = 分钟前(40);
+    const 停 = await 分来(甲, 停于);
+    await 钟(停.customerId);
+    await prisma.entReplyOverdue.create({ data: { projectId: 停.id, anchorAt: 停于, holderId: 甲.id, since: 停于, stoppedAt: 分钟前(10) } });
+    const r3 = await 记项目沟通Action(停.id, { type: "WECHAT", content: "加微信", occurredAt: new Date().toISOString(), 阶段: "线索", 下一步: "明天再打一次", 下一步时间: null });
+    expect(r3).toMatchObject({ ok: true, 短沟通: "太短" });
+    expect(r3).not.toHaveProperty("超时短沟通");
+    expect(短沟通话of(r3)).toBe(短沟通话.太短);
+    expect(超时短沟通话of(r3)).toBeNull();
+  });
+
+  it("不在链上不提示：自留不计时的（非销售自建自留）、链已停的、负责人以前在这位客户上记过有效沟通的、别人记的、跟进任务、超时转关着", async () => {
     // 自留：老板（总管理）自己建给自己，不计时
     const 自 = await 分来(老板, 分钟前(30), 老板);
     expect(await 超时短沟通提示(await 记(自.id, 老板.id, "加微信", new Date()))).toBeNull();
@@ -181,7 +239,12 @@ describe("E-259 超时提醒 / 收回通知正文带原因", () => {
     expect(乙的).toContain(`你 11-24 10:30 记的「${"已联系已联系已联系已联系已联系已联系已联系已联系".slice(0, 无效沟通引用字数 - 1)}…」只有「跟进」「已联系」这类占位词，不算有效沟通。`);
     expect(乙的).not.toContain("10:10");
     const 现 = 京("2026-11-24 12:00");
-    expect(无效沟通话({ 记于: 京("2026-11-24 10:36"), 内容: "https://x.cn/a", 原因: "只有链接" }, 现)).toBe("你 11-24 10:36 记的「https://x.cn/a」只有链接、没有文字，不算有效沟通。");
+    // 只有链接的不引链接原文
+    expect(无效沟通话({ 记于: 京("2026-11-24 10:36"), 内容: "https://x.cn/a?u=13812345678", 原因: "只有链接" }, 现)).toBe("你 11-24 10:36 记的那条只有链接，不算有效沟通。");
+    // 引用里的号码先打码再截断：号码跨过截断处也不会留下半截原号
+    const 跨 = 无效沟通话({ 记于: 京("2026-11-24 10:36"), 内容: "已联系已联系已联系已联系已联系13812345678", 原因: "占位词" }, 现);
+    expect(跨).toBe("你 11-24 10:36 记的「已联系已联系已联系已联系已联系138*…」只有「跟进」「已联系」这类占位词，不算有效沟通。");
+    expect(无效沟通话({ 记于: 京("2026-11-24 10:36"), 内容: "回13812345678", 原因: "太短" }, 现)).toBe("你 11-24 10:36 记的「回138****5678」不足 4 个字，不算有效沟通。");
     expect(无效沟通话({ 记于: 京("2026-11-24 10:36"), 内容: "", 原因: "空" }, 现)).toBe("你 11-24 10:36 记的那条沟通没有文字，不算有效沟通。");
     // 计时起点以前记的不引；按时的从提醒时刻（指定回复时间前 30 分钟）起算
     const 按时 = await 分来(丙, 京("2026-11-24 09:00"));
