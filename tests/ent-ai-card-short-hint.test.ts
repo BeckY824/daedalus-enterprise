@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { 落印行们 } from "@/lib/agent/seal-lines";
-import { 超时短沟通话, 短沟通话 } from "@/lib/enterprise/tri-state-quota";
+import { 超时短沟通话, 短沟通话, 沟通卡太短, 沟通卡太短话, 有内容的沟通 } from "@/lib/enterprise/tri-state-quota";
 
 const 超时 = 超时短沟通话("太短").replace(/^已保存。/u, "");
 const 推 = "项目「某项目」必填齐了，自动推进到 方案敲定（撤销这条沟通不会把进程退回去）";
@@ -57,5 +57,22 @@ describe("短沟通那句交到卡上", () => {
     expect(s).toMatch(/\.\.\.\(r\.提示 \? \{ 提示: r\.提示 \} : \{\}\)/);
     expect(s).toContain("落印行们(落印).map(");
     expect(s).not.toMatch(/落印\?\.推进 &&/);
+  });
+});
+
+describe("记沟通卡确认前的灰字：不足 4 个字照样存（E-259）", () => {
+  it("不足 4 个字 / 英文不足 2 个单词：出灰字；够了、空的不出", () => {
+    for (const t of ["加微信", "嗯", "ok", "报价 3 万"]) expect(沟通卡太短(t), t).toBe(true);
+    for (const t of ["加了微信", "Sent quote", "", "   ", "！！"]) expect(沟通卡太短(t), t).toBe(false);
+  });
+
+  it("口径没动：出灰字的都不算有效沟通", () => {
+    for (const t of ["加微信", "嗯", "ok"]) expect(有内容的沟通(t)).toBe(false);
+    expect(沟通卡太短话).toBe("不足 4 个字，不算有效沟通，不会重置跟进倒计时");
+  });
+
+  it("ProposalCard：内容框下按 沟通卡太短 出灰字", () => {
+    const s = readFileSync("src/components/ProposalCard.tsx", "utf8");
+    expect(s).toMatch(/\{沟通卡太短\(draft\.content\) && <div className="prop-name-hint" data-testid="prop-short-follow-hint">\{沟通卡太短话\}<\/div>\}/);
   });
 });

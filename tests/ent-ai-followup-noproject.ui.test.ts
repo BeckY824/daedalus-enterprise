@@ -88,3 +88,31 @@ it("待办卡：没项目也不出这句，照样能确认", async () => {
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it("内容不足 4 个字（E-259「加微信」）：照样能确认、原样交上去，内容框下一句灰字；够 4 个字灰字就没了（1024 / 1280 / 1366、390）", async () => {
+  for (const w of [390, 1024, 1280, 1366]) {
+    const { page, errors } = await open(w, { ok: true, 项目们: [{ id: "pj1", name: "某项目" }], 能建项目: true }, { content: "加微信" });
+    try {
+      const 灰 = page.getByTestId("prop-short-follow-hint");
+      await 灰.waitFor();
+      expect(await 灰.innerText()).toBe("不足 4 个字，不算有效沟通，不会重置跟进倒计时");
+      const 量 = await page.evaluate(() => {
+        const 卡 = document.querySelector(".prop")!.getBoundingClientRect();
+        const n = document.querySelector("[data-testid=prop-short-follow-hint]")!;
+        const r = n.getBoundingClientRect();
+        return { 页: document.documentElement.scrollWidth <= window.innerWidth, 在卡里: r.right <= 卡.right + 1, 灰: getComputedStyle(n).color !== getComputedStyle(document.body).color };
+      });
+      expect(量).toEqual({ 页: true, 在卡里: true, 灰: true });
+      expect(await page.locator(".prop-ok").isDisabled()).toBe(false);
+      if (w === 1280) {
+        await page.locator(".prop textarea").first().fill("加了微信");
+        await 灰.waitFor({ state: "detached" });
+        await page.locator(".prop textarea").first().fill("加微信");
+        await page.locator(".prop-ok").click();
+        await page.waitForFunction(() => Reflect.get(window, "__交"));
+        expect(await page.evaluate(() => (Reflect.get(window, "__交") as { content: string }).content)).toBe("加微信");
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
