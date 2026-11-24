@@ -25,6 +25,9 @@ beforeEach(async () => {
   await resetDb();
   const u = await prisma.user.create({ data: { email: "boss", name: "老板", title: "", role: "ADMIN", password: "x" } });
   老板 = { id: u.id, name: u.name, role: "ADMIN" };
+  // 企业版「没设业务角色就没权限」（11-01，org-core 建组织）：老板要有总管理这个业务角色，不然详情 能看项目 只放公海，
+  // 名单按详情同一个判断筛（读名单项目，11-24）也就一条不剩
+  await prisma.entMember.create({ data: { userId: u.id, bizRole: "director" } });
   mocks.user = { ...mocks.user, id: u.id };
   const c = await prisma.customer.create({ data: { name: "客户甲", phone: "13900000001", salesOwnerId: u.id } });
   const 项 = [

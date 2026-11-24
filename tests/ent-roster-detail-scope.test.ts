@@ -14,7 +14,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 读名单项目 } from "@/lib/project/list";
+import { 读名单项目, 项目上限 } from "@/lib/project/list";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
@@ -88,5 +88,30 @@ describe("名单 = 点得进详情的", () => {
       const 行 = (await 以谁的身份(谁.id, () => 读名单项目(谁, 字典of(true)))).rows;
       for (const r of 行) expect(await 进得去(谁, r.id), `${r.name}`).toBe(true);
     }
+  });
+
+  it("先筛后截：前面混着点不进的，名单照样满 项目上限 个，排在第 项目上限+1 名以后的可见行补上来", async () => {
+    // 市场部门里的销售：最近改过的 10 个是自己建、分给同事的（点不进），再往后是自己负责的 项目上限+3 个
+    const 同事客户 = (await prisma.customer.create({ data: { name: "同事客户", phone: "13900009998", salesOwnerId: 同事.id } })).id;
+    const 自己客户 = (await prisma.customer.create({ data: { name: "自己客户", phone: "13900009999", salesOwnerId: 市场部销售.id } })).id;
+    const 基 = Date.parse("2026-11-01T00:00:00Z");
+    const 分出去 = 10, 自己 = 项目上限 + 3;
+    await prisma.project.createMany({ data: Array.from({ length: 分出去 }, (_, i) => ({ name: `分出去-${i}`, customerId: 同事客户, ownerId: 同事.id, creatorId: 市场部销售.id, updatedAt: new Date(基 + (自己 + 分出去 - i) * 60_000) })) });
+    await prisma.project.createMany({ data: Array.from({ length: 自己 }, (_, i) => ({ name: `自己-${String(i).padStart(3, "0")}`, customerId: 自己客户, ownerId: 市场部销售.id, creatorId: 市场部销售.id, updatedAt: new Date(基 + (自己 - i) * 60_000) })) });
+    const r = await 以谁的身份(市场部销售.id, () => 读名单项目(市场部销售, 字典of(true)));
+    expect(r.rows.length).toBe(项目上限);
+    expect(r.rows.some((x) => x.name.startsWith("分出去"))).toBe(false);
+    const 名 = r.rows.map((x) => x.name);
+    // 按最近改过排：自己-000 … 自己-499；总排名第 项目上限+1 名以后的（自己-490 … 自己-499）原来被挤掉
+    expect(名[0]).toBe("自己-000");
+    expect(名.at(-1)).toBe(`自己-${项目上限 - 1}`);
+    expect(名).toContain(`自己-${项目上限 - 分出去}`);
+    expect(new Set(名).size).toBe(项目上限);
+    // 后面还有 3 个没列：提示「这里只有最近改过的 N 个」
+    expect(r.取到上限).toBe(true);
+    // 同事是负责人：10 个全列，没到上限不提示
+    const 同事的 = await 以谁的身份(同事.id, () => 读名单项目(同事, 字典of(true)));
+    expect(同事的.rows.length).toBe(分出去);
+    expect(同事的.取到上限).toBe(false);
   });
 });
