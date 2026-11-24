@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { 附件 } from "@/lib/attachment-rules";
 import type { 可选成员 } from "@/lib/utils";
 import type { ContractRow } from "./ContractForm";
 import type { CustomerRow } from "../CustomerForm";
@@ -37,6 +38,11 @@ export type FollowUpRow = {
   项目?: { id: string; 名: string } | null;
   /** 企业版：提交后改过（操作日志里有「改了沟通」，11-19）——列表上标「已修改」 */
   已修改?: boolean;
+  /**
+   * 企业版客户页「沟通记录」汇总时：这条沟通上的截图、录音（F-047）。只给挂在我看得到的项目上的沟通（同 api/attachments/access.ts 认沟通），
+   * 没附件的不带这个字段；汇总里只看、看大图、下载，传和删回项目详情
+   */
+  附件?: 附件[];
 };
 
 export type ContactRow = {

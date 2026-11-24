@@ -51,6 +51,7 @@ import { 刚加的排前 } from "@/lib/fresh-first";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import ContactForm from "./ContactForm";
 import ContactAttachments from "./ContactAttachments";
+import FollowAttachments from "@/components/FollowAttachments";
 import ContactLinks from "./ContactLinks";
 import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
@@ -2084,6 +2085,8 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         {f.title?.trim() && <div className="rec-sum-title">{f.title}</div>}
         <div className="rec-tl-content">{f.content}</div>
         {原文}
+        {/* 沟通上的截图、录音（F-047）：市场成员看分出去的客户只剩这条汇总时间线，截图也摆在这里；只看、看大图、下载，传和删去项目详情 */}
+        {f.附件?.length ? <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={false} 能删={false} /> : null}
         {f.项目 && <div><RowLink href={项目地址(f.项目.id)} className="rec-sum-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink></div>}
         <div className="rec-tl-meta">
           {f.ownerName && <span>{f.ownerName}</span>}
