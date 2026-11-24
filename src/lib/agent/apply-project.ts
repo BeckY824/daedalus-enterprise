@@ -17,6 +17,7 @@ import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 读线索验证 } from "@/lib/project/lead-verify";
 import { buildProjectProposal, 项目卡缺, 描述项目卡, 认目标, 同一落点, 并进描述, type 项目卡 } from "./project-proposals";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
+import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { 改项目节点, 终止项目进程, 记项目沟通Action, 线索初判Action, 市场复核Action, 销售终验Action, 总管理终判Action, 销售认领Action } from "@/app/(app)/projects/actions";
 import { 完成卡点Action } from "@/app/(app)/projects/blocker-actions";
 import { 记回款, 删回款 } from "@/app/(app)/projects/payment-actions";
@@ -92,7 +93,9 @@ async function 分派(p: 项目卡, me: 我): Promise<分派结果> {
       const 没发 = "卡点没发" in 结 && 结.卡点没发 ? `；沟通已记上，但卡点没发出去：${结.卡点没发}` : "";
       // 记沟通顺带按必填推了一格（画像早就齐了、这次记沟通才推的）：卡上说推到哪，不悄悄推（11-20）；这张卡没有撤销，要退回去到项目页改进程
       const 推进 = 自动推进话of(结);
-      return { ok: true, 项目: p.targetId, 补话: 卡 + 没发 + (推进 ? `；${推进}` : ""), ...(推进 ? { 推进: `${推进}（这张卡不能撤销，要退回去到项目页改进程）` } : {}) };
+      // 这条不算有效沟通（超时未跟进计时中的线索 E-259 / 客户三态 C12）：卡上一起说（「已保存」那半句卡上已经有了）
+      const 短话 = 短沟通话of(结)?.replace(/^已保存。/u, "");
+      return { ok: true, 项目: p.targetId, 补话: 卡 + 没发 + (推进 ? `；${推进}` : "") + (短话 ? `；${短话}` : ""), ...(推进 ? { 推进: `${推进}（这张卡不能撤销，要退回去到项目页改进程）` } : {}) };
     }
     case "blocker_resolve": {
       const 卡点 = await prisma.entBlocker.findUnique({ where: { id: p.targetId }, select: { projectId: true } });

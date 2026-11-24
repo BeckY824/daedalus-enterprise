@@ -16,6 +16,7 @@ import { statusLabel, type BusinessConfig } from "@/lib/business-config";
 import { patchCustomer, saveCustomer, saveContract } from "../customers/actions";
 import { saveFollowUp, savePlan, deleteFollowUp } from "../customers/[id]/actions";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
+import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { saveLead } from "../leads/actions";
 import { 建档向导 } from "../projects/actions";
 import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
@@ -502,7 +503,10 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
     });
     // 记上了、顺带把项目按必填推了一格：卡上落印那句带上推到哪（不悄悄推，11-20）；撤销只删这条沟通、推回不去，照实说
     const 推话 = r.ok ? 自动推进话of(r) : null;
-    done = r.ok ? { ok: true, ...(推话 ? { 提示: 推话, 推进: `${推话}（撤销这条沟通不会把进程退回去）` } : {}) } : { ok: false, error: r.error };
+    // 这条不算有效沟通（超时未跟进计时中的线索 E-259 / 客户三态 C12）：卡上落印那句一起说（「已保存」那半句卡上已经有了）
+    const 短话 = r.ok ? 短沟通话of(r)?.replace(/^已保存。/u, "") : null;
+    const 提示 = [推话, 短话].filter(Boolean).join("；");
+    done = r.ok ? { ok: true, ...(提示 ? { 提示 } : {}), ...(推话 ? { 推进: `${推话}（撤销这条沟通不会把进程退回去）` } : {}) } : { ok: false, error: r.error };
     if (r.ok) 撤销 = { kind: "add_followup", customerId: p.customerId, id: r.id };
   } else if (p.kind === "add_plan") {
     const r = await savePlan({ customerId: p.customerId, subject: p.subject, plannedAt: p.plannedAt, method: p.method });
