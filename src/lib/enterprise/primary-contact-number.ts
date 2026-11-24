@@ -62,7 +62,8 @@ export async function 号码记到主联系人(
  *   - 一位联系人都没有 → 新建：建一位主联系人，姓名按客户名拆（拆不出留空），号写进他的电话格；
  *   - 有主联系人（主联系人优先、再按建的先后），他电话格空着、调用方说能补（能补主表格）→ 补主表：号写进那一格；
  *   - 电话格有别的号、或不让补主表（原系统同步来的联系人：补了下次同步那一格会算我们这边改过、记冲突）：
- *     号格式验得过 → 进子表：记进联系方式子表、挂在他身上；验不过（座机这类，照旧不进子表）→ 进备注：他的备注后面添一行「电话：…」。
+ *     号格式验得过 → 进子表：记进联系方式子表、挂在他身上；验不过（座机这类，照旧不进子表）→ 进备注：他的备注后面添一行「电话：…」；
+ *     不让补主表的那位（原系统同步来的）备注也不碰（审查单 A-11），这一行添在客户备注后面 → 进客户备注。
  * 号格式验不过的照旧原样存（以前原样进客户电话格，现在原样进联系人电话格）。返回落成什么样，调用方据此记导入记录（撤回用）。
  * 只用 tx；记子表不限范围（导入、同步都是调用方明说看全部的）
  */
@@ -71,7 +72,8 @@ export type 导入落号 =
   | { 怎么: "新建"; contactId: string }
   | { 怎么: "补主表"; contactId: string; 原: string | null }
   | { 怎么: "进子表"; contactId: string; 号: 验好的号 }
-  | { 怎么: "进备注"; contactId: string; 原: string | null; 新: string };
+  | { 怎么: "进备注"; contactId: string; 原: string | null; 新: string }
+  | { 怎么: "进客户备注"; 原: string | null; 新: string };
 
 /** 备注里添的那一行 */
 export const 号进备注行 = (号: string) => `电话：${号}`;
@@ -104,10 +106,13 @@ export async function 导入号落主联系人(
   const 主 = 们[0];
   if (!主) {
     const c = await tx.contact.create({ data: { name: 客户名拆人名(客户名), isPrimary: true, phone: 值, customerId }, select: { id: true } });
+    // 主客户那一行也记进联系人挂靠表（审查单 A-15，同 号码记到主联系人、联系人表单新建）
+    await tx.contactCustomer.create({ data: { contactId: c.id, customerId } });
     if (号) await 看全部(() => 记号码(tx, { 已有: customerId }, c.id, 号));
     return { 怎么: "新建", contactId: c.id };
   }
-  if (!主.phone?.trim() && (await 能补主表格(主.id))) {
+  const 能补 = await 能补主表格(主.id);
+  if (!主.phone?.trim() && 能补) {
     await tx.contact.update({ where: { id: 主.id }, data: { phone: 值 } });
     if (号) await 看全部(() => 记号码(tx, { 已有: customerId }, 主.id, 号));
     return { 怎么: "补主表", contactId: 主.id, 原: 主.phone };
@@ -117,8 +122,17 @@ export async function 导入号落主联系人(
     return { 怎么: "进子表", contactId: 主.id, 号 };
   }
   const 行 = 号进备注行(原);
-  if ((主.remark ?? "").split("\n").some((l) => l.trim() === 行)) return { 怎么: "已有" };
-  const 新 = 主.remark ? `${主.remark}\n${行}` : 行;
+  const 添 = (旧: string | null) => ((旧 ?? "").split("\n").some((l) => l.trim() === 行) ? null : 旧 ? `${旧}\n${行}` : 行);
+  if (!能补) {
+    // 原系统同步来的联系人：电话格不补，备注也不碰（审查单 A-11，同一个理由），号添在客户备注后面
+    const 客 = await tx.customer.findUnique({ where: { id: customerId }, select: { remark: true } });
+    const 新 = 添(客?.remark ?? null);
+    if (新 === null) return { 怎么: "已有" };
+    await tx.customer.update({ where: { id: customerId }, data: { remark: 新 } });
+    return { 怎么: "进客户备注", 原: 客?.remark ?? null, 新 };
+  }
+  const 新 = 添(主.remark);
+  if (新 === null) return { 怎么: "已有" };
   await tx.contact.update({ where: { id: 主.id }, data: { remark: 新 } });
   return { 怎么: "进备注", contactId: 主.id, 原: 主.remark, 新 };
 }

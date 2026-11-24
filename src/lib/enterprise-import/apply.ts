@@ -848,6 +848,10 @@ export async function 补号码待补的(tx: Tx, 批次Id: string, 最多?: numb
       const 格 = 落.怎么 === "补主表" ? "phone" : "remark";
       const 现 = await 读现值(tx, "contact", 落.contactId);
       await 记({ entity: "contact", externalId, targetId: 落.contactId, kind: "update", before: J({ [格]: 规(落.原) }), written: J({ [格]: 现?.[格] ?? null }) });
+    } else if (落.怎么 === "进客户备注") {
+      // 原系统同步来的主联系人备注不碰，号添在客户备注后面（审查单 A-11）：照客户那一类记，整批撤回逐行改回、恢复再添上
+      const 现 = await 读现值(tx, "customer", customerId);
+      await 记({ entity: "customer", externalId, targetId: customerId, kind: "update", before: J({ remark: 规(落.原) }), written: J({ remark: 现?.remark ?? null }) });
     } else if (落.怎么 === "进子表") {
       await 记({ entity: 号码行, externalId: customerId, targetId: 落.contactId, kind: "create", written: J(落.号) });
     }
