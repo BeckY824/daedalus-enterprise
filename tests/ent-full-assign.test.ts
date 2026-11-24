@@ -78,7 +78,7 @@ beforeEach(async () => {
   // c1 开关组合
   for (const k of [规则.按组织看客户.key, 规则.线索分配.key, 规则.市场复核.key]) await setSetting(k, true);
   await setSetting(不设配额key, true);
-  // 组长（销售管理）自动分配本来就不分（11-02 只给销售）；再禁掉一层，钉公平时更干净
+  // 组长（外贸销售管理）11-23 起参与外贸自动分配；这里先禁掉，钉公平时只看销售；参与时的样子见「外贸销售管理参与」两条
   await setSetting(自动分配不参与key, { [外组长]: "禁止" });
 
   当(老板, "老板");
@@ -105,23 +105,32 @@ describe("按部门挑人：谁进候选", () => {
     expect(((await 项目分配线(P))?.可选 ?? [])).toContain(外组长);
   });
 
-  it("自动分配只给销售（11-02「只给销售」）：组长没禁掉也一条拿不到", async () => {
+  it("外贸销售管理参与外贸自动分配（11-23，Q-F044）：组长没禁掉就和销售一起轮；内贸线一条也拿不到", async () => {
     await setSetting(自动分配不参与key, {});
     const 拿到: string[] = [];
     for (let i = 0; i < 8; i++) {
-      const P = await 建项目(`只销售${i}`, "外贸");
+      const P = await 建项目(`外贸轮${i}`, "外贸");
       expect(await 自动分配线索(P, { 项目: true })).toMatchObject({ ok: true });
       拿到.push((await 负责人(P))!);
     }
-    expect(拿到).not.toContain(外组长);
-    expect(new Set(拿到)).toEqual(new Set([外一, 外二, 外三]));
+    expect(new Set(拿到)).toEqual(new Set([外一, 外二, 外三, 外组长]));
+    const 内: string[] = [];
+    for (let i = 0; i < 4; i++) {
+      const P = await 建项目(`内贸轮${i}`, "内贸");
+      expect(await 自动分配线索(P, { 项目: true })).toMatchObject({ ok: true });
+      内.push((await 负责人(P))!);
+    }
+    expect(内).not.toContain(外组长);
   });
 
-  it("勾的组里只剩组长能接：自动分配回待分配，不分给他", async () => {
+  it("勾的组里只剩组长能接：组长参与正常就分给他；组长也暂停 = 回待分配", async () => {
     await setSetting(自动分配不参与key, { [外一]: "暂停", [外二]: "禁止", [外三]: "暂停" });
     const P = await 建项目("只剩组长", "外贸");
-    expect(await 自动分配线索(P, { 项目: true })).toMatchObject({ ok: false, 待分配: true });
-    expect(await 负责人(P)).toBe(市场);
+    expect(await 自动分配线索(P, { 项目: true })).toMatchObject({ ok: true, toUserId: 外组长 });
+    await setSetting(自动分配不参与key, { [外一]: "暂停", [外二]: "禁止", [外三]: "暂停", [外组长]: "暂停" });
+    const Q = await 建项目("组长也停", "外贸");
+    expect(await 自动分配线索(Q, { 项目: true })).toMatchObject({ ok: false, 待分配: true });
+    expect(await 负责人(Q)).toBe(市场);
   });
 });
 
@@ -304,14 +313,16 @@ describe("市场成员自动分配按客户区域定事业部（P-转-26 自动�
     expect(r.ok && r.区域未填).toBeFalsy();
   });
 
-  it("内贸的销售管理参与自动分配、外贸的不参与（11-18 第 9 题 B）", async () => {
+  it("内贸的销售管理参与内贸自动分配、外贸的参与外贸（11-18 第 9 题 B、11-23），不跨线", async () => {
     await setSetting(自动分配不参与key, {});
     const 内组长 = (await prisma.user.create({ data: { email: "nl", name: "内贸组长", title: "", role: "SALES", password: "x", createdAt: new Date(2025, 0, 1) } })).id;
     await prisma.entMember.create({ data: { userId: 内组长, bizRole: "sales,sales_mgr", deptId: 内贸组, line: null } });
     const 内 = await 连分(6, "内管", { addrCountry: "中国" });
     const 外 = await 连分(6, "外管", { addrCountry: "美国" });
     expect(内).toContain(内组长);
-    expect(外).not.toContain(外组长);
+    expect(外).toContain(外组长);
+    expect(内).not.toContain(外组长);
+    expect(外).not.toContain(内组长);
     expect(new Set(内)).toEqual(new Set([内一, 内二, 内组长]));
   });
 

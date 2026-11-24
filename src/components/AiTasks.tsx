@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { CheckCircleOutlined, ExclamationCircleOutlined, MinusCircleOutlined, SyncOutlined } from "@ant-design/icons";
 import { Tooltip } from "antd";
 import { 收起任务, useAiTasks } from "@/lib/ai-jobs";
@@ -127,6 +128,7 @@ export default function AiTasks({ 窄 = false }: { 窄?: boolean }) {
         {条.去 ? (
           <Link href={条.去} className={类} onClick={点} {...标}>
             {里面}
+            <LinkPending />
           </Link>
         ) : (
           <button type="button" className={类} onClick={点} {...标}>

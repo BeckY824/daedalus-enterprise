@@ -13,8 +13,9 @@
  * 弹过就把参数从地址里去掉（replaceState），刷新不再弹。没有入口时本组件只管这一下，平时什么都不画
  */
 import { useEffect, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { Alert, Button, Modal, Result } from "antd";
+import { useShellNavGo } from "@/lib/nav-pending";
 import { 每月放弃次数, 放弃参数, 不在手上话, 去放弃参数, 放弃落地of, 落地对得上, type 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
 import { 放弃说明Action } from "./giveup-actions";
 import GiveUpDialog from "./GiveUpDialog";
@@ -69,11 +70,12 @@ function CantGiveUpModal({ 话, 关 }: { 话: string | null; 关: () => void }) 
 
 /** 从通知点「放弃（豁免）」来、这条已经进不去了（已转走、已收回、已删）：项目页不落 404，说一句为什么 */
 export function GiveUpGone() {
-  const router = useRouter();
+  /** 「回项目列表」「知道了」走壳里那份跳转：等新页时顶上的条亮，横条卸了也挂到新页提交（lib/nav-pending.ts） */
+  const 去页 = useShellNavGo();
   return (
     <Result
       status="info" title="这条线索现在不能放弃" subTitle={不在手上话} data-testid="proj-giveup-gone"
-      extra={<Button type="primary" onClick={() => router.push(放弃后去)}>回项目列表</Button>}
+      extra={<Button type="primary" onClick={() => 去页.push(放弃后去)}>回项目列表</Button>}
     />
   );
 }
@@ -95,7 +97,8 @@ export default function GiveUpBanner({ projectId, 入口, 打开判无效 }: {
 function GiveUpBar({ projectId, 入口, 打开判无效, 落地 }: {
   projectId: string; 入口: 放弃入口; 打开判无效?: () => void; 落地: ReturnType<typeof useGiveUpLanding>;
 }) {
-  const router = useRouter();
+  /** 「回项目列表」「知道了」走壳里那份跳转：等新页时顶上的条亮，横条卸了也挂到新页提交（lib/nav-pending.ts） */
+  const 去页 = useShellNavGo();
   const [开, set开] = useState(false);
   // 从通知带参数来、此刻能放弃：进页面就弹框（只这一下；按渲染时比上一次，不用 effect）
   const [弹过, set弹过] = useState(false);
@@ -111,7 +114,7 @@ function GiveUpBar({ projectId, 入口, 打开判无效, 落地 }: {
         description={(
           <div className="giveup-body">
             <div>这条线索已不在你名下，回项目列表继续跟别的。</div>
-            <Button size="small" type="primary" className="giveup-open" onClick={() => router.push(放弃后去)} data-testid="proj-giveup-back">知道了</Button>
+            <Button size="small" type="primary" className="giveup-open" onClick={() => 去页.push(放弃后去)} data-testid="proj-giveup-back">知道了</Button>
           </div>
         )}
       />

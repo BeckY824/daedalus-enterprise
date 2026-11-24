@@ -7,6 +7,7 @@
  */
 import { useImperativeHandle, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Alert, Button, Input, Popover, Select, Space, type PopoverProps } from "antd";
 import { FileSearchOutlined } from "@ant-design/icons";
 import { 查号码, type 查号码结果 } from "../customers/number-actions";
@@ -87,7 +88,7 @@ export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
               : 结果.市场可领 ? <>{结果.在推个数 != null && <div>{查重提示.在推个数(结果.在推个数)}</div>}<DedupeClaimKey 类型={类型} 值={结果.值} 客户id={结果.撞?.id} /></>
               : 结果.撞?.id || 结果.归属地 || 结果.出口C || 结果.在推个数 != null ? (
               <span>
-                {结果.撞?.id && <><Link href={`/customers/${结果.撞.id}`} onClick={() => set开(false)}>{结果.撞.name}</Link>{结果.撞.school ? ` · ${结果.撞.school}` : ""} · 在 {结果.撞.salesOwnerName} 名下</>}
+                {结果.撞?.id && <><Link href={`/customers/${结果.撞.id}`} onClick={() => set开(false)}>{结果.撞.name}<LinkPending /></Link>{结果.撞.school ? ` · ${结果.撞.school}` : ""} · 在 {结果.撞.salesOwnerName} 名下</>}
                 {/* 市场成员撞上客户：这位客户在推的项目个数（含 0，只给个数；看不到的同事客户也给这一句） */}
                 {结果.在推个数 != null && <>{结果.撞?.id ? " · " : ""}{查重提示.在推个数(结果.在推个数)}</>}
                 {(结果.撞?.id || 结果.在推个数 != null) && 结果.归属地 ? " · " : ""}

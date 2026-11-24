@@ -62,7 +62,8 @@ export type 交接客户 = {
 export type 等确认 = {
   id: string; 起日: string; 接手人: string | null; 接手人id: string; 挂起天数: number; 挂起工作日: number; 超期: boolean; 我能撤回: boolean;
 };
-export type 交接项目 = { id: string; name: string; 客户: string; 交接中?: 等确认 };
+/** 项目去：项目页会跳去的最终地址（交接页服务端按 lib/project/customer-detail-direct.ts 算好，跳转优化 PR-A）；没给 = /projects/<id> */
+export type 交接项目 = { id: string; name: string; 客户: string; 交接中?: 等确认; 项目去?: string };
 export type 离职待交接 = {
   id: string;
   name: string;

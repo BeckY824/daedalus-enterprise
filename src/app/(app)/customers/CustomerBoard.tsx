@@ -12,7 +12,7 @@ import { 客户抬头, type 抬头节点格 } from "@/lib/enterprise/customer-ti
  * 列多（10 项起），沿用项目看板的 .pipe：列宽固定（一屏约 4 列），放不下在看板框里左右滑；0 位客户的属性列照常摆、写空态（11-01）。
  * 卡片：客户名（整段显示，同项目看板 10-30）、级别字母、客户状态、负责人；客户状态、负责人没填写「—」（lib/empty-value.ts）
  */
-export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 总数, 翻页, 去, 抬头节点 }: {
+export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 总数, 翻页, 去, 去的, 抬头节点 }: {
   行们: CustomerRow[];
   字典: { name: string; active: boolean }[];
   加载中: boolean;
@@ -21,6 +21,8 @@ export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 
   总数: number;
   翻页: (页: number, 每页: number) => void;
   去: (id: string) => void;
+  /** 点了、新页还没到的那张卡：先高亮（.is-going，跳转优化 PR-A） */
+  去的?: string | null;
   /** 抬头里的当前节点（同列表第一列，CustomersView 的 抬头节点）：只有简称、全称、类型都空的客户才有 */
   抬头节点?: Record<string, 抬头节点格>;
 }) {
@@ -39,7 +41,7 @@ export default function CustomerBoard({ 行们, 字典, 加载中, 页, 每页, 
               <div className="pipe-bar" style={{ background: c.key === null ? "var(--field-line)" : "var(--brand)" }} />
               {c.行们.length === 0 && <div className="pipe-empty">这一类还没有客户</div>}
               {c.行们.map((r) => (
-                <div key={r.id} className="pipe-card" tabIndex={0} role="link" title={客户抬头(r, 抬头节点?.[r.id])} aria-label={`${客户抬头(r, 抬头节点?.[r.id])}，${空显(r.salesOwnerName)}`}
+                <div key={r.id} className={去的 === r.id ? "pipe-card is-going" : "pipe-card"} tabIndex={0} role="link" title={客户抬头(r, 抬头节点?.[r.id])} aria-label={`${客户抬头(r, 抬头节点?.[r.id])}，${空显(r.salesOwnerName)}`}
                   onClick={() => 去(r.id)}
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === " ") {

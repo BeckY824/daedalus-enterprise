@@ -8,6 +8,8 @@
  *   C12 往上翻出「↓」，下面长新字带蓝点，点了回到最新；刚发那一轮留一框高的空（问句能顶到框顶）
  *   C13 390：对话栏 52 高、钮 44；框铺满、输入框贴视口底；不横滚
  *   C5 还没问：「晚上好」上方的空 = 输入框下方的空（±2，1366 / 1024 / 390；有没有顶部待办都量）
+ *   HC-5（11-23，P-界面-60，用户选 C）：这一格宽 ≥1340（1920、2560，中栏开 / 收）问过之后右边四张卡不收、和问之前同一个 2:1，
+ *     卡栏顶和框顶齐、发第一问卡不变高不横挪；1536 / 1440 / 1366 / 1280 / 1024 照旧收起
  *
  * 外面的结构照 AppShell + HomeChat 驾驶舱那一支摆（HomeChat 连着对话流、路由、背调，单拎出来画不了；同 ent-design-ha-layout.ui.test.ts），
  * 框头、回到最新、问候、输入框底栏、指标卡用真组件
@@ -115,11 +117,11 @@ async function 开(o: 开参): Promise<{ page: Page; errors: string[] }> {
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const 手机 = o.宽 < 768;
-  // 照 AppShell：电脑 = 左栏 220 + 中栏 232（开着、够宽时）+ main（内边距 22 / 26，里面一层换页 div）；手机 = 顶栏 48 + Content（.cli 直接挂在里面）
+  // 照 AppShell：电脑 = 左栏 220 + 中栏 232（开着、够宽时）+ main（内边距 22 / 26，里面一层换页框 .page-fade）；手机 = 顶栏 48 + Content，里面同样一层 .page-fade（跳转优化 PR-A 起两边都是 NavProgress.tsx 的 PageFade）
   const 中栏 = !手机 && !o.收列表 && o.宽 >= 220 + 232 + 640;
   const 壳 = 手机
-    ? `<section class='ant-layout' style='min-height:100vh;display:flex;flex-direction:column'><header style='height:48px;flex:none;border-bottom:1px solid #eee'></header><main class='app-content' id='root' style='padding:22px 26px'></main></section>`
-    : `<div class='shell'><nav style='width:220px;flex:none'></nav>${中栏 ? "<aside class='pane' style='width:232px'></aside>" : ""}<main class='main app-content' style='padding:22px 26px'><div id='root' style='max-width:1720px;margin:0 auto'></div></main></div>`;
+    ? `<section class='ant-layout' style='min-height:100vh;display:flex;flex-direction:column'><header style='height:48px;flex:none;border-bottom:1px solid #eee'></header><main class='app-content' style='padding:22px 26px'><div class='page-fade' id='root'></div></main></section>`
+    : `<div class='shell'><nav style='width:220px;flex:none'></nav>${中栏 ? "<aside class='pane' style='width:232px'></aside>" : ""}<main class='main app-content' style='padding:22px 26px'><div class='page-fade' id='root' style='max-width:1720px;margin:0 auto'></div></main></div>`;
   await page.route("http://hc1.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html><meta charset='utf-8'><body style='margin:0'>${壳}</body></html>` }));
   await page.goto("http://hc1.test/dashboard");
   if (o.收列表) await page.evaluate(() => localStorage.setItem("pane.chat.collapsed", "true"));
@@ -136,19 +138,36 @@ const 盒 = (page: Page, sel: string, 末 = false) => (末 ? page.locator(sel).l
 const 不横滚 = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
 const 不整页滚 = (page: Page) => page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight + 1);
 
-for (const [宽, 收] of [[1366, false], [1366, true], [1024, false], [1920, false], [1280, false]] as const) {
-  it(`C0 / C2（${宽}${收 ? "，中栏收起" : ""}，长对话）：页面不滚、框四边 24、对话在框里滚；对话列 ≤760 居中，气泡 / 回答 / 输入框同边`, async () => {
+// 第三项：这一格（.cli-ck）宽 ≥1340，问过之后右边四张卡不收（HC-5，P-界面-60）。格宽 = 视口 − 左栏 220 −（中栏开着 232）− 四边 48，正文上限 1720：
+// 1920 开 1420 / 收 1652、2560 开收都 1720 → 留卡；1536 开 1036 / 收 1268、1440 开 940 / 收 1172、1366、1280、1024 → 收起
+for (const [宽, 收, 留卡] of [[1366, false, false], [1366, true, false], [1024, false, false], [1920, false, true], [1920, true, true], [1280, false, false],
+  [2560, false, true], [2560, true, true], [1536, false, false], [1536, true, false], [1440, false, false], [1440, true, false]] as const) {
+  it(`C0 / C2 / HC-5（${宽}${收 ? "，中栏收起" : ""}，长对话）：页面不滚、四边 24、对话在框里滚；对话列 ≤760 居中，气泡 / 回答 / 输入框同边；${留卡 ? "格宽 ≥1340 右边四张卡照摆" : "卡收起、框铺满"}`, async () => {
     const { page, errors } = await 开({ 宽, 收列表: 收, 轮数: 14 });
     try {
       expect(await 不横滚(page)).toBe(true);
       expect(await 不整页滚(page)).toBe(true);
       const 框 = await 盒(page, ".cli-frame");
       const 主 = await 盒(page, ".main");
-      // 四边一律 24（main 的内容盒到框）
+      const 格 = await 盒(page, ".cli-ck");
+      expect(格.w >= 1340).toBe(留卡);
+      expect(await page.locator(".home-cards").isVisible()).toBe(留卡);
+      // 四边一律 24（main 的内容盒到框；留卡时右边量到卡栏）。2560 正文到 1720 上限、整块在 main 里居中：左右各 24 + 多出来的一半
+      const 右沿 = 留卡 ? (await 盒(page, ".home-cards")).r : 框.r;
+      const 边 = 24 + Math.max(0, (主.w - 48 - 1720) / 2);
       expect(Math.abs(框.t - 主.t - 24)).toBeLessThanOrEqual(1);
       expect(Math.abs(主.b - 框.b - 24)).toBeLessThanOrEqual(1);
-      expect(Math.abs(框.l - 主.l - 24)).toBeLessThanOrEqual(1);
-      expect(Math.abs(主.r - 框.r - 24)).toBeLessThanOrEqual(1);
+      expect(Math.abs(框.l - 主.l - 边)).toBeLessThanOrEqual(1);
+      expect(Math.abs(主.r - 右沿 - 边)).toBeLessThanOrEqual(1);
+      if (留卡) {
+        // 和问之前同一个 2:1：框右边 = 卡栏左边 − 24；卡栏顶和框顶齐，四张卡照内容高、不拉满
+        const 卡 = await 盒(page, ".home-cards");
+        expect(Math.abs(卡.l - 框.r - 24)).toBeLessThanOrEqual(1);
+        expect(Math.abs(框.w - (格.w - 24) * 2 / 3)).toBeLessThanOrEqual(1);
+        expect(Math.abs(卡.t - 框.t)).toBeLessThanOrEqual(1);
+        expect(卡.h).toBeLessThan(框.h);
+        expect(await page.locator(".home-cards > .home-card").count()).toBe(4);
+      }
       // 框头 48，框外没有那颗飘着的列表开关
       expect((await 盒(page, ".cli-head")).h).toBe(48);
       // 对话在框里滚
@@ -173,6 +192,32 @@ for (const [宽, 收] of [[1366, false], [1366, true], [1024, false], [1920, fal
       const 列表不在 = 收 || 宽 < 220 + 232 + 640;
       expect(await page.getByRole("button", { name: "显示对话列表" }).count()).toBe(列表不在 ? 1 : 0);
       expect(await page.getByRole("button", { name: "新建对话" }).count()).toBe(列表不在 ? 1 : 0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+for (const 收 of [false, true]) {
+  it(`HC-5（1920×950${收 ? "，中栏收起" : ""}）：发第一问卡不跳——四张卡照内容高、宽和左右位置不变，卡栏顶跟着框顶；页面不横滚`, async () => {
+    const { page, errors } = await 开({ 宽: 1920, 高: 950, 收列表: 收, 样: "没问", 待办: 0 });
+    try {
+      const 量卡 = () => page.locator(".home-cards").evaluate((e) => {
+        const r = e.getBoundingClientRect(), 框 = document.querySelector(".cli-frame")!.getBoundingClientRect();
+        return { l: r.left, r: r.right, t: r.top, 框t: 框.top, 高们: [...e.children].map((c) => Math.round(c.getBoundingClientRect().height)) };
+      });
+      const 前 = await 量卡();
+      await page.evaluate(() => (window as unknown as { __重画: (s: string, o: unknown) => void }).__重画("问过", { 轮数: 1, 待办: 0, 新: true }));
+      await page.locator(".cli-paper").waitFor();
+      await page.waitForTimeout(50);
+      const 后 = await 量卡();
+      expect(后.高们).toEqual(前.高们);
+      expect(Math.abs(后.t - 后.框t)).toBeLessThanOrEqual(1);
+      expect(Math.abs(前.t - 前.框t)).toBeLessThanOrEqual(1);
+      // 左右：还没问时 main 内边距 26、问过之后一张纸四边 24（HC-1 C0），卡栏右边差 2、宽差约 1.3；不算跳。
+      // 上下：还没问时这一组在页里居中（H-新4），问过之后框顶到 24——卡栏顶和框顶一起挪，2:1 骨架不变（1920×950 实量 223 → 24）
+      expect(Math.abs(后.l - 前.l)).toBeLessThanOrEqual(3);
+      expect(Math.abs(后.r - 前.r)).toBeLessThanOrEqual(3);
+      expect(await 不横滚(page)).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
@@ -521,6 +566,23 @@ it("C13（390，触屏点击区）：框头标题改名钮、「待办 N」、�
     expect((await 盒(宽屏.page, ".cli-head-t")).h).toBe(28);
     expect(宽屏.errors).toEqual([]);
   } finally { await 宽屏.page.close(); }
+});
+
+it("C13（390）：正文外那层换页框（AppShell 的 PageFade，.page-fade）不断手机那条 flex 链：框铺满、对话区撑开（3703 实操 11-24：.cli-log 只剩 12 高、输入框顶在上面）", async () => {
+  const { page, errors } = await 开({ 宽: 390, 高: 844, 轮数: 10 });
+  try {
+    // 真壳里 .cli 不是 Content 的直接孩子，中间隔着 .page-fade
+    expect(await page.locator("main.app-content > .page-fade > .cli-paper").count()).toBe(1);
+    const 层 = await 盒(page, ".page-fade");
+    expect(Math.abs(层.b - 844)).toBeLessThanOrEqual(1);
+    expect(层.h).toBeGreaterThan(700);
+    const log = await page.locator(".cli-log").evaluate((e) => e.clientHeight);
+    expect(log).toBeGreaterThan(200);
+    const 输 = await 盒(page, ".cli-frame .cli-input");
+    expect(844 - 输.b).toBeLessThan(80);
+    expect(await 不整页滚(page)).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
 
 it("C13（390）：全站顶栏下一条对话栏 52 高、钮 44；框铺满、在框里滚，输入框贴视口底；不横滚、不整页滚", async () => {

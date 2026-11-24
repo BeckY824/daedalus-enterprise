@@ -603,6 +603,8 @@ export type 卡点卡 = Omit<卡点视图, "resolvedAt" | "createdAt" | "流转"
   resolvedAt: string | null; createdAt: string;
   认领: (Omit<认领行, "doneAt" | "userId"> & { doneAt: string | null })[];
   流转: (Omit<卡点流转, "at"> & { at: string })[];
+  /** 卡上项目名点了去哪：项目页会跳去的最终地址（复盘卡点看板给，lib/project/customer-detail-direct.ts）；没给 = /projects/<id> */
+  项目去?: string;
 };
 export function 卡点给界面(v: 卡点视图): 卡点卡 {
   const { creatorId: _c, ...rest } = v;

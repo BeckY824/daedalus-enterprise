@@ -146,9 +146,13 @@ it("出错 / 打断（设计语言 HC-2a C11-A）：打断灰点「已停下 · 
   expect(await page.locator(".ais-row").count()).toBe(2);
   await page.getByRole("button", { name: "重试", exact: true }).click();
   expect(await page.evaluate(() => (window as unknown as { __重试: number }).__重试)).toBe(1);
-  // 超时：说等了多久（ms = 起到停）
-  await 画(page, { steps: [], 态: "error", 起, ms: 90_000, 原因: "AI 这次超时没回音，稍后再问一次试试" });
+  // 超时（HC-2b：服务端带 code = timeout，调用方给 超时）：说等了多久（ms = 起到停）
+  await 画(page, { steps: [], 态: "error", 起, ms: 90_000, 原因: "模型那边没回音", 超时: true });
   expect(await 头(page)).toBe("等了 90 秒没回来");
+  // 文案里有「超时」但没 code：不算超时，照普通出错写
+  await 画(page, { steps: [], 态: "error", 起, ms: 90_000, 原因: "AI 这次超时没回音，稍后再问一次试试" });
+  expect(await 头(page)).toBe("出错了：AI 这次超时没回音，稍后再问一次试试");
+  await 画(page, { steps: [], 态: "error", 起, ms: 90_000, 原因: "模型那边没回音", 超时: true });
   expect(await page.getByRole("button", { name: "重试", exact: true }).count()).toBe(1);
   // 打断：灰点，不是完成的绿
   await 画(page, { steps: [步(0, "search_customers(x)", "done", "1 位"), 步(1, "get_customer(c)", "done", "被打断")], 态: "interrupted", 起 });

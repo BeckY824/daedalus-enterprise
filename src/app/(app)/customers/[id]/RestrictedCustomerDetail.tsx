@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { useRouter } from "next/navigation";
 import { Button, Card, Dropdown, Empty, Tag } from "antd";
 import { DownOutlined } from "@ant-design/icons";
@@ -53,6 +54,7 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
             <span>{f.who}</span>
             <Link href={客户页项目地址(客户.id, f.项目.id, "#project-follow")} scroll={false} title={f.项目.名} className="rcd-follow-proj">
               {f.项目.名}
+              <LinkPending />
             </Link>
           </div>
           <div className="rcd-follow-body">{f.content}</div>
@@ -134,7 +136,8 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
             待办: 待办卡,
             开建项目: null,
             全只读: false,
-            客户状态留痕: null,
+            // 受限详情没有「历史变更」入口（客户本身看不到）：项目进程变更卡照摆
+            进程变更卡: true,
             提醒: null,
             无全部沟通: true,
             // 这是他在这位客户下最后一个项目：转走 / 退回公海 / 删了以后客户页就 404 了，回客户列表

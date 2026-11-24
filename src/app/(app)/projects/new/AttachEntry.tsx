@@ -7,6 +7,7 @@
  */
 import { useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Button, Space } from "antd";
 import { 申请挂靠 } from "@/app/(app)/customers/number-actions";
 import type { 撞号露出, 负责人露出 } from "@/lib/enterprise/dupe-ledger";
@@ -16,7 +17,7 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 export const 负责人说法 = (r: 负责人露出) => [r.姓名, r.级别, r.状态].filter(Boolean).join(" · ") + (r.离职找 ? `（请联系 ${r.离职找}）` : "");
 
 export function 我名下入口({ 客户id }: { 客户id: string }) {
-  return <Link href={`/customers/${客户id}`}><Button size="small">打开它</Button></Link>;
+  return <Link href={`/customers/${客户id}`}><Button size="small">打开它</Button><LinkPending /></Link>;
 }
 
 /** 不给打开 = 外面已经摆了「打开它」（号码撞号面板） */
@@ -49,7 +50,7 @@ export default function AttachEntry({ 露出, 不给打开 = false }: { 露出: 
   };
   return (
     <Space size={8} style={{ marginTop: 8 }} wrap>
-      {露出.客户id && !不给打开 && <Link href={`/customers/${露出.客户id}`}><Button size="small">打开它</Button></Link>}
+      {露出.客户id && !不给打开 && <Link href={`/customers/${露出.客户id}`}><Button size="small">打开它</Button><LinkPending /></Link>}
       <Button size="small" type="primary" data-testid="attach-request" disabled={已申请} loading={忙} onClick={() => void 点()}>
         {已申请 ? "已申请挂靠" : "申请挂靠"}
       </Button>

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import { Card, Dropdown } from "antd";
 import { DownOutlined } from "@ant-design/icons";
 import { FoldSplit, ProjectFold, 模块钮色 } from "../../projects/[id]/ProjectFold";
@@ -67,12 +69,14 @@ function 胶囊身({ t }: { t: 项目页签 }) {
 }
 
 /**
- * 「更多 N 个」怎么算（11-12 方案一）：一排隐藏的量尺把每颗胶囊按真实样式摆一遍（max-width 210 封顶），量出各自宽度；
- * 每颗还能缩到 胶囊最窄（名字省略号），本来就窄的不缩。可用宽 = 切换行宽 − 「项目」小字 − 锁 − 间隔。
- * 先看全部按「最窄」能不能放下；放不下就从左往右放前 k 颗 + 「更多」，k 取最大的那个；选中的那颗要是被收进去，就顶替第 k 颗的位置。
- * 至少放 1 颗（选中的）；连 1 颗 + 「更多」都按最窄放不下（窄屏、单栏）时，这一颗再往下缩到剩下的宽（最少 40）。宽度变了（ResizeObserver）、字体到了重新量；放下以后多出来的空间由 CSS 让各颗往自然宽长回去
+ * 「更多 N 个」怎么算（11-12 方案一）：一排隐藏的量尺把每颗胶囊按真实样式摆一遍（max-width 240 封顶），量出各自宽度；
+ * 每颗最窄 = 名字放得下一个完整合同号（合同号样本，11-23 用户：「XJKJ-20240716-006」这种只剩「X…」不行）的宽，本来就窄的不缩，更长的名字才省略、悬停看全。
+ * 可用宽 = 切换行宽 − 「项目」小字 − 锁 − 间隔。先看全部按「最窄」能不能放下；放不下就从左往右放前 k 颗 + 「更多」，k 取最大的那个；
+ * 选中的那颗要是被收进去，就顶替第 k 颗的位置。「更多 N 个」放不下时先换成短的「+N」（同一个下拉），还放不下就让卡头折成两行（项目切换占满一行，
+ * 「完成节点」落下一行，同手机）；折了还放不下（极窄）这一颗再往下缩到剩下的宽（最少 40）。
+ * 宽度变了（ResizeObserver）、字体到了重新量；放下以后多出来的空间由 CSS 让各颗往自然宽长回去
  */
-export const 胶囊最窄 = 96;
+export const 合同号样本 = "XJKJ-20240716-006";
 export function 算可见(宽们: number[], 可用: number, 更多宽: number, 间隔: number, 选中: number): number[] {
   const n = 宽们.length;
   const 和 = (ids: number[]) => ids.reduce((s, i) => s + 宽们[i], 0) + 间隔 * Math.max(0, ids.length - 1);
@@ -85,6 +89,15 @@ export function 算可见(宽们: number[], 可用: number, 更多宽: number, �
   }
   return [选中 >= 0 ? 选中 : 0];
 }
+
+/**
+ * 卡头要不要折两行：不折时（项目切换和「完成节点」同一行）切换能占的宽 不折可用，按 要宽 放得下就不折。
+ * 不折可用从卡头条宽减右边按钮算，和折没折无关，折了也不会因为变宽又弹回来
+ */
+/** 卡头怎么摆：折 = 折两行（项目切换占满一行，「完成节点」落下一行）；藏字 = 行首「项目」小字藏起来（胶囊组自带 aria-label） */
+export type 折档 = { 折: boolean; 藏字: boolean };
+const 不折: 折档 = { 折: false, 藏字: false };
+export const 要折 = (要宽: number, 不折可用: number | null): boolean => 不折可用 !== null && 要宽 > 不折可用;
 
 /** 落地高亮多久（PR8：新建弹窗建好落到客户页 ?project=<新项目>，新项目卡亮 2 秒） */
 export const 落地亮毫秒 = 2000;
@@ -118,7 +131,8 @@ function useLandingFlash(): string | null {
  * 同事项目照旧只给带锁的个数
  */
 export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; 当前id: string | null }) {
-  const router = useRouter();
+  /** 「更多」里挑一个项目：同一页换 ?project=，慢了顶上的条照样亮（lib/nav-pending.ts，跳转优化 PR-A 审查补） */
+  const 去页 = useNavGo();
   const 亮id = useLandingFlash();
   const 亮 = (id: string | undefined) => (!!id && id === 亮id ? " cd-pj-flash" : "");
   const 行 = useRef<HTMLDivElement>(null);
@@ -127,21 +141,74 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
   const 选中 = 页签们.findIndex((t) => t.id === 当前id);
   const [可见, set可见] = useState<number[] | null>(null);
   const [最窄, set最窄] = useState<number[]>([]);
+  // 「更多 N 个」放不下时换短的「+N」；还放不下卡头折两行（见 算可见 上面那段）
+  const [短更多, set短更多] = useState(false);
+  const [档, set档原] = useState<折档>(不折);
+  const set档 = useCallback((x: 折档) => set档原((o) => (o.折 === x.折 && o.藏字 === x.藏字 ? o : x)), []);
+  // 行首「项目」小字的宽：看得见时量一次记住（紧的时候它藏起来量成 0，判断就会来回翻）
+  const 字宽记 = useRef(0);
   const 量 = useCallback(() => {
     const 框 = 行.current, 量尺 = 尺.current;
     if (!框 || !量尺) return;
-    const 胶囊们 = [...量尺.querySelectorAll<HTMLElement>(".cd-pj-pill:not(.cd-pj-more)")];
-    const 更多 = 量尺.querySelector<HTMLElement>(".cd-pj-more");
-    const 别的 = [...框.children].filter((el) => !el.classList.contains("cd-pj-pills") && !el.classList.contains("cd-pj-ruler")) as HTMLElement[];
+    const 宽 = (el: Element | null | undefined) => (el ? el.getBoundingClientRect().width : 0);
     const 间隔 = parseFloat(getComputedStyle(框).columnGap) || 0;
-    const 可用 = 框.clientWidth - 别的.reduce((s, el) => s + el.getBoundingClientRect().width + 间隔, 0);
-    const 最窄们 = 胶囊们.map((el) => Math.min(Math.ceil(el.getBoundingClientRect().width), 胶囊最窄));
-    const 更多宽 = 更多?.getBoundingClientRect().width ?? 0;
-    const ids = 算可见(最窄们, 可用, 更多宽, 间隔, 选中);
-    if (ids.length === 1 && 胶囊们.length > 1 && 最窄们[ids[0]] + 间隔 + 更多宽 > 可用) 最窄们[ids[0]] = Math.max(40, Math.floor(可用 - 间隔 - 更多宽));
+    const 字 = 框.querySelector(":scope > .cd-cap");
+    if (宽(字) > 0) 字宽记.current = 宽(字) + 间隔;
+    const 字宽 = 字宽记.current;
+    const 锁宽 = [...框.children].filter((el) => el.classList.contains("cd-lock")).reduce((s, el) => s + 宽(el) + 间隔, 0);
+    // 不折时能占的宽：卡头条（进程卡卡头）内容宽 − 右边按钮 − 条里的间隔；不在卡头条里（空状态那一行）= null，不折不藏。
+    // 可用宽都从卡头条量，和现在折没折、藏没藏小字无关
+    const 条 = 框.closest<HTMLElement>(".proj-stage-bar.has-head");
+    const 条样 = 条 ? getComputedStyle(条) : null;
+    const 钮 = 条 ? [...条.children].find((el) => el.classList.contains("proj-stage-acts")) : null;
+    const 条内宽 = 条 && 条样 ? 条.clientWidth - (parseFloat(条样.paddingLeft) || 0) - (parseFloat(条样.paddingRight) || 0) : 框.clientWidth;
+    const 平宽 = 条 && 条样 ? 条内宽 - (钮 ? 宽(钮) + (parseFloat(条样.columnGap) || 0) : 0) - 锁宽 : null;
+    const 折宽 = 条内宽 - 锁宽;
+    // 样本用 scrollWidth：量尺 0 宽
+    const 样本宽 = (sel: string) => 量尺.querySelector<HTMLElement>(sel)?.scrollWidth ?? 0;
+    if (页签们.length <= 1) {
+      // 一个项目：名字（放得下合同号的那截）+ 阶段小标 放不下就折；折了还长的照旧一行省略
+      const 一 = 框.querySelector<HTMLElement>(":scope > .cd-pj-one"), 名 = 一?.querySelector<HTMLElement>(".cd-pj-nm");
+      const 要宽 = 一 && 名 ? 宽(一) - 名.clientWidth + Math.min(名.scrollWidth, 样本宽(".cd-pj-sample.is-one")) + 字宽 : 0;
+      set档(要折(要宽, 平宽) ? { 折: true, 藏字: false } : 不折);
+      return;
+    }
+    const 胶囊组 = 框.querySelector<HTMLElement>(":scope > .cd-pj-pills");
+    const 胶囊间隔 = 胶囊组 ? parseFloat(getComputedStyle(胶囊组).columnGap) || 0 : 间隔;
+    const 胶囊们 = [...量尺.querySelectorAll<HTMLElement>(".cd-pj-pill:not(.cd-pj-more):not(.is-sample)")];
+    const 更多宽 = 宽(量尺.querySelector(".cd-pj-more:not(.is-short)"));
+    const 短宽 = 宽(量尺.querySelector(".cd-pj-more.is-short"));
+    const 名样本 = 样本宽(".cd-pj-sample:not(.is-one)");
+    // 每颗最窄：名字缩到放得下合同号样本为止（本来就短的不缩）
+    const 最窄们 = 胶囊们.map((el) => {
+      const 自然 = Math.ceil(宽(el)), 名 = el.querySelector<HTMLElement>(".cd-pj-nm");
+      return 名 ? Math.min(自然, Math.ceil(自然 - 名.clientWidth + 名样本)) : 自然;
+    });
+    const 放得下 = (ids: number[], 多: number, 可用: number) => ids.length === 胶囊们.length || ids.reduce((s, i) => s + 最窄们[i] + 胶囊间隔, 0) + 多 <= 可用;
+    const 试 = (可用: number) => {
+      const 长 = 算可见(最窄们, 可用, 更多宽, 胶囊间隔, 选中);
+      if (放得下(长, 更多宽, 可用)) return { ids: 长, 短: false, 中: true, 可用 };
+      const 短 = 算可见(最窄们, 可用, 短宽, 胶囊间隔, 选中);
+      return { ids: 短, 短: true, 中: 放得下(短, 短宽, 可用), 可用 };
+    };
+    // 依次试：一行 → 一行藏「项目」小字（1024 三栏）→ 折两行 → 折两行藏小字（912 三栏）；每档里先「更多 N 个」再「+N」。
+    // 都不行（极窄）用最后一档，这一颗往下缩
+    const 档们: 折档[] = 条 === null ? [不折] : [不折, { 折: false, 藏字: true }, { 折: true, 藏字: false }, { 折: true, 藏字: true }];
+    let 用 = 试(0), 定 = 档们[档们.length - 1];
+    for (const 档 of 档们) {
+      const 底 = 档.折 ? 折宽 : 平宽 ?? 折宽;
+      const 这 = 试(底 - (档.藏字 ? 0 : 字宽));
+      用 = 这; 定 = 档;
+      if (这.中) break;
+    }
+    const ids = 用.ids;
+    const 多宽 = 用.短 ? 短宽 : 更多宽;
+    if (ids.length === 1 && 胶囊们.length > 1 && 最窄们[ids[0]] + 胶囊间隔 + 多宽 > 用.可用) 最窄们[ids[0]] = Math.max(40, Math.floor(用.可用 - 胶囊间隔 - 多宽));
     set最窄((o) => (o.length === 最窄们.length && o.every((x, i) => x === 最窄们[i]) ? o : 最窄们));
     set可见((o) => (o && o.length === ids.length && o.every((x, i) => x === ids[i]) ? o : ids));
-  }, [选中]);
+    set短更多(用.短 && ids.length < 胶囊们.length);
+    set档(定);
+  }, [选中, 页签们.length, set档]);
   useLayoutEffect(() => {
     量();
     const 框 = 行.current;
@@ -153,10 +220,13 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
     return () => { 还在 = false; 看.disconnect(); };
   }, [量, 页签们]);
   const 地址 = (id: string) => 客户页项目地址(数据.customerId, id);
+  // 卡头折两行：data-wrap 挂在自己身上，进程卡卡头条按 :has 折（globals.css）
+  const 折标 = 档.折 ? "" : undefined;
+  const 藏字标 = 档.藏字 ? "" : undefined;
   if (页签们.length <= 1) {
     const t = 页签们[0];
     return (
-      <div className="cd-pj" ref={行}>
+      <div className="cd-pj" ref={行} data-wrap={折标} data-nocap={藏字标}>
         <span className="cd-cap">项目</span>
         {t && (
           <span className={`cd-pj-one${亮(t.id)}`} data-flash={亮(t.id) ? "" : undefined} title={`${t.name} · ${标of(t)}`}>
@@ -169,6 +239,9 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
           </span>
         )}
         <锁格 数={数据.锁数} />
+        <div className="cd-pj-ruler" ref={尺} aria-hidden>
+          <b className="cd-pj-sample is-one">{合同号样本}</b>
+        </div>
       </div>
     );
   }
@@ -179,7 +252,7 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
   const 收 = 页签们.map((_, i) => i).filter((i) => !摆.includes(i));
   const 顺 = [...摆].sort((a, b) => a - b);
   return (
-    <div className="cd-pj" ref={行}>
+    <div className="cd-pj" ref={行} data-wrap={折标} data-nocap={藏字标}>
       <span className="cd-cap">项目</span>
       <div className="cd-pj-pills" role="tablist" aria-label="这位客户的项目">
         {顺.map((i) => {
@@ -199,6 +272,7 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
               title={`${t.name} · ${标of(t)}${t.冷天数 != null ? ` · ${t.冷天数} 天没有推进` : ""}`}
             >
               <胶囊身 t={t} />
+              <LinkPending />
             </Link>
           );
         })}
@@ -209,10 +283,12 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
             menu={{
               className: "cd-pj-menu",
               items: 收.map((i) => ({ key: 页签们[i].id, label: <span className="cd-pj-mi" title={页签们[i].name}><胶囊身 t={页签们[i]} /></span> })),
-              onClick: ({ key }) => router.replace(地址(key), { scroll: false }),
+              onClick: ({ key }) => 去页.replace(地址(key), { scroll: false }),
             }}
           >
-            <button type="button" className="cd-pj-pill cd-pj-more">更多 {收.length} 个 <DownOutlined aria-hidden /></button>
+            {短更多
+              ? <button type="button" className="cd-pj-pill cd-pj-more is-short" aria-label={`+${收.length}，更多 ${收.length} 个项目`} title={`更多 ${收.length} 个项目`}>+{收.length} <DownOutlined aria-hidden /></button>
+              : <button type="button" className="cd-pj-pill cd-pj-more">更多 {收.length} 个 <DownOutlined aria-hidden /></button>}
           </Dropdown>
         )}
       </div>
@@ -221,6 +297,9 @@ export function ProjectSwitch({ 数据, 当前id }: { 数据: 项目区数据; �
       <div className="cd-pj-ruler" ref={尺} aria-hidden>
         {页签们.map((t) => <span key={t.id} className={`cd-pj-pill${t.id === 当前id ? " on" : ""}`}><胶囊身 t={t} /></span>)}
         <span className="cd-pj-pill cd-pj-more">更多 {页签们.length} 个 <DownOutlined /></span>
+        <span className="cd-pj-pill cd-pj-more is-short">+{页签们.length} <DownOutlined /></span>
+        {/* 合同号样本：选中那颗的字（加粗，最宽的那种）量一个完整合同号多宽，每颗最窄就到这 */}
+        <span className="cd-pj-pill on is-sample"><b className="cd-pj-sample">{合同号样本}</b></span>
       </div>
     </div>
   );
@@ -287,7 +366,7 @@ export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据
         全部沟通数: 槽.全部沟通数,
         待办: 槽.待办,
         客户页,
-        客户状态留痕: 槽.客户状态留痕,
+        进程变更卡: 槽.进程变更卡,
         无全部沟通: 槽.无全部沟通,
         走后去: 槽.走后去,
       }}

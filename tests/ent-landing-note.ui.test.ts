@@ -97,6 +97,6 @@ it("整页刷新落地也认（sessionStorage）；过期的、坏的不说；�
 it("接线（源码）：客户列表摆 LandingNote；项目详情回客户列表那一下留落地话、不再弹 message", () => {
   expect(readFileSync(path.resolve("src/app/(app)/customers/CustomersView.tsx"), "utf8")).toMatch(/<LandingNote 路径="\/customers" \/>/);
   const 详情 = readFileSync(path.resolve("src/app/(app)/projects/[id]/ProjectDetail.tsx"), "utf8");
-  expect(详情).toMatch(/留落地话\(嵌入\.走后去\.到, 嵌入\.走后去\.说法\);\s*router\.push\(嵌入\.走后去\.到\)/);
+  expect(详情).toMatch(/留落地话\(嵌入\.走后去\.到, 嵌入\.走后去\.说法\);\s*(router|去页)\.push\(嵌入\.走后去\.到\)/);
   expect(详情).not.toMatch(/message\.(success|error|info|warning|open|loading)\(/);
 });

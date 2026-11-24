@@ -1,10 +1,12 @@
 "use client";
 
 import { 留落地话 } from "@/lib/landing-note";
-import { 公海领取文字 } from "@/lib/project/transfer-log-text";
+import { 位置文字, 换人文字, type 放回方式 } from "@/lib/project/node-log-text";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { CommentOutlined, DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps, type PopoverProps } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
@@ -50,6 +52,7 @@ import { 两行, 等复核说法, 能项目转让, type 项目动作键 } from "
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
+import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import AddressInput from "@/components/AddressInput";
 import { 三种业务线, 建议业务线, 所在地提示 } from "@/lib/enterprise/assign-line";
@@ -316,11 +319,6 @@ function 删除说明(n: 项目详情["删前清点"], 客户叫法: string, 进
   );
 }
 
-/** 「线索·潜客培育」「订单·验收交付（异常状态）」；结局按字典的叫法（后台改了出口叫法就用改的） */
-function 位置文字(p: 位置, 字典: 阶段字典 = 团队版字典): string {
-  return `${p.phase}·${p.node}${p.result ? `（${结局叫法(p.result, 字典)}）` : ""}`;
-}
-
 /**
  * 下拉里的去处：每个阶段的节点，加上这个阶段的「没走成」结局（订单阶段是成功交付和异常状态）。
  * 异常状态只在项目已经在订单阶段时出现，线索、商机阶段不给这个入口。
@@ -364,23 +362,8 @@ function 去处们(当前: 位置, 不能往前 = false, 字典: 阶段字典 = 
   });
 }
 
-/** 项目怎么进的公海（page.tsx 按理由分）：超时 = 系统收的；停用 = 管理员办停用时放的；手动 = 有人放回 */
-export type 放回方式 = "超时" | "停用" | "手动";
-
-/** 节点变更里换负责人那几种行怎么说。放回公海按真正的操作人说（QA #14：超时是系统、停用是办的那位管理员，不是原负责人） */
-function 换人文字(l: 项目详情["logs"][number]): string {
-  const t = l.transfer ?? { from: "没人", to: "没人" };
-  if (l.kind === "pool-release") {
-    // 老数据没带方式的按理由认超时
-    const 方式 = l.放回方式 ?? (l.reason === 超时理由 ? "超时" : "手动");
-    if (方式 === "超时") return `${t.from} 的项目超时没跟进，系统自动收回到线索公海`;
-    if (方式 === "停用") return `${l.who} 办成员停用，把 ${t.from} 的项目放回线索公海`;
-    return l.who === t.from ? `${t.from} 把项目放回线索公海` : `${l.who} 把 ${t.from} 的项目放回线索公海`;
-  }
-  // 按留痕原因的开头分客户公海分配 / 线索公海分配 / 跟着客户 / 自己领（lib/project/transfer-log-text.ts，3703 实操 11-21）
-  if (l.kind === "pool-claim") return 公海领取文字({ who: l.who, reason: l.reason, to: t.to });
-  return `负责人从 ${t.from} 转给 ${t.to}`;
-}
+/** 项目怎么进的公海、节点记录那几句（位置文字 / 换人文字）挪进 lib/project/node-log-text.ts（11-24 客户详情「历史变更」共用） */
+export type { 放回方式 } from "@/lib/project/node-log-text";
 
 /** 负责人那一行括号里：怎么进的公海 */
 /**
@@ -570,8 +553,11 @@ export type 嵌在客户页 = {
   待办: ReactNode;
   /** 项目退回公海 / 转走后自己看不到了：回客户详情（不带 ?project），不回项目列表 */
   客户页: string;
-  /** 客户三态状态留痕（C13）：挂在「进程变更」卡最下面一段（客户层，切页签不变）；三态关着是 null */
-  客户状态留痕?: ReactNode;
+  /**
+   * 右栏摆不摆「项目进程变更」卡：客户详情不摆（11-24 挪进客户名下那一行的「历史变更」弹窗，客户状态那段也在弹窗里）；
+   * 受限客户详情（只负责项目的人）没有「历史变更」入口，照摆
+   */
+  进程变更卡?: boolean;
   /** 受限客户详情（只负责项目的人）：不给「这位客户全部」，沟通卡只看本项目 */
   无全部沟通?: boolean;
   /**
@@ -585,6 +571,8 @@ export default function ProjectDetail({
   p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 教练主题 = null, 嵌入,
 }: 项目详情Props & { 嵌入?: 嵌在客户页 }) {
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   // 不弹顶部提示（原型 g.save / g.notice）：页面上做的事成没成写在正文底部的就地小条；弹框里的原因写在框里（跑 的 报错）
   const [就地, 回执条] = useDetailNote();
   const b = useBusiness();
@@ -952,7 +940,7 @@ export default function ProjectDetail({
             return;
           }
         } else if (p.customer && (p.客户入口 ?? "详情") === "详情") {
-          router.push(`/customers/${p.customer.id}#field-${客户资料格[键]}`);
+          去页.push(`/customers/${p.customer.id}#field-${客户资料格[键]}`);
           return;
         }
       }
@@ -1026,8 +1014,8 @@ export default function ProjectDetail({
     if (嵌入?.走后去) {
       // 这一下就跳去客户列表（受限详情里最后一个项目走了），本页没地方写：带一句过去，客户列表落地后在原处说（lib/landing-note.ts、LandingNote）
       留落地话(嵌入.走后去.到, 嵌入.走后去.说法);
-      router.push(嵌入.走后去.到);
-    } else router.push(嵌入?.客户页 ?? "/projects");
+      去页.push(嵌入.走后去.到);
+    } else 去页.push(嵌入?.客户页 ?? "/projects");
   };
   const 确认转给 = async (新: string) => {
     const 名 = 候选.find((m) => m.id === 新)?.name ?? "TA";
@@ -1646,6 +1634,8 @@ export default function ProjectDetail({
   );
   // 客户详情嵌入版的叫法（11-12，card-names.tsx）：右栏卡名补「项目」、卡点写「当前卡点」；项目详情页原样
   const 卡名 = (名: string) => (嵌入 ? 项目卡名(名) : 名);
+  // 异常 / 没走成的弹窗里说「记在哪」：客户详情里右栏没有进程变更卡（11-24 挪进客户名下那一行的「历史变更」），说历史变更；独立页、受限客户详情照旧
+  const 变更记在 = 嵌入 && !嵌入.进程变更卡 ? "历史变更" : "进程变更";
   const 卡点名 = 嵌入 ? 客户详情卡点 : "卡点";
   /** 交付卡备货 / 物流三行：和项目资料同一套字段行（标签 68 列、值离卡左 92） */
   const 交付行 = 资料行();
@@ -1755,7 +1745,6 @@ export default function ProjectDetail({
           ),
         }))}
       />
-      {嵌入?.客户状态留痕}
     </Card>
   );
   // 企业版瀑布流（U-项目-01/04）：沟通、卡点与任务各是一块，卡头最右那颗点了展开 / 收起（ProjectFold，11-01），
@@ -1884,7 +1873,7 @@ export default function ProjectDetail({
           </Space>
         ) : p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条</Button>
           // 别的版本照旧给「去客户页记一条」
-          : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条</Link>
+          : p.customer && <Link href={`/customers/${p.customer.id}`}>去{b.customer}页记一条<LinkPending /></Link>
       }
     >
       {沟通身()}
@@ -2109,7 +2098,7 @@ export default function ProjectDetail({
       )}
 
       {后果框}
-      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} 回执={就地} />}
+      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} 回执={就地} 回处={嵌入 && p.customer ? 客户页项目地址(p.customer.id, p.id) : undefined} />}
 
       <Modal
         open={!!异常框}
@@ -2124,7 +2113,7 @@ export default function ProjectDetail({
           if (ok) set异常框(null);
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>选一个异常类别，看板上这张卡会标红；处理好了把进程改回去就算恢复，类别和备注留在进程变更里。</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>选一个异常类别，看板上这张卡会标红；处理好了把进程改回去就算恢复，类别和备注留在{变更记在}里。</div>
         <Select
           style={{ width: "100%", marginBottom: 12 }}
           placeholder={类别们.length ? "选异常类别" : "没有在用的异常类别，请管理员在设置里加"}
@@ -2153,7 +2142,7 @@ export default function ProjectDetail({
           if (ok) set没成框(null);
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>{选无效原因 ? "选一个无效原因，或写一句为什么没成（至少一样），会记在进程变更里；以后捡回来把进程改回去就行。" : "写一句为什么没成，会记在进程变更里；以后捡回来把进程改回去就行。"}</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>{选无效原因 ? `选一个无效原因，或写一句为什么没成（至少一样），会记在${变更记在}里；以后捡回来把进程改回去就行。` : `写一句为什么没成，会记在${变更记在}里；以后捡回来把进程改回去就行。`}</div>
         {选无效原因 && (
           <DictSelect style={{ width: "100%", marginBottom: 8 }} placeholder="无效原因" aria-label="无效原因" value={无效原因} onChange={set无效原因} options={p.原因选项.无效} />
         )}
@@ -2271,7 +2260,7 @@ export default function ProjectDetail({
               {显示交付 && 折(卡名("交付"), 交付卡, undefined, false)}
               {折("项目组", 项目组卡, undefined, false)}
               {折(卡名("提成"), 提成区, undefined, false)}
-              {折(卡名("进程变更"), 变更卡, undefined, false)}
+              {嵌入.进程变更卡 && 折(卡名("进程变更"), 变更卡, undefined, false)}
               {p.关联 && 折(卡名("关联客户"), <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="客户" />, undefined, false)}
               {p.关联 && 折(卡名("关联联系人"), <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="联系人" />, undefined, false)}
             </aside>
@@ -2286,7 +2275,7 @@ export default function ProjectDetail({
   const 正文 = (
     <div className={p.企业版 ? "proj-wrap" : undefined} style={{ maxWidth: p.企业版 ? 1200 : 960 }}>
       {p.企业版 ? (
-        /* 企业版（P11）：项目名单在中栏（@pane/projects/[id]，components/ProjectRoster.tsx）。
+        /* 企业版（P11）：项目名单在中栏（@pane/projects/(detail)/layout.tsx，components/ProjectRoster.tsx）。
            它收起或收成抽屉时，标题最左边补一颗侧栏图标把它叫回来，和客户详情页同一颗（components/PaneToggle.tsx） */
         <>
         {/* 回到进来前那张列表（员工反馈 1A，components/BackToList.tsx）；企业版没有项目列表入口，没记过回客户列表 */}
@@ -2547,7 +2536,7 @@ function 存录入模式(v: 录入模式) {
   try { if (v === "AI") localStorage.setItem(录入模式键, "AI"); else localStorage.removeItem(录入模式键); } catch { /* 无痕、禁用：只这一次 */ }
 }
 
-function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑, 回执 }: {
+function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑, 回执, 回处 }: {
   p: 项目详情;
   外贸: boolean;
   /** 能发卡点才给（企业版）；null = 不摆卡点那一块 */
@@ -2558,6 +2547,8 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   跑: 跑法;
   /** 记完框就关：回执（短沟通、卡点生成 / 没生成、附件没传上）写在详情正文底部的就地小条 */
   回执: 就地回执;
+  /** AI 任务列表里点这条回哪：嵌在客户页时就是这一页（客户页 + ?project，跳转优化 PR-A：不经过 /projects/<id> 再跳）；不给 = /projects/<id> */
+  回处?: string;
 }) {
   const 能选类型 = 跟进类型们(外贸).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   /** D4 · M7-b：「保存」一直能点、格子下报红 */
@@ -2635,7 +2626,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     const 起 = Date.now();
     set解析({ 起 });
     const 请求 = parseFollowUpDraft({ customerId: p.customer.id, text: 原话 });
-    runJob<null>(任务键, () => 请求.then((r) => (r.ok ? { ok: true as const, value: null } : { ok: false as const, error: r.error })), undefined, { 名: "解析项目沟通", 去: `/projects/${p.id}` });
+    runJob<null>(任务键, () => 请求.then((r) => (r.ok ? { ok: true as const, value: null } : { ok: false as const, error: r.error })), undefined, { 名: "解析项目沟通", 去: 回处 ?? `/projects/${p.id}` });
     let r: Awaited<typeof 请求>;
     try {
       r = await 请求;

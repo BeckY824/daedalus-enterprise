@@ -42,8 +42,11 @@ function 像点号号码(串: string): boolean {
   return 段们.length >= 3 && 数字.length >= 10 && !/^(?:19|20)\d\d$/.test(段们[0]);
 }
 
-/** 按两道认号码，认到的交给 换：先老规则（空格、横线、括号分段），再点号 / 下划线分段的 */
-function 逐个号码(s: string, 换: (串: string) => string): string {
+/**
+ * 按两道认号码，认到的交给 换：先老规则（空格、横线、括号分段），再点号 / 下划线分段的。
+ * 客户详情「历史变更」也用（customers/[id]/history-data.ts）：认到的串交给 号码脱敏器，电话设成「藏」的角色才打码
+ */
+export function 逐个号码(s: string, 换: (串: string) => string): string {
   return 全角数字转半角(s)
     .replace(候选, (m) => (像号码(m) ? 换(m) : m))
     .replace(点号候选, (m) => (像点号号码(m) ? 换(m) : m));
@@ -62,9 +65,11 @@ function 像号码(串: string): boolean {
   return true;
 }
 
+/** 认到的号码串只留数字（大陆手机去掉 86 国家码） */
+export const 号码数字 = (串: string): string => 串.replace(/\D/g, "").replace(/^86(?=1[3-9]\d{9}$)/, "");
+
 function 打掉(串: string): string {
-  const 数字 = 串.replace(/\D/g, "").replace(/^86(?=1[3-9]\d{9}$)/, "");
-  return maskPhone(数字);
+  return maskPhone(号码数字(串));
 }
 
 /**

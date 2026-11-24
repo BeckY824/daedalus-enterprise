@@ -7,12 +7,15 @@ import { 回避豁免, 我回避的公海项目 } from "@/lib/project/pool-owner
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 
 /** 收藏的客户、项目怎么存、怎么读（左栏那两栏，改动在 app/(app)/favorites.ts）。读的这一半不放在 "use server" 文件里：那里导出的每个函数都能被浏览器直接调，一个收 userId 的读函数放过去，就成了「传别人的 id 读别人的收藏」。 */
 export const 收藏键 = (userId: string) => `favorites:${userId}`;
 export const 项目收藏键 = (userId: string) => `favorites-project:${userId}`;
 
 export type 收藏项 = { id: string; name: string };
+/** 左栏收藏的项目一行：去 = 点了去哪（项目页会跳去的客户页地址，同 项目链接们；拿不准的是 /projects/<id>，项目页自己判） */
+export type 项目收藏项 = 收藏项 & { 去: string };
 
 export async function 读收藏(userId: string): Promise<收藏项[]> {
   const ids = (await getSetting<string[]>(收藏键(userId))) ?? [];
@@ -49,10 +52,17 @@ export async function 点得开的项目(me: 谁, ids: string[]): Promise<收藏
   return ids.map((id) => 按id.get(id)).filter((x): x is 收藏项 => Boolean(x));
 }
 
-export async function 读项目收藏(me: 谁): Promise<收藏项[]> {
+/**
+ * 左栏「收藏的项目」：点得开的那几个，带上点了去哪（跳转优化 PR-A 3703 实操补）。
+ * 原来左栏链 /projects/<id>，点了先进项目页、再 replace 去客户页，中间正文空 ~150ms；现在直接给最终地址
+ */
+export async function 读项目收藏(me: 谁): Promise<项目收藏项[]> {
   const ids = (await getSetting<string[]>(项目收藏键(me.id))) ?? [];
   if (!Array.isArray(ids)) return [];
-  return 点得开的项目(me, ids.filter((x) => typeof x === "string"));
+  const 们 = await 点得开的项目(me, ids.filter((x) => typeof x === "string"));
+  if (!们.length) return [];
+  const 链 = await 项目链接们(me, 们.map((p) => p.id));
+  return 们.map((p) => ({ ...p, 去: 链.get(p.id) ?? `/projects/${encodeURIComponent(p.id)}` }));
 }
 
 export async function 项目收藏了吗(userId: string, projectId: string): Promise<boolean> {

@@ -181,7 +181,8 @@ export const 钟上指定回复提醒 = 指定回复提醒扫一遍;
  * 最早.时 = 服务端按北京墙钟写好的短串（旧写法）；始 / 终 = 同一段时间的 ISO 瞬间（设计语言 H-A 11-21：首页拿它走 smartTime，
  * 短串没年份、跨年会认错，不从短串认回）。按分配的：始 = 计时起点（分配 / 接手那刻），终 = null
  */
-export type 待回复客户数 = { 条数: number; 超时?: number; 最早: { projectId: string; name: string; 时: string; 始?: string | null; 终?: string | null; 超时?: true; 分配话?: string } | null };
+/** 最早.项目去：项目页会跳去的最终地址（首页服务端按 lib/project/customer-detail-direct.ts 算好，跳转优化 PR-A）；没给 = /projects/<id> */
+export type 待回复客户数 = { 条数: number; 超时?: number; 最早: { projectId: string; name: string; 时: string; 始?: string | null; 终?: string | null; 超时?: true; 分配话?: string; 项目去?: string } | null };
 export async function 待回复客户of(userId: string, 现在: Date = new Date()): Promise<待回复客户数 | null> {
   if (!企业版() || !回复提醒开) return null;
   try {

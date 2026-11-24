@@ -42,6 +42,7 @@ import { 摘联系人号 } from "@/lib/enterprise/contact-number-detach";
 import { 联系人查重, 联系人撞号话, 联系人回收站撞, 联系人回收站撞话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
+import { 超时短沟通提示 } from "@/lib/enterprise/reply-overdue";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
 
 import { 客户显名, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
@@ -447,9 +448,11 @@ export async function saveFollowUp(input: FollowUpInput) {
     const 自动推进 = 本人窗口内 || 组员来记 ? [] : await 客户存了推项目(user, input.customerId);
     // 客户三态：新建 / 改了一条沟通，马上重算这位的钟（不等夜扫；关着不查库，出错不影响保存）
     await 存沟通后重算三态(input.customerId);
-    // 客户三态（C12）：新记的这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
-    const 短沟通 = !input.id ? await 短沟通提示(result.id).catch(() => null) : null;
-    return { ok: true as const, id: result.id, ...(短沟通 ? { 短沟通 } : {}), ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}), ...(自动推进.length ? { 自动推进 } : {}) };
+    // 新记的这条不算有效沟通，回原因给前端一句轻提示（不拦）：挂的线索正在超时未跟进计时的，不看三态开关、说计时不会停（E-259）；
+    // 不然按客户三态（C12，三态关着不查库）。两句只出一句，超时那句为准
+    const 超时短沟通 = !input.id ? await 超时短沟通提示(result.id) : null;
+    const 短沟通 = !input.id && !超时短沟通 ? await 短沟通提示(result.id).catch(() => null) : null;
+    return { ok: true as const, id: result.id, ...(超时短沟通 ? { 超时短沟通 } : {}), ...(短沟通 ? { 短沟通 } : {}), ...(result.待办id ? { 待办id: result.待办id } : {}), ...(result.下次计划id ? { 下次计划id: result.下次计划id } : {}), ...(领取了 ? { 领取了: true as const } : {}), ...(自动推进.length ? { 自动推进 } : {}) };
   } catch (e) { return 不在了(e); }
 }
 

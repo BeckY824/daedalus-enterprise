@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { 附件 } from "@/lib/attachment-rules";
 import type { 可选成员 } from "@/lib/utils";
 import type { ContractRow } from "./ContractForm";
 import type { CustomerRow } from "../CustomerForm";
@@ -37,6 +38,11 @@ export type FollowUpRow = {
   项目?: { id: string; 名: string } | null;
   /** 企业版：提交后改过（操作日志里有「改了沟通」，11-19）——列表上标「已修改」 */
   已修改?: boolean;
+  /**
+   * 企业版客户页「沟通记录」汇总时：这条沟通上的截图、录音（F-047）。只给挂在我看得到的项目上的沟通（同 api/attachments/access.ts 认沟通），
+   * 没附件的不带这个字段；汇总里只看、看大图、下载，传和删回项目详情
+   */
+  附件?: 附件[];
 };
 
 export type ContactRow = {
@@ -76,10 +82,11 @@ export type RecordProps = {
    * 不给 = 什么都不摆（三态关着时客户详情和原来一样）
    */
   三态条?: import("@/lib/enterprise/tri-state-detail").三态条 | null;
-  /** 客户三态状态留痕（C13）：并进项目区「进程变更」卡的「客户状态」一段；三态关着不给 */
-  三态留痕?: import("@/lib/enterprise/tri-state-detail").三态留痕行[] | null;
-  /** 没有「进程变更」卡可挂（没有项目 / 没有我能看的项目）：状态留痕放左栏客户资料下面（A1） */
-  留痕放左栏?: boolean;
+  /**
+   * 客户名下那一行末尾的「历史变更」小方框（11-24，HistoryChanges.tsx）：页面给好条数和最近时间，点开才取明细。
+   * 原来项目区「进程变更」卡、卡里的「客户状态」一段（C13）、没项目时左栏的状态留痕（A1）都挪进这个弹窗。不给 = 不摆
+   */
+  历史变更?: ReactNode;
   /** 摆在整页最上面的提醒条（客户详情顶上的同号再次录入醒目条，11-03 B6-9）；没有就不摆 */
   醒目条?: ReactNode;
   /** 原始转化线索；没有关联或已删除时为空，不用推荐关系推断。 */
@@ -252,8 +259,8 @@ export type 项目区槽 = {
   开建项目: (() => void) | null;
   /** 全只读（虚线下属、市场成员相关、只读管理员）：项目区也不给任何写入口的提示用 */
   全只读: boolean;
-  /** 客户三态状态留痕（C13）：挂进「进程变更」卡的一段；三态关着是 null */
-  客户状态留痕: ReactNode;
+  /** 右栏摆不摆「项目进程变更」卡：客户详情不摆（挪进「历史变更」弹窗，11-24）；受限客户详情没有那个入口，照摆 */
+  进程变更卡?: boolean;
   /** 客户三态提醒条（有才给）：项目区里只占中栏宽、在进程卡正上方；没有项目时在项目区顶上 */
   提醒: ReactNode;
   /** 受限客户详情（只负责项目的人）：沟通卡不摆「本项目 / 这位客户全部」切换，只看本项目 */

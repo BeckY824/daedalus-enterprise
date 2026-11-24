@@ -642,7 +642,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
           const 方式 = c.快捷 ? 快捷叫法(c.快捷) : 入池类叫法[c.类];
           return (
             <div key={c.id} className={走的[c.id] ? "pool-sub-row pool-sub-leave" : 回来的.includes(c.id) ? "pool-sub-row pool-sub-back" : "pool-sub-row"} role="listitem">
-              <RowLink href={`/projects/${c.projectId}`} className="fulltext" title={c.项目名 ?? ""}>{c.项目名 ?? "项目"}</RowLink>
+              <RowLink href={c.项目去 ?? `/projects/${c.projectId}`} className="fulltext" title={c.项目名 ?? ""}>{c.项目名 ?? "项目"}</RowLink>
               <span className="clamp" title={c.进程 ?? ""}>{c.进程 ?? 没原因}</span>
               <span className="clamp muted" title={`${方式}：${c.入池原因}`}>{方式} · {c.入池原因}</span>
               <span className="nowrap muted" title={fmtDateTime(c.入池时间)}>{smartTime(c.入池时间)}</span>
@@ -741,7 +741,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
         const 类 = 同 ? "fulltext pool-same" : "fulltext";
         const 字 = 同 ? "同客户名" : r.项目名;
         return r.projectId && r.种 === "项目"
-          ? <RowLink href={`/projects/${r.projectId}`} className={类} title={r.项目名}>{字}</RowLink>
+          ? <RowLink href={r.项目去 ?? `/projects/${r.projectId}`} className={类} title={r.项目名}>{字}</RowLink>
           : <span className={类} title={r.项目名}>{字}</span>;
       },
     },
@@ -953,7 +953,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
         替表格={换池中 ? <Skeleton 行={6} 高={14} 间距={18} className="pool-skel" 说法="正在换一池" /> : undefined}
         亮={回来的}
         // 客户池并成一行的：点行展开 / 收起（客户归别人，不跳客户页）
-        行链接={(r) => (r.子 ? "" : r.种 === "项目" ? `/projects/${r.projectId}` : `/customers/${r.customerId}`)}
+        行链接={(r) => (r.子 ? "" : r.种 === "项目" ? r.项目去 ?? `/projects/${r.projectId}` : `/customers/${r.customerId}`)}
         行点击={(r) => { if (r.子) 切展开(r.id); }}
         浮起操作条
         展开={{ expandedRowKeys: [...展开的, ...条行], showExpandColumn: false, rowExpandable: (r) => !!r.子 || 条行.includes(r.id), expandedRowRender: (r) => (r.子 ? 子列表(r) : 确认条(r)), expandedRowClassName: (r) => (r.子 ? "pool-sub-tr" : "pool-ask-tr") }}

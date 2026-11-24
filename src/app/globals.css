@@ -196,6 +196,7 @@
   --card-gap: 12px;                    /* 卡与卡之间 */
   --edge-fade: 24px;                   /* 横滑条两端渐隐宽度（节点条） */
   --skel-delay: 180ms;                 /* 加载多久后才出骨架：快的不闪（D07）。是延迟不是过渡，所以不叫 --t-* */
+  --nav-wait-delay: 150ms;             /* 跳转等多久后顶上才出等待条（跳转优化 PR-A）：快的跳转看不见它。是延迟不是过渡 */
   --ai-safe: 72px;                     /* 滚动区底部留白，不让右下 AI 球盖住末行（D40） */
   /* 浮层层级（D22，设计语言 E4）：自绘的浮层按 antd 的刻度排——弹框 1000、气泡 1030、下拉 1050、提示 1070。
      --z-sheet 整页浮层（设置）在弹框之下：设置里开的弹框、下拉、气泡总在它上面，不靠谁后挂进页面；
@@ -689,7 +690,7 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 /* 选中的底色是一块会滑动的层（AppShell 里的 layoutId），压在图标和字下面 */
 .rail-on-bg { position: absolute; inset: 0; border-radius: var(--r-card); background: var(--nav-on-bg); z-index: 0; }
 /* 明亮下的选中块：白底 + 一圈 0.5px 发丝描边 + 1px 软影（原型 g.feel）。暗黑不挂，走自己的底色 */
-:root:root:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on) {
+:root:root:not([data-mode="dark"]) :is(.rail-on-bg, .rail-fav-i.on, .rail-item:has(> .nav-pend), .rail-fav-i:has(> .nav-pend)) {
   box-shadow: 0 0 0 0.5px color-mix(in srgb, var(--ink) 6%, transparent), 0 1px 2px color-mix(in srgb, var(--ink) 8%, transparent);
 }
 .rail-item > :not(.rail-on-bg) { position: relative; z-index: 1; }
@@ -1411,10 +1412,8 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 .proj-att-sec { min-width: 0; }
 .proj-att-sec + .proj-att-sec { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .proj-att-h { font-weight: 600; margin-bottom: 8px; }
-/* F-042（P-界面-59）：项目方案、合同附件两格各自一个框、小标题下一行提示放什么（一行，放不下省略、悬停看全文）；后面的格照旧细线隔开 */
-.proj-att-sec.is-box { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-card); }
-.proj-att-sec.is-box + .proj-att-sec.is-box { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-.proj-att-sec.is-box + .proj-att-sec:not(.is-box) { padding-top: 0; border-top: 0; }
+/* F-042（P-界面-59）：项目方案、合同附件两格小标题下一行提示放什么（一行，放不下省略、悬停看全文）；
+   11-23 用户：不再各自框成卡里套卡，和后面的格同一种写法、细线隔开 */
 .proj-att-tip { margin: -4px 0 8px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-att-from { min-width: 0; }
 .proj-att-from + .proj-att-from { margin-top: 10px; }
@@ -2312,6 +2311,13 @@ button.ais-hd-b { cursor: pointer; }
    只打了字没发、点「新对话」回到空白：卡照摆（.cli-empty 只看这段对话有没有问过） */
 .cli:not(.cli-empty) .cli-ck-g { grid-template-columns: minmax(0, 1fr); }
 .cli:not(.cli-empty) .home-cards { display: none; }
+/* 设计语言 HC-5（P-界面-60，用户 11-23 选 C）：这一格宽 ≥1340（Win 1080p 缩放 100% 的 1920、2560，对话列表开 / 收都算）时问过之后卡不收，
+   和问之前同一个 2:1 骨架——宽屏推翻上面 10-31 那条，右边被卡占着、不会空一大片；对话列 760 照旧居中于框（--chat-col）。
+   更窄（Mac 1440、Win 125% 的 1536）照上面收起。量的是 .cli-ck 这一格（inline-size 容器），跨门槛时卡栏直接出现 / 消失，不做动效 */
+@container (min-width: 1340px) {
+  .cli:not(.cli-empty) .cli-ck-g { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  .cli:not(.cli-empty) .home-cards { display: flex; }
+}
 /* 左边对话套一个外框（10-31 首页改版）：边框、圆角、底色和右边指标卡同一套。还没问：问候在框左上，下面「欢迎使用 {产品名}」、
    三条示例各占一行，输入框贴框底、宽 = 框宽减左右留白；问过之后卡收起、框铺满这一格，框里上面是对话、底下是输入框。
    只有驾驶舱带 .cli-frame（HomeChat 外框），团队版 / 非项目模式首页、右侧 AI 面板都不受影响 */
@@ -2374,16 +2380,6 @@ button.ais-hd-b { cursor: pointer; }
 /* 打断：一行灰字，不是报错 */
 .cli-stopped { margin-top: 8px; padding-left: 20px; color: var(--text-muted); font-size: var(--fs-note); display: flex; gap: 10px; align-items: center; }
 .cli-stop-mark { width: 9px; height: 9px; background: var(--text-faint); border-radius: 2px; }
-/* 涉及的客户：一张卡 */
-.cli-card { margin-top: 12px; margin-left: 20px; border: 1px solid var(--border); border-radius: var(--r-card); background: var(--panel); overflow: hidden; }
-.cli-card-h { padding: 8px 12px; font-size: var(--fs-note); color: var(--text-muted); border-bottom: 1px solid var(--line-soft); background: var(--workbench); }
-.cli-card-row { padding: 8px 12px; border-bottom: 1px solid var(--line-soft); }
-.cli-card-row:last-child { border-bottom: 0; }
-.cli-card-main { display: flex; align-items: center; gap: 12px; font-size: var(--fs-note); flex-wrap: wrap; }
-.cli-card-name { color: var(--ink); font-weight: 500; }
-.cli-card-st { color: var(--text-muted); font-size: var(--fs-min); background: var(--hover); padding: 0 6px; border-radius: var(--r-ctl); }
-.cli-card-open { color: var(--ink); }
-.cli-card-row .cli-draft { margin-top: 8px; }
 /* 开通订阅页 */
 .bill { max-width: 720px; }
 .bill-h { font-size: var(--fs-title); font-weight: 600; color: var(--ink); margin: 0 0 4px; }
@@ -2570,6 +2566,8 @@ button.ais-hd-b { cursor: pointer; }
 .cli-link:disabled { color: var(--text-muted); cursor: default; text-decoration: none; }
 .cli-draft { flex-basis: 100%; margin-top: 4px; padding: 10px 12px; background: var(--workbench); border: 1px solid var(--line); border-radius: var(--r-card); white-space: pre-wrap; line-height: 1.7; color: var(--ink); }
 .cli-draft > div:last-child { margin-top: 6px; display: flex; gap: 12px; }
+/* 只读被拒那一行（设计语言 HC-2b）：底样子；左边那条竖线在文末 HC-2b 段 */
+.cli-ro { display: flex; align-items: center; gap: var(--s2); margin-top: var(--s2); padding-left: 20px; font-size: var(--fs-note); color: var(--text-muted); }
 .cli-composer { padding-top: 8px; }
 .cli-composer-sticky { position: sticky; bottom: 0; background: linear-gradient(to bottom, transparent, var(--page-bg) 28%); padding-top: 22px; padding-bottom: 6px; }
 .cli-input { display: flex; align-items: flex-end; gap: 10px; min-height: var(--field-h); padding: 10px 14px; background: var(--panel); border: 1px solid var(--field-line); border-radius: var(--r-card); transition: border-color var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
@@ -3404,6 +3402,8 @@ button.ais-hd-b { cursor: pointer; }
 /* 骨架屏晚 180ms 再出现：这段时间内页面要是已经好了，就一眼都不会看见它。
    原来快的那几页也会闪一下灰块，闪一下比等一下更像出了问题。 */
 .app-loading { animation: app-loading-in var(--t) var(--ease) var(--t) both; }
+/* 通用正文骨架的标题条（原来写在 (app)/loading.tsx 的行内样式，PR-A 挪到 SlotSkeleton；11-24 二轮起 loading.tsx 撤了） */
+.slot-skel-title { max-width: 420px; margin-bottom: 20px; }
 @keyframes app-loading-in { from { opacity: 0; } to { opacity: 1; } }
 
 
@@ -4293,7 +4293,7 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
    D-55（11-23）起：1px --field-line、很淡的影（--card-raise-a）、圆角 10 */
 .ant-card.ant-card-bordered { border-color: var(--card-line); box-shadow: var(--shadow-card); }
 .ant-card .ant-card-head { border-bottom-color: var(--line-soft) !important; }
-:is(.home-card, .btodo-list, .rkpi, .chan-dash-kpi, .chan-dash-cell, .chan-block, .set-body, .start, .auth-solo .auth-form, .rec-card:not(.rec-rail-blocks, .rec-col-blocks), .bill-plan, .bill-pay, .cli-card, .cli-ck .cli-frame) {
+:is(.home-card, .btodo-list, .rkpi, .chan-dash-kpi, .chan-dash-cell, .chan-block, .set-body, .start, .auth-solo .auth-form, .rec-card:not(.rec-rail-blocks, .rec-col-blocks), .bill-plan, .bill-pay, .cli-ck .cli-frame) {
   border-color: var(--card-line); box-shadow: var(--shadow-card); border-radius: var(--r-mod);
 }
 /* 设置页大卡（.set-body）里再套的卡（antd 卡片、开关总览 / 开关卡）：两层都是 --field-line + 影会出两道深线（11-23 审查）——
@@ -4534,14 +4534,17 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cd-pj { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
 /* 内边距 2 给焦点框留地方（overflow 裁掉的那层），四边 -2 外边距抵掉，占位不变——ProjectZone 量() 按这个占位算可用宽，别只收上下（11-23 审查：改成 -2px 0 会多裁「更多」4px） */
 .cd-pj-pills { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 2px; margin: -2px; }
-.cd-pj-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 210px; padding: 0 11px; box-sizing: border-box;
+.cd-pj-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 240px; padding: 0 11px; box-sizing: border-box;
   border: 1px solid var(--line); border-radius: var(--r-tag); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-note);
   white-space: nowrap; text-decoration: none; cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .cd-pj-pill:hover { color: var(--ink); background: var(--hover); }
 /* 摆出来的那几颗能缩（最窄由 JS 按量尺写在 style 上），量尺里的不缩 */
 .cd-pj-pills > .cd-pj-pill[role=tab] { flex: 0 1 auto; }
 .cd-pj-pill.on { background: var(--brand-bg); border-color: transparent; color: var(--brand-deep); font-weight: 600; }
-.cd-pj-pill:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* 焦点框贴边（offset 0）：外面 .cd-pj-pills 只留了 2px 内边距，offset 1 时框伸出 3px、被裁掉 1px（11-23） */
+.cd-pj-pill:focus-visible { outline: 2px solid var(--brand); outline-offset: 0; }
+/* 「更多 N 个」放不下时的短样子「+N」（ProjectZone.tsx 量()） */
+.cd-pj-more.is-short { padding: 0 6px; gap: 4px; }
 .cd-pj-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: inherit; }
 .cd-pj-st { flex: none; font-style: normal; font-size: var(--fs-min); opacity: .75; }
 .cd-pj-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; }
@@ -4549,6 +4552,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cd-pj-dot[data-stage="线索"] { background: var(--cat-cyan); }
 .cd-pj-dot[data-stage="商机"] { background: var(--brand); }
 .cd-pj-dot[data-stage="订单"] { background: var(--cat-green); }
+/* 合同号样本（量尺里量一个完整合同号多宽，ProjectZone.tsx 合同号样本）：胶囊里的同胶囊名字，单项目的同卡头项目名 */
+.cd-pj-sample { flex: none; white-space: nowrap; font-weight: inherit; }
+.cd-pj-sample.is-one { font-size: var(--fs-section); font-weight: 600; }
 .cd-pj-ruler { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; display: flex; gap: 6px; }
 .cd-pj-one { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .cd-pj-one > .cd-pj-nm { color: var(--ink); font-size: var(--fs-section); font-weight: 600; }
@@ -4632,19 +4638,6 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 
 /* 冷项目（C11）：页签名后一个小灰标「冷」；名字照旧省略号，小标不缩 */
 .cd-cold { flex: none; height: 18px; line-height: 18px; padding: 0 5px; border-radius: var(--r-tag); background: var(--hover); color: var(--text-muted); font-size: var(--fs-min); font-weight: 500; }
-
-/* 「进程变更」卡里的「客户状态」一段（C13）：默认收起，每条一行 */
-.tri-log { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
-.tri-log-h { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; border: 0; background: transparent;
-  color: var(--ink); font-size: var(--fs-note); font-weight: 600; cursor: pointer; }
-.tri-log-h:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.tri-log-n { color: var(--text-muted); font-weight: 400; white-space: nowrap; }
-.tri-log-ul { list-style: none; margin: 6px 0 0; padding: 0; }
-.tri-log-li { display: flex; gap: 8px; min-width: 0; padding: 3px 0; font-size: var(--fs-min); color: var(--ink-soft); white-space: nowrap; }
-.tri-log-t { flex: none; color: var(--text-muted); }
-.tri-log-w { flex: none; max-width: 6em; overflow: hidden; text-overflow: ellipsis; }
-.tri-log-e { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.tri-log-empty { margin-top: 6px; color: var(--text-muted); font-size: var(--fs-min); }
 
 /* 客户列表第 1 页顶上的「仅项目」一小块（customers/ProjectOnlyBlock.tsx）：和下面的客户表格分开，一行省略，不横滚 */
 .cust-ponly { margin-bottom: 12px; min-width: 0; }
@@ -5088,10 +5081,24 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
   .att-ring-fg { animation-duration: calc(var(--t-morph) * 8); }
 }
 /* 项目组 / 提成分配（dt.team，项目详情）：刚邀请的先摆一行、分配条边输边变 */
-.pd-team-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; min-width: 0; }
-/* 组员名、角色下拉：原来的行内样式挪成 class（卡片改进第三阶段改成 68 列），值一字不差 */
-.pd-team-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pd-team-role { width: 140px; flex: 0 0 auto; }
+/* 项目组卡（11-23 排版）：组长、组员同一种行；名字 + 状态标签靠左，操作（角色、移出）靠右，
+   一行放不下时操作整组落到名字下一行（flex 折行，名字按自身宽排，不被挤截；比整行还长才「…」、悬停看全） */
+.pd-team-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 2px; min-width: 0; }
+.pd-team-who { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.pd-team-who > .ant-tag { flex: none; margin-inline-end: 0; }
+.pd-team-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.pd-team-ops { display: flex; align-items: center; gap: 4px; flex: none; max-width: 100%; margin-left: auto; }
+/* 角色下拉定宽：「选角色」占位整句露出；角色名长了下拉里「…」，悬停看全（antd 选中项自带 title） */
+.pd-team-role { width: 112px; flex: none; }
+.pd-team-role-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-note); }
+/* 只读时角色名本身就是 .pd-team-ops：flex 容器上省略号不生效，改回块级、可缩，长角色名照样出「…」 */
+.pd-team-ops.pd-team-role-t { display: block; flex: 0 1 auto; }
+/* 邀请区两行：选人占满宽；角色下拉 + 邀请 */
+.pd-team-add { display: grid; gap: 8px; margin-top: 8px; }
+.pd-team-add-who { width: 100%; min-width: 0; }
+.pd-team-add-row { display: flex; gap: 8px; min-width: 0; }
+.pd-team-add-role { flex: 1 1 auto; min-width: 0; }
+.pd-team-add-row > .ant-btn { flex: none; }
 /* 提成卡的行、字段名（ProjectCommission.tsx）：卡片改进第三阶段对齐到 68 / 92（标签列 68 + 隔 8，值离卡左 92；原来行内 64 + 隔 12），
    只剩一套外观后和底子合成一条（11-23）。字段名 13 灰一行省略，值不许把行撑宽 */
 .pd-cm-row { display: flex; column-gap: 8px; align-items: baseline; margin-bottom: 8px; min-width: 0; flex-wrap: nowrap; }
@@ -5549,7 +5556,7 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* ---------- 客户资料、联系人、背调（D3 · 设计语言 11-21，规范 M3–M5）----------
    外观规则一律挂 :root:root。
    不带限定的只有几条结构规则：新元素（行尾笔、手机「变更记录」键、联系人组头右端操作、附件空格「＋ 添加」、新建联系人的规矩行、
-   挂靠就地表单的标签 / 报错、变更记录面板头、头像空名字的字色回退）不排就挤在一起；号码保护挪到号码后面要那一格能折行 */
+   挂靠就地表单的标签 / 报错、变更记录面板头、头像空名字的字色回退）不排就挤在一起；号码那一格要能折行 */
 .rec-field-pen { display: none; }
 .rec-field-pen.anticon { display: none; } /* 压过 antd 图标自带的 display：水合前也不露笔 */
 .rec-hist-btn.ant-btn { display: none; }
@@ -5558,8 +5565,10 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .hist-sheet .rec-hist-row { padding: 6px 0; border-top: 1px solid var(--line-soft); font-size: var(--fs-body); }
 .rec-contact-acts { display: inline-flex; align-items: center; flex: none; margin-left: auto; }
 .rec-contact-av.is-empty { color: var(--ink-soft); }
-.rec-contact-num { flex-wrap: wrap; align-items: center; gap: 2px 6px; }
-.rec-contact-kv { display: flex; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.rec-contact-num { flex-wrap: nowrap; align-items: flex-start; }
+/* 号码那一列（值那一列里自己折行）。号码保护 11-24 起单独一行（字段名「号码保护」+ 状态标签），不再跟在号码后面：1280 卡宽 232 放不下 */
+.rec-contact-nv { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
+.rec-contact-nv > .rec-contact-v { flex: 0 1 auto; max-width: 100%; }
 .att-empty { display: inline-flex; align-items: center; gap: 6px; }
 .cf-rule { margin: -4px 0 12px; font-size: var(--fs-note); color: var(--text-muted); }
 .rec-contact-pick { display: grid; gap: 4px; }
@@ -5604,6 +5613,11 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 :root:root .rec-page.ui-v2 .rec-cg > .rec-contact-h { flex-wrap: nowrap; min-height: var(--hit); padding-left: 0; gap: 8px; }
 :root:root .rec-page.ui-v2 .rec-cg > .rec-contact-h > .ant-avatar { position: static; }
 :root:root .rec-page.ui-v2 .rec-cg > .rec-contact-h > .rec-contact-n { flex: 0 1 auto; }
+/* 11-23 名字下面那几行（职务、本项目、联系方式、号码保护、名片、相册、主客户）和「客户资料」字段行同一种格式：
+   字段名 68 列（13 灰一行，放不下「…」、悬停看全）+ 隔 8 + 值；左边缘和客户资料的字段名齐（原来缩进 34 跟在头像后面） */
+:root:root .rec-page.ui-v2 .rec-cg .rec-contact-line { padding-left: 0; column-gap: 8px; }
+:root:root .rec-page.ui-v2 .rec-cg .rec-contact-line > .rec-contact-k { flex: 0 0 68px; margin-right: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:root .rec-page.ui-v2 .rec-cg .rec-contact-form { margin-left: 0; max-width: 100%; }
 :root:root .rec-page .rec-cg:hover { background: transparent; }
 :root:root .rec-page .rec-cg + .rec-cg,
 :root:root .rec-page .rec-cg + #contact-rest > .rec-cg:first-child { margin-top: 6px; padding-top: 10px; }
@@ -5621,11 +5635,12 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
   :root:root .rec-page .rec-contact-acts .rec-contact-menu.ant-btn { width: var(--hit-touch); min-width: var(--hit-touch); height: var(--hit-touch); margin-block: calc((var(--hit) - var(--hit-touch)) / 2); }
 }
 :root:root .rec-page .rec-contact-rest-btn.ant-btn { display: flex; margin: 8px 0 0; padding: 0 8px; height: var(--hit); }
-/* M4-b：名字没填「—」淡色常规字重，头像里的「—」同色（D1 实操遗留）；号码保护灰底 + 锁（绿只给「完成」，D10） */
+/* M4-b：名字没填「—」淡色常规字重，头像里的「—」同色（D1 实操遗留）；号码保护灰底 + 锁（绿只给「完成」，D10）。
+   字接 --tag-fg（同全站中性标签）：原来 --text-muted 压在 --tag-bg 上浅色只有 4.30:1，不到 AA 4.5；--tag-fg 浅 8.49、深 8.94（11-24） */
 :root:root .rec-contact-n.is-empty { color: var(--empty-fg); font-weight: 400; }
 :root:root .rec-contact-av.is-empty { color: var(--empty-fg); }
 :root:root .ant-tag.ant-tag.ant-tag.rec-contact-guard,
-:root:root .ant-tag.ant-tag.ant-tag.rec-contact-guard.ant-tag-green { background: var(--tag-bg); color: var(--text-muted); border-color: transparent; }
+:root:root .ant-tag.ant-tag.ant-tag.rec-contact-guard.ant-tag-green { background: var(--tag-bg); color: var(--tag-fg); border-color: transparent; }
 /* M4-c：附件空格「— ＋ 添加」小字键；挂靠就地表单的格子 32 高（--ctl-h） */
 :root:root .att-empty > .att-add.ant-btn { height: var(--hit); margin-block: -4px; padding: 0 4px; gap: 2px; font-size: var(--fs-note); color: var(--brand); }
 :root:root .rec-contact-pick .ant-select { height: var(--ctl-h); }
@@ -6440,6 +6455,9 @@ button.proj-miss-chip { cursor: pointer; }
 @media (max-width: 767px) {
   :root:root .ant-layout:has(> .app-content .cli-paper) { height: 100vh; height: 100dvh; }
   :root:root .app-content:has(.cli-paper) { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0 !important; }
+  /* Content 和 .cli-paper 之间隔着换页框（AppShell 的 PageFade，跳转优化 PR-A 起手机也包）：它也得是这条 flex 链上的一环，
+     不然普通 block 按内容高、.cli-paper 的 flex: 1 落空，对话区塌成十几像素、输入框顶在上面（3703 实操 11-24）。同电脑档 .main > div:has(> .cli-paper) */
+  :root:root .app-content:has(.cli-paper) > .page-fade:has(> .cli-paper) { flex: 1; min-height: 0; width: 100%; display: flex; flex-direction: column; }
   :root:root .cli-paper .cli-ck .cli-frame { border: 0; border-radius: 0; }
   :root:root .cli-paper .cli-head { height: 52px; padding: 0 var(--s1); gap: 0; border-bottom-color: var(--line-soft); }
   :root:root .cli-paper .cli-head-ib { width: var(--hit-touch); height: var(--hit-touch); }
@@ -6541,7 +6559,7 @@ button.proj-miss-chip { cursor: pointer; }
 /* C6-A 一条左边线：步骤条、正文、表格、确认卡、涉及客户、追问、操作行都从同一处起，不再各缩 16–20 */
 :root:root .cli-a { padding-left: 0; font-size: var(--fs-body); line-height: 1.7; }
 :root:root :is(.cli-stopped, .cli-err, .cli-next) { padding-left: 0; }
-:root:root .cli-turn > :is(.cli-card, .prop-list) { margin-left: 0; }
+:root:root .cli-turn > .prop-list { margin-left: 0; }
 :root:root .cli-bubble { max-width: 75%; }
 /* 表格：细线、表头 muted、数字列右对齐等宽（Markdown.tsx 给 .md-num）、宽了在表格里横滑 */
 :root:root .cli-a .md-tw { max-width: 100%; overflow-x: auto; margin: var(--s2) 0 var(--s3); }
@@ -6677,6 +6695,13 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root:root .rec-zone .cd-proc .cd-pj-one > .cd-pj-nm { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 24px; }
 :root:root:root .rec-zone .cd-proc .cd-pj-tag { align-self: center; height: 22px; gap: 6px; padding: 0 8px; border-radius: 4px; background: var(--tag-bg); color: var(--tag-fg); font-weight: 500; line-height: 22px; }
 
+/* 进程卡卡头折两行（11-23）：项目切换按「放得下一个完整合同号」量过还放不下（ProjectZone.tsx 量() 在 .cd-pj 上挂 data-wrap），
+   同手机那样项目切换占满一行、「完成节点」落下一行靠右；不折的宽照旧一行 48 高 */
+:root:root:root .rec-zone .cd-proc .proj-stage-bar.has-head:has(> .proj-stage-head .cd-pj[data-wrap]) { flex-wrap: wrap; row-gap: 8px; padding-block: 8px; }
+:root:root:root .rec-zone .cd-proc .proj-stage-bar.has-head:has(> .proj-stage-head .cd-pj[data-wrap]) > .proj-stage-head { flex: 1 1 100%; }
+/* 放不下一颗完整合同号 +「+N」（1024、912 这种三栏窄段）：先藏行首「项目」小字再说折不折，胶囊组自己带 aria-label「这位客户的项目」 */
+:root:root:root .rec-zone .cd-proc .cd-pj[data-nocap] > .cd-cap { display: none; }
+
 /* 7 沟通卡：卡头一行（标题 + 计数 · 连体钮），「本项目 / 这位客户全部」在卡身第一行 */
 :root:root:root .rec-zone .cd-comm > .ant-card-head > .ant-card-head-wrapper { flex-wrap: nowrap; padding-block: 0; }
 :root:root:root .rec-zone .cd-comm > .ant-card-head > .ant-card-head-wrapper > .ant-card-head-title { display: block; flex: 1 1 auto; max-width: none; }
@@ -6760,11 +6785,10 @@ button.proj-miss-chip { cursor: pointer; }
 /* 提成卡 .pd-cm-row 的 68 / 92 已经合进底子那条（「项目组 / 提成分配」那段） */
 :root:root:root :is(.rec-page, .proj-wrap) .proj-rel-field { grid-template-columns: 68px minmax(0, 1fr); }
 :root:root:root :is(.rec-page, .proj-wrap) .proj-rel-key { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row { column-gap: 8px; }
-:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row > .pd-team-name { flex: 0 0 68px; }
-:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row > .pd-team-role { flex: 1 1 auto; width: auto; min-width: 0; }
-/* 组长、当前回款、交付三行用项目资料那套 .proj-info-row / .proj-info-k；卡里最上面那行不往上让 */
-:root:root:root :is(.rec-page, .proj-wrap) :is(.pd-team-lead, .pd-pay-sum) { display: flex; align-items: center; min-width: 0; margin-bottom: 4px; }
+/* 项目组（11-23 改排版）：组长、组员行都用 .proj-info-row 的行高和左右留白，名字左边缘 = 字段名列左边缘；行可折（操作落到下一行） */
+:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row { flex-wrap: wrap; row-gap: 2px; }
+/* 当前回款、交付三行用项目资料那套 .proj-info-row / .proj-info-k；卡里最上面那行不往上让 */
+:root:root:root :is(.rec-page, .proj-wrap) .pd-pay-sum { display: flex; align-items: center; min-width: 0; margin-bottom: 4px; }
 
 /* 14 没有项目区的客户页 */
 :root:root:root .rec-page.ui-v2 > .rec:has(> .rec-col-blocks) { gap: var(--card-gap); }
@@ -6773,6 +6797,91 @@ button.proj-miss-chip { cursor: pointer; }
 /* 15 字数单独一行 */
 :root:root:root .proj-inline-edit > .ant-input-textarea-show-count { margin-bottom: 18px; }
 :root:root:root .proj-inline-edit > .ant-input-textarea-show-count .ant-input-data-count { bottom: -18px; font-size: var(--fs-min); line-height: 18px; }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   设计语言 HC-3（11-22，输入框、框下一行；用户选 C9-A / C10-A）。
+   输入框样子只挂首页外框（.cli-frame），还没问 / 问过之后同一套；全局浮窗（.dock-float 自己的透明框）不动。
+   停止钮、排队小签首页和浮窗都改。
+   ──────────────────────────────────────────────────────────────────────────── */
+/* C9-A：圆角 14（--r-pop）、--field-line 边；聚焦只把边换 --brand，不出光晕 */
+:root:root .cli-frame .cli-input { border-radius: var(--r-pop); border-color: var(--field-line); }
+:root:root .cli-frame .cli-input:hover:not(:focus-within) { border-color: var(--field-line-hover); }
+:root:root .cli-frame .cli-input:focus-within { border-color: var(--brand); box-shadow: none; }
+:root:root .cli-frame :is(.cli-cmds, .cli-paste) + .cli-input { border-radius: 0 0 var(--r-pop) var(--r-pop); }
+:root:root .cli-frame .cli-paste { border-radius: var(--r-pop) var(--r-pop) 0 0; }
+/* 回答中的停止钮：首页（H-A 起是蓝实心）、浮窗（墨色实心）统一成白底描边方块；发送钮有字时照旧品牌蓝 */
+:root:root .cli-send.cli-stop,
+:root:root .cli-frame .cli-send.cli-stop:not(:disabled) { background: var(--panel); color: var(--ink); box-shadow: inset 0 0 0 1px var(--field-line); animation: none; }
+:root:root .cli-send.cli-stop:hover,
+:root:root .cli-frame .cli-send.cli-stop:not(:disabled):hover { background: var(--row-hover); box-shadow: inset 0 0 0 1px var(--field-line-hover); }
+:root:root .cli-stop .cli-stop-sq { background: var(--ink); }
+/* 排队小签：框上方一行，问句省略，「取消」不换行 */
+:root:root .cli-queue { display: flex; width: 100%; min-width: 0; margin-bottom: var(--s2); }
+:root:root .cli-queue-c {
+  display: flex; align-items: center; gap: var(--s2); max-width: 100%; min-width: 0;
+  padding: 2px var(--s2) 2px var(--s3); border-radius: var(--r-tag);
+  background: var(--tag-bg); color: var(--ink-soft); font-size: var(--fs-note); line-height: 22px;
+}
+:root:root .cli-queue-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:root .cli-queue-x { flex: none; white-space: nowrap; }
+/* C10-A：问过之后输入框下只剩额度那一句（要计次的人才有）；没有就整行不占地方 */
+:root:root .cli-hints-quota:empty { display: none; }
+
+/* ────────────────────────────────────────────────────────────────────────────
+   设计语言 HC-4（11-22，对话列表选中行、390 抽屉；用户选 C4-B）。
+   C4-B：行照现在内缩圆角（和左栏导航同一种行），当前对话只用 --brand-bg 浅蓝底，**不加左竖条**——
+   这是「选中行 = --brand-bg + 左 2px --brand」在对话列表的例外（docs/DESIGN_SYSTEM.md 记了一笔）。
+   ──────────────────────────────────────────────────────────────────────────── */
+:root:root .chat-row.on,
+:root:root .chat-row.on:hover { background: var(--brand-bg); color: var(--ink); }
+/* 390 左抽屉（ConversationList 手机时给 .pane-drawer-phone，宽 82%）：顶上「新建对话」一整颗描边钮，行 44 高，⋯ 常显、点击区 44 */
+:root:root .pane-drawer-phone .pane-rows { padding: 0 var(--s3) var(--s4); }
+:root:root .pane-drawer-phone .chat-new {
+  justify-content: center; min-height: var(--hit-touch); margin-bottom: var(--s2);
+  border: 1px solid var(--line); border-radius: var(--r-card); font-size: var(--fs-body);
+}
+:root:root .pane-drawer-phone .chat-row { min-height: var(--hit-touch); padding: 0 0 0 var(--s3); border-radius: var(--r-card); font-size: var(--fs-body); }
+:root:root .pane-drawer-phone .chat-row-b { align-self: stretch; }
+:root:root .pane-drawer-phone .chat-row-b:has(> .chat-row-tm) { align-items: center; }
+:root:root .pane-drawer-phone .chat-row-m { width: var(--hit-touch); height: var(--hit-touch); opacity: 1; color: var(--text-muted); font-size: var(--fs-note); }
+:root:root .pane-drawer-phone .chat-g-h { padding: 0 var(--s3) var(--s1); }
+/* 别的触屏（平板竖着、中栏收成抽屉）：没有悬停，⋯ 也常显 */
+@media (hover: none) { :root:root .chat-row-m { opacity: 1; } }
+
+
+/* ────────────────────────────────────────────────────────────────────────────
+   设计语言 HC-2b（11-22，名字链接、悬停小卡、涉及客户一行、只读说明；用户选 C6-A / C11-A）。
+   只读那一行：提示词改成「调 say_read_only、不再自己解释」以后靠它说清只读——底样子在上面 .cli-draft 旁边，这里只给那条竖线
+   ──────────────────────────────────────────────────────────────────────────── */
+:root:root .cli-ro { margin: var(--s1) 0 var(--s2); padding: 2px 0 2px var(--s3); border-left: 2px solid var(--line); color: var(--ink-soft); }
+:root:root .cli-ro .anticon { color: var(--text-muted); }
+/* 回答里的客户名：--brand-deep 字 + --brand-line 下划线；指上去下划线换成字色 */
+:root:root .md-ent { color: var(--brand-deep); text-decoration: underline; text-decoration-color: var(--brand-line); text-underline-offset: 3px; transition: text-decoration-color var(--t-fast) var(--ease); }
+:root:root .md-ent:hover { color: var(--brand-deep); text-decoration-color: currentColor; }
+:root:root .md-ent:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }
+/* 名字外面那一层（#441 审查 2）：键盘焦点进出名字和小卡在这一块里认；「涉及」那一行的小卡挂在这里，Tab 顺序紧跟名字 */
+:root:root .peek-w { min-width: 0; max-width: 100%; }
+/* 悬停小卡（RecordPeek）：名字、负责人 / 跟进状态 / 上次跟进三行、底下动作 */
+:root:root .peek { width: 248px; max-width: calc(100vw - 32px); font-size: var(--fs-note); line-height: 1.5; color: var(--ink-soft); }
+:root:root .peek-n { margin-bottom: var(--s1); font-weight: 600; color: var(--ink); overflow-wrap: anywhere; }
+:root:root .peek-kv { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--s3); margin: 0; }
+:root:root .peek-kv dt { color: var(--text-muted); }
+:root:root .peek-kv dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+:root:root .peek-f { display: flex; align-items: center; gap: var(--s3); margin-top: var(--s2); padding-top: var(--s2); border-top: 1px solid var(--line-soft); }
+:root:root .peek-go { margin-left: auto; display: inline-flex; align-items: center; gap: var(--s1); color: var(--brand-deep); white-space: nowrap; }
+:root:root .peek-go .anticon { font-size: var(--fs-min); }
+/* 涉及 N 位客户：一行，名字之间一个点，挤不下就折行 */
+:root:root .cli-inv-w { margin-top: var(--s2); }
+:root:root .cli-inv { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s1) var(--s2); font-size: var(--fs-note); color: var(--text-muted); }
+:root:root .cli-inv-i { display: inline-flex; align-items: baseline; gap: var(--s2); min-width: 0; max-width: 100%; }
+:root:root .cli-inv-i .md-ent { text-decoration: none; overflow-wrap: anywhere; }
+:root:root .cli-inv-i .md-ent:hover { text-decoration: underline; text-decoration-color: var(--brand-line); }
+:root:root .cli-inv-sep { color: var(--text-faint); }
+/* 触屏：名字后面那颗「起草」，点击区 44（不拿负外边距吃回来：折行时会盖住上下两行的名字，宁可这一行高一点）；灰字，是名字旁边的次要动作，和蓝色的名字分开 */
+:root:root .cli-inv-draft { display: inline-flex; align-items: center; justify-content: center; min-width: var(--hit-touch); min-height: var(--hit-touch); padding: 0 var(--s2); font-size: var(--fs-note); color: var(--text-muted); white-space: nowrap; }
+:root:root .cli-inv:has(.cli-inv-draft) { align-items: center; }
+:root:root .cli-inv-i:has(.cli-inv-draft) { align-items: center; gap: 0; }
+:root:root .cli-inv-w .cli-draft { margin: var(--s2) 0 0; }
 
 /* ---------- 设计语言 E3 · 新线索（11-22，结构改动在 ProjectsView.tsx：外层 .leads-page、行末两颗 .row-act） ---------- */
 /* D37 筛选行「全部成员」「全部进程」占位字墨色：原来是 faint（2.21:1，像禁用），同 L-A 客户页 */
@@ -6797,3 +6906,36 @@ button.proj-miss-chip { cursor: pointer; }
    「列表 | 看板」挪进筛选行；手机宽筛选摆法、K3 页头标题独占一行并进上面 L-A 那两段的选择器） ---------- */
 /* K5 补填框：挂在「完成节点」下面那 4px 间距从浮层偏移挪进外框（ProjectDetail 补填框不偏移）——浮层库往屏里挪时把它也算进去，外框下沿不再出屏 3–4px */
 :root:root .pd-fill-pop.ant-popover:is(.ant-popover-placement-bottom, .ant-popover-placement-bottomLeft, .ant-popover-placement-bottomRight) { padding-top: 4px; }
+
+/* ---------- 跳转等待（跳转优化 PR-A，11-24；lib/nav-pending.ts、components/NavProgress.tsx） ----------
+   换客户、列表进详情时旧内容留到新内容就绪，中间靠这两样告诉人「点到了、在开」：
+   1. 顶上一根 2px 的条：挂上后晚 --nav-wait-delay（150ms）才淡出来，快的跳转看不见；一段亮条来回扫（环境动画，infinite）。
+      浮在一切之上（提示层 1070 之上），不挡点击
+   2. 点的那一行立刻高亮：链接里的 .nav-pend（useLinkStatus）/ 表格行的 .row-going（useNavGo 的 pending） */
+.nav-prog { position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 1100; pointer-events: none; overflow: hidden; background: var(--brand-line); animation: app-loading-in var(--t) var(--ease) var(--nav-wait-delay) both; }
+.nav-prog::before { content: ""; position: absolute; top: 0; bottom: 0; left: 0; width: 40%; background: var(--brand); animation: nav-prog-sweep 1.2s var(--ease-morph) infinite; }
+@keyframes nav-prog-sweep { from { transform: translateX(-100%); } to { transform: translateX(250%); } }
+/* 减弱动态：不扫，整条同色，只淡入（全局那条 transform: none 也会把它钉住，这里直接撤掉动画、铺满） */
+@media (prefers-reduced-motion: reduce) { .nav-prog::before { animation: none; width: 100%; } }
+/* 名单行：点的那一行立刻是选中的样子，原来选中的那一行先让出来（新页一提交 .on 就换过去，两边对得上） */
+:root:root .roster-row:has(> .nav-pend), :root:root .roster-row:has(> .nav-pend):hover { background: var(--brand-bg); }
+:root:root .roster-row:has(> .nav-pend)::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 2px; border-radius: 999px; background: var(--brand); }
+:root:root .pane-rows:has(.nav-pend) .roster-row.on:not(:has(> .nav-pend)) { background: transparent; }
+:root:root .pane-rows:has(.nav-pend) .roster-row.on:not(:has(> .nav-pend))::before { content: none; }
+/* 左栏（审查补）：点的那一项立刻是选中的样子，原来选中的那项同时退掉，照名单行的写法。
+   选中底色平时是一块在各项之间滑的层（.rail-on-bg，layoutId）：等新页的这段时间不滑，
+   直接画在点的那一项上、那块层先藏起来；新页一提交 .nav-pend 撤了，层已经在新的一项里（AppShell 的 去向）。
+   收藏的客户 / 项目各管各的：点收藏不动主导航那一项（去的还是「客户」底下）。明亮下的发丝描边 + 软影并在上面 .rail-on-bg 那条里 */
+:root:root .rail-item:has(> .nav-pend), :root:root .rail-item:has(> .nav-pend):hover { background: var(--nav-on-bg); color: var(--nav-on-fg); }
+:root:root .rail-item:has(> .nav-pend) b { font-weight: 600; }
+:root:root .rail:has(.rail-item > .nav-pend) .rail-on-bg { visibility: hidden; }
+:root:root .rail:has(.rail-item > .nav-pend) .rail-item.on:not(:has(> .nav-pend)) { color: var(--text-muted); }
+:root:root .rail:has(.rail-item > .nav-pend) .rail-item.on:not(:has(> .nav-pend)) b { font-weight: 500; }
+:root:root .rail-fav-i:has(> .nav-pend), :root:root .rail-fav-i:has(> .nav-pend):hover { background: var(--nav-on-bg); color: var(--nav-on-fg); }
+:root:root .rail-favs:has(.nav-pend) .rail-fav-i.on:not(:has(> .nav-pend)) { background: transparent; color: var(--ink-soft); box-shadow: none; }
+.ant-table-wrapper .ant-table-tbody > tr.row-going > td, .ant-table-wrapper .ant-table-tbody > tr:has(.nav-pend) > td { background: var(--brand-bg); }
+/* 审查补（PR-A）：看板点的那张卡（客户看板、项目看板，.is-going = useNavGo 在等）、客户页「关联客户」那一小行先高亮；
+   .nav-pend 本身永远不占地方（链接里的子元素选择器不该把它撑出来） */
+:root:root .nav-pend { display: none; }
+:root:root .pipe-card.is-going, :root:root .pipe-card.is-going:hover { background: var(--brand-bg); border-top-color: var(--brand); border-right-color: var(--brand); border-bottom-color: var(--brand); }
+:root:root .rec-mini:has(.nav-pend) { background: var(--brand-bg); }

@@ -343,7 +343,8 @@ export async function 项目关联们(me: { id: string }, projectId: string): Pr
   return { 客户们, 联系人们, 选项: { 身份, 角色, 立场 }, 上限: 关联上限 };
 }
 
-export type 参与项目行 = { projectId: string; 名: string; 身份: string[]; 主: boolean };
+/** 项目去：不是主客户的那几行点了去哪（项目页会跳去的最终地址，客户页服务端按 customer-detail-direct.ts 算）；没给 = /projects/<id> */
+export type 参与项目行 = { projectId: string; 名: string; 身份: string[]; 主: boolean; 项目去?: string };
 
 /**
  * 客户页「参与的项目」（只读）：这位客户以关联客户挂在哪些项目上、是哪一方。

@@ -17,6 +17,8 @@ const plugin: Plugin = { name: "dedupe-pop-phone", setup(b) {
   stub(/customers\/RepeatInquiryKey$/, "export default function R(){return null}");
   stub(/number-actions$/, "export const 查号码=async()=>({ok:true,状态:'已有',值:'13800001111',提示:'这个号码已经在一位客户名下了，看看是不是同一个人再决定要不要建',撞:{id:'c1',name:'很长很长的一位客户名字用来量会不会把小框撑出屏幕右边',school:'广东省深圳市',salesOwnerName:'某某某'},归属地:'广东 深圳'});");
   stub(/^next\/link$/, "export default function L({children,href,...p}){return <a href={href} {...p}>{children}</a>}");
+  // 「去看看」链接挂了 <LinkPending />（跳转优化 PR-A），它经 lib/nav-pending 引 next/navigation：浏览器里打包真的那份会因为没有 process 直接抛
+  stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},replace(){},refresh(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^@\/lib\/ask-image$/, "export const 图片后缀=[];export const 图片类型=[];export const 是图片文件=()=>false;export const 认图成文本=async()=>({text:''});");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };

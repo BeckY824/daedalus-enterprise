@@ -98,7 +98,7 @@ beforeAll(async () => {
       if(当前&&o.删) 当前.p={...当前.p,能删:true};
       // D4 审查：缺项小块各条落点——项目上的覆盖（必填、线索验证等）+ 画像卡
       if(当前&&o.项目改) 当前.p={...当前.p,...o.项目改,...(o.项目改.带画像?{画像:{项们:项目画像项.map(x=>({键:x.键,名:字典定义[x.种类].名,多选:x.多选,选项:[...字典定义[x.种类].默认]})),值:{}}}:{})};
-      // 卡片改进第三阶段：右栏其余卡（回款、交付、项目组、提成、进程变更、关联客户 / 联系人）都有内容
+      // 卡片改进第三阶段：右栏其余卡（回款、交付、项目组、提成、关联客户 / 联系人）都有内容（进程变更 11-24 挪进客户名下的「历史变更」弹窗）
       if(当前&&o.全) 当前.p={...当前.p,phase:'订单',node:'尾款结算',
         备货物流:{备货状态:'已备货',物流状态:{值:'运输中',选项:['运输中','已签收']},物流单号:'SF1234567890'},
         回款们:[{id:'pay1',paidAt:'2026-11-15',currency:'CNY',amount:300000,userId:'qa',createdAt:'2026-11-15T02:00:00.000Z'},{id:'pay2',paidAt:'2026-10-28',currency:'CNY',amount:124500,userId:'qa',createdAt:'2026-10-28T02:00:00.000Z'}],
@@ -393,7 +393,7 @@ const 标签后起点 = (page: Page, sel: string) => page.locator(sel).evaluateA
   return Math.round(r.getBoundingClientRect().x - k.closest(".ant-card")!.getBoundingClientRect().x);
 }));
 
-it("右栏其余卡（1280 / 390）对齐到 68 / 92：回款「当前回款」、交付三行、项目组「组长」和组员、提成各行、关联客户 / 联系人；字段名 13 灰；底价框不被挤截；不横滚", async () => {
+it("右栏其余卡（1280 / 390）对齐到 68 / 92：回款「当前回款」、交付三行、项目组组长和组员（名字左边缘 = 字段名左边缘）、提成各行、关联客户 / 联系人；字段名 13 灰；底价框不被挤截；不横滚", async () => {
   for (const w of [1280, 390]) {
     const { page, errors, close } = await 开(w, { 全: true, 单: true }, 2400);
     try {
@@ -402,8 +402,6 @@ it("右栏其余卡（1280 / 390）对齐到 68 / 92：回款「当前回款」�
       const 起点: Record<string, number[]> = {
         当前回款: await 标签后起点(page, ".cd-side .pd-pay-sum > .proj-info-k"),
         交付: await 标签后起点(page, ".cd-side .proj-stock-rows .proj-info-row > .proj-info-k"),
-        组长: await 标签后起点(page, ".cd-side .pd-team-lead > .proj-info-k"),
-        组员: await 标签后起点(page, ".cd-side .pd-team-row > .pd-team-name"),
         // 项目底价那一行在 1280 右栏放不下，整组落到下一行，不算
         提成: await 标签后起点(page, ".cd-side .pd-cm-row:not(:has(> .ant-space-compact)) > .pd-cm-k"),
         关联: await 标签后起点(page, ".cd-side .proj-rel-field > .proj-rel-key"),
@@ -414,10 +412,15 @@ it("右栏其余卡（1280 / 390）对齐到 68 / 92：回款「当前回款」�
       }
       expect(起点.交付.length).toBe(3);
       expect(起点.关联.length).toBeGreaterThanOrEqual(5);
-      for (const sel of [".cd-side .pd-cm-k", ".cd-side .proj-rel-key", ".cd-side .pd-pay-sum > .proj-info-k", ".cd-side .pd-team-lead > .proj-info-k"])
+      for (const sel of [".cd-side .pd-cm-k", ".cd-side .proj-rel-key", ".cd-side .pd-pay-sum > .proj-info-k"])
         expect(await 字(page, sel), sel).toEqual({ 号: "13px", 重: "400", 色: 灰 });
-      // 组员名落在 68 列里（长了省略、悬停看全），角色下拉从 92 起
-      expect((await 框(page.locator(".cd-side .pd-team-name").first())).w).toBe(68);
+      // 项目组（11-23 改排版）：组长、组员同一种行，名字从字段名那一列的左边起（和「当前回款」等字段名同一个左边缘），名字不截
+      const 离卡左 = (sel: string) => page.locator(sel).evaluateAll(es => es.map(e => Math.round(e.getBoundingClientRect().x - e.closest(".ant-card")!.getBoundingClientRect().x)));
+      const 字段名左 = await 离卡左(".cd-side .pd-pay-sum > .proj-info-k");
+      const 组名左 = await 离卡左(".cd-side .pd-team-row .pd-team-name");
+      expect(组名左.length, `宽 ${w}`).toBeGreaterThan(0);
+      expect(new Set(组名左), `宽 ${w}`).toEqual(new Set(字段名左));
+      expect(await page.locator(".cd-side .pd-team-name").evaluateAll(es => es.filter(e => e.scrollWidth > e.clientWidth + 1).length), `宽 ${w}`).toBe(0);
       // 项目底价：数字不被挤截，框不出卡
       const 底价 = page.locator(".cd-side .pd-cm-row input[aria-label=项目底价]");
       expect(await 底价.evaluate(e => (e as HTMLInputElement).scrollWidth <= (e as HTMLInputElement).clientWidth), `宽 ${w}`).toBe(true);

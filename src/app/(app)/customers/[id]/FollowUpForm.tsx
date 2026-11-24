@@ -10,6 +10,7 @@ import { requiredText } from "@/lib/form-validation";
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useShellNavGo } from "@/lib/nav-pending";
 import { Modal, Form, Input, Select, InputNumber, Row, Col, Button, Checkbox, Space, Typography } from "antd";
 import SaveButton from "@/components/SaveButton";
 import { showUndo } from "@/components/UndoBar";
@@ -203,6 +204,8 @@ export default function FollowUpForm({
   const 标题说明 = 改的是同号留痕 ? 同号留痕标题不能改话 : "选填，填了会显示在沟通记录上";
   const AI已用完 = useAiOutOfCredits();
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts）。用壳里那份：撤销条上点「去记录页」时表单早关了 */
+  const 去页 = useShellNavGo();
   const b = useBusiness();
   const type = Form.useWatch("type", form);
   const method = Form.useWatch("method", form) as string | null | undefined;
@@ -613,7 +616,7 @@ export default function FollowUpForm({
             router.refresh();
             return u;
           },
-          另一个动作: { 话: `去${名}的记录页`, 做: () => router.push(`/customers/${谁}`) },
+          另一个动作: { 话: `去${名}的记录页`, 做: () => 去页.push(`/customers/${谁}`) },
         });
       };
     }

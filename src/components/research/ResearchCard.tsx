@@ -18,6 +18,7 @@
  */
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { AnimatePresence, animate, motion, useMotionValue, useTransform } from "motion/react";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 思考打字 } from "@/lib/motion";
@@ -640,7 +641,7 @@ export default function ResearchCard({ s, running, error, 起, ms, actions }: Re
             <div className="rs-similar">
               {s.similar.items.map((c) => (
                 <div key={c.id} className="rs-sim">
-                  <Link href={`/customers/${c.id}`}>{c.name}</Link>
+                  <Link href={`/customers/${c.id}`}>{c.name}<LinkPending /></Link>
                   <span className={`rs-grade rs-grade-${c.档}`}>{档名[c.档]}</span>
                   <span className="rs-sim-why">{c.像在哪}</span>
                 </div>

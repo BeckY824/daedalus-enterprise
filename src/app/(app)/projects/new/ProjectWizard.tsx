@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
+import { useShellNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Alert, AutoComplete, Button, Input, InputNumber, Modal, Select, Space, Switch, Tag } from "antd";
 import { CheckOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
 import CopyValue from "@/components/CopyValue";
@@ -330,6 +332,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const 企业版 = !!企业;
   const 能填下一步 = 企业版 || 要下一步;
   const router = useRouter();
+  /** 建完落到新客户 / 新项目：等新页时顶上的条亮（lib/nav-pending.ts，跳转优化 PR-A）。
+      用壳里那份：弹窗先关、向导卸了，等待条照样挂到新页提交（审查补） */
+  const 去页 = useShellNavGo();
   const b = useBusiness();
   const 我 = useMe();
   const 能选类型 = 跟进类型们(外贸精简(b)).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
@@ -602,11 +607,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         弹窗?.关();
         // 客户转给了销售、我看不到了：回客户列表（留着刷新就是 404）；项目分走了：留在原页刷新；
         // 不然落到这位客户、停在新项目（landed：新项目卡亮 2 秒，原型 cr.submit）；本来就在这位客户页上的换地址不加历史
-        if (看不到) return void router.push("/customers");
+        if (看不到) return void 去页.push("/customers");
         if (r.转走) return void router.refresh();
         const 去 = `/customers/${encodeURIComponent(客.id)}?project=${encodeURIComponent(r.projectId)}&landed=1`;
-        if (锁客户) router.replace(去, { scroll: false });
-        else router.push(去);
+        if (锁客户) 去页.replace(去, { scroll: false });
+        else 去页.push(去);
       }, 看不到 ? `回${b.customer}列表` : undefined);
     } catch (出错) {
       set交错(动作出错话(出错, "没建成，请稍后再试；填过的还在"));
@@ -704,8 +709,9 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         // 分走了 / 进了公海，项目不在我名下：回线索列表（弹窗里建的：留在原页刷新）
         if (转走) return void (弹窗 ? router.refresh() : router.push(新线索 ? "/leads" : "/projects"));
         // 弹窗里建的落到新客户页（企业版停在这个项目的页签，客户详情合并 11-12）；整页建档照旧进项目详情
-        if (!r.projectId) return void router.push(`/customers/${r.customerId}`);
-        router.push(弹窗 && 企业版 ? `/customers/${r.customerId}?project=${r.projectId}` : `/projects/${r.projectId}`);
+        if (!r.projectId) return void 去页.push(`/customers/${r.customerId}`);
+        // 整页建的：服务端给了项目页会跳去的地址（r.去）就直接去，不经过 /projects/<id> 的重定向
+        去页.push(弹窗 && 企业版 ? `/customers/${r.customerId}?project=${r.projectId}` : ("去" in r && r.去) || `/projects/${r.projectId}`);
       });
     } catch (出错) {
       set交错(动作出错话(出错, "没建成，请稍后再试；填过的还在"));
@@ -981,7 +987,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                   description={
                     撞.id ? (
                       <span>
-                        <Link href={`/customers/${撞.id}`}>{撞.name}</Link>
+                        <Link href={`/customers/${撞.id}`}>{撞.name}<LinkPending /></Link>
                         {撞.school ? ` · ${撞.school}` : ""} · 在 {撞.salesOwnerName} 名下。{撞.负责人已离职找 ? `负责人已离职，请联系 ${撞.负责人已离职找}` : `要给这位${b.customer}开新项目，请找 ${撞.salesOwnerName} 或老板`}
                       </span>
                     ) : (
@@ -1300,7 +1306,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了
             {查.归属地 ? ` · 归属地：${查.归属地}` : ""}
           </div>
           <Space size={8} style={{ marginTop: 8 }} wrap>
-            {撞?.id && !我退的 && <Link href={`/customers/${撞.id}`}><Button size="small">打开它</Button></Link>}
+            {撞?.id && !我退的 && <Link href={`/customers/${撞.id}`}><Button size="small">打开它</Button><LinkPending /></Link>}
             {我退的 && <span style={{ color: "var(--text-muted)" }}>是你退回公海的，{原负责人不能领回提示}</span>}
             {市场领 && (
               <DedupeClaimKey

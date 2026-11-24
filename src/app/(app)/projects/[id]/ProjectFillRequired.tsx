@@ -3,6 +3,7 @@
 import { 空显 } from "@/lib/empty-value";
 import { useEffect, useMemo, useRef, useState, useTransition, type CSSProperties } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Checkbox, Input, Select, Space, Tag } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
@@ -285,7 +286,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     return (
       <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "4px 8px", minWidth: 0 }}>
         <span style={{ ...灰字, flex: "1 1 200px", minWidth: 0 }}>{原因}</span>
-        {去 === "客户" && 能去 && p.customer && <Link href={`/customers/${p.customer.id}${客户格[项] ? `#field-${客户格[项]}` : ""}`}>{去处按钮.客户}</Link>}
+        {去 === "客户" && 能去 && p.customer && <Link href={`/customers/${p.customer.id}${客户格[项] ? `#field-${客户格[项]}` : ""}`}>{去处按钮.客户}<LinkPending /></Link>}
         {去 && 去 !== "客户" && 能去 && (首个去处.get(去) === 项
           ? <Button size="small" disabled={占着} onClick={() => on去(去, 项)}>{去处按钮[去]}</Button>
           : <span style={灰字}>点上面的「{去处按钮[去]}」一起补</span>)}

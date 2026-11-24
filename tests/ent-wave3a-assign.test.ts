@@ -127,14 +127,15 @@ beforeEach(async () => {
 afterAll(async () => { await prisma.$disconnect(); });
 
 describe("第 9 题 B / 第 8 题 B：自动分配池", () => {
-  it("内贸池含内贸销售管理；外贸池不含外贸销售管理；义乌档口整组不进（外贸勾的是整个外贸事业部也一样）", async () => {
+  it("内贸池含内贸销售管理、外贸池含外贸销售管理（11-23），各进本线不跨线；义乌档口整组不进（外贸勾的是整个外贸事业部也一样）", async () => {
     当(老板, "老板");
     expect(await 设线部门({ 内贸: [内销], 外贸: [外贸部] })).toEqual({ ok: true });
     const org = await 读组织();
     const 设 = await 读线部门();
     expect(new Set(自动分配池(org, null, "内贸", 设))).toEqual(new Set([内一, 内二, 内管]));
-    expect(new Set(自动分配池(org, null, "外贸", 设))).toEqual(new Set([外一, 外二]));
-    expect(自动分配池(org, null, "外贸", 设)).not.toContain(外管);
+    expect(new Set(自动分配池(org, null, "外贸", 设))).toEqual(new Set([外一, 外二, 外管]));
+    expect(自动分配池(org, null, "内贸", 设)).not.toContain(外管);
+    expect(自动分配池(org, null, "外贸", 设)).not.toContain(内管);
   });
 
   it("内贸销售管理第一次进池按池里最少的数起算，不从 0 追（上线当天他本月 0 条）", async () => {
@@ -248,12 +249,15 @@ describe("参与状态变了推一次「快轮到」", () => {
 });
 
 describe("审核追加：一人多角色任一放行 / 指定下拉只列能指定的", () => {
-  it("外贸兼「销售 + 销售管理」的：作为销售照常进外贸自动分配池；纯外贸销售管理不进", async () => {
+  it("外贸兼「销售 + 销售管理」的：作为销售照常进外贸自动分配池；纯外贸销售管理也进（11-23），被暂停的照旧分不到", async () => {
     const 外兼 = await 人("外贸兼管", "sales,sales_mgr", MVP);
     const org = await 读组织();
     const 池 = 自动分配池(org, null, "外贸", await 读线部门());
     expect(池).toContain(外兼);
-    expect(池).not.toContain(外管);
+    expect(池).toContain(外管);
+    // 外管开号更早、本月也 0 条：暂停他，这条才轮到外兼（参与状态照旧生效）
+    await setSetting(自动分配不参与key, { [外管]: "暂停" });
+    invalidateSettingsCache();
     // 自动分配真能分到他（外一外二各先有一条）
     for (const 谁 of [外一, 外二]) await prisma.entLeadAssign.create({ data: { toUserId: 谁, byUserId: 市场, month: 月份(), counted: true, kind: "营销" } });
     const r = await 自动分配线索(await 建项目("兼管能接"), { 项目: true, 原负责人: 市场 });

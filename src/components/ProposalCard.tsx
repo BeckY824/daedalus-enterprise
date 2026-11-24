@@ -8,6 +8,7 @@ import AmountTextInput from "@/components/AmountTextInput";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Select, Input, Checkbox, Button } from "antd";
 import { 全称提示, 名称框提示 } from "@/lib/enterprise/fullname-hint";
 import { CheckOutlined, CloseOutlined, RightOutlined, MinusCircleOutlined, PlusOutlined } from "@ant-design/icons";
@@ -34,6 +35,7 @@ import { 指定选项 } from "@/lib/enterprise/designate-options";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
+import { 落印行们 } from "@/lib/agent/seal-lines";
 import dynamic from "next/dynamic";
 import DedupeClaimKey from "@/app/(app)/customers/DedupeClaimKey";
 import RepeatInquiryKey from "@/app/(app)/customers/RepeatInquiryKey";
@@ -92,8 +94,8 @@ export const 新线索企业 = createContext<新线索企业格 | null>(null);
 /** 新建只能落在线索验证及之前（11-05：过了线索验证要看它的必填项，新建时填不了；lib/project/wizard.ts 同口径） */
 const 线索节点们 = 企业版字典.节点们.线索.slice(0, 企业版字典.节点们.线索.indexOf(有效线索节点) + 1 || undefined);
 
-/** 推进：写进去时顺带按必填把项目推了一格（apply 回的 推进），落印下面写一行（11-20） */
-type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string; 推进?: string };
+/** 推进：写进去时顺带按必填把项目推了一格（apply 回的 推进），落印下面写一行（11-20）；提示：这条不算有效沟通（E-259），同样写一行 */
+type 落印回执 = { at: string; 撤销?: 撤销凭据; 项目?: string; 推进?: string; 提示?: string; 直达?: Record<string, string> };
 
 /**
  * 卡片报给外面的状态（2026-11-15）：首页那一轮靠它知道还有没有「等你确认」的，
@@ -281,7 +283,7 @@ export default function ProposalCard({
       return false;
     }
     if (r.ok) {
-      const 回执: 落印回执 = { at: dayjs().format("HH:mm"), 撤销: r.撤销, ...(r.项目 ? { 项目: r.项目 } : {}), ...(r.推进 ? { 推进: r.推进 } : {}) };
+      const 回执: 落印回执 = { at: dayjs().format("HH:mm"), 撤销: r.撤销, ...(r.项目 ? { 项目: r.项目 } : {}), ...(r.推进 ? { 推进: r.推进 } : {}), ...(r.提示 ? { 提示: r.提示 } : {}), ...(r.直达 ? { 直达: r.直达 } : {}) };
       set落印(回执);
       if (记号) 记下回执(记号, 回执);
       set刚("落印");
@@ -441,10 +443,15 @@ export default function ProposalCard({
           )}
           <Link href={查看去处(draft, 落印)} className="cli-link">
             查看 <RightOutlined style={{ fontSize: 10 }} />
+            <LinkPending />
           </Link>
         </span>
-        {/* 顺带按必填推了一格：独占一行说推到哪（回执句子，同其它回执折行，手机上没有悬停也看得全） */}
-        {落印?.推进 && <span className="prop-done-push" role="status" data-testid="prop-done-push">{落印.推进}</span>}
+        {/* 顺带按必填推了一格 / 这条不算有效沟通（E-259）：各独占一行（回执句子，同其它回执折行，手机上没有悬停也看得全） */}
+        {落印行们(落印).map((行) => (
+          <span key={行.种} className="prop-done-push" role="status" data-testid={行.testid}>
+            {行.话}
+          </span>
+        ))}
         {撤错 && (
           <span className="prop-err prop-err-inline" role="alert">
             {撤错}
@@ -629,7 +636,7 @@ export default function ProposalCard({
               <div role="note" className="prop-err prop-f-block">
                 {沟通没项目话}
                 {跟进能建项目
-                  ? <>{" "}<Link href={`/customers/${draft.customerId}?建项目=1`}>去建项目</Link></>
+                  ? <>{" "}<Link href={`/customers/${draft.customerId}?建项目=1`}>去建项目<LinkPending /></Link></>
                   : `（${请负责人建项目话}）`}
               </div>
             )}
@@ -1030,14 +1037,15 @@ function 现值文本(p: Proposal, field: string, b: BusinessConfig): string | u
 
 /** 确认之后「查看」去哪：新线索去建成的项目，项目类卡去那个项目，删客户回客户列表 */
 function 查看去处(p: Proposal, 落印: 落印回执 | null): string {
-  if (p.kind === "add_lead") return 落印?.项目 ? `/projects/${落印.项目}` : "/leads";
+  // 去项目的：服务端确认时算好的最终地址（落印.直达，跳转优化 PR-A：不经过 /projects/<id> 的重定向那段空白），没有的照旧给项目页
+  if (p.kind === "add_lead") return 落印?.项目 ? 落印.直达?.[落印.项目] ?? `/projects/${落印.项目}` : "/leads";
   if (p.kind === "update_channel") return "/channels";
   if (p.kind === "customer_delete") return "/customers";
   if (p.kind === "contact_update") return p.customerId ? `/customers/${p.customerId}` : "/customers";
   if (是项目卡(p.kind)) {
     const q = p as 项目卡;
     const id = 落印?.项目 || q.projectId || (q.kind === "project_node" || q.kind === "project_followup" || q.kind === "lead_verify" || q.kind === "payment_add" ? q.targetId : "");
-    return id ? `/projects/${id}` : "/projects";
+    return id ? 落印?.直达?.[id] ?? `/projects/${id}` : "/projects";
   }
   return `/customers/${p.customerId}`;
 }

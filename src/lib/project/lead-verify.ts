@@ -31,6 +31,7 @@ import { 判MQL, MQL合格去 } from "./mql";
 import { 有效线索节点 } from "./stage-gates";
 import { 生效组织规则 } from "./org-rules-store";
 import { 原因上限 } from "./nodes";
+import { 补项目去 } from "./customer-detail-direct";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true; 自动推到?: string[] } | { ok: false; error: string };
@@ -380,7 +381,8 @@ export async function 读线索验证(me: 谁, p: 项目基): Promise<线索验�
   const 带客创 = { ...p, customer: { creator: 客创 } };
   const 交给 = await 无效交给(org);
   const 待 = 实际待(v?.pending ?? null, 交给);
-  const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(痕.map((l) => l.userId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  // 还没有验证留痕的（多数项目）不查人名：空的 IN 也要往返一次库（客户详情首屏查询条数，11-24）
+  const 名 = new Map(痕.length ? (await prisma.user.findMany({ where: { id: { in: [...new Set(痕.map((l) => l.userId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]) : []);
   let 我能: 线索验证["我能"] = null;
   if (在验证(p)) {
     if (!待) 我能 = 能拍板(me, "销售初判", p, org) ? "初判" : null;
@@ -400,12 +402,15 @@ export async function 读线索验证(me: 谁, p: 项目基): Promise<线索验�
 export type 待复核项 = {
   projectId: string; 项目: string; 负责人: string; 步: 待哪步;
   无效原因: string | null; 初判说明: string | null; 复核说明: string | null; 异议说明: string | null; 更新于: Date;
+  /** 点了去哪：项目页会跳去的最终地址（lib/project/customer-detail-direct.ts 项目链接们，跳转优化 PR-A）；没给 = /projects/<id>，项目页自己判 */
+  项目去?: string;
 };
 
 /** 列表顶上的「待复核的线索」：我能拍板的那几条（市场复核、总管理终判，以及我负责的销售终验、销售认领）。不是企业版空 */
 export async function 待我复核的(me: 谁): Promise<待复核项[]> {
   if (!企业版()) return [];
-  return 看全部(async () => {
+  // 项目去在 看全部 外面算：看不看得到客户要按本人的范围判（同项目页那条跳转）
+  return 补项目去(me, await 看全部(async () => {
     const [行, org] = await Promise.all([
       prisma.entLeadVerify.findMany({
         where: { pending: { not: null }, project: { phase: "线索", node: 有效线索节点, result: null, pooledAt: null } },
@@ -429,7 +434,7 @@ export async function 待我复核的(me: 谁): Promise<待复核项[]> {
       });
     }
     return 出;
-  });
+  }), (r) => r.projectId);
 }
 
 export type 验证结果叫法 = "暂未验证" | "初验无效" | "复核有效" | "终验无效" | "有效线索" | "无效线索";

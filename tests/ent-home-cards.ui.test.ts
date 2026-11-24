@@ -11,6 +11,8 @@ import { chromium, type Browser, type Page } from "playwright";
 let browser: Browser; let bundle: string;
 const plugin: Plugin = { name: "ent-home-cards", setup(b) {
   b.onResolve({ filter: /^next\/link$/ }, a => ({ path: a.path, namespace: "stub", pluginData: "import React from 'react';export default function L({href,prefetch,...p}){return <a href={href} {...p}/>}" }));
+  // 卡上的链接挂了 <LinkPending />（跳转优化 PR-A），它经 lib/nav-pending 引 next/navigation：浏览器里打包真的那份会因为没有 process 直接抛
+  b.onResolve({ filter: /^next\/navigation$/ }, a => ({ path: a.path, namespace: "stub", pluginData: "export const useRouter=()=>({push(){},replace(){},refresh(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);" }));
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {

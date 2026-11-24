@@ -72,6 +72,11 @@ export type Turn = {
    * 图按 卡id 记在内存里（lib/card-scan/originals.ts），刷新就没了
    */
   存照片?: { 卡id: string; 张数: number; 名: string; 去处: { contactId: string } | { leadId: string } };
+  /**
+   * 从库里翻出来的历史轮次（lib/thread-history.ts 历史成屏），不是这一屏刚答的。回答里客户名的小卡这时只给名字和「打开」：
+   * 负责人 / 状态 / 上次跟进是回答那一刻的，隔几天早变了（#441 审查 3）。重新回答就去掉
+   */
+  历史?: boolean;
 };
 
 /** 首页那一屏的 scope。别的页面用自己的 pathname */

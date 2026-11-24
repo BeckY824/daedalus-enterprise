@@ -94,8 +94,8 @@ async function 开(宽: number): Promise<{ page: Page; errors: string[]; close: 
   page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", (e) => errors.push(e.message));
   const 壳 = 手机
-    ? `<section class='ant-layout' style='min-height:100vh;display:flex;flex-direction:column'><header style='height:48px;flex:none'></header><main class='app-content' id='root' style='padding:22px 26px'></main></section>`
-    : `<div class='shell'><nav style='width:220px;flex:none'></nav><aside class='pane' style='width:232px'></aside><main class='main app-content' style='padding:22px 26px'><div id='root' style='max-width:1720px;margin:0 auto'></div></main></div>`;
+    ? `<section class='ant-layout' style='min-height:100vh;display:flex;flex-direction:column'><header style='height:48px;flex:none'></header><main class='app-content' style='padding:22px 26px'><div class='page-fade' id='root'></div></main></section>`
+    : `<div class='shell'><nav style='width:220px;flex:none'></nav><aside class='pane' style='width:232px'></aside><main class='main app-content' style='padding:22px 26px'><div class='page-fade' id='root' style='max-width:1720px;margin:0 auto'></div></main></div>`;
   await page.route("http://hc2a.test/**", (r) => r.fulfill({ contentType: "text/html", body: `<!doctype html><html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><body style='margin:0'>${壳}</body></html>` }));
   await page.goto("http://hc2a.test/dashboard");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
@@ -126,7 +126,8 @@ for (const 宽 of [1366, 1024]) {
       const 基 = await 字左(page, ".cli-turn:nth-child(1) .cli-a");
       const 各 = {
         圆点: await 盒左(page, ".cli-turn:nth-child(1) .ais-dot"),
-        涉及客户: await 盒左(page, ".cli-turn:nth-child(1) .cli-card"),
+        // HC-2b：「涉及 N 位客户」缩成一行（.cli-inv）
+        涉及客户: await 盒左(page, ".cli-turn:nth-child(1) .cli-inv"),
         追问: await 盒左(page, ".cli-turn:nth-child(1) .cli-next"),
         操作行图标: await 字左(page, ".cli-turn:nth-child(1) .cli-bar .cli-ic"),
         确认卡: await 盒左(page, ".cli-turn:nth-child(2) .prop"),

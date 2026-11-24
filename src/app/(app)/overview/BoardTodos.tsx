@@ -2,7 +2,9 @@
 
 import { useLayoutEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { Checkbox, Input, Segmented, Table, Tooltip } from "antd";
 import { showUndo } from "@/components/UndoBar";
 import SaveButton from "@/components/SaveButton";
@@ -10,6 +12,7 @@ import { useFormDraft } from "@/components/FormDraft";
 import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { 记项目沟通Action } from "../projects/actions";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
+import { 超时短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 跟进类型们 } from "@/lib/constants";
 import type { 预警行 } from "@/lib/project/review-extras";
@@ -58,6 +61,8 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
   只读?: boolean;
 }) {
   const router = useRouter();
+  /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
+  const 去页 = useNavGo();
   const sp = useSearchParams();
   // 设计语言 R-B（R1）：卡头写计数、到期用带钟点的 smartTime（同首页待办，dashboard/todo-time）、空态「还没有待办」
   const [刚完成, set刚完成] = useState<string[]>([]);
@@ -159,7 +164,7 @@ export default function BoardTodos({ 数, 看板, 卡, 布局 = "list", 回收, 
     }, 600);
   }
 
-  const 去 = (x: 复盘待办行) => { if (x.去) router.push(x.去); };
+  const 去 = (x: 复盘待办行) => { if (x.去) 去页.push(x.去); };
 
   const cols = [
     ...(只读 ? [] : [{
@@ -359,7 +364,7 @@ function 待办卡片({ x, 完成中, 看全员, 只读 = false, 完成 }: { x: 
           <span className="btodo-time nowrap" title={x.时间 ? fmtDateTime(x.时间) : undefined} suppressHydrationWarning>{x.时间 ? 到期字(x.时间, x.明确钟点) : "没定日期"}</span>
           {逾 > 0 && <span className="btodo-k-over nowrap" suppressHydrationWarning>逾 {逾} 天</span>}
           {看全员 && <span className="btodo-k-owner">{x.ownerName}</span>}
-          {x.去 && <Link href={x.去} className="btodo-k-go nowrap">去跟进 ›</Link>}
+          {x.去 && <Link href={x.去} className="btodo-k-go nowrap">去跟进 ›<LinkPending /></Link>}
         </div>
       </div>
     </article>
@@ -449,13 +454,15 @@ function RecycleProjectRow({ p, 只读 = false }: { p: 预警行; 只读?: boole
       阶段: p.阶段, 下一步, 下一步时间: 下一步时间 ? 下一步时间.format("YYYY-MM-DD") : null,
     });
     if (!r.ok) return { ok: false, error: "error" in r ? r.error : "没记上，请刷新后重试" };
-    set推话(自动推进话of(r));
+    // 顺带推了一格、这条不算有效沟通（超时未跟进计时中的线索 E-259）：记完那一行一起说。
+    // 只出超时那句：旁边「还剩 N 天」看客户最近跟进时间、短沟通照样更新，三态那句「不会重置回收倒计时」在这里不对
+    set推话([自动推进话of(r), 超时短沟通话of(r)].filter(Boolean).join("；") || null);
     return { ok: true };
   }
   return (
     <li className="ov-rc-p">
       <div className="ov-rc-prow">
-        <Link href={`/projects/${p.id}`} className="ov-rc-name" title={p.名}>{p.名}</Link>
+        <Link href={p.项目去 ?? `/projects/${p.id}`} className="ov-rc-name" title={p.名}>{p.名}<LinkPending /></Link>
         <span className={`ov-rc-left${剩 <= 1 ? " is-late" : ""}`}>{剩 === 0 ? "今天收回" : `还剩 ${剩} 天`}</span>
         {!记 && !只读 && (
           <button type="button" className="ov-rc-log" onClick={() => { set推话(null); set记(true); }}>记一条沟通</button>

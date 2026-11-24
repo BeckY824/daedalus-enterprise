@@ -72,8 +72,10 @@ import { 改项目画像, type 画像改动, type 画像字段 } from "@/lib/pro
 import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们, 发卡点预检 } from "@/lib/project/blocker";
 import { 沟通卡点, 规整原因们, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
+import { 超时短沟通提示 } from "@/lib/enterprise/reply-overdue";
 import { 存沟通后重算三态, 三态改天数预览 } from "@/lib/enterprise/tri-state-db";
 import { 新建后定线 } from "@/lib/enterprise/flow-line";
+import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
 
@@ -332,7 +334,9 @@ export async function 建档向导(输入: 建档向导输入) {
     // contactId：名片原图存到这位联系人的附件上（企业版才有联系人附件；开关关着返回和原来逐字段一样）
     // 首条沟通的截图 / 附件（11-18）：建好这一刻签票给录入人，浏览器凭票接着传（建好就分走了也传得上）
     const 附件票 = 企业版() && 输入.要传附件 === true && 建了.followUpId ? { followUpId: 建了.followUpId, 票: await 签首条附件票(me.id, 建了.followUpId) } : null;
-    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}), ...(附件票 ? { 附件票 } : {}) };
+    // 去：整页建档建好了去哪——项目页会跳去客户页的直接给那个地址（跳转优化 PR-A：不经过 /projects/<id> 的重定向那段空白）；不跳的不带
+    const 去 = 企业版() && !分了?.转走 ? (await 项目链接们(me, [建了.projectId!])).get(建了.projectId!) : undefined;
+    return { ok: true as const, customerId: r.id, projectId: 建了.projectId!, ...(企业版() ? { contactId: 建了.contactId ?? null } : {}), ...(分了 ?? {}), ...(附件票 ? { 附件票 } : {}), ...(去 && !去.startsWith("/projects/") ? { 去 } : {}) };
   } catch (e) { return 不在了(e); }
 }
 
@@ -960,6 +964,9 @@ export async function 回项目邀请(memberId: string, 同意: boolean) {
       await recordAudit({ user: me, action: "update", entity: "ProjectMember", entityId: r.projectId, summary: `${同意 === true ? "同意加入" : "拒绝加入"}${await 组员说法(r.projectId, me.id)}` });
       刷新项目(r.projectId);
     }
+    // 同意了：给项目页会跳去的地址（加入以后现算，跳转优化 PR-A：打开项目不经过 /projects/<id> 的重定向那段空白）
+    const 去 = r.ok && r.projectId && 同意 === true ? (await 项目链接们(me, [r.projectId])).get(r.projectId) : undefined;
+    if (去 && !去.startsWith("/projects/")) return { ok: true as const, 去 };
     return r.ok ? { ok: true as const } : r;
   } catch (e) { return 不在了(e); }
 }
@@ -1114,9 +1121,11 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       await 存沟通后重算三态(p?.customerId);
       刷新项目(projectId, p?.customerId);
     }
-    // 客户三态（C12）：这条不算有效沟通，回原因给前端一句轻提示（不拦；三态关着不查库）
-    const 短沟通 = r.ok ? await 短沟通提示(r.followUpId).catch(() => null) : null;
-    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...(r.推前 ? { 推前: r.推前 } : {}), ...卡点结果, ...(短沟通 ? { 短沟通 } : {}) } : r;
+    // 这条不算有效沟通，回原因给前端一句轻提示（不拦）：线索正在超时未跟进计时的，不看三态开关、说计时不会停（E-259）；
+    // 不然按客户三态（C12，三态关着不查库）。两句只出一句，超时那句为准
+    const 超时短沟通 = r.ok ? await 超时短沟通提示(r.followUpId) : null;
+    const 短沟通 = r.ok && !超时短沟通 ? await 短沟通提示(r.followUpId).catch(() => null) : null;
+    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...(r.推前 ? { 推前: r.推前 } : {}), ...卡点结果, ...(超时短沟通 ? { 超时短沟通 } : {}), ...(短沟通 ? { 短沟通 } : {}) } : r;
   } catch (e) { return 不在了(e); }
 }
 

@@ -34,6 +34,8 @@ import { 指定回复文字, 短时刻 } from "./time-fields";
 import { 客户显名 } from "@/lib/enterprise/customer-title";
 import { 待分配范围 } from "@/lib/enterprise/await-assign-scope";
 import { 待分配筛, type 待分配数 } from "@/lib/enterprise/await-assign-core";
+import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
+import { 权限组织 } from "@/lib/enterprise/org";
 
 /** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
 const 带原因的叫法: ReadonlySet<验证结果叫法> = new Set<验证结果叫法>(["初验无效", "终验无效", "无效线索"]);
@@ -139,6 +141,8 @@ export function 阶段进程条件(sp: { phase?: string; node?: string; open?: s
 
 /** 项目详情页中栏名单最多列这么多个项目（按最近改过排，读名单项目）；项目列表 11-11 起服务端分页，不再受它限 */
 export const 项目上限 = 500;
+/** 中栏名单先筛后截时最多往后取几批（每批 项目上限 个，最多扫 2000 行；读名单项目） */
+export const 名单最多批 = 4;
 
 /**
  * 企业版首页「有 N 条新线索」：还在线索阶段、没结局（没线索流失）、不在公海的项目。
@@ -815,6 +819,8 @@ export type 名单项目 = {
   nextAt: string | null;
   /** 项目的下一步做什么（10-29，一句话）；老数据、有结局或在公海是空 */
   nextText: string | null;
+  /** 点这一行去哪：项目页会跳去的最终地址（@pane/roster-data.ts 项目名单数据 补的，customer-detail-direct.ts 项目链接们）；没给 = /projects/<id>，项目页自己判 */
+  项目去?: string;
 };
 
 /**
@@ -825,20 +831,39 @@ export async function 读名单项目(me: { id: string; role?: string }, 字典:
   // 市场视角：名单和项目页同一圈，但「只看进度」的那些点不进详情，名单里就不列（market-view.ts）
   const 市场 = 企业版() ? await 读市场身份(me.id) : null;
   // 公海项目不进名单（企业版公海只在 /pool，和项目页默认列表一样）；历史负责人回避的都在公海里，也就不用另外排
-  const rows = await prisma.project.findMany({
-    where: 市场 ? { AND: [{ pooledAt: null }, 市场项目条件(me.id, 市场.圈), { OR: [{ ownerId: { in: 市场.圈 } }, { members: { some: { userId: me.id, inviteStatus: "JOINED" } } }] }] } : { pooledAt: null },
-    orderBy: { updatedAt: "desc" },
+  const where = 市场 ? { AND: [{ pooledAt: null }, 市场项目条件(me.id, 市场.圈), { OR: [{ ownerId: { in: 市场.圈 } }, { members: { some: { userId: me.id, inviteStatus: "JOINED" } } }] }] } : { pooledAt: null };
+  const 取一批 = (批: number) => prisma.project.findMany({
+    where,
+    // 分批往后取要排得稳：同一时刻改过的按 id 再排一道，批和批之间不重不漏
+    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+    skip: 批 * 项目上限,
     take: 项目上限,
     select: {
-      id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, nextStepAt: true, nextStepText: true,
+      id: true, name: true, node: true, customerId: true, nextStepAt: true, nextStepText: true, ...权限项目选,
       customer: { select: { name: true, shortName: true, customerNo: true } },
       followUps: { orderBy: { followUp: { occurredAt: "desc" } }, take: 1, select: { followUp: { select: { type: true, method: true, content: true, occurredAt: true } } } },
     },
   });
-  const 可见 = await 看得到的客户(rows.map((r) => r.customerId));
+  // 名单只列点得进详情的（11-24）：数据层的读范围比详情 能看项目 宽几处（按部门认的市场成员带出自己建的、管理者带出下属进组的），
+  // 那几行点进去是 404「没有找到这条记录」。照详情同一个判断再筛一遍（P-看-02 销售看自己负责的 + 公海；P-看-12 同客户下同事的项目看不到）
+  // 先筛后截（11-24 审查后改）：原来取前 项目上限 个再筛，筛掉的占了名额，后面本该看到的补不上来（实测 500 → 493）。
+  // 改成按同一排序一批 项目上限 个往后取，筛后够数或取完就停；最多取 名单最多批 批（扫 2000 行封顶），筛不够也不再往后翻
+  const org = 企业版() ? await 权限组织() : null;
+  type 行 = Awaited<ReturnType<typeof 取一批>>[number];
+  const 进得去: 行[] = [];
+  let 后面还有 = false;
+  for (let 批 = 0; 批 < 名单最多批 && 进得去.length < 项目上限; 批++) {
+    const 这批 = await 取一批(批);
+    进得去.push(...(org ? 这批.filter((r) => 能看项目(me, 带已加入(r), org)) : 这批));
+    后面还有 = 这批.length >= 项目上限;
+    if (!后面还有) break;
+  }
+  const 列 = 进得去.slice(0, 项目上限);
+  const 可见 = await 看得到的客户(列.map((r) => r.customerId));
   return {
-    取到上限: rows.length >= 项目上限,
-    rows: rows.map((r) => {
+    // 筛后超了上限被截掉，或封顶时后面还没取完：提示「这里只有最近改过的 N 个」（N = 筛后列出的条数）
+    取到上限: 进得去.length > 项目上限 || 后面还有,
+    rows: 列.map((r) => {
       const 露 = 露客户(me, r, 可见);
       const f = 露 ? r.followUps[0]?.followUp : undefined;
       return {

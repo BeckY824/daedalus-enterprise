@@ -24,7 +24,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 负责人可推 } from "@/lib/project/org-rules";
 import { 读项目提成 } from "@/lib/project/commission-db";
 import { 读项目主题 } from "@/lib/enterprise/coach-topic-db";
-import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点, 是超时自动转痕 } from "@/lib/project/timeout";
+import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点, 是超时自动转痕, 系统, 超时自动转理由, 放弃转理由 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
@@ -158,7 +158,26 @@ export const 项目详情字典们: readonly 字典种类[] = ["recycle", "inval
 const 留痕取几条 = 200;
 
 /** 项目详情（团队版项目模式 1a）：改节点、勾尾款 / 验收、节点变更和挂在项目上的沟通。开关关着时不存在 */
-export async function 读项目详情(me: SessionUser, id: string): Promise<项目详情载入> {
+/** 怎么进的公海：超时系统收的 / 办停用时放的（操作人是办的那位管理员，不是离职的人）/ 有人手动放回（QA 第 14 条）。客户详情「历史变更」也用 */
+export const 认放回 = (reason: string | null): 放回方式 => (reason === 超时理由 ? "超时" : reason === 停用项目进公海理由 ? "停用" : "手动");
+
+/**
+ * 不取留痕（客户详情嵌入、右栏不摆「项目进程变更」卡，11-24 挪进「历史变更」弹窗）：那 200 条节点记录不取，
+ * 换成一句 SQL 只数条数（删前清点）、取最近一条不是超时自动转的时刻（超时回收起点，同 是超时自动转痕 / 算回收起点的留痕）
+ */
+async function 留痕概况(projectId: string): Promise<{ 条数: number; 回收起点留痕: Date | undefined }> {
+  const 原因 = `COALESCE(l."reason", '')`;
+  const [r] = await prisma.$queryRawUnsafe<{ n: bigint | number; t: bigint | number | string | null }[]>(
+    `SELECT COUNT(*) AS n, MAX(CASE WHEN NOT (l."kind" = 'transfer' AND l."userId" = ? AND (instr(${原因}, ?) > 0 OR instr(${原因}, ?) > 0)) THEN l."at" END) AS t
+     FROM "ProjectNodeLog" l WHERE l."projectId" = ?`,
+    系统.id, 超时自动转理由, 放弃转理由, projectId,
+  );
+  const t = r?.t == null ? undefined : typeof r.t === "string" && !/^\d+$/.test(r.t) ? new Date(r.t) : new Date(Number(r.t));
+  return { 条数: Number(r?.n ?? 0), 回收起点留痕: t };
+}
+
+export async function 读项目详情(me: SessionUser, id: string, 选项?: { 不取留痕?: boolean }): Promise<项目详情载入> {
+  const 不取留痕 = !!选项?.不取留痕;
   const p = await prisma.project.findUnique({
     where: { id },
     include: {
@@ -166,9 +185,10 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
       channel: { select: { name: true } },
       contact: { select: { id: true, name: true, position: true } },
       exceptionCategory: { select: { name: true } },
-      logs: { orderBy: { at: "desc" }, take: 留痕取几条 },
+      // 不取留痕：take 0（Prisma 不为它发查询，类型照旧），条数和回收起点走下面 留痕概况 一句
+      logs: { orderBy: { at: "desc" }, take: 不取留痕 ? 0 : 留痕取几条 },
       members: { orderBy: { createdAt: "asc" } },
-      followUps: { include: { followUp: { select: { id: true, type: true, title: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, createdAt: true, updatedAt: true } } } },
+      followUps: { include: { followUp: { select: { id: true, type: true, title: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, customerId: true, createdAt: true, updatedAt: true } } } },
     },
   });
   if (!p) return { 种: "无" };
@@ -192,7 +212,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 露 的含义不变，只读卡不改限定层
   const 客户入口 = !企业版() || 看得到客户.has(p.customerId) ? "详情" as const
     : (await 只读卡放行(me, { ...p, 已加入, 客户在公海: !!p.customer.pool }, org)) ? "只读卡" as const : "文字" as const;
-  const [候选, 在职, 联系人们, 角色们, 类别们, 放回过, 规则] = await Promise.all([
+  const [候选, 在职, 联系人们, 角色们, 类别们, 放回过, 规则, 概况] = await Promise.all([
     负责人候选(),
     prisma.user.findMany({ where: { active: true }, select: { id: true, name: true, email: true }, orderBy: { name: "asc" } }),
     能改 ? prisma.contact.findMany({ where: { customerId: p.customerId }, select: { id: true, name: true, position: true }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }] }) : [],
@@ -201,6 +221,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     // 历史负责人（企业版才显示）：放回过公海的人。单独查，不受上面节点变更只取 200 行的限
     !企业版() ? [] : prisma.projectNodeLog.findMany({ where: { projectId: p.id, kind: "pool-release" }, orderBy: { at: "desc" }, select: { fromOwnerId: true, userId: true, reason: true } }),
     生效组织规则(),
+    不取留痕 ? 留痕概况(p.id) : null,
   ]);
   const 类别名 = new Map(类别们.map((c) => [c.id, c.name]));
   // 10-26 验收 #13：线索转出来的项目记着是哪条线索来的。线索后来删了就只说「已删除」
@@ -228,8 +249,6 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 超时回收记在「系统」名下（timeout.ts 系统，QA #16），不是真成员
   // system 不是真账号，按「系统」显示（创建人那一格按 系统补建，见下面 creatorName），共用 人名显示
   const 叫 = (uid: string | null) => (uid ? 人名显示(uid, 名, { 不在: "已不在的成员" }) : null);
-  // 怎么进的公海：超时系统收的 / 办停用时放的（操作人是办的那位管理员，不是离职的人）/ 有人手动放回（QA #14）
-  const 认放回 = (reason: string | null): 放回方式 => (reason === 超时理由 ? "超时" : reason === 停用项目进公海理由 ? "停用" : "手动");
   // 企业版「非原负责人均可领取」：原负责人看得到领取按钮、灰着（pool-rules.ts）
   const 原负责人领不回 = 公海 && me.id === 上一任 && 拦原负责人();
 
@@ -237,7 +256,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
   const 字典 = 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null);
   // 最近一条留痕，超时自动转那行不算（同 lib/project/db.ts 补回收起点留痕，客户 11-19 第 14 题 B）
-  const 回收起点 = 超时起点(p.createdAt, p.logs.find((l) => !是超时自动转痕(l))?.at, p.customer.lastFollowAt);
+  const 回收起点 = 超时起点(p.createdAt, 概况 ? 概况.回收起点留痕 : p.logs.find((l) => !是超时自动转痕(l))?.at, p.customer.lastFollowAt);
   // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
   const 回收线 = 超时线(p, 规则.超时回收.开 ? await 超时成员线(规则) : null);
   const 回收日 = 超时回收日(规则, p, 回收起点, 字典, 回收线);
@@ -340,7 +359,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   // 线索验证面板的「判定依据」照组织规则里「线索验证」节点配的必填写（员工反馈 #7；和 有效沟通差 同一份配置）
   const 线索验证必填 = 线索验证 ? 节点必填(规则, 有效线索节点) : [];
   // 企业版项目画像、项目附件（P11）：画像和附件是客户那边的资料，公海里同事客户的项目没领之前不给（同 联系人附件）。
-  // 项目名单在中栏（@pane/projects/[id] → panes.tsx 项目名单），不在这页里读
+  // 项目名单在中栏（@pane/projects/(detail)/layout.tsx → roster-panes.tsx 项目名单），不在这页里读
   const 存的需求 = 读产品需求(p.productNeeds);
   const 画像: 项目画像 | null = !企业 || !露 ? null : {
     项们: await Promise.all(项目画像项.map(async (项) => {
@@ -354,7 +373,15 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
   };
   const 项目附件 = 企业 && 露 ? await 项目附件入口(p.id) : null;
   // 企业版沟通记录的截图、录音（F-跟进-07）：和沟通记录同一个口径（露客户才给）；传 = 记这条的本人或能改沟通的，删 = 能改沟通的（api/attachments/access.ts 认沟通）
-  const 沟通附件 = 企业 && 露 && p.followUps.length ? await 沟通附件们(prisma, p.followUps.map((f) => f.followUp.id)) : new Map<string, 附件[]>();
+  // 记在本项目客户名下的，或记在别的客户名下、那位客户我也看得到的才给（11-24 审查后改）：关联客户带进来的那几条，
+  // 附件接口 认沟通 用带限定的 followUp 查（FollowUp 跟客户走，lib/team-scope.ts），看不到那位客户就拒——
+  // 这里用同一把尺（看得到的客户：带限定的 customer 查），总管理这类看得到对方客户的照给，界面和接口一致。
+  // 给不了的那几条不带 附件 这一格（不是给空的）：界面就不出附件框和「加截图 / 录音」入口（ProjectDetail 里 f.附件 && …），不然传了也被拒
+  const 别的客户们 = 企业 && 露 ? [...new Set(p.followUps.map((f) => f.followUp.customerId).filter((c): c is string => !!c && c !== p.customerId))] : [];
+  const 看得到别的 = 别的客户们.length ? await 页面看得到的客户(别的客户们) : new Set<string>();
+  const 给附件 = (c: string | null) => 企业 && 露 && !!c && (c === p.customerId || 看得到别的.has(c));
+  const 带附件的 = new Set(p.followUps.filter((f) => 给附件(f.followUp.customerId)).map((f) => f.followUp.id));
+  const 沟通附件 = 带附件的.size ? await 沟通附件们(prisma, [...带附件的]) : new Map<string, 附件[]>();
   // 企业版回款（10-31，迁移 100）：和合同金额一样是项目自己的钱，都给看
   const 回款们 = 企业 ? await 列回款(p.id) : null;
   // 企业版关联客户 / 联系人（P17）：同画像，公海里同事客户的项目没领之前不给
@@ -382,7 +409,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
     带着范围层的回避子查询，再按 id 接回来」，和取的是哪一个项目无关——8.6 万客户库拷贝上每次 270–300 ms（销售、销售管理进客户详情的大头，11-22 切页卡顿调研）。
     logs 是同一个关系、同一个范围，取回不到上限条就是全部，直接用条数；到了上限才另数一句（只数这一个项目）
   */
-  const 留痕数 = p.logs.length < 留痕取几条 ? p.logs.length : await prisma.projectNodeLog.count({ where: { projectId: p.id } });
+  const 留痕数 = 概况 ? 概况.条数 : p.logs.length < 留痕取几条 ? p.logs.length : await prisma.projectNodeLog.count({ where: { projectId: p.id } });
   const 详情: 项目详情 = {
     收藏了: await 项目收藏了吗(me.id, id),
     id: p.id, name: p.name, remark: p.remark, amount: p.amount, currency: p.currency,
@@ -448,7 +475,7 @@ export async function 读项目详情(me: SessionUser, id: string): Promise<项�
         return {
           id: f.followUp.id, type: f.followUp.type, method: f.followUp.method, initiator: f.followUp.initiator, content: f.followUp.content, occurredAt: f.followUp.occurredAt.toISOString(), who: 叫(f.followUp.ownerId)!, node: f.node, 版本: f.followUp.updatedAt.toISOString(),
           ...(编 ? { code: 编.code, 提醒: 编.nextAt ? 时限标签(编.nextAt) : null } : {}),
-          ...(企业 ? { 附件: 沟通附件.get(f.followUp.id) ?? [], 我记的: f.followUp.ownerId === me.id, 接手前: f.followUp.ownerId !== p.ownerId } : {}),
+          ...(企业 ? { ...(带附件的.has(f.followUp.id) ? { 附件: 沟通附件.get(f.followUp.id) ?? [] } : {}), 我记的: f.followUp.ownerId === me.id, 接手前: f.followUp.ownerId !== p.ownerId } : {}),
           ...(本人可改 ? { 本人可改到: 本人可改到(f.followUp.createdAt).toISOString() } : {}),
           ...(跟着改下一步 ? { 下一步: { 文字: p.nextStepText ?? "", 时间: 编?.nextAt ? dayjs(编.nextAt).format("YYYY-MM-DD") : null } } : {}),
           ...(改过的.has(f.followUp.id) ? { 已修改: true } : {}),
