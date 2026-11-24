@@ -24,12 +24,13 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 只看某人键 } from "@/lib/enterprise/org-core";
-import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 以谁的身份, 忘掉企业版范围, 组织范围of, 条线只读话, 条线或市场只读话 } from "@/lib/enterprise/visibility";
+import { 条线范围of, 本线建的客户条件 } from "@/lib/enterprise/line-viewer";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
 import { 项目页去向 } from "@/app/(app)/projects/[id]/load";
 import { 看得到的范围SQL } from "@/lib/scope-sql";
-import { 限定条件, 只读客户 } from "@/lib/team-scope";
+import { 限定条件, 只读客户, 现在的条线建的客户, 只读话, 虚线只读挡 } from "@/lib/team-scope";
 import { 全局搜索 } from "@/app/(app)/global-search";
 import { 关键词分页 } from "@/app/(app)/customers/query";
 import { TOOLS } from "@/lib/agent/tools";
@@ -157,17 +158,78 @@ describe("不变式：数据层回的项目每一行都点得进详情（②）"
   });
 });
 
-describe("不变式：数据层回的客户每一位都进得了客户详情（P-看-18）", () => {
-  it("各角色 prisma.customer.findMany 回的每一位，客户详情那句 findUnique 都拿得到", async () => {
-    const 角色们 = [总管, 销管, 下属, 链外, 同事, 虚线上级, 虚线下属, 线总, 线内, 线读, 盯的人, 被盯, 渠运, 市管, 市管下级, 组合];
-    const 进不去: Record<string, string[]> = {};
+/** 详情 能看项目 认得的项目：全部没进回收站的项目（底层客户端，不过限定）逐个判 */
+async function 详情看得到的(谁: 人): Promise<string[]> {
+  const org = await 读组织();
+  const 全部 = await defaultClient.project.findMany({ where: { deletedAt: null }, select: { ...权限项目选, name: true } });
+  return 全部.filter((p) => 能看项目(谁, 带已加入(p), org)).map((p) => p.name).sort();
+}
+
+describe("反向不变式：详情点得进的项目，列表（数据层）一个不少——两边是同一个集合（P-看-18、P-看-19）", () => {
+  it("各角色：全部项目逐个跑 能看项目 = 以谁的身份 下 project.findMany", async () => {
+    // 部门市场销售自己建的、分给同事的（P-看-17）：列表有、详情进不去、点进去跳市场视角页（文件头的放宽）
+    const 跳的 = await 项目("市场部销售建的", 同事, 市场部销售);
+    忘掉企业版范围();
+    const 角色们 = [总管, 销管, 下属, 链外, 同事, 虚线上级, 虚线下属, 线总, 线内, 线读, 盯的人, 被盯, 渠运, 市管, 市管下级, 市场部销售, 渠运兼销售, 组合, 组合下级];
+    const 列表: Record<string, string[]> = {};
+    const 详情: Record<string, string[]> = {};
     for (const 谁 of 角色们) {
-      const 列表 = await 客户编号(谁);
-      const 不中: string[] = [];
-      for (const id of 列表) if (!(await 以谁的身份(谁.id, () => prisma.customer.findUnique({ where: { id }, select: { id: true } })))) 不中.push(id);
-      进不去[谁.名] = 不中;
+      详情[谁.名] = await 详情看得到的(谁);
+      列表[谁.名] = await 项目名(谁);
     }
-    expect(进不去).toEqual(Object.fromEntries(角色们.map((x) => [x.名, []])));
+    // 不是空比空：条线总管理本线建的（P-看-18）、只看某人自己进组的（P-看-19）详情都认
+    expect(详情[线总.名]).toContain("线内建的");
+    expect(详情[盯的人.名]).toContain("盯的人进组的");
+    // 部门市场销售：列表比详情多的只许是落到跳转的那一行，去掉再比
+    const 多的 = 列表[市场部销售.名].filter((n) => !详情[市场部销售.名].includes(n));
+    expect(多的).toEqual(["市场部销售建的"]);
+    expect((await 去向(市场部销售, 跳的.id)).种).toBe("转向");
+    列表[市场部销售.名] = 列表[市场部销售.名].filter((n) => !多的.includes(n));
+    expect(列表).toEqual(详情);
+  });
+});
+
+describe("条线总管理：本线建的客户，名单和过上限退回的子查询挑出同一批（审查 11-24）", () => {
+  /** 按 line-viewer 口径直接算（不过限定层）：负责人在 读 里 + 公海 + 名下有本线建的、没进回收站的项目；客户不在回收站 */
+  async function 口径(谁: 人): Promise<string[]> {
+    const org = await 读组织();
+    const 读 = 组织范围of(org, null, 谁.id)!.读!;
+    const 行 = await defaultClient.customer.findMany({
+      where: { deletedAt: null, OR: [{ salesOwnerId: { in: 读 } }, { pool: { isNot: null } }, 本线建的客户条件(条线范围of(org, 谁.id)!)] },
+      select: { id: true },
+    });
+    return 行.map((c) => c.id).sort();
+  }
+  const 排 = (xs: string[]) => [...xs].sort();
+  it("名单（≤300）：整批 = 口径，列表、详情、裸 SQL 快路都带上", async () => {
+    const 名单 = await 以谁的身份(线总.id, () => 现在的条线建的客户(defaultClient));
+    expect(名单).toEqual([线内建的.customerId]);
+    expect(排(await 客户编号(线总))).toEqual(await 口径(线总));
+    expect(await 以谁的身份(线总.id, () => prisma.customer.findUnique({ where: { id: 线内建的.customerId }, select: { id: true } }))).not.toBeNull();
+    // 裸 SQL 名下那一路 = 不在公海的；夹具里没有公海客户，整批同口径
+    expect(排((await 裸SQL客户(线总))!)).toEqual(await 口径(线总));
+  });
+
+  it("过上限（>300）：退回子查询、裸 SQL 快路改走 Prisma；整批 = 口径，不含项目进了回收站的；只读改不到", async () => {
+    const 多的: string[] = [];
+    for (let i = 0; i < 305; i++) 多的.push(`lnb_${String(i).padStart(3, "0")}`);
+    await defaultClient.customer.createMany({ data: 多的.map((id, i) => ({ id, name: `线建客户${i}`, phone: `1880000${String(i).padStart(4, "0")}`, salesOwnerId: 同事.id })) });
+    await defaultClient.project.createMany({ data: 多的.map((customerId, i) => ({ id: `lnbp_${i}`, name: `线建项目${i}`, customerId, ownerId: 同事.id, creatorId: 线内.id })) });
+    await defaultClient.project.update({ where: { id: "lnbp_1" }, data: { deletedAt: new Date() } });
+    忘掉企业版范围();
+    expect(await 以谁的身份(线总.id, () => 现在的条线建的客户(defaultClient))).toBeNull();
+    expect(await 裸SQL客户(线总)).toBeNull();
+    const 名 = "线建客户300";
+    expect(await 以(线总, () => 关键词分页({ keyword: 名 }, 1, 50))).toBeNull();
+    const 列表 = 排(await 客户编号(线总));
+    expect(列表).toEqual(await 口径(线总));
+    expect(列表).toEqual(expect.arrayContaining(["lnb_000", "lnb_002", 线内建的.customerId]));
+    expect(列表).not.toContain("lnb_001");
+    expect(await 搜客户(线总, 名)).toEqual(["lnb_300"]);
+    expect(await 以谁的身份(线总.id, () => prisma.customer.findUnique({ where: { id: "lnb_000" }, select: { id: true } }))).not.toBeNull();
+    expect((await 以谁的身份(线总.id, () => prisma.customer.updateMany({ where: { id: { in: ["lnb_000", "lnb_002"] } }, data: { remark: "改" } }))).count).toBe(0);
+    // 线外的人照旧拿不到
+    expect(await 客户编号(销管)).not.toContain("lnb_002");
   });
 });
 
@@ -191,6 +253,14 @@ describe("条线总管理：列表补「创建人在本线」，和详情一致�
     expect(改.count).toBe(0);
     await expect(以谁的身份(线总.id, () => prisma.customer.update({ where: { id: 线内建的.customerId }, data: { remark: "改" } }))).rejects.toThrow(/只能看/);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 线内建的.customerId }, select: { remark: true } })).remark).not.toBe("改");
+    // 挡下那句说本线，不说「虚线下属」（审查 11-24）；兼市场管理的说本线或市场；多选那句同一个原因
+    expect(await 以谁的身份(线总.id, () => 只读话(defaultClient))).toBe(条线只读话);
+    expect(await 以谁的身份(组合.id, () => 只读话(defaultClient))).toBe(条线或市场只读话);
+    const 另一位 = await 项目("线内建的二", 同事, 线内);
+    忘掉企业版范围();
+    expect(await 以谁的身份(线总.id, () => 虚线只读挡(defaultClient, [线内建的.customerId, 另一位.customerId]))).toBe(
+      "选中的有 2 位是本线同事负责的客户，或本线同事建的项目挂着的客户：只能看，不能改、不能转、不能删。去掉这几位再试",
+    );
     // 项目照旧改不到（别人负责的只看，P-角色-01）
     const 改项目 = await 以谁的身份(线总.id, () => prisma.project.updateMany({ where: { id: 线内建的.id }, data: { name: "改" } }));
     expect(改项目.count).toBe(0);
