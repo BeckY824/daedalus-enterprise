@@ -22,6 +22,8 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
   stub(/^\.\.\/actions$/, "export const saveCustomerNumbers=async()=>({ok:true});export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const patchCustomer=async(...a)=>{(window.__改??=[]).push(a);return{ok:true}};export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
+  // 历史变更入口（11-24）：真 HistoryChanges 挂在标签行末尾，动作只在点开时才调，这里空跑
+  stub(/^\.\/history-actions$/, 补全动作桩("src/app/(app)/customers/[id]/history-actions.ts", "", "async()=>({ok:false,error:''})"));
   stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
@@ -36,7 +38,7 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import Record from '@/app/(app)/customers/[id]/RecordView';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
+    import Record from '@/app/(app)/customers/[id]/RecordView';import HistoryChanges from '@/app/(app)/customers/[id]/HistoryChanges';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     const root=createRoot(document.getElementById('root'));
     const 长='超长联系人名字'.repeat(6);
     const contacts=[
@@ -54,15 +56,16 @@ beforeAll(async () => {
         {id:'f1',type:'EMAIL',title:'客户本身的老跟进',content:'老记录',status:'已完成',duration:null,occurredAt:'2026-10-01T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-01T02:00:00.000Z',项目:null},
       ],
     };
-    window.__render=(企业,项目模式,加)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',...(加?.客户改??{})}} contacts={contacts} contracts={contracts} opportunities={[]} tasks={[]} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} {...(企业?{项目们:[],旺旺们:['ww_buyer']}:{})} {...(项目模式?p14:{})} {...(加??{})}/></BusinessProvider></App></ConfigProvider>);
-  `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
+    window.__render=(企业,项目模式,加)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',...(加?.客户改??{})}} contacts={contacts} contracts={contracts} opportunities={[]} tasks={[]} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} {...(企业?{项目们:[],旺旺们:['ww_buyer']}:{})} {...(项目模式?p14:{})} {...(加??{})} 历史变更={加?.历史?<HistoryChanges customerId='a' 摘要={加.历史} 当前项目={null} 客户名='客户A'/>:null}/></BusinessProvider></App></ConfigProvider>);
+  `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, loader: { ".css": "empty" }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 async function open(企业: boolean, width = 1366, 项目模式 = false, 加?: Record<string, unknown>) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://left.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
-  await page.goto("http://left.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+  await page.goto("http://left.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+  await page.addStyleTag({ path: path.resolve("src/app/(app)/customers/[id]/history-changes.css") }); await page.addScriptTag({ content: bundle });
   await page.evaluate(([e, p, a]) => (window as unknown as { __render: (x: boolean, y: boolean, z?: unknown) => void }).__render(e, p, a), [企业, 项目模式, 加] as const);
   await page.getByText("联系人", { exact: false }).first().waitFor();
   return page;
@@ -397,19 +400,44 @@ it.each([1024, 375])("客户页头 %ipx：超长公司名 + 两颗按钮，不�
   } finally { await page.close(); }
 });
 
-it("客户状态留痕（A1，11-12 用户定）：没有进程变更卡时放左栏客户资料下面；有进程变更卡时左栏不摆；三态关着都不摆", async () => {
-  const 留痕 = [{ at: "2026-11-10T02:00:00.000Z", 谁: "系统", 事: "正常跟进 → 沉睡待定（满 90 天没动静，进入沉睡待定）" }];
-  for (const [加, 有] of [[{ 三态留痕: 留痕, 留痕放左栏: true }, true], [{ 三态留痕: 留痕, 留痕放左栏: false }, false], [{ 三态留痕: null, 留痕放左栏: true }, false]] as const) {
-    const page = await open(true, 1366, true, 加);
-    try {
-      const 左 = page.locator("[data-testid=tri-log-left]");
-      expect(await 左.count(), JSON.stringify(加)).toBe(有 ? 1 : 0);
-      if (有) {
-        await 左.getByRole("button", { name: /客户状态/ }).click();
-        await 左.getByText("正常跟进 → 沉睡待定（满 90 天没动静，进入沉睡待定）").waitFor();
-      }
-    } finally { await page.close(); }
-  }
+/* 历史变更（11-24）：原来项目区右栏「项目进程变更」卡、没项目时左栏的客户状态留痕都挪进标题下那一行末尾的「历史变更」小方框。
+   量真 RecordView 的标签行（状态胶囊 · 客户来源 · 公海标）：1280 / 1366 同一行；390 放不下就整颗换到下一行，不撑破、不横滚；左栏不再摆留痕 */
+const 历史摘要 = { 客户: 37, 项目: 152, 项目数: 3, 最近: new Date(Date.now() - 2 * 3600_000).toISOString(), 状态: true };
+it.each([1280, 1366, 390])("历史变更入口 %ipx：在标签行末尾，和前面的标签同一行或整颗换行，不撑破、不横滚；左栏没有状态留痕", async (w) => {
+  const page = await open(true, w, true, { 历史: 历史摘要, 客户改: { channelName: "超长的客户来源渠道名称".repeat(3) } });
+  try {
+    const 钮 = page.getByTestId("history-entry");
+    await 钮.waitFor();
+    const r = await 钮.evaluate((b) => {
+      const 行 = b.closest(".rec-tags")!;
+      const 框 = b.getBoundingClientRect(), 行框 = 行.getBoundingClientRect();
+      const 前 = [...行.children].filter((x) => x !== b && x.getBoundingClientRect().width > 0).map((x) => x.getBoundingClientRect());
+      const 末 = 前[前.length - 1];
+      return {
+        在行里: b.parentElement === 行 && 行.lastElementChild === b,
+        高: Math.round(框.height),
+        同行: !!末 && Math.abs((末.top + 末.bottom) / 2 - (框.top + 框.bottom) / 2) <= 2,
+        右边不出行: 框.right <= 行框.right + 1,
+        字放得下: b.scrollWidth <= b.clientWidth + 1,
+        横滚: document.documentElement.scrollWidth > innerWidth,
+        文字: (b.textContent ?? "").replace(/\s+/g, " ").trim(),
+      };
+    });
+    expect(r.在行里).toBe(true);
+    expect(r.右边不出行).toBe(true);
+    expect(r.字放得下).toBe(true);
+    expect(r.横滚).toBe(false);
+    expect(r.文字).toMatch(/^历史变更\s*189\s*· /);
+    // 电脑同一行；手机这一行本来就放不下（超长来源一行省略）时整颗落到下一行，不和前面挤成半截
+    if (w >= 1280) expect(r.同行, `宽 ${w}`).toBe(true);
+    expect(r.高).toBe(w < 768 ? 32 : 26);
+    expect(await page.locator("[data-testid=tri-log-left], .tri-log").count()).toBe(0);
+    // 留图给人看（HIST_SHOT_DIR 指个目录才存）
+    if (process.env.HIST_SHOT_DIR) {
+      const 框 = (await page.locator(".rec-tags").boundingBox())!;
+      await page.screenshot({ path: path.join(process.env.HIST_SHOT_DIR, `历史变更-入口-${w}.png`), clip: { x: 0, y: Math.max(0, 框.y - 80), width: w, height: 框.height + 110 } });
+    }
+  } finally { await page.close(); }
 }, 60_000);
 
 /* 11-12 用户：左栏联系人卡头去掉「全部 ›」，换「＋」新增联系人。D3（方案 A，用户 11-21 选）：每人一组行列表，先摊开前 3 位，其余收在「展开其余 N 位」后面；

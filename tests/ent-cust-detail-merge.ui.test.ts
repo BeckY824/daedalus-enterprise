@@ -947,7 +947,7 @@ it("[D2 · M0-a K10] 1024 / 1280 / 1366：中栏、右栏各自滚——右栏�
   for (const w of [1024, 1280, 1366]) {
     const { page, errors } = await 开(w, { 公司名: 超长公司名 }, 768);
     try {
-      // 右栏撑高（进程变更、关联卡都展开时那样）
+      // 右栏撑高（关联卡都展开时那样）
       await page.locator(".cd-side").evaluate(el => { const d = document.createElement("div"); d.style.height = "2400px"; d.className = "撑高"; el.append(d); });
       const 量 = () => page.evaluate(() => {
         const g = (s: string) => { const e = document.querySelector(s) as HTMLElement; const r = e.getBoundingClientRect(); return { 顶: Math.round(r.top), 高: Math.round(r.height), 滚: Math.round(e.scrollTop), 溢: e.scrollHeight - e.clientHeight, 底留: parseFloat(getComputedStyle(e).paddingBottom) }; };

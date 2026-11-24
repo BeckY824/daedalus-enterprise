@@ -12,7 +12,10 @@ import { requireUser } from "@/lib/auth";
 import CustomerDetail from "./CustomerDetail";
 import RestrictedCustomerDetail from "./RestrictedCustomerDetail";
 import { 读受限客户详情 } from "./restricted";
-import { 读项目区 } from "./project-zone";
+import { 读项目区, 客户页项目列表 } from "./project-zone";
+import { 历史变更摘要 } from "./history-data";
+import HistoryChanges from "./HistoryChanges";
+import { 客户编号文字 } from "@/lib/customer-no";
 import { 项目详情字典们 } from "../../projects/[id]/load";
 import SameNumberBanner from "../../projects/[id]/SameNumberBanner";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "./follow-history-query";
@@ -48,7 +51,6 @@ import { 企业版字典, 本套位置 } from "@/lib/project/nodes";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 字典of } from "@/lib/project/stage-dict";
 import { 客户参与的项目 } from "@/lib/project/relate";
-import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { 客户页沟通两样 } from "@/lib/enterprise/customer-follow-feed";
 import { 抬头节点们, 只留看得见的项目名 } from "@/lib/enterprise/customer-title";
 import { 页面看得到的客户 } from "@/lib/project/visible-customers";
@@ -133,22 +135,19 @@ export default async function CustomerDetailPage({
   // 企业版只用项目：商机一节换成这位名下的项目（10-26）；库里存着旧节点名 / 旧结局的按企业版的新名显示（10-31 改名）
   // 先摆成 promise：项目区（读项目区）挂在它后面和下面的大 Promise.all 并行（第 2 批审查 #4）
   const 项目们P = 只项目
-    ? 回避豁免(me).then((免) => (免 ? [] : 我回避的公海项目(prisma, me.id))).then((回避) => prisma.project.findMany({
-        // 公海里我是历史负责人的项目不列（C-01，lib/project/pool-owner.ts；总管理 / 管理员照列，回避豁免）
-        where: { customerId: customer.id, ...(回避.length ? { id: { notIn: 回避 } } : {}) },
-        orderBy: { updatedAt: "desc" },
-        select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true, updatedAt: true },
-      })).then((ps) => ps.map(({ updatedAt: _u, ...p }) => 本套位置(p, 企业版字典)))
+    // 公海里我是历史负责人的项目不列（C-01）：和「历史变更」弹窗的项目块同一个函数（project-zone.ts 客户页项目列表）
+    ? 客户页项目列表(me, customer.id).then((ps) => ps.map(({ updatedAt: _u, ...p }) => 本套位置(p, 企业版字典)))
     : null;
   // 客户详情合并（11-12 第 2 批）：企业版项目模式下右边是项目区，?project=<id> 选页签；按项目详情页同一个取数读当前项目
-  const 项目区P = 项目们P ? 项目们P.then((ps) => 读项目区(me, customer.id, ps, sp.project ?? null)) : Promise.resolve(null);
+  // 右栏不摆「项目进程变更」卡（11-24 挪进「历史变更」弹窗）：当前项目不取那 200 条节点记录
+  const 项目区P = 项目们P ? 项目们P.then((ps) => 读项目区(me, customer.id, ps, sp.project ?? null, { 不取留痕: true })) : Promise.resolve(null);
   const aiP = llmEnabled();
   const [
     号, users, channels, 挂来的, 另挂, 只项目几样,
     sourceLead, aiEnabled, 已收藏, 换负责人记录, 旺旺们, 项目们, 参与项目们, 只读, 客户状态选项,
     联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数,
     可改沟通, 可删沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义, 项目区,
-    三态, 抬头节点, 沟通方式们, 发起主体们, 上次背调,
+    三态, 抬头节点, 沟通方式们, 发起主体们, 上次背调, 历史摘要,
   ] = await Promise.all([
     // 演示区是公开的，同一份数据所有访客共用：号码一律打码。自己部署的实例不受影响——销售要照着这个号打电话。
     号码脱敏器(),
@@ -204,12 +203,11 @@ export default async function CustomerDetailPage({
     企 ? 页面可选项("custAttr") : undefined,
     企 ? 页面客户释义() : undefined,
     项目区P,
-    // 客户三态（P-界面-19，C10 / C13 / C11）：关着不查库；开着、活跃的客户只多 3 条（客户钟、状态留痕、冷项目一句 SQL）。
-    // 冷项目只在客户活跃时标（M-公海-22「客户还活跃」），所以接在状态后面
+    // 客户三态（P-界面-19，C10 / C11）：关着不查库；开着、活跃的客户只多冷项目一句 SQL（客户钟跟着客户行读）。
+    // 状态留痕（C13）首屏不读，11-24 挪进「历史变更」弹窗点开才取。冷项目只在客户活跃时标（M-公海-22「客户还活跃」），所以接在状态后面
     三态开
-      ? Promise.all([负责人候选().then((们) => 读客户三态(me, customer, new Map(们.map((u) => [u.id, u.name])))), 项目区P]).then(async ([t, z]) => ({
+      ? Promise.all([读客户三态(me, customer), 项目区P]).then(async ([t, z]) => ({
           条: t?.条 ?? null,
-          留痕: t?.留痕 ?? null,
           冷: t?.活跃 && z ? await 读冷项目(z.页签们.map((x) => x.id)) : ({} as Record<string, number>),
         }))
       : null,
@@ -221,6 +219,8 @@ export default async function CustomerDetailPage({
     企 ? 页面可选项("followMethod").then((们) => (们.length ? 们 : null)) : undefined,
     企 ? 页面可选项("followInitiator").then((们) => (们.length ? 们 : null)) : undefined,
     aiP.then((开) => (开 ? 读最近背调(customer.id) : undefined)),
+    // 客户名下那一行的「历史变更」小方框（11-24）：只数条数、取最近时刻（一句 SQL），明细点开才取（history-actions.ts）；项目按页签那几个算
+    企 ? 项目区P.then((z) => 历史变更摘要(customer.id, z?.页签们.map((t) => t.id) ?? [])) : null,
   ]);
   const 冷项目 = 三态?.冷 ?? {};
   if (项目区) 项目区.页签们 = 项目区.页签们.map((t) => (冷项目[t.id] != null ? { ...t, 冷天数: 冷项目[t.id] } : t));
@@ -263,9 +263,9 @@ export default async function CustomerDetailPage({
       项目数据={项目区}
       抬头节点={抬头节点}
       三态条={三态?.条 ?? null}
-      三态留痕={三态?.留痕 ?? null}
       // 同号再次录入的醒目条：项目详情顶上那条，客户详情也摆（11-03 B6-9）；只看这页列出来的项目（已滤掉我回避的公海项目）
       醒目条={只项目 && 项目们?.length ? <SameNumberBanner projectId={项目们.map((p) => p.id)} /> : null}
+      历史变更={历史摘要 ? <HistoryChanges customerId={customer.id} 摘要={历史摘要} 当前项目={项目区?.当前?.p.id ?? null} 客户名={[customer.name.trim() || customer.shortName, 客户编号文字(customer.customerNo)].filter(Boolean).join(" · ")} /> : null}
       sourceLead={sourceLead}
       users={users}
       channels={channels}

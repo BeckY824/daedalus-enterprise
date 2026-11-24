@@ -134,7 +134,8 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
             待办: 待办卡,
             开建项目: null,
             全只读: false,
-            客户状态留痕: null,
+            // 受限详情没有「历史变更」入口（客户本身看不到）：项目进程变更卡照摆
+            进程变更卡: true,
             提醒: null,
             无全部沟通: true,
             // 这是他在这位客户下最后一个项目：转走 / 退回公海 / 删了以后客户页就 404 了，回客户列表
