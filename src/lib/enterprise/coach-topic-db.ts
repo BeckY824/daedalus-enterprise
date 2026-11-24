@@ -73,13 +73,26 @@ export type 项目主题们 = {
   录音?: { 草稿们: 录音给界面[]; 可录: boolean };
 };
 
-/** 人的叫法：主业务角色（教练写「销售教练」，兼了总管理的写总管理）；发主题时按发起身份写 */
+/** 人的叫法：主业务角色（教练写「销售教练」，兼了总管理的写总管理）。署名不直接用它，见 署名身份 */
 const 角色叫法 = (org: 组织, id: string): string => {
   const r = org.成员.get(id)?.bizRole as 业务角色 | null | undefined;
   return r ? 角色名[r] : "—";
 };
 
-type 主题库行 = { id: string; projectId: string; node: string; title: string; body: string; authorId: string; status: string; closedById: string | null; closedAt: Date | null; deletedAt: Date | null; createdAt: Date; replies: { id: string; userId: string; body: string; createdAt: Date }[] };
+const 发起身份们: ReadonlySet<string> = new Set<发起身份>(["销售教练", "系统管理员", "条线总管理", "实线上级", "虚线上级"]);
+
+/**
+ * 主题署名的身份（11-23 用户：写点评框、发出后的沟通卡、复盘列表三处都按发起身份）：
+ * 存了发起身份（authorRole，迁移 167 起发起时写）→ 用存的；老主题没存 → 按现在的组织照 发起身份of 推断（填写人现在还能对这个项目发主题时的身份）；
+ * 推不出（人停用了、项目转给了他本人、关系变了）→ 退回主业务角色
+ */
+export function 署名身份(t: { authorId: string; authorRole?: string | null }, 作者账号: string | null | undefined, 判: 主题项目, org: 组织 | null): string {
+  if (t.authorRole && 发起身份们.has(t.authorRole)) return t.authorRole;
+  if (!org) return "—";
+  return 发起身份of({ id: t.authorId, role: 作者账号 ?? null }, 判, org) ?? 角色叫法(org, t.authorId);
+}
+
+type 主题库行 = { id: string; projectId: string; node: string; title: string; body: string; authorId: string; authorRole: string | null; status: string; closedById: string | null; closedAt: Date | null; deletedAt: Date | null; createdAt: Date; replies: { id: string; userId: string; body: string; createdAt: Date }[] };
 
 /** 库里的行 → 界面（只给看得到的；先过滤再调） */
 async function 给界面(me: 谁, 行们: 主题库行[], p: 项目行, 判: 主题项目, org: 组织 | null): Promise<{ 们: 主题给界面[]; 叫: (id: string | null | undefined) => string }> {
@@ -89,7 +102,9 @@ async function 给界面(me: 谁, 行们: 主题库行[], p: 项目行, 判: 主
     if (t.closedById) 人id.add(t.closedById);
     for (const r of t.replies) 人id.add(r.userId);
   }
-  const 名 = new Map((await defaultClient.user.findMany({ where: { id: { in: [...人id].filter(Boolean) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  const 账号们 = await defaultClient.user.findMany({ where: { id: { in: [...人id].filter(Boolean) } }, select: { id: true, name: true, role: true } });
+  const 名 = new Map(账号们.map((u) => [u.id, u.name]));
+  const 账号 = new Map(账号们.map((u) => [u.id, u.role]));
   const 叫 = (id: string | null | undefined) => (id ? 名.get(id) ?? "已不在的成员" : "—");
   const 能删 = 能删主题(me, org);
   // 录音点评发出的主题：录音行的 topicId 指回来（开关关着不查，页面和原来一样）
@@ -105,7 +120,7 @@ async function 给界面(me: 谁, 行们: 主题库行[], p: 项目行, 判: 主
     // 录音点评发出的主题：标题、正文都按看的人打码（销售教练看到号码打码，PR5 审查：标题也要）
     id: t.id, node: t.node, title: 录 ? 给人看的文字(t.title, me, org) ?? "" : t.title, body: 录 ? 给人看的文字(t.body, me, org) ?? "" : t.body, status: t.status as 主题状态,
     createdAt: t.createdAt.toISOString(), closedAt: t.closedAt?.toISOString() ?? null,
-    作者: { id: t.authorId, name: 叫(t.authorId), 身份: org ? 角色叫法(org, t.authorId) : "—" },
+    作者: { id: t.authorId, name: 叫(t.authorId), 身份: 署名身份(t, 账号.get(t.authorId), 判, org) },
     关的人: t.closedById ? 叫(t.closedById) : null,
     回复们: t.replies.map((r) => ({ id: r.id, name: 叫(r.userId), body: r.body, createdAt: r.createdAt.toISOString(), 是负责人: r.userId === p.ownerId })),
     能回: 能回主题(me, t, 判, org), 能关: 能关主题(me, t, 判, org), 能删,
@@ -209,7 +224,7 @@ async function 发起(me: 人, projectId: string, 输入: { title?: unknown; bod
   let t: { id: string };
   try {
     t = await 主题写(() => prisma.$transaction(async (tx) => {
-      const 新 = await tx.entCoachTopic.create({ data: { projectId: p.id, node: p.node, title, body, authorId: me.id }, select: { id: true } });
+      const 新 = await tx.entCoachTopic.create({ data: { projectId: p.id, node: p.node, title, body, authorId: me.id, authorRole: 身份 }, select: { id: true } });
       if (录音id) {
         const 改 = await tx.entCoachRecording.updateMany({
           // 录音版本（#428 审查）：只在库里还是还原时读到的那一版才发，不然整个事务回滚（主题不建）
@@ -361,14 +376,16 @@ export async function 复盘主题of(
     },
     orderBy: [{ createdAt: "desc" }, { id: "asc" }],
     take: 复盘主题上限,
-    select: { id: true, node: true, title: true, status: true, authorId: true, createdAt: true, deletedAt: true, project: { select: 项目选 }, _count: { select: { replies: true } } },
+    select: { id: true, node: true, title: true, status: true, authorId: true, authorRole: true, createdAt: true, deletedAt: true, project: { select: 项目选 }, _count: { select: { replies: true } } },
   });
   const org = await 读组织();
   const 看得到 = 行们.filter((t) => 能看主题(me, t, 判项目(t.project as 项目行), org));
   const 总数 = 看得到.length;
   const 页 = 夹页(q.页 ?? 1, 总数, 每页);
   const 这页 = 看得到.slice((页 - 1) * 每页, 页 * 每页);
-  const 名 = new Map((await defaultClient.user.findMany({ where: { id: { in: [...new Set(这页.map((t) => t.authorId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  const 账号们 = await defaultClient.user.findMany({ where: { id: { in: [...new Set(这页.map((t) => t.authorId))] } }, select: { id: true, name: true, role: true } });
+  const 名 = new Map(账号们.map((u) => [u.id, u.name]));
+  const 账号 = new Map(账号们.map((u) => [u.id, u.role]));
   // 录音点评发出的主题：销售教练看到的标题号码打码（PR5 审查，同沟通卡）
   const 录音的 = 这页.length && (await 录音点评开着())
     ? new Set((await defaultClient.entCoachRecording.findMany({ where: { topicId: { in: 这页.map((t) => t.id) }, status: "已发出" }, select: { topicId: true } })).map((r) => r.topicId))
@@ -378,7 +395,7 @@ export async function 复盘主题of(
     页,
     行: 这页.map((t) => ({
       id: t.id, 时间: t.createdAt.toISOString(), projectId: t.project.id, 项目: t.project.name, 节点: t.node || "—",
-      状态: t.status as 主题状态筛, 标题: 录音的.has(t.id) ? 给人看的文字(t.title, me, org) ?? "" : t.title, 发起人: 名.get(t.authorId) ?? "已不在的成员", 身份: 角色叫法(org, t.authorId), 回复数: t._count.replies,
+      状态: t.status as 主题状态筛, 标题: 录音的.has(t.id) ? 给人看的文字(t.title, me, org) ?? "" : t.title, 发起人: 名.get(t.authorId) ?? "已不在的成员", 身份: 署名身份(t, 账号.get(t.authorId), 判项目(t.project as 项目行), org), 回复数: t._count.replies,
     })),
   };
 }

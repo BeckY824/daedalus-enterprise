@@ -550,6 +550,7 @@ const 派生: Record<string, Record<string, string>> = {
   // 企业版教练主题（2026-11-17，迁移 144）：lib/enterprise/coach-topic-db.ts 系统写
   EntCoachTopic: {
     projectId: "发在哪个项目，发起时定", node: "发起那一刻项目在哪个节点，系统写", authorId: "填写人，当前登录账号（不能代别人发）",
+    authorRole: "发起身份（销售教练 / 实线上级……），发起那一刻系统写，署名按它",
     status: "待回复 / 已回复 / 已关闭：负责人回复、发起人追问、关闭、项目进公海时系统改", closedById: "谁关的，当前登录账号；进公海自动关的留空",
     closedAt: "关闭的时刻，系统写", deletedAt: "系统管理员删除时系统写（只打记号）",
   },

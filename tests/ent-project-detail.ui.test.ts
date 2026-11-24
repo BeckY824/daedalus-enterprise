@@ -1853,7 +1853,7 @@ describe("F-042：项目方案、合同附件分两格各带提示；点黄框�
   const 方案提示 = "节点要求的方案放这里", 合同提示 = "放合同、补充协议；方案放上一格";
   const 进视口 = (page: import("playwright").Page, sel: string) => page.evaluate((sel) => { const r = document.querySelector(sel)!.getBoundingClientRect(); return r.top >= 0 && r.bottom <= window.innerHeight; }, sel);
 
-  it.each([["now", 1366], ["now", 390], ["ledger", 1280]] as const)("%s %ipx：两格各自一个框、小标题下一句提示（一行），方案在上；点「项目方案」「合同附件」各落到自己那一格亮一圈，不开完成节点框", async (皮, w) => {
+  it.each([["now", 1366], ["now", 390], ["ledger", 1280]] as const)("%s %ipx：两格和别的格同一种写法（不单独框）、小标题下一句提示（一行），方案在上；点「项目方案」「合同附件」各落到自己那一格亮一圈，不开完成节点框", async (皮, w) => {
     const { page, errors } = await open(true, w);
     try {
       await page.route("http://proj.test/api/attachments**", r => r.fulfill({ contentType: "application/json", body: JSON.stringify({ 附件: [] }) }));
@@ -1862,9 +1862,13 @@ describe("F-042：项目方案、合同附件分两格各带提示；点黄框�
       const 块 = page.getByTestId("project-attachments");
       await 块.waitFor();
       const 方案格 = 块.locator("[data-att-cell='方案']"), 合同格 = 块.locator("[data-att-cell='合同']");
-      // 两格单独框起来，其余格照旧
-      expect(await 块.locator("section.proj-att-sec.is-box").evaluateAll(xs => xs.map(x => x.getAttribute("aria-label")))).toEqual(["项目方案", "合同附件"]);
-      expect(await 方案格.evaluate(e => getComputedStyle(e).borderTopStyle)).toBe("solid");
+      // 11-23：两格不再单独框（卡里套卡），和下面的格同一种写法——没有四边框、没有圆角、左右不缩进，格与格之间同一条细线
+      const 格样 = await 块.locator("section.proj-att-sec").evaluateAll(xs => xs.map(x => { const s = getComputedStyle(x); return { 名: x.getAttribute("aria-label"), 框: [s.borderLeftStyle, s.borderRightStyle, s.borderBottomStyle], 圆角: s.borderTopLeftRadius, 左: s.paddingLeft, 顶线: s.borderTopStyle === "none" ? "" : `${s.borderTopWidth} ${s.borderTopColor}` }; }));
+      expect(格样.map(x => x.名)).toEqual(["项目方案", "合同附件", "验收报告", "其它附件", "沟通附件"]);
+      for (const x of 格样) expect([x.框, x.圆角, x.左], x.名!).toEqual([["none", "none", "none"], "0px", "0px"]);
+      expect(格样[0].顶线).toBe("");
+      expect(new Set(格样.slice(1).map(x => x.顶线)).size, JSON.stringify(格样)).toBe(1);
+      expect(格样[1].顶线).not.toBe("");
       expect(await 方案格.locator(".proj-att-tip").innerText()).toBe(方案提示);
       expect(await 合同格.locator(".proj-att-tip").innerText()).toBe(合同提示);
       expect(await 块.locator(".proj-att-tip").count()).toBe(2);

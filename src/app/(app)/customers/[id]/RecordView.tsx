@@ -124,14 +124,16 @@ type Entry =
 
 /** 负责人下拉的选项：现任不在候选里（管理员、已停用）时补进去，标上「（不在候选里）」，别显示成一串 id */
 /** 联系方式那一行的叫法：字典里有就用字典的名字；自定义种类存成 custom:<叫法>，停用了也照样显示 */
-/** 企业版联系人卡上的「号码保护：已开启 / 已关闭」（10-31）：只展示，不能点；为什么开 / 关鼠标停上去看 */
+/** 企业版联系人卡上的号码保护（10-31）：只展示，不能点；为什么开 / 关鼠标停上去看。
+ *  11-24 起单独一行（字段名「号码保护」+ 值「已开启 / 已关闭」），标签里只写状态：原来「号码保护：已开启」跟在号码后面、
+ *  放不下挪到值那一列下一行，1280 / 1366 卡宽 232、值那一列约 120，整枚标签 121 宽（Linux 字体更宽）伸出卡、收内边距打省略号也只剩「已开…」 */
 function 号码保护标签({ c, 客户 }: { c: ContactRow; 客户: Parameters<typeof 号码保护of>[1] }) {
   const { 状态, 原因 } = 号码保护of(c, 客户);
-  // 已开启照旧 color="green"；设计语言 D3 · M4-b（D10）加锁、摆在号码后面，
+  // 已开启照旧 color="green"；设计语言 D3 · M4-b（D10）加锁，
   // 绿压成灰底由 globals.css 里的 .rec-contact-guard.ant-tag-green 管（绿只给「完成」）
   return (
     <Tag className="rec-contact-guard" color={状态 === "已开启" ? "green" : undefined} icon={状态 === "已开启" ? <LockOutlined /> : <UnlockOutlined />} title={原因} style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
-      号码保护：{状态}
+      {状态}
     </Tag>
   );
 }
@@ -907,17 +909,22 @@ export default function RecordView({
       </div>
     );
   };
-  /** 企业版联系人一组的行：职务、本项目、各号码（号码保护跟在第一个号码后面）、性别生日爱好地址、名片、相册；挂靠那几行由 ContactLinks 接在后面 */
+  /** 企业版联系人一组的行：职务、本项目、各号码、号码保护（紧跟号码那几行，没号码时跟在「联系方式」后面）、性别生日爱好地址、名片、相册；挂靠那几行由 ContactLinks 接在后面 */
   const 联系人身 = (c: ContactRow) => {
-    const 保护 = <号码保护标签 c={c} 客户={customer} />;
-    const 号码行 = (k: string, v: ReactNode, 带保护: boolean, key?: string) => (
-      /* 号码保护跟在号码后面，一行放不下整枚挪到下一行（不在「：」后折开）；号码本身一整串不拆，比整格还宽才在里面断 */
+    /* 号码保护单独一行、和其他字段同一种格式（11-24：原来跟在第一个号码后面，1280 卡宽放不下，见 号码保护标签）；每张卡一枚，出现条件同原来（这组行只在企业版摆） */
+    const 保护行 = (
+      <div className="rec-contact-line">
+        <span className="rec-contact-k">号码保护</span>
+        <span className="rec-contact-v"><号码保护标签 c={c} 客户={customer} /></span>
+      </div>
+    );
+    const 号码行 = (k: string, v: ReactNode, key?: string) => (
+      /* 号码本身一整串不拆，比整格还宽才在里面断 */
       <div key={key} className="rec-contact-line rec-contact-num">
-        <span className="rec-contact-kv">
-          <span className="rec-contact-k">{k}</span>
+        <span className="rec-contact-k" title={k}>{k}</span>
+        <span className="rec-contact-nv">
           <span className="rec-contact-v">{v}</span>
         </span>
-        {带保护 && 保护}
       </div>
     );
     const 老号: { k: string; v: ReactNode }[] = [
@@ -939,9 +946,10 @@ export default function RecordView({
           /* 改版后（定稿 P5 第 24 条）：联系方式几行（类型 + 号码），一人可以好几个；性别、生日、爱好、地址填了才摆 */
           <>
             {c.号码们.map((m, i) =>
-              号码行(号码叫法(号码种类, m.kind), m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value, i === 0, `${m.kind}-${i}`),
+              号码行(号码叫法(号码种类, m.kind), m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value, `${m.kind}-${i}`),
             )}
-            {c.号码们.length === 0 && 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>, true)}
+            {c.号码们.length === 0 && 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>)}
+            {保护行}
             {c.gender && <div className="rec-contact-line"><span className="rec-contact-k">性别</span><span className="rec-contact-v">{c.gender}</span></div>}
             {c.birthday && <div className="rec-contact-line"><span className="rec-contact-k">生日</span><span className="rec-contact-v">{c.birthday}</span></div>}
             {c.hobby && <div className="rec-contact-line"><span className="rec-contact-k">爱好</span><span className="rec-contact-v">{c.hobby}</span></div>}
@@ -949,7 +957,8 @@ export default function RecordView({
           </>
         ) : (
           <>
-            {老号.length > 0 ? 老号.map((x, i) => 号码行(x.k, x.v, i === 0, x.k)) : 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>, true)}
+            {老号.length > 0 ? 老号.map((x) => 号码行(x.k, x.v, x.k)) : 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>)}
+            {保护行}
           </>
         )}
         {/* 名片、相册分两格（待定 19）；没给分格的个数时照旧一格 */}

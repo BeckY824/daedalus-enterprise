@@ -339,58 +339,73 @@ export function ProjectTeamCard({
   const 还没回来 = 刚加.filter((x) => !真组员.has(x.userId));
   const 在组 = new Set([...组员们.filter((m) => !(企业版 && m.inviteStatus === "DECLINED")).map((m) => m.userId), ...还没回来.map((x) => x.userId)]);
   const 可加 = 在职.filter((u) => !在组.has(u.id));
-  const 不能改 = 能改 ? undefined : 企业版 ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改";
 
   return (
     // 设计语言 D5 · M11-a：折叠的卡都写条数。口径和「提成（N）」一样 = 人数、含组长（#403 审查）：
     // 在组的人（拒了邀请的不算，邀请中的算）+ 组长一位
     <Card title={计数题("项目组", 在组.size + (企业版 && 组长 ? 1 : 0))}>
-      {/* 卡片改进：「组长」和项目资料同一套字段行（标签 68 列、值离卡左 92），组员名也落在 68 列里 */}
-      {企业版 && 组长 && <div className="proj-info-row pd-team-lead"><span className="proj-info-k">组长</span><span className="proj-one" title={组长}>{组长}</span></div>}
+      {/*
+        11-23 排版：组长和组员同一种行（.proj-info-row 的行高、左右留白），名字从卡里字段名那一列的左边起（和「客户资料」字段名齐）；
+        名字 + 状态标签（组长 / 已邀请 / 没接受）在左，操作（角色、移出）靠右；一行放不下时操作整组落到名字下一行，名字不被挤截。
+        没选角色的下拉写「选角色」，不出空框；改不了的不摆下拉，有角色就写角色名
+      */}
+      {企业版 && 组长 && (
+        <div className="proj-info-row pd-team-row pd-team-lead">
+          <span className="pd-team-who"><span className="pd-team-name" title={组长}>{组长}</span><Tag>组长</Tag></span>
+        </div>
+      )}
       {组员们.length === 0 && !还没回来.length && <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>还没有拉人进项目组</div>}
-      {组员们.map((m) => (
-        <div key={m.id} className="pd-team-row-wrap">
-        <div className="pd-team-row">
-          <span className="pd-team-name" title={m.name}>{m.name}</span>
-          {邀请说法[m.inviteStatus] && <Tag>{邀请说法[m.inviteStatus]}</Tag>}
-          <Select
-            className="pd-team-role"
-            size="small"
-            allowClear
-            placeholder="不填角色"
-            aria-label={`${m.name}的角色`}
-            disabled={!能改 || 在忙}
-            title={不能改}
-            value={m.roleId ?? undefined}
-            options={角色选项(角色们, m.roleId)}
-            onChange={(v) => void 做(m.id, () => 换项目组员角色(m.id, v ?? null))}
-          />
-          {能改 && (
-            <InlineConfirm 问={`把${m.name}移出项目组`} 是="移出" 做={() => 做(m.id, () => 移出项目组员(m.id))}>
-              <Button size="small" type="text" danger disabled={在忙}>移出</Button>
-            </InlineConfirm>
-          )}
-        </div>
-        {话?.行 === m.id && <div role="alert" className="cd-task-err">{话.话}</div>}
-        </div>
-      ))}
+      {组员们.map((m) => {
+        const 角色名 = m.roleId ? 角色们.find((r) => r.id === m.roleId)?.name : undefined;
+        return (
+          <div key={m.id} className="pd-team-row-wrap">
+            <div className="proj-info-row pd-team-row">
+              <span className="pd-team-who">
+                <span className="pd-team-name" title={m.name}>{m.name}</span>
+                {邀请说法[m.inviteStatus] && <Tag>{邀请说法[m.inviteStatus]}</Tag>}
+              </span>
+              {能改 ? (
+                <span className="pd-team-ops">
+                  <Select
+                    className="pd-team-role"
+                    size="small"
+                    allowClear
+                    placeholder="选角色"
+                    aria-label={`${m.name}的角色`}
+                    disabled={在忙}
+                    value={m.roleId ?? undefined}
+                    options={角色选项(角色们, m.roleId)}
+                    onChange={(v) => void 做(m.id, () => 换项目组员角色(m.id, v ?? null))}
+                  />
+                  <InlineConfirm 问={`把${m.name}移出项目组`} 是="移出" 做={() => 做(m.id, () => 移出项目组员(m.id))}>
+                    <Button size="small" type="text" danger disabled={在忙}>移出</Button>
+                  </InlineConfirm>
+                </span>
+              ) : (
+                角色名 && <span className="pd-team-ops pd-team-role-t" title={角色名}>{角色名}</span>
+              )}
+            </div>
+            {话?.行 === m.id && <div role="alert" className="cd-task-err">{话.话}</div>}
+          </div>
+        );
+      })}
       {/* 刚邀请 / 刚加的：刷新回来前先摆上（企业版写「已邀请」） */}
       {还没回来.map((x) => (
-        <div key={`new-${x.userId}`} className="pd-team-row is-new">
-          <span className="pd-team-name" title={x.name}>{x.name}</span>
-          <Tag role="status">{企业版 ? "已邀请" : "已加进来"}</Tag>
+        <div key={`new-${x.userId}`} className="proj-info-row pd-team-row is-new">
+          <span className="pd-team-who"><span className="pd-team-name" title={x.name}>{x.name}</span><Tag role="status">{企业版 ? "已邀请" : "已加进来"}</Tag></span>
         </div>
       ))}
+      {/* 邀请区两行（11-23）：第一行选人占满宽，占位「选择同事」整句露出；第二行角色下拉 + 邀请 */}
       {能加 && (
-        <Space.Compact style={{ width: "100%", marginTop: 4 }}>
+        <div className="pd-team-add">
           <Select
-            style={{ flex: "1 1 auto", minWidth: 0 }}
-            placeholder={可加.length ? "选一位成员" : "在职成员都在组里了"}
+            className="pd-team-add-who"
+            placeholder={可加.length ? "选择同事" : "在职成员都在组里了"}
             aria-label="要加进项目组的成员"
             disabled={!可加.length || 在忙}
             showSearch
             optionFilterProp="label"
-            // 键盘：打字筛、↑↓ 挑、Enter 选中；选中后 Tab 到「邀请」再 Enter
+            // 键盘：打字筛、↑↓ 挑、Enter 选中；选中后 Tab 到「角色」「邀请」再 Enter
             notFoundContent="没有这个名字的在职成员"
             value={加谁}
             options={成员选项(可加)}
@@ -401,23 +416,25 @@ export function ProjectTeamCard({
               if (上次) set加角色(上次);
             }}
           />
-          <Select style={{ width: 120 }} allowClear placeholder="角色" aria-label="新组员的角色" disabled={在忙} value={加角色} options={角色选项(角色们)} onChange={set加角色} />
-          <Button
-            disabled={!加谁 || 在忙}
-            onClick={async () => {
-              if (!加谁) return;
-              const 谁 = 在职.find((u) => u.id === 加谁);
-              const r = await 做("加", () => 加项目组员(projectId, 加谁, 加角色 ?? null));
-              if (r.ok) {
-                if (谁) set刚加((x) => [...x.filter((y) => y.userId !== 谁.id), { userId: 谁.id, name: 谁.name }]);
-                set加谁(undefined);
-                set加角色(undefined);
-              }
-            }}
-          >
-            {企业版 ? "邀请" : "加进来"}
-          </Button>
-        </Space.Compact>
+          <div className="pd-team-add-row">
+            <Select className="pd-team-add-role" allowClear placeholder="角色" aria-label="新组员的角色" disabled={在忙} value={加角色} options={角色选项(角色们)} onChange={set加角色} />
+            <Button
+              disabled={!加谁 || 在忙}
+              onClick={async () => {
+                if (!加谁) return;
+                const 谁 = 在职.find((u) => u.id === 加谁);
+                const r = await 做("加", () => 加项目组员(projectId, 加谁, 加角色 ?? null));
+                if (r.ok) {
+                  if (谁) set刚加((x) => [...x.filter((y) => y.userId !== 谁.id), { userId: 谁.id, name: 谁.name }]);
+                  set加谁(undefined);
+                  set加角色(undefined);
+                }
+              }}
+            >
+              {企业版 ? "邀请" : "加进来"}
+            </Button>
+          </div>
+        </div>
       )}
       {话?.行 === "加" && <div role="alert" className="cd-task-err">{话.话}</div>}
     </Card>

@@ -1,6 +1,6 @@
 /**
  * 11-18 第四波追加第 13 条（3703 实点发现，P-转-26 指定那一半）：市场成员给「暂不分配」的客户选「指定分配」，也先定方向——
- *   - 内贸：内贸事业部的销售 + 销售管理；外贸：外贸事业部的销售（不含外贸销售管理）；再叠参与状态正常
+ *   - 内贸：内贸事业部的销售 + 销售管理；外贸：外贸事业部的销售 + 销售管理（11-23 起含外贸销售管理）；销售管理只进本人事业部那条线；再叠参与状态正常
  *   - 默认方向同自动分配那份（客户区域 → 电话 → 本人事业部），可改；服务端 assignSalesOwner 同口径拒，不信前端
  *   - 只管市场成员发起的：系统管理员照旧随便指定（X-141 ④ 还在等客户）
  */
@@ -82,13 +82,23 @@ beforeEach(async () => {
 const 马来西亚: 址 = { addrCountry: "马来西亚" };
 
 describe("市场成员指定分配暂不分配的客户：按方向挑人（P-转-26）", () => {
-  it("马来西亚客户（默认外贸）：指定给内贸销售、外贸销售管理都拒，客户不动；外贸销售照转", async () => {
+  it("马来西亚客户（默认外贸）：指定给内贸销售、内贸销售管理都拒，客户不动；外贸销售、外贸销售管理（11-23）照转", async () => {
     const { c } = await 建客户({ 地址: 马来西亚, 号: null });
-    expect(await assignSalesOwner([c], 内一)).toMatchObject({ ok: false, error: expect.stringContaining("外贸") });
-    expect(await assignSalesOwner([c], 外组长)).toMatchObject({ ok: false, error: expect.stringContaining("不含外贸销售管理") });
+    expect(await assignSalesOwner([c], 内一)).toMatchObject({ ok: false, error: expect.stringContaining("外贸事业部的销售、销售管理") });
+    expect(await assignSalesOwner([c], 内组长)).toMatchObject({ ok: false });
     expect(await 客户负责人(c)).toBe(市场管);
     expect(await assignSalesOwner([c], 外一)).toMatchObject({ ok: true });
     expect(await 客户负责人(c)).toBe(外一);
+    const d = await 建客户({ 地址: 马来西亚, 号: null });
+    expect(await assignSalesOwner([d.c], 外组长)).toMatchObject({ ok: true });
+    expect(await 客户负责人(d.c)).toBe(外组长);
+  });
+
+  it("外贸销售管理被暂停：外贸方向指定不到他", async () => {
+    await setSetting(自动分配不参与key, { [外组长]: "暂停" });
+    const { c } = await 建客户({ 地址: 马来西亚, 号: null });
+    expect(await assignSalesOwner([c], 外组长)).toMatchObject({ ok: false });
+    expect(await 客户负责人(c)).toBe(市场管);
   });
 
   it("改了方向（交 内贸）：内贸销售、内贸销售管理都能指定；暂停参与的不行", async () => {
@@ -104,7 +114,7 @@ describe("市场成员指定分配暂不分配的客户：按方向挑人（P-�
     const r = await 批量客户自动分配预看([a.c, b.c]);
     if (!r.ok) throw new Error(r.error);
     expect(r.定向?.默认线).toBe("外贸");
-    expect(new Set(r.定向?.候选表.外贸)).toEqual(new Set([外一, 外二]));
+    expect(new Set(r.定向?.候选表.外贸)).toEqual(new Set([外一, 外二, 外组长]));
     expect(new Set(r.定向?.候选表.内贸)).toEqual(new Set([内一, 内二, 内组长]));
   });
 

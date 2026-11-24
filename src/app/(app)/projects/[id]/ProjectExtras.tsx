@@ -151,7 +151,8 @@ export function ProjectProfileCard({ projectId, 画像, 能改 }: { projectId: s
 export type 沟通附件组 = { followUpId: string; 来源: string; 附件: 附件[] };
 type 项目附件格 = "合同" | "方案" | "验收报告" | "其它";
 /**
- * 格的顺序和提示（F-042，P-界面-59）：项目方案、合同附件两格单独框起来、各写一句放什么，方案在上（合同格那句「放上面」指它）；
+ * 格的顺序和提示（F-042，P-界面-59）：项目方案、合同附件两格各写一句放什么，方案在上（合同格那句「放上面」指它）；
+ * 11-23 用户：这两格不再单独框成卡里套卡，和下面验收报告、其它附件同一种写法（细线隔开），只多一行提示；
  * 判必填照旧各认各的格（M-必填-06 认「方案」、M-必填-09 认「合同」），这里只管摆法
  */
 const 附件格们: [项目附件格, string, string?][] = [
@@ -163,7 +164,7 @@ const 附件格们: [项目附件格, string, string?][] = [
 
 /**
  * 「项目附件」一块（企业版 P11；F-项目-18 起合成一块）：项目方案 / 合同附件 / 验收报告（M-必填-11）/ 其它附件各一格（分类 = Attachment.tag），
- * 方案、合同两格单独框起来带一句提示（F-042）；每格挂 data-att-cell，黄框里点附件类必填滚到这一格亮一下（ProjectFillRequired.tsx 定位到附件格），
+ * 方案、合同两格带一句提示（F-042；11-23 起不单独框，和别的格同一种写法）；每格挂 data-att-cell，黄框里点附件类必填滚到这一格亮一下（ProjectFillRequired.tsx 定位到附件格），
  * 看得到项目就能看、能改项目才能传和删（接口 api/attachments/access.ts 认项目）；
  * 最后一格「沟通附件」把各条沟通上的截图、录音收过来，每组写明来自哪条沟通（去看 = 跳到那条），这里只看、下载，传和删回那条沟通上
  */
@@ -185,7 +186,7 @@ export function ProjectAttachmentsCard({ projectId, 起始个数, 只读, 沟通
     <Card title={计数题("项目附件", 合计)} className="proj-att-card" data-testid="project-attachments">
       {!只读 && <div className="att-card-hint" data-testid="att-card-hint">单个最多 {读大小(附件上限字节)}；能拖进各格，也可以直接粘贴截图</div>}
       {附件格们.map(([k, 名, 提示]) => (
-        <section key={k} className={`proj-att-sec${提示 ? " is-box" : ""}`} aria-label={名} data-paste-scope="" data-att-cell={k}>
+        <section key={k} className="proj-att-sec" aria-label={名} data-paste-scope="" data-att-cell={k}>
           <AttachmentsPanel 归属={{ projectId }} 分类={k} 只读={只读} on个数={记个数[k]} 紧凑 on变了={() => router.refresh()} 小标题={`${名}（${个数[k]}）`} 提示={提示} />
         </section>
       ))}
