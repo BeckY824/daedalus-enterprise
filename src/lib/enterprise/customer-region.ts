@@ -13,7 +13,6 @@ import { 是国内, type 客户地址 } from "./customer-v2";
 import { 验客户电话 } from "./contact-format";
 import { 全角数字转半角 } from "../fullwidth";
 import { 港澳台地名 } from "./cn-place";
-import { 线部门们, type 线部门 } from "./assign-line";
 import type { 组织 } from "./org-core";
 import type { 线 } from "./lead-assign";
 
@@ -178,36 +177,5 @@ export function 方向来源说明(d: 分配方向): string {
 /** 自动分配成了以后「为什么是他」后面接的那半句（按分配方向） */
 export const 方向分配理由 = (d: 分配方向): string => (d.线 ? (d.来源 === "手动" ? `按选的分配方向：${d.线}` : 方向来源说明(d)) : 区域未填提示);
 
-/**
- * 部门判不出事业部时按部门名兜底（11-18 客户定第 7 题 A：营销企划部的成员录的线索，区域、电话都判不出时默认内贸，录入时仍可手改）。
- * 部门或上级部门名带这几个字就按这条线；要改某个人走组织架构里给他设业务线（EntMember.line，排在最前，设置页可改）
- */
-export const 部门兜底线: Readonly<Record<string, 线>> = { 营销企划部: "内贸" };
-
-/**
- * 录入人本人的事业部：成员业务线（EntMember.line）→ 所在部门落在哪条线勾的参与部门里（只落在一条才算）→
- * 往上找部门名带「内贸」「外贸」的（M-角色-02：市场运营部在两个事业部下面）→ 往上找部门名对上 部门兜底线 的（营销企划部 = 内贸）。都没有 = null
- */
-export function 本人事业部(org: Pick<组织, "成员" | "部门">, 设: 线部门 | null, userId: string): 线 | null {
-  const m = org.成员.get(userId);
-  if (!m) return null;
-  if (m.line === "内贸" || m.line === "外贸") return m.line;
-  if (!m.deptId) return null;
-  if (设) {
-    const 在 = (["内贸", "外贸"] as const).filter((l) => 设[l].length && 线部门们(org.部门, 设[l]).has(m.deptId!));
-    if (在.length === 1) return 在[0];
-  }
-  const 走过 = new Set<string>();
-  for (let id: string | null = m.deptId; id && !走过.has(id); id = org.部门.get(id)?.parentId ?? null) {
-    走过.add(id);
-    const 名 = org.部门.get(id)?.name ?? "";
-    const 内 = 名.includes("内贸"), 外 = 名.includes("外贸");
-    if (内 !== 外) return 内 ? "内贸" : "外贸";
-  }
-  for (const id of 走过) {
-    const 名 = org.部门.get(id)?.name ?? "";
-    const 中 = Object.keys(部门兜底线).find((k) => 名.includes(k));
-    if (中) return 部门兜底线[中];
-  }
-  return null;
-}
+/** 本人事业部、部门兜底线 11-23 挪到 assign-line.ts（自动可接 要按本人事业部只进本线），这里照旧转出 */
+export { 本人事业部, 部门兜底线 } from "./assign-line";

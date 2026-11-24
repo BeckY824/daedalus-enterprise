@@ -1410,10 +1410,8 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 .proj-att-sec { min-width: 0; }
 .proj-att-sec + .proj-att-sec { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line-soft); }
 .proj-att-h { font-weight: 600; margin-bottom: 8px; }
-/* F-042（P-界面-59）：项目方案、合同附件两格各自一个框、小标题下一行提示放什么（一行，放不下省略、悬停看全文）；后面的格照旧细线隔开 */
-.proj-att-sec.is-box { padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-card); }
-.proj-att-sec.is-box + .proj-att-sec.is-box { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
-.proj-att-sec.is-box + .proj-att-sec:not(.is-box) { padding-top: 0; border-top: 0; }
+/* F-042（P-界面-59）：项目方案、合同附件两格小标题下一行提示放什么（一行，放不下省略、悬停看全文）；
+   11-23 用户：不再各自框成卡里套卡，和后面的格同一种写法、细线隔开 */
 .proj-att-tip { margin: -4px 0 8px; min-width: 0; color: var(--text-muted); font-size: var(--fs-note); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-att-from { min-width: 0; }
 .proj-att-from + .proj-att-from { margin-top: 10px; }
@@ -4523,14 +4521,17 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cd-pj { position: relative; display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; min-width: 0; }
 /* 内边距 2 给焦点框留地方（overflow 裁掉的那层），四边 -2 外边距抵掉，占位不变——ProjectZone 量() 按这个占位算可用宽，别只收上下（11-23 审查：改成 -2px 0 会多裁「更多」4px） */
 .cd-pj-pills { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: 2px; margin: -2px; }
-.cd-pj-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 210px; padding: 0 11px; box-sizing: border-box;
+.cd-pj-pill { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 240px; padding: 0 11px; box-sizing: border-box;
   border: 1px solid var(--line); border-radius: var(--r-tag); background: transparent; color: var(--text-muted); font: inherit; font-size: var(--fs-note);
   white-space: nowrap; text-decoration: none; cursor: pointer; transition: background-color var(--t-fast) var(--ease), color var(--t-fast) var(--ease); }
 .cd-pj-pill:hover { color: var(--ink); background: var(--hover); }
 /* 摆出来的那几颗能缩（最窄由 JS 按量尺写在 style 上），量尺里的不缩 */
 .cd-pj-pills > .cd-pj-pill[role=tab] { flex: 0 1 auto; }
 .cd-pj-pill.on { background: var(--brand-bg); border-color: transparent; color: var(--brand-deep); font-weight: 600; }
-.cd-pj-pill:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* 焦点框贴边（offset 0）：外面 .cd-pj-pills 只留了 2px 内边距，offset 1 时框伸出 3px、被裁掉 1px（11-23） */
+.cd-pj-pill:focus-visible { outline: 2px solid var(--brand); outline-offset: 0; }
+/* 「更多 N 个」放不下时的短样子「+N」（ProjectZone.tsx 量()） */
+.cd-pj-more.is-short { padding: 0 6px; gap: 4px; }
 .cd-pj-nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: inherit; }
 .cd-pj-st { flex: none; font-style: normal; font-size: var(--fs-min); opacity: .75; }
 .cd-pj-dot { flex: none; width: 6px; height: 6px; border-radius: 50%; }
@@ -4538,6 +4539,9 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .cd-pj-dot[data-stage="线索"] { background: var(--cat-cyan); }
 .cd-pj-dot[data-stage="商机"] { background: var(--brand); }
 .cd-pj-dot[data-stage="订单"] { background: var(--cat-green); }
+/* 合同号样本（量尺里量一个完整合同号多宽，ProjectZone.tsx 合同号样本）：胶囊里的同胶囊名字，单项目的同卡头项目名 */
+.cd-pj-sample { flex: none; white-space: nowrap; font-weight: inherit; }
+.cd-pj-sample.is-one { font-size: var(--fs-section); font-weight: 600; }
 .cd-pj-ruler { position: absolute; left: 0; top: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; display: flex; gap: 6px; }
 .cd-pj-one { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .cd-pj-one > .cd-pj-nm { color: var(--ink); font-size: var(--fs-section); font-weight: 600; }
@@ -4621,19 +4625,6 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 
 /* 冷项目（C11）：页签名后一个小灰标「冷」；名字照旧省略号，小标不缩 */
 .cd-cold { flex: none; height: 18px; line-height: 18px; padding: 0 5px; border-radius: var(--r-tag); background: var(--hover); color: var(--text-muted); font-size: var(--fs-min); font-weight: 500; }
-
-/* 「进程变更」卡里的「客户状态」一段（C13）：默认收起，每条一行 */
-.tri-log { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line-soft); }
-.tri-log-h { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; border: 0; background: transparent;
-  color: var(--ink); font-size: var(--fs-note); font-weight: 600; cursor: pointer; }
-.tri-log-h:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.tri-log-n { color: var(--text-muted); font-weight: 400; white-space: nowrap; }
-.tri-log-ul { list-style: none; margin: 6px 0 0; padding: 0; }
-.tri-log-li { display: flex; gap: 8px; min-width: 0; padding: 3px 0; font-size: var(--fs-min); color: var(--ink-soft); white-space: nowrap; }
-.tri-log-t { flex: none; color: var(--text-muted); }
-.tri-log-w { flex: none; max-width: 6em; overflow: hidden; text-overflow: ellipsis; }
-.tri-log-e { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.tri-log-empty { margin-top: 6px; color: var(--text-muted); font-size: var(--fs-min); }
 
 /* 客户列表第 1 页顶上的「仅项目」一小块（customers/ProjectOnlyBlock.tsx）：和下面的客户表格分开，一行省略，不横滚 */
 .cust-ponly { margin-bottom: 12px; min-width: 0; }
@@ -5055,10 +5046,24 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
   .att-ring-fg { animation-duration: calc(var(--t-morph) * 8); }
 }
 /* 项目组 / 提成分配（dt.team，项目详情）：刚邀请的先摆一行、分配条边输边变 */
-.pd-team-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; min-width: 0; }
-/* 组员名、角色下拉：原来的行内样式挪成 class（卡片改进第三阶段改成 68 列），值一字不差 */
-.pd-team-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pd-team-role { width: 140px; flex: 0 0 auto; }
+/* 项目组卡（11-23 排版）：组长、组员同一种行；名字 + 状态标签靠左，操作（角色、移出）靠右，
+   一行放不下时操作整组落到名字下一行（flex 折行，名字按自身宽排，不被挤截；比整行还长才「…」、悬停看全） */
+.pd-team-row { display: flex; flex-wrap: wrap; align-items: center; column-gap: 8px; row-gap: 2px; min-width: 0; }
+.pd-team-who { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.pd-team-who > .ant-tag { flex: none; margin-inline-end: 0; }
+.pd-team-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); }
+.pd-team-ops { display: flex; align-items: center; gap: 4px; flex: none; max-width: 100%; margin-left: auto; }
+/* 角色下拉定宽：「选角色」占位整句露出；角色名长了下拉里「…」，悬停看全（antd 选中项自带 title） */
+.pd-team-role { width: 112px; flex: none; }
+.pd-team-role-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-note); }
+/* 只读时角色名本身就是 .pd-team-ops：flex 容器上省略号不生效，改回块级、可缩，长角色名照样出「…」 */
+.pd-team-ops.pd-team-role-t { display: block; flex: 0 1 auto; }
+/* 邀请区两行：选人占满宽；角色下拉 + 邀请 */
+.pd-team-add { display: grid; gap: 8px; margin-top: 8px; }
+.pd-team-add-who { width: 100%; min-width: 0; }
+.pd-team-add-row { display: flex; gap: 8px; min-width: 0; }
+.pd-team-add-role { flex: 1 1 auto; min-width: 0; }
+.pd-team-add-row > .ant-btn { flex: none; }
 /* 提成卡的行、字段名（ProjectCommission.tsx）：卡片改进第三阶段对齐到 68 / 92（标签列 68 + 隔 8，值离卡左 92；原来行内 64 + 隔 12），
    只剩一套外观后和底子合成一条（11-23）。字段名 13 灰一行省略，值不许把行撑宽 */
 .pd-cm-row { display: flex; column-gap: 8px; align-items: baseline; margin-bottom: 8px; min-width: 0; flex-wrap: nowrap; }
@@ -5514,7 +5519,7 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* ---------- 客户资料、联系人、背调（D3 · 设计语言 11-21，规范 M3–M5）----------
    外观规则一律挂 :root:root。
    不带限定的只有几条结构规则：新元素（行尾笔、手机「变更记录」键、联系人组头右端操作、附件空格「＋ 添加」、新建联系人的规矩行、
-   挂靠就地表单的标签 / 报错、变更记录面板头、头像空名字的字色回退）不排就挤在一起；号码保护挪到号码后面要那一格能折行 */
+   挂靠就地表单的标签 / 报错、变更记录面板头、头像空名字的字色回退）不排就挤在一起；号码那一格要能折行 */
 .rec-field-pen { display: none; }
 .rec-field-pen.anticon { display: none; } /* 压过 antd 图标自带的 display：水合前也不露笔 */
 .rec-hist-btn.ant-btn { display: none; }
@@ -5523,8 +5528,10 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 .hist-sheet .rec-hist-row { padding: 6px 0; border-top: 1px solid var(--line-soft); font-size: var(--fs-body); }
 .rec-contact-acts { display: inline-flex; align-items: center; flex: none; margin-left: auto; }
 .rec-contact-av.is-empty { color: var(--ink-soft); }
-.rec-contact-num { flex-wrap: wrap; align-items: center; gap: 2px 6px; }
-.rec-contact-kv { display: flex; flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.rec-contact-num { flex-wrap: nowrap; align-items: flex-start; }
+/* 号码那一列（值那一列里自己折行）。号码保护 11-24 起单独一行（字段名「号码保护」+ 状态标签），不再跟在号码后面：1280 卡宽 232 放不下 */
+.rec-contact-nv { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
+.rec-contact-nv > .rec-contact-v { flex: 0 1 auto; max-width: 100%; }
 .att-empty { display: inline-flex; align-items: center; gap: 6px; }
 .cf-rule { margin: -4px 0 12px; font-size: var(--fs-note); color: var(--text-muted); }
 .rec-contact-pick { display: grid; gap: 4px; }
@@ -5569,6 +5576,11 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 :root:root .rec-page.ui-v2 .rec-cg > .rec-contact-h { flex-wrap: nowrap; min-height: var(--hit); padding-left: 0; gap: 8px; }
 :root:root .rec-page.ui-v2 .rec-cg > .rec-contact-h > .ant-avatar { position: static; }
 :root:root .rec-page.ui-v2 .rec-cg > .rec-contact-h > .rec-contact-n { flex: 0 1 auto; }
+/* 11-23 名字下面那几行（职务、本项目、联系方式、号码保护、名片、相册、主客户）和「客户资料」字段行同一种格式：
+   字段名 68 列（13 灰一行，放不下「…」、悬停看全）+ 隔 8 + 值；左边缘和客户资料的字段名齐（原来缩进 34 跟在头像后面） */
+:root:root .rec-page.ui-v2 .rec-cg .rec-contact-line { padding-left: 0; column-gap: 8px; }
+:root:root .rec-page.ui-v2 .rec-cg .rec-contact-line > .rec-contact-k { flex: 0 0 68px; margin-right: 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root:root .rec-page.ui-v2 .rec-cg .rec-contact-form { margin-left: 0; max-width: 100%; }
 :root:root .rec-page .rec-cg:hover { background: transparent; }
 :root:root .rec-page .rec-cg + .rec-cg,
 :root:root .rec-page .rec-cg + #contact-rest > .rec-cg:first-child { margin-top: 6px; padding-top: 10px; }
@@ -6642,6 +6654,13 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root:root .rec-zone .cd-proc .cd-pj-one > .cd-pj-nm { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 24px; }
 :root:root:root .rec-zone .cd-proc .cd-pj-tag { align-self: center; height: 22px; gap: 6px; padding: 0 8px; border-radius: 4px; background: var(--tag-bg); color: var(--tag-fg); font-weight: 500; line-height: 22px; }
 
+/* 进程卡卡头折两行（11-23）：项目切换按「放得下一个完整合同号」量过还放不下（ProjectZone.tsx 量() 在 .cd-pj 上挂 data-wrap），
+   同手机那样项目切换占满一行、「完成节点」落下一行靠右；不折的宽照旧一行 48 高 */
+:root:root:root .rec-zone .cd-proc .proj-stage-bar.has-head:has(> .proj-stage-head .cd-pj[data-wrap]) { flex-wrap: wrap; row-gap: 8px; padding-block: 8px; }
+:root:root:root .rec-zone .cd-proc .proj-stage-bar.has-head:has(> .proj-stage-head .cd-pj[data-wrap]) > .proj-stage-head { flex: 1 1 100%; }
+/* 放不下一颗完整合同号 +「+N」（1024、912 这种三栏窄段）：先藏行首「项目」小字再说折不折，胶囊组自己带 aria-label「这位客户的项目」 */
+:root:root:root .rec-zone .cd-proc .cd-pj[data-nocap] > .cd-cap { display: none; }
+
 /* 7 沟通卡：卡头一行（标题 + 计数 · 连体钮），「本项目 / 这位客户全部」在卡身第一行 */
 :root:root:root .rec-zone .cd-comm > .ant-card-head > .ant-card-head-wrapper { flex-wrap: nowrap; padding-block: 0; }
 :root:root:root .rec-zone .cd-comm > .ant-card-head > .ant-card-head-wrapper > .ant-card-head-title { display: block; flex: 1 1 auto; max-width: none; }
@@ -6725,11 +6744,10 @@ button.proj-miss-chip { cursor: pointer; }
 /* 提成卡 .pd-cm-row 的 68 / 92 已经合进底子那条（「项目组 / 提成分配」那段） */
 :root:root:root :is(.rec-page, .proj-wrap) .proj-rel-field { grid-template-columns: 68px minmax(0, 1fr); }
 :root:root:root :is(.rec-page, .proj-wrap) .proj-rel-key { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row { column-gap: 8px; }
-:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row > .pd-team-name { flex: 0 0 68px; }
-:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row > .pd-team-role { flex: 1 1 auto; width: auto; min-width: 0; }
-/* 组长、当前回款、交付三行用项目资料那套 .proj-info-row / .proj-info-k；卡里最上面那行不往上让 */
-:root:root:root :is(.rec-page, .proj-wrap) :is(.pd-team-lead, .pd-pay-sum) { display: flex; align-items: center; min-width: 0; margin-bottom: 4px; }
+/* 项目组（11-23 改排版）：组长、组员行都用 .proj-info-row 的行高和左右留白，名字左边缘 = 字段名列左边缘；行可折（操作落到下一行） */
+:root:root:root :is(.rec-page, .proj-wrap) .pd-team-row { flex-wrap: wrap; row-gap: 2px; }
+/* 当前回款、交付三行用项目资料那套 .proj-info-row / .proj-info-k；卡里最上面那行不往上让 */
+:root:root:root :is(.rec-page, .proj-wrap) .pd-pay-sum { display: flex; align-items: center; min-width: 0; margin-bottom: 4px; }
 
 /* 14 没有项目区的客户页 */
 :root:root:root .rec-page.ui-v2 > .rec:has(> .rec-col-blocks) { gap: var(--card-gap); }

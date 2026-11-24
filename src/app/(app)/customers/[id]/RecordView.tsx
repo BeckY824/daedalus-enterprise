@@ -82,11 +82,10 @@ import { 登记详情名 } from "@/lib/page-rows";
 import Heat, { 冷热说法, 要看冷热 } from "@/components/Heat";
 import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责人, 转走项目预览of } from "../actions";
 import type { RecordProps, FollowUpRow, ContactRow } from "./types";
-import TriStateBar, { TriStateLog } from "./TriStateBar";
+import TriStateBar from "./TriStateBar";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
-import { 换负责人怎么来的 } from "@/lib/owner-log";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 截止说法, 已过期 } from "@/lib/deadline";
 import { 金额, 金额或空, 合计文字 } from "@/lib/currency";
@@ -126,14 +125,16 @@ type Entry =
 
 /** 负责人下拉的选项：现任不在候选里（管理员、已停用）时补进去，标上「（不在候选里）」，别显示成一串 id */
 /** 联系方式那一行的叫法：字典里有就用字典的名字；自定义种类存成 custom:<叫法>，停用了也照样显示 */
-/** 企业版联系人卡上的「号码保护：已开启 / 已关闭」（10-31）：只展示，不能点；为什么开 / 关鼠标停上去看 */
+/** 企业版联系人卡上的号码保护（10-31）：只展示，不能点；为什么开 / 关鼠标停上去看。
+ *  11-24 起单独一行（字段名「号码保护」+ 值「已开启 / 已关闭」），标签里只写状态：原来「号码保护：已开启」跟在号码后面、
+ *  放不下挪到值那一列下一行，1280 / 1366 卡宽 232、值那一列约 120，整枚标签 121 宽（Linux 字体更宽）伸出卡、收内边距打省略号也只剩「已开…」 */
 function 号码保护标签({ c, 客户 }: { c: ContactRow; 客户: Parameters<typeof 号码保护of>[1] }) {
   const { 状态, 原因 } = 号码保护of(c, 客户);
-  // 已开启照旧 color="green"；设计语言 D3 · M4-b（D10）加锁、摆在号码后面，
+  // 已开启照旧 color="green"；设计语言 D3 · M4-b（D10）加锁，
   // 绿压成灰底由 globals.css 里的 .rec-contact-guard.ant-tag-green 管（绿只给「完成」）
   return (
     <Tag className="rec-contact-guard" color={状态 === "已开启" ? "green" : undefined} icon={状态 === "已开启" ? <LockOutlined /> : <UnlockOutlined />} title={原因} style={{ margin: 0, fontSize: 12, lineHeight: "18px", padding: "0 5px" }}>
-      号码保护：{状态}
+      {状态}
     </Tag>
   );
 }
@@ -224,8 +225,7 @@ export default function RecordView({
   项目页签们 = null,
   抬头节点 = null,
   三态条 = null,
-  三态留痕 = null,
-  留痕放左栏 = false,
+  历史变更 = null,
   当前项目菜单 = null,
   发起点评钮 = null,
   项目动作口 = null,
@@ -844,17 +844,6 @@ export default function RecordView({
     router.refresh();
   }
 
-  /*
-    客户三态状态留痕（C13）：状态留痕 + 归零了的换负责人，新的在前；平时并进项目区「进程变更」卡的「客户状态」一段，
-    没有进程变更卡（没有项目 / 没有我能看的项目）时放左栏客户资料下面（A1）。三态关着不摆
-  */
-  const 状态留痕 = 三态留痕 ? (
-    <TriStateLog 行们={[
-      ...三态留痕,
-      ...换负责人记录.filter((x) => x.三态归零).map((x) => ({ at: x.at, 谁: x.操作人 ?? "已删除的成员", 事: `换负责人（${换负责人怎么来的(x.kind)}${x.到 ? `给 ${x.到}` : ""}），三态钟归零` })),
-    ].sort((a, b) => b.at.localeCompare(a.at))} />
-  ) : null;
-
   /** 推荐关系那一节：个人版 / 团队版摆在基本资料下面，企业版不摆 */
   const 推荐节 = !外贸 && (
           <div className="rec-sec">
@@ -927,17 +916,22 @@ export default function RecordView({
       </div>
     );
   };
-  /** 企业版联系人一组的行：职务、本项目、各号码（号码保护跟在第一个号码后面）、性别生日爱好地址、名片、相册；挂靠那几行由 ContactLinks 接在后面 */
+  /** 企业版联系人一组的行：职务、本项目、各号码、号码保护（紧跟号码那几行，没号码时跟在「联系方式」后面）、性别生日爱好地址、名片、相册；挂靠那几行由 ContactLinks 接在后面 */
   const 联系人身 = (c: ContactRow) => {
-    const 保护 = <号码保护标签 c={c} 客户={customer} />;
-    const 号码行 = (k: string, v: ReactNode, 带保护: boolean, key?: string) => (
-      /* 号码保护跟在号码后面，一行放不下整枚挪到下一行（不在「：」后折开）；号码本身一整串不拆，比整格还宽才在里面断 */
+    /* 号码保护单独一行、和其他字段同一种格式（11-24：原来跟在第一个号码后面，1280 卡宽放不下，见 号码保护标签）；每张卡一枚，出现条件同原来（这组行只在企业版摆） */
+    const 保护行 = (
+      <div className="rec-contact-line">
+        <span className="rec-contact-k">号码保护</span>
+        <span className="rec-contact-v"><号码保护标签 c={c} 客户={customer} /></span>
+      </div>
+    );
+    const 号码行 = (k: string, v: ReactNode, key?: string) => (
+      /* 号码本身一整串不拆，比整格还宽才在里面断 */
       <div key={key} className="rec-contact-line rec-contact-num">
-        <span className="rec-contact-kv">
-          <span className="rec-contact-k">{k}</span>
+        <span className="rec-contact-k" title={k}>{k}</span>
+        <span className="rec-contact-nv">
           <span className="rec-contact-v">{v}</span>
         </span>
-        {带保护 && 保护}
       </div>
     );
     const 老号: { k: string; v: ReactNode }[] = [
@@ -959,9 +953,10 @@ export default function RecordView({
           /* 改版后（定稿 P5 第 24 条）：联系方式几行（类型 + 号码），一人可以好几个；性别、生日、爱好、地址填了才摆 */
           <>
             {c.号码们.map((m, i) =>
-              号码行(号码叫法(号码种类, m.kind), m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value, i === 0, `${m.kind}-${i}`),
+              号码行(号码叫法(号码种类, m.kind), m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value, `${m.kind}-${i}`),
             )}
-            {c.号码们.length === 0 && 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>, true)}
+            {c.号码们.length === 0 && 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>)}
+            {保护行}
             {c.gender && <div className="rec-contact-line"><span className="rec-contact-k">性别</span><span className="rec-contact-v">{c.gender}</span></div>}
             {c.birthday && <div className="rec-contact-line"><span className="rec-contact-k">生日</span><span className="rec-contact-v">{c.birthday}</span></div>}
             {c.hobby && <div className="rec-contact-line"><span className="rec-contact-k">爱好</span><span className="rec-contact-v">{c.hobby}</span></div>}
@@ -969,7 +964,8 @@ export default function RecordView({
           </>
         ) : (
           <>
-            {老号.length > 0 ? 老号.map((x, i) => 号码行(x.k, x.v, i === 0, x.k)) : 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>, true)}
+            {老号.length > 0 ? 老号.map((x) => 号码行(x.k, x.v, x.k)) : 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>)}
+            {保护行}
           </>
         )}
         {/* 名片、相册分两格（待定 19）；没给分格的个数时照旧一格 */}
@@ -1378,6 +1374,8 @@ export default function RecordView({
             {计划过期天 > 0 ? `下次跟进已过 ${计划过期天} 天` : 冷热说法(customer.lastFollowAt)}
           </span>
         )}
+        {/* 「历史变更」小方框（11-24）：这一行末尾，放不下随这一行折到下一行；点开是弹窗（HistoryChanges.tsx） */}
+        {历史变更}
       </div>
       {就地话 && <div role={就地话.错 ? "alert" : "status"} className={就地话.错 ? "cd-task-err rec-said" : "rec-plan-said rec-said"}>{就地话.话}</div>}
 
@@ -1604,7 +1602,6 @@ export default function RecordView({
               <CustomerResearchTag customerId={customer.id} customerName={customer.name} 显示名={叫这位} 档案={背调档案} on记跟进={点跟进} 卡 上次初值={上次背调} />
             </ProjectFold>
           )}
-          {留痕放左栏 && 状态留痕 && <div className="rec-sec tri-log-left" data-testid="tri-log-left">{状态留痕}</div>}
           {!企业 && (
           <div className="rec-sec">
             <div className="rec-sec-t">
@@ -1635,8 +1632,6 @@ export default function RecordView({
           开建项目: 能建项目 ? 开建项目 : null,
           全只读,
           提醒: 提醒条,
-          // C13：状态留痕 + 归零了的换负责人，新的在前，并进「进程变更」卡的「客户状态」一段；三态关着不摆
-          客户状态留痕: 留痕放左栏 ? null : 状态留痕,
         })}
 
         {/* ================= 中栏：时间线 ================= */}

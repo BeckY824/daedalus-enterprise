@@ -1,7 +1,7 @@
 "use client";
 
 import { 留落地话 } from "@/lib/landing-note";
-import { 公海领取文字 } from "@/lib/project/transfer-log-text";
+import { 位置文字, 换人文字, type 放回方式 } from "@/lib/project/node-log-text";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
@@ -315,11 +315,6 @@ function 删除说明(n: 项目详情["删前清点"], 客户叫法: string, 进
   );
 }
 
-/** 「线索·潜客培育」「订单·验收交付（异常状态）」；结局按字典的叫法（后台改了出口叫法就用改的） */
-function 位置文字(p: 位置, 字典: 阶段字典 = 团队版字典): string {
-  return `${p.phase}·${p.node}${p.result ? `（${结局叫法(p.result, 字典)}）` : ""}`;
-}
-
 /**
  * 下拉里的去处：每个阶段的节点，加上这个阶段的「没走成」结局（订单阶段是成功交付和异常状态）。
  * 异常状态只在项目已经在订单阶段时出现，线索、商机阶段不给这个入口。
@@ -363,23 +358,8 @@ function 去处们(当前: 位置, 不能往前 = false, 字典: 阶段字典 = 
   });
 }
 
-/** 项目怎么进的公海（page.tsx 按理由分）：超时 = 系统收的；停用 = 管理员办停用时放的；手动 = 有人放回 */
-export type 放回方式 = "超时" | "停用" | "手动";
-
-/** 节点变更里换负责人那几种行怎么说。放回公海按真正的操作人说（QA #14：超时是系统、停用是办的那位管理员，不是原负责人） */
-function 换人文字(l: 项目详情["logs"][number]): string {
-  const t = l.transfer ?? { from: "没人", to: "没人" };
-  if (l.kind === "pool-release") {
-    // 老数据没带方式的按理由认超时
-    const 方式 = l.放回方式 ?? (l.reason === 超时理由 ? "超时" : "手动");
-    if (方式 === "超时") return `${t.from} 的项目超时没跟进，系统自动收回到线索公海`;
-    if (方式 === "停用") return `${l.who} 办成员停用，把 ${t.from} 的项目放回线索公海`;
-    return l.who === t.from ? `${t.from} 把项目放回线索公海` : `${l.who} 把 ${t.from} 的项目放回线索公海`;
-  }
-  // 按留痕原因的开头分客户公海分配 / 线索公海分配 / 跟着客户 / 自己领（lib/project/transfer-log-text.ts，3703 实操 11-21）
-  if (l.kind === "pool-claim") return 公海领取文字({ who: l.who, reason: l.reason, to: t.to });
-  return `负责人从 ${t.from} 转给 ${t.to}`;
-}
+/** 项目怎么进的公海、节点记录那几句（位置文字 / 换人文字）挪进 lib/project/node-log-text.ts（11-24 客户详情「历史变更」共用） */
+export type { 放回方式 } from "@/lib/project/node-log-text";
 
 /** 负责人那一行括号里：怎么进的公海 */
 /**
@@ -569,8 +549,11 @@ export type 嵌在客户页 = {
   待办: ReactNode;
   /** 项目退回公海 / 转走后自己看不到了：回客户详情（不带 ?project），不回项目列表 */
   客户页: string;
-  /** 客户三态状态留痕（C13）：挂在「进程变更」卡最下面一段（客户层，切页签不变）；三态关着是 null */
-  客户状态留痕?: ReactNode;
+  /**
+   * 右栏摆不摆「项目进程变更」卡：客户详情不摆（11-24 挪进客户名下那一行的「历史变更」弹窗，客户状态那段也在弹窗里）；
+   * 受限客户详情（只负责项目的人）没有「历史变更」入口，照摆
+   */
+  进程变更卡?: boolean;
   /** 受限客户详情（只负责项目的人）：不给「这位客户全部」，沟通卡只看本项目 */
   无全部沟通?: boolean;
   /**
@@ -1628,6 +1611,8 @@ export default function ProjectDetail({
   );
   // 客户详情嵌入版的叫法（11-12，card-names.tsx）：右栏卡名补「项目」、卡点写「当前卡点」；项目详情页原样
   const 卡名 = (名: string) => (嵌入 ? 项目卡名(名) : 名);
+  // 异常 / 没走成的弹窗里说「记在哪」：客户详情里右栏没有进程变更卡（11-24 挪进客户名下那一行的「历史变更」），说历史变更；独立页、受限客户详情照旧
+  const 变更记在 = 嵌入 && !嵌入.进程变更卡 ? "历史变更" : "进程变更";
   const 卡点名 = 嵌入 ? 客户详情卡点 : "卡点";
   /** 交付卡备货 / 物流三行：和项目资料同一套字段行（标签 68 列、值离卡左 92） */
   const 交付行 = 资料行();
@@ -1737,7 +1722,6 @@ export default function ProjectDetail({
           ),
         }))}
       />
-      {嵌入?.客户状态留痕}
     </Card>
   );
   // 企业版瀑布流（U-项目-01/04）：沟通、卡点与任务各是一块，卡头最右那颗点了展开 / 收起（ProjectFold，11-01），
@@ -2105,7 +2089,7 @@ export default function ProjectDetail({
           if (ok) set异常框(null);
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>选一个异常类别，看板上这张卡会标红；处理好了把进程改回去就算恢复，类别和备注留在进程变更里。</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>选一个异常类别，看板上这张卡会标红；处理好了把进程改回去就算恢复，类别和备注留在{变更记在}里。</div>
         <Select
           style={{ width: "100%", marginBottom: 12 }}
           placeholder={类别们.length ? "选异常类别" : "没有在用的异常类别，请管理员在设置里加"}
@@ -2134,7 +2118,7 @@ export default function ProjectDetail({
           if (ok) set没成框(null);
         }}
       >
-        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>{选无效原因 ? "选一个无效原因，或写一句为什么没成（至少一样），会记在进程变更里；以后捡回来把进程改回去就行。" : "写一句为什么没成，会记在进程变更里；以后捡回来把进程改回去就行。"}</div>
+        <div style={{ marginBottom: 8, color: "var(--text-muted)" }}>{选无效原因 ? `选一个无效原因，或写一句为什么没成（至少一样），会记在${变更记在}里；以后捡回来把进程改回去就行。` : `写一句为什么没成，会记在${变更记在}里；以后捡回来把进程改回去就行。`}</div>
         {选无效原因 && (
           <DictSelect style={{ width: "100%", marginBottom: 8 }} placeholder="无效原因" aria-label="无效原因" value={无效原因} onChange={set无效原因} options={p.原因选项.无效} />
         )}
@@ -2252,7 +2236,7 @@ export default function ProjectDetail({
               {显示交付 && 折(卡名("交付"), 交付卡, undefined, false)}
               {折("项目组", 项目组卡, undefined, false)}
               {折(卡名("提成"), 提成区, undefined, false)}
-              {折(卡名("进程变更"), 变更卡, undefined, false)}
+              {嵌入.进程变更卡 && 折(卡名("进程变更"), 变更卡, undefined, false)}
               {p.关联 && 折(卡名("关联客户"), <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="客户" />, undefined, false)}
               {p.关联 && 折(卡名("关联联系人"), <ProjectRelate projectId={p.id} 关联={p.关联} 能改={可改} 只="联系人" />, undefined, false)}
             </aside>

@@ -381,7 +381,8 @@ export async function 读线索验证(me: 谁, p: 项目基): Promise<线索验�
   const 带客创 = { ...p, customer: { creator: 客创 } };
   const 交给 = await 无效交给(org);
   const 待 = 实际待(v?.pending ?? null, 交给);
-  const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(痕.map((l) => l.userId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  // 还没有验证留痕的（多数项目）不查人名：空的 IN 也要往返一次库（客户详情首屏查询条数，11-24）
+  const 名 = new Map(痕.length ? (await prisma.user.findMany({ where: { id: { in: [...new Set(痕.map((l) => l.userId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]) : []);
   let 我能: 线索验证["我能"] = null;
   if (在验证(p)) {
     if (!待) 我能 = 能拍板(me, "销售初判", p, org) ? "初判" : null;

@@ -503,6 +503,40 @@ describe("收尾：发起人不在了、第三方回复、第二次追问", () =
   });
 });
 
+describe("署名按发起身份（11-23：写点评框、沟通卡、复盘列表三处一致）", () => {
+  const 沟通卡身份 = async (r: 谁) => (await 读项目主题(我(r), 项目))?.们[0]?.作者.身份;
+  const 复盘身份 = async (r: 谁) => (await 复盘主题of(我(r), [人.甲], { 范围: "all" })).行[0]?.身份;
+
+  it("组长（主业务角色销售管理）发起：存发起身份「实线上级」，写点评框、沟通卡、复盘列表都写实线上级，不写销售管理", async () => {
+    expect((await 读项目主题(我("组长"), 项目))?.填写人?.身份).toBe("实线上级");
+    expect(await 发("组长")).toMatchObject({ ok: true });
+    expect((await 一条()).authorRole).toBe("实线上级");
+    expect(await 沟通卡身份("甲")).toBe("实线上级");
+    expect(await 沟通卡身份("组长")).toBe("实线上级");
+    expect(await 复盘身份("甲")).toBe("实线上级");
+    // 发起后关系变了（甲换了上级）：署名照发起时存的写
+    await raw.entMember.update({ where: { userId: 人.甲 }, data: { managerId: null } });
+    expect(await 沟通卡身份("甲")).toBe("实线上级");
+    expect(await 复盘身份("甲")).toBe("实线上级");
+  });
+
+  it("老主题（没存发起身份）：照现有规则推断；推不出退回主业务角色", async () => {
+    expect(await 发("组长")).toMatchObject({ ok: true });
+    await raw.entCoachTopic.updateMany({ data: { authorRole: null } });
+    expect(await 沟通卡身份("甲")).toBe("实线上级");
+    expect(await 复盘身份("甲")).toBe("实线上级");
+    await raw.entMember.update({ where: { userId: 人.甲 }, data: { managerId: null } });
+    expect(await 沟通卡身份("甲")).toBe("销售管理");
+    expect(await 复盘身份("甲")).toBe("销售管理");
+  });
+
+  it("存的不是认得的发起身份（存坏了）：当没存，照推断", async () => {
+    expect(await 发("教练")).toMatchObject({ ok: true });
+    await raw.entCoachTopic.updateMany({ data: { authorRole: "乱写的" } });
+    expect(await 沟通卡身份("甲")).toBe("销售教练");
+  });
+});
+
 describe("复盘「沟通」页签的「主题」一档（PR3b）", () => {
   it("我发起的 / 待我回复 / 全部 + 状态；每条过 能看主题，圈外、组员、看不到项目的拿不到", async () => {
     await 发("教练");

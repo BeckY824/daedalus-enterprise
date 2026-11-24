@@ -40,7 +40,6 @@ function CustomerDetailBody({ 项目数据: 项目区, ...记录 }: RecordProps 
   return (
     <RecordView
       {...记录}
-      留痕放左栏={!p}
       项目联系人={主次}
       项目页签们={项目区.页签们.map((t) => t.id)}
       当前项目菜单={当前项目菜单}

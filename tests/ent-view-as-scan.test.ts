@@ -328,7 +328,7 @@ describe("切换视图里调遍所有写入口，库一行不差", () => {
     expect(漏的, 漏的.join("\n")).toEqual([]);
   });
 
-  it("字典全空 + 切换视图：首页、客户列表、客户详情、项目、渠道、设置几页的服务端取数都不崩、一笔不写、字典还是空的", async () => {
+  it("字典全空 + 切换视图：首页、客户列表、客户详情（含历史变更弹窗）、项目、渠道、设置几页的服务端取数都不崩、一笔不写、字典还是空的", async () => {
     const 角色们 = await 多几种角色();
     await 登录成(人.总管);
     const 前 = await 快照();
@@ -337,6 +337,11 @@ describe("切换视图里调遍所有写入口，库一行不差", () => {
       ["首页", async () => (await import("@/app/(app)/dashboard/page")).default({ searchParams: Promise.resolve({}) } as never)],
       ["客户列表", async () => (await import("@/app/(app)/customers/page")).default({ searchParams: Promise.resolve({}) } as never)],
       ["客户详情", async () => (await import("@/app/(app)/customers/[id]/page")).default({ params: Promise.resolve({ id: 物.客户 }), searchParams: Promise.resolve({}) } as never)],
+      // 客户详情「历史变更」弹窗点开才取的三个动作（11-24）：切换视图下照样读得出、不被只读守卫当写拦
+      ["历史变更弹窗", async () => {
+        const h = await import("@/app/(app)/customers/[id]/history-actions");
+        return Promise.all([h.读客户历史(物.客户, "全部", null), h.读客户历史(物.客户, "资料修改", null), h.读项目历史们(物.客户, 物.项目), h.读项目历史(物.客户, 物.项目)]);
+      }],
       ["项目", async () => (await import("@/app/(app)/projects/page")).default({ searchParams: Promise.resolve({}) } as never)],
       ["项目详情", async () => (await import("@/app/(app)/projects/[id]/page")).default({ params: Promise.resolve({ id: 物.项目 }), searchParams: Promise.resolve({}) } as never)],
       ["渠道", async () => (await import("@/app/(app)/channels/page")).default({ searchParams: Promise.resolve({}) } as never)],
