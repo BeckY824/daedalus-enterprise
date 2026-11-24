@@ -150,6 +150,16 @@ describe("4b 回收站捞回客户：客户电话、客户本身的号码行落�
     expect((await 看已删(() => prisma.contact.findUniqueOrThrow({ where: { id: 旧.id } }))).deletedAt).not.toBeNull();
   });
 
+  it("复审 4：查重键空着的客户本身号码行（老数据）不互相当重复删掉，都改挂到主联系人；同类型同值的才算同一个", async () => {
+    const c = await 客户({ name: "王芳" });
+    for (const value of ["wx_a", "wx_b", "wx_b"]) await prisma.contactMethod.create({ data: { customerId: c.id, contactId: null, kind: "wechat", value, numberKey: "" } });
+    await 删了(c.id);
+    expect((await 恢复(管, "Customer", c.id)).ok).toBe(true);
+    const [主] = await prisma.contact.findMany({ where: { customerId: c.id } });
+    const 行 = await prisma.contactMethod.findMany({ where: { customerId: c.id }, select: { contactId: true, value: true }, orderBy: { value: "asc" } });
+    expect(行).toEqual([{ contactId: 主.id, value: "wx_a" }, { contactId: 主.id, value: "wx_b" }]);
+  });
+
   it("客户电话、号码行都空的：照旧恢复，不建联系人", async () => {
     const c = await 客户();
     await 删了(c.id);

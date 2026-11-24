@@ -186,8 +186,9 @@ async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string 
 async function 快照(tx: Tx, e: 实体, id: string): Promise<object | null> {
   if (e === "customer") return tx.customer.findUnique({ where: { id }, include: { extra: true, creator: true, pool: true } });
   if (e === "lead") return tx.lead.findUnique({ where: { id } });
-  // 联系人连挂靠行一起拍（落号新建的主联系人带着主客户那一行，审查单 A-15）：删联系人挂靠行跟着没（Cascade），建回时照拍的建回
-  if (e === "contact") return tx.contact.findUnique({ where: { id }, include: { customerLinks: { select: { customerId: true } } } });
+  // 联系人连挂靠行一起拍（落号新建的主联系人带着主客户那一行，审查单 A-15）：删联系人挂靠行跟着没（Cascade），建回时照拍的建回；
+  // 在这家的职位 / 关系说明（note）一起拍（复审 6）
+  if (e === "contact") return tx.contact.findUnique({ where: { id }, include: { customerLinks: { select: { customerId: true, note: true } } } });
   if (e === "opportunity") return (await tx.opportunity.findUnique({ where: { id }, include: { closed: true } })) ?? 项目快照(tx, id);
   return tx.followUp.findUnique({ where: { id }, include: { projectNode: true } });
 }
@@ -232,11 +233,11 @@ async function 建回(tx: Tx, e: 实体, data: Record<string, unknown>, 批?: �
     if (pool) await tx.customerPool.create({ data: pool as Prisma.CustomerPoolUncheckedCreateInput });
   } else if (e === "lead") await tx.lead.create({ data: data as Prisma.LeadUncheckedCreateInput });
   else if (e === "contact") {
-    const { customerLinks, ...主 } = data as { customerLinks?: { customerId: string }[] } & Record<string, unknown>;
+    const { customerLinks, ...主 } = data as { customerLinks?: { customerId: string; note?: string | null }[] } & Record<string, unknown>;
     await tx.contact.create({ data: 主 as Prisma.ContactUncheckedCreateInput });
     // 挂靠行：挂的客户还在才建回（老快照没拍这一项 = 不建）
     for (const l of customerLinks ?? []) {
-      if (await tx.customer.findUnique({ where: { id: l.customerId }, select: { id: true } })) await tx.contactCustomer.create({ data: { contactId: String(主.id), customerId: l.customerId } });
+      if (await tx.customer.findUnique({ where: { id: l.customerId }, select: { id: true } })) await tx.contactCustomer.create({ data: { contactId: String(主.id), customerId: l.customerId, note: l.note ?? null } });
     }
     await 记联系人号(tx, String(主.customerId), String(主.id), 主);
   } else if (e === "opportunity" && data.__项目) await 建回项目(tx, data);

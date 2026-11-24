@@ -104,7 +104,7 @@ describe("首次导入", () => {
     expect(await 子表号(甲.id)).toEqual([{ contactId: 们[0].id, value: "13800000001" }]);
   });
 
-  it("号格式验不过（座机）：照原样进新建的主联系人电话格、不进子表；主联系人是原系统同步来的、电话格已有号：不改他的备注，添在客户备注后面（审查单 A-11），撤回 / 恢复跟着", async () => {
+  it("号格式验不过（座机）：照原样进新建的主联系人电话格、不进子表；主联系人是原系统同步来的、电话格已有号：他的备注、客户备注都不碰（复审 5：都在同步比对格里），号记进这一批「没写进去的」明细；撤回 / 恢复跟着", async () => {
     const { id } = await 导([
       客户表([["C1", "虚构远帆科技有限公司", "0571-88886666", "张伟", ""], ["C2", "虚构海川贸易", "0571-88887777", "张伟", "原系统的客户备注"]]),
       联系人表([["P2", "C2", "虚构钱会计", "13700000002"]]),
@@ -117,19 +117,26 @@ describe("首次导入", () => {
     const 钱 = await prisma.contact.findFirstOrThrow({ where: { name: "虚构钱会计" } });
     expect(钱.phone).toBe("13700000002");
     expect(钱.remark ?? "").not.toMatch(/0571/);
-    expect(乙.remark ?? "").toMatch(/^原系统的客户备注\n电话：0571-?88887777$/);
+    expect(乙.remark).toBe("原系统的客户备注");
     expect(await 联系人们(乙.id)).toHaveLength(1);
-    // 同一个号再同步一遍：客户备注不重复添
-    await 导([客户表([["C2", "虚构海川贸易", "0571-88887777", "张伟", "原系统的客户备注"]]), 联系人表([["P2", "C2", "虚构钱会计", "13700000002"]])]);
-    expect(((await 客户("虚构海川贸易")).remark ?? "").match(/0571/g)).toHaveLength(1);
+    // 没处落的号记进这一批的明细（批次列表「没写进去的」），不算失败行
+    const 批 = await prisma.entImportBatch.findUniqueOrThrow({ where: { id } });
+    const 明细 = JSON.parse(批.note ?? "[]") as { 实体: string; 外部ID: string; 原因: string }[];
+    expect(明细).toHaveLength(1);
+    expect(明细[0]).toMatchObject({ 实体: "customer", 外部ID: "C2" });
+    expect(明细[0].原因).toMatch(/虚构海川贸易.*0571-?88887777.*联系人卡/);
+    expect(批.failed).toBe(0);
+    // 原系统之后改了客户备注再同步：照原系统的改，不记冲突（以前号添在客户备注后面，这里会记冲突）
+    await 导([客户表([["C2", "虚构海川贸易", "0571-88887777", "张伟", "原系统改过的备注"]]), 联系人表([["P2", "C2", "虚构钱会计", "13700000002"]])]);
     expect(await prisma.entConflict.count()).toBe(0);
-    // 撤回整批：客户、联系人都删掉；恢复都回来，客户备注照旧带着那一行
+    expect((await 客户("虚构海川贸易")).remark).toBe("原系统改过的备注");
+    // 撤回整批：客户、联系人都删掉；恢复都回来
     const 最后 = (await prisma.entImportBatch.findFirstOrThrow({ orderBy: { createdAt: "desc" }, select: { id: true } })).id;
     if (最后 !== id) expect((await 撤回一批(最后, 我)).完了).toBe(true);
     expect(await 撤回一批(id, 我)).toMatchObject({ 完了: true, 留下数: 0 });
     expect(await prisma.customer.count()).toBe(0);
     expect(await 恢复一批(id, 我)).toMatchObject({ 完了: true, 留下数: 0 });
-    expect((await 客户("虚构海川贸易")).remark ?? "").toMatch(/^原系统的客户备注\n电话：0571-?88887777$/);
+    expect((await 客户("虚构海川贸易")).remark).toBe("原系统的客户备注");
   });
 
   it("我们这边建的主联系人电话格已有号、号验不过：照旧添进他的备注（能补主表格的那种）", async () => {
@@ -211,6 +218,17 @@ describe("增量导入 / 同步", () => {
     const [主] = await 联系人们(甲.id);
     expect(主).toMatchObject({ name: "张三", phone: "13800000001", isPrimary: true });
     expect(await 子表号(甲.id)).toEqual([{ contactId: 主.id, value: "13800000001" }]);
+  });
+
+  it("复审 6：撤回删掉的联系人连挂靠行的职位 / 关系说明一起拍，恢复时一起建回", async () => {
+    const { id } = await 导([客户表([["C1", "虚构远帆科技有限公司", "", "张伟", ""]]), 联系人表([["P1", "C1", "虚构王经理", "13700000001"]])]);
+    const 甲 = await 客户("虚构远帆科技有限公司");
+    const [王] = await 联系人们(甲.id);
+    await prisma.contactCustomer.upsert({ where: { contactId_customerId: { contactId: 王.id, customerId: 甲.id } }, create: { contactId: 王.id, customerId: 甲.id, note: "采购负责人" }, update: { note: "采购负责人" } });
+    expect(await 撤回一批(id, 我)).toMatchObject({ 完了: true, 留下数: 0 });
+    expect(await prisma.contactCustomer.count()).toBe(0);
+    expect(await 恢复一批(id, 我)).toMatchObject({ 完了: true, 留下数: 0 });
+    expect(await prisma.contactCustomer.findMany({ select: { contactId: true, customerId: true, note: true } })).toEqual([{ contactId: 王.id, customerId: 甲.id, note: "采购负责人" }]);
   });
 
   it("落号建的主联系人之后被人改过：撤回留下他，客户也留下", async () => {

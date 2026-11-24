@@ -827,7 +827,8 @@ export async function 号码待补(tx: Tx, 批次Id: string, customerId: string,
 }
 
 /**
- * 把这一批待补的客户电话落到主联系人（primary-contact-number.ts 导入号落主联系人：已有不重复、没联系人新建、只补空、没对上的进子表 / 备注）。
+ * 把这一批待补的客户电话落到主联系人（primary-contact-number.ts 导入号落主联系人：已有不重复、没联系人新建、只补空、没对上的进子表 / 备注，
+ * 哪儿都不能写的记进这一批「没写进去的」明细）。
  * 原系统同步来的联系人（对照表连着）电话格不补、号进子表：补了下次同步那一格会算我们这边改过、记冲突。
  * 最多 = 这一趟处理几行（收尾分几个小事务补，不攥着写锁）；返回还有没有没补的
  */
@@ -848,16 +849,32 @@ export async function 补号码待补的(tx: Tx, 批次Id: string, 最多?: numb
       const 格 = 落.怎么 === "补主表" ? "phone" : "remark";
       const 现 = await 读现值(tx, "contact", 落.contactId);
       await 记({ entity: "contact", externalId, targetId: 落.contactId, kind: "update", before: J({ [格]: 规(落.原) }), written: J({ [格]: 现?.[格] ?? null }) });
-    } else if (落.怎么 === "进客户备注") {
-      // 原系统同步来的主联系人备注不碰，号添在客户备注后面（审查单 A-11）：照客户那一类记，整批撤回逐行改回、恢复再添上
-      const 现 = await 读现值(tx, "customer", customerId);
-      await 记({ entity: "customer", externalId, targetId: customerId, kind: "update", before: J({ remark: 规(落.原) }), written: J({ remark: 现?.remark ?? null }) });
+    } else if (落.怎么 === "没处落") {
+      // 号验不过、主联系人是原系统同步来的：他的电话格、备注和客户备注都在同步比对格里，哪儿都不写（复审 5），
+      // 记进这一批「没写进去的」明细（批次列表展开能看），叫人到联系人卡上补；客户那一行照样写进去了，不算失败行
+      await 记没处落的号(tx, 批次Id, customerId, c?.name ?? "", 落.号);
     } else if (落.怎么 === "进子表") {
       await 记({ entity: 号码行, externalId: customerId, targetId: 落.contactId, kind: "create", written: J(落.号) });
     }
     await tx.entImportRow.delete({ where: { id: r.id } });
   }
   return !!最多 && 行们.length === 最多;
+}
+
+/** 客户电话没处落（导入号落主联系人 返回 没处落）：记进这一批的「没写进去的」明细（batch.note，同写不进的行），满了不再记 */
+async function 记没处落的号(tx: Tx, 批次Id: string, customerId: string, 客户名: string, 号: string): Promise<void> {
+  const 批 = await tx.entImportBatch.findUnique({ where: { id: 批次Id }, select: { note: true, source: true } });
+  if (!批) return;
+  const 们 = 解<失败明细[]>(批.note, []);
+  if (们.length >= 失败上限) return;
+  const ref = await tx.entExternalRef.findFirst({ where: { source: 批.source, entity: "customer", targetId: customerId }, select: { externalId: true } });
+  const 叫 = 客户名.trim() ? `客户「${客户名.trim()}」` : "这位客户";
+  们.push({
+    实体: "customer",
+    外部ID: ref?.externalId ?? customerId,
+    原因: `${叫}的电话「${号}」格式认不出，主联系人是原系统同步来的（他的电话格、备注和客户备注都不改，改了下次同步会记冲突）：这个号没记进系统，请到客户详情的联系人卡上补`,
+  });
+  await tx.entImportBatch.update({ where: { id: 批次Id }, data: { note: J(们) } });
 }
 
 /** 整批撤回：落号时记进子表的那几个号摘掉（还挂在那位联系人身上、他电话格不是这个号的才摘）。联系人、客户那几类已经逐行退过 */

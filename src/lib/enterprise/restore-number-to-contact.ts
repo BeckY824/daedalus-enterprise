@@ -15,7 +15,7 @@
  * 只用 tx：调用方在恢复的事务里调（看已删 里，所以这里每条查联系人都自己带 deletedAt: null）
  */
 import type { Prisma } from "@/generated/prisma";
-import { 主联系人of, 导入号落主联系人, 不是同步来的 } from "./primary-contact-number";
+import { 主联系人of, 导入号落主联系人, 不是同步来的, 号添进客户备注 } from "./primary-contact-number";
 import { 客户名拆人名 } from "./contact-name-from-customer";
 import { 号键 } from "../phone";
 
@@ -26,6 +26,12 @@ type 主联系人 = NonNullable<Awaited<ReturnType<typeof 主联系人of>>>;
 const 主表哪格: Record<string, "phone" | "email" | "wechat" | undefined> = { phone: "phone", email: "email", wechat: "wechat" };
 /** 和联系人电话格比的几种（手机、座机、WhatsApp 共用号键，11-17） */
 const 号码类 = new Set(["phone", "landline", "whatsapp"]);
+
+/**
+ * 同一个号的键：同类型同查重键。查重键空着的（老数据没算出键）拿号码原文比（复审 4）：
+ * 不然几行空键的互相当成重复、被摘掉丢号
+ */
+const 去重键 = (m: { kind: string; numberKey: string; value: string }) => (m.numberKey ? `${m.kind}\t键\t${m.numberKey}` : `${m.kind}\t值\t${m.value.trim()}`);
 
 export async function 捞回客户号落主联系人(tx: Tx, customerId: string): Promise<void> {
   const c = await tx.customer.findUnique({ where: { id: customerId }, select: { name: true, phone: true } });
@@ -55,12 +61,12 @@ export async function 捞回客户号落主联系人(tx: Tx, customerId: string)
   if (散行.length) {
     const 在用 = await tx.contact.findMany({ where: { customerId, deletedAt: null }, select: { id: true, phone: true } });
     const 已挂 = 在用.length
-      ? await tx.contactMethod.findMany({ where: { customerId, contactId: { in: 在用.map((x) => x.id) } }, select: { kind: true, numberKey: true } })
+      ? await tx.contactMethod.findMany({ where: { customerId, contactId: { in: 在用.map((x) => x.id) } }, select: { kind: true, numberKey: true, value: true } })
       : [];
-    const 已有键 = new Set(已挂.map((m) => `${m.kind}\t${m.numberKey}`));
+    const 已有键 = new Set(已挂.map(去重键));
     const 电话格键 = new Set(在用.map((x) => 号键(x.phone ?? "")).filter(Boolean));
     for (const m of 散行) {
-      const 键 = `${m.kind}\t${m.numberKey}`;
+      const 键 = 去重键(m);
       if (已有键.has(键) || (号码类.has(m.kind) && 电话格键.has(号键(m.value)))) {
         await tx.contactMethod.delete({ where: { id: m.id } });
         continue;
@@ -81,7 +87,9 @@ export async function 捞回客户号落主联系人(tx: Tx, customerId: string)
   if (电话) {
     await 要主联系人();
     // 原系统同步来的主联系人电话格不补（复审 2，同 apply.ts 补号码待补的）：补了下次同步那一格会记冲突
-    await 导入号落主联系人(tx, customerId, 电话, c.name, 不是同步来的(tx));
+    const 落 = await 导入号落主联系人(tx, customerId, 电话, c.name, 不是同步来的(tx));
+    // 号验不过、主联系人是原系统同步来的：没有导入批次可记明细，号添进客户备注（原系统之后改客户备注时会记冲突，人来定；不丢号）
+    if (落.怎么 === "没处落") await 号添进客户备注(tx, customerId, 落.号);
   }
   if (c.phone !== "") await tx.customer.update({ where: { id: customerId }, data: { phone: "" } });
 }
