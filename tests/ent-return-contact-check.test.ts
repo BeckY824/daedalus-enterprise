@@ -2,7 +2,8 @@
  * 退回公海前查联系方式（企业版 V3.5.1 M-公海-15，11-05，lib/enterprise/return-contact-check.ts）：
  *   11-05 用户：「只要有人要把手上的线索、商机或订单扔回去（比如退回公海），一定一定要先检查联系方式是否为空。
  *   如果不为空且正确的话，可以退；如果为空、不为空但错误，则都退不了。」「也包括客户联系人、项目」
- *   - 查：客户电话 + 客户名下联系人的每个号码 + 项目挂的联系人（主联系人、项目联系人表，可能是别家的）
+ *   - 查：客户名下联系人的每个号码 + 项目挂的联系人（主联系人、项目联系人表，可能是别家的）
+ *   - 客户本身没有电话（E-260）：号码都在联系人上，造数把「客户的号」造成主要联系人的号；Customer.phone 存空串、不查
  *   - 一个都没有 → 拦；有一个不对 → 拦；全对 → 放行
  *   - 所有角色；客户放回公海（单个 / 批量跳过）、项目放回项目公海、线索验证退回公海都管
  *   - 建项目向导公海捞取（分配放行）不管
@@ -35,8 +36,11 @@ async function 造人(email: string, name: string, role: string): Promise<人> {
   const u = await prisma.user.create({ data: { email, name, title: "", role, password: "x" } });
   return { id: u.id, name: u.name, role };
 }
+/** 造客户：号码给了就记在主要联系人「主联系人」上（E-260：客户没有电话，Customer.phone 存空串） */
 async function 客户(phone: string, ownerId = 乙.id) {
-  return (await prisma.customer.create({ data: { name: `客户${++序}`, phone, salesOwnerId: ownerId } })).id;
+  const id = (await prisma.customer.create({ data: { name: `客户${++序}`, phone: "", salesOwnerId: ownerId } })).id;
+  if (phone) await prisma.contact.create({ data: { name: "主联系人", customerId: id, phone, isPrimary: true } });
+  return id;
 }
 async function 联系人(customerId: string, 补: { phone?: string; email?: string; wechat?: string; name?: string } = {}) {
   return (await prisma.contact.create({ data: { name: 补.name ?? `联系人${++序}`, customerId, phone: 补.phone ?? null, email: 补.email ?? null, wechat: 补.wechat ?? null } })).id;
@@ -65,7 +69,7 @@ afterEach(() => {
 });
 
 describe("客户放回公海", () => {
-  it("客户电话空、没有联系人：拦，说联系方式是空的", async () => {
+  it("没有联系人：拦，说联系方式是空的", async () => {
     const id = await 客户("");
     const r = await 放进公海([id], "客户主动终止");
     expect(r.ok).toBe(false);
@@ -73,29 +77,43 @@ describe("客户放回公海", () => {
     expect(await 在客户公海(id)).toBe(false);
   });
 
-  it("客户电话填了但不对：拦，说哪个号不对", async () => {
+  it("主要联系人电话填了但不对：拦，说哪位联系人哪个号不对", async () => {
     const id = await 客户("12");
     const r = await 放进公海([id], "客户主动终止");
     expect(r.ok).toBe(false);
-    expect(!r.ok && r.error).toMatch(/客户电话「12」不对.*改好再退回公海/);
+    expect(!r.ok && r.error).toMatch(/^联系人「主联系人」的[^「]*「12」.*改好再退回公海$/);
     expect(await 在客户公海(id)).toBe(false);
   });
 
-  it("客户电话对：放行", async () => {
+  it("主要联系人电话对：放行", async () => {
     const id = await 客户("13900001234");
     const r = await 放进公海([id], "客户主动终止");
     expect(r.ok).toBe(true);
     expect(await 在客户公海(id)).toBe(true);
   });
 
-  it("客户电话空、联系人有对的号：放行（联系人的号也算联系方式）", async () => {
+  it("Customer.phone 有旧值也不查：号不对但联系人的号对，照放（客户没有电话）", async () => {
+    const id = (await prisma.customer.create({ data: { name: `客户${++序}`, phone: "12", salesOwnerId: 乙.id } })).id;
+    await 联系人(id, { phone: "13900001234" });
+    expect((await 放进公海([id], "客户主动终止")).ok).toBe(true);
+    expect(await 在客户公海(id)).toBe(true);
+  });
+
+  it("Customer.phone 有旧值、没有联系人：照样算空，拦", async () => {
+    const id = (await prisma.customer.create({ data: { name: `客户${++序}`, phone: "13900001234", salesOwnerId: 乙.id } })).id;
+    const r = await 放进公海([id], "客户主动终止");
+    expect(!r.ok && r.error).toBe(联系方式空话);
+    expect(await 在客户公海(id)).toBe(false);
+  });
+
+  it("没写主要联系人、普通联系人有对的号：放行（联系人的号都算联系方式）", async () => {
     const id = await 客户("");
     await 联系人(id, { phone: "13900001234" });
     expect((await 放进公海([id], "客户主动终止")).ok).toBe(true);
     expect(await 在客户公海(id)).toBe(true);
   });
 
-  it("客户电话对、但有一位联系人的邮箱不对：拦（要全部正确）", async () => {
+  it("主要联系人电话对、但另一位联系人的邮箱不对：拦（要全部正确）", async () => {
     const id = await 客户("13900001234");
     await 联系人(id, { name: "王五", email: "不是邮箱" });
     const r = await 放进公海([id], "客户主动终止");
@@ -152,7 +170,7 @@ describe("客户放回公海", () => {
 });
 
 describe("项目放回项目公海", () => {
-  it("客户电话空、没联系人：拦，项目不动", async () => {
+  it("没联系人：拦，项目不动", async () => {
     const c = await 客户("");
     const p = await 项目(c);
     const r = await 放回公海(乙, p);

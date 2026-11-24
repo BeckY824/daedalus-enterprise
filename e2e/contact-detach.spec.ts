@@ -123,8 +123,9 @@ test("彻底删除也能撤销", async ({ page }) => {
 test("添加联系人挑所属客户：两位同名客户，下拉里看得出公司和手机尾号，挂到挑的那位（2026-10-04 J-016）", async ({ page }) => {
   const p = 连库();
   const 张三 = await p.user.findFirstOrThrow({ where: { email: 账号.用户名 } });
-  await p.customer.create({ data: { name: "重名王强", phone: "13822220011", school: "星辰科技", salesOwnerId: 张三.id } });
-  const 海川 = await p.customer.create({ data: { name: "重名王强", phone: "13922220022", school: "海川外贸", salesOwnerId: 张三.id } });
+  // 企业版客户没有电话（E-260）：号记在主要联系人上，下拉里的尾号取主联系人的号
+  await p.customer.create({ data: { name: "重名王强", phone: "", school: "星辰科技", salesOwnerId: 张三.id, contacts: { create: { name: "", phone: "13822220011", isPrimary: true } } } });
+  const 海川 = await p.customer.create({ data: { name: "重名王强", phone: "", school: "海川外贸", salesOwnerId: 张三.id, contacts: { create: { name: "", phone: "13922220022", isPrimary: true } } } });
 
   await 登录(page);
   await page.goto("/contacts");

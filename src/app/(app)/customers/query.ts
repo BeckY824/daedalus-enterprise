@@ -13,6 +13,7 @@ import { 未分级 } from "./query-shared";
 import { 读团队 } from "@/lib/sync/client";
 import { 部门里的人 } from "@/lib/sync/dept-policy";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 主联系人号码选, 客户电话 } from "@/lib/enterprise/primary-contact-phone";
 import { 创建时间段 } from "@/lib/custom-date-range";
 import { 三态筛选条件, 三态界面开着 } from "@/lib/enterprise/tri-state-list";
 import { 是三态筛选值 } from "@/lib/enterprise/tri-state-label";
@@ -293,6 +294,8 @@ export const 客户行字段 = {
   contracts: { select: { amount: true, ...带币种.签约 } },
   pool: { select: { reason: true } },
   extra: true,
+  // 企业版客户没有电话（E-260）：「联系电话」取主联系人的第一个号
+  contacts: 主联系人号码选,
 } satisfies Prisma.CustomerSelect;
 
 type 取到的行 = Prisma.CustomerGetPayload<{ select: typeof 客户行字段 }>;
@@ -410,7 +413,8 @@ export function 成客户行(r: 取到的行, 号: (p: string) => string) {
   return {
     id: r.id,
     name: r.name,
-    phone: 号(r.phone),
+    // 企业版客户没有电话（E-260）：取主联系人的第一个号，脱敏器照旧套上
+    phone: 号(客户电话(r)),
     school: r.school,
     grade: r.grade,
     major: r.major,

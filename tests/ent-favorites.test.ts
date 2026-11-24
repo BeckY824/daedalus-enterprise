@@ -58,7 +58,8 @@ beforeEach(async () => {
   人.只读管 = await 建("只读管", "ADMIN", "admin");
   人.甲 = await 建("业务员甲", "SALES", "sales");
   人.乙 = await 建("业务员乙", "SALES", "sales");
-  甲的客户 = (await prisma.customer.create({ data: { name: "甲的客户", phone: "13900000001", salesOwnerId: 人.甲 } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+  甲的客户 = (await prisma.customer.create({ data: { name: "甲的客户", phone: "", salesOwnerId: 人.甲, contacts: { create: { name: "甲的联系人", phone: "13900000001", isPrimary: true } } } })).id;
   甲的项目 = await 建项目(人.甲, "甲的项目");
   await setSetting("enterprise.rule.org_scope", true);
 });

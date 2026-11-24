@@ -57,6 +57,7 @@ import { 不能导入导出 } from "@/lib/enterprise/import-perm";
 import { patchCustomer } from "@/app/(app)/customers/actions";
 import { deleteContact, restoreContact } from "@/app/(app)/customers/[id]/actions";
 import { TOOL_MAP, type ToolContext } from "@/lib/agent/tools";
+import { 主联系人号码选, 客户电话 } from "@/lib/enterprise/primary-contact-phone";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { maskPhone } from "@/lib/utils";
 import { invalidateSettingsCache } from "@/lib/settings";
@@ -145,7 +146,8 @@ const ctx = (u: { id: string; name: string }, 号: ToolContext["号"]): ToolCont
 async function 列表里的号(id: string, 筛选们: Record<string, string>[]) {
   await requireUser();
   const 号 = await 号码脱敏器();
-  for (const sp of 筛选们) for (const c of await db.customer.findMany({ where: await 客户筛选条件(sp), select: { id: true, phone: true } })) if (c.id === id) return 号(c.phone);
+  // 列表「联系电话」= 主联系人的第一个号（E-260 客户没有电话），同 query.ts 成列表行
+  for (const sp of 筛选们) for (const c of await db.customer.findMany({ where: await 客户筛选条件(sp), select: { id: true, phone: true, contacts: 主联系人号码选 } })) if (c.id === id) return 号(客户电话(c));
   return null;
 }
 
@@ -154,8 +156,9 @@ const 拿到: Record<接口, (id: string) => Promise<string | null>> = {
   列表: (id) => 列表里的号(id, [{}, { pool: "1" }]),
   详情: async (id) => {
     await requireUser();
-    const c = await db.customer.findUnique({ where: { id } });
-    return c ? (await 号码脱敏器())(c.phone) : null;
+    // 客户没有电话（E-260）：详情里的号是主要联系人的
+    const c = await db.customer.findUnique({ where: { id }, select: { phone: true, contacts: 主联系人号码选 } });
+    return c ? (await 号码脱敏器())(客户电话(c)) : null;
   },
   导出: async (id) => {
     for (const sp of [{}, { pool: "1" }]) {
@@ -176,7 +179,7 @@ const 拿到: Record<接口, (id: string) => Promise<string | null>> = {
     const 读 = (await TOOL_MAP.get("get_customer")!.run({ id }, c)).data as { 找到?: number; profile?: string };
     // 两条路径口径必须一致：搜得到 ⇔ 读得到，读到的档案里也是同一个号
     expect(读.找到 !== 0, "search_customers 和 get_customer 不一致").toBe(!!在搜里);
-    if (在搜里) expect(读.profile ?? "", "get_customer 档案里的电话和 search_customers 不一样").toContain(`电话 ${在搜里.phone}`);
+    if (在搜里) expect(读.profile ?? "", "get_customer 档案里的电话和 search_customers 不一样").toContain(`电话（主联系人的，客户本身没有电话）${在搜里.phone}`);
     return 在搜里 ? 在搜里.phone : null;
   },
 };
@@ -247,10 +250,11 @@ beforeAll(async () => {
   });
   let n = 10;
   for (const o of [...Object.values(用户), 小张, 小李, 外人]) {
-    const c = await raw.customer.create({ data: { name: `${o}的客户`, phone: `${电话前缀}${n++}00`, salesOwnerId: o } });
+    // 企业版客户没有电话（E-260）：号记在主要联系人上
+    const c = await raw.customer.create({ data: { name: `${o}的客户`, phone: "", salesOwnerId: o, contacts: { create: { name: `${o}的主联系人`, phone: `${电话前缀}${n++}00`, isPrimary: true } } } });
     客户id.set(o, c.id);
   }
-  const 公海 = await raw.customer.create({ data: { name: "公海客户", phone: `${电话前缀}9900`, salesOwnerId: 用户.老板 } });
+  const 公海 = await raw.customer.create({ data: { name: "公海客户", phone: "", salesOwnerId: 用户.老板, contacts: { create: { name: "公海主联系人", phone: `${电话前缀}9900`, isPrimary: true } } } });
   await raw.customerPool.create({ data: { customerId: 公海.id } });
   客户id.set("公海", 公海.id);
   await 开规则(true);
@@ -289,7 +293,8 @@ describe("看得到 + 电话是否打码", () => {
     const 号 = await 看到的号(role, api, id);
     expect(号 !== null).toBe(want);
     if (号 === null) return;
-    const 原号 = (await raw.customer.findUniqueOrThrow({ where: { id } })).phone!;
+    // 原号 = 主要联系人的号（E-260 客户没有电话）
+    const 原号 = (await raw.contact.findFirstOrThrow({ where: { customerId: id, isPrimary: true } })).phone!;
     expect(号).toBe(mask ? maskPhone(原号) : 原号);
   });
 });
@@ -307,7 +312,8 @@ describe("电话是否打码（MCP：令牌不带 cookie）", () => {
     { role: "老板" as const, mask: false },
   ])("$role → 打码 $mask", async ({ role, mask }) => {
     const id = 客户id.get(记录归属[role].自己的!)!;
-    const 原号 = (await raw.customer.findUniqueOrThrow({ where: { id } })).phone!;
+    // 原号 = 主要联系人的号（E-260 客户没有电话）
+    const 原号 = (await raw.contact.findFirstOrThrow({ where: { customerId: id, isPrimary: true } })).phone!;
     // 和 api/mcp/route.ts 一样：没有 cookie，只用 以谁的身份 告诉限定层是谁
     const r = await 以谁的身份(用户[role], () => 跑工具("search_customers", { query: 搜索词 }, { id: 用户[role], name: role }));
     const 这位 = (r.data as { customers?: { id: string; phone: string | null }[] }).customers?.find((c) => c.id === id);

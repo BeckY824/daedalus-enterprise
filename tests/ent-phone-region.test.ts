@@ -74,7 +74,8 @@ describe("查号码 带归属地", () => {
     vi.stubEnv("CRM_ENTERPRISE", "1");
     expect(await 查号码("手机号", "18807551234")).toMatchObject({ ok: true, 状态: "首次录入", 归属地: "广东 深圳 中国移动" });
     expect(await 查号码("手机号", "+44 7911 123456")).toMatchObject({ ok: true, 归属地: "英国" });
-    await prisma.customer.create({ data: { name: "已有", phone: "18807551234", followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: mocks.user.id } });
+    // 企业版客户没有电话（E-260）：号记在主要联系人上，查重比联系人的号
+    await prisma.customer.create({ data: { name: "已有", phone: "", followStatus: "待跟进", decisionStatus: "了解中", salesOwnerId: mocks.user.id, contacts: { create: { name: "已有联系人", phone: "18807551234", isPrimary: true } } } });
     expect(await 查号码("手机号", "18807551234")).toMatchObject({ ok: true, 状态: "我的通讯录已有", 归属地: "广东 深圳 中国移动" });
     expect(await 查号码("微信", "wx_18807551234")).toMatchObject({ ok: true, 归属地: null });
     expect(await 查号码("旺旺ID", "tb18807551234")).toMatchObject({ ok: true, 归属地: null });

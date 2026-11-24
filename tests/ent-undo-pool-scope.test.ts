@@ -32,8 +32,9 @@ async function 建(email: string, role: string): Promise<人> {
   return { id: u.id, role };
 }
 const 当 = (p: 人) => { mocks.user = { ...mocks.user, id: p.id, role: p.role, name: p.id }; };
+// 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
 const 客户 = (salesOwnerId: string) =>
-  prisma.customer.create({ data: { name: `客户${++号}`, phone: `1390000${String(号).padStart(4, "0")}`, salesOwnerId } });
+  prisma.customer.create({ data: { name: `客户${++号}`, phone: "", salesOwnerId, contacts: { create: { name: `联系人${号}`, phone: `1390000${String(号).padStart(4, "0")}`, isPrimary: true } } } });
 const 归谁 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ where: { id } })).salesOwnerId;
 const 在公海 = async (id: string) => (await prisma.customerPool.count({ where: { customerId: id } })) > 0;
 const 占位 = async () => (await prisma.user.findUniqueOrThrow({ where: { email: 无负责人占位邮箱 } })).id;

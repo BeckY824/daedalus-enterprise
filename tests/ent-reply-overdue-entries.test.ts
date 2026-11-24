@@ -51,7 +51,8 @@ let 序 = 0;
 /** 一位客户 + 一条线索：负责人 owner、老板建的（分出去的）、十天前建档（不靠建档时刻进初筛） */
 async function 线索(owner: string, 补: Record<string, unknown> = {}, 客户负责人 = owner) {
   序++;
-  const c = (await prisma.customer.create({ data: { name: `客户${序}`, phone: `1380000${String(序).padStart(4, "0")}`, salesOwnerId: 客户负责人 } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上（放回公海查联系方式按联系人的号判）
+  const c = (await prisma.customer.create({ data: { name: `客户${序}`, phone: "", salesOwnerId: 客户负责人, contacts: { create: { name: `联系人${序}`, phone: `1380000${String(序).padStart(4, "0")}`, isPrimary: true } } } })).id;
   const p = (await prisma.project.create({
     data: { name: `线索${序}`, customerId: c, ownerId: owner, creatorId: 老板.id, phase: "线索", node: "潜客培育", bizLine: "内贸", createdAt: new Date(Date.now() - 10 * 86_400_000), ...补 },
   })).id;

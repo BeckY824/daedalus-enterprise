@@ -104,7 +104,8 @@ beforeAll(async () => {
       { userId: 外人 },
     ],
   });
-  id.客户 = (await raw.customer.create({ data: { name: "号码那位", phone: 客户号, salesOwnerId: 普通销售 } })).id;
+  // 企业版客户没有电话（E-260）：「号码那位」的号记在主要联系人「前台」上，Customer.phone 空串
+  id.客户 = (await raw.customer.create({ data: { name: "号码那位", phone: "", salesOwnerId: 普通销售, contacts: { create: { name: "前台", phone: 客户号, isPrimary: true } } } })).id;
   id.联系人那位 = (await raw.customer.create({ data: { name: "联系人那位", phone: "15011119999", salesOwnerId: 普通销售, contacts: { create: { name: "家长", phone: 联系人号 } } } })).id;
   id.外贸那位 = (await raw.customer.create({ data: { name: "外贸那位", phone: "15011118888", salesOwnerId: 普通销售, extra: { create: { whatsapp: 微信号码 } } } })).id;
   id.线索 = (await raw.lead.create({ data: { name: "线索那家", contact: "联系人甲", phone: 线索号, ownerId: 普通销售 } })).id;
@@ -257,11 +258,18 @@ describe("Y27 电话藏着：按号码搜不出来", () => {
   });
 
   it("AI 助手 query_records 按电话筛、排序、分组：电话藏的人一律拦下；能看的人、开关关着照旧查得到", async () => {
+    // 企业版客户没有电话（E-260）：号码按联系人表的电话查；客户表问电话给一句指路，不比任何号
     const 规格们 = [
-      { 表: "客户", 条件: [{ 字段: "电话", 运算: "包含", 值: 客户号.slice(-4) }] },
-      { 表: "客户", 条件: [], 排序: { 字段: "电话", 降序: true } },
-      { 表: "客户", 条件: [], 分组: "电话" },
+      { 表: "联系人", 条件: [{ 字段: "电话", 运算: "包含", 值: 客户号.slice(-4) }] },
+      { 表: "联系人", 条件: [], 排序: { 字段: "电话", 降序: true } },
+      { 表: "联系人", 条件: [], 分组: "电话" },
     ];
+    for (const u of [普通销售, 经理] as const) {
+      const 客户表 = await MCP(u, "query_records", { 表: "客户", 条件: [{ 字段: "电话", 运算: "包含", 值: 客户号.slice(-4) }] });
+      expect(客户表.summary).toBe("查询写得不对");
+      expect((客户表.data as { error: string }).error).toMatch(/没有电话，号码都记在联系人上：改查「联系人」表的「电话」/);
+      expect(JSON.stringify(客户表.data)).not.toContain("号码那位");
+    }
     // 只用项目没有单独的线索表（批次 20b）：查线索表直接挡回、指去项目表，一个号码都不比
     const 线索 = await MCP(普通销售, "query_records", { 表: "线索", 条件: [{ 字段: "电话", 运算: "包含", 值: 线索号.slice(-4) }] });
     expect(线索.summary).toBe("查询写得不对");
@@ -271,8 +279,8 @@ describe("Y27 电话藏着：按号码搜不出来", () => {
       expect(r.summary, JSON.stringify(规格)).toBe("电话对你不可见");
     }
     const 查到 = async (u: 谁) => JSON.stringify((await MCP(u, "query_records", 规格们[0])).data);
-    expect(await 查到(经理)).toContain("号码那位");
-    expect(await 开关关着(() => 查到(普通销售))).toContain("号码那位");
+    expect(await 查到(经理)).toContain("前台");
+    expect(await 开关关着(() => 查到(普通销售))).toContain("前台");
     // 不碰电话的查询照常
     expect(JSON.stringify((await MCP(普通销售, "query_records", { 表: "客户", 条件: [{ 字段: "姓名", 运算: "包含", 值: "号码" }] })).data)).toContain("号码那位");
   });

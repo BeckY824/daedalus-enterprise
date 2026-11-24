@@ -205,17 +205,19 @@ export async function 客户号码SQL(raw: unknown, userId?: string): Promise<{ 
   const phone = 号码片段(k);
   if (!phone) return { sql: "(0)", values: [] };
   const p = 包含模式(phone);
+  // 企业版客户没有电话（E-260）：客户电话那一句不比，号码都在联系人上（下面联系人两句）
+  const 比客户电话 = !企业版();
   // 号码片段是 ≥3 位的纯数字，三字索引一定比得了（迁移 141）；客户电话、WhatsApp 两句换成索引里的号键列，联系人两句照旧
   if (三字可比(phone) && (await 三字索引可用())) {
     const m = 匹配式([[["phoneKey"], phone]]);
     return {
-      sql: `(c.id IN (SELECT s.cid FROM "CustomerSearch" s WHERE "CustomerSearch" MATCH ?) OR c.id IN (SELECT s.cid FROM "CustomerExtraSearch" s WHERE "CustomerExtraSearch" MATCH ?) OR c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND ${联系人号键SQL()}) OR ${联系人子表号SQL()})`,
-      values: [m, m, p, p],
+      sql: `(${比客户电话 ? `c.id IN (SELECT s.cid FROM "CustomerSearch" s WHERE "CustomerSearch" MATCH ?) OR ` : ""}c.id IN (SELECT s.cid FROM "CustomerExtraSearch" s WHERE "CustomerExtraSearch" MATCH ?) OR c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND ${联系人号键SQL()}) OR ${联系人子表号SQL()})`,
+      values: [...(比客户电话 ? [m] : []), m, p, p],
     };
   }
   return {
-    sql: `(${客户号键SQL()} OR c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE ${号键SQL("e.whatsapp")} GLOB ?) OR c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND ${联系人号键SQL()}) OR ${联系人子表号SQL()})`,
-    values: [p, p, p, p],
+    sql: `(${比客户电话 ? `${客户号键SQL()} OR ` : ""}c.id IN (SELECT e."customerId" FROM "CustomerExtra" e WHERE ${号键SQL("e.whatsapp")} GLOB ?) OR c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND ${联系人号键SQL()}) OR ${联系人子表号SQL()})`,
+    values: [...(比客户电话 ? [p] : []), p, p, p],
   };
 }
 
@@ -257,24 +259,39 @@ export type 关键词段 = { sql: string; values: string[]; 走索引?: true };
  */
 export type 另比一词 = (词: string) => Promise<{ sql: string; values: string[] } | null>;
 
+/** 只比联系人的电话（选客户弹窗、全局搜索用，企业版 E-260）：联系人电话格（原样 / 号键）+ 号码子表里的手机号 / WhatsApp；联系人没删的 */
+function 联系人电话段(phone: string | null, pattern: string, phonePattern: string): { parts: string[]; values: string[] } {
+  const parts = [`c.id IN (SELECT t."customerId" FROM "Contact" t WHERE t."deletedAt" IS NULL AND (t.phone GLOB ? OR t.phone GLOB ?${phone ? ` OR ${联系人号键SQL()}` : ""}))`];
+  const values = [pattern, phonePattern, ...(phone ? [phonePattern] : [])];
+  if (phone) { parts.push(联系人子表号SQL()); values.push(phonePattern); }
+  return { parts, values };
+}
+
 /** 一个已规整、不再拆的词 */
 async function 一个词SQL(k: string, onlyPicker: boolean, 藏号: boolean): Promise<关键词段> {
   const phone = 号码片段(k);
   const 站 = 网址域名(k) ?? k;
   const pattern = 包含模式(k, true), phonePattern = 包含模式(phone ?? k), sitePattern = 包含模式(站, true);
+  /*
+    企业版客户没有电话（E-260，客户「客户没有电话这一说法」）：客户电话那几句不比，号码都在联系人上。
+    选客户弹窗、全局搜索（onlyPicker）原来只比客户电话、不比联系人：企业版改比联系人的电话（电话格 + 号码子表），按号码照样搜得到
+  */
+  const 比客户电话 = !藏号 && !企业版();
+  const 比联系人电话 = !藏号 && 企业版();
   // 三字索引里的列；简称不在索引里，两条路各自另比（简称SQL / 本行那一格），选客户弹窗、全局搜索（onlyPicker）也比
   const fields = onlyPicker ? ["name", "school"] : ["name", "school", "major", "grade", "remark"];
   const 编号 = 客户编号SQL(k);
   // 三字索引（迁移 141）：用到的每一串都比得了才换，客户本表、扩展资料两句换成索引，联系人两句照旧；逐列和下面的 GLOB 一一对应
   if (三字可比(k) && 三字可比(phone ?? k) && (onlyPicker || 三字可比(站)) && (await 三字索引可用())) {
     const 本表: [readonly string[], string][] = [[fields, k]];
-    if (!藏号) {
+    if (比客户电话) {
       本表.push([["phone"], phone ?? k]);
       if (phone) 本表.push([["phoneKey"], phone]);
     }
     const parts = [`c.id IN (SELECT s.cid FROM "CustomerSearch" s WHERE "CustomerSearch" MATCH ?)`, 简称SQL()];
     const values = [匹配式(本表), pattern];
     if (编号) { parts.push(编号.sql); values.push(...编号.values); }
+    if (onlyPicker && 比联系人电话) { const w = 联系人电话段(phone, pattern, phonePattern); parts.push(...w.parts); values.push(...w.values); }
     if (!onlyPicker) {
       const 扩展: [readonly string[], string][] = [[["email", "wechat", "country", "alibabaId"], k], [["website"], 站]];
       if (!藏号) {
@@ -295,10 +312,11 @@ async function 一个词SQL(k: string, onlyPicker: boolean, 藏号: boolean): Pr
   const parts = [...fields, "shortName"].map(c => `c."${c}" GLOB ?`);
   const values = parts.map(() => pattern);
   if (编号) { parts.push(编号.sql); values.push(...编号.values); }
-  if (!藏号) {
+  if (比客户电话) {
     parts.push('c."phone" GLOB ?'); values.push(phonePattern);
     if (phone) { parts.push(客户号键SQL()); values.push(phonePattern); }
   }
+  if (onlyPicker && 比联系人电话) { const w = 联系人电话段(phone, pattern, phonePattern); parts.push(...w.parts); values.push(...w.values); }
   if (!onlyPicker) {
     // 电话藏着时 WhatsApp、联系人电话两列不进条件（Y27）
     const 号值 = 藏号 ? [] : [pattern, phonePattern];

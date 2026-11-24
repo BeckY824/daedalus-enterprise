@@ -80,7 +80,8 @@ beforeEach(async () => {
       { userId: 人.系.id, bizRole: "director" },
     ],
   });
-  客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "13800000001", salesOwnerId: 人.乙.id, createdAt: new Date("2026-10-01T10:00:00+08:00") } })).id;
+  // 企业版客户没有电话（E-260）：号记在主要联系人上
+  客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 人.乙.id, createdAt: new Date("2026-10-01T10:00:00+08:00"), contacts: { create: { name: "甲联系人", phone: "13800000001", isPrimary: true } } } })).id;
   await setSetting("business", { projectMode: true });
   await setSetting("orgRules", 开三态());
 });
@@ -548,8 +549,9 @@ describe("T10 · 到期自动进公海不查号码；收回时号码不全打标
     return prisma.customerPool.findUnique({ where: { customerId: 客户 } });
   }
 
-  it("客户电话空、没联系人：照收，打号码不全", async () => {
-    await prisma.customer.update({ where: { id: 客户 }, data: { phone: "" } });
+  it("主要联系人没号（客户本身没有电话）：照收，打号码不全", async () => {
+    // 号码在主要联系人上（E-260）：清掉他的号 = 号码不全
+    await prisma.contact.updateMany({ where: { customerId: 客户 }, data: { phone: null } });
     expect(await 到期收回()).toMatchObject({ phoneIncomplete: true, userId: null });
   });
 
@@ -558,7 +560,8 @@ describe("T10 · 到期自动进公海不查号码；收回时号码不全打标
   });
 
   it("公海列表按 号码不全=1 只列打了标的", async () => {
-    await prisma.customer.update({ where: { id: 客户 }, data: { phone: "" } });
+    // 号码在主要联系人上（E-260）：清掉他的号 = 号码不全
+    await prisma.contact.updateMany({ where: { customerId: 客户 }, data: { phone: null } });
     await 到期收回();
     const 另一位 = await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 人.乙.id } });
     await prisma.customerPool.create({ data: { customerId: 另一位.id, userId: 人.系.id, reason: "手动" } });

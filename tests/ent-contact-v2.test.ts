@@ -360,14 +360,20 @@ describe("联系人挂多位客户", () => {
 
   it("启动回填：没有挂靠行的联系人补一行主客户，重跑不多；开关关着不动", async () => {
     const 甲 = await 新建id();
+    // E-260 起新建客户顺带建主要联系人（号码记在他身上）和他的挂靠行：一开始就有一行，回填不该再补他
+    const 主 = await prisma.contact.findFirstOrThrow({ where: { customerId: 甲, isPrimary: true }, select: { id: true } });
+    expect(await 挂靠们(主.id)).toEqual([[甲, null]]);
+    expect(await prisma.contactCustomer.count()).toBe(1);
     const 老 = await prisma.contact.create({ data: { customerId: 甲, name: "老联系人" } });
-    expect(await prisma.contactCustomer.count()).toBe(0);
+    expect(await 挂靠们(老.id)).toEqual([]);
     vi.stubEnv("CRM_ENTERPRISE", "");
     expect(await 联系人挂靠回填()).toBe(0);
     vi.stubEnv("CRM_ENTERPRISE", "1");
     expect(await 联系人挂靠回填()).toBe(1);
     expect(await 联系人挂靠回填()).toBe(0);
     expect(await 挂靠们(老.id)).toEqual([[甲, null]]);
+    expect(await 挂靠们(主.id)).toEqual([[甲, null]]);
+    expect(await prisma.contactCustomer.count()).toBe(2);
   });
 });
 

@@ -273,14 +273,16 @@ test("字段权限：销售的备注只能看就改不了；电话看不到就�
   await page.goto(`/customers/${种.自己客户}`);
   await expect(正文.getByText("139****0002").first()).toBeVisible();
   await expect(正文.getByText("13900000002")).toHaveCount(0);
-  // 号码打着码进编辑框，不碰电话、只改姓名也得存得下，号码不能被打码串覆盖
+  // 只改姓名也得存得下，号码不能被打码串覆盖（E-260 编辑框里没有客户电话这格了）
   框 = await 编辑();
   await 框.getByLabel("客户全称").fill("销售甲的客户改名"); // 企业版客户是单位，这格叫「客户全称」
   await 框.getByRole("button", { name: /保\s*存/ }).click();
   await expect(框).toBeHidden();
   const 改后 = await db.customer.findUniqueOrThrow({ where: { id: 种.自己客户 } });
   expect(改后.name).toBe("销售甲的客户改名");
-  expect(改后.phone).toBe("13900000002");
+  // E-260 号在主要联系人上：客户电话那格仍空，主联系人的号没被打码串覆盖
+  expect(改后.phone).toBe("");
+  expect((await db.contact.findFirstOrThrow({ where: { customerId: 种.自己客户, isPrimary: true } })).phone).toBe("13900000002");
 });
 
 // 负责人本人转自己的客户 = 申请移交（P-转-16，不看「交接要确认」开关；系统管理员、上级转的直接转）：先挂起，接手人接受了才换人，项目跟着走。放在字段权限后面（那条要销售甲还管着这位客户）

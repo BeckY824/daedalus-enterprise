@@ -9,7 +9,7 @@ import { 写外贸档案 } from "@/lib/customer-extra-db";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 看全部, 看得到, 限定的我, 读的我 } from "@/lib/team-scope";
-import { 认回打码号, 查电话, 录入电话 } from "@/lib/phone";
+import { 认回打码号, 查电话, 录入电话, 号键 } from "@/lib/phone";
 import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件 } from "@/lib/email-dedupe";
 
@@ -42,6 +42,9 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { 能分配 } from "@/lib/enterprise/lead-assign";
 import { 线索附件转给联系人 } from "@/lib/attachments";
 import { 验号码 } from "@/lib/enterprise/contact-format";
+import { 全公司查号 } from "@/lib/enterprise/contact-dedupe";
+import type { Prisma } from "@/generated/prisma";
+import { 客户名拆人名 } from "@/lib/enterprise/contact-name-from-customer";
 import { 同号再次录入 } from "@/lib/enterprise/same-number-collab";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 import { 带客户编号 } from "@/lib/customer-no";
@@ -209,6 +212,18 @@ async function 转项目之后(user: Actor, lead: { name: string }, customerId: 
 }
 
 /**
+ * 企业版线索转客户 / 并入已有客户认的是哪几位客户（E-260 客户没有电话 + P-全局-09 联系人号码全公司查重）：
+ * 不再比 Customer.phone，号码按联系人的号（主表电话、号码几行、记成别的类型的）全公司比，和建档向导同一个 全公司查号；
+ * 邮箱照旧连客户档案的邮箱一起比。老线索上验不过格式的号（放过占位照旧认）退回号键当键，照样能比主表电话
+ */
+async function 企业线索撞的(db: Parameters<typeof 全公司查号>[0], phone: string, 邮箱: string | null): Promise<Prisma.CustomerWhereInput> {
+  const [类型, 原] = phone ? (["手机号", phone] as const) : (["邮箱", 邮箱 ?? ""] as const);
+  const v = 验号码(类型, 原, { 放过占位: true });
+  const 键 = v.ok ? v.键 : 类型 === "手机号" ? 号键(原) : 原.trim().toLowerCase();
+  return { id: { in: await 看全部(() => 全公司查号(db, 类型, v.ok ? v.值 : 原.trim(), 键)) } };
+}
+
+/**
  * 线索转客户：建客户 + 建联系人 + 标记线索已转化。
  *
  * 三步必须在同一个事务里，且要有并发闸门。原本是「先查 customerId 是否为空，
@@ -262,7 +277,9 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
     // 看全部：同事的客户也算已经有了（团队版业务员，lib/team-scope.ts）
     const dup = await 看全部(async () =>
       tx.customer.findFirst({
-        where: phone ? await 同号条件(tx, phone, 起) : await 同邮箱条件(tx, 邮箱!),
+        where: 企业版() ? await 企业线索撞的(tx, phone, 邮箱) : phone ? await 同号条件(tx, phone, 起) : await 同邮箱条件(tx, 邮箱!),
+        // 企业版撞了好几位认建档最早的那位（同 首条撞的）
+        ...(企业版() ? { orderBy: [{ createdAt: "asc" as const }, { id: "asc" as const }] } : {}),
         select: { id: true, name: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
       }),
     );
@@ -301,10 +318,17 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
 
     // 线索名 → 公司、联系人 → 姓名、行业和来源一起带过去（审查 M13），规则在 lib/lead-convert.ts
     const 档案 = 线索转档案(lead, b.fields, b.template === "trade");
+    /*
+      企业版客户没有电话（E-260，客户「客户没有电话这一说法」）：客户主表电话存空串，号记在主要联系人上；
+      线索没写联系人、带着号的也建一位主要联系人，姓名按客户名拆（同老线索转项目 lead-to-project.ts）。企业版只用项目时这条路挡着，项目模式关着才走得到
+    */
+    const 企 = 企业版();
+    const 建联系人 = Boolean(lead.contact?.trim()) || (企 && Boolean(phone || lead.email?.trim()));
+    const 联系人名 = lead.contact?.trim() || 客户名拆人名(档案.name);
     const customer = await tx.customer.create({
       data: await 带客户编号(tx, {
         name: 档案.name,
-        phone,
+        phone: 企 ? "" : phone,
         school: 档案.school,
         grade: null,
         major: 档案.major,
@@ -313,12 +337,12 @@ export async function convertLead(id: string, 跟进?: 向导跟进): Promise<
         remark: 档案.remark,
         salesOwnerId: lead.ownerId ?? user.id,
         // 只有空格的联系人当没有（2026-10-04 L-016）：和 线索转档案 一个判法，邮箱那时已进了备注
-        contacts: lead.contact?.trim()
+        contacts: 建联系人
           ? {
               create: {
-                name: lead.contact.trim(),
+                name: 联系人名,
                 // 联系人就是客户本人时写明「本人」，联系人表里一眼看得出这条是谁
-                position: 档案.name === lead.contact.trim() && 档案.school ? "本人" : null,
+                position: lead.contact?.trim() && 档案.name === lead.contact.trim() && 档案.school ? "本人" : null,
                 phone: phone || null,
                 email: lead.email,
                 isPrimary: true,
@@ -380,7 +404,10 @@ export async function mergeLeadInto(leadId: string, customerId: string, 跟进?:
   if (await 公海客户要先领取(prisma, customerId)) return { ok: false, error: 公海线索先领取话 };
   const 邮箱 = 线索认人邮箱(lead, b.template === "trade");
   const 电话 = 查电话(lead.phone, { 必填: true });
-  const 条件 = 邮箱 ? await 同邮箱条件(prisma, 邮箱) : 电话.ok ? await 同号条件(prisma, 电话.phone, await 分机留存起()) : null;
+  // 企业版按联系人号码比（E-260，同 convertLead 的 企业线索撞的）：并的那位得是转客户时撞上的那位
+  const 条件 = 企业版() && (邮箱 || 电话.ok)
+    ? await 企业线索撞的(prisma, 邮箱 ? "" : (电话.ok ? 电话.phone : ""), 邮箱)
+    : 邮箱 ? await 同邮箱条件(prisma, 邮箱) : 电话.ok ? await 同号条件(prisma, 电话.phone, await 分机留存起()) : null;
   const 对得上 = 条件 !== null && (await prisma.customer.count({ where: { AND: [{ id: customerId }, 条件] } })) > 0;
   if (!对得上) return { ok: false, error: `线索${邮箱 ? "邮箱" : "电话"}和${b.customer}「${customer.name}」对不上，不能并` };
   const 项目 = await 转项目前查(b, user, lead.ownerId ?? user.id, 跟进);

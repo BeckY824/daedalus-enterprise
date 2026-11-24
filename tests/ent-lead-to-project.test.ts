@@ -61,8 +61,9 @@ describe("老线索转项目", () => {
     }
     const 甲 = 项目们.find((p) => p.sourceLeadId === a.id)!;
     // 客户业务线必填（M-必填-13）：新建的客户记「暂不分配」
-    expect(甲.customer).toMatchObject({ name: "甲公司", phone: "13800000001", salesOwnerId: 张伟, bizLine: "暂不分配" });
-    expect(甲.contact).toMatchObject({ name: "王经理", isPrimary: true, customerId: 甲.customerId });
+    // 客户没有电话（E-260）：客户主表电话空着，号记在主要联系人上
+    expect(甲.customer).toMatchObject({ name: "甲公司", phone: "", salesOwnerId: 张伟, bizLine: "暂不分配" });
+    expect(甲.contact).toMatchObject({ name: "王经理", phone: "13800000001", isPrimary: true, customerId: 甲.customerId });
     expect(项目们.find((p) => p.sourceLeadId === b.id)!.contactId).toBeNull();
     expect(await prisma.projectNodeLog.count()).toBe(2);
     expect(await prisma.followUp.count()).toBe(0);
@@ -81,13 +82,16 @@ describe("老线索转项目", () => {
     const y = await 线索({ name: "同号的", phone: "138 0000 0002", contact: "不建", ownerId: 张伟 });
     const z = await 线索({ name: "重号的", phone: "13800000003", ownerId: 张伟 });
 
-    expect(await 老线索转项目()).toEqual({ 项目: 3, 新客户: 1, 新联系人: 0, 跳过: [] });
+    // 重号的没写联系人名字、带着号：建一位主要联系人记号，姓名按线索名拆（拆不出留空，E-260）
+    expect(await 老线索转项目()).toEqual({ 项目: 3, 新客户: 1, 新联系人: 1, 跳过: [] });
     const 按 = async (id: string) => prisma.project.findFirstOrThrow({ where: { sourceLeadId: id } });
     expect((await 按(x.id)).customerId).toBe(连着.id);
     expect(await 按(y.id)).toMatchObject({ customerId: 同号.id, contactId: 主联.id });
     const zc = await prisma.customer.findUniqueOrThrow({ where: { id: (await 按(z.id)).customerId } });
     expect(zc.name).toBe("重号的");
     expect(zc.bizLine).toBe("暂不分配");
+    expect(zc.phone).toBe("");
+    expect(await prisma.contact.findFirstOrThrow({ where: { customerId: zc.id } })).toMatchObject({ name: "", phone: "13800000003", isPrimary: true });
     // 挂已有客户的不动它的业务线（空着的也不顺手补）
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 连着.id } })).bizLine).toBeNull();
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 同号.id } })).bizLine).toBeNull();

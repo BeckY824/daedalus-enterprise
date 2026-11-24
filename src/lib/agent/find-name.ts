@@ -20,6 +20,8 @@ import { 包含模式, 号码片段, 号码藏着, 客户关键词条件, 客户
 import { 号键SQL } from "@/lib/phone-dedupe";
 import { 渠道启用 } from "@/lib/enterprise/channel-main-core";
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
+import { 主联系人号码选, 客户电话 } from "@/lib/enterprise/primary-contact-phone";
+import { 企业版 } from "@/lib/enterprise/switch";
 
 /** 一张表里的命中 */
 export type 别处命中 = {
@@ -225,7 +227,8 @@ async function 找客户(词: string, 法: 怎么找) {
     where,
     take: 每表最多,
     orderBy: { lastFollowAt: "desc" },
-    select: { ...显名列, phone: true, school: true, grade: true, followStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
+    // 企业版客户没有电话（E-260）：电话取主联系人的第一个号（客户电话），别的版本照旧客户电话那格
+    select: { ...显名列, phone: true, contacts: 主联系人号码选, school: true, grade: true, followStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } } },
   });
 }
 
@@ -237,7 +240,7 @@ async function 一轮(词: string, 号: (p: string | null) => string | null, 叫
     out.push({
       表: "客户",
       条数: 客户.length,
-      记录: 客户.map((c) => ({ id: c.id, 姓名: 客户显名(c), 电话: 号(c.phone), 学校或公司: c.school, 年级或职位: c.grade, 跟进状态: 叫(c.followStatus),
+      记录: 客户.map((c) => ({ id: c.id, 姓名: 客户显名(c), [企业版() ? "主联系人电话" : "电话"]: 号(客户电话(c)), 学校或公司: c.school, 年级或职位: c.grade, 跟进状态: 叫(c.followStatus),
         // 公海里的只写「公海」，不露原负责人（公海页签同样不列）
         负责人: c.pool ? "公海" : 负责人显示名(c.salesOwner.name),
         ...(我 ? { 归属: c.pool ? "公海" : c.salesOwnerId === 我 ? "我负责的" : "同事或下属负责的" } : {}) })),

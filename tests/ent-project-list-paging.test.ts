@@ -116,9 +116,10 @@ beforeAll(async () => {
   B = (await prisma.channel.create({ data: { name: "线上|乙号", platform: "线上", mainId: 主, channelOwnerId: 人们.系统管理员.id } })).id;
   for (let k = 0; k < 40; k++) {
     const p1 = `1391000${String(k).padStart(4, "0")}`;
-    甲客.push({ id: (await prisma.customer.create({ data: { name: `甲方客户${k}`, phone: p1, salesOwnerId: 人们.销售甲.id, channelId: A } })).id, phone: p1 });
+    // 企业版客户没有电话（E-260）：号记在主要联系人上，项目列表按联系人号码筛
+    甲客.push({ id: (await prisma.customer.create({ data: { name: `甲方客户${k}`, phone: "", salesOwnerId: 人们.销售甲.id, channelId: A, contacts: { create: { name: `甲方联系人${k}`, phone: p1, isPrimary: true } } } })).id, phone: p1 });
     const p2 = `1392000${String(k).padStart(4, "0")}`;
-    乙客.push({ id: (await prisma.customer.create({ data: { name: `乙方客户${k}`, phone: p2, salesOwnerId: 人们.销售乙.id, channelId: k % 4 === 3 ? B : A } })).id, phone: p2 });
+    乙客.push({ id: (await prisma.customer.create({ data: { name: `乙方客户${k}`, phone: "", salesOwnerId: 人们.销售乙.id, channelId: k % 4 === 3 ? B : A, contacts: { create: { name: `乙方联系人${k}`, phone: p2, isPrimary: true } } } })).id, phone: p2 });
   }
   const 位置们 = [
     ["线索", "潜客培育", null], ["线索", "线索验证", null], ["商机", "痛点挖掘", null], ["商机", "方案敲定", null],

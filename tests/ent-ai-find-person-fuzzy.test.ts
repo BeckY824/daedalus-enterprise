@@ -60,11 +60,13 @@ beforeEach(async () => {
   忘掉企业版范围();
 
   // 乙的客户：电话按老写法带空格存着；名下一位联系人，电话带 +86 和横杠；另一个号只在号码子表里
-  const 甲公司 = await prisma.customer.create({ data: { name: "杭州甲乙机械有限公司", phone: "138 0013 8000", salesOwnerId: 乙.id } });
+  // 企业版客户没有电话（E-260）：公司总机记在主要联系人「前台」上，Customer.phone 空串
+  const 甲公司 = await prisma.customer.create({ data: { name: "杭州甲乙机械有限公司", phone: "", salesOwnerId: 乙.id } });
+  await prisma.contact.create({ data: { customerId: 甲公司.id, name: "前台", phone: "138 0013 8000", isPrimary: true } });
   const 王 = await prisma.contact.create({ data: { customerId: 甲公司.id, name: "王建国", phone: "+86-139-1234-5678" } });
   await prisma.contactMethod.create({ data: { customerId: 甲公司.id, contactId: 王.id, kind: "phone", value: "13711112222", numberKey: "13711112222" } });
   // 丙的客户：乙看不到
-  const 丙的 = await prisma.customer.create({ data: { name: "宁波丙丁贸易", phone: "13600006666", salesOwnerId: 丙.id } });
+  const 丙的 = await prisma.customer.create({ data: { name: "宁波丙丁贸易", phone: "", salesOwnerId: 丙.id } });
   await prisma.contact.create({ data: { customerId: 丙的.id, name: "王秀英", phone: "13655557777" } });
 });
 afterEach(() => { vi.unstubAllEnvs(); 忘掉企业版范围(); });
@@ -75,6 +77,7 @@ describe("按号码找（20a）", () => {
     const r = await 跑({ name: "+86 138-0013-8000" }, 乙);
     expect(找到(r)).toBeGreaterThan(0);
     expect(串(r)).toContain("杭州甲乙机械有限公司");
+    expect(串(r)).toContain("前台");
     expect((r.data as { 按号码?: string }).按号码).toBe("13800138000");
   });
 

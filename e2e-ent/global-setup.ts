@@ -75,16 +75,18 @@ async function 灌数据(db: PrismaClient, 密码: string): Promise<种子> {
     ],
   });
 
-  const 客户 = await db.customer.create({ data: { name: "公海客户甲", phone: "13900000001", salesOwnerId: 销售1.id } });
+  // 企业版客户没有电话（E-260）：号记在主要联系人上，客户电话那格空串
+  const 主联系人 = (phone: string) => ({ create: { name: "", phone, isPrimary: true } });
+  const 客户 = await db.customer.create({ data: { name: "公海客户甲", phone: "", salesOwnerId: 销售1.id, contacts: 主联系人("13900000001") } });
   await db.customerPool.create({ data: { customerId: 客户.id, userId: 销售1.id } });
   const 项目1 = await db.project.create({
     data: { name: "公海项目一", customerId: 客户.id, ownerId: 销售1.id, creatorId: 销售1.id, pooledAt: new Date() },
   });
   const 项目2 = await db.project.create({ data: { name: "同客户项目二", customerId: 客户.id, ownerId: 销售1.id, creatorId: 销售1.id } });
   // 字段权限那条用：销售甲自己名下、不在公海的客户
-  const 自己客户 = await db.customer.create({ data: { name: "销售甲的客户", phone: "13900000002", remark: "原备注", salesOwnerId: 销售1.id } });
+  const 自己客户 = await db.customer.create({ data: { name: "销售甲的客户", phone: "", remark: "原备注", salesOwnerId: 销售1.id, contacts: 主联系人("13900000002") } });
   // 线索分配那两条用（企业版「新线索」= 线索阶段的项目）：市场建的一条等分配，销售甲自己的一条（他看得到这一行，但没有「分配」）
-  const 市场客户 = await db.customer.create({ data: { name: "市场的客户", phone: "13900000003", salesOwnerId: 市场.id } });
+  const 市场客户 = await db.customer.create({ data: { name: "市场的客户", phone: "", salesOwnerId: 市场.id, contacts: 主联系人("13900000003") } });
   await db.project.create({ data: { name: "线索甲", customerId: 市场客户.id, ownerId: 市场.id, creatorId: 市场.id } });
   await db.project.create({ data: { name: "线索乙", customerId: 自己客户.id, ownerId: 销售1.id, creatorId: 销售1.id } });
   return { 密码, 客户: 客户.id, 自己客户: 自己客户.id, 项目1: 项目1.id, 项目2: 项目2.id, 名字 };

@@ -1,7 +1,7 @@
 /**
  * 客户详情就地改（11-04 用户：所有字段点了直接改，不点「编辑全部」）：电话、详细地址、所在地区的服务端规矩。
  *
- *   电话：没动 / 交回打码的样子都不改；换号查重（自己不算）；原来有号码不许清空；号码不对报错
+ *   电话：企业版客户没有电话（E-260）一律拦、指去联系人；别的版本照旧——没动 / 交回打码的样子都不改；换号查重（自己不算）；原来有号码不许清空；号码不对报错
  *   详细地址：企业版才收，落库、去空白
  *   所在地区：四格一起存、没变不写不留痕、变了留痕；不是负责人改不了；非企业版不收
  *   全称（员工反馈：负责人改不了全称）：负责人能改、留一笔痕；不是负责人被 改客户挡 拦；空串、超长拒；非企业版不收
@@ -50,7 +50,25 @@ async function 新建(phone: string | null = `1380000${String(1000 + ++序).slic
 const 读 = (id: string) => prisma.customer.findUniqueOrThrow({ where: { id } });
 const 留痕数 = (id: string) => prisma.auditLog.count({ where: { entityId: id, action: "update" } });
 
-describe("电话就地改", () => {
+describe("电话就地改：企业版客户没有电话（E-260），一律拦、指去联系人", () => {
+  it("换号、清空、交回打码的样子、不是负责人：都拦，客户电话照旧空串、主要联系人的号不动", async () => {
+    const id = await 新建("13800001111");
+    const 主 = await prisma.contact.findFirstOrThrow({ where: { customerId: id, isPrimary: true } });
+    expect(主.phone).toBe("13800001111");
+    for (const v of ["13900002222", "", maskPhone("13800001111"), "abc"]) {
+      expect(await patchCustomer(id, "phone", v)).toEqual({ ok: false, error: "客户没有电话，号码请记在联系人上" });
+    }
+    当(别人, "别人");
+    expect(await patchCustomer(id, "phone", "13900007777")).toMatchObject({ ok: false });
+    expect((await 读(id)).phone).toBe("");
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: 主.id } })).phone).toBe("13800001111");
+    expect(await 留痕数(id)).toBe(0);
+  });
+});
+
+/** 别的版本照旧：客户电话格就地改（新建也走非企业版）。「不是负责人改不了」是企业版的负责人规矩，企业版那组已拦 */
+describe("电话就地改：非企业版照旧", () => {
+  beforeEach(() => { vi.stubEnv("CRM_ENTERPRISE", ""); 忘掉企业版范围(); });
   it("换号落库；没动、交回打码的样子都不改", async () => {
     const id = await 新建("13800001111");
     expect(await patchCustomer(id, "phone", "13800001111")).toMatchObject({ ok: true });
@@ -76,12 +94,6 @@ describe("电话就地改", () => {
     expect((await 读(id)).phone).toBe("13800005555");
   });
 
-  it("不是负责人改不了", async () => {
-    const id = await 新建("13800006666");
-    当(别人, "别人");
-    expect(await patchCustomer(id, "phone", "13900007777")).toMatchObject({ ok: false });
-    expect((await 读(id)).phone).toBe("13800006666");
-  });
 });
 
 describe("详细地址就地改", () => {

@@ -22,7 +22,7 @@ import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
 import { 外贸键 } from "../customer-extra";
-import { 读现值, 改, 引用键, 摘联系人号, 记客户号, 记联系人号, 沟通没对上项目话, 读换人带走, 换人带走键, type 改的批 } from "./apply";
+import { 读现值, 改, 引用键, 摘联系人号, 记客户号, 记联系人号, 沟通没对上项目话, 读换人带走, 换人带走键, 撤回补的子表号, 恢复补的子表号, type 改的批 } from "./apply";
 import { 带过来对不上 } from "../carry-over-db";
 import { 规, type 值表 } from "./values";
 import { 来源名, 实体名, 实体顺序, type 来源, type 实体 } from "./types";
@@ -37,6 +37,8 @@ import { 沟通挂潜客培育 } from "../project/nurture";
 import { 要挂项目的类型 } from "../project/follow-needs-project-text";
 import { 企业版字典, 本套名 } from "../project/stage-dict";
 import { 不是同号留痕SQL } from "../enterprise/same-number-mark";
+import { 企业版 } from "../enterprise/switch";
+import { 捞回客户号落主联系人 } from "../enterprise/restore-number-to-contact";
 
 type Tx = Prisma.TransactionClient;
 type 引用行 = Prisma.EntExternalRefGetPayload<object>;
@@ -186,7 +188,9 @@ async function 还挂着(tx: Tx, e: 实体, id: string, 自己的对照: string 
 async function 快照(tx: Tx, e: 实体, id: string): Promise<object | null> {
   if (e === "customer") return tx.customer.findUnique({ where: { id }, include: { extra: true, creator: true, pool: true } });
   if (e === "lead") return tx.lead.findUnique({ where: { id } });
-  if (e === "contact") return tx.contact.findUnique({ where: { id } });
+  // 联系人连挂靠行一起拍（落号新建的主联系人带着主客户那一行，审查单 A-15）：删联系人挂靠行跟着没（Cascade），建回时照拍的建回；
+  // 在这家的职位 / 关系说明（note）一起拍（复审 6）
+  if (e === "contact") return tx.contact.findUnique({ where: { id }, include: { customerLinks: { select: { customerId: true, note: true } } } });
   if (e === "opportunity") return (await tx.opportunity.findUnique({ where: { id }, include: { closed: true } })) ?? 项目快照(tx, id);
   return tx.followUp.findUnique({ where: { id }, include: { projectNode: true } });
 }
@@ -231,8 +235,13 @@ async function 建回(tx: Tx, e: 实体, data: Record<string, unknown>, 批?: �
     if (pool) await tx.customerPool.create({ data: pool as Prisma.CustomerPoolUncheckedCreateInput });
   } else if (e === "lead") await tx.lead.create({ data: data as Prisma.LeadUncheckedCreateInput });
   else if (e === "contact") {
-    await tx.contact.create({ data: data as Prisma.ContactUncheckedCreateInput });
-    await 记联系人号(tx, String(data.customerId), String(data.id), data);
+    const { customerLinks, ...主 } = data as { customerLinks?: { customerId: string; note?: string | null }[] } & Record<string, unknown>;
+    await tx.contact.create({ data: 主 as Prisma.ContactUncheckedCreateInput });
+    // 挂靠行：挂的客户还在才建回（老快照没拍这一项 = 不建）
+    for (const l of customerLinks ?? []) {
+      if (await tx.customer.findUnique({ where: { id: l.customerId }, select: { id: true } })) await tx.contactCustomer.create({ data: { contactId: String(主.id), customerId: l.customerId, note: l.note ?? null } });
+    }
+    await 记联系人号(tx, String(主.customerId), String(主.id), 主);
   } else if (e === "opportunity" && data.__项目) await 建回项目(tx, data);
   else if (e === "opportunity") {
     const { closed, ...主 } = data;
@@ -560,6 +569,8 @@ export async function 撤回一批(批次Id: string, 用户: Actor, opts: { 段�
     if (n.count !== 1) return n;
     // 撤回 / 恢复让无主客户出了公海的：整批行都处理完、同一个事务末尾再补潜客培育（nurture-rows.ts）
     await 补待补的(tx, 批次Id, 用户.id);
+    // 客户电话落主联系人时记进子表的号（E-260，apply.ts 号码行）：联系人、客户逐行退完再摘
+    await 撤回补的子表号(tx, 批次Id);
     await tx.entConflict.updateMany({ where: { batchId: 批次Id, status: "待定" }, data: { status: "已撤回" } });
     if (批.kind === "resolve") await 定的冲突回待定(tx, 批次Id);
     return n;
@@ -643,11 +654,18 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
     return 结果(批次Id);
   }
 
+  // 企业版客户没有电话（E-260）：数据脚本之前撤回的批次，快照里客户电话不是空的，建回来又带着号（建回 照快照写）。
+  // 整批都建回完再挪（这一批的联系人也建回了，号落到他们身上，不另按客户名建一位）：照回收站捞回那样落到主联系人、客户电话置空。
+  // 每 100 位一个小事务；断了再调一次接着来（挪过的客户电话已经空了，不会再挪）
+  if (企业版()) await 建回的客户号落主联系人(批次Id);
+
   const n = await prisma.$transaction(async (tx) => {
     const n = await tx.entImportBatch.updateMany({ where: { id: 批次Id, status: "restoring" }, data: { status: "done", revertedAt: null } });
     if (n.count !== 1) return n;
     // 撤回 / 恢复让无主客户出了公海的：整批行都处理完、同一个事务末尾再补潜客培育（nurture-rows.ts）
     await 补待补的(tx, 批次Id, 用户.id);
+    // 客户电话落主联系人时记进子表的号（E-260）：联系人、客户都建回了再记回去
+    await 恢复补的子表号(tx, 批次Id);
     // 撤回时留下没动的那几行：恢复完又是这一批的了，下次撤回照常处理
     await tx.entImportRow.updateMany({ where: { batchId: 批次Id, undo: "留下" }, data: { undo: null } });
     // 冲突回到待定；同一条原系统记录之后又有一笔待定的，就不再翻出这一笔
@@ -672,6 +690,20 @@ export async function 恢复一批(批次Id: string, 用户: Actor, opts: { 段�
     for (const p of ["/customers", "/leads", "/projects", "/dashboard"]) revalidatePath(p);
   }
   return 结果(批次Id);
+}
+
+/** 这一批回收区里建回 / 改回的客户，客户电话不是空的：号落到主联系人、客户电话置空（restore-number-to-contact.ts，同回收站捞回） */
+async function 建回的客户号落主联系人(批次Id: string): Promise<void> {
+  const ids = [...new Set((await prisma.entTrash.findMany({ where: { batchId: 批次Id, entity: "customer" }, select: { targetId: true } })).map((t) => t.targetId))];
+  for (let i = 0; i < ids.length; i += 100) {
+    const 有号 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids.slice(i, i + 100) }, phone: { not: "" } }, select: { id: true } }));
+    if (!有号.length) continue;
+    await 查完再写((tx) =>
+      看全部(async () => {
+        for (const c of 有号) await 捞回客户号落主联系人(tx, c.id);
+      }),
+    );
+  }
 }
 
 /* ───────────────────────── 冲突处理那一批 ───────────────────────── */

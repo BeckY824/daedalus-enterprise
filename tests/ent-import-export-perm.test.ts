@@ -21,7 +21,7 @@ import { invalidateSettingsCache } from "@/lib/settings";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
 import { 字段表, 猜列 } from "@/lib/import/fields";
 import { 最高管理, 能导入导出, 新建只给自己, 不能导入导出 } from "@/lib/enterprise/import-perm";
-import { 预览导入, 执行导入 } from "@/app/(app)/customers/import-actions";
+import { 预览导入, 执行导入, 撤销批次 } from "@/app/(app)/customers/import-actions";
 import { 导出客户, 开始完整导出 } from "@/app/(app)/customers/export-action";
 import { saveCustomer } from "@/app/(app)/customers/actions";
 import { 企业版导入概况 } from "@/app/(app)/settings/enterprise-import-actions";
@@ -162,15 +162,45 @@ describe("开关关闭", () => {
   });
 });
 
+describe("企业版客户没有电话（E-260）：客户页 Excel 导入", () => {
+  it("新建客户电话存空串，号落一位主联系人（没填联系人按客户名拆名），验得过的记进子表；撤销整批连他一起撤", async () => {
+    const r = await 执行导入(方案([["张三｜美国", "13800000011"], ["虚构远帆科技有限公司", "13800000012"]]), "a.xlsx");
+    if (!r.ok) throw new Error(r.error);
+    expect(r.新建).toBe(2);
+    const 甲 = await prisma.customer.findFirstOrThrow({ where: { name: "张三｜美国" }, include: { contacts: true } });
+    expect(甲.phone).toBe("");
+    expect(甲.contacts).toEqual([expect.objectContaining({ name: "张三", phone: "13800000011", isPrimary: true })]);
+    expect(await prisma.contactMethod.findMany({ where: { customerId: 甲.id }, select: { contactId: true, value: true } })).toEqual([{ contactId: 甲.contacts[0].id, value: "13800000011" }]);
+    const 乙 = await prisma.customer.findFirstOrThrow({ where: { name: "虚构远帆科技有限公司" }, include: { contacts: true } });
+    expect(乙.contacts).toEqual([expect.objectContaining({ name: "", phone: "13800000012" })]);
+    const u = await 撤销批次(r.batchId);
+    expect(u).toMatchObject({ ok: true, 删掉: 2 });
+    expect(await prisma.customer.count()).toBe(0);
+    expect(await prisma.contact.count()).toBe(0);
+    expect(await prisma.contactMethod.count()).toBe(0);
+  });
+
+  it("写前认同号按联系人号码：号只在老客户联系人上的那一行跳过，不新建", async () => {
+    const 老 = await prisma.customer.create({ data: { name: "虚构老档", phone: "", salesOwnerId: 老板 } });
+    await prisma.contact.create({ data: { name: "虚构老联系人", phone: "13800000013", isPrimary: true, customerId: 老.id } });
+    const r = await 执行导入(方案([["虚构新档", "13800000013"]]), "a.xlsx");
+    if (!r.ok) throw new Error(r.error);
+    expect(r).toMatchObject({ 新建: 0, 跳过: 1 });
+    expect(await prisma.customer.count()).toBe(1);
+  });
+});
+
 describe("Excel 导入新建客户的业务线（M-必填-13）", () => {
   const 补空方案 = (数据: string[][]) => ({ ...方案(数据), 重复行: "补空" as const });
   it("企业版：新建的记「暂不分配」；撞上已有客户整条跳过，它空着的业务线不顺手补", async () => {
-    await prisma.customer.create({ data: { name: "老客户", phone: "13800000005", salesOwnerId: 老板 } });
+    // 企业版客户没有电话（E-260）：老客户的号在联系人上，新建的号落主联系人
+    const 老 = await prisma.customer.create({ data: { name: "老客户", phone: "", salesOwnerId: 老板 } });
+    await prisma.contact.create({ data: { name: "老联系人", phone: "13800000005", isPrimary: true, customerId: 老.id } });
     const r = await 执行导入(补空方案([["新客户甲", "13800000004"], ["老客户", "13800000005"]]), "a.xlsx");
     if (!r.ok) throw new Error(r.error);
     expect(r.新建).toBe(1);
-    expect((await prisma.customer.findFirstOrThrow({ where: { phone: "13800000004" } })).bizLine).toBe("暂不分配");
-    expect((await prisma.customer.findFirstOrThrow({ where: { phone: "13800000005" } })).bizLine).toBeNull();
+    expect((await prisma.customer.findFirstOrThrow({ where: { contacts: { some: { phone: "13800000004" } } } })).bizLine).toBe("暂不分配");
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 老.id } })).bizLine).toBeNull();
   });
   it("企业版：已有客户的业务线（填过的）导入不改", async () => {
     await prisma.customer.create({ data: { name: "老客户", phone: "13800000006", salesOwnerId: 老板, bizLine: "外贸" } });

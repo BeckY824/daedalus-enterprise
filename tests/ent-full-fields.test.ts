@@ -217,6 +217,26 @@ describe("客户字段：saveCustomer / patchCustomer 真库", () => {
     expect(c.remark).toBe(怪字.trim());
   });
 
+  it("E-260 两人先后存同一位的不同格：快照里的电话是列表给的主联系人号，不误报「两边都动了：联系电话」，两边都存下", async () => {
+    const id = await 新建id();
+    const c = await 读(id);
+    expect(c.phone).toBe(""); // 企业版客户电话那格空串，号在主联系人上
+    const 主联系人号 = (await prisma.contact.findFirstOrThrow({ where: { customerId: id, isPrimary: true } })).phone;
+    expect(主联系人号).toBeTruthy();
+    // 两人同时打开编辑框：快照（base）和交来的 phone 都是列表行给的主联系人号（query.ts 客户电话），不是库里客户电话那格
+    const 值 = {
+      name: c.name, phone: 主联系人号, school: c.school, grade: c.grade, major: c.major,
+      followStatus: c.followStatus, decisionStatus: c.decisionStatus, expectedSignAt: c.expectedSignAt,
+      remark: c.remark, salesOwnerId: c.salesOwnerId, channelId: c.channelId, referrerCustomerId: c.referrerCustomerId,
+      channelOwnerId: c.channelOwnerId, custStatus: c.custStatus,
+    };
+    const 打开时 = { id, updatedAt: c.updatedAt.toISOString(), base: 值 };
+    expect(await saveCustomer({ ...打开时, ...值, school: "星辰科技" } as Parameters<typeof saveCustomer>[0])).toMatchObject({ ok: true });
+    expect(await saveCustomer({ ...打开时, ...值, remark: "乙改的备注" } as Parameters<typeof saveCustomer>[0])).toMatchObject({ ok: true });
+    const 后 = await 读(id);
+    expect(后).toMatchObject({ school: "星辰科技", remark: "乙改的备注", phone: "" });
+  });
+
   it("单格改：备注、学校格特殊字符往返；交空 = null", async () => {
     const id = await 新建id();
     expect(await patchCustomer(id, "remark", 怪字)).toMatchObject({ ok: true });

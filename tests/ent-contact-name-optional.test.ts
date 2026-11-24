@@ -62,8 +62,11 @@ describe("saveContact", () => {
 
   it("姓名、号码全空：拦，不建", async () => {
     const customerId = await 建客户();
+    // 新建客户顺带建了带号的主要联系人（E-260）：这次一位都不多
+    const 前 = await prisma.contact.count();
     expect(await saveContact({ customerId, name: " ", isPrimary: false, 企业: { 号码们: [] } })).toEqual({ ok: false, error: 姓名号码至少一项 });
-    expect(await prisma.contact.count()).toBe(0);
+    expect(await prisma.contact.count()).toBe(前);
+    expect(await prisma.contact.count({ where: { customerId, isPrimary: false } })).toBe(0);
   });
 
   it("非企业版：姓名照旧必填", async () => {
