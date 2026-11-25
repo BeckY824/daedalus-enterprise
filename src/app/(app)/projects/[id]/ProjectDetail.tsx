@@ -580,6 +580,8 @@ export type 嵌在客户页 = {
    * 回客户页会 404，改去这里（客户列表）并提示一句
    */
   走后去?: { 到: string; 说法: string } | null;
+  /** 客户页「记售后回访」（E-283 第 2 条，见 项目区槽.记售后回访）：沟通卡头摆一颗，开客户页记沟通框的售后模式 */
+  记售后回访?: (() => void) | null;
 };
 
 export default function ProjectDetail({
@@ -1907,6 +1909,8 @@ export default function ProjectDetail({
       <button type="button" className={看全部沟通 ? "on" : undefined} aria-pressed={看全部沟通} onClick={() => { set看全部沟通(true); set搜(""); }}>这位客户全部</button>
     </span>
   );
+  const 沟通主钮 = p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new", 主快捷: true } : 售后钮;
+  const 客户页售后 = 嵌入?.记售后回访 && !售后钮 ? { 字: "记售后回访", onClick: 嵌入.记售后回访, disabled: 忙, testid: "cust-after-sale-visit" } : null;
   const 沟通卡 = 嵌入 ? (
     <Card
       className="cd-comm"
@@ -1916,7 +1920,9 @@ export default function ProjectDetail({
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
           {/* 11-12：「AI 录入」不再单摆，进「新建沟通」弹窗顶上切「手动录入 | AI 录入」。连体按钮：左半新建沟通（⌘N 落这颗）、右半收起 / 展开这块；不能记沟通只剩右半。
               原来这里的「发起主题」挪到客户页右上角「发起点评 ▾」（教练点评改版 PR1，11-21），卡头只剩「隐藏接手前」和「新建沟通」 */}
-          <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new", 主快捷: true } : 售后钮} />
+          {/* 客户页「记售后回访」（E-283）：这一页签没有主按钮就占主按钮；主按钮是「新建沟通」时另摆一颗小的；这一页签自己就是售后回访（售后钮）不重复摆 */}
+          {客户页售后 && 沟通主钮 && <Button size="small" disabled={忙} onClick={客户页售后.onClick} data-testid={客户页售后.testid}>{客户页售后.字}</Button>}
+          <FoldSplit 色={模块钮色.沟通} 主={沟通主钮 ?? 客户页售后} />
         </Space>
       )}
     >

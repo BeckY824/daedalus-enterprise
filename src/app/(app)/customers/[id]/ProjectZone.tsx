@@ -332,9 +332,11 @@ export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据
         {槽.提醒 && <div className="cd-alert">{槽.提醒}</div>}
         <div className="cd-zh"><ProjectSwitch 数据={数据} 当前id={null} /></div>
         <div className="cd-empty" data-testid="project-zone-empty">
-          <div className="cd-empty-t">{数据.锁数 > 0 ? "没有你能看的项目" : "这位客户还没有项目"}</div>
+          {/* 名下有我能记售后回访的交付结清项目（我看不到它，所以没有页签）：不说「还没有项目」，指到下面的「记售后回访」（3703 实操 r84） */}
+          <div className="cd-empty-t">{槽.记售后回访 ? "没有在推的项目" : 数据.锁数 > 0 ? "没有你能看的项目" : "这位客户还没有项目"}</div>
           <div className="cd-empty-d">
-            {槽.开建项目 ? "阶段、沟通、待办都记在项目里。点「＋ 新建项目」或右上角「更多操作」给这位客户开一个。" : 槽.全只读 ? "这位客户你只能看。" : "项目由负责人新建。"}
+            {槽.记售后回访 ? `有交付结清的项目，可以在下面「沟通记录」点「记售后回访」。${槽.开建项目 ? "有新需求点「＋ 新建项目」。" : ""}`
+              : 槽.开建项目 ? "阶段、沟通、待办都记在项目里。点「＋ 新建项目」或右上角「更多操作」给这位客户开一个。" : 槽.全只读 ? "这位客户你只能看。" : "项目由负责人新建。"}
           </div>
           {槽.开建项目 && (
             <button type="button" className="cd-add cd-add-big" onClick={槽.开建项目}>
@@ -345,7 +347,7 @@ export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据
         {/* 没有项目也有这位客户的事：老的沟通记录（不挂项目的）、待办照样摆，只看 */}
         <div className="cd-mid cd-empty-more">
           <ProjectFold id="project-follow" 名="沟通记录" 连体>
-            <Card className="cd-comm" title={`沟通记录（${槽.全部沟通数}）`} extra={<FoldSplit 色={模块钮色.沟通} />}>{槽.全部沟通}</Card>
+            <Card className="cd-comm" title={`沟通记录（${槽.全部沟通数}）`} extra={<FoldSplit 色={模块钮色.沟通} 主={槽.记售后回访 ? { 字: "记售后回访", onClick: 槽.记售后回访, testid: "cust-after-sale-visit" } : null} />}>{槽.全部沟通}</Card>
           </ProjectFold>
           {槽.待办}
         </div>
@@ -369,6 +371,7 @@ export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据
         进程变更卡: 槽.进程变更卡,
         无全部沟通: 槽.无全部沟通,
         走后去: 槽.走后去,
+        记售后回访: 槽.记售后回访,
       }}
     />
   );
