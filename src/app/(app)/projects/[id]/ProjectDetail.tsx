@@ -2466,6 +2466,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     },
   });
   const 丢稿 = 稿.丢掉;
+  useAnyEditClears([type, method, 发起, occurredAt, content, 下一步文字, 下一步时间], () => set交错((e) => (e === 本人改过时提示 ? e : null)));
   useEffect(() => {
     if (!限时到) return;
     const 剩 = Date.parse(限时到) - (Date.now() + 钟差);
@@ -2570,6 +2571,23 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
 /** 记一条沟通弹窗顶上的「手动录入 | AI 录入」，记在这台浏览器上（存不了就每次手动） */
 type 录入模式 = "手动" | "AI";
 const 录入模式键 = "daedalus.follow.mode";
+/**
+ * 框里那句「没存上」的原因（交错）：改了任何一格就收掉（11-26，3703 实操）——不然补够字、换了卡点，
+ * 上一次的原因还红着挂在框里，像是新写的也不行，要再点一次保存才没。网络错、服务端拦都一样收。
+ * 值们只放人能改的格子（附件按个数）；头一回渲染、值没变的重渲染不动。留着 = 返回 false 的（比如「改的时限已过」）不收
+ */
+function useAnyEditClears(值们: readonly unknown[], 收: () => void) {
+  const 键 = JSON.stringify(值们);
+  const 上次 = useRef(键);
+  const 收r = useRef(收);
+  useEffect(() => { 收r.current = 收; });
+  useEffect(() => {
+    if (上次.current === 键) return;
+    上次.current = 键;
+    收r.current();
+  }, [键]);
+}
+
 function 读录入模式(): 录入模式 {
   try { return localStorage.getItem(录入模式键) === "AI" ? "AI" : "手动"; } catch { return "手动"; }
 }
@@ -2714,6 +2732,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       if (typeof v.原话 === "string") set原话(v.原话);
     },
   });
+  useAnyEditClears([type, method, 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点原因, 附件们.length], () => set交错(null));
   /*
     设计语言 D4 · M7-b（D03）：「保存」一直能点；点了还缺的在各自格子下面报红、焦点跳到第一处（原来「记下」灰着、原因是右下一行小灰字）。
     顺序 = 框里从上到下；填上了红字当场消失

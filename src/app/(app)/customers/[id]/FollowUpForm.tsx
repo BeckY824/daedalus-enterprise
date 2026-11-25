@@ -242,7 +242,7 @@ export default function FollowUpForm({
   const 项目模式 = !!须知 && type !== "TASK" && type !== "REMIND";
   /** 无意义沟通（F-052）：边写边在内容框下面说一行；开关、占位词表一页取一次 */
   const 内容 = Form.useWatch("content", form) as string | undefined;
-  /** 保存键上「没保存上」的原因（比如服务端拦「太短」）：内容一改就收掉，不留着像是新内容也不行（11-26） */
+  /** 保存键上「没保存上」的原因（服务端拦「太短」、网络错……）：改了任何一格（含卡点、截图录音、方式）就收掉，不留着像是新内容也不行（11-26） */
   const 收错 = useRef<(() => void) | null>(null);
   const 判定 = useFollowJudge(open);
   /*
@@ -754,7 +754,7 @@ export default function FollowUpForm({
           type={type ?? "PHONE"}
           method={method}
           类型们={跟进类型们(外贸精简(b)).filter((t) => !只读 || (t.value !== "TASK" && t.value !== "REMIND"))}
-          onChange={(v) => { form.setFieldsValue(v); 人改过类型.current = true; 守.改了(); }}
+          onChange={(v) => { form.setFieldsValue(v); 人改过类型.current = true; 收错.current?.(); 守.改了(); }}
         />
       </Form.Item>
     </>
@@ -822,7 +822,7 @@ export default function FollowUpForm({
     >
       {/* AI 速记块放在 Form 里面（它不是字段）：挑人那一格是 Form.Item，得在它上面、仍是第一格 */}
       {守.提示}
-      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("type" in changed) 人改过类型.current = true; if ("content" in changed) 收错.current?.(); 守.改了(); }}>
+      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("type" in changed) 人改过类型.current = true; 收错.current?.(); 守.改了(); }}>
         {挑人 && <CustomerPick 预选={预选客户} 近况={近况} on近况={换人} 不提计划={Boolean(收口计划)} />}
         {!收起 && AI块}
         {收起 ? (
@@ -863,7 +863,7 @@ export default function FollowUpForm({
             </Col>
             {须知?.卡点默认 && (
               <Col span={24}>
-                <卡点格 默认={须知.卡点默认} 原因们={须知.卡点原因们 ?? []} 值={卡点} on改={(x) => { set卡点(x); 守.改了(); }} />
+                <卡点格 默认={须知.卡点默认} 原因们={须知.卡点原因们 ?? []} 值={卡点} on改={(x) => { set卡点(x); 收错.current?.(); 守.改了(); }} />
               </Col>
             )}
             {/* 组员记（11-19 客户答复，原审核 11-18 权限 P1-11）：下一步是负责人的格，不摆下一步计划、下一步时间 */}
@@ -897,6 +897,7 @@ export default function FollowUpForm({
                         onClick={() => {
                           form.setFieldsValue({ 下一步时间: 日 });
                           void form.validateFields(["下一步时间"]).catch(() => {});
+                          收错.current?.();
                           守.改了();
                         }}
                       >
@@ -910,7 +911,7 @@ export default function FollowUpForm({
             </>)}
             <Col span={24}>
               <Form.Item label="截图 / 录音" extra="可不传，保存后挂在这条沟通上；也可以直接粘贴截图">
-                <选沟通附件 文件们={附件们} on改={(x) => { set附件们(x); 守.改了(); }} />
+                <选沟通附件 文件们={附件们} on改={(x) => { set附件们(x); 收错.current?.(); 守.改了(); }} />
               </Form.Item>
             </Col>
             <Col span={24} style={{ marginBottom: 12 }}>

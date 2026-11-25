@@ -2708,6 +2708,41 @@ it.each([375, 1366])("记一条沟通顺带自动推了一格（11-20）%ipx：�
   } finally { await page.close(); }
 });
 
+/*
+  11-26（3703 实操）：项目页「新建沟通」被拦（写太短 / 断网）后，框底那句红字一直挂着，补够字也不收，要再点保存才没。
+  现在改了任何一格就收：真键盘逐字敲内容收；再拦一次，改下一步计划也收
+*/
+it("新建沟通被拦以后改任何一格就收掉框底的旧原因（11-26）：逐字补内容收、改下一步计划收", async () => {
+  const { page, errors } = await 覆盖(1366, { 能记沟通: true });
+  try {
+    const 话 = "这样写会被判为无意义，不能保存：不足 4 个字，还差 1 个字。请写清沟通内容";
+    await page.evaluate((x) => Reflect.set(window, "__记沟通回", { ok: false, error: x, 无意义: true }), 话);
+    await page.getByTestId("follow-card-new").click();
+    const 窗 = page.getByRole("dialog");
+    const 错 = 窗.locator(".pd-modal-err");
+    await 窗.getByLabel("沟通内容").click();
+    await page.keyboard.type("开店了", { delay: 20 });
+    await 窗.getByLabel("下一步计划").fill("周五前发货");
+    await 窗.getByRole("button", { name: /^保\s*存$/ }).click();
+    await expect.poll(() => 错.innerText()).toBe(话);
+    // 逐字补到 8 个字：一敲就收
+    await 窗.getByLabel("沟通内容").click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("和客户聊了", { delay: 20 });
+    await expect.poll(() => 错.count(), { timeout: 1000 }).toBe(0);
+    // 再拦一次（断网那类同样），这回只改下一步计划
+    await page.evaluate(() => Reflect.set(window, "__记沟通回", { ok: false, error: "网络连不上，请稍后再试" }));
+    await 窗.getByRole("button", { name: /^保\s*存$/ }).click();
+    await expect.poll(() => 错.innerText()).toBe("网络连不上，请稍后再试");
+    await 窗.getByLabel("下一步计划").click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("前", { delay: 20 });
+    await expect.poll(() => 错.count(), { timeout: 1000 }).toBe(0);
+    expect(await 窗.getByLabel("沟通内容").inputValue()).toBe("开店了和客户聊了");
+    expect(errors).toEqual([]);
+  } finally { await page.evaluate(() => Reflect.deleteProperty(window, "__记沟通回")).catch(() => {}); await page.close(); }
+});
+
 it("记一条沟通顺带自动推了一格、我改不了节点（11-20）：不给撤销条，推到哪写进底部回执", async () => {
   const { page, errors } = await 覆盖(1280, { 能记沟通: true, 能改节点: false });
   try {
