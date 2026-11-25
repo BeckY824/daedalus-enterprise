@@ -2,6 +2,8 @@
 
 import DatePicker from "@/components/BusinessDatePicker";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import FollowMeaningLine from "@/components/FollowMeaningLine";
+import { useFollowJudge } from "@/components/useFollowJudge";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { useEffect, useRef, useState } from "react";
 import { Modal, Input, Segmented, Button, Space, Typography, Select } from "antd";
@@ -123,6 +125,8 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
   // 计划自己没写方式：按个人习惯默认（11-18，同记沟通框）；计划写了方式的以计划为准，人改过的不盖
   const 人改了方式 = useHabitDefault(!String(plan.method ?? "").trim(), (x) => { set类型(x.type); set方式(x.method); });
   const [字, set字] = useState("");
+  /** 无意义沟通（F-052）：「这次聊了什么」下面边写边说一行，判为无意义的服务端（saveFollowUp）不存 */
+  const 判定 = useFollowJudge();
   const [下次, set下次] = useState<下次>("7");
   const [日子, set日子] = useState<Dayjs | null>(() => dayjs().add(7, "day"));
   const [忙, set忙] = useState(false);
@@ -312,6 +316,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
               status={格错("一句话") ? "error" : undefined}
             />
             {错行("一句话")}
+            {!格错("一句话") && <FollowMeaningLine 内容={字} 类型={类型} 判定={判定} />}
             </div>
           </div>
           <div className="done-plan-row" data-fk="下次">

@@ -78,7 +78,7 @@ const 传: 传输 = async (方法, 路径, body) => {
 
 const 模板 = [{ id: "cmusc55660000dulko96ek8kr", email: "admin", name: "管理员", role: "ADMIN" }];
 async function 清空(d: PrismaClient) {
-  for (const t of ["AiMessage", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["AiMessage", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Attachment", "QuoteLine", "Quote", "ContractWin", "ContractMoney", "ContractOwner", "OpportunityMoney", "OpportunityClose", "CustomerExtra", "CustomerMerge", "CustomerNotDupe", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await d.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
   for (const t of ["Customer", "Channel", "User"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   for (const u of 模板) await d.user.create({ data: { ...u, password: "x", title: "管理员", createdAt: new Date("2026-10-01T00:00:00Z") } });

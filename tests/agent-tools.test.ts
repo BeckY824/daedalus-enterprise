@@ -8,7 +8,7 @@
  *
  * 所以这组用例盯的是「够得着」：新建一个还没有任何客户的渠道，它也得出现在清单里。
  */
-import { describe, it, expect, beforeEach, afterAll } from "vitest";
+import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { TOOLS } from "@/lib/agent/tools";
@@ -305,6 +305,24 @@ describe("list_contracts", () => {
     await 签("压线的", 5000, "2026-09-30");
     const d = (await 用("list_contracts").run({ from: "2026-09-01", to: "2026-09-30" }, ctx())).data as { 总数: number };
     expect(d.总数).toBe(1);
+  });
+
+  it("企业版：channelName 写触点名（公司资源）也找挂着这个触点、没主渠道的客户；客户行、签约行都带 touchpoint（F-049 审查）", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    try {
+      const ch = await prisma.channel.create({ data: { name: "展会", channelOwnerId: 我.id } });
+      await 签("挂触点的", 19800, "2026-09-03", { touchpoint: "公司资源" });
+      await 签("挂渠道的", 29800, "2026-09-04", { channelId: ch.id });
+      await 签("介绍来的", 9800, "2026-09-05", { touchpoint: "客户介绍" });
+      const 客户们 = (await 用("search_customers").run({ channelName: "公司资源" }, ctx())).data as { customers: { name: string; channel: string | null; touchpoint: string | null }[] };
+      expect(客户们.customers).toEqual([expect.objectContaining({ name: "挂触点的", channel: null, touchpoint: "公司资源" })]);
+      const 按渠道 = (await 用("search_customers").run({ channelName: "展会" }, ctx())).data as { customers: { name: string; touchpoint: string | null }[] };
+      expect(按渠道.customers).toEqual([expect.objectContaining({ name: "挂渠道的", touchpoint: null })]);
+      const 签约 = (await 用("list_contracts").run({ channelName: "客户介绍" }, ctx())).data as { 签约: { 客户: string; 渠道: string | null; 触点: string | null }[] };
+      expect(签约.签约).toEqual([expect.objectContaining({ 客户: "介绍来的", 渠道: null, 触点: "客户介绍" })]);
+    } finally { vi.unstubAllEnvs(); }
+    // 不是企业版：触点名只当渠道名比，没有叫这个的渠道 = 没有
+    expect(((await 用("list_contracts").run({ channelName: "客户介绍" }, ctx())).data as { 总数: number }).总数).toBe(0);
   });
 
   it("按负责人、按渠道筛", async () => {

@@ -44,7 +44,8 @@ vi.mock("@/lib/business", async (原) => {
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 都等齐 } from "./query-log";
-import { setSetting, invalidateSettingsCache } from "@/lib/settings";
+import { setSetting, getSetting, invalidateSettingsCache } from "@/lib/settings";
+import { 规则 } from "@/lib/enterprise/rules";
 import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules";
 import { 三态夜扫, 存沟通后重算三态, 收三态客户 } from "@/lib/enterprise/tri-state-db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
@@ -90,6 +91,8 @@ beforeEach(async () => {
   客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 乙, createdAt: 那天(400), contacts: { create: { name: "甲联系人", phone: "13800000001", isPrimary: true, createdAt: 那天(400) } } } })).id;
   // 11-17 沟通必须挂项目：客户页记的沟通要有一个在推项目（一个就自动挂它），和客户一样是 400 天前建的
   await prisma.project.create({ data: { name: "项目", customerId: 客户, ownerId: 乙, creatorId: 乙, phase: "商机", node: "明确需求", createdAt: 那天(400), updatedAt: 那天(400) } });
+  // 这一份测三态「照存 + 轻提示」：无意义沟通不能保存（F-052，默认开）关着，「OK」这类短沟通照存
+  await setSetting(规则.无意义沟通拦.key, false);
   invalidateSettingsCache();
 });
 afterEach(async () => {
@@ -168,6 +171,8 @@ describe("存沟通后马上重算", () => {
     await 量("电话聊了预算和交付时间"); // 第一条会建默认字典这类一次性的
     const 开着 = (await 量("电话又聊了一次交付时间")).length;
     for (let i = 0; i < 30; i++) await prisma.followUp.create({ data: { customerId: 客户, ownerId: 乙, type: "PHONE", title: "", content: "OK", occurredAt: 那天(5), createdAt: 那天(5) } });
+    // 上面直接写库换了库指纹：先读一次设置把缓存换新（F-052 保存前先读「无意义沟通不能保存」开关，不然这次重读会算进保存动作里）
+    await getSetting("business");
     const 多沟通 = (await 量("再聊了一次交付和付款")).length;
     await setSetting("orgRules", { ...默认组织规则 });
     invalidateSettingsCache();

@@ -2420,6 +2420,8 @@ button.ais-hd-b { cursor: pointer; }
 .prop-f > .ant-input, .prop-f > .ant-select, .prop-f > .ant-picker, .prop-f > .amount-text { min-width: 0; max-width: 100%; }
 .prop-f-block { flex-basis: 100%; align-items: flex-start; }
 .prop-f-block > *:last-child { flex: 1; }
+/* 内容框 + 下面那一行无意义沟通提示（F-052）叠成一列；min-width 0 让提示的省略号生效、不撑宽卡片 */
+.prop-f-stack { display: flex; flex-direction: column; min-width: 0; }
 /* 整行的多选（AI 卡的阻碍原因）：占满剩下的宽，长标签不把卡撑宽 */
 .prop-f-block > .ant-select { min-width: 0; }
 /* AI 记沟通卡「关联项目」（11-17 沟通必须挂项目）：下拉定宽；只一个时项目名一行，放不下「…」悬停看全文（11-20 改，原来折行） */
@@ -4158,6 +4160,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 /* 选项全名（11-04）：下拉按内容撑开，最宽到屏幕宽减边距，再长就折行，桌面和手机都看得到全名 */
 .opt-popup-full { max-width: calc(100vw - 32px); }
 .opt-popup-full .ant-select-item-option-content { white-space: normal; word-break: break-word; }
+/* 客户列表「客户来源」筛选下拉（F-049，11-25）：按内容撑开，最宽 360、手机上到屏幕宽减边距；再长一行省略（全站选项一行，悬停看全文走 TruncTip） */
+.src-filter-pop { max-width: min(360px, calc(100vw - 32px)); }
 .follow-more { display: grid; gap: 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; min-width: 0; }
 /* 记一条沟通弹窗顶上「手动录入 | AI 录入」（11-12）：AI 灰着时原因写在旁边一行淡字，窄了折到下一行 */
 .follow-mode { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; min-width: 0; }
@@ -5028,6 +5032,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .pay-del-num { overflow-wrap: anywhere; }
 /* 下次跟进完成后就地说一句 + 「排下一次」（RecordView，不弹顶部提示） */
 .rec-plan-said { font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; animation: cd-pj-flash-in var(--t) var(--ease); }
+/* 记沟通内容框下面那一行（F-052 FollowMeaningLine）：灰字一行，放不下「…」、悬停 TruncTip 看全文；手机 390 宽不撑出横向滚动 */
+.follow-meaning { display: block; max-width: 100%; min-width: 0; margin-top: 4px; font-size: var(--fs-note); line-height: 1.5; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rec-said { margin: 4px 0 6px; }
 .rec-tag-err { margin-left: 6px; white-space: normal; }
 /* 卡点（dt.blocker，项目详情 / 复盘页卡点页签）：挂在哪条沟通、类型影响一行、认领就地变色 */

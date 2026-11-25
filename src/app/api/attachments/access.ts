@@ -13,6 +13,7 @@ import type { 归属 } from "@/lib/attachment-rules";
 import { 能改这条沟通, 能删沟通, 不能删沟通话 } from "@/lib/enterprise/follow-perm";
 import { 能删除, 能改客户, 没设业务角色, 只读角色, 只读话of, 只看的人, 只看某人话 } from "@/lib/enterprise/permissions";
 import { 只有总管理能删话 } from "@/lib/enterprise/soft-delete";
+import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
 
 /**
  * ?opportunityId= / ?leadId= / ?contactId= / ?projectId= / ?followUpId=，多选一（沟通记录的截图、录音 10-31 F-跟进-07）。
@@ -33,7 +34,7 @@ export function 读归属(q: URLSearchParams): 归属 | null {
  * 要改（传、删）时再挡只读的客户（团队互看时同事的、企业版虚线下属的）。线索没转客户时，改得了线索才改得了附件（和改线索一个口径）。
  * 项目（企业版、项目模式开着）不走客户那条：看 = 看得到项目且露客户（公海里同事客户的项目，客户信息都不给，附件也不给）；
  * 改 = 能管项目（负责人、老板、主管），和编辑项目一个口径。
- * 沟通记录（企业版、项目模式开着，只认挂在项目上的沟通）：看 = 看得到那个项目；传 = 能改这条沟通的（身为负责人的管理）或记这条的本人（还能记沟通）；
+ * 沟通记录（企业版、项目模式开着，只认挂在项目上的沟通）：看 = 看得到那个项目；传 = 能改这条沟通的（身为负责人的管理）或记这条的本人（还能在这个在推项目上记沟通，含已进组的组员）；
  * 删 = 系统管理员或身为负责人的管理（V3.5.1、M-权限-09 原口径 11-09，附件跟着沟通同一个口径）。
  * 返回给日志用的一句「商机「xx」」，不行就回一句人话
  */
@@ -122,7 +123,9 @@ async function 认项目看(projectId: string, 可见: (ids: string[]) => Promis
 
 /**
  * 沟通记录的截图、录音（F-跟进-07）：沟通记录要挂在一个项目上，先按项目认「看」，再看能不能传、能不能删。
- * 传：能改这条沟通（身为负责人的管理，11-09），或这条是自己记的且自己还能在这个项目上记沟通；删：系统管理员或身为负责人的管理
+ * 传：能改这条沟通（身为负责人的管理，11-09），或这条是自己记的且自己还能在这个项目上记沟通；删：系统管理员或身为负责人的管理。
+ * 企业版组员（F-054 对齐，11-25）：已进组（JOINED）的组员能在在推项目上记沟通（能往项目记沟通），给自己记的那条传截图 / 录音也放行；
+ * 别人记的、项目结束了、退了组的照旧不行；删不跟着放宽（M-权限-09）
  */
 async function 认沟通(followUpId: string, 要改: boolean | "删"): Promise<{ 叫法: string } | { 错: string; 状态: number }> {
   if (!企业版() || (await getBusiness()).projectMode !== true) return { 错: "此版本未开放沟通记录附件", 状态: 404 };
@@ -139,13 +142,17 @@ async function 认沟通(followUpId: string, 要改: boolean | "删"): Promise<{
   if (要改 === "删") return (await 能删沟通(我, { customerId: f.customerId, id: f.id })) ? { 叫法 } : { 错: 不能删沟通话, 状态: 403 };
   if (await 能改这条沟通(我, { customerId: f.customerId, id: f.id })) return { 叫法 };
   if (f.ownerId !== 我.id) return { 错: "只有负责人或记这条沟通的人能传附件", 状态: 403 };
-  const p = await prisma.project.findFirst({ where: { id: 挂.projectId }, select: { id: true, ownerId: true, pooledAt: true } });
+  const p = await prisma.project.findFirst({ where: { id: 挂.projectId }, select: { id: true, ownerId: true, pooledAt: true, result: true } });
   if (!p || p.pooledAt) return { 错: "这个项目在公海里，先领取再传", 状态: 403 };
-  if (!能管项目(我, p, await 权限组织())) {
-    // 企业版（11-01）：组员只能看，沟通附件也只有负责人能传
-    if (企业版()) return { 错: "只有项目负责人能传附件，项目组成员只能看", 状态: 403 };
+  const org = await 权限组织();
+  if (!能管项目(我, p, org)) {
     const 组员 = await defaultClient.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: 我.id } }, select: { inviteStatus: true } });
-    if (组员?.inviteStatus !== "JOINED") return { 错: "你已经不在这个项目组里了，传不了附件", 状态: 403 };
+    if (企业版()) {
+      // 企业版组员：照记沟通同一道（能往项目记沟通，公海 / 只读角色 / 没业务角色都不行），项目还在推才传
+      if (组员?.inviteStatus !== "JOINED") return { 错: "只有项目负责人和项目组成员能传附件", 状态: 403 };
+      if (p.result) return { 错: "这个项目已经结束了，传不了附件", 状态: 403 };
+      if (!能往项目记沟通(我, p, org, 组员.inviteStatus)) return { 错: "你现在不能在这个项目上记沟通，也传不了附件", 状态: 403 };
+    } else if (组员?.inviteStatus !== "JOINED") return { 错: "你已经不在这个项目组里了，传不了附件", 状态: 403 };
   }
   return { 叫法 };
 }

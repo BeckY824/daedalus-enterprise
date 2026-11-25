@@ -57,9 +57,12 @@ describe("记一条跟进的提议", () => {
     expect(r.ok && r.proposal.kind === "add_followup" && dayjs(r.proposal.occurredAt).isValid()).toBe(true);
   });
 
-  it("内容太短的卡照样出，但拦住确认——让人在卡片上补，而不是回对话里打字", () => {
-    const p = 提("add_followup", { type: "PHONE", content: "嗯", reason: "口述" });
-    expect(missingFields(p)).toEqual(["沟通内容"]);
+  it("missingFields 只拦空的：不足 4 个字拦不拦看组织开关（F-052，卡上 ProposalCard 跟进无意义 + 服务端 沟通无意义挡），这里不管", () => {
+    const p = 提("add_followup", { type: "PHONE", content: "加微信", reason: "口述" });
+    expect(missingFields(p)).toEqual([]);
+    if (p.kind !== "add_followup") throw new Error("kind");
+    expect(missingFields({ ...p, content: "  \n " })).toEqual(["沟通内容"]);
+    expect(missingFields({ ...p, content: "\u200b" })).toEqual(["沟通内容"]);
   });
 
   it("不认识的跟进类型会被拒，不会悄悄落成 OTHER", () => {

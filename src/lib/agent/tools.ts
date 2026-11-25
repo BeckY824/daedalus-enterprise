@@ -24,6 +24,7 @@ import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, �
 import { 看得到的客户, 露客户 } from "../project/db";
 import { 不算历史分析, 历史分析的, 是历史分析, 来源字, 并条件, 人名显示 } from "../project/system-created";
 import { 企业版 } from "../enterprise/switch";
+import { 认渠道触点 } from "../enterprise/touchpoint";
 import { 主联系人号码选, 主联系人电话, 客户电话 } from "../enterprise/primary-contact-phone";
 import { 启用渠道条件 } from "../enterprise/channel-main";
 import { 渠道启用 } from "../enterprise/channel-main-core";
@@ -212,6 +213,16 @@ export function query_records参数(只用项目: boolean): string {
   );
 }
 
+/**
+ * 按渠道名找客户（search_customers、list_contracts 的 channelName）：企业版「公司资源」「客户介绍」不设主渠道、由渠道触点承载（P-渠道-08），
+ * 写的是触点名时挂着这个触点的也算（F-049，11-25）；别的照旧按渠道名包含
+ */
+function 按渠道或触点(channel: string): Prisma.CustomerWhereInput {
+  const 按名: Prisma.CustomerWhereInput = { channel: { name: { contains: channel } } };
+  const 触点 = 企业版() ? 认渠道触点(channel) : null;
+  return 触点 ? { OR: [按名, { touchpoint: 触点 }] } : 按名;
+}
+
 export const TOOLS: Tool[] = [
   {
     name: "search_customers",
@@ -220,7 +231,7 @@ export const TOOLS: Tool[] = [
       "「小红这个渠道里有谁」用 channelName（先用 list_channels 看渠道叫什么），「李四手上有哪些客户」用 ownerName，「这周新增了哪些」用 createdFrom/To，" +
       "「这个月预计能签哪几个」用 expectedSignFrom/To（按预计签约日从近到远）。找到某一位后用 get_customer 读记录。" +
       "默认只看我负责的；问团队 / 下属 / 同事名下的用 scope=team，问公海里的用 scope=pool。每行带「归属」（我负责的 / 同事或下属负责的 / 公海），回答按归属分开说。",
-    args: '{"query": "姓名 / 学校 / 年级 / 专业 / 备注 / WhatsApp / 邮箱里的关键词，可为空", "channelName": "渠道名称，可选", "ownerName": "销售负责人姓名，可选", "followStatus": "跟进状态，可选", "decisionStatus": "决策状态，可选", "createdFrom": "建档起始 YYYY-MM-DD，可选", "createdTo": "建档截止，可选", "expectedSignFrom": "预计签约起始，可选", "expectedSignTo": "预计签约截止，可选", "mine": true|false 可选, "scope": "mine|team|pool，可空：不给时首页默认 mine（只看我负责的），公海页默认 pool，客户页跟页面"}',
+    args: '{"query": "姓名 / 学校 / 年级 / 专业 / 备注 / WhatsApp / 邮箱里的关键词，可为空", "channelName": "渠道名称（也可写渠道触点：公司资源 / 客户介绍），可选", "ownerName": "销售负责人姓名，可选", "followStatus": "跟进状态，可选", "decisionStatus": "决策状态，可选", "createdFrom": "建档起始 YYYY-MM-DD，可选", "createdTo": "建档截止，可选", "expectedSignFrom": "预计签约起始，可选", "expectedSignTo": "预计签约截止，可选", "mine": true|false 可选, "scope": "mine|team|pool，可空：不给时首页默认 mine（只看我负责的），公海页默认 pool，客户页跟页面"}',
     async run(args, ctx) {
       const q = str(args.query, 20);
       const channel = str(args.channelName, 20);
@@ -252,7 +263,8 @@ export const TOOLS: Tool[] = [
         // 用 channelId（推荐链**最顶端**的渠道，所有后代继承），不是 attributionChannelId
         // （那个是「往上第二代」的归属口径，算提成用的）。「小红这个渠道里有谁」问的是
         // 整条链上的人，包括转介绍来的后代——所以是前者。两个口径的数字会不一样。
-        ...(channel ? { channel: { name: { contains: channel } } } : {}),
+        // 企业版「公司资源」「客户介绍」不设主渠道、由渠道触点承载（P-渠道-08）：问这两个也要找得到挂着触点的（F-049，11-25）
+        ...(channel ? 按渠道或触点(channel) : {}),
         ...(owner ? { salesOwner: { name: { contains: owner } } } : {}),
         ...(statusKey ? { followStatus: statusKey } : {}),
         ...(decisionKey ? { decisionStatus: decisionKey } : {}),
@@ -263,7 +275,7 @@ export const TOOLS: Tool[] = [
       const 我的条件 = { salesOwnerId: me, pool: { is: null } } satisfies Prisma.CustomerWhereInput;
       const 我的 = { AND: [where, 我的条件] };
       const 别的 = { AND: [where, { OR: [{ salesOwnerId: { not: me } }, { pool: { isNot: null } }] }] };
-      const select = { id: true, name: true, shortName: true, customerNo: true, phone: true, contacts: 主联系人号码选, school: true, grade: true, major: true, followStatus: true, decisionStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } }, channel: { select: { name: true } }, expectedSignAt: true, expectedSignOn: true, createdAt: true, lastFollowAt: true } as const;
+      const select = { id: true, name: true, shortName: true, customerNo: true, phone: true, contacts: 主联系人号码选, school: true, grade: true, major: true, followStatus: true, decisionStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } }, channel: { select: { name: true } }, touchpoint: true, expectedSignAt: true, expectedSignOn: true, createdAt: true, lastFollowAt: true } as const;
       const read = (args: unknown) => prisma.customer.findMany({ ...(args as Prisma.CustomerFindManyArgs), select });
       type 行 = Awaited<ReturnType<typeof read>>;
       const 取 = (w: Prisma.CustomerWhereInput, n: number): Promise<行> =>
@@ -284,7 +296,7 @@ export const TOOLS: Tool[] = [
         范围: 范围说法[范围],
         分组: { [归属叫法.我]: 我的数, [归属叫法.别人]: total - 我的数 - 公海数, [归属叫法.公海]: 公海数 },
         ...(另有 ? { 另有, 另有说明: `另有 ${另有} 位你看得到、但不归你负责（同事或下属负责的、你在组里的项目挂的）；用户问团队 / 下属 / 同事的才用 scope=team 查，别混进「我的客户」` } : {}),
-        customers: rows.map((r) => ({ id: r.id, name: 客户显名(r), 归属: 客户归属(me, r), phone: 号(客户电话(r)), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 客户负责人名(r), channel: r.channel?.name ?? null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
+        customers: rows.map((r) => ({ id: r.id, name: 客户显名(r), 归属: 客户归属(me, r), phone: 号(客户电话(r)), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 客户负责人名(r), channel: r.channel?.name ?? null, touchpoint: r.touchpoint || null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
       };
       const 区间说法 = (r: { from?: Dayjs; to?: Dayjs }, 名: string) =>
         r.from || r.to ? `${名} ${r.from ? r.from.format("YYYY-MM-DD") : "最早"}~${r.to ? r.to.format("YYYY-MM-DD") : "今天"}` : "";
@@ -855,7 +867,7 @@ export const TOOLS: Tool[] = [
       "列签约记录（已经成交的单子：谁、多少钱、什么时候签的），按签约日期从近到远。" +
       "问「这个月签了哪几单」「李四这个季度签了多少」「小红这个渠道签了哪些」用它。" +
       "只要总数不要名单时用 query_metric(contract_amount / contract_count)。",
-    args: '{"from": "YYYY-MM-DD，可空", "to": "YYYY-MM-DD，可空（含当天）", "customerName": "客户姓名，可空", "ownerName": "销售负责人姓名，可空", "channelName": "渠道名称，可空"}',
+    args: '{"from": "YYYY-MM-DD，可空", "to": "YYYY-MM-DD，可空（含当天）", "customerName": "客户姓名，可空", "ownerName": "销售负责人姓名，可空", "channelName": "渠道名称（也可写渠道触点：公司资源 / 客户介绍），可空"}',
     async run(args) {
       // 写反了换过来，别回一个空名单让人以为真没签
       const 区间 = 日期区间(args.from, args.to);
@@ -873,7 +885,7 @@ export const TOOLS: Tool[] = [
           ? {
               customer: {
                 ...(name ? { name: { contains: name } } : {}),
-                ...(channel ? { channel: { name: { contains: channel } } } : {}),
+                ...(channel ? 按渠道或触点(channel) : {}),
               },
             }
           : {}),
@@ -899,7 +911,7 @@ export const TOOLS: Tool[] = [
           take: 30,
           select: {
             id: true, amount: true, signedAt: true, remark: true, ...带币种.签约,
-            customer: { select: { ...显名列, salesOwner: { select: { id: true, name: true, email: true } }, channelOwner: { select: { id: true, name: true, email: true } }, channel: { select: { name: true } } } },
+            customer: { select: { ...显名列, salesOwner: { select: { id: true, name: true, email: true } }, channelOwner: { select: { id: true, name: true, email: true } }, channel: { select: { name: true } }, touchpoint: true } },
             owner: { select: { salesOwnerId: true, channelOwnerId: true } },
           },
         }),
@@ -923,6 +935,7 @@ export const TOOLS: Tool[] = [
             签约日: dayjs(c.signedAt).format("YYYY-MM-DD"),
             负责人: 归属.销售(c)?.name ?? null,
             渠道: c.customer.channel?.name ?? null,
+            触点: c.customer.touchpoint || null,
             备注: c.remark || null,
           })),
         },

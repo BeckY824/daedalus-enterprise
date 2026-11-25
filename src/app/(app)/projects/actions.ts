@@ -73,6 +73,7 @@ import { 发布卡点, 读卡点默认, 能发卡点, 可选原因们, 发卡点
 import { 沟通卡点, 规整原因们, type 沟通卡点输入, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 超时短沟通提示 } from "@/lib/enterprise/reply-overdue";
+import { 沟通无意义挡 } from "@/lib/enterprise/meaningless-follow";
 import { 存沟通后重算三态, 三态改天数预览 } from "@/lib/enterprise/tri-state-db";
 import { 新建后定线 } from "@/lib/enterprise/flow-line";
 import { 项目链接们 } from "@/lib/project/customer-detail-direct";
@@ -1087,11 +1088,28 @@ export async function 预览客户回收(改: 规则改动) {
  * 10-31 F-跟进-08：可顺带一个卡点（类型「暂无」就不生成；11-19 起选了类型阻碍原因必填，lib/project/blocker-rules.ts 沟通卡点）。
  * 卡点先验好再记沟通；沟通记上了、卡点没发成（比如没有发卡点的权限）不回滚沟通，回一句 卡点没发 给界面提示
  */
+/** 判无意义之前先看这个项目我能不能记沟通（同 项目沟通须知 / lib/project/db.ts 记项目沟通）：不在、在公海、已结束、记不了的回 false */
+async function 项目能记沟通(me: Awaited<ReturnType<typeof requireUser>>, projectId: string): Promise<boolean> {
+  if (typeof projectId !== "string" || !projectId) return false;
+  const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, result: true } });
+  if (!p || p.pooledAt || p.result) return false;
+  const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+  return 能往项目记沟通(me, p, await 权限组织(), 组员?.inviteStatus);
+}
+
 export async function 记项目沟通Action(projectId: string, input: 向导跟进, 卡点?: 沟通卡点输入) {
   try {
     const me = await requireUser();
     if (!(await 开着())) return 没开;
     if (!企业版()) return { ok: false as const, error: "在项目上记沟通是企业版的功能，请去客户页记" };
+    /*
+      无意义沟通不能保存（F-052，开关默认开）：判为无意义整条不存、卡点也不发（lib/enterprise/meaningless-follow.ts）。
+      放在项目不在 / 在公海 / 已结束 / 我记不了之后（那几句更准，先让 记项目沟通 / 卡点预检 说）、卡点之前；
+      记项目沟通 里核完权限再挡一次（以它为准，这里只是提前在卡点之前说）
+    */
+    const 无意义 = input && typeof input === "object" && typeof input.content === "string"
+      ? await 沟通无意义挡(input.content.trim(), input.type, { 标题: input.额外?.title ?? null }) : null;
+    if (无意义 && await 项目能记沟通(me, projectId)) return { ok: false as const, error: 无意义, 无意义: true as const };
     const 要发 = 卡点 == null ? null : 沟通卡点(卡点, await 读卡点默认());
     if (要发 && "error" in 要发) return { ok: false as const, error: `卡点：${要发.error}` };
     // 11-19 先查后写：卡点会被拒（没权限、项目在公海、原因停用了）就整条拦下，沟通也不写，免得「沟通记上了、卡点没发」
@@ -1100,7 +1118,7 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       const 拦 = await 发卡点预检(me, projectId, Array.isArray(原因们) ? 原因们 : []);
       if (拦) return { ok: false as const, error: `卡点：${拦}` };
     }
-    const r = await 记项目沟通(me, projectId, input, new Date(), { 要下一步文字: true });
+    const r = await 记项目沟通(me, projectId, input, new Date(), { 要下一步文字: true, 无意义 });
     let 卡点结果: { 卡点?: string; 卡点没发?: string } = {};
     if (r.ok && 要发 && r.followUpId) {
       const b = await 发布卡点(me, r.followUpId, 要发);

@@ -1,6 +1,6 @@
 /**
  * 设置开关 N7（11-23）守卫：开关文案表、总览、原卡三处对得上。漏一处不报错，只会是总览少一项、两边说法不一样。
- *   - switch-table 17 项、键不重复；组织规则 6 条每条都有对应的总览开关（switch-actions 规则开关）
+ *   - switch-table 18 项、键不重复；组织规则 7 条每条都有对应的总览开关（switch-actions 规则开关）
  *   - 子开关的父开关在表里；二选一有默认那一项
  *   - 原卡（ProjectSettingsTab）和总览（SwitchesTab）用同一个确认钩子、同一份后果文案
  *   - 后果框：父开关关掉时写「连带」；仅上级推在「按组织架构看客户」关着时写不起作用
@@ -15,9 +15,9 @@ import { 规则名们, 规则 } from "@/lib/enterprise/rules-table";
 const 读 = (p: string) => fs.readFileSync(path.resolve(__dirname, "../src", p), "utf8");
 
 describe("开关文案表", () => {
-  it("17 项、键不重复；子开关的父开关在表里；二选一的默认是其中一项", () => {
-    expect(开关表).toHaveLength(17);
-    expect(new Set(开关表.map((s) => s.k)).size).toBe(17);
+  it("18 项、键不重复；子开关的父开关在表里；二选一的默认是其中一项", () => {
+    expect(开关表).toHaveLength(18);
+    expect(new Set(开关表.map((s) => s.k)).size).toBe(18);
     for (const s of 开关表) {
       if (s.parent) expect(开关of[s.parent]).toBeTruthy();
       if (s.opts) expect(s.opts.map(([v]) => v)).toContain(s.默认);

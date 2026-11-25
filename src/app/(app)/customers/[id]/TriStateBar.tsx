@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { Button, Dropdown, Input, Modal } from "antd";
 import SaveButton from "@/components/SaveButton";
 import { MoreOutlined } from "@ant-design/icons";
@@ -19,7 +18,6 @@ const 标签色 = { 沉睡: "sleep", 待回收: "pend", 暂缓回收中: "hold" 
  * 一行不换行：文字放不下省略号（悬停看全）；按钮多、窄的时候只留主按钮，其余收进「更多」（CSS 容器查询，globals.css .tri-bar）
  */
 export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条: 三态条; customerId: string; 开客户转让: (() => void) | null }) {
-  const router = useRouter();
   const [框, set框] = useState<三态条按钮 | null>(null);
   const [理由, set理由] = useState("");
   const [忙, set忙] = useState(false);
@@ -50,7 +48,7 @@ export default function TriStateBar({ 条, customerId, 开客户转让 }: { 条:
       if (!r.ok) return { ok: false, error: r.error };
       稿.存好了();
       set成话(框.动作 === "继续持有" ? `已顺延${r.剩次数 != null ? `，还可用 ${r.剩次数} 次` : ""}` : 框.动作 === "暂缓回收" ? "已暂缓回收" : `已通知${r.通知了 ? ` ${r.通知了} 位` : ""}同事`);
-      router.refresh();
+      // 已 revalidatePath 的保存不再 router.refresh（跳转优化 PR-B 11-25）：动作里 revalidatePath 了，Next 在同一个回包里就把这页重新渲染好带回来；再 refresh 是让服务器把整页再算一遍，还会把预取缓存再清一次（tri-state-actions 的 刷新）
       return { ok: true };
     } catch (出错) {
       return { ok: false, error: 动作出错话(出错, "没办成，请刷新后重试") };

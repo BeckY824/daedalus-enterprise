@@ -136,15 +136,17 @@ export default function FollowAttachments({ followUpId, 附件: 起始, 能传: 
 }
 
 /** 记沟通时先挑好的截图、录音：记下之后拿到 followUpId 再一个个传（传不上的逐条报，沟通照样记下了） */
-function PickFollowAttachments({ 文件们, on改 }: { 文件们: File[]; on改: (x: File[]) => void }) { // 英文名：钩子规则只认大写字母开头的组件
+function PickFollowAttachments({ 文件们, on改, disabled = false }: { 文件们: File[]; on改: (x: File[]) => void; disabled?: boolean }) { // 英文名：钩子规则只认大写字母开头的组件
   const 视图中 = useViewAs();
   // 粘贴截图（11-17）：焦点在这个弹窗里（含沟通内容等文本框，剪贴板里没文字时）Ctrl+V / ⌘V，和点选一样先挑上、记下后再传
   const 根 = useRef<HTMLDivElement>(null);
-  usePasteUpload(根, !视图中, (们) => on改([...文件们, ...们]));
+  // disabled：外面在交着 / 交完了（如查重领取框），挑了也交不上，按钮、粘贴、删都停
+  usePasteUpload(根, !视图中 && !disabled, (们) => on改([...文件们, ...们]));
   return (
-    <div ref={根} {...(视图中 ? {} : { [粘贴标记]: "" })}>
-      <Upload multiple showUploadList={false} accept={收的沟通类型} disabled={视图中} beforeUpload={(f) => { on改([...文件们, f]); return false; }}>
-        <Button size="small" icon={<PaperClipOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined}>加截图 / 录音</Button>
+    <div ref={根} {...(视图中 || disabled ? {} : { [粘贴标记]: "" })}>
+      {/* 一次选了几个：beforeUpload 每个文件各调一次、拿的都是同一份旧的 文件们，逐个 on改 只剩最后一个；在第一个时整批加上（F-054 查出） */}
+      <Upload multiple showUploadList={false} accept={收的沟通类型} disabled={视图中 || disabled} beforeUpload={(f, 列) => { if (f === 列[0]) on改([...文件们, ...列]); return false; }}>
+        <Button size="small" icon={<PaperClipOutlined />} disabled={视图中 || disabled} title={视图中 ? 视图外部话 : undefined}>加截图 / 录音</Button>
       </Upload>
       {文件们.length > 0 && (
         <div style={{ marginTop: 6, display: "grid", gap: 4 }}>
@@ -153,7 +155,7 @@ function PickFollowAttachments({ 文件们, on改 }: { 文件们: File[]; on改:
               {是图片(f.type) ? <PaperClipOutlined /> : <AudioOutlined />}
               <span className="follow-att-name" title={f.name}>{f.name}</span>
               <span className="muted">{读大小(f.size)}</span>
-              <Button size="small" type="text" icon={<DeleteOutlined />} aria-label={`不传 ${f.name}`} onClick={() => on改(文件们.filter((_, j) => j !== i))} />
+              <Button size="small" type="text" icon={<DeleteOutlined />} aria-label={`不传 ${f.name}`} disabled={disabled} onClick={() => on改(文件们.filter((_, j) => j !== i))} />
             </div>
           ))}
         </div>

@@ -84,6 +84,8 @@ import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责�
 import type { RecordProps, FollowUpRow, ContactRow } from "./types";
 import TriStateBar from "./TriStateBar";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import FollowMeaningLine from "@/components/FollowMeaningLine";
+import { useFollowJudge } from "@/components/useFollowJudge";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
 import { useMotionTheme } from "@/components/MotionTheme";
@@ -351,6 +353,8 @@ export default function RecordView({
 
   const [filter, setFilter] = useState<string>("全部");
   const [memo, setMemo] = useState("");
+  /** 无意义沟通（F-052）：速记「直接记」存成一条「其他记录」，框下面边写边说一行；判定一页取一次（记跟进弹窗也用这份） */
+  const 判定 = useFollowJudge();
   const [quickSaving, setQuickSaving] = useState(false);
   // 速记框打了没记的字留草稿（复盘第 1 类，25C）：按客户分，刷新、发版后带回；记上了（直接记、AI 解析后存上）就删
   const 速记稿 = useFormDraft({ 键: `客户速记:${customer.id}`, 值: { memo }, 带回: (v) => { if (v.memo !== undefined) setMemo(v.memo); } });
@@ -367,10 +371,13 @@ export default function RecordView({
     const 参 = new URLSearchParams(window.location.search);
     /* 首页背调卡上点「记一条跟进」带过来的（?do=followup）：进来就打开跟进表单，打开后把参数去掉，刷新不会再弹 */
     if (参.get("do") === "followup") {
-      window.history.replaceState(null, "", window.location.pathname);
       // 等这一页画完再弹：表单要量弹窗位置，挂载同一拍里打开会先闪一下
       // 企业版只用项目：跟进记在项目里，这里同「跟进」按钮一样跳到项目（P14 第 3 条）
-      const t = setTimeout(() => 点跟进首次.current(), 0);
+      // 去参数也放进定时器（同下面 ?建项目=1）：开发模式 effect 跑两遍、首屏接管时这层重挂，第一遍的定时器被清掉，参数得还在、第二遍才开得出框
+      const t = setTimeout(() => {
+        window.history.replaceState(null, "", window.location.pathname);
+        点跟进首次.current();
+      }, 0);
       return () => clearTimeout(t);
     }
     const 要 = 参.get("focus");
@@ -1647,6 +1654,7 @@ export default function RecordView({
               maxLength={5000}
               placeholder={customer.pool ? `公海${b.customer}：记一笔跟进就领取过来、归你跟进…` : 企业 ? "粘贴聊天记录或会议要点" : aiEnabled ? `记一笔，或直接粘贴和${b.customer}的微信聊天记录…` : "记一笔…"}
             />
+            <FollowMeaningLine 内容={memo} 类型="OTHER" 判定={判定} />
             <div className="rec-composer-bar">
               <span className="rec-composer-hint">
                 {aiEnabled ? "「AI 解析」会把它整理成沟通记录并留存原文；「直接记」原样存为一条记录" : "Enter 换行，写完点「直接记」"}
@@ -1780,7 +1788,7 @@ export default function RecordView({
           速记稿.存好了();
           setMemo("");
           if (followInit.record?.id) void history.refreshRow(followInit.record.id).catch(() => 说就地("跟进已保存，请刷新页面核对最新内容"));
-          router.refresh();
+          // 已 revalidatePath 的保存不再 router.refresh（跳转优化 PR-B 11-25）：动作里 revalidatePath 了，Next 在同一个回包里就把这页重新渲染好带回来；再 refresh 是让服务器把整页再算一遍，还会把预取缓存再清一次（saveFollowUp 存成了都 刷新待办 → revalidatePath 这位客户）
         }}
         customerId={customer.id}
         有WhatsApp={有WhatsApp}

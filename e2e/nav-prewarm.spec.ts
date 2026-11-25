@@ -6,6 +6,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 读预热设置, 可预热页 } from "../src/lib/nav-prewarm";
+import { 连库 } from "./mock-data";
 
 test.skip(process.env.E2E_PROD !== "1", "next dev 不预取，只在生产构建里看得出来");
 
@@ -53,4 +54,139 @@ test("手机宽度：不预热", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await 登录(page);
   expect(await 数预热(page, "/follow-ups/plans")).toEqual([]);
+});
+
+/** 同上，但按路径记下每一次的时刻（数补热了几轮） */
+function 记每次整页(page: Page) {
+  const 每次 = new Map<string, number[]>();
+  page.on("request", (r) => {
+    const h = r.headers();
+    if (r.method() !== "GET" || h["rsc"] !== "1" || h["next-router-prefetch"]) return;
+    const p = new URL(r.url()).pathname;
+    每次.set(p, [...(每次.get(p) ?? []), Date.now()]);
+  });
+  return 每次;
+}
+
+/** 不带 next-router-prefetch 的 GET RSC（整页预取、真点击都长这样）：按路径记第一次的时刻 */
+function 记整页(page: Page) {
+  const 首次 = new Map<string, number>();
+  page.on("request", (r) => {
+    const h = r.headers();
+    if (r.method() !== "GET" || h["rsc"] !== "1" || h["next-router-prefetch"]) return;
+    const p = new URL(r.url()).pathname;
+    if (!首次.has(p)) 首次.set(p, Date.now());
+  });
+  return 首次;
+}
+
+test("宽屏：保存后重热左栏只热常用的前 2 页；离上次预热不到 60 秒不马上热，顺延到满 60 秒补热一轮（跳转优化 PR-B）", async ({ page }) => {
+  test.skip(不预热, "设了 none 不预热");
+  // 要等满 60 秒的限频（lib/prefetch-full 预热最短）
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await 登录(page);
+  // 自己造一位：CI 按文件分片，这个文件落在哪一片、前面有没有用例造过客户都说不准
+  const 名 = "预热重热·收藏用";
+  const db = 连库();
+  let id: string;
+  try {
+    await db.customer.deleteMany({ where: { name: 名 } });
+    const 我 = await db.user.findUniqueOrThrow({ where: { email: "zhangsan" } });
+    id = (await db.customer.create({ data: { name: 名, phone: "8613800007654", salesOwnerId: 我.id } })).id;
+  } finally {
+    await db.$disconnect();
+  }
+  // goto 前就开始记每一次整页请求（带时刻）：首轮多慢都看得见，不靠定死的等待
+  const 每次们 = 记每次整页(page);
+  const 可热 = (p: string) => 可预热页.has(p) && (!列表 || 列表.includes(p));
+  const 此后 = (自: number) =>
+    [...每次们].filter(([p]) => 可热(p)).flatMap(([p, ts]) => ts.filter((t) => t >= 自).map((t) => [p, t] as const)).sort((a, b) => a[1] - b[1]);
+  await page.mouse.move(1, 1);
+  const 开页 = Date.now();
+  await page.goto(`/customers/${id}`);
+  // 等首轮预热跑完：开始过、且连续 1.5 秒没有新请求（requestIdleCallback 3 秒 + 每页隔 600ms；CI 慢、CPU 降速也不靠死等）
+  await expect
+    .poll(() => {
+      const 们 = 此后(开页);
+      return 们.length > 0 && Date.now() - 们[们.length - 1][1] >= 1500;
+    }, { message: "首轮预热没跑完（或没开始）", timeout: 60_000, intervals: [500] })
+    .toBe(true);
+  const 首轮第一页 = 此后(开页)[0][1];
+  // 点之前先等水合：中栏真名单换上（骨架同 class、带 aria-busy，见 e2e/middle-pane.spec.ts）
+  await expect(page.locator('aside.pane-roster:not([aria-busy="true"])')).toBeVisible();
+  const 星 = page.locator(".rec-star").first();
+  const 原 = await 星.getAttribute("aria-pressed");
+
+  // 离打开时的预热不到 60 秒：存了不马上重热（限频，审查 11-25）。只数点击这一刻之后的请求，首轮的尾巴不算
+  const 点击时 = Date.now();
+  await 星.click();
+  await expect(星).toHaveAttribute("aria-pressed", 原 === "true" ? "false" : "true");
+  await page.waitForTimeout(5000);
+  expect(此后(点击时), "离上次预热不到 60 秒就重热了").toEqual([]);
+  // 限频内再存一下：不再多挂一轮
+  await 星.click();
+  await expect(星).toHaveAttribute("aria-pressed", 原 ?? "false");
+
+  // 满 60 秒那一刻补热一轮（限频从首轮第一页起算；再留 20 秒余量给慢机器）
+  await page.waitForTimeout(Math.max(0, 首轮第一页 + 80_000 - Date.now()));
+  const 重热 = 此后(点击时);
+  expect(重热.length, "限频内存了，满 60 秒也没补热").toBeGreaterThan(0);
+  // 只热常用在前的前 2 页，存了两下也只补一轮
+  expect(重热.length, `补热了 ${重热.map((x) => x[0]).join(" ")}，多于 2 页`).toBeLessThanOrEqual(2);
+  expect(new Set(重热.map((x) => x[0])).size, "同一页补热了两轮").toBe(重热.length);
+  // 限频是从发第一页前一刻起算的，首轮第一页时刻只会略晚，留 1 秒误差
+  expect(重热[0][1] - 首轮第一页, "没等满 60 秒就补热了").toBeGreaterThanOrEqual(59_000);
+  // 一页一页地发：相邻两页至少隔约 600ms（留 150ms 余量）
+  for (let i = 1; i < 重热.length; i++) expect(重热[i][1] - 重热[i - 1][1], `${重热[i - 1][0]} → ${重热[i][0]} 挤在一起发了`).toBeGreaterThanOrEqual(450);
+  // 收藏前面已经点回去了；人删掉，不留给别的用例
+  const 收 = 连库();
+  try {
+    await 收.customer.deleteMany({ where: { name: 名 } });
+  } finally {
+    await 收.$disconnect();
+  }
+});
+
+test("手机宽度：菜单一打开就取菜单里的页（跳转优化 PR-B）", async ({ page }) => {
+  test.skip(不预热, "设了 none 不预热");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await 登录(page);
+  await page.mouse.move(1, 1);
+  await page.goto("/follow-ups/plans");
+  await page.waitForTimeout(4000);
+  // 点之前先等水合：流式首屏的骨架全部离开（同 e2e/shell-pane.spec.ts）
+  await expect(page.locator('aside.pane[aria-busy="true"]')).toHaveCount(0);
+  const 首次 = 记整页(page);
+  await page.getByRole("button", { name: "打开导航菜单" }).click();
+  await page.waitForTimeout(3000);
+  const 取过 = [...首次.keys()].filter((p) => 可预热页.has(p));
+  expect(取过.length, "菜单打开了没取").toBeGreaterThan(0);
+  if (列表) expect(取过.filter((p) => !列表.includes(p)), "取了名单外的页").toEqual([]);
+  // 只取菜单里真有的项（企业版手机菜单没有 /leads）
+  const 菜单项 = (await page.locator(".ant-dropdown-menu-item").evaluateAll((els) => els.map((e) => e.getAttribute("data-menu-id") ?? ""))).map((x) => x.slice(x.indexOf("/")));
+  expect(取过.filter((p) => !菜单项.includes(p)), "取了菜单里没有的页").toEqual([]);
+});
+
+test("手机宽度：菜单一关，还没取的就不取了（跳转优化 PR-B 审查）", async ({ page }) => {
+  test.skip(不预热, "设了 none 不预热");
+  test.skip(!!列表 && 列表.length < 3, "名单不到 3 页，看不出停没停");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await 登录(page);
+  await page.mouse.move(1, 1);
+  await page.goto("/follow-ups/plans");
+  await page.waitForTimeout(4000);
+  await expect(page.locator('aside.pane[aria-busy="true"]')).toHaveCount(0);
+  const 每次们 = 记每次整页(page);
+  const 键 = page.getByRole("button", { name: "打开导航菜单" });
+  await 键.click();
+  await expect(page.locator(".ant-dropdown-menu-item").first()).toBeVisible();
+  // 再点一下菜单键收起（第一页打开时就发了，第二页要隔 300ms）
+  await 键.click();
+  await expect(page.locator(".ant-dropdown-menu-item").first()).toBeHidden();
+  // 记下收起这一刻；之后再没有新的整页请求才算停了（不看菜单开了多久，慢机器上多取一两页也不算错）
+  const 收起时 = Date.now();
+  await page.waitForTimeout(3000);
+  const 之后 = [...每次们].filter(([p]) => 可预热页.has(p)).flatMap(([p, ts]) => ts.filter((t) => t > 收起时).map((t) => `${p}@+${t - 收起时}ms`));
+  expect(之后, "菜单关了还在取").toEqual([]);
 });

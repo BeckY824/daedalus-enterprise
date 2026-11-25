@@ -82,6 +82,7 @@ import { 看板工具位 } from "./board-slot";
 import { 客户编号显示 } from "@/lib/customer-no";
 import { 客户抬头, 客户显名, type 抬头节点格 } from "@/lib/enterprise/customer-title";
 import { 出错原话 } from "@/lib/stale-deploy";
+import { 切我分出去的去掉, 触点显示名, type 来源筛选组 } from "@/lib/enterprise/customer-source-filter";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -282,7 +283,8 @@ type Props = {
    */
   客户范围?: { 值: 客户范围; 默认: 客户范围; 选项: 客户范围[] };
   /** 客户来源筛选的选项（企业版）；含已停用的渠道 */
-  渠道筛选项?: { value: string; label: string }[];
+  /** 「客户来源」下拉：「未填」、渠道触点一组、渠道一组（lib/enterprise/customer-source-filter.ts 客户来源筛选项） */
+  渠道筛选项?: 来源筛选组[];
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
   部门选项?: { value: string; label: string }[];
   /** 能删客户：企业版有能删的角色（系统管理员；销售、销管、渠运删自己负责的，V3.5.1）；别的版本 true。false 时行菜单、批量工具条都不摆删除 */
@@ -820,10 +822,12 @@ export default function CustomersView({
           ),
         }, {
           // 客户来源（11-06）：建档时选的渠道（Customer.channelId），停用的渠道也能筛，老客户还挂着
-          键: "channelId", 名: "客户来源", 宽: 150, 默认外露: false, 有值: !!f.channelId,
+          // F-049（11-25）：多「未填」（主渠道和渠道触点都空）、按渠道触点（公司资源、客户介绍），值还在 channelId 这一个参数里
+          // 框 160（F-049 审查）：钉到外面时「全部客户来源」、选中后的「客户介绍（触点）」都留足；窄屏照 globals.css 收缩规则
+          键: "channelId", 名: "客户来源", 宽: 160, 默认外露: false, 有值: !!f.channelId,
           渲染: (style: CSSProperties) => (
             <Select style={style} placeholder="全部客户来源" allowClear aria-label="客户来源" showSearch={{ optionFilterProp: "label" }}
-              popupMatchSelectWidth={false}
+              popupMatchSelectWidth={false} classNames={{ popup: { root: "src-filter-pop" } }}
               value={f.channelId || undefined} onChange={(v) => apply({ channelId: v ?? "" })}
               options={渠道筛选项} />
           ),
@@ -988,10 +992,14 @@ export default function CustomersView({
       },
     },
     { title: "客户分配", key: "assignWay", width: 100, 默认: false, render: (_: unknown, r) => (有值(r.assignWay) ? r.assignWay : 空) },
-    // 客户来源（11-05 用户：「列」的可选列里加「客户来源」；P-渠道-01 列里只显示主渠道，悬停看「主|子」全称）= 建档时选的渠道（Customer.channelId，建好就锁），默认收着；渠道名可能很长，一行省略、悬停看全
+    // 客户来源（11-05 用户：「列」的可选列里加「客户来源」；P-渠道-01 列里只显示主渠道，悬停看「主|子」全称；没主渠道写触点）= 建档时选的渠道（Customer.channelId，建好就锁），默认收着；渠道名可能很长，一行省略、悬停看全
     {
       title: "客户来源", key: "channelName", width: 120, 默认: false,
-      render: (_: unknown, r) => (有值(r.channelName) ? <span className="clamp-1" style={{ display: "block" }} title={渠道显示名(r.channelName)}>{主渠道显示名(r.channelName)}</span> : 空),
+      // 主渠道空、只挂触点（P-渠道-08 公司资源 / 客户介绍）：写「公司资源（触点）」，和「客户来源」筛选下拉一个写法（F-049）
+      render: (_: unknown, r) => {
+        const [字, 全] = 有值(r.channelName) ? [主渠道显示名(r.channelName), 渠道显示名(r.channelName)] : 有值(r.touchpoint) ? [触点显示名(r.touchpoint), 触点显示名(r.touchpoint)] : [];
+        return 字 ? <span className="clamp-1" style={{ display: "block" }} title={全}>{字}</span> : 空;
+      },
     },
   ];
 
@@ -1230,7 +1238,7 @@ export default function CustomersView({
   */
   const 看法切换 = 项目看板
     ? (!空库 || 市场视图) && !子集 && (市场视图
-      ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router, ["scope"])} />
+      ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router, 切我分出去的去掉(f.channelId))} />
       : <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={换项目看法到 ?? 项目看法} onChange={换项目看法} />)
     : 能看板 && !空库 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />;
   /** 「新建 ▾ → 新建项目」点一次挂一份（换 key 重挂 = 重新打开选新老客户的框）；0 = 还没点过、不加载 */

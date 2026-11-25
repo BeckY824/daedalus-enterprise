@@ -1,5 +1,6 @@
 /**
- * 列表每一行上的链接不预取，左栏导航照旧预取（2026-10-20，components/ui.tsx 的 RowLink）。
+ * 列表每一行上的链接不预取（2026-10-20，components/ui.tsx 的 RowLink）。左栏 11-25 起（跳转优化 PR-B）也不按视口取，
+ * 只靠空闲预热和悬停；下面「预取开着」看的是空闲预热那批的路由请求。
  *
  * next/link 一进视口就预取：客户表格 + 中栏名单一屏几十行，原来每行都去取一遍详情页。
  * 预取只在生产构建里发生（next dev 不预取），所以这条只在 E2E_PROD=1 下跑——CI 就是这么跑的。
@@ -41,7 +42,7 @@ async function 登录(page: Page) {
   await page.waitForURL(/\/dashboard/);
 }
 
-test("客户列表：行上的详情页一个都不预取，左栏照旧预取", async ({ page }) => {
+test("客户列表：行上的详情页一个都不预取，悬停那一行才取", async ({ page }) => {
   await page.setViewportSize({ width: 1680, height: 1000 });
   await 登录(page);
   const 预取: string[] = [];
@@ -54,7 +55,7 @@ test("客户列表：行上的详情页一个都不预取，左栏照旧预取",
   const 行 = page.locator("a[href^='/customers/']");
   // 表格和中栏名单都摆出来了，行上的链接在视口里
   await expect.poll(() => 行.count()).toBeGreaterThan(5);
-  // 左栏导航的预取到了，说明预取本身是开着的，这时候看行上的有没有跟着取
+  // 左栏空闲预热的到了（整页预取先取路由，那一下带 next-router-prefetch），说明预取本身是开着的，这时候看行上的有没有跟着取
   await expect.poll(() => 预取.filter((p) => !p.startsWith("/customers/")).length, { timeout: 15_000 }).toBeGreaterThan(0);
   await page.waitForTimeout(1500);
   expect(预取.filter((p) => /^\/customers\/(?!recent$)[^/]+$/.test(p)), "行上的客户详情页被预取了").toEqual([]);

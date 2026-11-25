@@ -86,8 +86,9 @@ const 桌面传: 传输 = async (方法, 路径, body) => {
   return r;
 };
 
+/** 库是从 prisma/test.db 拷来的，前面跑过的文件会留行（如查重领取附件只挂 followUpId 的 Attachment）：同步表都要清，漏一张老板迁移就判「未归属」 */
 async function 清空(d: PrismaClient) {
-  for (const t of ["AiMessage", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerClaim", "CustomerPool"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
+  for (const t of ["AiMessage", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Attachment", "QuoteLine", "Quote", "ContractWin", "ContractMoney", "ContractOwner", "OpportunityMoney", "OpportunityClose", "CustomerExtra", "CustomerMerge", "CustomerNotDupe", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerClaim", "CustomerPool"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await d.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
   for (const t of ["Customer", "Channel", "User"]) await d.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await d.user.create({ data: { id: "cmusc55660000dulko96ek8kr", email: "admin", name: "管理员", role: "ADMIN", password: "x", title: "管理员", createdAt: new Date("2026-10-01T00:00:00Z") } });

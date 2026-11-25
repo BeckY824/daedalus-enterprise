@@ -168,7 +168,12 @@ export default function InlineField({
     else if (res.交接已在路上) 说({ 话: "这位已在另一笔交接里，没再发起" });
     else if (res.带走?.没转成) 说({ 话: "负责人刚被别人改了，这次没转", 错: true });
     else if (带走) 说({ 话: `已转给新负责人${带走}` });
-    router.refresh();
+    /*
+      已 revalidatePath 的保存不再 router.refresh（跳转优化 PR-B 11-25）：动作里 revalidatePath 了，Next 在同一个回包里就把这页重新渲染好带回来；再 refresh 是让服务器把整页再算一遍，还会把预取缓存再清一次（patchCustomer 存成了都 revalidatePath 这位客户）。
+      只有换负责人走了交接那一支（发起转让交接 / 已在另一笔交接里）才 refresh：那一支直接回、没 revalidatePath（审查 11-25）；
+      直接换成了的照常 revalidatePath，不用再刷
+    */
+    if (res.交接中 || res.交接已在路上) router.refresh();
   }
 
   const 显值 = 待显 && 待显.基准 === value ? 待显.值 : value;

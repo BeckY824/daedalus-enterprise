@@ -5,6 +5,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选项 } from "@/lib/enterprise/dict";
 import type { 一条方式 } from "@/lib/follow-habit";
 import { 常用沟通方式of } from "@/lib/follow-habit-db";
+import { 读沟通判定须知, type 沟通判定须知 as 判定须知 } from "@/lib/enterprise/meaningless-follow";
 
 /** 企业版沟通方式的启用项（10-31，字典 followMethod）：记沟通的几张表单打开时取；别的版本给 null，表单照旧用类型下拉 */
 export async function 沟通方式选项(): Promise<string[] | null> {
@@ -30,4 +31,14 @@ export async function 发起主体选项(): Promise<string[] | null> {
 export async function 我常用的沟通方式(): Promise<一条方式 | null> {
   const me = await requireUser();
   return 常用沟通方式of(me.id);
+}
+
+/**
+ * 无意义沟通的判定须知（F-052）：组织开关「无意义沟通不能保存」开没开、占位词表。记沟通的框打开时取一次（一页共用），
+ * 内容框下面那一行提示和服务端 沟通无意义挡 用同一把尺。不是企业版回 null（不提示）
+ */
+export async function 沟通判定须知(): Promise<判定须知 | null> {
+  await requireUser();
+  if (!企业版()) return null;
+  return 读沟通判定须知();
 }

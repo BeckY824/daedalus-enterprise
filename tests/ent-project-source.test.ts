@@ -176,6 +176,17 @@ describe("项目列表的企业版字段", () => {
     expect(按名.get("跟客户")).toMatchObject({ expectedDealAt: "2026-12-01", 已立项天数: 0, 项目来源: "渠道一" });
     expect(按名.get("自己的")).toMatchObject({ expectedDealAt: null, 项目来源: "渠道二" });
 
+    // 「渠道」筛选只认渠道 id（F-049 审查）：客户列表「客户来源」的「未填」「触点:xx」切到「我分出去的」带过来、或手改地址栏，当没筛——
+    // 不当渠道 id 比成 0 条，框里也不写原始值
+    for (const 值 of ["未填", "触点:公司资源", "触点:客户介绍"]) {
+      const r = await 读项目列表(我(), { channelId: 值 });
+      expect(r.行.map((x) => x.name).sort()).toEqual(["自己的", "跟客户"].sort());
+      expect(r.filters.channelId).toBe("");
+    }
+    // 真渠道 id 照旧筛
+    const 筛二 = await 读项目列表(我(), { channelId: 小红 });
+    expect([筛二.行.map((x) => x.name), 筛二.filters.channelId]).toEqual([["自己的"], 小红]);
+
     vi.stubEnv("CRM_ENTERPRISE", "");
     const 团队版 = await 读项目列表(我(), {});
     for (const r of 团队版.行) {

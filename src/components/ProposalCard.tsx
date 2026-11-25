@@ -36,11 +36,13 @@ import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
 import { 落印行们 } from "@/lib/agent/seal-lines";
+import { 判沟通无意义 } from "@/lib/enterprise/tri-state-quota";
 import dynamic from "next/dynamic";
 import DedupeClaimKey from "@/app/(app)/customers/DedupeClaimKey";
 import RepeatInquiryKey from "@/app/(app)/customers/RepeatInquiryKey";
 import RescueKey from "@/app/(app)/customers/RescueKey";
 import { 沟通可选项目 } from "@/app/(app)/customers/[id]/actions";
+import FollowMeaningLine, { 记下判定, useKnownJudge } from "@/components/FollowMeaningLine";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
@@ -232,7 +234,8 @@ export default function ProposalCard({
     if (!跟进客户) return;
     let 作废 = false;
     沟通可选项目(跟进客户).then(
-      (r) => { if (!作废) { set跟进项目们(r.ok ? r.项目们 : null); set跟进能建项目(r.ok && r.能建项目); } },
+      // 判定（F-052）：无意义沟通开关和占位词表一起带回来，记下给内容下面那一行用（不另调动作）
+      (r) => { if (r.ok && "判定" in r) 记下判定(r.判定); if (!作废) { set跟进项目们(r.ok ? r.项目们 : null); set跟进能建项目(r.ok && r.能建项目); } },
       () => { if (!作废) set跟进项目们(null); },
     );
     return () => { 作废 = true; };
@@ -240,6 +243,13 @@ export default function ProposalCard({
   const 要挂项目 = draft.kind === "add_followup" && 要挂项目的类型(draft.type) && Array.isArray(跟进项目们);
   const 跟进没项目 = 要挂项目 && 跟进项目们!.length === 0;
   const 跟进要选 = 要挂项目 && 跟进项目们!.length > 1 && !(draft.kind === "add_followup" && draft.projectId && 跟进项目们!.some((x) => x.id === draft.projectId));
+  /**
+   * 无意义沟通（F-052，E-259 对齐 F-052）：开关「无意义沟通不能保存」开着（默认开）时，判为无意义（空 / 不足 4 个字）的不能确认，
+   * 内容框下 FollowMeaningLine 说「不能保存：不足 4 个字，还差 N 个字」；开关关着照存、只说不算有效沟通。占位词、只有链接照存。
+   * 判据同一个 判沟通无意义，服务端 saveFollowUp（沟通无意义挡）再判一遍、以它为准
+   */
+  const 判定 = useKnownJudge();
+  const 跟进无意义 = draft.kind === "add_followup" && 判定.拦 && 判沟通无意义(draft.content, draft.type, { 占位词: 判定.占位词 }).无意义;
 
   /** 真正要提交的那张卡：逐项时只带勾上的那几项 */
   const 要提交的 = useMemo<Proposal>(() => 只留选中的改动(draft, 勾了), [draft, 勾了]);
@@ -248,6 +258,7 @@ export default function ProposalCard({
   const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步, ...(企 ? { 企业: { 有分配方式: 企.分配方式们.length > 0, 节点们: 线索节点们, 按区域: !!企.按区域 } } : {}) } : undefined)
     .map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m))
     .concat(跟进没项目 || 跟进要选 ? ["关联项目"] : []);
+  if (跟进无意义 && !missing.includes("沟通内容")) missing.unshift("沟通内容");
   const 停用卡 = draft.kind === "add_opportunity";
   const 能确认 = state !== "saving" && !停用卡 && missing.length === 0 && 勾了.length > 0;
 
@@ -611,12 +622,16 @@ export default function ProposalCard({
               />
             </Field>
             <Field label="内容" block>
-              <Input.TextArea
-                size="small"
-                autoSize={{ minRows: 2, maxRows: 8 }}
-                value={draft.content}
-                onChange={(e) => setDraft({ ...draft, content: e.target.value })}
-              />
+              <div className="prop-f-stack">
+                <Input.TextArea
+                  size="small"
+                  autoSize={{ minRows: 2, maxRows: 8 }}
+                  value={draft.content}
+                  onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+                />
+                {/* 无意义沟通（F-052）：边改边说一行，判为无意义的服务端（saveFollowUp）不存 */}
+                <FollowMeaningLine 内容={draft.content} 类型={draft.type} />
+              </div>
             </Field>
             {要挂项目 && 跟进项目们!.length > 1 && (
               <Field label="关联项目">
@@ -867,7 +882,7 @@ export default function ProposalCard({
           {在推个数 != null && <div className="prop-err-act prop-err-note">{查重提示.在推个数(在推个数)}</div>}
           {公海号 && (
             <div className="prop-err-act">
-              <DedupeClaimKey 类型={公海号.类型} 值={公海号.值} 渠道={{ 名: 要提交的.kind === "add_lead" ? 要提交的.source : null }} 领了={() => router.refresh()} />
+              <DedupeClaimKey 类型={公海号.类型} 值={公海号.值} 渠道={{ 名: 要提交的.kind === "add_lead" ? 要提交的.source : null }} 带来的附件={要存截图 && 截图们 ? 截图们 : null} 领了={() => router.refresh()} />
             </div>
           )}
           {同事号 && (

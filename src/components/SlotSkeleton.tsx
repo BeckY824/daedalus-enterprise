@@ -44,6 +44,8 @@ export function 槽位({ 名, 有AI = false, children }: { 名: 槽位名; 有AI
 
 const 客户详情 = /^\/customers\/[^/]+$/;
 const 项目详情 = /^\/projects\/(?!attach$|handover$|new$)[^/]+$/;
+/** 客户详情 / 项目详情（有名单中栏的两种详情页）：这里摆名单骨架、AppShell 手机上挂名单抽屉，两处认这一个判定 */
+export const 名单详情页 = (p: string): boolean => 客户详情.test(p) || 项目详情.test(p);
 
 export default function SlotSkeleton() {
   const { 名: 槽, 有AI } = useContext(槽位Context);

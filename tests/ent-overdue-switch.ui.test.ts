@@ -50,7 +50,7 @@ async function open(能改: boolean, width = 1366) {
 }
 const 调用们 = (page: Page) => page.evaluate(() => (window as unknown as { __调用?: unknown[][] }).__调用 ?? []);
 
-it("组织规则里有「超时未跟进自动转」，开着；开头那句列出默认开的两条", async () => {
+it("组织规则里有「超时未跟进自动转」，开着；开头那句列出默认开的几条", async () => {
   const { page, errors } = await open(true);
   try {
     const 开关 = page.getByTestId("org-rule-reply-overdue");
@@ -58,7 +58,7 @@ it("组织规则里有「超时未跟进自动转」，开着；开头那句列�
     expect(await 开关.isChecked()).toBe(true);
     expect(await 开关.isDisabled()).toBe(false);
     const 卡 = await page.getByTestId("org-rules").innerText();
-    expect(卡).toContain("除了「无效线索要市场复核」「超时未跟进自动转」都默认关着");
+    expect(卡).toContain("除了「无效线索要市场复核」「超时未跟进自动转」「无意义沟通不能保存」都默认关着");
     expect(卡).toContain("不再发超时提醒、不再自动转");
     expect(errors).toEqual([]);
   } finally { await page.close(); }

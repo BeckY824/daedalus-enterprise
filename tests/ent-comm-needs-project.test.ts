@@ -185,7 +185,7 @@ describe("客户页记沟通", () => {
   it("没挂项目的待办改成沟通：拦；挂了项目的、老的客户沟通照旧能改", async () => {
     await prisma.entMember.update({ where: { userId: 我 }, data: { bizRole: "sales_mgr" } });
     const 待办 = await prisma.followUp.create({ data: { title: "", customerId: 客户, type: "TASK", content: "要做", status: "已完成", occurredAt: new Date(), ownerId: 我 } });
-    const 改 = (id: string, type: string, 版本: Date) => saveFollowUp({ id, 版本: 版本.toISOString(), customerId: 客户, type, content: "改了", status: "已完成", occurredAt: dayjs().subtract(1, "hour").format("YYYY-MM-DD HH:mm") });
+    const 改 = (id: string, type: string, 版本: Date) => saveFollowUp({ id, 版本: 版本.toISOString(), customerId: 客户, type, content: "改了沟通内容", status: "已完成", occurredAt: dayjs().subtract(1, "hour").format("YYYY-MM-DD HH:mm") });
     expect(await 改(待办.id, "PHONE", 待办.updatedAt)).toEqual({ ok: false, error: 待办改沟通话 });
     const 老沟通 = await prisma.followUp.create({ data: { title: "", customerId: 客户, type: "PHONE", content: "老的", status: "已完成", occurredAt: new Date(), ownerId: 我 } });
     expect(await 改(老沟通.id, "WECHAT", 老沟通.updatedAt)).toMatchObject({ ok: true });
@@ -210,7 +210,7 @@ describe("完成跟进计划时顺带记的一笔", () => {
     expect(await 完成着记(plan.id)).toMatchObject({ ok: false, error: 沟通没项目话 });
     expect(await prisma.followUp.count()).toBe(0);
     expect((await prisma.followPlan.findUniqueOrThrow({ where: { id: plan.id } })).done).toBe(false);
-    expect(await 沟通可选项目(客户)).toEqual({ ok: true, 项目们: [], 能建项目: true });
+    expect(await 沟通可选项目(客户)).toMatchObject({ ok: true, 项目们: [], 能建项目: true });
   });
 
   it("沟通可选项目：只列我能记的在推项目，组员进组的也算", async () => {

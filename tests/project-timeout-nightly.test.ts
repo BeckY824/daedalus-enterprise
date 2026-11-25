@@ -219,7 +219,7 @@ describe("回收前一天提醒 + 即将回收（10-27）", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(时("2026-10-25 10:00"));
     mocks.user = { ...mocks.user, id: 乙 };
-    expect(await saveFollowUp({ customerId: 客户, type: "PHONE", content: "聊了", status: "已完成", occurredAt: 时("2026-10-25 09:00").toISOString() } as never)).toMatchObject({ ok: true });
+    expect(await saveFollowUp({ customerId: 客户, type: "PHONE", content: "电话聊了一次", status: "已完成", occurredAt: 时("2026-10-25 09:00").toISOString() } as never)).toMatchObject({ ok: true });
     // 起点推到 10-25 → 10-28 回收，不再是明天
     expect(await 提醒们()).toEqual([expect.objectContaining({ done: true })]);
   });

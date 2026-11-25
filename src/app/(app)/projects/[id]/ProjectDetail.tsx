@@ -33,6 +33,8 @@ import { 金额, 合计文字, 按币种合计, 默认币种 } from "@/lib/curre
 import { 阶段们, 交付还差, 交付还差话, 交付不在尾款话, 终止结局, 下一步, 节点序号, 节点总数of, 原因上限, 要写原因, 字典of, 结局叫法, 是交付, 团队版字典, type 位置, type 阶段字典 } from "@/lib/project/nodes";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import FollowMeaningLine from "@/components/FollowMeaningLine";
+import { useFollowJudge } from "@/components/useFollowJudge";
 import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
 import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-gates";
@@ -570,6 +572,8 @@ export type 嵌在客户页 = {
 export default function ProjectDetail({
   p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 教练主题 = null, 嵌入,
 }: 项目详情Props & { 嵌入?: 嵌在客户页 }) {
+  // 无意义沟通（F-052）：沟通列表里就地改内容那一行要的判定，一页取一次（FollowMeaningLine 读共用那份）
+  useFollowJudge(p.企业版);
   const router = useRouter();
   /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
   const 去页 = useNavGo();
@@ -1823,7 +1827,11 @@ export default function ProjectDetail({
                 多行
                 显示={(v) => <div style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{v}</div>}
                 存={(v) => 存沟通正文(f, v)}
-                编辑器={({ 草稿, set草稿, 忙 }) => <Input.TextArea aria-label="沟通内容" autoFocus autoSize={{ minRows: 3, maxRows: 14 }} disabled={忙} value={草稿} onChange={(e) => set草稿(e.target.value)} />}
+                编辑器={({ 草稿, set草稿, 忙 }) => (<>
+                  <Input.TextArea aria-label="沟通内容" autoFocus autoSize={{ minRows: 3, maxRows: 14 }} disabled={忙} value={草稿} onChange={(e) => set草稿(e.target.value)} />
+                  {/* 无意义沟通（F-052）：内容改了才说（没动的照存）；判定一页共用（ProjectDetail 顶上取） */}
+                  {草稿.trim() !== f.content.trim() && <FollowMeaningLine 内容={草稿} 类型={f.type} />}
+                </>)}
               />
             </div>
             {f.附件 && <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={!!p.可改沟通 || (p.能记沟通 && !!f.我记的)} 能删={!!p.可删沟通} on变了={() => router.refresh()} />}
@@ -2393,6 +2401,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
   // 老数据可能是待办 / 提醒类型：下拉里补上它自己，不改类型就原样存回
   const 类型们 = 能选类型.some((t) => t.value === f.type) ? 能选类型 : [...能选类型, ...跟进类型们(外贸).filter((t) => t.value === f.type)];
   const [type, setType] = useState(f.type);
+  const 判定 = useFollowJudge();
   const [method, setMethod] = useState<string | null>(f.method ?? null);
   // 发起主体（11-01）：原来填了的改时也得有；老记录没填的不逼着补，空着交上去服务端原样留
   const 主体们 = useFollowInitiators();
@@ -2497,6 +2506,8 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
           <格标签 名="沟通内容" 必填 />
           <Input.TextArea aria-label="沟通内容" rows={4} status={格错("沟通内容") ? "error" : undefined} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
           {错行("沟通内容")}
+          {/* 无意义沟通（F-052）：内容改了才说（服务端也只在内容改了时拦） */}
+          {!格错("沟通内容") && content.trim() !== f.content.trim() && <FollowMeaningLine 内容={content} 类型={type} 判定={判定} />}
         </div>
         {改下一步 && (<>
           <div data-fk="下一步计划">
@@ -2554,6 +2565,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
   /** D4 · M7-b：「保存」一直能点、格子下报红 */
   const [type, setType] = useState<string>(能选类型[0]?.value ?? "PHONE");
   const [method, setMethod] = useState<string | null>(null);
+  const 判定 = useFollowJudge();
   // 11-01 客户答复 #2：沟通方式默认「微信沟通」、发起主体默认「我方发起」，都必填；字典里停用了就不默认、让人选
   const 方式们 = useFollowMethods();
   const 主体们 = useFollowInitiators();
@@ -2832,6 +2844,8 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
           <格标签 名="沟通内容" 必填 />
           <Input.TextArea aria-label="沟通内容" rows={4} status={格错("沟通内容") ? "error" : undefined} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
           {错行("沟通内容")}
+          {/* 无意义沟通（F-052）：边写边说一行，判为无意义的服务端不存 */}
+          {!格错("沟通内容") && <FollowMeaningLine 内容={content} 类型={type} 判定={判定} />}
         </div>
         {卡点默认 && (
           <div className="follow-blocker" data-fk="卡点原因">

@@ -56,7 +56,7 @@ describe("清理失权副本", () => {
     fs.copyFileSync(path.resolve(__dirname, "../prisma/test.db"), path.join(dir, "t.db"));
     if (fs.existsSync(path.resolve(__dirname, "../prisma/test.db-wal"))) fs.copyFileSync(path.resolve(__dirname, "../prisma/test.db-wal"), path.join(dir, "t.db-wal"));
     db = new PrismaClient({ datasourceUrl: `file:${path.join(dir, "t.db")}` });
-    for (const t of ["AiMessage", "AiConversation", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool"]) await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
+    for (const t of ["AiMessage", "AiConversation", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Attachment", "QuoteLine", "Quote", "ContractWin", "ContractMoney", "ContractOwner", "OpportunityMoney", "OpportunityClose", "CustomerExtra", "CustomerMerge", "CustomerNotDupe", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool"]) await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
     await db.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
     await db.$executeRawUnsafe('DELETE FROM "Customer"');
     for (const id of ["acct_m", "acct_b"]) await db.user.upsert({ where: { id }, create: { id, email: `${id}@x`, name: id, password: "x" }, update: {} });

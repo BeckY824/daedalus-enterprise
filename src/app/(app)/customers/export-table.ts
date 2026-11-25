@@ -9,6 +9,7 @@ import { fmtDate, fmtDateTime } from "@/lib/utils";
 import { 跟进方式名 } from "@/lib/follow-method";
 import type { 外贸档案 } from "@/lib/customer-extra";
 import { 拆主子 } from "@/lib/enterprise/channel-main-core";
+import { 触点显示名 } from "@/lib/enterprise/customer-source-filter";
 import { 客户编号文字 } from "@/lib/customer-no";
 
 /** 导出要用到的那几样。CustomerRow（列表行）和 客户行（导出取数）都满足 */
@@ -21,6 +22,8 @@ export type 导出行 = {
   referrerName?: string | null;
   /** 客户来源渠道全称（企业版两层时拆成主渠道、子渠道两列） */
   channelName?: string | null;
+  /** 渠道触点（P-渠道-08）：主渠道空、只挂触点时主渠道那格写「公司资源（触点）」（F-049，和列表那列一致） */
+  touchpoint?: string | null;
   attributionName?: string | null;
   followStatus: string;
   decisionStatus: string;
@@ -49,8 +52,9 @@ export function 签约各币(r: { signedAmount: number; signedTotals?: { 币种:
   return r.signedTotals ?? (r.signedAmount ? [{ 币种: "CNY", 合计: r.signedAmount }] : []);
 }
 
-/** 企业版渠道两层（P-渠道-01 附.5）：全称「主|子」拆成两格；没子渠道、或子和主同名时子渠道留空 */
-export function 拆导出渠道(全称: string | null | undefined): [string, string] {
+/** 企业版渠道两层（P-渠道-01 附.5）：全称「主|子」拆成两格；没子渠道、或子和主同名时子渠道留空；没渠道、有触点 = 主渠道格写触点 */
+export function 拆导出渠道(全称: string | null | undefined, 触点?: string | null): [string, string] {
+  if (!全称 && 触点) return [触点显示名(触点), ""];
   const { 主, 子 } = 拆主子(全称 ?? "");
   return [主, 子 === 主 ? "" : 子];
 }
@@ -90,7 +94,7 @@ export function 客户导出表(rows: 导出行[], b: BusinessConfig, 隐藏负�
     r.name, r.phone, r.school ?? "", r.major ?? "", r.grade ?? "",
     r.referrerName ?? "", r.attributionName ?? "",
     // 企业版两层：主渠道、子渠道各一格，表头和导入别名一致（lib/import/fields.ts），导回来拼回全称
-    ...(渠道两层 ? 拆导出渠道(r.channelName) : []),
+    ...(渠道两层 ? 拆导出渠道(r.channelName, r.touchpoint) : []),
     statusLabel(b, r.followStatus), statusLabel(b, r.decisionStatus),
     // 导出写「USD 3,200 · CNY 19,800」：只写数字的话，美元单在表里就成了人民币
     r.expectedSignAt ? fmtDate(r.expectedSignAt) : "", 签约各币(r).filter((x) => x.合计 > 0).map((x) => `${x.币种} ${x.合计}`).join(" · "),
