@@ -45,6 +45,10 @@ export type 计划行 = {
   有WhatsApp: boolean;
   ownerId: string;
   ownerName: string;
+  /** 售后回访顺手排的下次回访（E-283）：给哪个交付结清项目排的；普通计划没有这一格 */
+  afterSaleProjectId?: string;
+  /** 回访计划核得过时去哪（lib/project/after-sale-plan-link.ts 带回访去处，计划页才补） */
+  回访去?: string;
 };
 
 export type 待办行 = {
@@ -84,6 +88,7 @@ const 成计划 = (p: Prisma.FollowPlanGetPayload<{ include: typeof 计划详情
   有WhatsApp: !!p.customer.extra?.whatsapp?.trim(),
   ownerId: p.owner.id,
   ownerName: p.owner.name,
+  ...(p.afterSaleProjectId ? { afterSaleProjectId: p.afterSaleProjectId } : {}),
 });
 
 const 成待办 = (t: Prisma.TaskGetPayload<{ include: typeof 待办详情 }>): 待办行 => ({

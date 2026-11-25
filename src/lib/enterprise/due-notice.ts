@@ -34,6 +34,7 @@ import { 读组织, 负责人和上级, type 组织 } from "./org";
 import { 企业版 } from "./switch";
 import { 视图中跳过 } from "./view-as";
 import { 客户引, 显名列 } from "./customer-title";
+import { 回访计划去项目 } from "@/lib/project/after-sale-plan-link";
 
 export const 提醒时刻 = { 时: 9, 分: 0 } as const;
 const 钟上间隔毫秒 = 5 * 60_000;
@@ -63,7 +64,7 @@ async function 跟进计划行({ 首日, 末日, 零点, 次日 }: 日范围) {
   const 查到 = await prisma.followPlan.findMany({
     // 日历日的写法同 lib/overdue.ts 逾期条件：有 plannedOn 认它，老数据才看 plannedAt
     where: { done: false, customer: { pool: null }, OR: [{ plannedOn: { gte: 首日, lte: 末日 } }, { plannedOn: null, plannedAt: { gte: 零点, lt: 次日 } }] },
-    select: { id: true, subject: true, method: true, ownerId: true, customerId: true, plannedOn: true, plannedAt: true, customer: { select: { ...显名列, salesOwnerId: true } } },
+    select: { id: true, subject: true, method: true, ownerId: true, customerId: true, plannedOn: true, plannedAt: true, afterSaleProjectId: true, customer: { select: { ...显名列, salesOwnerId: true } } },
   });
   const 行们 = 查到.map((p) => ({ ...p, 日: p.plannedOn ?? calendarDay(p.plannedAt) }));
   if (!行们.length) return [];
@@ -79,8 +80,18 @@ async function 跟进计划行({ 首日, 末日, 零点, 次日 }: 日范围) {
     const 键 = `${p.customerId}\n${p.ownerId}`;
     if (!他的项目.has(键)) 他的项目.set(键, p.id);
   }
+  /*
+    回访计划（E-283 第 3 条，带 afterSaleProjectId 的下次回访）：去它的交付结清项目（那里有交付卡「记售后回访」）——lib/project/after-sale-plan-link.ts 回访计划去项目，
+    看的人 = 计划负责人。核不过的（项目撤回了交付结清、删了、他看不到）不再挂到这位客户的在推项目上，照下面回落客户页 / 计划页
+  */
+  const 带回访 = 行们.filter((p) => p.afterSaleProjectId);
+  const 角色 = 带回访.length
+    ? new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(带回访.map((p) => p.ownerId))] } }, select: { id: true, role: true } })).map((u) => [u.id, u.role]))
+    : new Map<string, string>();
+  const 回访去 = await 回访计划去项目(带回访, (p) => (角色.has(p.ownerId) ? { id: p.ownerId, role: 角色.get(p.ownerId)! } : null));
   return 行们.map((p) => {
-    const 项目 = 他的项目.get(`${p.customerId}\n${p.ownerId}`);
+    const 回访 = 回访去.get(p.id);
+    const 项目 = 回访?.id ?? (p.afterSaleProjectId ? undefined : 他的项目.get(`${p.customerId}\n${p.ownerId}`));
     const link = 项目 ? `/projects/${encodeURIComponent(项目)}` : p.customer.salesOwnerId === p.ownerId ? `/customers/${encodeURIComponent(p.customerId)}` : "/follow-ups/plans";
     return { ...p, link };
   });

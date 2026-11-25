@@ -3,6 +3,7 @@
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { 取详情 } from "@/lib/plans-page";
+import { 带回访去处 } from "@/lib/project/after-sale-plan-link";
 
 /**
  * 跟进计划页分批时，页面上要摆、手里却没有详情的那几条（2026-10-24）：
@@ -11,9 +12,11 @@ import { 取详情 } from "@/lib/plans-page";
  * 不叫 actions.ts：几个页面测试把 actions 整个换成桩，这里得照常跑。
  */
 export async function 补计划详情(keys: string[]) {
-  await requireUser();
+  const me = await requireUser();
   if (!Array.isArray(keys) || keys.length > 500 || !keys.every((k) => typeof k === "string" && /^(plan|task):[\w-]+$/.test(k))) {
     return { plans: [], tasks: [] };
   }
-  return 取详情(prisma, keys);
+  const r = await 取详情(prisma, keys);
+  // 回访计划的去处同整页（E-283 第 3 条）
+  return { ...r, plans: await 带回访去处(me, r.plans) };
 }

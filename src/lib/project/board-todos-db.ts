@@ -2,6 +2,7 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 限定的我 } from "@/lib/team-scope";
 import { 缓存着 } from "@/lib/home-cache";
 import { 未完成轻列表, 取详情 } from "@/lib/plans-page";
+import { 回访计划去项目 } from "./after-sale-plan-link";
 import { 看得到的客户 } from "@/lib/project/db";
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 import type { 谁 } from "@/lib/enterprise/permissions";
@@ -82,7 +83,13 @@ async function 补详情(要: readonly { key: string; 组: 组 }[], 给的我id?
       select: { id: true, customerId: true },
     }))
       if (!退路.has(p.customerId)) 退路.set(p.customerId, p.id);
-  const 项目id们 = [...[...项目of.values()].map((p) => p.id), ...退路.values()];
+  /*
+    回访计划（E-283 第 3 条，带 afterSaleProjectId）：去它的交付结清项目、带它的名字（after-sale-plan-link.ts，看的人 = 我）；
+    核不过的不挂客户的在推项目，回落客户页（进不去不给去处）
+  */
+  const 看的人 = 我 ? { id: 我.id, role: 我.role ?? "" } : 我id ? { id: 我id, role: "" } : null;
+  const 回访 = await 回访计划去项目(plans, () => 看的人);
+  const 项目id们 = [...[...项目of.values()].map((p) => p.id), ...退路.values(), ...[...回访.values()].map((p) => p.id)];
   const [市场挡, 直达] = await Promise.all([
     我id && 项目id们.length ? 市场进不了详情的(我id, 项目id们) : new Set<string>(),
     我 && 项目id们.length ? 项目链接们(我, 项目id们) : new Map<string, string>(),
@@ -97,11 +104,17 @@ async function 补详情(要: readonly { key: string; 组: 组 }[], 给的我id?
     return { projectName: p?.name ?? null, projectLevel: p?.level || null, 去: 去处(customerId) };
   };
 
+  const 回访挂 = (planId: string, customerId: string) => {
+    const x = 回访.get(planId);
+    if (x) return { projectName: x.name, projectLevel: x.level, 去: 直达.get(x.id) ?? `/projects/${encodeURIComponent(x.id)}` };
+    return { projectName: null, projectLevel: null, 去: 进得去.has(customerId) ? `/customers/${encodeURIComponent(customerId)}` : null };
+  };
+
   const 详 = new Map<string, Omit<复盘待办行, "组">>();
   for (const p of plans)
     详.set(`plan:${p.id}`, {
       key: `plan:${p.id}`, kind: "plan", id: p.id, 时间: p.plannedAt, 明确钟点: p.plannedHasTime, 内容: p.subject,
-      customerId: p.customerId, customerName: p.customerName, ownerId: p.ownerId, ownerName: p.ownerName, ...挂(p.customerId),
+      customerId: p.customerId, customerName: p.customerName, ownerId: p.ownerId, ownerName: p.ownerName, ...(p.afterSaleProjectId ? 回访挂(p.id, p.customerId) : 挂(p.customerId)),
     });
   for (const t of tasks)
     详.set(`task:${t.id}`, {
