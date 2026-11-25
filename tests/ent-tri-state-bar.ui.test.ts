@@ -88,7 +88,7 @@ it("1024 / 1280 / 1366、AI 栏开关：一行、不撑出、文字省略、按�
   }
 }, 120_000);
 
-it("写理由继续持有：确认框写着额度说明，不填理由不交，填了交上去并刷新；客户转让开页头的框", async () => {
+it("写理由继续持有：确认框写着额度说明，不填理由不交，填了交上去（不再 router.refresh，新页跟着动作回包回来）；客户转让开页头的框", async () => {
   const { page, errors } = await 开(1366, false, 暂缓条);
   await page.getByRole("button", { name: "写理由继续持有" }).click();
   const 框 = page.locator(".ant-modal");
@@ -98,7 +98,9 @@ it("写理由继续持有：确认框写着额度说明，不填理由不交，�
   await 框.getByLabel("理由").fill("客户下月招标，还在跟");
   await 框.getByRole("button", { name: "写理由继续持有" }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { __调?: unknown[] }).__调)).toEqual([["继续持有", "c1", "客户下月招标，还在跟"]]);
-  await expect.poll(() => page.evaluate(() => (window as unknown as { __刷新?: number }).__刷新)).toBe(1);
+  // 办成了不再 router.refresh（跳转优化 PR-B 11-25）：动作里 revalidatePath 了，新页跟着动作回包回来
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => (window as unknown as { __刷新?: number }).__刷新 ?? 0), "办成了还在 router.refresh").toBe(0);
   await page.getByRole("button", { name: "客户转让" }).click();
   expect(await page.evaluate(() => (window as unknown as { __转?: number }).__转)).toBe(1);
   expect(errors).toEqual([]);

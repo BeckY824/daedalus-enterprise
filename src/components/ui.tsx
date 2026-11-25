@@ -230,10 +230,10 @@ export function StageTag({ stage }: { stage: string }) {
  * 每行都预取一遍详情页，渲染进程和本机服务端都白干活、白占内存，可人一次只点开一位。
  * 左栏导航、页里单个的「查看全部」之类仍用 Link，照旧预取。
  *
- * 悬停停住那一行才整页预取（10-27，lib/prefetch-full）：人要点的就是这一行，点下去时页已经在本地，
+ * 悬停停住那一行（手机上手指按下去）才整页预取（10-27，lib/prefetch-full；触摸 PR-B 11-25）：人要点的就是这一行，点下去时页已经在本地，
  * 放到云上也不用再等一来回。
  */
-export function RowLink({ onMouseEnter, onMouseLeave, onFocus, onBlur, children, ...props }: ComponentProps<typeof Link>) {
+export function RowLink({ onMouseEnter, onMouseLeave, onFocus, onBlur, onTouchStart, children, ...props }: ComponentProps<typeof Link>) {
   const 预取 = useHoverPrefetch();
   const 去 = typeof props.href === "string" ? props.href : null;
   return (
@@ -255,6 +255,11 @@ export function RowLink({ onMouseEnter, onMouseLeave, onFocus, onBlur, children,
       onBlur={(e) => {
         预取.出();
         onBlur?.(e);
+      }}
+      // 手机、平板没有悬停：手指按下去就取（PR-B 11-25，经 lib/prefetch-full 的闸，滑动列表时连着按到的只取最后一个）
+      onTouchStart={(e) => {
+        预取.触(去);
+        onTouchStart?.(e);
       }}
     >
       {children}

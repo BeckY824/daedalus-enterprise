@@ -623,6 +623,8 @@ export default function DataList<T extends { id: string }>({
                 // 停在哪一行就先把那一页整页取回来，点下去不用再等服务器（10-27，lib/prefetch-full）
                 onMouseEnter: 链 ? () => 预取.进(链) : undefined,
                 onMouseLeave: 链 ? 预取.出 : undefined,
+                // 手机、平板：手指按下去就取（PR-B 11-25）
+                onTouchStart: 链 ? () => 预取.触(链) : undefined,
                 style: { cursor: "pointer" },
               };
             }

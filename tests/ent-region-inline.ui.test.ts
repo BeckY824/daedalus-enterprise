@@ -54,7 +54,10 @@ it("回车存：存着的时候就摆新值，父组件重画（新对象）也�
     await page.evaluate(() => (Reflect.get(window, "__重画") as () => void)());
     expect(await 格.innerText()).toContain("Dallas");
     await page.evaluate(() => (Reflect.get(window, "__放") as (x: unknown) => void)({ ok: true }));
-    await expect.poll(() => page.evaluate(() => Reflect.get(window, "__刷新"))).toBe(1);
+    // 存成了不再 router.refresh（跳转优化 PR-B 11-25）：动作里 revalidatePath 了，新页跟着动作回包回来
+    await page.waitForTimeout(300);
+    expect(await page.evaluate(() => Reflect.get(window, "__刷新") ?? 0), "存成了还在 router.refresh").toBe(0);
+    expect(await 格.innerText()).toContain("Dallas");
     expect(await page.locator(".ant-message-notice").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }

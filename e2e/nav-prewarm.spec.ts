@@ -6,6 +6,7 @@
  */
 import { test, expect, type Page } from "@playwright/test";
 import { 读预热设置, 可预热页 } from "../src/lib/nav-prewarm";
+import { 连库 } from "./mock-data";
 
 test.skip(process.env.E2E_PROD !== "1", "next dev 不预取，只在生产构建里看得出来");
 
@@ -53,4 +54,78 @@ test("手机宽度：不预热", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await 登录(page);
   expect(await 数预热(page, "/follow-ups/plans")).toEqual([]);
+});
+
+/** 不带 next-router-prefetch 的 GET RSC（整页预取、真点击都长这样）：按路径记第一次的时刻 */
+function 记整页(page: Page) {
+  const 首次 = new Map<string, number>();
+  page.on("request", (r) => {
+    const h = r.headers();
+    if (r.method() !== "GET" || h["rsc"] !== "1" || h["next-router-prefetch"]) return;
+    const p = new URL(r.url()).pathname;
+    if (!首次.has(p)) 首次.set(p, Date.now());
+  });
+  return 首次;
+}
+
+test("宽屏：保存后停 2 秒再一页一页重热左栏（跳转优化 PR-B）", async ({ page }) => {
+  test.skip(不预热, "设了 none 不预热");
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await 登录(page);
+  // 自己造一位：CI 按文件分片，这个文件落在哪一片、前面有没有用例造过客户都说不准
+  const 名 = "预热重热·收藏用";
+  const db = 连库();
+  let id: string;
+  try {
+    await db.customer.deleteMany({ where: { name: 名 } });
+    const 我 = await db.user.findUniqueOrThrow({ where: { email: "zhangsan" } });
+    id = (await db.customer.create({ data: { name: 名, phone: "8613800007654", salesOwnerId: 我.id } })).id;
+  } finally {
+    await db.$disconnect();
+  }
+  await page.mouse.move(1, 1);
+  await page.goto(`/customers/${id}`);
+  // 等空闲预热跑完（requestIdleCallback 3 秒 + 每页隔 600ms）
+  await page.waitForTimeout(7000);
+  // 点之前先等水合：中栏真名单换上（骨架同 class、带 aria-busy，见 e2e/middle-pane.spec.ts）
+  await expect(page.locator('aside.pane-roster:not([aria-busy="true"])')).toBeVisible();
+  const 星 = page.locator(".rec-star").first();
+  const 原 = await 星.getAttribute("aria-pressed");
+  const 首次 = 记整页(page);
+  const t0 = Date.now();
+  await 星.click();
+  await expect(星).toHaveAttribute("aria-pressed", 原 === "true" ? "false" : "true");
+  await page.waitForTimeout(8000);
+  const 重热 = [...首次].filter(([p]) => 可预热页.has(p) && (!列表 || 列表.includes(p))).sort((a, b) => a[1] - b[1]);
+  // 收藏一下就是一次会刷新的保存：Next 清掉整个预取缓存，停 2 秒后重热
+  expect(重热.length, "保存后没重热左栏").toBeGreaterThan(0);
+  expect(重热[0][1] - t0, "保存后没停 2 秒就重热了").toBeGreaterThanOrEqual(1800);
+  // 一页一页地发：相邻两页至少隔约 600ms（留 150ms 余量）
+  for (let i = 1; i < 重热.length; i++) expect(重热[i][1] - 重热[i - 1][1], `${重热[i - 1][0]} → ${重热[i][0]} 挤在一起发了`).toBeGreaterThanOrEqual(450);
+  // 收藏点回去、人删掉，不留给别的用例
+  await 星.click();
+  await expect(星).toHaveAttribute("aria-pressed", 原 ?? "false");
+  const 收 = 连库();
+  try {
+    await 收.customer.deleteMany({ where: { name: 名 } });
+  } finally {
+    await 收.$disconnect();
+  }
+});
+
+test("手机宽度：菜单一打开就取菜单里的页（跳转优化 PR-B）", async ({ page }) => {
+  test.skip(不预热, "设了 none 不预热");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await 登录(page);
+  await page.mouse.move(1, 1);
+  await page.goto("/follow-ups/plans");
+  await page.waitForTimeout(4000);
+  // 点之前先等水合：流式首屏的骨架全部离开（同 e2e/shell-pane.spec.ts）
+  await expect(page.locator('aside.pane[aria-busy="true"]')).toHaveCount(0);
+  const 首次 = 记整页(page);
+  await page.getByRole("button", { name: "打开导航菜单" }).click();
+  await page.waitForTimeout(3000);
+  const 取过 = [...首次.keys()].filter((p) => 可预热页.has(p));
+  expect(取过.length, "菜单打开了没取").toBeGreaterThan(0);
+  if (列表) expect(取过.filter((p) => !列表.includes(p)), "取了名单外的页").toEqual([]);
 });

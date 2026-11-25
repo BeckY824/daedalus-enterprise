@@ -1780,7 +1780,7 @@ export default function RecordView({
           速记稿.存好了();
           setMemo("");
           if (followInit.record?.id) void history.refreshRow(followInit.record.id).catch(() => 说就地("跟进已保存，请刷新页面核对最新内容"));
-          router.refresh();
+          // 已 revalidatePath 的保存不再 router.refresh（跳转优化 PR-B 11-25）：动作里 revalidatePath 了，Next 在同一个回包里就把这页重新渲染好带回来；再 refresh 是让服务器把整页再算一遍，还会把预取缓存再清一次（saveFollowUp 存成了都 刷新待办 → revalidatePath 这位客户）
         }}
         customerId={customer.id}
         有WhatsApp={有WhatsApp}
