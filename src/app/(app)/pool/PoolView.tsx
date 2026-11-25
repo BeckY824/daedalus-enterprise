@@ -363,12 +363,17 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
       let 提示: string | undefined;
       if (客户res?.ok && 客户到) {
         const r = await 撤销公海(动作, 客户res.原负责人 ?? [], 客户res.带过来, 客户res.给谁?.id, 客户res.公海项目);
-        // 并发里先撤回去的（已撤回）也已经回了公海：算撤了，撤销条上说一句，不报错（11-26 审查）
+        // 并发里先撤回去的（已撤回）也已经回了公海：算撤了，撤销条上说一句，不报错（11-26 审查）。
+        // 撤成、已撤回、没撤成（负责人被改过 / 培育项目动过）混着时，服务端拼好了整句（「已撤销 N 位；…」），原样交给撤销条
         if (r.ok) { 撤了 += r.updated + (r.已撤回 ?? 0); 提示 = r.提示; } else 错 = r.error;
       }
       if (项目到.length) {
         const r = await 撤销公海项目(动作, 项目到, 给谁?.id, 整包);
-        if (r.ok) 撤了 += r.updated; else 错 = r.error;
+        if (r.ok) {
+          撤了 += r.updated;
+          // 客户那句只数客户：一起撤回的项目接在后面，不然像是只撤了那几位
+          if (提示 && r.updated) 提示 = `${提示}；另撤销 ${r.updated} 个项目`;
+        } else 错 = r.error;
       }
       router.refresh();
       if (错) return { ok: false, error: 错 };

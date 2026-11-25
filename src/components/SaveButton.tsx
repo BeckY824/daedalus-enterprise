@@ -32,6 +32,7 @@ export default function SaveButton({
   没保存 = "没保存上",
   成了,
   收错,
+  原因在别处,
   type = "primary",
   disabled,
   className,
@@ -52,6 +53,11 @@ export default function SaveButton({
    * 11-26：记沟通被拦「太短」后改成能存的内容，旧原因还挂着像是新内容也不行——表单那格一改就调它
    */
   收错?: React.MutableRefObject<(() => void) | null>;
+  /**
+   * 这句没成的原因页面别处已经写着（比如表单下方的红字）：不再浮在键上、键直接回原样，免得同一句显示两遍。
+   * 11-26 审查：改沟通被拒锁住（FollowUpForm 不能改）时用
+   */
+  原因在别处?: (原因: string) => boolean;
   type?: ButtonProps["type"];
 }) {
   const [态, set态] = useState<态>("闲");
@@ -123,6 +129,10 @@ export default function SaveButton({
     set态("存着");
     const 原因 = await 跑出原因(做);
     if (!活着.current) return;
+    if (原因 && 原因在别处?.(原因)) {
+      回去();
+      return;
+    }
     if (原因) {
       set因(原因);
       set态("没成");

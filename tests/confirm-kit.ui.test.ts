@@ -425,16 +425,23 @@ describe("撤销条", () => {
     await page.close();
   });
 
-  it("撤成了但有一句要说的（提示，如「这位刚才已经撤回公海了」）：写在「已撤销」的位置，不当报错（11-26 审查）", async () => {
+  it("撤成了但有一句要说的（提示）：接在「已撤销」后面写，不当报错；服务端拼好的「已撤销 N 位；…」原样写（11-26 审查）", async () => {
     const { page, errors } = await open();
-    await 调(page, "__undoReset");
-    await 设(page, "__提示", "这位刚才已经撤回公海了");
-    await 调(page, "__undo", "已领取「某某展具」", { 已做: true });
-    await page.getByRole("button", { name: "撤销" }).click();
-    await page.getByText("这位刚才已经撤回公海了").waitFor();
-    expect(await page.locator("#undo-host").getByRole("alert").count()).toBe(0);
-    expect(await page.getByText("已撤销").count()).toBe(0);
-    expect(await 取(page, "__撤")).toEqual(["已领取「某某展具」"]);
+    for (const [提示, 应] of [
+      ["这位刚才已经撤回公海了", "已撤销；这位刚才已经撤回公海了"],
+      ["先拆开了 2 次联系人合成", "已撤销；先拆开了 2 次联系人合成"],
+      ["已撤销 2 位；1 位刚才已经撤回公海了；1 位负责人刚被别人改过，这次没有撤销", "已撤销 2 位；1 位刚才已经撤回公海了；1 位负责人刚被别人改过，这次没有撤销"],
+    ] as const) {
+      await 调(page, "__undoReset");
+      await 设(page, "__提示", 提示);
+      await 调(page, "__undo", "已领取「某某展具」", { 已做: true });
+      await page.getByRole("button", { name: "撤销" }).click();
+      await page.getByText(应, { exact: true }).waitFor();
+      expect(await page.locator("#undo-host").getByRole("alert").count()).toBe(0);
+      // 只写一遍「已撤销」，不叠成「已撤销；已撤销 …」
+      expect((await page.locator("#undo-host").innerText()).split("已撤销").length - 1).toBe(1);
+      expect(await 取(page, "__撤")).toEqual(["已领取「某某展具」"]);
+    }
     expect(errors).toEqual([]);
     await page.close();
   });

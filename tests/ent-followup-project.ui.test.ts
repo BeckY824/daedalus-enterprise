@@ -273,33 +273,51 @@ it("项目模式被拦以后改任何一格就收掉保存键上的旧原因（1
 });
 
 // 11-26 审查：本人限时改被服务端拒的那几句（客户进了公海、挂的项目记不了沟通、过了 30 分钟）改哪格都改不好：
-// 改一格不收保存键上的原因、保存灰掉、框里留这句、页面刷一下（同项目页 EditFollowModal）；关了再开从头来。别的原因（比如撞了版本）照旧一改就收
+// 保存灰掉、原因只写在表单下方（不再同时浮在保存键上，同一句不显示两遍）、页面刷一下（同项目页 EditFollowModal）；关了再开从头来。
+// 别的原因（比如撞了版本）照旧浮在保存键上、一改就收
 const 重开 = async (page: import("playwright").Page, x: 参数) => {
   await page.evaluate((v) => (window as unknown as { __render: (x: 参数) => void }).__render({ ...v, 关: true }), x);
   await expect.poll(() => page.locator(".ant-modal-wrap:visible").count()).toBe(0);
   await page.evaluate((v) => (window as unknown as { __render: (x: 参数) => void }).__render(v), x);
   await page.getByRole("button", { name: /保\s*存/ }).waitFor();
 };
-it("编辑沟通被拒「客户进了公海 / 挂的项目记不了沟通」：改一格不收、保存灰掉、框里留这句、刷新页面；关了再开从头来；别的原因照旧一改就收", async () => {
+// 等弹框动画走完：改老记录的草稿只存「和打开那一刻不一样的格子」，那一刻在动画走完时才记（form-guard 开好了），之前打的字不算改过
+const 等开稳 = (page: import("playwright").Page) => page.waitForTimeout(600);
+// 这条沟通（f9）在本机的草稿：几份、连起来的原文
+const 稿 = (page: import("playwright").Page) => page.evaluate(() => {
+  const 们 = Object.keys(localStorage).filter((k) => k.includes("编辑跟进:f9"));
+  return { 数: 们.length, 文: 们.map((k) => localStorage.getItem(k) ?? "").join("\n") };
+});
+it("编辑沟通被拒「客户进了公海 / 挂的项目记不了沟通」：保存灰掉、原因只在框里写一遍、刷新页面；草稿不清、再改照常存；关了再开从头来；别的原因照旧浮在键上、一改就收", async () => {
   const { page, errors } = await open({ 项目: null, 编辑: true });
   try {
     const 因 = page.locator(".save-why");
     const 键 = page.getByRole("button", { name: /保\s*存/ });
     const 框里 = page.locator(".ant-modal-body .csq-err[role=alert]");
-    for (const 话 of [本人改公海话, 本人改沟通项目话]) {
+    for (const [话, 先写, 再写] of [[本人改公海话, "甲一", "甲二"], [本人改沟通项目话, "乙一", "乙二"]] as const) {
       const 刷前 = await page.evaluate(() => (Reflect.get(window, "__刷") as number | undefined) ?? 0);
-      await page.evaluate((x) => Reflect.set(window, "__存回", { ok: false, error: x }), 话);
-      await 键.click();
-      await expect.poll(() => 因.innerText()).toBe(话);
-      await expect.poll(() => 键.isDisabled()).toBe(true);
-      expect(await 键.getAttribute("title")).toBe(话);
-      expect(await 框里.innerText()).toBe(话);
-      expect(await page.evaluate(() => Reflect.get(window, "__刷"))).toBe(刷前 + 1);
+      await 等开稳(page);
       await page.locator("#content").click();
       await page.keyboard.press("End");
-      await page.keyboard.type("改", { delay: 20 });
+      await page.keyboard.type(先写, { delay: 20 });
+      await expect.poll(async () => (await 稿(page)).文).toContain(先写);
+      await page.evaluate((x) => Reflect.set(window, "__存回", { ok: false, error: x }), 话);
+      await 键.click();
+      await expect.poll(() => 键.isDisabled()).toBe(true);
+      expect(await 框里.innerText()).toBe(话);
+      expect(await 键.getAttribute("title")).toBe(话);
+      // 同一句不在保存键上再浮一遍
       await page.waitForTimeout(300);
-      expect(await 因.innerText()).toBe(话);
+      expect(await 因.count()).toBe(0);
+      expect(await page.getByText(话, { exact: true }).count()).toBe(1);
+      expect(await page.evaluate(() => Reflect.get(window, "__刷"))).toBe(刷前 + 1);
+      // 不是过时：草稿不清，再改照常存
+      expect((await 稿(page)).文).toContain(先写);
+      await page.locator("#content").click();
+      await page.keyboard.press("End");
+      await page.keyboard.type(再写, { delay: 20 });
+      await expect.poll(async () => (await 稿(page)).文).toContain(再写);
+      expect(await 因.count()).toBe(0);
       expect(await 键.isDisabled()).toBe(true);
       // 关了再开：上一次的拒绝不带过来，保存又能点、框里那句没了
       await 重开(page, { 项目: null, 编辑: true });
@@ -318,22 +336,24 @@ it("编辑沟通被拒「客户进了公海 / 挂的项目记不了沟通」：�
   } finally { await page.close(); }
 });
 
-it("编辑沟通被拒「超过 30 分钟」：同项目页——换成过时那句、保存灰掉、草稿清掉且再改也不存、刷新页面；灰着不再交", async () => {
+it("编辑沟通被拒「超过 30 分钟」：同项目页——换成过时那句（只在框里写一遍）、保存灰掉、草稿清掉且再改也不存、刷新页面；灰着不再交；关了再开草稿恢复保存", async () => {
   const { page, errors } = await open({ 项目: null, 编辑: true });
   try {
     const 因 = page.locator(".save-why");
     const 键 = page.getByRole("button", { name: /保\s*存/ });
     const 框里 = page.locator(".ant-modal-body .csq-err[role=alert]");
-    const 稿数 = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.includes("编辑跟进:f9")).length);
+    const 稿数 = async () => (await 稿(page)).数;
     await page.locator("#content").click();
     await page.keyboard.press("End");
     await page.keyboard.type("补一句", { delay: 20 });
     await expect.poll(稿数).toBeGreaterThan(0);
     await page.evaluate((x) => Reflect.set(window, "__存回", { ok: false, error: x }), 本人改沟通过时话);
     await 键.click();
-    await expect.poll(() => 因.innerText()).toBe(本人改过时提示);
     await expect.poll(() => 键.isDisabled()).toBe(true);
     expect(await 框里.innerText()).toBe(本人改过时提示);
+    await page.waitForTimeout(300);
+    expect(await 因.count()).toBe(0);
+    expect(await page.getByText(本人改过时提示, { exact: true }).count()).toBe(1);
     expect(await page.evaluate(() => Reflect.get(window, "__刷"))).toBe(1);
     await expect.poll(稿数).toBe(0);
     await page.keyboard.type("又", { delay: 20 });
@@ -343,6 +363,15 @@ it("编辑沟通被拒「超过 30 分钟」：同项目页——换成过时那
     await 键.click({ force: true }).catch(() => {});
     await page.waitForTimeout(200);
     expect(await page.evaluate(() => Reflect.get(window, "__存次"))).toBe(1);
+    // 关了再开：从头来，改了照常存草稿
+    await 重开(page, { 项目: null, 编辑: true });
+    expect(await 键.isDisabled()).toBe(false);
+    expect(await 框里.count()).toBe(0);
+    await 等开稳(page);
+    await page.locator("#content").click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("重开后", { delay: 20 });
+    await expect.poll(async () => (await 稿(page)).文).toContain("重开后");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

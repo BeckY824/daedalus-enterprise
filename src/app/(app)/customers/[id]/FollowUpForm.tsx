@@ -253,6 +253,8 @@ export default function FollowUpForm({
    * 客户进了公海、挂的项目记不了沟通——保存灰掉、原因留在框里，不然点了只会再被拒一次
    */
   const [不能改, set不能改] = useState<string | null>(null);
+  /** 锁住那句（同 不能改，保存键的回调里读最新的）：这句已经写在表单下方，不再浮在保存键上（11-26 审查：同一句显示两遍） */
+  const 锁话 = useRef<string | null>(null);
   const 草稿停 = useRef(false);
   // 组件不随弹框卸载（destroyOnHidden 只拆里面）：关了再开，上一次的拒绝不带过来（state 在渲染时跟着 open 收，ref 在 effect 里收）
   const [认过的开, set认过的开] = useState(open);
@@ -262,6 +264,7 @@ export default function FollowUpForm({
   }
   useEffect(() => {
     上次没成.current = null;
+    锁话.current = null;
     草稿停.current = false;
   }, [open]);
   const 判定 = useFollowJudge(open);
@@ -565,12 +568,14 @@ export default function FollowUpForm({
         上次没成.current = r.error ?? null;
         const 锁 = 不能再改话(r.error);
         if (锁) {
+          锁话.current = 锁;
           set不能改(锁);
           // 过时：同项目页，没保存的改动清掉（锁那句已经说了「已清掉」）；页面在 onOk 里已 router.refresh
           if (r.error === 本人改沟通过时话) {
             守.存好了();
             草稿停.current = true;
           }
+          // 原因只写在表单下方（下面 csq-err），保存键上不再浮同一句（SaveButton 原因在别处）
           return { ok: false, error: 锁 };
         }
       }
@@ -854,7 +859,7 @@ export default function FollowUpForm({
         <Button key="知道了" type="primary" onClick={做收尾}>知道了</Button>,
       ] : [
         <Button key="取消" onClick={关或收尾}>取消</Button>,
-        <SaveButton key="存" 做={保存} disabled={须知问着 || !!不能改} title={不能改 ?? undefined} 已保存={成了字} 成了={存成了} 收错={收错}>保存</SaveButton>,
+        <SaveButton key="存" 做={保存} disabled={须知问着 || !!不能改} title={不能改 ?? undefined} 已保存={成了字} 成了={存成了} 收错={收错} 原因在别处={(因) => 因 === 锁话.current}>保存</SaveButton>,
       ]}
       width={640}
       destroyOnHidden
