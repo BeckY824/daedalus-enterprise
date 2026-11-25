@@ -12,6 +12,8 @@ export type FollowUpRow = {
   method?: string | null;
   /** 企业版发起主体（11-01），老记录没有 */
   initiator?: string | null;
+  /** 售后回访（11-25，交付结清项目上记的）：方式后面带「售后回访」小标 */
+  afterSale?: boolean;
   title: string;
   content: string;
   status: string;

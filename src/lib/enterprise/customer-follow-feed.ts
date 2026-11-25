@@ -17,7 +17,9 @@ import type { Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 露客户, 看得到的客户 } from "@/lib/project/db";
-import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
+import { 能往项目记沟通, 能记售后回访, 售后客户 } from "@/lib/project/follow-needs-project";
+import { 是交付, 同名们 } from "@/lib/project/stage-dict";
+import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 
@@ -83,13 +85,45 @@ export type 跟进去处 = {
   下一步文字: string | null;
   /** 我能往这个项目记沟通（和项目详情记沟通同一条：负责人或已进组的组员，11-17；只看的上级是 false）。客户页「关联项目」下拉只列这些 */
   能记: boolean;
+  /**
+   * 售后回访（11-25，E-283）：这是交付结清的项目、我能在上面记售后回访（项目负责人 / 已进组组员 / 客户负责人，客户不在公海；同 能记售后回访）。
+   * 客户页记沟通框「关联项目」另列一组「已交付结清 · 售后回访」只列这些；不给 = 不能
+   */
+  能记售后?: true;
 };
-export async function 跟进去处们(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户): Promise<跟进去处[]> {
+/** 客户页渲染时手上已有的两格（客户负责人、在不在公海），给了就不再查一句 */
+export type 售后客户格 = { 客户负责人: string | null; 客户在公海: boolean };
+export async function 跟进去处们(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户, 客?: 售后客户格): Promise<跟进去处[]> {
   const org = await 权限组织();
-  return 排去处(me, await 看得到的项目们(me, customerId, false, 可见), org);
+  const 们 = await 看得到的项目们(me, customerId, false, 可见);
+  return 排去处(me, 们, org, await 售后去处(me, customerId, 们, org, 客));
 }
 
-function 排去处(me: { id: string; role?: string }, 项目们: { 行: 项目行; 主: boolean }[], org: Awaited<ReturnType<typeof 权限组织>>): 跟进去处[] {
+/**
+ * 售后回访的去处（11-25）：看得到的交付结清项目（主客户是这位的）逐个判我能不能记；我是客户负责人时，
+ * 看不到的交付结清项目（企业版项目不跟客户走，别人负责、我没进组）按 id 取全补进来——服务端 可记沟通项目们 同一批。
+ * 客户在公海一个都不给。只在有交付结清项目、或我是客户负责人时才多查（不是企业版不查）
+ */
+async function 售后去处(me: { id: string; role?: string }, customerId: string, 们: { 行: 项目行; 主: boolean }[], org: Awaited<ReturnType<typeof 权限组织>>, 给的?: 售后客户格): Promise<{ 能记: Set<string>; 补: 跟进去处[] }> {
+  const 空 = { 能记: new Set<string>(), 补: [] };
+  if (!企业版() || !org) return 空;
+  const 交付 = 们.filter((x) => x.主 && 是交付(x.行.result));
+  const 客 = 给的 ?? (交付.length ? await 售后客户(customerId) : null);
+  if (!客 || 客.客户在公海) return 空;
+  const 谁 = { id: me.id, role: me.role ?? "" };
+  const 能记 = new Set(交付.filter((x) => 能记售后回访(谁, { ...x.行, ...客 }, org, x.行.members[0]?.inviteStatus)).map((x) => x.行.id));
+  if (客.客户负责人 !== me.id) return { 能记, 补: [] };
+  const 有 = new Set(们.map((x) => x.行.id));
+  const 看不到的 = await 看全部(() => prisma.project.findMany({
+    where: { customerId, result: { in: 同名们("交付结清") } }, select: { id: true, name: true, ownerId: true, result: true }, orderBy: { updatedAt: "desc" }, take: 50,
+  }));
+  const 补 = 看不到的.filter((p) => !有.has(p.id) && 能记售后回访(谁, { ...p, ...客 }, org, null)).map((p): 跟进去处 => ({
+    id: p.id, 名: p.name, 主: true, 结束: true, 说明: "已结束", 下一步: null, 下一步文字: null, 能记: false, 能记售后: true,
+  }));
+  return { 能记, 补 };
+}
+
+function 排去处(me: { id: string; role?: string }, 项目们: { 行: 项目行; 主: boolean }[], org: Awaited<ReturnType<typeof 权限组织>>, 售后: { 能记: Set<string>; 补: 跟进去处[] } = { 能记: new Set(), 补: [] }): 跟进去处[] {
   const 行们 = 项目们.map(({ 行, 主 }) => ({
     id: 行.id,
     名: 行.name,
@@ -99,8 +133,9 @@ function 排去处(me: { id: string; role?: string }, 项目们: { 行: 项目�
     下一步: 行.nextStepAt?.toISOString() ?? null,
     下一步文字: 行.nextStepText,
     能记: 能往项目记沟通({ id: me.id, role: me.role ?? "" }, 行, org, 行.members[0]?.inviteStatus),
+    ...(售后.能记.has(行.id) ? { 能记售后: true as const } : {}),
   }));
-  return [...行们.filter((x) => !x.结束), ...行们.filter((x) => x.结束)];
+  return [...行们.filter((x) => !x.结束), ...行们.filter((x) => x.结束), ...售后.补];
 }
 
 /** 挂在这些项目上的跟进记在哪几位客户名下（去重）。从 FollowUpProject 出发走 projectId 索引、再按主键连跟进，只碰这几个项目的那几条 */
@@ -129,9 +164,10 @@ export async function 客户沟通汇总(me: { id: string; role?: string }, cust
  * 客户页渲染一次要两样（沟通记录第一页 + 「跟进」菜单）：看得到的项目只算一遍（连挂过 = true），
  * 菜单滤掉只从「挂过」来的——和分开调 客户沟通汇总、跟进去处们 结果一样，少算一遍项目（主客户、关联、项目行、客户可见、回避各一句）
  */
-export async function 客户页沟通两样(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户): Promise<[{ rows: FollowUpRow[]; hasMore: boolean }, 跟进去处[]]> {
+export async function 客户页沟通两样(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户, 客?: 售后客户格): Promise<[{ rows: FollowUpRow[]; hasMore: boolean }, 跟进去处[]]> {
   const [们, org] = await Promise.all([看得到的项目们(me, customerId, true, 可见), 权限组织()]);
-  return Promise.all([汇总一页(customerId, 项目名表(们), undefined), 排去处(me, 们.filter((x) => !x.只挂过), org)]);
+  const 菜单 = 们.filter((x) => !x.只挂过);
+  return Promise.all([汇总一页(customerId, 项目名表(们), undefined), 售后去处(me, customerId, 菜单, org, 客).then((售后) => 排去处(me, 菜单, org, 售后))]);
 }
 
 /** 客户列表「最近跟进」那一句最多给多少字（列里一行省略，悬停看全文） */

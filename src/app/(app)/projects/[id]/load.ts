@@ -1,5 +1,5 @@
 import { prisma, defaultClient } from "@/lib/prisma";
-import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
+import { 能往项目记沟通, 能记售后回访 as 能记售后回访of } from "@/lib/project/follow-needs-project";
 import { 只读客户 } from "@/lib/team-scope";
 import type { SessionUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
@@ -29,7 +29,7 @@ import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
-import { 字典of, 同名们 } from "@/lib/project/stage-dict";
+import { 字典of, 同名们, 是交付 } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 读线索验证 } from "@/lib/project/lead-verify";
 import { 客户显名 } from "@/lib/enterprise/customer-title";
@@ -218,7 +218,7 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
       // 不取留痕：take 0（Prisma 不为它发查询，类型照旧），条数和回收起点走下面 留痕概况 一句
       logs: { orderBy: { at: "desc" }, take: 不取留痕 ? 0 : 留痕取几条 },
       members: { orderBy: { createdAt: "asc" } },
-      followUps: { include: { followUp: { select: { id: true, type: true, title: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, customerId: true, createdAt: true, updatedAt: true } } } },
+      followUps: { include: { followUp: { select: { id: true, type: true, title: true, method: true, initiator: true, content: true, occurredAt: true, ownerId: true, customerId: true, createdAt: true, updatedAt: true, afterSale: true } } } },
     },
   });
   if (!p) return { 种: "无" };
@@ -295,6 +295,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   const 验证不收 = 企业 && !!回收日 && !!(await prisma.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }))?.pending;
   // 11-17：负责人或已进组的组员能记，已结束的不再记（和 lib/project/db.ts 记项目沟通 同一个判断）
   const 能记沟通 = 企业 && !公海 && !p.result && 能往项目记沟通(me, p, org, 已加入.includes(me.id) ? "JOINED" : null);
+  // 售后回访（11-25，E-283）：交付结清的项目，客户不在公海（按客户 CustomerPool 判，交付结清的项目本身不进公海），项目负责人 / 已进组组员 / 客户负责人能记——「记售后回访」按钮
+  const 能记售后回访 = 企业 && 是交付(p.result) && 能记售后回访of(me, { ownerId: p.ownerId, result: p.result, 客户负责人: p.customer.salesOwnerId, 客户在公海: !!p.customer.pool }, org, 已加入.includes(me.id) ? "JOINED" : null);
   // 沟通的「…」菜单（改 / 删，10-29）：不在公海、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
   // M-权限-09（11-09 原口径）：管理（销售管理 / 市场管理 / 总管理）以下的人，负责人本人也算，不能改、不能删。
   // 改 = 身为负责人（项目或客户的）的管理，删 = 系统管理员或身为负责人的管理（V3.5.1），两样分开给，和服务端同一套（lib/enterprise/follow-perm.ts）
@@ -371,7 +373,7 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
       && (是系统管理员(me, org) || (!p.customer.pool && 能删除(me, org, p.customer.salesOwnerId) && (!!p.result || 公海 || !p.ownerId || p.ownerId === me.id))),
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
-    aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,
+    aiEnabled: (能记沟通 || 能记售后回访) && 露 ? await llmEnabled() : false,
     // 项目级别、所在地（P11 定稿 -2 版，迁移 093）：级别是项目自己的，都给看；所在地跟客户资料一样，公海里同事客户的项目没领之前不给
     level: p.level,
     // 项目标签（迁移 153，F-项目-14）：和级别各一列、各自填，同样都给看。选项 = 字典里启用着的 + 这个项目存着、后来停用的那项（同项目画像）
@@ -429,7 +431,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   const 现在 = new Date();
   const 最近一条 = p.followUps.reduce<{ id: string; at: number } | null>((m, f) => (!m || f.followUp.createdAt.getTime() > m.at ? { id: f.followUp.id, at: f.followUp.createdAt.getTime() } : m), null)?.id ?? null;
   // 本人限时改的候选：我记的、30 分钟内、沟通类型（待办 / 提醒不算）；导入建的、系统留痕剔掉（一句）
-  const 本人改候选 = 企业 && 能记沟通 ? p.followUps.map((f) => f.followUp).filter((f) => 本人限时可改of(me, f, 现在) && 要挂项目的类型(f.type)) : [];
+  // 交付结清的项目：标了售后回访的那几条照样本人限时改（follow-perm.ts 同一道）
+  const 本人改候选 = 企业 && (能记沟通 || 能记售后回访) ? p.followUps.map((f) => f.followUp).filter((f) => 本人限时可改of(me, f, 现在) && 要挂项目的类型(f.type) && (能记沟通 || f.afterSale)) : [];
   // 「已修改」和最近一条写没写过下一步合一句留痕（最近一条是候选、我能管时才问）
   const 问下一步 = !!最近一条 && 能改 && 本人改候选.some((f) => f.id === 最近一条) ? 最近一条 : null;
   const 留痕 = 企业 && 露沟通 && p.followUps.length ? await 沟通留痕们(p.followUps.map((f) => f.followUp.id), 问下一步) : { 改过的: new Set<string>(), 写过下一步: false };
@@ -472,7 +475,7 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
     // 指定分配时间（PR3）：还没到点的定时，详情上写时间和分给谁；录入人、能分配的人能改 / 取消 / 改成现在分配
     ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
       时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),
-    } } : {}), 要下一步, 能记沟通, 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, ...(本人候选.size ? { 服务器现在: 现在.toISOString() } : {}), 必填, 不给推, 不给推谁能推, 交付只在尾款, 能改节点: 节点能改, 能转让: 能转,
+    } } : {}), 要下一步, 能记沟通, ...(能记售后回访 ? { 能记售后回访: true } : {}), 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, ...(本人候选.size ? { 服务器现在: 现在.toISOString() } : {}), 必填, 不给推, 不给推谁能推, 交付只在尾款, 能改节点: 节点能改, 能转让: 能转,
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表。
     // 按转完的样子算：转让走 换负责人，同时清待分配（owner-write.ts）——不清的话本线管理靠「待分配放开」看得到，会误算成转给圈外的人也还能看（#392 审查）
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ...换负责人(c.id), 已加入 }, org)).map((c) => c.id) } : {}),
@@ -516,6 +519,7 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
           ...(本人可改 ? { 本人可改到: 本人可改到(f.followUp.createdAt).toISOString() } : {}),
           ...(跟着改下一步 ? { 下一步: { 文字: p.nextStepText ?? "", 时间: 编?.nextAt ? dayjs(编.nextAt).format("YYYY-MM-DD") : null } } : {}),
           ...(改过的.has(f.followUp.id) ? { 已修改: true } : {}),
+          ...(f.followUp.afterSale ? { 售后回访: true } : {}),
         };
       })
       .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)),

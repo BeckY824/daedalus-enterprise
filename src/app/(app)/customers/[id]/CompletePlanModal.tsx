@@ -21,6 +21,8 @@ import { saveFollowUp, 撤销记一笔, 沟通可选项目 } from "./actions";
 import { 聚焦首项 } from "@/lib/modal-focus";
 import { useFormGuard } from "@/lib/form-guard";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { 售后回访主题 } from "@/lib/project/follow-needs-project-text";
+import AfterSaleLockTag from "@/components/AfterSaleLockTag";
 
 /**
  * 完成一条跟进计划时弹的小框（2026-10-16 外贸基础，总控：「方式 + 一句话 + 下次时间（默认 7 天后），保留『跳过，直接完成』。不做节奏标签」）。
@@ -31,6 +33,9 @@ import { 动作出错话 } from "@/lib/stale-deploy";
  *   跳过，直接完成 = 交回页面，和原来一样只把计划勾掉
  * 企业版沟通必须挂项目（11-17）：客户有我能记的在推项目就照常顺带记一笔（一个自动挂、几个要选）；
  * 没有就只把计划标为完成、不另记沟通（框里写明，「完成计划」= 跳过那条路）
+ * 售后回访（11-25，E-283，方案第十节第 15 条）：「下次回访」计划（FollowPlan.afterSaleProjectId）完成时默认选中那个交付结清项目、锁着「售后回访」标，
+ * 记的这笔带 售后回访 挂在它身上（客户另有一个在推项目也不挂错）；那个项目已核不过（撤回交付结清 / 客户进公海 / 我记不了）退回普通选法、提示一句。
+ * 普通计划照旧：一个在推项目自动挂、几个要选；没有在推、只有我能记售后回访的交付结清项目时，列出来让人选（不自动挂、不再只完成）
  */
 
 export type 要完成的计划 = {
@@ -144,19 +149,38 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
 
   /** 企业版这位客户我能挂沟通的在推项目：undefined = 还在问；null = 不是企业版（照旧不挂） */
   const [项目们, set项目们] = useState<{ id: string; name: string }[] | null | undefined>(undefined);
+  /** 售后回访（11-25）：我能记售后回访的交付结清项目；计划售后项目 = 这条计划是给哪个交付结清项目排的（还能记）；失效 = 排的那个已核不过 */
+  const [售后们, set售后们] = useState<{ id: string; name: string }[]>([]);
+  const [计划售后, set计划售后] = useState<string | null>(null);
+  const [售后失效, set售后失效] = useState(false);
   const [项目, set项目] = useState<string | null>(null);
   useEffect(() => {
     let 作废 = false;
-    沟通可选项目(plan.customerId).then(
-      (r) => { if (!作废) set项目们(r.ok ? r.项目们 : null); },
+    沟通可选项目(plan.customerId, plan.id).then(
+      (r) => {
+        if (作废) return;
+        set项目们(r.ok ? r.项目们 : null);
+        if (!r.ok) return;
+        set售后们(r.售后 ?? []);
+        set售后失效(r.售后计划失效 === true);
+        if (r.计划售后项目) { set计划售后(r.计划售后项目); set项目(r.计划售后项目); }
+      },
       () => { if (!作废) set项目们(null); },
     );
     return () => { 作废 = true; };
-  }, [plan.customerId]);
-  /** 没有能挂的在推项目：只标完成，不另记沟通 */
-  const 只完成 = Array.isArray(项目们) && 项目们.length === 0;
-  const 挂的项目 = 项目们 && 项目们.length === 1 ? 项目们[0].id : 项目;
-  const 要选项目 = !!项目们 && 项目们.length > 1;
+  }, [plan.customerId, plan.id]);
+  /** 没有能挂的在推项目、也没有能记售后回访的交付结清项目：只标完成，不另记沟通 */
+  const 只完成 = Array.isArray(项目们) && 项目们.length === 0 && 售后们.length === 0;
+  /** 一个在推项目自动挂（下次回访计划除外：默认选它排的那个交付结清项目）；交付结清的从不自动挂 */
+  const 自动挂 = !计划售后 && 项目们 && 项目们.length === 1 ? 项目们[0].id : null;
+  const 挂的项目 = 自动挂 ?? 项目;
+  const 要选项目 = !!项目们 && !自动挂 && 项目们.length + 售后们.length > 0;
+  const 选的售后 = 售后们.find((x) => x.id === 挂的项目) ?? null;
+  const 项目选项: { label: string; value?: string; options?: { value: string; label: string }[] }[] = 售后们.length
+    ? [...(项目们?.length ? [{ label: "在推", options: 项目们.map((x) => ({ value: x.id, label: x.name })) }] : []), { label: "已交付结清 · 售后回访", options: 售后们.map((x) => ({ value: x.id, label: x.name })) }]
+    : (项目们 ?? []).map((x) => ({ value: x.id, label: x.name }));
+  /** 下次那条计划的主题：挂的是交付结清项目 = 下次回访（服务端也会补这个头） */
+  const 下次的主题 = (内容: string) => (选的售后 ? `${售后回访主题(选的售后.name)} · ${下次主题(内容)}` : 下次主题(内容));
 
   const 下次日 = 下次 === "none" ? null : 下次 === "pick" ? 日子?.format("YYYY-MM-DD") ?? null : dayjs().add(Number(下次), "day").format("YYYY-MM-DD");
   const 可存 = 只完成 || (项目们 !== undefined && hasVisibleText(字) && (下次 !== "pick" || !!日子) && (!要选项目 || !!项目));
@@ -219,9 +243,10 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
         status: "已完成",
         occurredAt: new Date().toISOString(),
         ...(挂的项目 ? { projectId: 挂的项目 } : {}),
+        ...(选的售后 ? { 售后回访: true } : {}),
         附带: {
           tasks: [],
-          ...(下次日 ? { plan: { subject: 下次主题(内容), plannedAt: 下次日, method: 对得上的方式(类型, 方式) ?? FOLLOW_TYPE_MAP[类型]?.label ?? "电话沟通" } } : {}),
+          ...(下次日 ? { plan: { subject: 下次的主题(内容), plannedAt: 下次日, method: 对得上的方式(类型, 方式) ?? FOLLOW_TYPE_MAP[类型]?.label ?? "电话沟通" } } : {}),
           完成计划: plan.id,
         },
       }).catch((出错) => ({ ok: false as const, error: 动作出错话(出错, "没保存上，请稍后重试") }));
@@ -278,16 +303,18 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
           {只完成 ? (
             <div role="note" className="done-plan-note">这位客户还没有在推的项目：只把计划标为完成，不另记沟通</div>
           ) : <>
-          {项目们 && 项目们.length > 0 && (
+          {售后失效 && <div role="note" className="done-plan-note">这条计划排的售后回访项目已不能记（项目不是交付结清了、客户在公海，或你记不了）：请按普通沟通选项目</div>}
+          {项目们 && 项目们.length + 售后们.length > 0 && (
             <div className="done-plan-row" data-fk="项目">
               {要选项目 ? 星("项目") : <span className="done-plan-k">项目</span>}
               {要选项目 ? (
                 <div className="done-plan-v">
-                  <Select aria-label="关联项目" className="done-plan-pick" placeholder="选择关联项目" status={格错("项目") ? "error" : undefined} value={项目 ?? undefined} onChange={(v: string) => set项目(v)} options={项目们.map((x) => ({ value: x.id, label: x.name }))} />
+                  <Select aria-label="关联项目" className="done-plan-pick" placeholder="选择关联项目" status={格错("项目") ? "error" : undefined} value={项目 ?? undefined} onChange={(v: string) => set项目(v)} options={项目选项} />
                   {错行("项目")}
+                  {选的售后 && <div className="done-plan-as"><AfterSaleLockTag /></div>}
                 </div>
               ) : (
-                <span className="done-plan-proj">{项目们[0].name}</span>
+                <span className="done-plan-proj">{项目们![0].name}</span>
               )}
             </div>
           )}
@@ -344,7 +371,7 @@ function CompletePlanDialog({ plan, onClose, onDone }: 框参数 & { plan: 要�
             </div>
           </div>
           {短话 && <div role="status" className="rec-plan-said">{短话}</div>}
-          {下次日 && <div className="done-plan-tip">{`会排一条 ${dayjs(下次日).format("M 月 D 日")}的计划：${下次主题(字)}`}</div>}
+          {下次日 && <div className="done-plan-tip">{`会排一条 ${dayjs(下次日).format("M 月 D 日")}的计划：${下次的主题(字)}`}</div>}
           </>}
         </div>
       )}

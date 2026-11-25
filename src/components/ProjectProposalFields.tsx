@@ -1,5 +1,6 @@
 "use client";
 
+import AfterSaleLockTag from "@/components/AfterSaleLockTag";
 import DatePicker from "@/components/BusinessDatePicker";
 import { Select, Input, Tag } from "antd";
 import AmountTextInput from "@/components/AmountTextInput";
@@ -92,8 +93,10 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
               <FollowMeaningLine 内容={并进描述(draft.content, draft.卡点描述)} 类型={draft.type} 判定={判定} />
             </div>
           </F>
+          {/* 售后回访（11-25）：交付结清的项目，锁着的标记，不摆下一步 */}
+          {draft.售后回访 && <F label="标记"><AfterSaleLockTag /></F>}
           {/* 组员记（11-19 客户答复）：下一步归负责人，组员的卡不摆这两格 */}
-          {!draft.组员记 && (
+          {!draft.组员记 && !draft.售后回访 && (
             <>
               <F label="下一步计划">
                 <Input size="small" style={{ width: 240 }} value={draft.下一步} onChange={(e) => 设({ 下一步: e.target.value })} />

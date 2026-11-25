@@ -6963,3 +6963,11 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root .nav-pend { display: none; }
 :root:root .pipe-card.is-going, :root:root .pipe-card.is-going:hover { background: var(--brand-bg); border-top-color: var(--brand); border-right-color: var(--brand); border-bottom-color: var(--brand); }
 :root:root .rec-mini:has(.nav-pend) { background: var(--brand-bg); }
+
+/* 售后回访（11-25，E-283）：锁着的「售后回访」标、沟通方式后面的小标、记沟通框里标下那句说明、下次回访那格、交付卡「记售后回访」 */
+.as-tag { margin: 0; }
+.as-note { margin-top: 0; font-size: var(--dt-aux, 12px); color: var(--text-muted); }
+.fu-as-row { margin-top: -12px; margin-bottom: 16px; }
+.fu-as-date { width: 200px; }
+.done-plan-as { margin-top: 6px; }
+.pd-as-btn { margin-top: 8px; }

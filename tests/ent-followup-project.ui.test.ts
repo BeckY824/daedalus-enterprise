@@ -36,18 +36,19 @@ beforeAll(async () => {
     import FollowUpForm from '@/app/(app)/customers/[id]/FollowUpForm';
     const root=createRoot(document.getElementById('root'));
     const 长='某某超长贸易进出口有限公司年度框架采购项目'.repeat(5);
-    window.__render=({项目,编辑,新建})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
+    window.__render=({项目,编辑,新建,售后})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
       <FollowUpForm open onClose={()=>{}} onSaved={()=>{}} customerId="c1" aiEnabled={false}
         record={编辑?{id:'f9',type:'PHONE',title:'',content:'原来的',status:'已完成',occurredAt:'2026-10-20T10:00:00.000Z',updatedAt:'2026-10-20T10:00:00.000Z'}:null}
         contacts={[]} opportunities={项目==null?[{id:'o1',name:'一个商机'}]:[]}
         projects={项目==='有'?[{id:'p1',name:长}]:项目==='多'?[{id:'p1',name:长},{id:'p2',name:'二号项目'}]:项目==='空'?[]:null}
+        售后项目={售后?[{id:'d1',name:'已交付一号'}]:null}
         新建项目={新建==='能'?()=>{window.__建=(window.__建||0)+1}:新建==='不能'?null:undefined}/>
     </BusinessProvider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-type 参数 = { 项目?: "有" | "多" | "空" | null; 编辑?: boolean; 须知?: unknown; 新建?: "能" | "不能" };
+type 参数 = { 项目?: "有" | "多" | "空" | null; 编辑?: boolean; 须知?: unknown; 新建?: "能" | "不能"; 售后?: boolean };
 async function open(p: 参数, width = 1366, height = 900) {
   const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -428,4 +429,44 @@ it("「更多」整行可点：点箭头、点文字都能展开，展开后滚�
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+// 售后回访（11-25，E-283）：交付结清的项目另列一组「已交付结清 · 售后回访」，不默认选中；只有交付结清项目时不说「先建项目」，要人选。
+// 选了它（项目沟通须知 回 售后回访）：锁着「售后回访」标，不摆卡点、下一步，换成「下次回访（选填）」；保存走 saveFollowUp，带 售后回访 和下次回访计划（主题「售后回访 · 项目名」）
+it("售后回访：只有交付结清项目时分组列出、要人选；选了锁着标记、换成下次回访，保存带标记和下次回访计划", async () => {
+  const 须知 = { ok: true, 能记: true, phase: "订单", 要下一步: false, 回收预演: null, contactId: null, 卡点默认: null, 卡点原因们: [], 组员记: false, 售后回访: true };
+  const { page, errors } = await open({ 项目: "空", 售后: true, 须知 });
+  try {
+    const 项 = 格(page, "关联项目");
+    // 不说先建项目；不预选
+    expect(await page.getByText("这位客户还没有项目").count()).toBe(0);
+    expect(await 项.locator(".ant-select-content-has-value").count()).toBe(0);
+    await 项.locator(".ant-select").click();
+    await expect.poll(() => page.locator(".ant-select-item-group").allInnerTexts()).toEqual(["已交付结清 · 售后回访"]);
+    await page.locator(".ant-select-item-option").filter({ hasText: "已交付一号" }).click();
+    await page.getByTestId("after-sale-lock").waitFor();
+    expect(await 格(page, "下一步计划").count()).toBe(0);
+    expect(await 格(page, "下次回访（选填）").count()).toBe(1);
+    const 日 = new Date(Date.now() + 5 * 86400_000);
+    const 日字 = `${日.getFullYear()}-${String(日.getMonth() + 1).padStart(2, "0")}-${String(日.getDate()).padStart(2, "0")}`;
+    await page.getByLabel("下次回访").fill(日字);
+    await page.getByLabel("下次回访").press("Enter");
+    const x = await 存(page);
+    expect(x.projectId).toBe("d1");
+    expect(x.售后回访).toBe(true);
+    expect((x.附带 as { plan: { subject: string; plannedAt: string } }).plan).toMatchObject({ subject: "售后回访 · 已交付一号", plannedAt: 日字 });
+    // 不走 记项目沟通Action（那条不建计划）
+    expect(await page.evaluate(() => Reflect.get(window, "__项目存"))).toBeUndefined();
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("售后回访：有在推项目时分两组，默认照旧选在推的那个（交付结清的从不默认）", async () => {
+  const { page } = await open({ 项目: "有", 售后: true });
+  try {
+    const 项 = 格(page, "关联项目");
+    expect(await 项.locator(".ant-select-content").innerText()).toContain("年度框架采购项目");
+    await 项.locator(".ant-select").click();
+    await expect.poll(() => page.locator(".ant-select-item-group").allInnerTexts()).toEqual(["在推", "已交付结清 · 售后回访"]);
+  } finally { await page.close(); }
 });

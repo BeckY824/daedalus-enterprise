@@ -64,7 +64,7 @@ export function 能记售后回访(
 }
 
 /** 记售后回访要的客户两格：客户负责人、在不在公海（组员不一定看得到这位客户，按 id 取全） */
-async function 售后客户(customerId: string): Promise<{ 客户负责人: string | null; 客户在公海: boolean }> {
+export async function 售后客户(customerId: string): Promise<{ 客户负责人: string | null; 客户在公海: boolean }> {
   const c = await 看全部(() => prisma.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
   return { 客户负责人: c?.salesOwnerId ?? null, 客户在公海: !!c?.pool };
 }
