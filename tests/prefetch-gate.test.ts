@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { 意图预取, 排预热, 触摸预取, 清刚取过, 重置预取闸, 预取闸状态, 常用在前, 意图间隔, 预热间隔, 触摸等 } from "@/lib/prefetch-full";
+import { 意图预取, 排预热, 触摸预取, 清刚取过, 开预热器, 重置预取闸, 预取闸状态, 常用在前, 意图间隔, 预热间隔, 触摸等, 预热最短, 重热等 } from "@/lib/prefetch-full";
 
 /**
  * 整页预取的闸（跳转优化 PR-B 11-25，lib/prefetch-full）：同一标签页的整页预取不一下子挤进服务器同一个进程。
@@ -236,5 +236,119 @@ describe("触摸预取（滑动列表不取，审查 11-25）", () => {
     派("touchmove", 触(0, 1));
     vi.advanceTimersByTime(1000);
     expect(发了).toEqual([]);
+  });
+});
+
+describe("外壳的预热调度（开预热器：重热只一轮、限频、整批撤）", () => {
+  const 名单 = ["/customers", "/pool", "/projects", "/dashboard", "/overview", "/leads"];
+  /** Next 清预取缓存：已经发出去的那几页各叫一次自己的 onInvalidate */
+  const 清缓存 = (发了: 一次[]) => 发了.forEach((x) => x.失效?.());
+
+  it("第一次热整份；连着存三下（每下都清缓存）只在最后一下 2 秒后重热一轮，只热前 2 页", () => {
+    vi.setSystemTime(1_000_000);
+    const { router, 发了 } = 假路由();
+    const 器 = 开预热器(router, 名单);
+    器.热();
+    vi.advanceTimersByTime(预热间隔 * 名单.length);
+    expect(发了.map((x) => x.href)).toEqual(名单);
+    vi.advanceTimersByTime(预热最短);
+    const 前 = 发了.length;
+    清缓存(发了);
+    vi.advanceTimersByTime(800);
+    清缓存(发了);
+    vi.advanceTimersByTime(800);
+    清缓存(发了);
+    vi.advanceTimersByTime(重热等 - 1);
+    expect(发了).toHaveLength(前);
+    vi.advanceTimersByTime(1 + 预热间隔 * 5);
+    expect(发了.slice(前).map((x) => x.href)).toEqual(["/customers", "/pool"]);
+    器.停();
+  });
+
+  it("限频：离上次预热不到 60 秒，保存后、回到页面都不重热；过了 60 秒再存就热", () => {
+    vi.setSystemTime(2_000_000);
+    const { router, 发了 } = 假路由();
+    const 器 = 开预热器(router, ["/customers", "/pool"]);
+    器.热();
+    vi.advanceTimersByTime(预热间隔 * 2);
+    expect(发了).toHaveLength(2);
+    清缓存(发了);
+    vi.advanceTimersByTime(重热等 + 预热间隔 * 3);
+    for (const f of [...(听.visibilitychange ?? [])]) f();
+    vi.advanceTimersByTime(预热间隔 * 3);
+    expect(发了).toHaveLength(2);
+    vi.advanceTimersByTime(预热最短);
+    清缓存(发了.slice(0, 1));
+    vi.advanceTimersByTime(重热等 + 预热间隔 * 3);
+    expect(发了.map((x) => x.href)).toEqual(["/customers", "/pool", "/customers", "/pool"]);
+    器.停();
+  });
+
+  it("限频按标签页算：外壳重挂（新的预热器）也不在 60 秒内再热", () => {
+    vi.setSystemTime(3_000_000);
+    const { router, 发了 } = 假路由();
+    const 一 = 开预热器(router, ["/customers"]);
+    一.热();
+    一.停();
+    const 二 = 开预热器(router, ["/customers"]);
+    二.热();
+    vi.advanceTimersByTime(预热间隔 * 3);
+    expect(发了).toHaveLength(1);
+    二.停();
+  });
+
+  it("在后台不热；回到前台补上整份", () => {
+    vi.setSystemTime(4_000_000);
+    const { router, 发了 } = 假路由();
+    可见 = "hidden";
+    const 器 = 开预热器(router, ["/customers", "/pool", "/projects"]);
+    器.热();
+    vi.advanceTimersByTime(预热间隔 * 3);
+    expect(发了).toEqual([]);
+    可见 = "visible";
+    for (const f of [...(听.visibilitychange ?? [])]) f();
+    vi.advanceTimersByTime(预热间隔 * 3);
+    expect(发了.map((x) => x.href)).toEqual(["/customers", "/pool", "/projects"]);
+    器.停();
+  });
+
+  it("停()：没发的整批撤掉，重热钟也停；之后清缓存不再重热", () => {
+    vi.setSystemTime(5_000_000);
+    const { router, 发了 } = 假路由();
+    const 器 = 开预热器(router, 名单);
+    器.热();
+    expect(发了).toHaveLength(1);
+    器.停();
+    expect(预取闸状态().预热队).toEqual([]);
+    vi.advanceTimersByTime(预热最短 * 2);
+    清缓存(发了);
+    vi.advanceTimersByTime(重热等 * 2);
+    expect(发了).toHaveLength(1);
+    expect(听.visibilitychange ?? []).toHaveLength(0);
+  });
+
+  it("当前这页先不取，离开后补上；地址发出去那一刻按 解析 算", () => {
+    vi.setSystemTime(6_000_000);
+    vi.stubGlobal("location", { pathname: "/customers", search: "" });
+    const { router, 发了 } = 假路由();
+    const 器 = 开预热器(router, ["/customers", "/pool"], { 解析: (k) => (k === "/customers" ? "/customers?stage=x" : k) });
+    器.热();
+    vi.advanceTimersByTime(预热间隔 * 2);
+    expect(发了.map((x) => x.href)).toEqual(["/pool"]);
+    vi.stubGlobal("location", { pathname: "/customers/abc", search: "" });
+    器.补漏();
+    vi.advanceTimersByTime(预热间隔);
+    expect(发了.map((x) => x.href)).toEqual(["/pool", "/customers?stage=x"]);
+    器.停();
+  });
+
+  it("手机菜单那一批：关了就撤，没发的不再发", () => {
+    const { router, 发了 } = 假路由();
+    const 撤 = 排预热(router, ["/customers", "/pool", "/projects", "/dashboard"], { 间隔: 意图间隔 });
+    vi.advanceTimersByTime(意图间隔);
+    expect(发了.map((x) => x.href)).toEqual(["/customers", "/pool"]);
+    撤();
+    vi.advanceTimersByTime(意图间隔 * 5);
+    expect(发了.map((x) => x.href)).toEqual(["/customers", "/pool"]);
   });
 });

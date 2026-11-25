@@ -96,6 +96,7 @@ export function 重置预取闸() {
   上次发 = -Infinity;
   刚取过.clear();
   撤触摸();
+  上次预热 = -Infinity;
   听着回来 = false;
   if (听着按下 && typeof document !== "undefined") document.removeEventListener("pointerdown", 让开, { capture: true });
   听着按下 = false;
@@ -272,6 +273,74 @@ export function 触摸预取(router: 路由, href: string, 起点?: { x: number;
       撤触摸();
       意图预取(router, href);
     }, 触摸等),
+  };
+}
+
+/* ---------------- 外壳的预热调度（AppShell 用；拆出来好测） ---------------- */
+
+/** 每个标签页两次预热之间至少隔多久（审查 11-25）：不到就跳过 */
+export const 预热最短 = 60_000;
+/** 保存后、回到页面的重热只热常用在前的前几页（企业版默认名单 6 页整页，每存一下都全取一遍太重） */
+export const 重热几页 = 2;
+/** 保存后停多久再重热：连着存几下只算最后一下 */
+export const 重热等 = 2000;
+/** 这个标签页上次预热的时刻（模块变量：外壳重挂也算同一个标签页） */
+let 上次预热 = -Infinity;
+
+/**
+ * 外壳的空闲预热 + 保存后重热 + 回到页面重热。要 = 预热名单（已按常用在前排好）。
+ * - 热()：第一次热整份，之后只热前 重热几页；离上次不到 预热最短 就跳过；在后台不热（回到前台时补）；
+ * - 保存后：Next 清预取缓存时叫这一批挂的 onInvalidate → 清「刚取过」→ 停 重热等 再 热()，连着几下合成一次；
+ * - 回到页面（visibilitychange）离上次超过 预热最短 就 热()；
+ * - 补漏()：热的时候正在眼前、没取的那页，人离开后补上（名单只配了这一页时不然一直没热过）；
+ * - 停()：重热钟停掉、监听摘掉、还没发的整批撤掉。
+ * c2 另把 CRM_NAV_PREWARM 配成 /customers,/pool，和限频一起把重热压到每分钟最多 2 页
+ */
+export function 开预热器(router: 路由, 要: string[], 选项: { 解析?: (键: string) => string; 能热?: () => boolean } = {}) {
+  let 重热钟: ReturnType<typeof setTimeout> | undefined;
+  let 停了 = false;
+  let 整份热过 = false;
+  let 漏: string[] = [];
+  const 撤们: (() => void)[] = [];
+  const 此页 = () => (typeof location === "undefined" ? "" : location.pathname);
+  const 失效了 = () => {
+    if (停了) return;
+    // 预取缓存被清了：「刚取过」也不算数了（只有这一批挂 onInvalidate，悬停、触摸不挂）
+    清刚取过();
+    clearTimeout(重热钟);
+    重热钟 = setTimeout(热, 重热等);
+  };
+  function 热() {
+    if (停了 || (选项.能热 && !选项.能热())) return;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+    const 现在 = Date.now();
+    if (现在 - 上次预热 < 预热最短) return;
+    上次预热 = 现在;
+    const 页们 = 整份热过 ? 要.slice(0, 重热几页) : 要;
+    整份热过 = true;
+    漏 = 页们.filter((k) => k === 此页());
+    撤们.push(排预热(router, 页们.filter((k) => k !== 此页()), { 失效: 失效了, 解析: 选项.解析 }));
+  }
+  const 补漏 = () => {
+    if (停了 || !漏.length || (选项.能热 && !选项.能热())) return;
+    const 补 = 漏.filter((k) => k !== 此页());
+    if (!补.length) return;
+    漏 = 漏.filter((k) => !补.includes(k));
+    撤们.push(排预热(router, 补, { 失效: 失效了, 解析: 选项.解析 }));
+  };
+  const 回来 = () => {
+    if (document.visibilityState === "visible" && Date.now() - 上次预热 >= 预热最短) 热();
+  };
+  if (typeof document !== "undefined") document.addEventListener("visibilitychange", 回来);
+  return {
+    热,
+    补漏,
+    停() {
+      停了 = true;
+      clearTimeout(重热钟);
+      撤们.forEach((f) => f());
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", 回来);
+    },
   };
 }
 

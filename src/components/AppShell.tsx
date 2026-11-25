@@ -39,7 +39,7 @@ import AiDock from "./AiDock";
 import AiFab from "./AiFab";
 import { 浮标显示 } from "@/lib/enterprise/ai-fab";
 import { usePageUnderOverlay } from "@/lib/page-under-overlay";
-import { 排预热, 常用在前, 意图间隔, 清刚取过, 省流量, useHoverPrefetch } from "@/lib/prefetch-full";
+import { 排预热, 常用在前, 意图间隔, 开预热器, 省流量, useHoverPrefetch } from "@/lib/prefetch-full";
 import { 按设置筛, type 预热设置 } from "@/lib/nav-prewarm";
 import type { ModelOption } from "@/lib/llm";
 import FeedbackButton from "./FeedbackButton";
@@ -152,14 +152,6 @@ type Props = {
 const 面板放不下 = "(max-width: 1599px)";
 /** 手机宽度：没有图标栏和中栏，左栏也不空闲预热 */
 const 手机宽 = "(max-width: 767px)";
-/*
-  预热限频（PR-B 审查 11-25）：每个标签页两次预热之间至少隔 60 秒（模块变量：外壳重挂也算同一个标签页）。
-  保存后、回到页面的重热只热「常用在前」的前 2 页（企业版默认名单 6 页整页，每存一下都全取一遍太重）；
-  c2 另把 CRM_NAV_PREWARM 配成 /customers,/pool，两样一起把重热压到每分钟最多 2 页
-*/
-let 上次预热 = -Infinity;
-const 预热最短 = 60_000;
-const 重热几页 = 2;
 
 /** 企业版六个根目录的图标（lib/enterprise/nav.ts 只管名字和去处，不碰界面） */
 const 根目录图标: Record<根目录图, React.ReactNode> = {
@@ -407,8 +399,6 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
     - 限频（审查 11-25）：离这个标签页上次预热不到 60 秒就跳过；重热只热常用在前的前 2 页；
     - 地址在发出去那一刻按 左栏地址 算（在详情页时带上记住的列表参数），和左栏点下去去的是同一个地址。
   */
-  /** 预热时正好在眼前、没取的那几页（离开后补上） */
-  const 漏 = useRef<string[]>([]);
   const 补漏 = useRef<() => void>(() => {});
   const 左栏地址此刻 = useRef(左栏地址);
   useEffect(() => {
@@ -417,51 +407,24 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   useEffect(() => {
     if (desktop || 小屏 || 省流量()) return;
     const 要 = 常用在前(预热页.split(" ").filter(Boolean));
-    let 重热钟: ReturnType<typeof setTimeout> | undefined;
-    let 停了 = false;
-    const 撤们: (() => void)[] = [];
-    const 解析 = (k: string) => 左栏地址此刻.current(k);
-    const 失效了 = () => {
-      if (停了) return;
-      // 预取缓存被清了：闸里「刚取过」也不算数了（只有这一批挂 onInvalidate，悬停、触摸不挂）
-      清刚取过();
-      clearTimeout(重热钟);
-      重热钟 = setTimeout(热, 2000);
-    };
-    // 当前这页已经在眼前，不用再取（闸里按地址挡）。界面脚本照旧先下（只是静态文件，不碰服务器上的数据），设成 none 也下
     let 下过脚本 = false;
-    let 整份热过 = false;
-    const 热 = () => {
+    // 调度（限频、重热、回到页面、补漏）在 lib/prefetch-full 的 开预热器，这里只管外壳自己的：真宽度、先下界面脚本
+    const 器 = 开预热器(router, 要, {
+      解析: (k) => 左栏地址此刻.current(k),
       // 小屏水合时先按服务端的「不是手机」跑一遍，这里再按真宽度挡一次
-      if (停了 || window.matchMedia(手机宽).matches) return;
+      能热: () => !window.matchMedia(手机宽).matches,
+    });
+    // 当前这页已经在眼前，不用再取（闸里按地址挡）。界面脚本照旧先下（只是静态文件，不碰服务器上的数据），设成 none 也下
+    const 热 = () => {
+      if (window.matchMedia(手机宽).matches) return;
       if (!下过脚本) {
         下过脚本 = true;
         void import("@/app/(app)/customers/[id]/RecordView").catch(() => {});
         if (要.includes("/projects")) void import("@/app/(app)/projects/[id]/ProjectDetail").catch(() => {});
       }
-      // 在后台：先不取，回到前台时按「离上次超过 60 秒」补
-      if (document.visibilityState === "hidden") return;
-      const 现在 = Date.now();
-      if (现在 - 上次预热 < 预热最短) return;
-      上次预热 = 现在;
-      // 整份只热一次（打开时在后台的，回到前台补的就是这一次）；之后的重热只热前 2 页
-      const 页们 = 整份热过 ? 要.slice(0, 重热几页) : 要;
-      整份热过 = true;
-      // 当前这页不取；人离开它以后补上（下面 补漏），不然 CRM_NAV_PREWARM 只配了这一页时就一直没热过
-      漏.current = 页们.filter((k) => k === location.pathname);
-      撤们.push(排预热(router, 页们.filter((k) => k !== location.pathname), { 失效: 失效了, 解析 }));
+      器.热();
     };
-    补漏.current = () => {
-      if (停了 || !漏.current.length || window.matchMedia(手机宽).matches) return;
-      const 补 = 漏.current.filter((k) => k !== location.pathname);
-      if (!补.length) return;
-      漏.current = 漏.current.filter((k) => !补.includes(k));
-      撤们.push(排预热(router, 补, { 失效: 失效了, 解析 }));
-    };
-    const 回来 = () => {
-      if (document.visibilityState === "visible" && Date.now() - 上次预热 >= 预热最短) 热();
-    };
-    document.addEventListener("visibilitychange", 回来);
+    补漏.current = 器.补漏;
     const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
     let 撤 = () => {};
     if (w.requestIdleCallback) {
@@ -472,13 +435,10 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       撤 = () => clearTimeout(t);
     }
     return () => {
-      停了 = true;
       补漏.current = () => {};
       撤();
-      clearTimeout(重热钟);
-      // 外壳卸载：还没发的整批撤掉（审查建议 9）
-      撤们.forEach((f) => f());
-      document.removeEventListener("visibilitychange", 回来);
+      // 外壳卸载：重热钟停掉、还没发的整批撤掉（审查建议 9）
+      器.停();
     };
   }, [desktop, 小屏, 预热页, router]);
   useEffect(() => 补漏.current(), [pathname]);
