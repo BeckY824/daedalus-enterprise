@@ -210,10 +210,16 @@ describe("触摸预取（滑动列表不取，审查 11-25）", () => {
     expect(预取闸状态().触摸等着).toBe(false);
   });
 
-  it("页面滚了、触摸被取消：不取", () => {
+  it("页面滚了：不取", () => {
     const { router, 发了 } = 假路由();
     触摸预取(router, "/a", { x: 0, y: 0 });
     派("scroll");
+    vi.advanceTimersByTime(1000);
+    expect(发了).toEqual([]);
+  });
+
+  it("触摸被取消：不取", () => {
+    const { router, 发了 } = 假路由();
     触摸预取(router, "/b", { x: 0, y: 0 });
     派("touchcancel");
     vi.advanceTimersByTime(1000);
@@ -342,7 +348,11 @@ describe("外壳的预热调度（开预热器：重热只一轮、限频、整�
     const 器 = 开预热器(router, 名单);
     器.热();
     expect(发了).toHaveLength(1);
+    // 停之前先让缓存清一次，重热钟挂上，停()才有钟可撤
+    清缓存(发了);
+    expect(vi.getTimerCount()).toBeGreaterThan(0);
     器.停();
+    expect(vi.getTimerCount()).toBe(0);
     expect(预取闸状态().预热队).toEqual([]);
     vi.advanceTimersByTime(预热最短 * 2);
     清缓存(发了);
@@ -359,6 +369,7 @@ describe("外壳的预热调度（开预热器：重热只一轮、限频、整�
     器.热();
     expect(发了).toHaveLength(1);
     器.停();
+    expect(vi.getTimerCount()).toBe(0);
     vi.advanceTimersByTime(预热最短 * 2);
     expect(发了).toHaveLength(1);
   });

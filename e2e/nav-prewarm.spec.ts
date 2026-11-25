@@ -97,36 +97,46 @@ test("宽屏：保存后重热左栏只热常用的前 2 页；离上次预热�
   } finally {
     await db.$disconnect();
   }
+  // goto 前就开始记每一次整页请求（带时刻）：首轮多慢都看得见，不靠定死的等待
+  const 每次们 = 记每次整页(page);
+  const 可热 = (p: string) => 可预热页.has(p) && (!列表 || 列表.includes(p));
+  const 此后 = (自: number) =>
+    [...每次们].filter(([p]) => 可热(p)).flatMap(([p, ts]) => ts.filter((t) => t >= 自).map((t) => [p, t] as const)).sort((a, b) => a[1] - b[1]);
   await page.mouse.move(1, 1);
   const 开页 = Date.now();
   await page.goto(`/customers/${id}`);
-  // 等空闲预热跑完（requestIdleCallback 3 秒 + 每页隔 600ms）
-  await page.waitForTimeout(7000);
+  // 等首轮预热跑完：开始过、且连续 1.5 秒没有新请求（requestIdleCallback 3 秒 + 每页隔 600ms；CI 慢、CPU 降速也不靠死等）
+  await expect
+    .poll(() => {
+      const 们 = 此后(开页);
+      return 们.length > 0 && Date.now() - 们[们.length - 1][1] >= 1500;
+    }, { message: "首轮预热没跑完（或没开始）", timeout: 60_000, intervals: [500] })
+    .toBe(true);
+  const 首轮第一页 = 此后(开页)[0][1];
   // 点之前先等水合：中栏真名单换上（骨架同 class、带 aria-busy，见 e2e/middle-pane.spec.ts）
   await expect(page.locator('aside.pane-roster:not([aria-busy="true"])')).toBeVisible();
   const 星 = page.locator(".rec-star").first();
   const 原 = await 星.getAttribute("aria-pressed");
-  const 算重热 = (每次: Map<string, number[]>) =>
-    [...每次].filter(([p]) => 可预热页.has(p) && (!列表 || 列表.includes(p))).flatMap(([p, ts]) => ts.map((t) => [p, t] as const)).sort((a, b) => a[1] - b[1]);
 
-  // 离打开时的预热不到 60 秒：存了不马上重热（限频，审查 11-25）
-  const 重热们 = 记每次整页(page);
+  // 离打开时的预热不到 60 秒：存了不马上重热（限频，审查 11-25）。只数点击这一刻之后的请求，首轮的尾巴不算
+  const 点击时 = Date.now();
   await 星.click();
   await expect(星).toHaveAttribute("aria-pressed", 原 === "true" ? "false" : "true");
   await page.waitForTimeout(5000);
-  expect(算重热(重热们), "离上次预热不到 60 秒就重热了").toEqual([]);
+  expect(此后(点击时), "离上次预热不到 60 秒就重热了").toEqual([]);
   // 限频内再存一下：不再多挂一轮
   await 星.click();
   await expect(星).toHaveAttribute("aria-pressed", 原 ?? "false");
 
-  // 满 60 秒那一刻补热一轮（上次预热在 开页 之后，补热不会早于 开页 + 60 秒）
-  await page.waitForTimeout(Math.max(0, 开页 + 75_000 - Date.now()));
-  const 重热 = 算重热(重热们);
+  // 满 60 秒那一刻补热一轮（限频从首轮第一页起算；再留 20 秒余量给慢机器）
+  await page.waitForTimeout(Math.max(0, 首轮第一页 + 80_000 - Date.now()));
+  const 重热 = 此后(点击时);
   expect(重热.length, "限频内存了，满 60 秒也没补热").toBeGreaterThan(0);
   // 只热常用在前的前 2 页，存了两下也只补一轮
   expect(重热.length, `补热了 ${重热.map((x) => x[0]).join(" ")}，多于 2 页`).toBeLessThanOrEqual(2);
   expect(new Set(重热.map((x) => x[0])).size, "同一页补热了两轮").toBe(重热.length);
-  expect(重热[0][1] - 开页, "没等满 60 秒就补热了").toBeGreaterThanOrEqual(60_000);
+  // 限频是从发第一页前一刻起算的，首轮第一页时刻只会略晚，留 1 秒误差
+  expect(重热[0][1] - 首轮第一页, "没等满 60 秒就补热了").toBeGreaterThanOrEqual(59_000);
   // 一页一页地发：相邻两页至少隔约 600ms（留 150ms 余量）
   for (let i = 1; i < 重热.length; i++) expect(重热[i][1] - 重热[i - 1][1], `${重热[i - 1][0]} → ${重热[i][0]} 挤在一起发了`).toBeGreaterThanOrEqual(450);
   // 收藏前面已经点回去了；人删掉，不留给别的用例
@@ -167,14 +177,16 @@ test("手机宽度：菜单一关，还没取的就不取了（跳转优化 PR-B
   await page.goto("/follow-ups/plans");
   await page.waitForTimeout(4000);
   await expect(page.locator('aside.pane[aria-busy="true"]')).toHaveCount(0);
-  const 首次 = 记整页(page);
+  const 每次们 = 记每次整页(page);
   const 键 = page.getByRole("button", { name: "打开导航菜单" });
   await 键.click();
   await expect(page.locator(".ant-dropdown-menu-item").first()).toBeVisible();
   // 再点一下菜单键收起（第一页打开时就发了，第二页要隔 300ms）
   await 键.click();
   await expect(page.locator(".ant-dropdown-menu-item").first()).toBeHidden();
+  // 记下收起这一刻；之后再没有新的整页请求才算停了（不看菜单开了多久，慢机器上多取一两页也不算错）
+  const 收起时 = Date.now();
   await page.waitForTimeout(3000);
-  const 取过 = [...首次.keys()].filter((p) => 可预热页.has(p));
-  expect(取过.length, `菜单关了还在取：${取过.join(" ")}`).toBeLessThanOrEqual(2);
+  const 之后 = [...每次们].filter(([p]) => 可预热页.has(p)).flatMap(([p, ts]) => ts.filter((t) => t > 收起时).map((t) => `${p}@+${t - 收起时}ms`));
+  expect(之后, "菜单关了还在取").toEqual([]);
 });
