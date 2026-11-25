@@ -93,6 +93,7 @@ import ProjectRelate from "./ProjectRelate";
 import { useFormDraft, 草稿范围 } from "@/components/FormDraft";
 import { 有字 } from "@/lib/form-draft";
 import { 动作出错话, 出错原话, 刷新再提交话 } from "@/lib/stale-deploy";
+import { 本人改沟通过时话, 改格不收 } from "@/lib/enterprise/follow-edit-text";
 import type { 项目关联 } from "@/lib/project/relate";
 
 export type 项目详情 = {
@@ -2480,7 +2481,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     },
   });
   const 丢稿 = 稿.丢掉;
-  useAnyEditClears([type, method, 发起, occurredAt, content, 下一步文字, 下一步时间], () => set交错((e) => (e === 本人改过时提示 ? e : null)));
+  useAnyEditClears([type, method, 发起, occurredAt, content, 下一步文字, 下一步时间], () => set交错((e) => (e === 本人改过时提示 || 改格不收(e) ? e : null)));
   useEffect(() => {
     if (!限时到) return;
     const 剩 = Date.parse(限时到) - (Date.now() + 钟差);
@@ -2510,7 +2511,11 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
       return;
     }
     set交中(true);
-    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt: occurredAt === 原时间 ? f.occurredAt : occurredAt, 版本: f.版本, ...(动了下一步 ? { 下一步: 下一步文字, 下一步时间 } : {}) }), "已保存修改", { 报错: (话) => set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话) });
+    const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt: occurredAt === 原时间 ? f.occurredAt : occurredAt, 版本: f.版本, ...(动了下一步 ? { 下一步: 下一步文字, 下一步时间 } : {}) }), "已保存修改", { 报错: (话) => {
+      // 服务端说过了 30 分钟（本地钟慢、计时还没到点）：和本地计时到点一样——标过时、换本人改过时那句、草稿清掉、保存灰掉
+      if (话 === 本人改沟通过时话) { set过时了(true); set交错(本人改过时提示); 丢稿(); return; }
+      set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话);
+    } });
     set交中(false);
     if (ok) {
       稿.存好了();
@@ -2746,7 +2751,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       if (typeof v.原话 === "string") set原话(v.原话);
     },
   });
-  useAnyEditClears([type, method, 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点原因, 附件们.length], () => set交错(null));
+  useAnyEditClears([type, method, 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点原因, 附件们.length], () => set交错((e) => (改格不收(e) ? e : null)));
   /*
     设计语言 D4 · M7-b（D03）：「保存」一直能点；点了还缺的在各自格子下面报红、焦点跳到第一处（原来「记下」灰着、原因是右下一行小灰字）。
     顺序 = 框里从上到下；填上了红字当场消失
