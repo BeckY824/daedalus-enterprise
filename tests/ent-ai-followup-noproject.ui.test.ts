@@ -4,6 +4,7 @@
  *     我能新建项目 → 给「去建项目」，链到客户页并直接打开新建项目（?建项目=1）；不能 → 写「请联系负责人先建项目」
  *   待办卡不受影响（照样只挂客户）
  *   Windows 1024 / 1280 / 1366：那一句和入口不横向撑出卡片
+ *   不足 4 个字（E-259 对齐 F-052）：开关「无意义沟通不能保存」开着说不能保存、确认不了；关着说不算有效沟通、照存；占位词两态都照存
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -88,6 +89,61 @@ it("待办卡：没项目也不出这句，照样能确认", async () => {
   try {
     expect(await page.getByText("先建一个项目再记沟通").count()).toBe(0);
     expect(await page.locator(".prop-ok").isDisabled()).toBe(false);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// E-259 对齐 F-052：AI 记沟通卡不足 4 个字按开关「无意义沟通不能保存」两态——开着（默认）不能确认，关着照存；占位词两态都照存
+it("内容不足 4 个字（E-259「加微信」）开关开着：内容框下说不能保存、还差 1 个字，确认不了；够 4 个字那一行就没了（1024 / 1280 / 1366、390）", async () => {
+  for (const w of [390, 1024, 1280, 1366]) {
+    const { page, errors } = await open(w, { ok: true, 项目们: [{ id: "pj1", name: "某项目" }], 能建项目: true, 判定: { 拦: true } }, { content: "加微信" });
+    try {
+      const 行 = page.getByTestId("follow-meaning");
+      await expect.poll(() => 行.innerText()).toBe("这样写会被判为无意义，不能保存：不足 4 个字，还差 1 个字");
+      const 量 = await page.evaluate(() => {
+        const 卡 = document.querySelector(".prop")!.getBoundingClientRect();
+        const r = document.querySelector("[data-testid=follow-meaning]")!.getBoundingClientRect();
+        return { 页: document.documentElement.scrollWidth <= window.innerWidth, 在卡里: r.right <= 卡.right + 1 };
+      });
+      expect(量).toEqual({ 页: true, 在卡里: true });
+      expect(await page.locator(".prop-ok").isDisabled()).toBe(true);
+      if (w === 1280) {
+        const 框 = page.locator(".prop textarea").first();
+        await 框.fill("加了微信");
+        await 行.waitFor({ state: "detached" });
+        await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+        // 只有表情 / 标点：同样判为无意义，确认不了
+        await 框.fill("👍");
+        await expect.poll(() => 行.innerText()).toBe("这样写会被判为无意义，不能保存：不足 4 个字，还差 4 个字");
+        expect(await page.locator(".prop-ok").isDisabled()).toBe(true);
+        // 占位词连写（够 4 个字也不算有效）：照存，只说不算有效沟通
+        await 框.fill("已联系跟进");
+        await expect.poll(() => 行.innerText()).toBe("只有「跟进」「已联系」这类占位词，不算有效沟通");
+        await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+        await page.locator(".prop-ok").click();
+        await page.waitForFunction(() => Reflect.get(window, "__交"));
+        expect(await page.evaluate(() => (Reflect.get(window, "__交") as { content: string }).content)).toBe("已联系跟进");
+      }
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("内容不足 4 个字开关关着：只说不算有效沟通，照样能确认、原样交上去；只有零宽字符的还是存不了（1280）", async () => {
+  const { page, errors } = await open(1280, { ok: true, 项目们: [{ id: "pj1", name: "某项目" }], 能建项目: true, 判定: { 拦: false } }, { content: "加微信" });
+  try {
+    const 行 = page.getByTestId("follow-meaning");
+    await expect.poll(() => 行.innerText()).toBe("不足 4 个字，还差 1 个字，不算有效沟通");
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+    const 框 = page.locator(".prop textarea").first();
+    // 只有零宽字符：空的照样拦（还差沟通内容）
+    await 框.fill("\u200b");
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(true);
+    await 框.fill("加微信");
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+    await page.locator(".prop-ok").click();
+    await page.waitForFunction(() => Reflect.get(window, "__交"));
+    expect(await page.evaluate(() => (Reflect.get(window, "__交") as { content: string }).content)).toBe("加微信");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

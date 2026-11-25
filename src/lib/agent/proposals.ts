@@ -22,6 +22,7 @@ import { 字典定义 } from "../enterprise/dict-kinds";
 import { 认出备注里的号码 } from "../enterprise/remark-numbers";
 import { 没国家认得出 } from "../enterprise/cn-place";
 import { 对得上的方式 } from "../follow-method";
+import { hasVisibleText } from "../form-validation";
 import { 企业版 } from "../enterprise/switch";
 
 export type ProposalKind = "set_status" | "add_followup" | "add_plan" | "add_lead" | "update_customer" | "add_opportunity" | "add_contract" | "update_channel"
@@ -540,7 +541,9 @@ export function missingFields(p: Proposal, b?: 叫法, 建档?: 建档必填): s
   if (是项目卡(p.kind)) return 项目卡缺(p as 项目卡);
   const miss: string[] = [];
   if (p.kind === "set_status" && !p.to) miss.push("新状态");
-  if (p.kind === "add_followup" && p.content.trim().length < 4) miss.push("沟通内容");
+  // 这里只拦空的（同 saveFollowUp）。不足 4 个字的拦不拦看组织开关「无意义沟通不能保存」（F-052，默认开）：卡上（ProposalCard 跟进无意义）按开关拦、
+  // FollowMeaningLine 说一行，服务端 沟通无意义挡 再判；开关关着照存（E-259 只说不算有效沟通）。占位词照存
+  if (p.kind === "add_followup" && !hasVisibleText(p.content)) miss.push("沟通内容");
   if (p.kind === "add_plan") {
     if (!p.subject.trim()) miss.push("谈什么");
     if (!p.plannedAt) miss.push("时间");
