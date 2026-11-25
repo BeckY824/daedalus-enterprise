@@ -242,6 +242,8 @@ export default function FollowUpForm({
   const 项目模式 = !!须知 && type !== "TASK" && type !== "REMIND";
   /** 无意义沟通（F-052）：边写边在内容框下面说一行；开关、占位词表一页取一次 */
   const 内容 = Form.useWatch("content", form) as string | undefined;
+  /** 保存键上「没保存上」的原因（比如服务端拦「太短」）：内容一改就收掉，不留着像是新内容也不行（11-26） */
+  const 收错 = useRef<(() => void) | null>(null);
   const 判定 = useFollowJudge(open);
   /*
     F-跟进-06：项目模式下主区只留沟通内容、卡点、下一步、下一步时间、截图录音，别的收进默认折叠的「更多」。
@@ -813,14 +815,14 @@ export default function FollowUpForm({
         <Button key="知道了" type="primary" onClick={做收尾}>知道了</Button>,
       ] : [
         <Button key="取消" onClick={关或收尾}>取消</Button>,
-        <SaveButton key="存" 做={保存} disabled={须知问着} 已保存={成了字} 成了={存成了}>保存</SaveButton>,
+        <SaveButton key="存" 做={保存} disabled={须知问着} 已保存={成了字} 成了={存成了} 收错={收错}>保存</SaveButton>,
       ]}
       width={640}
       destroyOnHidden
     >
       {/* AI 速记块放在 Form 里面（它不是字段）：挑人那一格是 Form.Item，得在它上面、仍是第一格 */}
       {守.提示}
-      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("type" in changed) 人改过类型.current = true; 守.改了(); }}>
+      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("type" in changed) 人改过类型.current = true; if ("content" in changed) 收错.current?.(); 守.改了(); }}>
         {挑人 && <CustomerPick 预选={预选客户} 近况={近况} on近况={换人} 不提计划={Boolean(收口计划)} />}
         {!收起 && AI块}
         {收起 ? (

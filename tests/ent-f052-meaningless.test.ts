@@ -62,6 +62,8 @@ describe("沟通意义提示（填写时那一行）", () => {
   it("空内容不出；开关开着说不能保存、还差几个字；关着说不算有效沟通", () => {
     expect(沟通意义提示("", "PHONE", { 拦: true })).toBeNull();
     expect(沟通意义提示("   ", "PHONE", { 拦: true })).toBeNull();
+    // 只有零宽字符（trim 去不掉）同空，两态都不出（11-26 班车审查）
+    for (const 拦 of [true, false]) expect(沟通意义提示("\u200b\ufeff \u200b", "PHONE", { 拦 })).toBeNull();
     expect(沟通意义提示("开店", "PHONE", { 拦: true })).toBe("这样写会被判为无意义，不能保存：不足 4 个字，还差 2 个字");
     expect(沟通意义提示("开店", "PHONE", { 拦: false })).toBe("不足 4 个字，还差 2 个字，不算有效沟通");
     expect(沟通意义提示("Call", "PHONE", { 拦: true })).toBe("这样写会被判为无意义，不能保存：不足 4 个字，还差 4 个字（或写满 2 个英文单词）");

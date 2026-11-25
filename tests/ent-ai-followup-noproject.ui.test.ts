@@ -5,6 +5,7 @@
  *   待办卡不受影响（照样只挂客户）
  *   Windows 1024 / 1280 / 1366：那一句和入口不横向撑出卡片
  *   不足 4 个字（E-259 对齐 F-052）：开关「无意义沟通不能保存」开着说不能保存、确认不了；关着说不算有效沟通、照存；占位词两态都照存
+ *   AI 项目沟通卡（project_followup，11-26 班车审查）：开关开着卡上就拦、写「还差有效的沟通内容」；只有零宽字符的当空（不出那一行、还差沟通内容）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -17,10 +18,11 @@ const plugin: Plugin = { name: "ai-followup-noproject", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
   stub(/^next\/link$/, "export default function L({children,prefetch,...p}){return <a {...p}>{children}</a>}");
-  stub(/^next\/dynamic$/, "export default ()=>()=>null;");
+  // 项目卡那几格（ProjectProposalFields）是 dynamic 进来的：照样渲染（同 ent-ai-card-oneline），AI 项目沟通卡的用例要它（11-26）
+  stub(/^next\/dynamic$/, "import React from 'react';export default (f)=>{const C=React.lazy(()=>f().then(m=>({default:m.default??m})));return (p)=><React.Suspense fallback={null}><C {...p}/></React.Suspense>;};");
   stub(/customers\/\[id\]\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "export const 沟通可选项目=async()=>(window.__可选??{ok:true,项目们:[],能建项目:true});"));
   // F-052：AI 项目沟通卡（ProjectProposalFields）自己取无意义沟通开关；回 null 按默认（开着）
-  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通判定须知=async()=>null;", "async()=>null"));
+  stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通判定须知=async()=>window.__可选?.判定??null;", "async()=>null"));
   stub(/dashboard\/apply$/, "export const applyProposal=async p=>{window.__交=p;return{ok:true}};export const undoProposal=async()=>({ok:true});");
   stub(/card-scan\/originals$/, "export const 取走名片原图=()=>null,记下刚建的=()=>{},忘掉刚建的=()=>{};");
   stub(/attachment-upload$/, "export const 传附件=async()=>({ok:true});");
@@ -144,6 +146,51 @@ it("内容不足 4 个字开关关着：只说不算有效沟通，照样能确�
     await page.locator(".prop-ok").click();
     await page.waitForFunction(() => Reflect.get(window, "__交"));
     expect(await page.evaluate(() => (Reflect.get(window, "__交") as { content: string }).content)).toBe("加微信");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// 11-26 班车审查：AI 项目沟通卡（project_followup）原来开关开着也先能点、服务端再退
+const 项目沟通卡 = (补: Record<string, unknown> = {}) => ({ kind: "project_followup", customerId: "", customerName: "", targetId: "pj1", targetName: "某项目",
+  type: "PHONE", content: "加微信", 下一步: "下周再报价", 下一步时间: "", 要时间: false, 要卡点: false, 卡点类型: "", 影响等级: "", 阻碍原因: [], ...补 });
+it("AI 项目沟通卡开关开着：太短卡上就拦，确认键旁写「还差有效的沟通内容」；写够了能确认、交上去（1280、390）", async () => {
+  for (const w of [1280, 390]) {
+    const { page, errors } = await open(w, { 判定: { 拦: true, 占位词: [] } }, 项目沟通卡());
+    try {
+      const 行 = page.getByTestId("follow-meaning");
+      await expect.poll(() => 行.innerText()).toBe("这样写会被判为无意义，不能保存：不足 4 个字，还差 1 个字");
+      expect(await page.locator(".prop-ok").isDisabled()).toBe(true);
+      expect(await page.locator(".prop-foot .prop-note").innerText()).toBe("还差有效的沟通内容");
+      // 只有表情：同样无意义
+      const 框 = page.locator(".prop textarea").first();
+      await 框.fill("👍");
+      await expect.poll(() => page.locator(".prop-foot .prop-note").innerText()).toBe("还差有效的沟通内容");
+      // 真空着：还是「还差沟通内容」
+      await 框.fill("");
+      await expect.poll(() => page.locator(".prop-foot .prop-note").innerText()).toBe("还差沟通内容");
+      await 框.fill("加了微信");
+      await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+      expect(await page.locator(".prop-foot").innerText()).not.toContain("还差");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await page.locator(".prop-ok").click();
+      await page.waitForFunction(() => Reflect.get(window, "__交"));
+      expect(await page.evaluate(() => (Reflect.get(window, "__交") as { content: string }).content)).toBe("加了微信");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("AI 项目沟通卡开关关着：太短只说不算有效沟通、照样能确认；只有零宽字符的当空——不出那一行、确认不了、还差沟通内容", async () => {
+  const { page, errors } = await open(1280, { 判定: { 拦: false, 占位词: [] } }, 项目沟通卡());
+  try {
+    const 行 = page.getByTestId("follow-meaning");
+    await expect.poll(() => 行.innerText()).toBe("不足 4 个字，还差 1 个字，不算有效沟通");
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+    const 框 = page.locator(".prop textarea").first();
+    await 框.fill("\u200b\ufeff\u200b");
+    await 行.waitFor({ state: "detached" });
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(true);
+    expect(await page.locator(".prop-foot .prop-note").innerText()).toBe("还差沟通内容");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

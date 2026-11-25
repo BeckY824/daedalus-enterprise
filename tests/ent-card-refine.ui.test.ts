@@ -353,6 +353,36 @@ it("手机 390：进程卡卡头照 M6 ⑦ 两行（项目切换占满一行、�
   }
 });
 
+/* 11-26 小修：3704 实操 390 宽客户详情页 scrollWidth 442–452，阶段条 .proj-stage-node 右伸到 523–659。
+   阶段条自己横滚：排里放不下的在排里滚，排的右边不出卡；它的内容宽（136 × 节点数）也不往外报——外层哪一层按内容定宽都不会被它撑开 */
+it("各宽（768 / 1024 / 1199 / 1200 / 1240 / 1280 / 1440 / 1536 / 390）客户详情不横滚；阶段条放不下就在排里横滚，排不出卡、不往外撑最小内容宽", async () => {
+  for (const w of [768, 1024, 1199, 1200, 1240, 1280, 1440, 1536, 390]) for (const 单 of [true, false]) {
+    const { page, errors, close } = await 开(w, { 单 });
+    try {
+      const r = await page.evaluate(() => {
+        const 排 = document.querySelector<HTMLElement>(".cd-proc .proj-stage-nodes")!, 卡 = document.querySelector<HTMLElement>(".cd-proc")!;
+        const 面 = 排.closest<HTMLElement>(".proj-stage-panel")!;
+        面.style.width = "min-content";
+        const 最小 = 面.getBoundingClientRect().width;
+        面.style.width = "";
+        return {
+          页: document.documentElement.scrollWidth - innerWidth,
+          排溢: 排.scrollWidth - 排.clientWidth,
+          排右: Math.round(排.getBoundingClientRect().right), 卡右: Math.round(卡.getBoundingClientRect().right),
+          滚: getComputedStyle(排).overflowX, 最小, 格宽: 136 * 排.querySelectorAll(".proj-stage-node").length,
+        };
+      });
+      expect(r.页, `宽 ${w} 页面横滚`).toBeLessThanOrEqual(0);
+      expect(r.排右, `宽 ${w} 阶段条出卡`).toBeLessThanOrEqual(r.卡右);
+      expect(r.滚, `宽 ${w}`).toBe("auto");
+      // 阶段条整排的最小内容宽：只剩槽外那颗出口胶囊，节点那排不算进去
+      expect(r.最小, `宽 ${w} 阶段条往外报的最小内容宽`).toBeLessThan(r.格宽 / 2);
+      if (w === 390) expect(r.排溢, "390 宽节点排放不下，在排里横滚").toBeGreaterThan(0);
+      expect(errors).toEqual([]);
+    } finally { await close(); }
+  }
+}, 120_000);
+
 it("暗黑（现状）：卡边是暗黑的 --field-line、影 .30；计数灰跟着 token", async () => {
   const { page, errors, close } = await 开(1280, { 暗: true });
   try {

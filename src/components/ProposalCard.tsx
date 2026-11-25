@@ -34,7 +34,7 @@ import { useMotionTheme } from "@/components/MotionTheme";
 import { 指定选项 } from "@/lib/enterprise/designate-options";
 import { 企业版字典 } from "@/lib/project/stage-dict";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
-import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-proposals";
+import { 是项目卡, 不可撤销, 并进描述, type 项目卡 } from "@/lib/agent/project-proposals";
 import { 落印行们 } from "@/lib/agent/seal-lines";
 import { 判沟通无意义 } from "@/lib/enterprise/tri-state-quota";
 import dynamic from "next/dynamic";
@@ -249,7 +249,9 @@ export default function ProposalCard({
    * 判据同一个 判沟通无意义，服务端 saveFollowUp（沟通无意义挡）再判一遍、以它为准
    */
   const 判定 = useKnownJudge();
-  const 跟进无意义 = draft.kind === "add_followup" && 判定.拦 && 判沟通无意义(draft.content, draft.type, { 占位词: 判定.占位词 }).无意义;
+  // 首页 AI 项目沟通卡（project_followup）同一套（11-26 班车审查）：开关开着时卡上就拦，不再先能点、服务端再退；量的是交上去的那段（旧卡的卡点描述并进内容）
+  const 跟进无意义 = 判定.拦 && (draft.kind === "add_followup" ? 判沟通无意义(draft.content, draft.type, { 占位词: 判定.占位词 }).无意义
+    : draft.kind === "project_followup" && 判沟通无意义(并进描述(draft.content, draft.卡点描述), draft.type, { 占位词: 判定.占位词 }).无意义);
 
   /** 真正要提交的那张卡：逐项时只带勾上的那几项 */
   const 要提交的 = useMemo<Proposal>(() => 只留选中的改动(draft, 勾了), [draft, 勾了]);
@@ -258,7 +260,8 @@ export default function ProposalCard({
   const missing = missingFields(要提交的, b, 渠道名们 ? { 只用项目: true, 要下一步, ...(企 ? { 企业: { 有分配方式: 企.分配方式们.length > 0, 节点们: 线索节点们, 按区域: !!企.按区域 } } : {}) } : undefined)
     .map((m) => (渠道名们 && m === "来源（渠道）" ? "渠道" : m))
     .concat(跟进没项目 || 跟进要选 ? ["关联项目"] : []);
-  if (跟进无意义 && !missing.includes("沟通内容")) missing.unshift("沟通内容");
+  // 写了但无意义（太短 / 只有表情标点）：写「还差有效的沟通内容」——内容框里有字，只说「还差沟通内容」像是没看见（11-26）；真空着的照旧「沟通内容」
+  if (跟进无意义 && !missing.includes("沟通内容")) missing.unshift("有效的沟通内容");
   const 停用卡 = draft.kind === "add_opportunity";
   const 能确认 = state !== "saving" && !停用卡 && missing.length === 0 && 勾了.length > 0;
 
