@@ -13,6 +13,18 @@ import type { Prisma } from "@/generated/prisma";
 type Tx = Prisma.TransactionClient;
 export type 没还原 = { 类: string; id: string; 原因: string };
 
+/** 没还原的「类」给人看的叫法（撤回结果、合并单列表直接摆；审查第二单建议 5：不摆 followUp.customerId 这种） */
+const 类叫法: Record<string, string> = {
+  "followUp.customerId": "沟通", "task.customerId": "待办", "followPlan.customerId": "跟进计划", "opportunity.customerId": "老商机", "contract.customerId": "老合同",
+  "contactMethod.customerId": "号码", "customerOwnerLog.customerId": "负责人历史", "entBlocker.customerId": "卡点", "unassignedContact.fromCustomerId": "移出的联系人",
+  "customer.referrerCustomerId": "推荐人（别的客户）", "customer.attributionCustomerId": "业绩归属（别的客户）", "contactCustomer.customerId": "联系人挂靠",
+  "projectCustomer.customerId": "项目关联客户", "entDupeHit.customerId": "撞号记录",
+  "contactMethod.contactId": "号码", "followUp.contactId": "沟通", "attachment.contactId": "名片 / 附件", "project.contactId": "项目主联系人",
+  "entBlocker.contactId": "卡点", "projectContact.contactId": "项目联系人", "contactCustomer.contactId": "联系人挂靠", "entExternalRef.targetId": "同步对照",
+  position: "职位", gender: "性别", birthday: "生日", hobby: "爱好", address: "地址", remark: "备注", phone: "电话", email: "邮箱", wechat: "微信",
+};
+export const 类叫 = (键: string) => 类叫法[键] ?? 键;
+
 /** 「留」空着、「并」有值时补上的格（只补空）；号码三格另算 */
 const 补空格 = ["position", "gender", "birthday", "hobby", "address", "remark"] as const;
 /** 老号码列：「留」空的用「并」的补；「并」身上的一律清空（免得回收站查号撞上「并」、查重捞回把他捞回来） */
@@ -102,7 +114,7 @@ export async function 拆开一对(tx: Tx, 原文: string, 留id: string, 并id:
     const [t, 列] = 键.split(".");
     await 表(tx, t).updateMany({ where: { id: { in: ids }, [列]: 留id }, data: { [列]: 并id } });
     const 回了 = new Set((await 表(tx, t).findMany({ where: { id: { in: ids }, [列]: 并id }, select: { id: true } })).map((r) => r.id as string));
-    for (const id of ids.filter((id) => !回了.has(id))) 留.push({ 类: 键, id, 原因: 改过话 });
+    for (const id of ids.filter((id) => !回了.has(id))) 留.push({ 类: 类叫(键), id, 原因: 改过话 });
   }
   const 日期 = (r: Record<string, unknown>) => ({ ...r, ...(r.createdAt ? { createdAt: new Date(r.createdAt as string) } : {}) });
   for (const r of 明.删掉.contactMethod) {
@@ -127,7 +139,7 @@ export async function 拆开一对(tx: Tx, 原文: string, 留id: string, 并id:
     const 清: Record<string, null> = {};
     for (const [k, v] of Object.entries(明.补空)) {
       if (现留[k as keyof typeof 现留] === v) 清[k] = null;
-      else 留.push({ 类: "联系人资料", id: k, 原因: "合成之后被改过，保留现在的值" });
+      else 留.push({ 类: "联系人资料", id: 类叫(k), 原因: "合成之后被改过，保留现在的值" });
     }
     await tx.contact.update({ where: { id: 留id }, data: { ...清, ...(明.关键.留 && 现留.isPrimary ? { isPrimary: false } : {}) } });
   }

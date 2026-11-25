@@ -7,7 +7,8 @@
  *   - 合并预览：能不能并（不能就说清原因）、两家并排的格、要挪的各类条数、要不要勾「已核对」
  *   - 执行合并：一个事务，事务里再判一遍；写合并单、两家各一条操作日志；提交后重算三态、发通知
  *   - 撤回合并：30 天内，只比合并写过的那几格（同导入撤回 revert.ts 的 一致()）：还是合并写下的才改回，
- *     对不上的整组留下、记进 undoLeft；合并之后在 A 上新记的不跟着回去
+ *     对不上的整组留下、记进 undoLeft；合并之后挂在 A 本身的不跟着回去，挂在挪回的项目 / 联系人上的跟着回（审查第二单 M4）。
+ *     合并之后又单独合成过这张单里的联系人：先拆开那几次合成再撤（M3）
  *
  * 谁能并（E-280 一.3）：两家负责人都是自己（能删客户的角色，同 P-删-01），且两家名下没结束的项目负责人也都是自己
  * （项目公海里的不算同事的，同 P-删-05 的口径）；系统管理员可代并。合并不成组：项目负责人、组员都不动（E-280 一.2）。
@@ -30,7 +31,7 @@ import { 通知里的客户名 } from "./notice-mask";
 import { 客户编号文字 } from "@/lib/customer-no";
 import { 同事项目几个话 } from "@/lib/carry-over";
 import { 忘掉企业版范围 } from "./visibility";
-import { 合成一对, 拆开一对 } from "./contact-merge";
+import { 合成一对, 拆开一对, 类叫 } from "./contact-merge";
 import { 号码脱敏器 } from "./phone-mask";
 import { 撞上别的写入 } from "@/lib/check-then-write";
 
@@ -46,6 +47,8 @@ export const 已核对话 = "已核对，按留下那家的来源和创建人";
 /** 合并单 kind：客户合并 / 合成联系人（单独合成的 parentId 空；合并客户时勾的挂在客户合并单下） */
 export const 客户单 = "客户";
 export const 联系人单 = "联系人";
+/** 项目换客户 / 撤回合并时，项目联系人挂靠到项目新归属的客户那一行的说明（project-move-customer.ts 也用） */
+export const 挂靠说明 = "随项目换客户挂过来";
 
 /**
  * 合并 / 撤回 / 合成 / 换客户的事务选项：企业版库只开一条连接，默认排队 2 秒会误报（同 settings/org-actions 的 事务选项）；
@@ -64,10 +67,10 @@ const 客户列 = {
   id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, channelId: true, channelOwnerId: true, touchpoint: true,
   bizLine: true, customerType: true, customerAttr: true, custStatus: true, poolInvalidAt: true, poolReturns: true,
   addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true, addrDetail: true, createdAt: true, deletedAt: true,
-  referrerCustomerId: true, attributionCustomerId: true,
+  referrerCustomerId: true, attributionCustomerId: true, remark: true,
   pool: { select: { customerId: true } },
   creator: { select: { userId: true } },
-  extra: { select: { country: true, website: true, level: true } },
+  extra: { select: { country: true, website: true, level: true, whatsapp: true, wechat: true, email: true, alibabaId: true } },
   channel: { select: { name: true, channelOwnerId: true } },
 } satisfies Prisma.CustomerSelect;
 export type 客户行 = Prisma.CustomerGetPayload<{ select: typeof 客户列 }>;
@@ -120,24 +123,38 @@ async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | nu
 
 /* ───────────────────────── 只补空 ───────────────────────── */
 
-const 补空客户格 = ["shortName", "customerType", "customerAttr", "bizLine"] as const;
+/** 备注也只补空（E-277「空格用被并那家补」，审查第二单建议 6）：A 有备注的不合并文字，B 的备注记进合并单明细（被并备注） */
+const 补空客户格 = ["shortName", "customerType", "customerAttr", "bizLine", "remark"] as const;
 const 地址格 = ["addrCountry", "addrProvince", "addrCity", "addrDistrict", "addrDetail"] as const;
 const 补空档案格 = ["country", "website", "level"] as const;
+/**
+ * 档案里的查重号码（contact-dedupe.ts 跨类SQL 档案原样 / 档案号键 按这几列查重）：A 空的用 B 的补上、同时清空 B 的
+ * （同 contact-merge.ts 对「并」那位老号码列的处理：免得回收站里的 B 撞号、查重捞回把 B 捞回来），撤回时换回去；
+ * A 不空的 B 的不动，预览里列出「随被并那家进回收站」（审查第二单 M6）
+ */
+const 档案号格 = ["whatsapp", "wechat", "email", "alibabaId"] as const;
 const 格叫法: Record<string, string> = {
-  shortName: "客户简称", customerType: "客户类型", customerAttr: "客户属性", bizLine: "业务线", 地址: "客户地址",
+  shortName: "客户简称", customerType: "客户类型", customerAttr: "客户属性", bizLine: "业务线", 地址: "客户地址", remark: "备注",
   country: "国家 / 地区", website: "官网", level: "客户等级",
+  whatsapp: "WhatsApp", wechat: "微信", email: "邮箱", alibabaId: "阿里国际站买家 ID",
 };
 
-type 补空 = { 客户: Record<string, string>; 档案: Record<string, string>; 档案新建: boolean };
+/** 档案号：A 补上、B 清空的那几格（老合并单没有这一项） */
+type 补空 = { 客户: Record<string, string>; 档案: Record<string, string>; 档案号?: Record<string, string>; 档案新建: boolean };
 function 算补空(A: 客户行, B: 客户行): 补空 {
   const 客户: Record<string, string> = {};
   for (const k of 补空客户格) if (!有值(A[k]) && 有值(B[k])) 客户[k] = B[k] as string;
   if (地址格.every((k) => !有值(A[k])) && 地址格.some((k) => 有值(B[k]))) for (const k of 地址格) if (有值(B[k])) 客户[k] = B[k] as string;
   const 档案: Record<string, string> = {};
   for (const k of 补空档案格) if (!有值(A.extra?.[k]) && 有值(B.extra?.[k])) 档案[k] = B.extra![k] as string;
-  return { 客户, 档案, 档案新建: !A.extra && Object.keys(档案).length > 0 };
+  const 档案号: Record<string, string> = {};
+  for (const k of 档案号格) if (!有值(A.extra?.[k]) && 有值(B.extra?.[k])) 档案号[k] = B.extra![k] as string;
+  return { 客户, 档案, 档案号, 档案新建: !A.extra && Object.keys(档案).length + Object.keys(档案号).length > 0 };
 }
-const 补空叫法 = (s: 补空) => [...new Set([...Object.keys(s.客户).map((k) => ((地址格 as readonly string[]).includes(k) ? "地址" : k)), ...Object.keys(s.档案)])].map((k) => 格叫法[k]);
+const 补空叫法 = (s: 补空) =>
+  [...new Set([...Object.keys(s.客户).map((k) => ((地址格 as readonly string[]).includes(k) ? "地址" : k)), ...Object.keys(s.档案), ...Object.keys(s.档案号 ?? {})])].map((k) => 格叫法[k]);
+/** 两家档案里查重号码都有、又不一样的格：留下那家的不动，被并那家的值随它进回收站（预览列出） */
+const 号格留下有值 = (A: 客户行, B: 客户行) => 档案号格.filter((k) => 有值(A.extra?.[k]) && 有值(B.extra?.[k]) && A.extra![k] !== B.extra![k]).map((k) => 格叫法[k]);
 
 /* ───────────────────────── 预览 ───────────────────────── */
 
@@ -155,6 +172,8 @@ export type 合并预览结果 = {
   要勾选: boolean;
   /** 留下那家空着、要用被并那家补上的格（叫法） */
   补空: string[];
+  /** 档案里的查重号码两家都有：留下那家的不动，被并那家的值随它进回收站（叫法） */
+  号格留下有值: string[];
   /** 两家的联系人（勾「是同一个人」用；号码照看的人的打码规则） */
   联系人们: { 留下: 预览联系人[]; 并掉: 预览联系人[] };
 };
@@ -206,7 +225,7 @@ export async function 合并预览(db: 库, 留下id: string, 并掉id: string, 
   const org = await 权限组织();
   const [A, B] = await Promise.all([读客户(db, 留下id), 读客户(db, 并掉id)]);
   const 原因 = await 拦的原因(db, A, B, me, org);
-  if (!A || !B) return { 能并: false, 原因, 并排: [], 条数: null, 要勾选: false, 补空: [], 联系人们: { 留下: [], 并掉: [] } };
+  if (!A || !B) return { 能并: false, 原因, 并排: [], 条数: null, 要勾选: false, 补空: [], 号格留下有值: [], 联系人们: { 留下: [], 并掉: [] } };
   const 人 = await 人名们(db, [A.salesOwnerId, B.salesOwnerId, A.creator?.userId, B.creator?.userId]);
   const 日 = (d: Date) => d.toISOString().slice(0, 10);
   const 行 = (格: string, a: string, b: string, 标红 = false): 并排格 => ({ 格, 留下: a, 并掉: b, 不同: a !== b, ...(标红 && a !== b ? { 标红: true } : {}) });
@@ -227,7 +246,7 @@ export async function 合并预览(db: 库, 留下id: string, 并掉id: string, 
   ];
   // 拦住的不给联系人明细（只给能并的人看两家的人和号）
   const 联系人们 = 原因.length ? { 留下: [], 并掉: [] } : { 留下: await 预览联系人们(db, A.id, me), 并掉: await 预览联系人们(db, B.id, me) };
-  return { 能并: 原因.length === 0, 原因, 并排, 条数: await 数条数(db, B.id), 要勾选: 来源或创建人不同(A, B), 补空: 补空叫法(算补空(A, B)), 联系人们 };
+  return { 能并: 原因.length === 0, 原因, 并排, 条数: await 数条数(db, B.id), 要勾选: 来源或创建人不同(A, B), 补空: 补空叫法(算补空(A, B)), 号格留下有值: 号格留下有值(A, B), 联系人们 };
 }
 
 /* ───────────────────────── 合并单明细 ───────────────────────── */
@@ -263,6 +282,8 @@ type 合并明细 = {
   审批人: { id: string; 原: string | null; 新: string | null }[];
   补空: 补空;
   退回次数: number;
+  /** A 有备注、B 也有（不一样）：A 的照旧，B 的记在这里可查（合并单列表读得出） */
+  被并备注?: string;
 };
 
 const 分段 = <T,>(xs: readonly T[], n = 400): T[][] => Array.from({ length: Math.ceil(xs.length / n) }, (_, i) => xs.slice(i * n, i * n + n));
@@ -352,6 +373,7 @@ async function 挪(tx: Tx, A: 客户行, B: 客户行, me: 合并人, 现在: Da
   const 明: 合并明细 = {
     版本: 1, B删于: 现在.toISOString(), 改指: {}, 对照: [], 联系人: [], 项目: [], A自指: { referrer: false, attribution: false },
     删掉: { contactCustomer: [], projectCustomer: [], entCustomerLink: [], customerPool: [] }, 关联: [], 审批人: [], 补空: 算补空(A, B), 退回次数: B.poolReturns,
+    ...(有值(A.remark) && 有值(B.remark) && A.remark !== B.remark ? { 被并备注: B.remark! } : {}),
   };
 
   // 联系人：主客户改 A；A 已有关键联系人的，B 的关键联系人去掉关键标
@@ -453,7 +475,10 @@ async function 挪(tx: Tx, A: 客户行, B: 客户行, me: 合并人, 现在: Da
 
   // 只补空、退回次数
   await tx.customer.update({ where: { id: A.id }, data: { ...明.补空.客户, poolReturns: { increment: B.poolReturns } } });
-  if (Object.keys(明.补空.档案).length) await tx.customerExtra.upsert({ where: { customerId: A.id }, create: { customerId: A.id, ...明.补空.档案 }, update: 明.补空.档案 });
+  const 档案补 = { ...明.补空.档案, ...明.补空.档案号 };
+  if (Object.keys(档案补).length) await tx.customerExtra.upsert({ where: { customerId: A.id }, create: { customerId: A.id, ...档案补 }, update: 档案补 });
+  // 查重号码 B 的清空（A 已补上）：撤回时换回去
+  if (Object.keys(明.补空.档案号 ?? {}).length) await tx.customerExtra.update({ where: { customerId: B.id }, data: Object.fromEntries(Object.keys(明.补空.档案号!).map((k) => [k, null])) });
 
   // 两家都在公海（系统管理员并）：B 的公海行删掉
   if (B.pool) {
@@ -484,6 +509,31 @@ async function 挪(tx: Tx, A: 客户行, B: 客户行, me: 合并人, 现在: Da
     ],
   });
   return { mergeId: 单.id, 条数, 合成: 0 };
+}
+
+/**
+ * 撤回合并：合并之后挂在挪回 B 的项目 / 联系人上的新行跟着回去（审查第二单 M4；挂在 A 本身的不回）：
+ *   - 沟通：经 FollowUpProject 挂在挪回项目上、还挂着 A 的 → B
+ *   - 卡点：挪回项目上、还挂着 A 的 → B
+ *   - 号码：挪回联系人身上、还挂着 A 的 → B
+ *   - 挪回项目的项目联系人（主联系人 + ProjectContact）是 A 的人的：照项目换客户的做法挂靠到 B（已挂着的跳过）
+ */
+async function 带回新挂的(tx: Tx, A: string, B: string, 项目们: string[], 人们: string[]): Promise<void> {
+  for (const 段 of 分段(项目们)) {
+    const 沟通们 = (await tx.followUpProject.findMany({ where: { projectId: { in: 段 } }, select: { followUpId: true } })).map((x) => x.followUpId);
+    for (const 小段 of 分段(沟通们)) await tx.followUp.updateMany({ where: { id: { in: 小段 }, customerId: A }, data: { customerId: B } });
+    await tx.entBlocker.updateMany({ where: { projectId: { in: 段 }, customerId: A }, data: { customerId: B } });
+    const 主们 = (await tx.project.findMany({ where: { id: { in: 段 }, contactId: { not: null } }, select: { contactId: true } })).map((x) => x.contactId!);
+    const 联们 = (await tx.projectContact.findMany({ where: { projectId: { in: 段 } }, select: { contactId: true } })).map((x) => x.contactId);
+    const 候选 = [...new Set([...主们, ...联们])];
+    if (!候选.length) continue;
+    const A的人 = (await tx.contact.findMany({ where: { id: { in: 候选 }, customerId: A }, select: { id: true } })).map((x) => x.id);
+    if (!A的人.length) continue;
+    const 已挂 = new Set((await tx.contactCustomer.findMany({ where: { customerId: B, contactId: { in: A的人 } }, select: { contactId: true } })).map((x) => x.contactId));
+    const 要挂 = A的人.filter((id) => !已挂.has(id));
+    if (要挂.length) await tx.contactCustomer.createMany({ data: 要挂.map((contactId) => ({ contactId, customerId: B, note: 挂靠说明 })) });
+  }
+  for (const 段 of 分段(人们)) await tx.contactMethod.updateMany({ where: { contactId: { in: 段 }, customerId: A }, data: { customerId: B } });
 }
 
 /** 最近跟进按没删的沟通重算（同 soft-delete.ts 重算最近跟进）；同号留痕不算 */
@@ -538,7 +588,7 @@ export async function 并入提示(db: 库, 留下id: string, merged: string | n
  * 项目详情那一行「从 NO.xxxxx「B」并入」：这个项目是怎么到这位客户名下的，取最近一次——
  *   - 合并客户：一张没撤回、并进这位客户的合并单里，这个项目是从 B 挪过来的（明细 项目[].挪客户）
  *   - 项目换客户：项目上最近一条 project-move-customer 日志，换到的就是这位客户
- * 都没有给 null。看名字 = 能不能看原来那位客户的名字（合并的 B 已并进这位客户，看得到这位就给；换客户的原客户要另判，调用方给）
+ * 都没有给 null。看得到原客户 = 能不能看原来那位客户的名字（调用方给；合并的 B 在回收站里，在 看已删 里问），看不到只给编号
  */
 export async function 项目来历(
   db: 库, projectId: string, customerId: string, 看得到原客户: (id: string) => Promise<boolean>,
@@ -546,17 +596,17 @@ export async function 项目来历(
   if (!企业版()) return null;
   // 一句 SQL 取两样（客户详情一次打开的查询条数有上限，tests/ent-cust-detail-queries.test.ts）：
   // 并进这位客户、明细里这个项目是挪过来的合并单；这个项目最近的换客户日志。动作名走参数（同 history-data.ts 那句的讲究）
-  const 行们 = await 看全部(() => db.$queryRawUnsafe<{ k: string; at: bigint | number | string | Date; fromName: string | null; fromNo: bigint | number | null; detail: string | null }[]>(
+  const 行们 = await 看全部(() => db.$queryRawUnsafe<{ k: string; at: bigint | number | string | Date; fromId: string | null; fromName: string | null; fromNo: bigint | number | null; detail: string | null }[]>(
     `SELECT * FROM (
-       SELECT 'm' AS k, m."at" AS at, m."fromName" AS fromName, m."fromNo" AS fromNo, NULL AS detail FROM "EntCustomerMerge" m
+       SELECT 'm' AS k, m."at" AS at, m."fromId" AS fromId, m."fromName" AS fromName, m."fromNo" AS fromNo, NULL AS detail FROM "EntCustomerMerge" m
          WHERE m."kind" = ? AND m."intoId" = ? AND m."status" = ? AND instr(m."detail", ?) > 0
-       UNION ALL SELECT 'a', a."at", NULL, NULL, a."detail" FROM "AuditLog" a WHERE a."entity" = 'Project' AND a."entityId" = ? AND a."action" = ?
+       UNION ALL SELECT 'a', a."at", NULL, NULL, NULL, a."detail" FROM "AuditLog" a WHERE a."entity" = 'Project' AND a."entityId" = ? AND a."action" = ?
      ) ORDER BY at DESC LIMIT 8`,
     客户单, customerId, "已合并", `"id":${JSON.stringify(projectId)},"挪客户":true`, projectId, "project-move-customer",
   ));
   const 时刻 = (v: bigint | number | string | Date) => (v instanceof Date ? v : new Date(typeof v === "bigint" ? Number(v) : v));
   const m行 = 行们.find((r) => r.k === "m");
-  const 单 = m行 ? { fromName: m行.fromName ?? "", fromNo: m行.fromNo === null ? null : Number(m行.fromNo), at: 时刻(m行.at) } : null;
+  const 单 = m行 ? { fromId: m行.fromId ?? "", fromName: m行.fromName ?? "", fromNo: m行.fromNo === null ? null : Number(m行.fromNo), at: 时刻(m行.at) } : null;
   // 换客户日志取最近一条「换到这位客户」的：换走后 8 秒内撤销了（撤销换客户），最近那条是换去别家的，往前找
   let 换: { 从: string; at: Date } | null = null;
   for (const a行 of 行们) {
@@ -567,7 +617,9 @@ export async function 项目来历(
     } catch { /* 坏明细不认 */ }
   }
   if (单 && (!换 || 单.at >= 换.at)) {
-    return { 话: 并入一句(客户编号文字(单.fromNo), 单.fromName), 怎么来: "合并客户", at: 单.at.toISOString() };
+    // 原客户名字同换客户那条：看得到原客户才给，看不到只给编号（审查第二单建议 4）。B 在回收站里，在 看已删 里判
+    const 名字 = 单.fromId && (await 看已删(() => 看得到原客户(单.fromId))) ? 单.fromName : "";
+    return { 话: 并入一句(客户编号文字(单.fromNo), 名字), 怎么来: "合并客户", at: 单.at.toISOString() };
   }
   if (!换) return null;
   const 原 = await 看全部(() => 看已删(() => db.customer.findUnique({ where: { id: 换!.从 }, select: { customerNo: true, name: true, shortName: true } })));
@@ -647,15 +699,19 @@ export async function 合成联系人(db: 库, 留id: string, 并id: string, me:
 /**
  * 撤回合并（整单）：合并的人本人或系统管理员，30 天内。单独合成的联系人也走这里（kind = 联系人）。
  * 留下那家现在的负责人已经不是撤回的人本人：只有系统管理员能撤（总控 11-25）；两家有一家在转让交接中不让撤（P-删-10）。
- * 留下那家已并进别家（连环合并 C→B→A 撤 C→B 同理）：先撤回那次合并
+ * 留下那家已并进别家（连环合并 C→B→A 撤 C→B 同理）：先撤回那次合并。
+ * 合并之后又单独合成过这张单里的联系人（留或并是挪过来的那几位）：先拆开那几次合成（做法同合并时勾的子单），再撤合并，
+ * 结果里 提示 =「先拆开了 N 次联系人合成」（审查第二单 M3）。
+ * 撤回提交后：B 的原负责人已停用的，同从回收站恢复（P-删-06 恢复后停用负责人去向）；B 回来不判持有上限（撤回是还原，不算新领）
  */
-export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现在: Date = new Date()): Promise<结果<{ 没还原: 没还原[] }>> {
+export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现在: Date = new Date()): Promise<结果<撤回完>> {
   if (!企业版()) return { ok: false, error: "只有企业版能撤回合并" };
   const 看单 = await db.entCustomerMerge.findUnique({ where: { id: mergeId }, select: { kind: true } });
   if (看单?.kind === 联系人单) return 撤回合成(db, mergeId, me, 现在);
   const org = await 权限组织();
   const 开 = await 客户状态自动();
   const 结: 没还原[] = [];
+  let 拆开合成 = 0;
   let 两家: [string, string] | null = null;
   try {
     await 看已删(() =>
@@ -680,6 +736,21 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
           if (!是系统管理员(me, org) && (A.pool || A.salesOwnerId !== me.id)) throw new 拦下(`「${名(A)}」现在不归你负责，请找系统管理员撤回`);
           const 交接 = await 交接中的客户([A.id, B.id], tx);
           for (const c of [A, B]) if (交接.has(c.id)) throw new 拦下(`「${名(c)}」正在转让交接中，等接手人确认或撤回交接后再撤回合并`);
+          // 合并之后单独合成过挪过来的联系人：先拆开（新的先拆），号码、沟通回到原来那位，下面再随联系人一起挪回 B（M3）
+          const 人们 = (JSON.parse(m.detail) as 合并明细).联系人.map((c) => c.id);
+          const 单独们 = new Map<string, Awaited<ReturnType<typeof tx.entCustomerMerge.findMany>>[number]>();
+          for (const 段 of 分段(人们, 200)) {
+            for (const x of await tx.entCustomerMerge.findMany({
+              where: { kind: 联系人单, parentId: null, status: "已合并", at: { gte: m.at }, OR: [{ fromId: { in: 段 } }, { intoId: { in: 段 } }] },
+            })) 单独们.set(x.id, x);
+          }
+          for (const 子 of [...单独们.values()].sort((x, y) => y.at.getTime() - x.at.getTime() || (y.id < x.id ? -1 : 1))) {
+            const 留 = await 拆开一对(tx, 子.detail, 子.intoId, 子.fromId);
+            结.push(...留);
+            await tx.entCustomerMerge.update({ where: { id: 子.id }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id, undoLeft: 留.length ? JSON.stringify({ 没还原: 留 }) : null } });
+            await tx.auditLog.create({ data: { userId: me.id, userName: me.name, action: "merge-undo", entity: "Contact", entityId: 子.intoId, at: 现在, summary: `撤回合并客户时先拆开合成：「${子.fromName}」已拆回`, detail: JSON.stringify({ mergeId: 子.id, 随: m.id, 没还原: 留 }) } });
+            拆开合成++;
+          }
           // 合并时勾的「是同一个人」：先拆开（「并」那位回来、还挂在 A 名下），下面再随联系人一起挪回 B
           for (const 子 of await tx.entCustomerMerge.findMany({ where: { parentId: m.id, kind: 联系人单, status: "已合并" } })) {
             结.push(...(await 拆开一对(tx, 子.detail, 子.intoId, 子.fromId)));
@@ -690,8 +761,8 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
           await 重算最近跟进(tx, A.id);
           await 重算最近跟进(tx, B.id);
           await 跟着项目重算(tx, 开, [A.id, B.id]);
-          await tx.entCustomerMerge.update({ where: { id: m.id }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id, undoLeft: 结.length ? JSON.stringify(结) : null } });
-          const 留话 = 结.length ? `；${结.length} 条之后被改过，留在原处` : "";
+          await tx.entCustomerMerge.update({ where: { id: m.id }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id, undoLeft: 存没还原(结, 拆开合成) } });
+          const 留话 = `${拆开合成 ? `；${拆开合成话(拆开合成)}` : ""}${结.length ? `；${结.length} 条之后被改过，留在原处` : ""}`;
           await tx.auditLog.createMany({
             data: [
               { userId: me.id, userName: me.name, action: "merge-undo", entity: "Customer", entityId: A.id, at: 现在, summary: `撤回合并：「${名(B)}」已拆回${留话}`, detail: JSON.stringify({ mergeId: m.id, 没还原: 结 }) },
@@ -709,11 +780,47 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
     throw e;
   }
   忘掉企业版范围();
-  if (两家) await 存沟通后重算三态(两家, 现在).catch((e) => console.warn("[撤回合并] 三态没重算上：", e instanceof Error ? e.message : e));
-  return { ok: true, 没还原: 结 };
+  const 这两家 = 两家 as [string, string] | null;
+  if (这两家) {
+    await 存沟通后重算三态(这两家, 现在).catch((e) => console.warn("[撤回合并] 三态没重算上：", e instanceof Error ? e.message : e));
+    await 回来后停用负责人(这两家[1], me);
+  }
+  return { ok: true, 没还原: 结, ...(拆开合成 ? { 提示: 拆开合成话(拆开合成) } : {}) };
 }
 
-async function 撤回合成(db: 库, mergeId: string, me: 合并人, 现在: Date): Promise<结果<{ 没还原: 没还原[] }>> {
+export type 撤回完 = { 没还原: 没还原[]; /** 先拆开过单独合成时：「先拆开了 N 次联系人合成」 */ 提示?: string };
+const 拆开合成话 = (n: number) => `先拆开了 ${n} 次联系人合成`;
+/** 合并单 undoLeft：{ 没还原, 拆开合成? }；都没有存空 */
+const 存没还原 = (留: 没还原[], 拆开合成 = 0) => (留.length || 拆开合成 ? JSON.stringify({ 没还原: 留, ...(拆开合成 ? { 拆开合成 } : {}) }) : null);
+/** 读合并单 undoLeft（老的是数组）：给合并单列表 */
+export function 读没还原(undoLeft: string | null): { 没还原: 没还原[]; 提示?: string } | null {
+  if (!undoLeft) return null;
+  try {
+    const v = JSON.parse(undoLeft) as unknown;
+    if (Array.isArray(v)) return { 没还原: v as 没还原[] };
+    const o = v as { 没还原?: 没还原[]; 拆开合成?: number };
+    return { 没还原: Array.isArray(o.没还原) ? o.没还原 : [], ...(o.拆开合成 ? { 提示: 拆开合成话(o.拆开合成) } : {}) };
+  } catch { return null; }
+}
+
+/**
+ * 撤回合并后 B 回来了：原负责人已停用的，同从回收站恢复客户（P-删-06）——清空负责人进客户公海（例外留在他名下），通知他的直属上级或系统管理员。
+ * 撤回提交后另办（同 soft-delete.ts 恢复一条）；没做成不连累撤回。restore-inactive-owner 引着 pool-link → project/db，按需取
+ */
+async function 回来后停用负责人(B: string, me: 合并人): Promise<void> {
+  try {
+    const { 恢复后停用负责人去向 } = await import("./restore-inactive-owner");
+    const 去 = await 恢复后停用负责人去向(B, me.id);
+    if (!去) return;
+    if (去.进了公海) 忘掉企业版范围();
+    const { 恢复到停用负责人通知 } = await import("./notice-sources");
+    await 恢复到停用负责人通知(me, [{ id: B, ...去 }]);
+  } catch (e) {
+    console.warn("[撤回合并] 原负责人已停用，进公海没办成：", e instanceof Error ? e.message : e);
+  }
+}
+
+async function 撤回合成(db: 库, mergeId: string, me: 合并人, 现在: Date): Promise<结果<撤回完>> {
   const org = await 权限组织();
   try {
     const 结 = await 看已删(() =>
@@ -727,10 +834,12 @@ async function 撤回合成(db: 库, mergeId: string, me: 合并人, 现在: Dat
           if (现在.getTime() - m.at.getTime() > 撤回期限天数 * 86_400_000) throw new 拦下(`合成已超过 ${撤回期限天数} 天，不能撤回`);
           const 并 = await tx.contact.findUnique({ where: { id: m.fromId }, select: { id: true, name: true, customerId: true } });
           if (!并) throw new 拦下("合成掉的那位已清出回收站，不能撤回");
-          const 主 = await tx.customer.findUnique({ where: { id: 并.customerId }, select: { deletedAt: true } });
+          const 主 = await tx.customer.findUnique({ where: { id: 并.customerId }, select: { id: true, name: true, shortName: true, customerNo: true, deletedAt: true } });
           if (主?.deletedAt) throw new 拦下("客户在回收站里，先恢复客户再撤回");
+          // 拦法同撤回合并：客户在转让交接中不让撤（P-删-10）
+          if (主 && (await 交接中的客户([主.id], tx)).has(主.id)) throw new 拦下(`「${名(主)}」正在转让交接中，等接手人确认或撤回交接后再撤回合成`);
           const 留 = await 拆开一对(tx, m.detail, m.intoId, m.fromId);
-          await tx.entCustomerMerge.update({ where: { id: m.id }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id, undoLeft: 留.length ? JSON.stringify(留) : null } });
+          await tx.entCustomerMerge.update({ where: { id: m.id }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id, undoLeft: 存没还原(留) } });
           await tx.auditLog.create({ data: { userId: me.id, userName: me.name, action: "merge-undo", entity: "Contact", entityId: m.intoId, at: 现在, summary: `撤回合成联系人：「${并.name}」已拆回${留.length ? `；${留.length} 条之后被改过，留在原处` : ""}`, detail: JSON.stringify({ mergeId: m.id, 没还原: 留 }) } });
           return 留;
         }, 合并事务选项),
@@ -753,18 +862,22 @@ async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: num
   const 改过话 = "合并之后被改过（换了客户或删了）";
 
   // 联系人一组：主客户还是 A、去掉的关键标还空着
+  const 回了人: string[] = [];
   for (const c of 明.联系人) {
     const 现 = await tx.contact.findUnique({ where: { id: c.id }, select: { customerId: true, isPrimary: true } });
     if (!现) { 留下("联系人", [c.id], "已彻底删除"); continue; }
     if (现.customerId !== A || (c.去关键 && 现.isPrimary)) { 留下("联系人", [c.id], 改过话); continue; }
     await tx.contact.update({ where: { id: c.id }, data: { customerId: B, ...(c.去关键 ? { isPrimary: true } : {}) } });
+    回了人.push(c.id);
   }
   // 项目一组：所属客户、补的来源、重复咨询
+  const 回了项目: string[] = [];
   for (const p of 明.项目) {
     const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { customerId: true, channelId: true, repeatOfCustomerId: true, repeatSeq: true } });
     if (!现) { 留下("项目", [p.id], "已彻底删除"); continue; }
     const 对 = (!p.挪客户 || 现.customerId === A) && (!p.补来源 || 现.channelId === p.补来源) && (!p.重复 || (现.repeatOfCustomerId === A && 现.repeatSeq === p.重复.新序));
     if (!对) { 留下("项目", [p.id], 改过话); continue; }
+    if (p.挪客户) 回了项目.push(p.id);
     // undefined = 这一格不动；负责人不在里面（撤回不动负责人）
     await tx.project.update({
       where: { id: p.id },
@@ -783,10 +896,11 @@ async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: num
       await 表(tx, t).updateMany({ where: { id: { in: 段 }, [列]: A }, data: { [列]: B } });
       const 没回 = (await 表(tx, t).findMany({ where: { id: { in: 段 }, NOT: { [列]: B } }, select: { id: true } })).map((r) => r.id as string);
       const 在 = new Set((await 表(tx, t).findMany({ where: { id: { in: 段 } }, select: { id: true } })).map((r) => r.id as string));
-      留下(键, 没回, 改过话);
-      留下(键, 段.filter((id) => !在.has(id)), "已彻底删除");
+      留下(类叫(键), 没回, 改过话);
+      留下(类叫(键), 段.filter((id) => !在.has(id)), "已彻底删除");
     }
   }
+  await 带回新挂的(tx, A, B, 回了项目, 回了人);
   if (明.A自指.referrer) await tx.customer.updateMany({ where: { id: A, referrerCustomerId: null }, data: { referrerCustomerId: B } });
   if (明.A自指.attribution) await tx.customer.updateMany({ where: { id: A, attributionCustomerId: null }, data: { attributionCustomerId: B } });
   for (const 段 of 分段(明.对照)) await tx.entExternalRef.updateMany({ where: { id: { in: 段 }, targetId: A }, data: { targetId: B } });
@@ -818,7 +932,8 @@ async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: num
     if (!有) await tx.customerPool.create({ data: 日期(r, "at") as Prisma.CustomerPoolUncheckedCreateInput });
   }
   // 补空的格：还是补进去的值才清回空
-  const 现A = await tx.customer.findUnique({ where: { id: A }, select: { ...Object.fromEntries([...补空客户格, ...地址格].map((k) => [k, true])), extra: { select: { country: true, website: true, level: true } } } }) as Record<string, unknown> & { extra: Record<string, unknown> | null };
+  const 档案列 = Object.fromEntries([...补空档案格, ...档案号格].map((k) => [k, true]));
+  const 现A = await tx.customer.findUnique({ where: { id: A }, select: { ...Object.fromEntries([...补空客户格, ...地址格].map((k) => [k, true])), extra: { select: 档案列 } } }) as Record<string, unknown> & { extra: Record<string, unknown> | null };
   const 清: Record<string, null> = {};
   for (const [k, v] of Object.entries(明.补空.客户)) {
     if (现A[k] === v) 清[k] = null;
@@ -826,11 +941,18 @@ async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: num
   }
   await tx.customer.update({ where: { id: A }, data: { ...清, poolReturns: Math.max(0, A退回 - 明.退回次数) } });
   const 清档: Record<string, null> = {};
-  for (const [k, v] of Object.entries(明.补空.档案)) {
+  for (const [k, v] of Object.entries({ ...明.补空.档案, ...明.补空.档案号 })) {
     if (现A.extra?.[k] === v) 清档[k] = null;
     else 留.push({ 类: "客户资料", id: 格叫法[k] ?? k, 原因: "合并之后被改过，保留现在的值" });
   }
   if (Object.keys(清档).length) await tx.customerExtra.updateMany({ where: { customerId: A }, data: 清档 });
+  // 查重号码换回 B（B 这一格这会儿空着才写；A 那一格被人改过的也换回，A 留着现在的值）
+  const 号回 = 明.补空.档案号 ?? {};
+  if (Object.keys(号回).length) {
+    const 现B = await tx.customerExtra.findUnique({ where: { customerId: B }, select: 档案列 }) as Record<string, unknown> | null;
+    const 写 = Object.fromEntries(Object.entries(号回).filter(([k]) => !有值(现B?.[k])));
+    if (Object.keys(写).length) await tx.customerExtra.upsert({ where: { customerId: B }, create: { customerId: B, ...写 }, update: 写 });
+  }
   // 档案行是合并时新建的、清完又全空了：删掉，回到合并前「没有这一行」
   if (明.补空.档案新建) {
     const 行 = await tx.customerExtra.findUnique({ where: { customerId: A } });

@@ -28,7 +28,7 @@ import { notify } from "./notify";
 import { 通知里的客户名 } from "./notice-mask";
 import { 客户编号文字 } from "@/lib/customer-no";
 import { 忘掉企业版范围 } from "./visibility";
-import { 读客户, 重算最近跟进, 拦下, 合并事务选项, 并发失败话, type 客户行, type 合并人 } from "./customer-merge";
+import { 读客户, 重算最近跟进, 拦下, 合并事务选项, 并发失败话, 挂靠说明, type 客户行, type 合并人 } from "./customer-merge";
 import { 待确认, 离职盖住的客户, 离职盖住的项目 } from "./handover-db";
 
 type 库 = PrismaClient;
@@ -36,7 +36,7 @@ type Tx = Prisma.TransactionClient;
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 export const 换客户通知种类 = "项目换客户";
-export const 挂靠说明 = "随项目换客户挂过来";
+export { 挂靠说明 };
 
 const 项目列 = { id: true, name: true, customerId: true, ownerId: true, result: true, pooledAt: true, phase: true, contactId: true, repeatOfCustomerId: true, repeatSeq: true } satisfies Prisma.ProjectSelect;
 type 项目行 = Prisma.ProjectGetPayload<{ select: typeof 项目列 }>;
@@ -219,13 +219,15 @@ export const 撤销换客户秒 = 60;
  *   - 项目回原客户；挪过去的沟通、卡点还在目标客户名下的改回原客户
  *   - 这次新建的挂靠行还是那样（挂在目标客户、说明没改）的删掉
  *   - 删掉的项目关联客户整行建回（连身份）；重复咨询还是这次写的样子的，原始客户和序号换回原值
- * 拦法照换客户反着判一遍（交接中、无效、公海……）。不发通知
+ * 拦法照换客户反着判一遍（交接中、无效、公海……）。换客户时收到通知的那批人（项目负责人、两位客户负责人，不是操作人本人的）
+ * 各再收一条「撤销了」（系统管理员代换后撤销，审查第二单）
  */
 export async function 撤销换客户(db: 库, logId: string, me: 合并人, 现在: Date = new Date()): Promise<结果> {
   if (!企业版()) return { ok: false, error: "只有企业版能给项目换客户" };
   const org = await 权限组织();
   const 开 = await 客户状态自动();
   let 两家: [string, string] | null = null;
+  let 通知要: { p: 项目行; 原: 客户行; 现: 客户行 } | null = null;
   try {
     await 看已删(() =>
       看全部(() =>
@@ -254,6 +256,7 @@ export async function 撤销换客户(db: 库, logId: string, me: 合并人, 现
           await 重算最近跟进(tx, 明.到);
           await 跟着项目重算(tx, 开, [明.从, 明.到]);
           两家 = [明.从, 明.到];
+          通知要 = { p: p!, 原: 原客户!, 现: 现客户! };
         }, 合并事务选项),
       ),
     );
@@ -265,6 +268,16 @@ export async function 撤销换客户(db: 库, logId: string, me: 合并人, 现
   }
   忘掉企业版范围();
   if (两家) await 存沟通后重算三态(两家, 现在).catch((e) => console.warn("[撤销换客户] 三态没重算上：", e instanceof Error ? e.message : e));
+  const 要 = 通知要 as { p: 项目行; 原: 客户行; 现: 客户行 } | null;
+  if (要) {
+    await notify([要.p.ownerId, 要.原.salesOwnerId, 要.现.salesOwnerId].filter((u) => u && u !== me.id), {
+      kind: 换客户通知种类,
+      title: `撤销了：项目「${要.p.name}」回到「${名(要.原)}」`,
+      body: `${me.name}撤销了刚才的项目换客户，项目「${要.p.name}」从「${名(要.现)}」回到了「${名(要.原)}」${客户编号文字(要.原.customerNo) ?? ""}，沟通、卡点跟着回去，负责人不变。`,
+      link: `/customers/${要.原.id}?project=${要.p.id}`,
+      key: `project-move-undo:${要.p.id}:${logId}`,
+    });
+  }
   return { ok: true };
 }
 const 刚被改过 = "这个项目刚被别人改过（已不在换去的那位客户名下），刷新看看";

@@ -21,8 +21,8 @@ import { 客户关键词条件, 搜索词 } from "@/lib/search-keyword";
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 import { 客户编号文字 } from "@/lib/customer-no";
 import {
-  合并预览, 执行合并, 撤回合并, 合成联系人, 撤回期限天数, 客户单, 联系人单,
-  type 合并预览结果, type 合并完, type 没还原, type 同一个人,
+  合并预览, 执行合并, 撤回合并, 合成联系人, 撤回期限天数, 客户单, 联系人单, 读没还原,
+  type 合并预览结果, type 合并完, type 没还原, type 同一个人, type 撤回完,
 } from "@/lib/enterprise/customer-merge";
 import { 项目换客户预览, 项目换客户, 撤销换客户 as 撤销换客户库, type 换客户预览结果, type 换完 } from "@/lib/enterprise/project-move-customer";
 
@@ -96,7 +96,7 @@ export async function 合并客户(留下id: string, 并掉id: string, opt: { �
 }
 
 /** 撤回合并客户 / 撤回单独合成的联系人（同一张合并单表） */
-export async function 撤回合并单(mergeId: string): Promise<结果<{ 没还原: 没还原[] }>> {
+export async function 撤回合并单(mergeId: string): Promise<结果<撤回完>> {
   const me = await 我();
   if (!是id(mergeId)) return 坏参数;
   const m = await prisma.entCustomerMerge.findUnique({ where: { id: mergeId }, select: { fromId: true, intoId: true, kind: true } });
@@ -168,6 +168,11 @@ export type 合并单一条 = {
   at: string; status: string;
   /** 这会儿能不能撤：合并的人本人或系统管理员、没撤过、没过期 */
   能撤: boolean;
+  /** 撤回过的：没还原的那几条（存在合并单 undoLeft 里，刷新后照样看得到）；先拆开过单独合成的一句话 */
+  没还原?: Pick<没还原, "类" | "原因">[];
+  提示?: string;
+  /** 客户单：留下那家有备注、被并那家的备注没合进来，记在合并单里可查 */
+  被并备注?: string;
 };
 
 /** 并进这位客户的合并单 + 这位客户名下单独合成的联系人（客户详情的历史变更、撤回入口用）。看得到这位客户的才给 */
@@ -184,10 +189,23 @@ export async function 并进来的合并单(customerId: string): Promise<合并�
     orderBy: { at: "desc" }, take: 50,
   });
   const 线 = Date.now() - 撤回期限天数 * 86_400_000;
-  return 们.map((m) => ({
-    id: m.id, kind: m.kind, 从: m.fromName, 编号: m.kind === 客户单 ? 客户编号文字(m.fromNo) ?? null : null,
-    ...(m.kind === 联系人单 ? { 到: 人名.get(m.intoId) ?? "" } : {}),
-    at: m.at.toISOString(), status: m.status,
-    能撤: m.status === "已合并" && m.at.getTime() >= 线 && (m.byUserId === me.id || 管),
-  }));
+  return 们.map((m) => {
+    const 撤 = m.status === "已撤回" ? 读没还原(m.undoLeft) : null;
+    return {
+      id: m.id, kind: m.kind, 从: m.fromName, 编号: m.kind === 客户单 ? 客户编号文字(m.fromNo) ?? null : null,
+      ...(m.kind === 联系人单 ? { 到: 人名.get(m.intoId) ?? "" } : {}),
+      at: m.at.toISOString(), status: m.status,
+      能撤: m.status === "已合并" && m.at.getTime() >= 线 && (m.byUserId === me.id || 管),
+      ...(m.status === "已撤回" ? { 没还原: (撤?.没还原 ?? []).map((x) => ({ 类: x.类, 原因: x.原因 })), ...(撤?.提示 ? { 提示: 撤.提示 } : {}) } : {}),
+      ...(m.kind === 客户单 ? 被并备注of(m.detail) : {}),
+    };
+  });
+}
+
+/** 合并单明细里的 被并备注（留下那家有备注时，被并那家的没合进来） */
+function 被并备注of(detail: string): { 被并备注?: string } {
+  try {
+    const v = (JSON.parse(detail) as { 被并备注?: unknown }).被并备注;
+    return typeof v === "string" && v ? { 被并备注: v } : {};
+  } catch { return {}; }
 }
