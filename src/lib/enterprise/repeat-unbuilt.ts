@@ -24,6 +24,7 @@ import { recordAudit } from "@/lib/audit";
 import { getSetting } from "@/lib/settings";
 import { getBusiness } from "@/lib/business";
 import { 看全部 } from "@/lib/team-scope";
+import { 客户编号显示 } from "@/lib/customer-no";
 import { FOLLOW_TYPE_MAP } from "@/lib/constants";
 import type { 规整好的沟通 } from "@/lib/project/wizard";
 import { 持有上限起点, 写前核上限, 整批或不做 } from "@/lib/project/db";
@@ -149,9 +150,12 @@ export async function 读待补建栏(me: Pick<SessionUser, "id"> & { role?: str
   const 管人 = 是待补建管理人(org, me.id);
   // 不截条数：截了最早的待补建会悄悄不出现（待补建的一直留着；已处理的按处理时间留 已处理留天，台账行的时间对不上处理时间，只能读出来再筛）。
   // 只有出口 C 整笔没建的那几行有这一列，量小
-  const 行们 = await 看全部(() => prisma.entDupeHit.findMany({ where: { unbuilt: { not: null } }, select: { id: true, unbuilt: true }, orderBy: { createdAt: "desc" } }));
+  const 行们 = await 看全部(() => prisma.entDupeHit.findMany({ where: { unbuilt: { not: null } }, select: { id: true, unbuilt: true, customerId: true }, orderBy: { createdAt: "desc" } }));
   const 起 = Date.now() - 已处理留天 * 86_400_000;
-  const 条们 = 行们.flatMap((行) => 未建条们(行.unbuilt).map((x) => ({ 键: 未建键(行.id, x.位), r: x.记录 }))).filter((x) => 留着(x.r, 起));
+  const 条们0 = 行们.flatMap((行) => 未建条们(行.unbuilt).map((x) => ({ 键: 未建键(行.id, x.位), r: x.记录, 客户id: 行.customerId }))).filter((x) => 留着(x.r, 起));
+  // 客户编号现读台账这一行现在挂的客户（合并客户后台账改指留下那家，记录里存的还是被并那家的编号；审查第二单建议 8）；客户不在了用存下的
+  const 现编号 = await 现客户编号们(条们0.map((x) => x.客户id));
+  const 条们 = 条们0.map(({ 客户id, r, 键 }) => ({ 键, r: 现编号.has(客户id) ? { ...r, 客户编号: 现编号.get(客户id)! } : r }));
   const 我交的条 = 条们.filter((x) => x.r.交的人.id === me.id);
   const 我管的 = 管人 ? 条们.filter((x) => 能管待补建(org, me.id, x.r.线)) : [];
   const 线索ids = [...new Set([...我交的条, ...我管的].flatMap((x) => (x.r.状态 === "已补建" && x.r.处理?.线索 ? [x.r.处理.线索.id] : [])))];
@@ -172,6 +176,14 @@ export async function 读待补建栏(me: Pick<SessionUser, "id"> & { role?: str
     };
   }).sort(排);
   return { 管, 我交的 };
+}
+
+/** 这几位客户现在的编号（显示用的 NO.xxxxx；没编号的老数据 = 短号） */
+async function 现客户编号们(ids: string[]): Promise<Map<string, string>> {
+  const 们 = [...new Set(ids)];
+  if (!们.length) return new Map();
+  const 行 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: 们 } }, select: { id: true, customerNo: true } }));
+  return new Map(行.map((c) => [c.id, 客户编号显示(c)]));
 }
 
 /** 补建时还挑不到人：这条线能接的销售（能被指定、线对得上、能当负责人、没到持有上限） */
@@ -212,7 +224,9 @@ async function 找这条(org: 组织, me: { id: string }, 键: unknown): Promise
   if (!行 || !条) return { ok: false, error: 待补建找不到话, 刷新: true };
   if (!能管待补建(org, me.id, 条.记录.线)) return { ok: false, error: 不能处理待补建话 };
   if (条.记录.状态 !== "待补建") return { ok: false, error: 已被处理话(条.记录), 刷新: true };
-  return { 行id: 行.id, 位: k.位, 客户id: 行.customerId, r: 条.记录 };
+  // 日志、通知里的客户编号也现读（同 读待补建栏）
+  const 号 = (await 现客户编号们([行.customerId])).get(行.customerId);
+  return { 行id: 行.id, 位: k.位, 客户id: 行.customerId, r: 号 ? { ...条.记录, 客户编号: 号 } : 条.记录 };
 }
 
 /** 事务里重读这一条：还是那一条（交的时间对得上）、还待补建才往下（并发只成一次） */

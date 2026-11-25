@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Button, Table, Tag, Typography } from "antd";
+import { Button, Table, Tag, Tooltip, Typography } from "antd";
 import { smartTime } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
 import { 回收站列表动作, 恢复回收站, 彻底删除回收站 } from "./trash-actions";
@@ -140,6 +140,8 @@ export default function TrashTab() {
                     {b.customer}：{r.客户.name}{r.客户.也删了 ? "（也在回收站里）" : ""}
                   </Typography.Text>
                 )}
+                {/* 合并客户第一批（11-25）：并掉的客户、合成掉的联系人「已并入 → A」，只能在 A 上撤回 */}
+                {r.已并入 && <span className="mrg-trash-into" title={`已并入 → ${r.已并入.名}`} data-testid="trash-merged">已并入 → {r.已并入.名}</span>}
                 {r.连带 && 连带话(r.连带) && (
                   <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>连带 {连带话(r.连带)}</Typography.Text>
                 )}
@@ -163,7 +165,15 @@ export default function TrashTab() {
             title: "",
             width: 96,
             align: "right",
-            render: (_, r) => (
+            render: (_, r) => r.已并入 ? (
+              // 已并入的：两颗都灰着，悬停说只能在 A 上撤回（灰按钮收不到悬停，套一层 span 接）
+              <Tooltip title={r.表 === "Contact" ? `已合成进「${r.已并入.名}」，只能在「${r.已并入.名}」所在的客户上撤回合成` : `只能在「${r.已并入.名}」上撤回合并`}>
+                <span className="mrg-trash-acts mrg-trash-off" data-testid="trash-merged-acts" tabIndex={0}>
+                  <Button size="small" disabled>恢复</Button>
+                  {能真删 && <Button size="small" type="link" danger disabled className="mrg-trash-x">彻底删除</Button>}
+                </span>
+              </Tooltip>
+            ) : (
               <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
                 <Button
                   size="small"

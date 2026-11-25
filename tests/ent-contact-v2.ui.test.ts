@@ -64,6 +64,7 @@ beforeAll(async () => {
       <div data-t='挂来的'><ContactLinks customerId='k0' 只读={false} 头={头('王五')} c={{...人,挂靠:{linkId:'L1',note:'采购对接',主客户Id:'k1',主客户名:'主客户甲',主客户看得到:true,能改:true}}}><div>号码行</div></ContactLinks></div>
       <div data-t='自家的'><ContactLinks customerId='k0' 只读={false} 头={头('王五二')} c={{...人,id:'c2'}}><div>号码行二</div></ContactLinks></div>
       <div data-t='只读'><ContactLinks customerId='k0' 只读 头={头('王五三')} c={{...人,id:'c3'}}><div>号码行三</div></ContactLinks></div>
+      <div data-t='能合成'><ContactLinks customerId='k0' 只读={false} 头={头('王五四')} 合成={()=>{window.__合成=(window.__合成||0)+1}} c={{...人,id:'c4'}}><div>号码行四</div></ContactLinks></div>
     </div>));
     window.__新建=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{window.__存好=1}} customerId='k0' record={null} 号码种类={种类}
       存法={async(x)=>{(window.__存=window.__存||[]).push(x);return {ok:true}}}/>));
@@ -398,4 +399,19 @@ it("D3 · M4-d 新建联系人：标题「新建联系人」、提交键「保�
   try {
     expect(await p2.getByRole("dialog").locator(".ant-modal-title").innerText()).toBe("编辑联系人");
   } finally { await p2.close(); }
+});
+
+it("[合并客户第一批 11-25] 组头「⋯」：给了 合成 才多一项「和另一位合成」（分隔线隔开），点了交给客户页开框；没给的照旧只有两项", async () => {
+  const page = await open("__挂靠头");
+  try {
+    const 能 = page.locator("[data-t='能合成']");
+    await 能.getByRole("button", { name: "联系人 王五 的更多操作" }).click();
+    const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+    expect((await 菜单.getByRole("menuitem").allInnerTexts()).map(t => t.trim())).toEqual(["挂到别的客户", "换主客户", "和另一位合成"]);
+    expect(await 菜单.locator(".ant-dropdown-menu-item-divider").count()).toBe(1);
+    await 菜单.getByRole("menuitem", { name: "和另一位合成" }).click();
+    expect(await page.evaluate(() => (window as unknown as { __合成?: number }).__合成)).toBe(1);
+    // 没打开别的就地表单
+    expect(await 能.getByText("挂到哪位客户").count()).toBe(0);
+  } finally { await page.close(); }
 });

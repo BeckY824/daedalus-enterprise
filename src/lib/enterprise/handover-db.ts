@@ -92,6 +92,34 @@ export function 离职盖住的项目(h: { way: string | null; projectIds: strin
   return null;
 }
 
+/** 这几位成员还没确认的离职交接（看全部：别人发起的也算） */
+async function 待确认离职们(db: 库, 人们: (string | null | undefined)[]) {
+  const ids = [...new Set(人们.filter((x): x is string => !!x))];
+  if (!ids.length) return [];
+  return 看全部(() => db.entHandover.findMany({ where: { kind: "离职", fromUserId: { in: ids }, status: 待确认 }, select: { fromUserId: true, way: true, customerIds: true, projectIds: true } }));
+}
+
+/**
+ * 这几个项目里在离职交接中等接手人确认的（交项目那几个、一键全部交给、交客户时跟着客户走的）：确认时要按当时的客户和负责人分拣，
+ * 换了客户（项目换客户、合并客户、撤回合并）会对不上。只看项目负责人本人的离职交接；转让客户的交接看客户（交接中的客户）
+ */
+export async function 离职交接中的项目(ps: { id: string; ownerId: string | null; customerId: string }[], db: 库 = prisma): Promise<Set<string>> {
+  const 们 = await 待确认离职们(db, ps.map((p) => p.ownerId));
+  if (!们.length) return new Set();
+  const 盖 = 们.map((h) => ({ 人: h.fromUserId, 项目: 离职盖住的项目(h), 客户: 离职盖住的客户(h) }));
+  return new Set(
+    ps.filter((p) => p.ownerId && 盖.some((h) => h.人 === p.ownerId && (h.项目 === null || h.项目.has(p.id) || h.客户 === null || h.客户.has(p.customerId)))).map((p) => p.id),
+  );
+}
+
+/** 这几位客户里被负责人本人的离职交接盖住、等接手人确认的（交这位客户、一键全部交给）：确认时按当时的客户分拣，并掉 / 拆回会对不上 */
+export async function 离职交接中的客户(cs: { id: string; salesOwnerId: string | null }[], db: 库 = prisma): Promise<Set<string>> {
+  const 们 = await 待确认离职们(db, cs.map((c) => c.salesOwnerId));
+  if (!们.length) return new Set();
+  const 盖 = 们.map((h) => ({ 人: h.fromUserId, 客户: 离职盖住的客户(h) }));
+  return new Set(cs.filter((c) => c.salesOwnerId && 盖.some((h) => h.人 === c.salesOwnerId && (h.客户 === null || h.客户.has(c.id)))).map((c) => c.id));
+}
+
 /**
  * 把一行从待确认改成别的状态：带着 status 条件改，两个人同时点（接手人确认、发起人撤回）只成一个。改成了返回 true。
  * 谁能了结函数自己挡（2026-10-28，不靠入口）：确认、拒收只有接手人；撤回只有发起人或总管理（11-01 起只认业务角色）。

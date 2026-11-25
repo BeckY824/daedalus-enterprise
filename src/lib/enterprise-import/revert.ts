@@ -39,6 +39,7 @@ import { 企业版字典, 本套名 } from "../project/stage-dict";
 import { 不是同号留痕SQL } from "../enterprise/same-number-mark";
 import { 企业版 } from "../enterprise/switch";
 import { 捞回客户号落主联系人 } from "../enterprise/restore-number-to-contact";
+import { 并入了哪 } from "../enterprise/soft-delete";
 
 type Tx = Prisma.TransactionClient;
 type 引用行 = Prisma.EntExternalRefGetPayload<object>;
@@ -63,6 +64,8 @@ class 让位 extends Error {}
 class 不动 extends Error {}
 
 /** 撤回改客户负责人时，导入那一步随客户带过去的活已经被人动过：整条不撤（不半撤，P-撤销-01） */
+/** 整批撤回时这一批的客户已并入别的客户（合并客户）：跳过，报告里写这一句 */
+export const 已并入未撤话 = (留下名: string) => `已并入 → 「${留下名}」，未撤（要撤先在「${留下名}」上撤回合并）`;
 export const 带走对不上话 = "导入时随客户带过去的计划、待办或项目之后又被改过（换了人、做完了或删了）";
 
 const J = (v: unknown) => JSON.stringify(v);
@@ -314,6 +317,11 @@ type 一行结果 = "删掉" | "还原" | "无";
 /** 项目碰过：这一趟删掉 / 改回的项目挂的客户（改了客户的，改前改后两位都记），企业版客户状态跟着重算 */
 async function 撤一行(tx: Tx, 源: 来源, 批次Id: string, row: 记的行, 碰过: Set<string>, 项目碰过: Set<string>, 批?: 改的批): Promise<一行结果> {
   const e = row.entity as 实体;
+  // 合并客户（customer-merge.ts）：这一批的客户已并入别的客户 → 跳过不撤，写明并到了哪位（改指 A 的同步对照、挪过去的子行都不动）
+  if (e === "customer") {
+    const 并 = (await 并入了哪(tx, "Customer", [row.targetId])).get(row.targetId);
+    if (并) throw new 不动(已并入未撤话(并.去.名));
+  }
   const ref = await tx.entExternalRef.findUnique({ where: 引用键(源, e, row.externalId) });
   const 写过 = 解<值表>(row.written, {});
   if (ref && ref.batchId !== 批次Id) throw new 不动("之后的同步或冲突处理又改过它，先撤回那一批");

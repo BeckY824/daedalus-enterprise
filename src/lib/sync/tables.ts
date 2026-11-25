@@ -108,6 +108,8 @@ export const 不同步表 = [
   "EntLeadGiveUp",
   // 企业版必填拦截记录（2026-11-23，migrations/164）：同上
   "EntRequiredBlock",
+  // 企业版合并客户的合并单（2026-11-25，迁移 171）：同上；挪动明细只对这台库里的行 id 有意义，撤回也只在这台做
+  "EntCustomerMerge",
 ] as const;
 
 /**
@@ -241,6 +243,11 @@ export const 指向人的列: [string, string][] = [
   ["EntRequiredBlock", "userId"],
   // 企业版项目回款（2026-10-31）：谁记的
   ["EntProjectPayment", "userId"],
+  // 企业版合并客户的合并单（2026-11-25）：谁并的、被并客户当时的负责人和创建人、谁撤回的；不建外键
+  ["EntCustomerMerge", "byUserId"],
+  ["EntCustomerMerge", "fromOwnerId"],
+  ["EntCustomerMerge", "fromCreatorId"],
+  ["EntCustomerMerge", "undoneById"],
 ];
 
 /**

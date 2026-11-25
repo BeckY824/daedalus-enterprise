@@ -729,8 +729,13 @@ const 离职交接看板 = "/projects/handover";
  *   - 进了公海：知会一声，客户恢复后因原负责人已停用进了客户公海
  *   - 例外挡住没进（M-公海-02 / X-31，已签约 / 已流失、交接中同离职分拣）：还挂在停用的人名下、没人跟，按实际命中的原因写，请到离职交接看板指定接手人
  * 操作恢复的人自己不收（上级自己恢复的不发）；一次回来几位按收件人合成一条
+ * 来由「撤回合并」：撤回合并后被并那家拆回来、原负责人已停用（customer-merge.ts），标题说「撤回了合并」，不说从回收站恢复
  */
-export async function 恢复到停用负责人通知(me: 人, 条: readonly { id: string; 原: string; 进了公海: boolean; 没进原因?: readonly string[] }[]): Promise<void> {
+export async function 恢复到停用负责人通知(
+  me: 人,
+  条: readonly { id: string; 原: string; 进了公海: boolean; 没进原因?: readonly string[] }[],
+  来由: "回收站" | "撤回合并" = "回收站",
+): Promise<void> {
   await 稳("恢复到停用负责人通知", async () => {
     if (!条.length) return;
     const [客户行, 人行, org] = await Promise.all([
@@ -756,15 +761,22 @@ export async function 恢复到停用负责人通知(me: 人, 条: readonly { id
     }
     const 列 = (们: 一位[]) => `客户：${名单(们.map((c) => `${c.name}（${c.原名}）`))}`;
     const 键 = (们: 一位[]) => 们.map((c) => c.id).sort().join(",").slice(0, 400);
+    const 撤合 = 来由 === "撤回合并";
+    /** 「张三 从回收站恢复了客户「X」」/「张三 撤回了合并，客户「X」拆回来了」；几位时说个数 */
+    const 做了 = (们: 一位[]) =>
+      撤合
+        ? 们.length === 1 ? `${me.name} 撤回了合并，客户「${们[0].name}」拆回来了` : `${me.name} 撤回了合并，${们.length} 位客户拆回来了`
+        : 们.length === 1 ? `${me.name} 从回收站恢复了客户「${们[0].name}」` : `${me.name} 从回收站恢复了 ${们.length} 位客户`;
+    const 键头 = 撤合 ? "merge-undo-inactive-owner" : "restore-inactive-owner";
     for (const [谁, { 公海, 留下 }] of 按收件人) {
       if (公海.length) {
         const 单条 = 公海.length === 1;
         await notify([谁], {
           kind: "回收",
-          title: 单条 ? `${me.name} 从回收站恢复了客户「${公海[0].name}」，原负责人 ${公海[0].原名} 已停用，客户进了客户公海` : `${me.name} 从回收站恢复了 ${公海.length} 位客户，原负责人已停用，客户进了客户公海`,
+          title: 单条 ? `${做了(公海)}，原负责人 ${公海[0].原名} 已停用，客户进了客户公海` : `${做了(公海)}，原负责人已停用，客户进了客户公海`,
           body: 接一句(单条 ? "" : 列(公海), "原负责人自己负责、还没结束的线索 / 商机项目一起进了线索公海，可以从公海领取或分配。"),
           link: 公海入口,
-          key: `restore-inactive-owner:pool:${键(公海)}:${谁}:${分钟()}`,
+          key: `${键头}:pool:${键(公海)}:${谁}:${分钟()}`,
         });
       }
       if (留下.length) {
@@ -772,13 +784,13 @@ export async function 恢复到停用负责人通知(me: 人, 条: readonly { id
         const 原因们 = [...new Set(留下.flatMap((c) => c.没进原因))];
         await notify([谁], {
           kind: "交接",
-          title: 单条 ? `${me.name} 从回收站恢复了客户「${留下[0].name}」，负责人 ${留下[0].原名} 已停用` : `${me.name} 从回收站恢复了 ${留下.length} 位客户，负责人已停用`,
+          title: 单条 ? `${做了(留下)}，负责人 ${留下[0].原名} 已停用` : `${做了(留下)}，负责人已停用`,
           body: 接一句(
             单条 ? "" : 列(留下),
             `${单条 ? "这位客户" : "这些客户"}${原因们.length ? `不能进公海（${原因们.join("、")}）` : "没能放进公海"}，还挂在已停用的人名下、没人跟进，请到「项目 → 离职交接」指定接手人。`,
           ),
           link: 离职交接看板,
-          key: `restore-inactive-owner:${键(留下)}:${谁}:${分钟()}`,
+          key: `${键头}:${键(留下)}:${谁}:${分钟()}`,
         });
       }
     }

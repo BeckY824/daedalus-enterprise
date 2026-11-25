@@ -15,6 +15,7 @@ import { prisma } from "@/lib/prisma";
 import type { SessionUser } from "@/lib/auth";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
+import { 合并挪来的换人记录 } from "@/lib/enterprise/merge-moved-logs";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 留痕说法, 能看理由 } from "@/lib/enterprise/tri-state-detail";
 import { 三态开着 } from "@/lib/enterprise/tri-state-db";
@@ -189,13 +190,16 @@ export async function 看得到的客户(customerId: string): Promise<客户行 
 
 /** 客户建档那一格：库里有的才摆，没记的不摆（不造） */
 async function 客户建档(c: 客户行): Promise<建档格> {
-  const [建的人, 导入, 建档痕, AI首条, 首条换人] = await 看全部(() => Promise.all([
+  const [建的人, 导入, 建档痕, AI首条, 换人们, 挪来] = await 看全部(() => Promise.all([
     prisma.customerCreator.findUnique({ where: { customerId: c.id }, select: { userId: true } }),
     prisma.entImportRow.findFirst({ where: { entity: "customer", targetId: c.id, kind: "create" }, select: { id: true } }),
     prisma.auditLog.findFirst({ where: { entity: "Customer", entityId: c.id, action: "create" }, orderBy: { at: "asc" }, select: { userId: true, userName: true, summary: true, detail: true } }),
     prisma.followUp.findFirst({ where: { customerId: c.id, content: { startsWith: AI建档首条开头 } }, select: { id: true } }),
-    prisma.customerOwnerLog.findFirst({ where: { customerId: c.id }, orderBy: [{ at: "asc" }, { id: "asc" }], select: { fromOwnerId: true } }),
+    prisma.customerOwnerLog.findMany({ where: { customerId: c.id }, orderBy: [{ at: "asc" }, { id: "asc" }], select: { id: true, fromOwnerId: true } }),
+    合并挪来的换人记录(prisma, [c.id]),
   ]));
+  // 首任负责人只认这位客户自己的：合并挪来的（被并那家的）换人记录不算，被并那家建档早也不显示成它的首任（merge-moved-logs.ts）
+  const 首条换人 = 换人们.find((r) => !挪来.has(r.id));
   const 首任id = 首条换人 ? 首条换人.fromOwnerId : c.salesOwnerId;
   const 叫 = await 人名们([建的人?.userId, 首任id, 建档痕?.userId]);
   // 显示名带全角括号的员工手建的：userName 就是他现在的名字，不按括号认成后台补录

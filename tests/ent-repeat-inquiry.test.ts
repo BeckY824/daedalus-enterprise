@@ -836,7 +836,17 @@ describe("命名加序与只读来源字段（E-218）", () => {
     走(根);
     // 只拿它当查询条件的（项目列表按原始客户编号搜：where 里比 repeatOfCustomerId），不写：另列，且那个文件里没有带它的 data
     const 只读的 = ["lib/project/list.ts"];
-    expect(写的.filter((f) => !只读的.includes(f)).sort()).toEqual(["lib/enterprise/dedupe-claim.ts"]);
+    // 例外（合并客户第一批，E-277）：不是改项目的入口、不收界面传来的值——原始客户被并掉 / 项目换了客户时，系统把
+    // 「原始客户是 B」的改指 A、序号接在 A 已有最大号后面（唯一键 (repeatOfCustomerId, repeatSeq) 不撞），记下原值，
+    // 撤回 / 撤销换客户按原值改回。不改指的话原始客户编号指向一位已并掉的客户、第几次也对不上 A
+    const 跟着客户改指的 = ["lib/enterprise/customer-merge.ts", "lib/enterprise/project-move-customer.ts"];
+    expect(写的.filter((f) => !只读的.includes(f) && !跟着客户改指的.includes(f)).sort()).toEqual(["lib/enterprise/dedupe-claim.ts"]);
+    // 例外名单里的文件都还在写（挪走了名单要跟着删）；新值只来自合并 / 换客户的两位客户和记下的原值（true 是 select；撤回合并里 A / B 本身就是两位客户的 id，查 B 名下原序号被占）
+    for (const f of 跟着客户改指的) {
+      const 文 = readFileSync(path.join(根, f), "utf8");
+      expect(写的, f).toContain(f);
+      for (const m of 文.matchAll(/\brepeatOfCustomerId:\s*([^,}\s]+)/g)) expect(m[1], `${f} 里 repeatOfCustomerId 写成了 ${m[1]}`).toMatch(/^(A\.id|B\.id|A|B|目标\.id|重复!\.原客户|p\.重复|true)$/);
+    }
     for (const f of 只读的) expect(readFileSync(path.join(根, f), "utf8")).not.toMatch(/data:\s*\{[^}]*\b(repeatOfCustomerId|repeatSeq)\b/);
   });
 });

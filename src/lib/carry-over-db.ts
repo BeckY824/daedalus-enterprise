@@ -113,7 +113,7 @@ export async function 数进手的持有项目(
   ids: string[],
   新: string,
   算: { 公海?: boolean; 自己的?: boolean; 同事待分配?: boolean; 停用同事?: boolean; 同事在推?: boolean; 除了?: string[] },
-  db: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog" | "user"> = prisma,
+  db: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog" | "user" | "entCustomerMerge"> = prisma,
 ): Promise<number> {
   if (!企业版() || !ids.length) return 0;
   return 看全部(async () => {

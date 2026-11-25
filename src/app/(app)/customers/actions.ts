@@ -1431,7 +1431,7 @@ async function 没转和不存在(ids: string[], 算过: number): Promise<{ miss
  * 原负责人自己的项目、同事在推的跟着客户走照旧不拦（超上限 的说明），所以只数同事待分配的、写之前数（写前核上限）；走交接的到确认那一步再核。
  * 11-11 起数和写在同一个事务里：两次分配同时进来，后到的那次数的时候先到的已经写完，不会两次都过
  */
-async function 接待分配核上限(tx: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog" | "user">, 规则: 组织规则, ids: string[], 新: string): Promise<void> {
+async function 接待分配核上限(tx: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog" | "user" | "entCustomerMerge">, 规则: 组织规则, ids: string[], 新: string): Promise<void> {
   const 起 = await 持有上限起点(tx, 规则, 新);
   if (!起) return;
   await 写前核上限(tx, 起, await 数进手的持有项目(ids, 新, { 同事待分配: true }, tx), "分配");

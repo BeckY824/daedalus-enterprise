@@ -19,19 +19,20 @@ beforeAll(async () => {
     import TrashTab from '@/app/(app)/settings/TrashTab';import MembersTab from '@/app/(app)/settings/MembersTab';
     const 长=${JSON.stringify(长)};
     const 条=(i,表)=>({表,id:'t'+i,名称:长+i,客户:表==='Customer'?null:{id:'c'+i,name:长,也删了:false},deletedAt:'2026-11-20T00:00:00.000Z',剩几天:20,连带:表==='Customer'?{联系人:3,项目:2,沟通记录:12}:undefined});
-    window.__act=(名)=>名==='回收站列表动作'?{ok:true,能彻底删除:true,条目:[条(1,'Customer'),条(2,'Project'),条(3,'Contact'),条(4,'FollowUp')]}:{ok:true};
+    // 合并客户第一批（11-25）：__并入 = 再加一位已并入别家的客户（恢复、彻底删除灰着）
+    window.__act=(名)=>名==='回收站列表动作'?{ok:true,能彻底删除:true,条目:[条(1,'Customer'),条(2,'Project'),条(3,'Contact'),条(4,'FollowUp'),...(window.__并入?[{...条(5,'Customer'),已并入:{id:'A',名:长}}]:[])]}:{ok:true};
     const 人=(id,name,角色,active=true)=>({id,name,email:id,title:'',role:'SALES',active,customerCount:12,oppCount:0,项目阶段:{线索:2,商机:1},业务角色:角色,系统管理员:角色.includes('director')?{on:true,有线:false}:undefined,followCount:30});
     const 们=[人('boss','老板'+长,['director']),人('u1','销售甲',['sales']),人('u2','管理员乙',['admin']),人('u3','走了的丙',['sales'],false)];
-    window.__render=({页,宽,isAdmin})=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN} button={{autoInsertSpace:false}}><App><div className="set-body" style={{width:宽,boxSizing:'border-box'}}>
+    window.__render=({页,宽,isAdmin,并入})=>(window.__并入=并入,createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN} button={{autoInsertSpace:false}}><App><div className="set-body" style={{width:宽,boxSizing:'border-box'}}>
       {页==='零件'?<><Typography.Title level={5}>状态显示名</Typography.Title><span className='set-lock-sent'>已发给总管理</span><span className='mp-note'>备注</span><div className='setm' data-k='setm'><Select open aria-label='下拉' options={[{value:'a',label:'甲'}]}/></div><div className='board-gate' data-k='gate'>没推过去</div></>:页==='回收站'?<TrashTab/>:<MembersTab users={们} me={{id:'boss',name:'老板',email:'boss',role:'SALES',title:'',avatar:null}} isAdmin={isAdmin!==false} 用邮箱登录={false} 企业版 下属可停用={isAdmin===false?['u1']:[]}/>}
-    </div></App></ConfigProvider>);`);
+    </div></App></ConfigProvider>));`);
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
 const 正文宽 = (w: number) => (w >= 1366 ? 784 : w >= 1024 ? 494 : w - 32);
-async function 开(页: "回收站" | "成员" | "零件", w: number, isAdmin = true) {
-  const r = await 开页(browser, bundle, { 页, 宽: 正文宽(w), isAdmin }, w);
+async function 开(页: "回收站" | "成员" | "零件", w: number, isAdmin = true, 并入 = false) {
+  const r = await 开页(browser, bundle, { 页, 宽: 正文宽(w), isAdmin, 并入 }, w);
   await r.page.locator(页 === "零件" ? ".set-lock-sent" : 页 === "回收站" ? "tr.ant-table-row" : ".member-table tr.ant-table-row").first().waitFor();
   return r;
 }
@@ -52,6 +53,29 @@ for (const w of [1024, 1280, 1366, 390]) {
       // 名称格是省略号，不是整串撑开
       const 名 = page.locator("tr.ant-table-row").first().locator(".ant-typography-ellipsis").first();
       expect(await 名.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
+for (const w of [1024, 390]) {
+  it(`[合并客户第一批 11-25] 回收站 ${w}：已并入别家的客户写「已并入 → A」（一行省略），恢复、彻底删除灰着，悬停说只能在 A 上撤回合并；别的行照旧`, async () => {
+    const { page, errors } = await 开("回收站", w, true, true);
+    try {
+      const 行 = page.locator("tr.ant-table-row").nth(4);
+      const 标 = 行.getByTestId("trash-merged");
+      expect(await 标.innerText()).toMatch(/^已并入 → 某某超长名字/);
+      expect(await 标.evaluate((el) => [getComputedStyle(el).textOverflow, el.scrollWidth > el.clientWidth])).toEqual(["ellipsis", true]);
+      const 钮们 = 行.locator(".ant-btn");
+      expect(await 钮们.count()).toBe(2);
+      for (const b of await 钮们.all()) expect(await b.isDisabled()).toBe(true);
+      await 行.getByTestId("trash-merged-acts").hover();
+      const 提示 = page.locator(".ant-tooltip:not(.ant-tooltip-hidden)");
+      await 提示.waitFor();
+      expect((await 提示.innerText()).trim()).toBe(`只能在「${"某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域采购项目第二期".repeat(2)}」上撤回合并`);
+      // 别的行的「恢复」照常能点
+      expect(await page.locator("tr.ant-table-row").first().getByRole("button", { name: "恢复" }).isDisabled()).toBe(false);
+      expect(await 伸出(page)).toEqual({ 正文: 0, 表: 0 });
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });

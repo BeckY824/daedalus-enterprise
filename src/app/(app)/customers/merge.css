@@ -1,0 +1,90 @@
+/*
+ * 合并客户第一批（11-25，docs/合并客户-第一批-落地.md）：合并 / 合成 / 换客户三只框（customers/[id]/MergeHost.tsx）、
+ * 历史变更里的合并单（HistoryChanges.tsx）。客户页顶上「已并入」那句、回收站「已并入 → A」不是每次都带上这几只框，样式在 globals.css（.mrg-landed / .mrg-trash-*）。
+ * 只用 :root 的 token（暗色由 dark.css 那层 token 接）；一行放不下省略号、悬停看全（11-04 全站规矩）。
+ * 手机（≤767）：两家并排改成上下两段，联系人配对一行拆成两行，点击区 ≥ --hit-touch
+ */
+
+.mrg-one { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 框头：标题 + 对谁（一行省略） */
+.mrg-title { display: flex; align-items: baseline; gap: var(--s3); min-width: 0; padding-right: var(--s5); }
+.mrg-title-t { flex: none; font-size: var(--fs-section); font-weight: 600; }
+.mrg-title-who { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-note); font-weight: 400; }
+.mrg-modal .ant-modal-title { min-width: 0; overflow: hidden; }
+.mrg-modal .ant-modal-body { max-height: 70vh; overflow: auto; overscroll-behavior: contain; overflow-x: hidden; }
+.mrg-foot { display: flex; align-items: center; gap: var(--s2); }
+.mrg-foot-sp { flex: 1; }
+
+.mrg-body { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.mrg-note { margin: 0; color: var(--text-muted); font-size: var(--fs-note); line-height: 1.5; }
+/* 合并单里被并那家的备注：备注全站唯一折行的格（11-04 一行规矩的例外），长串不撑破 */
+.mrg-order-remark { margin-top: var(--s1); white-space: pre-wrap; overflow-wrap: anywhere; }
+.mrg-empty { margin: var(--s3) 0; color: var(--text-muted); font-size: var(--fs-note); }
+.mrg-err { margin: var(--s2) 0 0; color: var(--danger-text); font-size: var(--fs-note); }
+.mrg-why-l { margin: 0; padding-left: 1.2em; }
+.mrg-sec-t { margin: 0; font-weight: 600; display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+.mrg-sec-c { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-note); font-weight: 400; }
+.mrg-key { margin-left: var(--s1); padding: 0 var(--s1); border-radius: var(--r-tag); background: var(--brand-bg); color: var(--brand); font-size: var(--fs-min); }
+
+/* 搜客户 */
+.mrg-search { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.mrg-cands { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
+.mrg-cand { display: flex; align-items: baseline; gap: var(--s3); width: 100%; min-width: 0; min-height: var(--hit); padding: var(--s2) var(--s2); border: 0; border-radius: var(--r-ctl);
+  background: none; color: var(--ink); font: inherit; text-align: left; cursor: pointer; transition: background-color var(--t-press) var(--ease); }
+.mrg-cand:hover { background: var(--row-hover); }
+.mrg-cand:active { background: var(--hover); }
+.mrg-cand:focus-visible { outline: 2px solid var(--brand); outline-offset: -2px; }
+.mrg-cand-n { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrg-cand-s { flex: 0 1 auto; max-width: 45%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-muted); font-size: var(--fs-note); }
+
+/* 两家并排：项 | 留下 | 并进来；不同的格淡底，来源 / 创建人不同的标红 */
+.mrg-cmp { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-ctl); overflow: hidden; }
+.mrg-cmp-r { display: grid; grid-template-columns: 96px minmax(0, 1fr) minmax(0, 1fr); gap: var(--s3); align-items: center; min-height: 32px; padding: 0 var(--s3); border-top: 1px solid var(--line-soft); }
+.mrg-cmp-r:first-child { border-top: 0; }
+.mrg-cmp-h { color: var(--text-muted); font-size: var(--fs-note); background: var(--hover); }
+.mrg-cmp-k { min-width: 0; color: var(--ink-soft); }
+.mrg-cmp-a, .mrg-cmp-b { display: flex; align-items: baseline; gap: var(--s1); min-width: 0; }
+.mrg-cmp-tag { display: none; flex: none; color: var(--text-muted); font-size: var(--fs-min); }
+.mrg-cmp-r.is-diff .mrg-cmp-b { font-weight: 600; }
+.mrg-cmp-r.is-red { background: var(--danger-bg); }
+.mrg-cmp-r.is-red .mrg-cmp-k, .mrg-cmp-r.is-red .mrg-cmp-a, .mrg-cmp-r.is-red .mrg-cmp-b { color: var(--danger-text); }
+.mrg-check { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s2) var(--s3); border: 1px solid var(--danger-line); border-radius: var(--r-ctl); background: var(--danger-bg); }
+
+/* 联系人配对：并进来那位 | 配留下这家的谁 | 是同一个人 */
+.mrg-ppl { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.mrg-ppl-r { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 220px) auto; gap: var(--s3); align-items: center; min-width: 0; }
+.mrg-ppl-b { display: flex; flex-direction: column; min-width: 0; }
+.mrg-ppl-s { color: var(--text-muted); font-size: var(--fs-note); }
+.mrg-ppl-sel { width: 100%; min-width: 0; }
+.mrg-ppl-same { white-space: nowrap; }
+
+/* 合成联系人：挑人、留谁 */
+.mrg-pick { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+.mrg-pick-r { display: flex; min-width: 0; max-width: 100%; margin-inline-end: 0; }
+.mrg-pick-r > span:last-child { min-width: 0; overflow: hidden; }
+.mrg-out { margin: 0; padding-left: 1.2em; color: var(--ink-soft); font-size: var(--fs-note); line-height: 1.6; }
+.mrg-out-k { display: inline-block; min-width: 3.5em; margin-right: var(--s2); color: var(--text-muted); }
+.mrg-move { margin: 0; min-width: 0; }
+
+/* 历史变更里的合并单 */
+.mrg-orders { margin: 0 0 var(--s3); padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
+.mrg-order { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--panel); min-width: 0; }
+.mrg-order-h { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.mrg-order-k { flex: none; padding: 0 var(--s1); border-radius: var(--r-tag); background: var(--brand-bg); color: var(--brand); font-size: var(--fs-min); line-height: 18px; }
+.mrg-order-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrg-order-s { flex: none; color: var(--text-muted); font-size: var(--fs-note); }
+.mrg-order.is-undone .mrg-order-t { color: var(--text-muted); }
+.mrg-left { margin: 0; padding-left: 1.2em; color: var(--ink-soft); font-size: var(--fs-note); line-height: 1.6; }
+.mrg-left li { overflow-wrap: anywhere; }
+
+@media (max-width: 767px) {
+  /* 两家改成上下两段：每一项「项」一行，下面「留下」「并进来」各一行，带小标签 */
+  .mrg-cmp-h { display: none; }
+  .mrg-cmp-r { grid-template-columns: minmax(0, 1fr); gap: 2px; padding: var(--s2) var(--s3); }
+  .mrg-cmp-k { color: var(--text-muted); font-size: var(--fs-note); }
+  .mrg-cmp-tag { display: inline; min-width: 3.5em; }
+  .mrg-ppl-r { grid-template-columns: minmax(0, 1fr) auto; }
+  .mrg-ppl-b { grid-column: 1 / -1; }
+  .mrg-cand { min-height: var(--hit-touch); }
+}
