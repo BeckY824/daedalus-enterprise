@@ -32,7 +32,7 @@ import { dayjs } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 指定选项 } from "@/lib/enterprise/designate-options";
-import { 企业版字典 } from "@/lib/project/stage-dict";
+import { 企业版字典, 显示节点名 } from "@/lib/project/stage-dict";
 import { 有效线索节点 } from "@/lib/project/stage-gates";
 import { 是项目卡, 不可撤销, 并进描述, type 项目卡 } from "@/lib/agent/project-proposals";
 import { 落印行们 } from "@/lib/agent/seal-lines";
@@ -201,6 +201,11 @@ export default function ProposalCard({
   /** 市场成员撞上客户：这位客户在推的项目个数（含 0，只给个数），错误下面一行；服务端不是市场成员不带 */
   const [在推个数, set在推个数] = useState<number | null>(null);
   /**
+   * 查重撞上的本机客户名下有交付结清的项目（11-25，P-界面-63）：「当前进程」的潜客培育那一项写后售培育（value 照旧潜客培育，存的不变）。
+   * 再点确认时不先清（写入中那一下不来回跳字），以服务端这次回的为准
+   */
+  const [撞上后售, set撞上后售] = useState(false);
+  /**
    * 确认之后的回执：几点写入、怎么撤、建成的项目（企业版新线索卡，「查看」直接打开它）。
    * 存在任务表里（lib/ai-jobs 的 落印回执），卡片重挂也还在，刷新页面才没
    */
@@ -330,6 +335,7 @@ export default function ProposalCard({
     set公海号(r.公海号 ?? null);
     set同事号(r.同事号 ?? null);
     set在推个数(r.在推个数 ?? null);
+    set撞上后售(!!r.后售);
     return false;
   }
 
@@ -838,7 +844,7 @@ export default function ProposalCard({
                   </Field>
                 )}
                 <Field label="当前进程">
-                  <Select size="small" style={{ width: 150 }} value={draft.节点} options={线索节点们.map((v) => ({ value: v, label: v }))} onChange={(v) => setDraft({ ...draft, 节点: v })} />
+                  <Select size="small" style={{ width: 150 }} value={draft.节点} options={线索节点们.map((v) => ({ value: v, label: 显示节点名(v, 撞上后售, 企业版字典) }))} onChange={(v) => setDraft({ ...draft, 节点: v })} />
                 </Field>
                 {/* 指定回复时间（11-17，选填）：和新建项目同两格（components/ReplyWindowInput.tsx） */}
                 <Field label="指定回复" block>
@@ -847,7 +853,7 @@ export default function ProposalCard({
               </>
             ) : 渠道名们 ? (
               <Field label="建成" block>
-                <span className="muted">负责人：我 · 阶段：线索 · {企业版字典.节点们.线索[0]} · 金额 0</span>
+                <span className="muted">负责人：我 · 阶段：线索 · {显示节点名(企业版字典.节点们.线索[0], 撞上后售, 企业版字典)} · 金额 0</span>
               </Field>
             ) : (
               <Field label="状态">

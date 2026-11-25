@@ -125,6 +125,17 @@ describe("撞了：不建、提醒原负责人", () => {
     expect(乙的).not.toHaveProperty("在推个数");
   });
 
+  it("撞上的客户名下有交付结清的项目（11-25，P-界面-63）：带 后售（卡上当前进程写后售培育）；没有、软删了的不带；不建项目", async () => {
+    const 老客户 = await 甲先建({ phone: "13700001234" });
+    当(乙);
+    expect(await applyProposal(卡({ phone: "13700001234" }) as never)).not.toHaveProperty("后售");
+    await prisma.project.updateMany({ where: { customerId: 老客户.id }, data: { phase: "交付", node: "交付结清", result: "交付结清", closedAt: new Date() } });
+    expect(await applyProposal(卡({ phone: "13700001234" }) as never)).toMatchObject({ ok: false, error: 查重提示.AI建档重复("小甲"), 后售: true });
+    expect(await prisma.project.count()).toBe(1);
+    await prisma.project.updateMany({ where: { customerId: 老客户.id }, data: { deletedAt: new Date() } });
+    expect(await applyProposal(卡({ phone: "13700001234" }) as never)).not.toHaveProperty("后售");
+  });
+
   it("同一张卡点两次：只建一条待办", async () => {
     await 甲先建({ phone: "13700001234" });
     当(乙);
