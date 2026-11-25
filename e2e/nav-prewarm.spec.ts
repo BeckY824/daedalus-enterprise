@@ -56,6 +56,18 @@ test("手机宽度：不预热", async ({ page }) => {
   expect(await 数预热(page, "/follow-ups/plans")).toEqual([]);
 });
 
+/** 同上，但按路径记下每一次的时刻（数补热了几轮） */
+function 记每次整页(page: Page) {
+  const 每次 = new Map<string, number[]>();
+  page.on("request", (r) => {
+    const h = r.headers();
+    if (r.method() !== "GET" || h["rsc"] !== "1" || h["next-router-prefetch"]) return;
+    const p = new URL(r.url()).pathname;
+    每次.set(p, [...(每次.get(p) ?? []), Date.now()]);
+  });
+  return 每次;
+}
+
 /** 不带 next-router-prefetch 的 GET RSC（整页预取、真点击都长这样）：按路径记第一次的时刻 */
 function 记整页(page: Page) {
   const 首次 = new Map<string, number>();
@@ -68,9 +80,9 @@ function 记整页(page: Page) {
   return 首次;
 }
 
-test("宽屏：保存后停 2 秒再一页一页重热左栏，只热常用的前 2 页、离上次预热不到 60 秒不热（跳转优化 PR-B）", async ({ page }) => {
+test("宽屏：保存后重热左栏只热常用的前 2 页；离上次预热不到 60 秒不马上热，顺延到满 60 秒补热一轮（跳转优化 PR-B）", async ({ page }) => {
   test.skip(不预热, "设了 none 不预热");
-  // 要等过 60 秒的限频（lib/prefetch-full 预热最短）
+  // 要等满 60 秒的限频（lib/prefetch-full 预热最短）
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await 登录(page);
@@ -94,29 +106,27 @@ test("宽屏：保存后停 2 秒再一页一页重热左栏，只热常用的�
   await expect(page.locator('aside.pane-roster:not([aria-busy="true"])')).toBeVisible();
   const 星 = page.locator(".rec-star").first();
   const 原 = await 星.getAttribute("aria-pressed");
-  const 算重热 = (首次: Map<string, number>) => [...首次].filter(([p]) => 可预热页.has(p) && (!列表 || 列表.includes(p))).sort((a, b) => a[1] - b[1]);
+  const 算重热 = (每次: Map<string, number[]>) =>
+    [...每次].filter(([p]) => 可预热页.has(p) && (!列表 || 列表.includes(p))).flatMap(([p, ts]) => ts.map((t) => [p, t] as const)).sort((a, b) => a[1] - b[1]);
 
-  // 离打开时的预热不到 60 秒：存了也不重热（限频，审查 11-25）
-  const 限频内 = 记整页(page);
+  // 离打开时的预热不到 60 秒：存了不马上重热（限频，审查 11-25）
+  const 重热们 = 记每次整页(page);
   await 星.click();
   await expect(星).toHaveAttribute("aria-pressed", 原 === "true" ? "false" : "true");
   await page.waitForTimeout(5000);
-  expect(算重热(限频内), "离上次预热不到 60 秒就重热了").toEqual([]);
+  expect(算重热(重热们), "离上次预热不到 60 秒就重热了").toEqual([]);
+  // 限频内再存一下：不再多挂一轮
   await 星.click();
   await expect(星).toHaveAttribute("aria-pressed", 原 ?? "false");
 
-  // 过了 60 秒再存：停 2 秒后重热
-  await page.waitForTimeout(Math.max(0, 开页 + 63_000 - Date.now()));
-  const 首次 = 记整页(page);
-  const t0 = Date.now();
-  await 星.click();
-  await expect(星).toHaveAttribute("aria-pressed", 原 === "true" ? "false" : "true");
-  await page.waitForTimeout(8000);
-  const 重热 = 算重热(首次);
-  // 收藏一下就是一次会刷新的保存：Next 清掉整个预取缓存，停 2 秒后重热；只热常用在前的前 2 页
-  expect(重热.length, "保存后没重热左栏").toBeGreaterThan(0);
-  expect(重热.length, `重热了 ${重热.map((x) => x[0]).join(" ")}，多于 2 页`).toBeLessThanOrEqual(2);
-  expect(重热[0][1] - t0, "保存后没停 2 秒就重热了").toBeGreaterThanOrEqual(1800);
+  // 满 60 秒那一刻补热一轮（上次预热在 开页 之后，补热不会早于 开页 + 60 秒）
+  await page.waitForTimeout(Math.max(0, 开页 + 75_000 - Date.now()));
+  const 重热 = 算重热(重热们);
+  expect(重热.length, "限频内存了，满 60 秒也没补热").toBeGreaterThan(0);
+  // 只热常用在前的前 2 页，存了两下也只补一轮
+  expect(重热.length, `补热了 ${重热.map((x) => x[0]).join(" ")}，多于 2 页`).toBeLessThanOrEqual(2);
+  expect(new Set(重热.map((x) => x[0])).size, "同一页补热了两轮").toBe(重热.length);
+  expect(重热[0][1] - 开页, "没等满 60 秒就补热了").toBeGreaterThanOrEqual(60_000);
   // 一页一页地发：相邻两页至少隔约 600ms（留 150ms 余量）
   for (let i = 1; i < 重热.length; i++) expect(重热[i][1] - 重热[i - 1][1], `${重热[i - 1][0]} → ${重热[i][0]} 挤在一起发了`).toBeGreaterThanOrEqual(450);
   // 收藏点回去、人删掉，不留给别的用例

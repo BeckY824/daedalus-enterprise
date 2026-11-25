@@ -265,26 +265,48 @@ describe("外壳的预热调度（开预热器：重热只一轮、限频、整�
     器.停();
   });
 
-  it("限频：离上次预热不到 60 秒，保存后、回到页面都不重热；过了 60 秒再存就热", () => {
+  it("限频：60 秒内存了不马上热，顺延到满 60 秒那一刻补热一轮、只热前 2 页；回到页面也不提前", () => {
     vi.setSystemTime(2_000_000);
     const { router, 发了 } = 假路由();
-    const 器 = 开预热器(router, ["/customers", "/pool"]);
+    const 器 = 开预热器(router, 名单);
     器.热();
-    vi.advanceTimersByTime(预热间隔 * 2);
-    expect(发了).toHaveLength(2);
+    vi.advanceTimersByTime(预热间隔 * 名单.length);
+    expect(发了).toHaveLength(名单.length);
     清缓存(发了);
     vi.advanceTimersByTime(重热等 + 预热间隔 * 3);
     for (const f of [...(听.visibilitychange ?? [])]) f();
     vi.advanceTimersByTime(预热间隔 * 3);
-    expect(发了).toHaveLength(2);
-    vi.advanceTimersByTime(预热最短);
-    清缓存(发了.slice(0, 1));
-    vi.advanceTimersByTime(重热等 + 预热间隔 * 3);
-    expect(发了.map((x) => x.href)).toEqual(["/customers", "/pool", "/customers", "/pool"]);
+    expect(发了).toHaveLength(名单.length);
+    // 到「上次预热 + 60 秒」前一刻还没热
+    vi.advanceTimersByTime(2_000_000 + 预热最短 - 1 - Date.now());
+    expect(发了).toHaveLength(名单.length);
+    vi.advanceTimersByTime(1 + 预热间隔 * 3);
+    expect(发了.slice(名单.length).map((x) => x.href)).toEqual(["/customers", "/pool"]);
+    // 补的这一轮之后不再自己热
+    vi.advanceTimersByTime(预热最短 * 3);
+    expect(发了).toHaveLength(名单.length + 2);
     器.停();
   });
 
-  it("限频按标签页算：外壳重挂（新的预热器）也不在 60 秒内再热", () => {
+  it("限频内连着存三下（隔得开、各自都走到了 热()）：只挂一个顺延钟，到 60 秒只补一轮", () => {
+    vi.setSystemTime(2_500_000);
+    const { router, 发了 } = 假路由();
+    const 器 = 开预热器(router, 名单);
+    器.热();
+    vi.advanceTimersByTime(预热间隔 * 名单.length);
+    for (let i = 0; i < 3; i++) {
+      清缓存(发了.slice(0, 名单.length));
+      vi.advanceTimersByTime(重热等 + 10_000);
+    }
+    expect(发了).toHaveLength(名单.length);
+    vi.advanceTimersByTime(预热最短);
+    expect(发了.slice(名单.length).map((x) => x.href)).toEqual(["/customers", "/pool"]);
+    vi.advanceTimersByTime(预热最短 * 3);
+    expect(发了).toHaveLength(名单.length + 2);
+    器.停();
+  });
+
+  it("限频按标签页算：外壳重挂（新的预热器）也不在 60 秒内再热，满 60 秒才热", () => {
     vi.setSystemTime(3_000_000);
     const { router, 发了 } = 假路由();
     const 一 = 开预热器(router, ["/customers"]);
@@ -294,6 +316,8 @@ describe("外壳的预热调度（开预热器：重热只一轮、限频、整�
     二.热();
     vi.advanceTimersByTime(预热间隔 * 3);
     expect(发了).toHaveLength(1);
+    vi.advanceTimersByTime(预热最短);
+    expect(发了).toHaveLength(2);
     二.停();
   });
 
@@ -325,6 +349,18 @@ describe("外壳的预热调度（开预热器：重热只一轮、限频、整�
     vi.advanceTimersByTime(重热等 * 2);
     expect(发了).toHaveLength(1);
     expect(听.visibilitychange ?? []).toHaveLength(0);
+  });
+
+  it("停()：限频内已经挂上的顺延钟也一起停", () => {
+    vi.setSystemTime(5_500_000);
+    const { router, 发了 } = 假路由();
+    const 器 = 开预热器(router, ["/customers"]);
+    器.热();
+    器.热();
+    expect(发了).toHaveLength(1);
+    器.停();
+    vi.advanceTimersByTime(预热最短 * 2);
+    expect(发了).toHaveLength(1);
   });
 
   it("当前这页先不取，离开后补上；地址发出去那一刻按 解析 算", () => {

@@ -278,7 +278,7 @@ export function 触摸预取(router: 路由, href: string, 起点?: { x: number;
 
 /* ---------------- 外壳的预热调度（AppShell 用；拆出来好测） ---------------- */
 
-/** 每个标签页两次预热之间至少隔多久（审查 11-25）：不到就跳过 */
+/** 每个标签页两次预热之间至少隔多久（审查 11-25）：不到就顺延到「上次 + 这么久」那一刻再热 */
 export const 预热最短 = 60_000;
 /** 保存后、回到页面的重热只热常用在前的前几页（企业版默认名单 6 页整页，每存一下都全取一遍太重） */
 export const 重热几页 = 2;
@@ -289,15 +289,17 @@ let 上次预热 = -Infinity;
 
 /**
  * 外壳的空闲预热 + 保存后重热 + 回到页面重热。要 = 预热名单（已按常用在前排好）。
- * - 热()：第一次热整份，之后只热前 重热几页；离上次不到 预热最短 就跳过；在后台不热（回到前台时补）；
+ * - 热()：第一次热整份，之后只热前 重热几页；离上次不到 预热最短 就顺延——定一个钟到「上次预热 + 预热最短」再热，
+ *   同一时刻只挂一个钟，重复叫不叠加（频率上限仍是每分钟一次，存了的改动最晚一分钟内也热上）；在后台不热（回到前台时补）；
  * - 保存后：Next 清预取缓存时叫这一批挂的 onInvalidate → 清「刚取过」→ 停 重热等 再 热()，连着几下合成一次；
  * - 回到页面（visibilitychange）离上次超过 预热最短 就 热()；
  * - 补漏()：热的时候正在眼前、没取的那页，人离开后补上（名单只配了这一页时不然一直没热过）；
- * - 停()：重热钟停掉、监听摘掉、还没发的整批撤掉。
+ * - 停()：重热钟、顺延钟停掉、监听摘掉、还没发的整批撤掉。
  * c2 另把 CRM_NAV_PREWARM 配成 /customers,/pool，和限频一起把重热压到每分钟最多 2 页
  */
 export function 开预热器(router: 路由, 要: string[], 选项: { 解析?: (键: string) => string; 能热?: () => boolean } = {}) {
   let 重热钟: ReturnType<typeof setTimeout> | undefined;
+  let 顺延钟: ReturnType<typeof setTimeout> | undefined;
   let 停了 = false;
   let 整份热过 = false;
   let 漏: string[] = [];
@@ -313,9 +315,19 @@ export function 开预热器(router: 路由, 要: string[], 选项: { 解析?: (
   function 热() {
     if (停了 || (选项.能热 && !选项.能热())) return;
     if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
-    const 现在 = Date.now();
-    if (现在 - 上次预热 < 预热最短) return;
-    上次预热 = 现在;
+    const 还差 = 上次预热 + 预热最短 - Date.now();
+    if (还差 > 0) {
+      // 限频内：顺延到满一分钟那一刻再热（已经挂着就不再挂；到点时在后台就照后台的规矩，回到前台再补）
+      if (顺延钟 === undefined)
+        顺延钟 = setTimeout(() => {
+          顺延钟 = undefined;
+          热();
+        }, 还差);
+      return;
+    }
+    clearTimeout(顺延钟);
+    顺延钟 = undefined;
+    上次预热 = Date.now();
     const 页们 = 整份热过 ? 要.slice(0, 重热几页) : 要;
     整份热过 = true;
     漏 = 页们.filter((k) => k === 此页());
@@ -338,6 +350,7 @@ export function 开预热器(router: 路由, 要: string[], 选项: { 解析?: (
     停() {
       停了 = true;
       clearTimeout(重热钟);
+      clearTimeout(顺延钟);
       撤们.forEach((f) => f());
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", 回来);
     },
