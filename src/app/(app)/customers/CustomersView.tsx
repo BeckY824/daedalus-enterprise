@@ -82,7 +82,7 @@ import { 看板工具位 } from "./board-slot";
 import { 客户编号显示 } from "@/lib/customer-no";
 import { 客户抬头, 客户显名, type 抬头节点格 } from "@/lib/enterprise/customer-title";
 import { 出错原话 } from "@/lib/stale-deploy";
-import type { 来源筛选组 } from "@/lib/enterprise/customer-source-filter";
+import { 切我分出去的去掉, 触点显示名, type 来源筛选组 } from "@/lib/enterprise/customer-source-filter";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -991,10 +991,13 @@ export default function CustomersView({
       },
     },
     { title: "客户分配", key: "assignWay", width: 100, 默认: false, render: (_: unknown, r) => (有值(r.assignWay) ? r.assignWay : 空) },
-    // 客户来源（11-05 用户：「列」的可选列里加「客户来源」；P-渠道-01 列里只显示主渠道，悬停看「主|子」全称）= 建档时选的渠道（Customer.channelId，建好就锁），默认收着；渠道名可能很长，一行省略、悬停看全
+    // 客户来源（11-05 用户：「列」的可选列里加「客户来源」；P-渠道-01 列里只显示主渠道，悬停看「主|子」全称；没主渠道写触点）= 建档时选的渠道（Customer.channelId，建好就锁），默认收着；渠道名可能很长，一行省略、悬停看全
     {
       title: "客户来源", key: "channelName", width: 120, 默认: false,
-      render: (_: unknown, r) => (有值(r.channelName) ? <span className="clamp-1" style={{ display: "block" }} title={渠道显示名(r.channelName)}>{主渠道显示名(r.channelName)}</span> : 空),
+      // 主渠道空、只挂触点（P-渠道-08 公司资源 / 客户介绍）：写「公司资源（触点）」，和「客户来源」筛选下拉一个写法（F-049）
+      render: (_: unknown, r) => (有值(r.channelName)
+        ? <span className="clamp-1" style={{ display: "block" }} title={渠道显示名(r.channelName)}>{主渠道显示名(r.channelName)}</span>
+        : 有值(r.touchpoint) ? <span className="clamp-1" style={{ display: "block" }} title={触点显示名(r.touchpoint)}>{触点显示名(r.touchpoint)}</span> : 空),
     },
   ];
 
@@ -1233,7 +1236,7 @@ export default function CustomersView({
   */
   const 看法切换 = 项目看板
     ? (!空库 || 市场视图) && !子集 && (市场视图
-      ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router, ["scope"])} />
+      ? <Segmented<string> aria-label="客户列表 / 我分出去的" options={[...市场视图名]} value={市场视图名[0]} onChange={(v) => v === 市场视图名[1] && 换客户页看法("board", router, 切我分出去的去掉(f.channelId))} />
       : <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={换项目看法到 ?? 项目看法} onChange={换项目看法} />)
     : 能看板 && !空库 && <Segmented<"列表" | "看板"> aria-label="列表 / 看板" options={["列表", "看板"]} value={看法} onChange={set看法} />;
   /** 「新建 ▾ → 新建项目」点一次挂一份（换 key 重挂 = 重新打开选新老客户的框）；0 = 还没点过、不加载 */

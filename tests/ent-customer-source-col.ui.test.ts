@@ -50,20 +50,20 @@ beforeAll(async () => {
     const 长='某某超长贸易进出口有限公司'.repeat(6);
     const users=[{id:'me',name:'小王',email:'s1',role:'SALES',active:true},{id:'u2',name:'小张',email:'s2',role:'SALES',active:true},{id:'boss',name:'老板',email:'b',role:'ADMIN',active:true}];
     const row={id:'c1',name:长,phone:'13800000001',school:长,grade:null,major:null,followStatus:'待跟进',decisionStatus:'了解中',salesOwnerId:'me',salesOwnerName:'小王',createdAt:'2026-10-01T00:00:00.000Z',updatedAt:'2026-10-01T00:00:00.000Z',lastFollowAt:null,signedAmount:0,referrerCustomerId:null,referrerName:null,channelId:'ch1',channelName:window.__来源??null,expectedSignAt:null,remark:null};
-    window.__render=({what,能,锁,空,粘贴,编辑,企,来源,渠道})=>{window.__来源=来源;const row2={...row,channelName:来源??null};root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'me',name:'小王'}}><TruncTip/>{
-      what==='list'?<CustomersView rows={空?[]:[row2]} total={空?0:1} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{}} 能导入导出={能} 负责人只能自己={锁} 直接粘贴={粘贴} 客户数={空?0:1} 企业版={!!企} 渠道筛选项={渠道}/>:
+    window.__render=({what,能,锁,空,粘贴,编辑,企,来源,渠道,触点,筛,市场})=>{window.__来源=来源;const row2={...row,channelName:来源??null,touchpoint:触点??null};root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><我Provider value={{id:'me',name:'小王'}}><TruncTip/>{
+      what==='list'?<CustomersView rows={空?[]:[row2]} total={空?0:1} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={筛??{}} 项目看板={!!市场} 市场视图={!!市场} 能导入导出={能} 负责人只能自己={锁} 直接粘贴={粘贴} 客户数={空?0:1} 企业版={!!企} 渠道筛选项={渠道}/>:
       <CustomerForm open editing={编辑?{id:'c1',name:'老客户',phone:'13800000001',salesOwnerId:'u2',salesOwnerName:'小张',followStatus:'待跟进',decisionStatus:'了解中',updatedAt:'2026-10-01T00:00:00.000Z'}:null} users={users} channels={[]} 负责人只能自己={锁} onClose={()=>{}}/>
     }</我Provider></BusinessProvider></App></ConfigProvider>);};
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-type 参数 = { what: "list" | "form"; 能?: boolean; 锁?: boolean; 空?: boolean; 粘贴?: boolean; 编辑?: boolean; 企?: boolean; 来源?: string | null; 渠道?: ReturnType<typeof 客户来源筛选项> | { value: string; label: string }[] };
+type 参数 = { what: "list" | "form"; 能?: boolean; 锁?: boolean; 空?: boolean; 粘贴?: boolean; 编辑?: boolean; 企?: boolean; 来源?: string | null; 渠道?: ReturnType<typeof 客户来源筛选项> | { value: string; label: string }[]; 触点?: string | null; 筛?: Record<string, string>; 市场?: boolean; 地址?: string };
 async function open(p: 参数, width = 1366) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://src.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
-  await page.goto("http://src.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+  await page.goto(`http://src.test/${p.地址 ?? ""}`); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
   await page.evaluate(x => (window as unknown as { __render: (x: 参数) => void }).__render(x), { 能: true, 锁: false, ...p });
   await page.getByRole("button", { name: /新\s*建|保\s*存/ }).first().waitFor();
   return { page, errors };
@@ -108,6 +108,32 @@ it("企业版：没挂渠道的客户这一格写「—」", async () => {
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it("企业版：没主渠道、只挂触点的客户这一格写「公司资源（触点）」（F-049 审查，和下拉一个写法）", async () => {
+  const { page, errors } = await open({ what: "list", 企: true, 来源: null, 触点: "公司资源" });
+  try {
+    await 打开列设置(page);
+    await page.locator(".ant-dropdown").getByText("客户来源", { exact: true }).click();
+    await page.keyboard.press("Escape");
+    const 列号 = await page.locator(".ant-table-thead th").evaluateAll((ths) => ths.findIndex((th) => th.textContent?.includes("客户来源")));
+    expect(列号).toBeGreaterThan(-1);
+    const 格 = page.locator(".ant-table-tbody tr.ant-table-row").first().locator("td").nth(列号);
+    expect((await 格.innerText()).trim()).toBe("公司资源（触点）");
+    expect(await 格.locator('span[title="公司资源（触点）"]').count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+for (const [值, 该去] of [["未填", "/customers"], ["触点:客户介绍", "/customers"], ["ch1", "/customers?channelId=ch1"]] as const) {
+  it(`市场角色切「我分出去的」：客户来源筛的是 ${值} 时${值 === "ch1" ? "留着" : "channelId 一并去掉"}（F-049 审查）`, async () => {
+    const { page, errors } = await open({ what: "list", 企: true, 市场: true, 筛: { channelId: 值 }, 地址: `?${new URLSearchParams({ channelId: 值, scope: "mine" })}` }, 1280);
+    try {
+      await page.getByText("我分出去的", { exact: true }).click();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "")).toBe(该去);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
 
 it("不是企业版：列设置里没有「客户来源」", async () => {
   const { page, errors } = await open({ what: "list", 企: false, 来源: 长渠道 });

@@ -287,6 +287,8 @@ export const 客户行字段 = {
   remark: true,
   referrerCustomerId: true,
   channelId: true,
+  // 渠道触点（P-渠道-08）：主渠道空、只挂触点的客户，列表「客户来源」一列和导出写「公司资源（触点）」（F-049）
+  touchpoint: true,
   salesOwnerId: true,
   channelOwnerId: true,
   updatedAt: true,
@@ -447,6 +449,7 @@ export function 成客户行(r: 取到的行, 号: (p: string) => string) {
     referrerCustomerId: r.referrerCustomerId,
     channelId: r.channelId,
     channelName: r.channel?.name ?? null,
+    touchpoint: r.touchpoint,
     // 推荐人可能是渠道，也可能是已有学员
     referrerName: r.referrerCustomer?.name ?? r.channel?.name ?? null,
     // 渠道归属：往上两代的计算结果

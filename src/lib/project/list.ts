@@ -34,6 +34,7 @@ import { 待分配范围 } from "@/lib/enterprise/await-assign-scope";
 import { 待分配筛, type 待分配数 } from "@/lib/enterprise/await-assign-core";
 import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
+import { 认来源筛选 } from "@/lib/enterprise/customer-source-filter";
 
 /** 判了无效的三个叫法：列表上叫法后面跟原因摘要（客户 11-05（X-09）：「初验无效 · 原因」） */
 const 带原因的叫法: ReadonlySet<验证结果叫法> = new Set<验证结果叫法>(["初验无效", "终验无效", "无效线索"]);
@@ -210,7 +211,10 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 市场 = 企 ? await 读市场身份(me.id) : null;
   const 创建人 = 市场?.视角 === "市场管理" && typeof sp.creator === "string" && 市场.圈.includes(sp.creator) ? sp.creator : "";
   // 自定义筛选（11-06）：渠道和列表上「渠道」一列同一条规则——项目自己选的优先，没选跟客户来源（channel-stats.ts 项目算哪个渠道）
-  const 来源 = 企 && typeof sp.channelId === "string" ? sp.channelId : "";
+  // 只认渠道 id：客户列表那格的「未填」「触点:xx」（F-049，customer-source-filter.ts）是客户的口径，项目不带触点；
+  // 市场角色从客户列表切「我分出去的」、或手改地址栏带过来的，当没筛（不然拿它当渠道 id 比，0 条、框里写原始值）
+  const 来源f = 企 && typeof sp.channelId === "string" ? 认来源筛选(sp.channelId) : null;
+  const 来源 = 来源f?.类 === "渠道" ? 来源f.id : "";
   const 级别筛 = !企 ? "" : sp.level === 未分级 ? 未分级 : (企业级别(sp.level) ?? "");
   const 标签筛 = 企 && typeof sp.projTag === "string" ? sp.projTag.trim().slice(0, 40) : "";
   const 建于 = 创建时间段(sp.createdFrom, sp.createdTo);

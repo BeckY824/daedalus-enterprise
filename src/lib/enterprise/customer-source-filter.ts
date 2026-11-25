@@ -28,6 +28,15 @@ export function 认来源筛选(v: string | null | undefined): 来源筛选 | nu
   return { 类: "渠道", id: s };
 }
 
+/**
+ * 市场角色在客户列表切「我分出去的」（项目页那套）时地址栏要去掉的：scope 照旧（P-界面-51）；
+ * 「客户来源」筛的是「未填」或某个触点时 channelId 一并去掉——项目不带触点，项目页的「渠道」筛选只认渠道 id
+ */
+export function 切我分出去的去掉(channelId: string | null | undefined): string[] {
+  const f = 认来源筛选(channelId);
+  return f && f.类 !== "渠道" ? ["scope", "channelId"] : ["scope"];
+}
+
 /** 触点一格空：null 或空串都算（导入、老数据可能写成空串） */
 const 触点空: Prisma.CustomerWhereInput = { OR: [{ touchpoint: null }, { touchpoint: "" }] };
 
@@ -49,6 +58,9 @@ export function 来源筛选SQL(v: string | null | undefined): { sql: string; va
   return { sql: 'c."channelId" = ?', values: [f.id] };
 }
 
+/** 触点在下拉、列表「客户来源」一列、导出里的写法：「公司资源（触点）」——和停用的同名主渠道「公司资源（已停用）」分得清 */
+export const 触点显示名 = (t: string) => `${t}（触点）`;
+
 export type 来源筛选项 = { value: string; label: string; title?: string };
 export type 来源筛选组 = 来源筛选项 | { label: string; title?: string; options: 来源筛选项[] };
 
@@ -59,7 +71,7 @@ export type 来源筛选组 = 来源筛选项 | { label: string; title?: string;
 export function 客户来源筛选项(渠道项: { value: string; label: string }[]): 来源筛选组[] {
   return [
     { value: 来源未填, label: 来源未填, title: "主渠道和渠道触点都没填" },
-    { label: "渠道触点", options: 渠道触点们.map((t) => ({ value: `${触点前缀}${t}`, label: `${t}（触点）` })) },
+    { label: "渠道触点", options: 渠道触点们.map((t) => ({ value: `${触点前缀}${t}`, label: 触点显示名(t) })) },
     ...(渠道项.length ? [{ label: "渠道", options: 渠道项 }] : []),
   ];
 }

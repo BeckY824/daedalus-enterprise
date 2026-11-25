@@ -182,3 +182,17 @@ describe("1I 超过 N 天没跟进 + 按最近跟进排", () => {
     expect(一).toEqual(["从没跟进更老客户", "从没跟进老客户", "90天前跟进", "31天前跟进", "30天前前一刻跟进"]);
   });
 });
+
+describe("F-049 审查：「公海里有 N 位匹配 ›」不带客户来源", () => {
+  it("项目模式点过去是 /pool、只带关键词：N 不按「客户来源」（未填 / 触点 / 渠道）筛，和点过去看到的一致", async () => {
+    const 渠 = await prisma.channel.create({ data: { name: "F049 渠道", channelOwnerId: 乙.id } });
+    const 海 = await 客户("F049公海客户", 乙.id, { touchpoint: "公司资源" });
+    await prisma.customerPool.create({ data: { customerId: 海.id, reason: "手动" } });
+    const 匹配 = async (sp: Record<string, string>) => ((await 打开(sp, 甲)) as unknown as { total: number; 公海里匹配: number });
+    const 只带词 = await 匹配({ keyword: "F049" });
+    expect([只带词.total, 只带词.公海里匹配]).toEqual([0, 1]);
+    for (const channelId of ["未填", "触点:客户介绍", 渠.id, "触点:公司资源"]) {
+      expect((await 匹配({ keyword: "F049", channelId })).公海里匹配, channelId).toBe(只带词.公海里匹配);
+    }
+  });
+});

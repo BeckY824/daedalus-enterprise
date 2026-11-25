@@ -4,7 +4,8 @@
  * 连库的对拍在 customer-keyword-page.test.ts
  */
 import { describe, expect, it } from "vitest";
-import { 认来源筛选, 来源筛选条件, 来源筛选SQL, 客户来源筛选项, 来源未填, 触点前缀 } from "@/lib/enterprise/customer-source-filter";
+import { 认来源筛选, 来源筛选条件, 来源筛选SQL, 客户来源筛选项, 来源未填, 触点前缀, 切我分出去的去掉, 触点显示名 } from "@/lib/enterprise/customer-source-filter";
+import { 拆导出渠道 } from "@/app/(app)/customers/export-table";
 import { 渠道触点们 } from "@/lib/enterprise/touchpoint";
 
 describe("客户来源筛选取值", () => {
@@ -38,5 +39,22 @@ describe("客户来源筛选取值", () => {
     expect(客户来源筛选项([])).toHaveLength(2);
     // 每个值都认得回来
     for (const g of 组) for (const o of "options" in g ? g.options : [g]) expect(认来源筛选(o.value)).not.toBeNull();
+  });
+
+  it("市场角色切「我分出去的」：筛的是未填 / 触点时 channelId 一并去掉（项目不带触点），渠道 id 留着", () => {
+    expect(切我分出去的去掉(来源未填)).toEqual(["scope", "channelId"]);
+    expect(切我分出去的去掉(`${触点前缀}公司资源`)).toEqual(["scope", "channelId"]);
+    expect(切我分出去的去掉("ch1")).toEqual(["scope"]);
+    expect(切我分出去的去掉("")).toEqual(["scope"]);
+    expect(切我分出去的去掉(undefined)).toEqual(["scope"]);
+  });
+
+  it("「客户来源」显示：没主渠道、有触点写「公司资源（触点）」，导出主渠道那格同一写法；有渠道照旧拆主子", () => {
+    expect(触点显示名("公司资源")).toBe("公司资源（触点）");
+    expect(拆导出渠道(null, "客户介绍")).toEqual(["客户介绍（触点）", ""]);
+    expect(拆导出渠道("", "公司资源")).toEqual(["公司资源（触点）", ""]);
+    expect(拆导出渠道("展会|华东", "公司资源")).toEqual(["展会", "华东"]);
+    expect(拆导出渠道(null, null)).toEqual(["", ""]);
+    expect(拆导出渠道(null)).toEqual(["", ""]);
   });
 });
