@@ -2,7 +2,8 @@
 
 import { 是空值, 有值, 去空, 空显, 空值符 } from "@/lib/empty-value";
 import { useFollowHistory } from "./useFollowHistory";
-import { loadCustomerFeed } from "./follow-history-actions";
+import { loadCustomerFeed, readCustomerFeedRow } from "./follow-history-actions";
+import { useViewAs } from "@/components/ViewAsContext";
 import { CustomerResearchCard, CustomerResearchTag } from "./useCustomerResearch";
 
 
@@ -65,7 +66,7 @@ import { 登记智能总结 } from "@/lib/ai-float";
 import LinkedCustomers from "./LinkedCustomers";
 import { FoldSplit, ProjectFold, 模块钮色, 计数题, type 连体主钮, type 连体色 } from "../../projects/[id]/ProjectFold";
 import { 客户详情左栏, 客户详情待办 } from "../../projects/[id]/card-names";
-import { 沟通都不能记话 } from "@/lib/project/follow-needs-project-text";
+import { 沟通都不能记话, 售后回访名 } from "@/lib/project/follow-needs-project-text";
 import NewProjectEntry from "./NewProjectEntry";
 import { 两行, 更多操作菜单 } from "../../projects/[id]/project-menu";
 import { 客户页摆法, 级别选项, 企业级别, 拼地址, 地址叫法, 简称上限 } from "@/lib/enterprise/customer-v2";
@@ -248,7 +249,7 @@ export default function RecordView({
   const AI已用完 = useAiOutOfCredits();
   const b = useBusiness();
   // 企业版只用项目（P14 第 6 条）：时间线是各项目沟通记录的汇总，翻页走汇总那条查询
-  const history = useFollowHistory(customer.id, followUps, followUpsHasMore, 跟进去处 !== null ? loadCustomerFeed : undefined);
+  const history = useFollowHistory(customer.id, followUps, followUpsHasMore, 跟进去处 !== null ? loadCustomerFeed : undefined, 跟进去处 !== null ? readCustomerFeedRow : undefined);
   const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
   /** 后果框（PR5a）：企业版客户退回公海（dt.pool：后果分条、原因点选、其他原地写） */
@@ -660,7 +661,7 @@ export default function RecordView({
    * 组员能记（11-17 客户定，限本项目的组员）：只能看的客户上有我已进组的在推项目，就照样开记沟通框——
    * 只新记沟通（框里不给待办 / 提醒、不顺带待办 / 计划，只读 = true），关联项目只列这几个；改、删已有的照旧不给
    */
-  const 组员可记 = 全只读 && !管理员只读 && 去项目跟进 && (跟进去处 ?? []).some((p) => !p.结束 && p.能记 === true);
+  const 组员可记 = 全只读 && !管理员只读 && 去项目跟进 && (跟进去处 ?? []).some((p) => (!p.结束 && p.能记 === true) || p.能记售后 === true);
   function openFollow(record: FollowUpRow | null, aiText?: string) {
     if (全只读 && !(组员可记 && !record?.id)) return void 说就地(管理员只读 ? "管理员只能看，不能改任何数据" : 全只读话);
     setFollowInit({ record, aiText });
@@ -726,6 +727,8 @@ export default function RecordView({
     // X-143：只列我能记的（和项目详情记沟通同一条判断：负责人、11-17 起加已进组的组员）。老数据 / 夹具没这一项的照旧列；只读客户上只认明说能记的
     ? (跟进去处 ?? []).filter((p) => !p.结束 && (组员可记 ? p.能记 === true : p.能记 !== false)).map((p) => ({ id: p.id, name: p.主 ? p.名 : `${p.名}（关联）` }))
     : 在推项目;
+  /** 售后回访（11-25，E-283）：我能记售后回访的交付结清项目（主客户是这位的），记沟通框「关联项目」另列一组；从不默认选中 */
+  const 售后项目 = 去项目跟进 ? (跟进去处 ?? []).filter((p) => p.能记售后 === true).map((p) => ({ id: p.id, name: p.名 })) : [];
   const 跟进按钮字 = "记一条沟通";
   function 点跟进() {
     // 只读的客户（虚线下属、市场成员相关）：先说只能看，别说「还没有在推的项目」——项目可能有，只是他看不到（11-03 D3-3）
@@ -1856,6 +1859,7 @@ export default function RecordView({
         contacts={contacts}
         opportunities={[]}
         projects={记沟通项目}
+        售后项目={售后项目}
         新建项目={去项目跟进 ? (能建项目 ? 为记沟通开建项目 : null) : undefined}
         没项目说法={去项目跟进 && (跟进去处 ?? []).some((p) => p.主 && !p.结束) ? 沟通都不能记话 : undefined}
         aiEnabled={aiEnabled}
@@ -2105,6 +2109,23 @@ function StatusPicker({
   );
 }
 
+/**
+ * 本人限时改到点（ISO）：挂上以后按本机钟判，到点重渲一次收起；首帧当不能改（服务端渲染和首帧钟不一样，免得水合对不上）。
+ * 服务端 saveFollowUp 照 本人限时改挡 核 30 分钟，本机钟不准顶多摆着点了说过时
+ */
+function useOwnEditUntil(到?: string): boolean {
+  const [现在, set现在] = useState<number | null>(null);
+  useEffect(() => {
+    if (!到) return;
+    const 量 = () => set现在(Date.now());
+    const 先量 = setTimeout(量, 0);
+    const 剩 = Date.parse(到) - Date.now();
+    const 到点 = 剩 > 0 ? setTimeout(量, Math.min(剩 + 200, 2 ** 31 - 1)) : undefined;
+    return () => { clearTimeout(先量); if (到点) clearTimeout(到点); };
+  }, [到]);
+  return !!到 && 现在 !== null && 现在 <= Date.parse(到);
+}
+
 /** 时间线上「项目：X」默认去项目详情的沟通卡（服务端再判跳不跳） */
 const 项目页地址 = (id: string) => `/projects/${encodeURIComponent(id)}#project-follow`;
 
@@ -2112,6 +2133,10 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const meta = FOLLOW_TYPE_MAP[f.type] ?? FOLLOW_TYPE_MAP.OTHER;
   const [srcOpen, setSrcOpen] = useState(false);
+  // 汇总里本人记的售后回访（项目页进不去的那批）：30 分钟内这条摆「修改」
+  // 切换视图（看别人视角）时不摆：服务端 saveFollowUp 也拦（同 FollowAttachments 藏传 / 删）
+  const 视图中 = useViewAs();
+  const 本人能改 = useOwnEditUntil(汇总 && f.本人售后 && !视图中 ? f.本人可改到 : undefined);
   const 原文 = f.sourceText && (
     <div style={{ marginTop: 2 }}>
       <Typography.Link style={{ fontSize: 12, color: "var(--text-muted)" }} onClick={() => setSrcOpen((v) => !v)}>
@@ -2148,6 +2173,8 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
       <div className="rec-tl-body">
         <div className="rec-tl-head">
           <span className="rec-sum-type">{跟进方式名(f)}</span>
+          {/* 售后回访（11-25，E-283）：方式后面一个浅色小标；窄了整行折，小标不缩 */}
+          {f.afterSale && <Tag bordered={false} color="cyan" className="as-tag" data-testid="follow-after-sale">{售后回访名}</Tag>}
           {时间}
           {f.status !== "已完成" && (
             <Tag color={FOLLOW_RECORD_STATUS_COLOR[f.status] ?? "default"} style={{ margin: 0 }}>
@@ -2159,11 +2186,15 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         <div className="rec-tl-content">{f.content}</div>
         {原文}
         {/* 沟通上的截图、录音（F-047）：市场成员看分出去的客户只剩这条汇总时间线，截图也摆在这里；只看、看大图、下载，传和删去项目详情 */}
-        {f.附件?.length ? <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={false} 能删={false} /> : null}
-        {f.项目 && <div><RowLink href={项目地址(f.项目.id)} className="rec-sum-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink></div>}
+        {/* 本人记的售后回访、挂在我进不去的交付结清项目上（11-25）：这里就能传（服务端 认沟通 售后回访那一道），项目名不做链接 */}
+        {f.附件?.length || f.本人售后 ? <FollowAttachments followUpId={f.id} 附件={f.附件 ?? []} 能传={!!f.本人售后} 能删={false} /> : null}
+        {f.项目 && <div>{f.本人售后
+          ? <span className="rec-sum-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</span>
+          : <RowLink href={项目地址(f.项目.id)} className="rec-sum-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink>}</div>}
         <div className="rec-tl-meta">
           {f.ownerName && <span>{f.ownerName}</span>}
           {f.已修改 && <span title="这条沟通提交后改过，改了什么见操作日志">已修改</span>}
+          {本人能改 && !视图中 && f.本人可改到 && <Typography.Link onClick={onEdit} data-testid="follow-own-edit">修改（{dayjs(f.本人可改到).format("HH:mm")} 前可改）</Typography.Link>}
           {f.duration ? <span>时长 {duration(f.duration)}</span> : null}
           {(f.contactName || f.contactId) && <span>{空显(f.contactName)}{f.contactPosition ? `（${f.contactPosition}）` : ""}</span>}
           {f.participants && <span>参与人：{f.participants}</span>}

@@ -167,7 +167,8 @@ export default async function CustomerDetailPage({
     只项目
       ? Promise.all([
           // 页面渲染：客户可见走请求内缓存（翻页的服务端动作照旧现读）；沟通汇总和「跟进」菜单共用一遍看得到的项目（原来各算一遍）
-          客户页沟通两样(me, customer.id, 页面看得到的客户),
+          // 售后回访（11-25）：客户负责人、在不在公海手上就有，判交付结清项目能不能记时不再查
+          客户页沟通两样(me, customer.id, 页面看得到的客户, { 客户负责人: customer.salesOwnerId, 客户在公海: !!customer.pool }),
           页面可选项("transfer"),
           prisma.followPlan.findMany({ where: { customerId: customer.id, done: false }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }], take: 20 }),
         ])

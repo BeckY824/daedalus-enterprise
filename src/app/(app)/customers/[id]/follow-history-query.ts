@@ -20,5 +20,7 @@ export function serializeFollowHistory(f: Prisma.FollowUpGetPayload<{ include: t
     opportunity: f.opportunity?.customerId === f.customerId ? { id: f.opportunity.id, name: f.opportunity.name } : null,
     updatedAt: f.updatedAt.toISOString(),
     createdAt: f.createdAt.toISOString(),
+    // 售后回访（11-25，E-283）：列表方式后面带「售后回访」小标；普通的不带这一格
+    ...(f.afterSale ? { afterSale: true } : {}),
   };
 }

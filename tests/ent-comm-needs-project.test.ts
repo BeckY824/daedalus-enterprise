@@ -81,10 +81,11 @@ describe("客户页记沟通", () => {
     expect(await 挂在((r as { id: string }).id)).toBe(二.id);
   });
 
-  it("只有一个能记的在推项目（另有同事的、已结束的）：没选也自动挂它", async () => {
+  it("只有一个能记的在推项目（另有同事的、已结束的、我能记售后回访的交付结清）：没选也自动挂它，不挑交付结清", async () => {
     const 我的 = await 项目();
     await 项目({ ownerId: 同事, creatorId: 同事 });
     await 项目({ result: "成功交付" });
+    await 项目({ result: "交付结清", phase: "订单", node: "交付" });
     const r = await 记();
     expect(r).toMatchObject({ ok: true });
     expect(await 挂在((r as { id: string }).id)).toBe(我的.id);

@@ -15,8 +15,12 @@ function mergeRows(...groups: FollowUpRow[][]): FollowUpRow[] {
   return [...rows.values()].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
 }
 
-/** loader：翻页用哪个查询；企业版客户页传 loadCustomerFeed（只读汇总各项目的沟通，P14），默认是客户自己的跟进 */
-export function useFollowHistory(customerId: string, head: FollowUpRow[], headHasMore: boolean, loader: typeof loadFollowHistory = loadFollowHistory) {
+/**
+ * loader：翻页用哪个查询；企业版客户页传 loadCustomerFeed（只读汇总各项目的沟通，P14），默认是客户自己的跟进。
+ * rowReader：改完重读一条用哪个；企业版客户页传 readCustomerFeedRow（汇总那条取一条：带 项目 / 附件 / 本人售后 / 本人可改到 / 已修改，
+ * 普通的 readFollowHistoryRow 拿回来的行没这几格，updatedAt 更新会顶掉翻页翻出来的原行，11-25 复审）
+ */
+export function useFollowHistory(customerId: string, head: FollowUpRow[], headHasMore: boolean, loader: typeof loadFollowHistory = loadFollowHistory, rowReader: typeof readFollowHistoryRow = readFollowHistoryRow) {
   const [state, setState] = useState<HistoryState | null>(null);
   const [pending, setPending] = useState<string | null>(null);
   const currentCustomer = useRef<string | null>(customerId);
@@ -48,7 +52,7 @@ export function useFollowHistory(customerId: string, head: FollowUpRow[], headHa
   }
 
   async function refreshRow(id: string) {
-    const result = await readFollowHistoryRow(customerId, id);
+    const result = await rowReader(customerId, id);
     if (currentCustomer.current !== customerId) return;
     if (!result.ok) throw new Error(result.error);
     if (!result.row) { remove(id); return; }

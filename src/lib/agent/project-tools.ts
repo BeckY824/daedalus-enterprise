@@ -27,7 +27,9 @@ import { dayjs } from "../utils";
 import { 客户显名, 显名列, 客户按名条件 } from "@/lib/enterprise/customer-title";
 import type { Prisma } from "@/generated/prisma";
 import { 在推项目条件 } from "../project/active";
-import { 能往项目记沟通 } from "../project/follow-needs-project";
+import { 能往项目记沟通, 能记售后回访, 售后客户 } from "../project/follow-needs-project";
+import { 是交付, 同名们 } from "../project/stage-dict";
+import { 企业版 } from "../enterprise/switch";
 import { 沟通不是组员话 } from "../project/follow-needs-project-text";
 const str = (v: unknown, max = 60) => (typeof v === "string" ? v.trim().slice(0, max) : typeof v === "number" ? String(v) : "");
 /** 一次最多给人挑几个 */
@@ -42,7 +44,7 @@ type 找到 = { ok: true; 行: 项目行[]; 露: (p: 项目行) => boolean } | {
  * 按 projectId 或名字（项目名、客户名）找项目：先精确、再包含；只在当前账号看得到的范围里。
  * 按客户名找到、但这位客户此刻看不到的（公海里同事的）剔掉，免得拿名字试出来
  */
-async function 找项目(ctx: ToolContext, a: Record<string, unknown>, 限?: Prisma.ProjectWhereInput): Promise<找到> {
+async function 找项目(ctx: ToolContext, a: Record<string, unknown>, 限?: Prisma.ProjectWhereInput, 要卡点 = false): Promise<找到> {
   const id = str(a.projectId, 40);
   const 名 = str(a.project, 60);
   if (!id && !名) return { ok: false, 话: "要说是哪个项目：给 project（项目名或客户名）或 projectId" };
@@ -55,9 +57,19 @@ async function 找项目(ctx: ToolContext, a: Record<string, unknown>, 限?: Pri
     可见 = new Set([...可见, ...(await 看得到的客户(们.map((p) => p.customerId)))]);
     return 们.filter((p) => !名 || p.name.includes(名) || 露(p));
   };
+  /*
+    交付结清那一句（11-25 复审）：只在找到的里有交付结清的才带（企业版才有售后回访）；「不能加卡点」只在加卡点工具里说。
+    记沟通工具在企业版把交付结清的放进了候选（沟通卡 候选条件），一般到不了这里，到了（比如不是企业版）不说售后回访。
+    企业版记沟通、找到的都已结束但没有交付结清的（丢单、线索流失……）：补半句交付结清的可以记售后回访（11-25 复审 S4），免得以为结束了的一概记不了
+  */
+  const 交付话 = (全: 项目行[]) => {
+    if (!企业版()) return "";
+    if (!全.some((p) => 是交付(p.result))) return 要卡点 ? "" : "；交付结清的可以记售后回访";
+    return 要卡点 ? "；交付结清的不能加卡点，只能记售后回访（propose_project_followup）" : "；交付结清的只能记售后回访";
+  };
   const 都不在推 = (全: 项目行[]): 找到 => ({
     ok: false,
-    话: 全.length > 1 ? `找到的这几个项目（${全.map((p) => p.name).join("、")}）都已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）` : `项目「${全[0].name}」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）`,
+    话: `${全.length > 1 ? `找到的这几个项目（${全.map((p) => p.name).join("、")}）都已结束或在公海` : `项目「${全[0].name}」已结束或在公海`}，沟通只能记在还在推进的项目上（没结局、不在公海）${交付话(全)}`,
   });
   /*
     限（记沟通 / 加卡点只找在推的，P-沟通-03）放进查询里：已结束、在公海的不占 候选上限 的名额，也不排在在推的前面。
@@ -211,7 +223,7 @@ export const 项目写工具: Tool[] = [
   {
     name: "propose_project_followup",
     description: `建议在一个项目上记一条沟通，同时定下一步（做什么、哪天）。只出建议卡，人确认后才记。\
-开了超时回收的线索、商机项目，下一步时间必填。要顺手新建卡点用 propose_blocker_add。`,
+开了超时回收的线索、商机项目，下一步时间必填。交付结清的项目只能记售后回访（卡上自动带标记，不要下一步）。要顺手新建卡点用 propose_blocker_add。`,
     args: `{"project": "项目名或客户名", "projectId": "项目 id，可空", "type": "沟通方式，默认电话", "content": "沟通内容", "下一步": "下一步计划", "下一步时间": "YYYY-MM-DD，可空", "reason": "一句话理由"}`,
     async run(a, ctx) {
       return 沟通卡(a, ctx, false);
@@ -444,7 +456,13 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
     只找在推的项目（P-沟通-03：沟通只能挂在推项目——没结局、不在公海、没删；删了的项目本来就查不到）。加卡点卡也是记一条沟通
     （确认时走 记项目沟通Action，企业版已结束、在公海的整条拦下），同一条：已结束 / 公海的不进候选，不然列在前面、挑了也是死路
   */
-  const 找 = await 找项目(ctx, a, 在推项目条件);
+  /*
+    售后回访（11-25，E-283，入口清单 #25）：只记沟通（不加卡点）时，交付结清的项目也进候选——我能在上面记售后回访的（同 能记售后回访），
+    卡上带 售后回访: true（锁着标记、不要下一步），确认时 记项目沟通Action 带上标记
+  */
+  const 带售后 = !要卡点 && 企业版();
+  const 候选条件: Prisma.ProjectWhereInput = 带售后 ? { OR: [在推项目条件, { result: { in: 同名们("交付结清") } }] } : 在推项目条件;
+  const 找 = await 找项目(ctx, a, 候选条件, 要卡点);
   if (!找.ok) return { summary: 找.话, data: { error: 找.话 } };
   const { 规则 } = await 字典();
   const [我, org] = await Promise.all([prisma.user.findUnique({ where: { id: ctx.userId }, select: { id: true, role: true } }), 权限组织()]);
@@ -462,7 +480,13 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
     看得到、记不了的（比如上级看下属的项目）不出卡——出了确认时 记项目沟通Action 也会拦下。原来找到不止一个的，剔掉后照旧让人挑
   */
   const 组员态 = new Map((await prisma.projectMember.findMany({ where: { userId: ctx.userId, projectId: { in: 找.行.map((p) => p.id) } }, select: { projectId: true, inviteStatus: true } })).map((m) => [m.projectId, m.inviteStatus]));
-  const 能记 = (p: 项目行) => !!我 && 能往项目记沟通(我, p, org, 组员态.get(p.id));
+  /** 交付结清的候选：客户负责人、在不在公海按客户判（一位客户一句） */
+  const 售后客们 = new Map<string, Awaited<ReturnType<typeof 售后客户>>>();
+  const 取售后客 = async (ids: string[]) => { for (const id of new Set(ids)) if (!售后客们.has(id)) 售后客们.set(id, await 售后客户(id)); };
+  if (带售后) await 取售后客(找.行.filter((p) => 是交付(p.result)).map((p) => p.customerId));
+  const 售后可记 = (p: { ownerId: string; result: string | null; customerId: string }, 组员状态: string | null | undefined) =>
+    !!我 && 带售后 && 是交付(p.result) && 能记售后回访(我, { ...p, ...(售后客们.get(p.customerId) ?? { 客户负责人: null, 客户在公海: true }) }, org, 组员状态);
+  const 能记 = (p: 项目行) => !!我 && (是交付(p.result) ? 售后可记(p, 组员态.get(p.id)) : 能往项目记沟通(我, p, org, 组员态.get(p.id)));
   let 行们 = 找.行.filter(能记).slice(0, 候选上限);
   if (!行们.length) {
     const 话 = 找.行.length > 1 ? `找到的这几个项目（${找.行.map((p) => p.name).join("、")}）都记不了：${沟通不是组员话.replace("这个项目", "这些项目")}` : 沟通不是组员话;
@@ -493,12 +517,13 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
     const p = 行们[0];
     // 先筛能记 / 能加卡点的再截：最近改过的几个要是都不行，别把后面行的挤掉（一位客户的项目不会很多，多取一些）
     const 们 = await prisma.project.findMany({
-      where: { customerId: p.customerId, id: { not: p.id }, ...在推项目条件 },
+      where: { customerId: p.customerId, id: { not: p.id }, ...候选条件 },
       select: { ...项目列, members: { where: { userId: ctx.userId }, select: { inviteStatus: true } } },
       take: 候选上限 * 5, orderBy: { updatedAt: "desc" },
     });
+    if (带售后) await 取售后客([p.customerId]);
     const 同客户 = 们
-      .filter((x) => !!我 && 能往项目记沟通(我, x, org, x.members[0]?.inviteStatus) && (!要卡点 || 能发(x)))
+      .filter((x) => !!我 && (是交付(x.result) ? 售后可记(x, x.members[0]?.inviteStatus) : 能往项目记沟通(我, x, org, x.members[0]?.inviteStatus)) && (!要卡点 || 能发(x)))
       .map(({ members: _m, ...x }): 项目行 => x)
       .slice(0, 候选上限 - 1);
     if (同客户.length && !本轮点名(p, [p, ...同客户], ctx.问题)) {
@@ -506,7 +531,11 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
       要挑 = true;
     }
   }
-  const 指 = 指向(行们, 找.露, (p) => ({ ...(要时间(p) ? { 要时间: true } : {}), 组员记: 组员记(p) }), 要挑);
+  // 售后回访：候选里有交付结清的就每个都明写 true / false（同 组员记：人在候选里换一个时，补 合进卡里会盖掉上一个的）；交付结清的不要下一步
+  const 有售后 = 行们.some((p) => 是交付(p.result));
+  const 指 = 指向(行们, 找.露, (p) => (是交付(p.result)
+    ? { 组员记: 组员记(p), 售后回访: true }
+    : { ...(要时间(p) ? { 要时间: true } : {}), 组员记: 组员记(p), ...(有售后 ? { 售后回访: false } : {}) }), 要挑);
   // 11-19：卡点不再有标题、卡在哪儿；阻碍原因必填，卡上给设置里启用的原因当下拉（也能现打）
   const 原因可选们 = 要卡点 ? await 可选原因们() : [];
   // 不在字典里的原因：卡上标「新增·待审核」，返回里也告诉模型，让它照实说

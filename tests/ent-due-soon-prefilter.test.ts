@@ -175,4 +175,24 @@ describe("即将逾期：紧筛和粗筛数出来的一样", () => {
       for (const x of r.预警) expect(旧.ids).toContain(x.id);
     }
   }, 60_000);
+
+  it("售后回访撑起来的客户（E-318）：最近跟进是昨天的售后回访，回收起点不认它，名下快到期的项目照样进卡；紧筛和粗筛一样（复审 S1）", async () => {
+    // 客户最近跟进 = 昨天中午那条售后回访；名下潜客培育 6 天前建、按默认 7 天明天到期。照 lastFollowAt 算还有 6 天，不算快到期
+    const 客 = await raw.customer.create({ data: { id: "c-售后", name: "售后客户", phone: "13900000088", salesOwnerId: 老板, lastFollowAt: 刻(1) } });
+    try {
+      await raw.followUp.create({ data: { customerId: 客.id, ownerId: 老板, type: "PHONE", title: "跟进", content: "回访了使用情况", occurredAt: 刻(1), afterSale: true } });
+      await raw.project.create({ data: { id: "x-售后撑", name: "x7", customerId: 客.id, ownerId: 老板, creatorId: 老板, phase: "线索", node: "潜客培育", createdAt: 刻(6) } });
+      const 规则 = 规则of({});
+      const 旧 = await 我(() => 按粗筛(规则, 此刻));
+      expect(旧.ids).toContain("x-售后撑");
+      const 新 = (await 我(() => 即将逾期的项目(规则, 此刻))).sort();
+      expect(新).toContain("x-售后撑");
+      expect(新).toEqual(旧.ids);
+    } finally {
+      await raw.project.deleteMany({ where: { customerId: 客.id } });
+      await raw.followUp.deleteMany({ where: { customerId: 客.id } });
+      await raw.customer.delete({ where: { id: 客.id } });
+    }
+  });
+
 });

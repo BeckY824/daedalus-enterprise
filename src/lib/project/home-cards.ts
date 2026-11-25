@@ -156,7 +156,8 @@ export function 即将逾期紧筛(规则: 组织规则, 字典: 阶段字典, �
     按天数.push({
       node: 节点,
       createdAt: { lt: 起点早于 },
-      customer: { OR: [{ lastFollowAt: null }, { lastFollowAt: { lt: 起点早于 } }] },
+      // 最近跟进是售后回访撑起来的（E-318：回收起点不认售后回访，db.ts 回收认的最近跟进们）：lastFollowAt 晚了也可能快到期，放进来逐个算
+      customer: { OR: [{ lastFollowAt: null }, { lastFollowAt: { lt: 起点早于 } }, { followUps: { some: { afterSale: true, deletedAt: null, occurredAt: { gte: 起点早于 } } } }] },
       // 超时自动转那行不重置起点（同 db.ts 补回收起点留痕），这里也不算，不然刚被轮转的会被筛掉漏数
       logs: { none: { at: { gte: 起点早于 }, ...算回收起点的留痕 } },
     });

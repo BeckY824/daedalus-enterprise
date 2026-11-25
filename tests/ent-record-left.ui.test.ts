@@ -27,7 +27,7 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   // 历史变更里的合并单（合并客户第一批 11-25）：点开才取，这里给空
   stub(/(^|\/)merge-actions$/, 补全动作桩("src/app/(app)/customers/merge-actions.ts", "export const 并进来的合并单=async()=>[],搜合并候选=async()=>[];"));
   stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
-  stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
+  stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false}),readCustomerFeedRow=async()=>({ok:true,row:null});");
   stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
   stub(/^\.\/actions$/, `
     export const 客户删除预检=async()=>({ok:true}),删除前清点=async()=>({}),deleteCustomers=async()=>({ok:false});
@@ -40,7 +40,7 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import Record from '@/app/(app)/customers/[id]/RecordView';import HistoryChanges from '@/app/(app)/customers/[id]/HistoryChanges';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
+    import Record from '@/app/(app)/customers/[id]/RecordView';import HistoryChanges from '@/app/(app)/customers/[id]/HistoryChanges';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {切换视图Provider} from '@/components/ViewAsContext';
     const root=createRoot(document.getElementById('root'));
     const 长='超长联系人名字'.repeat(6);
     const contacts=[
@@ -58,7 +58,7 @@ beforeAll(async () => {
         {id:'f1',type:'EMAIL',title:'客户本身的老跟进',content:'老记录',status:'已完成',duration:null,occurredAt:'2026-10-01T02:00:00.000Z',dueAt:null,participants:null,sourceText:null,ownerName:'QA',contactName:null,contactPosition:null,contactId:null,opportunityId:null,updatedAt:'2026-10-01T02:00:00.000Z',项目:null},
       ],
     };
-    window.__render=(企业,项目模式,加)=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',...(加?.客户改??{})}} contacts={contacts} contracts={contracts} opportunities={[]} tasks={[]} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} {...(企业?{项目们:[],旺旺们:['ww_buyer']}:{})} {...(项目模式?p14:{})} {...(加??{})} 历史变更={加?.历史?<HistoryChanges customerId='a' 摘要={加.历史} 当前项目={null} 客户名='客户A'/>:null}/></BusinessProvider></App></ConfigProvider>);
+    window.__render=(企业,项目模式,加)=>root.render(<ConfigProvider locale={zhCN}><App><切换视图Provider value={!!加?.视图中}><BusinessProvider value={DEFAULT_BUSINESS}><Record customer={{id:'a',extra:null,name:'客户A',phone:'13800138000',school:'某某学校',grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',...(加?.客户改??{})}} contacts={contacts} contracts={contracts} opportunities={[]} tasks={[]} plan={null} users={[]} channels={[]} aiEnabled={false} followUps={[]} followUpsHasMore={false} {...(企业?{项目们:[],旺旺们:['ww_buyer']}:{})} {...(项目模式?p14:{})} {...(加??{})} 历史变更={加?.历史?<HistoryChanges customerId='a' 摘要={加.历史} 当前项目={null} 客户名='客户A'/>:null}/></BusinessProvider></切换视图Provider></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, loader: { ".css": "empty" }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -237,6 +237,40 @@ it("汇总时间线的沟通附件：暗黑下颜色都走 token（文件名是�
     expect(r.字).not.toBe(r.浅色ink);
     expect(r.白底).toBe(0);
   } finally { await page.close(); }
+});
+/*
+  售后回访（11-25 复审）：客户负责人在看不到的交付结清项目上记的那条（本人售后）——项目名不做链接、能传截图 / 录音、30 分钟内摆「修改（HH:mm 前可改）」；
+  切换视图（看别人视角）时「修改」和「加截图 / 录音」都不摆（服务端 saveFollowUp / 附件 POST 也拦）
+*/
+const 本人售后那条 = (到: string) => ({
+  followUps: [
+    { id: "f7", type: "PHONE", title: "", content: "回访了使用情况，设备运行稳定", status: "已完成", duration: null, occurredAt: "2026-11-25T02:00:00.000Z", dueAt: null, participants: null, sourceText: null, ownerName: "QA", contactName: null, contactPosition: null, contactId: null, opportunityId: null, updatedAt: "2026-11-25T02:00:00.000Z", afterSale: true, 项目: { id: "p9", 名: "交付项目甲" }, 本人售后: true, 本人可改到: 到 },
+  ],
+});
+it("本人售后那条：项目名不是链接、能传附件、限时内摆「修改」；切换视图时「修改」和传附件都不摆", async () => {
+  const 到 = new Date(Date.now() + 20 * 60_000).toISOString();
+  for (const 视图中 of [false, true]) {
+    const page = await open(true, 1280, true, { ...本人售后那条(到), 视图中 });
+    try {
+      const 条 = page.locator("#fu-f7");
+      await 条.waitFor();
+      expect(await 条.locator(".rec-sum-proj").innerText()).toBe("项目：交付项目甲");
+      expect(await 条.locator("a.rec-sum-proj, a .rec-sum-proj").count()).toBe(0);
+      const 修改 = 条.locator("[data-testid='follow-own-edit']");
+      const 加 = 条.getByRole("button", { name: /加截图/ });
+      if (!视图中) {
+        // 首帧不摆（水合对得上），量完钟才摆
+        await expect.poll(() => 修改.count()).toBe(1);
+        expect(await 修改.innerText()).toMatch(/^修改（\d{2}:\d{2} 前可改）$/);
+        expect(await 加.count()).toBe(1);
+      } else {
+        // 等一会儿（让 useOwnEditUntil 的钟走一轮）再看：照旧不摆
+        await page.waitForTimeout(150);
+        expect(await 修改.count()).toBe(0);
+        expect(await 加.count()).toBe(0);
+      }
+    } finally { await page.close(); }
+  }
 });
 /* 10-31 改版 R6：企业版客户页头的具名按钮（照项目详情）。原来收在「跟进」旁边的下拉里 */
 const 全开 = {

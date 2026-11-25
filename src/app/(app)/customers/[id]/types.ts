@@ -12,6 +12,8 @@ export type FollowUpRow = {
   method?: string | null;
   /** 企业版发起主体（11-01），老记录没有 */
   initiator?: string | null;
+  /** 售后回访（11-25，交付结清项目上记的）：方式后面带「售后回访」小标 */
+  afterSale?: boolean;
   title: string;
   content: string;
   status: string;
@@ -43,6 +45,13 @@ export type FollowUpRow = {
    * 没附件的不带这个字段；汇总里只看、看大图、下载，传和删回项目详情
    */
   附件?: 附件[];
+  /**
+   * 企业版客户页「沟通记录」汇总时（11-25 售后回访审查）：这条是我记的售后回访、挂在我看不到的交付结清项目上（我是客户负责人，补进来的那批）——
+   * 项目页我进不去：这条在客户页能传截图 / 录音（服务端 认沟通 本人售后回访那一道），项目名不做链接
+   */
+  本人售后?: true;
+  /** 同上那几条：本人限时改能改到几点（ISO，写入 + 30 分钟）；客户页这条摆「修改」，过了收起（服务端 本人限时改挡 照核） */
+  本人可改到?: string;
 };
 
 export type ContactRow = {

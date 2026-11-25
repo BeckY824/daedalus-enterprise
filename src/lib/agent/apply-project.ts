@@ -84,9 +84,12 @@ async function 分派(p: 项目卡, me: 我): Promise<分派结果> {
       const 结 = await 记项目沟通Action(
         p.targetId,
         // 旧卡（11-19 前）带着卡点描述：接在沟通内容后面，不丢
-        { type: p.type, content: 并进描述(p.content, p.卡点描述), occurredAt: new Date().toISOString(), 下一步时间: p.下一步时间 || null, 阶段: 项.phase, 下一步: p.下一步 },
+        // 售后回访（11-25）：交付结清的项目只记这一条，不带阶段、下一步（服务端也不写项目任何一格）
+        p.售后回访
+          ? { type: p.type, content: 并进描述(p.content, p.卡点描述), occurredAt: new Date().toISOString(), 售后回访: true }
+          : { type: p.type, content: 并进描述(p.content, p.卡点描述), occurredAt: new Date().toISOString(), 下一步时间: p.下一步时间 || null, 阶段: 项.phase, 下一步: p.下一步 },
         // 11-19：卡点带阻碍原因（必填，服务端 规整发布 兜），不再带描述
-        p.要卡点 ? { type: p.卡点类型, impact: p.影响等级 || undefined, reasons: p.阻碍原因 ?? [] } : undefined,
+        p.要卡点 && !p.售后回访 ? { type: p.卡点类型, impact: p.影响等级 || undefined, reasons: p.阻碍原因 ?? [] } : undefined,
       );
       if (!结.ok) return { ok: false, error: 话(结) };
       const 卡 = "卡点" in 结 && 结.卡点 ? `；卡点 ${结.卡点} 已发布` : "";

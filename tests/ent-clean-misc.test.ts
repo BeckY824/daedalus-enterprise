@@ -38,7 +38,9 @@ describe("开关本身", () => {
 describe("A2 记跟进的关联项目", () => {
   it("有在推项目：必选、不能清空；没有：写明先建项目（11-17 沟通必须挂项目，取代 P-界面-35）", async () => {
     const s = await 读("src/app/(app)/customers/[id]/FollowUpForm.tsx");
-    expect(s).toMatch(/projects\.length > 0 \?/);
+    // 11-25 售后回访（E-283）：有在推项目、或有能记售后回访的交付结清项目，都摆「关联项目」必选；两样都没有才是 没项目块
+    expect(s).toContain("const 没项目 = !!projects && projects.length === 0 && !售后项目?.length && !record?.id;");
+    expect(s).toMatch(/\{!没项目 \? \(/);
     expect(s).toContain('rules={[{ required: true, message: "请选择关联项目" }]}');
     expect(s).toContain('<span className="fu-np-note">{没项目说法}</span>');
     // 关联项目那格不再能清空、不再有「不挂项目」

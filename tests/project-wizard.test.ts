@@ -322,7 +322,7 @@ describe("只建客户（新建弹窗没开「项目」开关，P-界面-36）",
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: r.customerId } })).lastFollowAt).toEqual(f.occurredAt);
     // 潜客培育项目算在推项目：之后在客户页记沟通自动挂上它
     const { 定沟通挂哪个项目 } = await import("@/lib/project/follow-needs-project");
-    expect(await 定沟通挂哪个项目(mocks.user as never, r.customerId, null)).toEqual({ ok: true, projectId: p.id });
+    expect(await 定沟通挂哪个项目(mocks.user as never, r.customerId, null)).toEqual({ ok: true, projectId: p.id, 售后回访: false });
   });
 
   it("客户撞号：saveCustomer 拦下，联系人、沟通都不建", async () => {
