@@ -57,7 +57,7 @@ import { 分配通知 } from "@/lib/enterprise/notice-sources";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 import {
   能查重领取, 不是市场成员查重领取话, 没撞上公海话, 查重领取作废, 查重领取换人, 公海客户的原负责人, 客户创建人, 要回避, 最近的公海项目, 最近的在推项目,
-  查重领取候选们, 查重领取理由, 挑不到话, 查重领取记沟通, 查重领取口径, 撞上的联系人, 查重领取建线索项目, 认对接人, 落对接人, 发起人领不回, type 认好的对接人, type 录的对接人,
+  查重领取候选们, 查重领取理由, 候选挑不到为什么, 挑不到话, 查重领取记沟通, 查重领取口径, 撞上的联系人, 查重领取建线索项目, 认对接人, 落对接人, 发起人领不回, type 认好的对接人, type 录的对接人,
 } from "@/lib/enterprise/dedupe-claim";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { 落到渠道, 新数据渠道不行 } from "@/lib/enterprise/channel-main";
@@ -774,12 +774,7 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
     if (!谁) {
       // 超持有上限的那句（整批超上限）带着别的销售名下的数和上限，不给市场成员看：只说原因
       if (超上限) return { ok: false, error: 挑不到话("能接的销售名下客户都到持有上限了") };
-      const 参与的 = 底.排位().filter((c) => !底.不参与.includes(c.userId));
-      const 为什么 = !候.人们.length ? `${候.向.线 ?? "两条线"}上没有能接的销售（或业务线对不上）`
-        : !参与的.length ? "能接的销售都暂停或禁止了自动分配"
-        : !底.不限额 && 参与的.some((c) => c.配额 !== null) ? "能接的销售本月都已满额"
-        : "能接的销售都没填配额，不参与自动分配";
-      return { ok: false, error: 挑不到话(为什么) };
+      return { ok: false, error: 挑不到话(候选挑不到为什么(候, 底)) };
     }
     const 为什么 = 查重领取理由(候, 挑的理由(底.排位(), 跳过, 查满, 谁, 底.不限额));
     let 项目id = "";
@@ -856,7 +851,7 @@ async function 新建这条(
   a: { cid: string; 客户名: string; 谁: string; me: string; 渠道: string; 对接人: 认好的对接人; 线: "内贸" | "外贸" | null; way: string; org: NonNullable<Awaited<ReturnType<typeof 权限组织>>> },
 ): Promise<string> {
   const 对接人 = await 落对接人(tx, a.cid, a.对接人, a.me);
-  const id = await 查重领取建线索项目(tx, { customerId: a.cid, 客户名: a.客户名, 接手人: a.谁, 创建人: a.me, 渠道: a.渠道, 对接人, 线: a.线, 分配方式: a.way });
+  const id = await 查重领取建线索项目(tx, { customerId: a.cid, 项目名: a.客户名, 接手人: a.谁, 创建人: a.me, 渠道: a.渠道, 对接人, 线: a.线, 分配方式: a.way });
   if (算市场建给销售(a.org, a.me, a.谁)) await 市场分配进线索验证(tx, [id], a.谁, a.me);
   return id;
 }

@@ -26,7 +26,9 @@ import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 企业级别 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 创建时间段, 是日期 } from "@/lib/custom-date-range";
-import { 不算补建, 不算历史分析 } from "./system-created";
+import { 不算补建, 不算历史分析, 是重复咨询, 重复咨询来源 } from "./system-created";
+import { 看成客户编号严 } from "@/lib/customer-no";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 读批次, 批次参数, 批次条件 } from "./import-batch";
 import { 指定回复文字, 短时刻 } from "./time-fields";
 import { 客户显名 } from "@/lib/enterprise/customer-title";
@@ -81,6 +83,8 @@ export async function 读验证痕们(projectIds: string[]): Promise<Map<string,
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string;
   /** 项目标签（F-项目-14）：字典项名原样比；「未填标签」= 没填的 */
   projTag?: string;
+  /** 数据来源（企业版）：只认「老客户重复咨询」（重复咨询来源）= 只看带这个标记的线索，读 Project.source 不读项目名（客户 E-218）；别的值当没筛 */
+  source?: string;
   /** 创建时间（11-11，渠道页点数字进来要按时间分）：两个日历日，两头都算，北京日界线（custom-date-range.ts 创建时间段） */
   createdFrom?: string; createdTo?: string;
   /**
@@ -217,6 +221,10 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 来源 = 来源f?.类 === "渠道" ? 来源f.id : "";
   const 级别筛 = !企 ? "" : sp.level === 未分级 ? 未分级 : (企业级别(sp.level) ?? "");
   const 标签筛 = 企 && typeof sp.projTag === "string" ? sp.projTag.trim().slice(0, 40) : "";
+  const 来源筛 = 企 && sp.source === 重复咨询来源 ? 重复咨询来源 : "";
+  // 搜原始客户编号（客户 E-218「检索、统计、复盘都读字段」）：关键词里像客户编号的（NO.29792、29792）换成那位客户，
+  // 命中 repeatOfCustomerId 是他的重复咨询线索——负责人改了项目名照样搜得到。只多一支 OR，看不看得到这条线索照旧由列表范围管
+  const 编号客户 = 企 ? await 编号对客户(拆搜索词(词)) : new Map<string, string>();
   const 建于 = 创建时间段(sp.createdFrom, sp.createdTo);
   const 批 = 读批次(sp.batch);
   // 手机号（11-11）：先按号码找客户（电话藏着的人 = null，不筛），再取挂在这些客户上的项目，客户要露
@@ -252,6 +260,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     ...(来源 ? [{ OR: [{ channelId: 来源 }, 看得到的({ channelId: null, customer: { channelId: 来源 } })] }] : []),
     ...(级别筛 ? [{ level: 级别筛 === 未分级 ? null : 级别筛 }] : []),
     ...(标签筛 ? [{ projTag: 标签筛 === 未填标签 ? null : 标签筛 }] : []),
+    ...(来源筛 ? [{ source: 来源筛 }] : []),
     ...(卡 && 规则 ? [首页卡条件(卡, 规则, 字典of(企), 今, 卡负责人们), ...(卡的圈 ? [卡的圈] : [])] : []),
     // 3 天内回公海：粗筛之外再加紧筛（同首页卡的数，tests/ent-due-soon-prefilter.test.ts 两种筛对拍），候选少取一些；剩下的取回逐个算
     ...(卡 === "due-soon" && 规则 ? [即将逾期紧筛(规则, 字典of(企), 今) ?? { id: { in: [] } }] : []),
@@ -265,7 +274,8 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     // 各词可以一个中项目名、一个中客户名；像号码、客户编号、网址的整串不拆。全半角写法：库里存全角字母、人也敲全角的照旧中
     ...拆搜索词(词).map((w): Prisma.ProjectWhereInput => {
       const 名 = 全半角写法(w).map((x) => ({ name: { contains: x } }));
-      return { OR: [...名, 并露({ customer: 名.length === 1 ? 名[0] : { OR: 名 } })] };
+      const 原始客户 = 编号客户.get(w);
+      return { OR: [...名, 并露({ customer: 名.length === 1 ? 名[0] : { OR: 名 } }), ...(原始客户 ? [{ repeatOfCustomerId: 原始客户 }] : [])] };
     }),
   ];
   // 企业版 C-01：公海里我是历史负责人的项目我看不到（总管理 / 管理员不算，lib/project/pool-owner.ts 回避豁免）
@@ -279,7 +289,22 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     ...(sp.pool === "1" ? { pooledAt: { not: null } } : 企 && !卡 ? { pooledAt: null } : {}),
     ...(并且.length ? { AND: 并且 } : {}),
   };
-  return { where, 词, 企, 规则, 今, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 号码, 收回筛, 批, 待分配筛中, 待分配 };
+  return { where, 词, 企, 规则, 今, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 来源筛, 号码, 收回筛, 批, 待分配筛中, 待分配 };
+}
+
+/**
+ * 关键词里像客户编号的词 → 那位客户的 id（按编号精确比，客户编号唯一；回收站里的客户也认，重复咨询线索还挂着他）。
+ * 只拿来比 Project.repeatOfCustomerId，不回客户的任何字段。判法用更严的 看成客户编号严（带 NO. 或够 5 位纯数字）：「2024」不触发
+ */
+async function 编号对客户(词们: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const w of 词们) {
+    const n = 看成客户编号严(w);
+    if (!n) continue;
+    const c = await 看全部(() => 看已删(() => prisma.customer.findUnique({ where: { customerNo: n }, select: { id: true } })));
+    if (c) out.set(w, c.id);
+  }
+  return out;
 }
 
 /**
@@ -535,6 +560,8 @@ async function 拼项目行(
     pooled: !!p.pooledAt,
     ...(企 && p.customer.pool ? { 客户在公海: true } : {}),
     ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
+    // 老客户重复咨询（重复咨询第一步）：项目名旁一枚小标签
+    ...(企 && 是重复咨询(p) ? { 重复咨询: true as const } : {}),
     // 指定分配时间（PR3）：还没到点的定时，负责人那格写「定时 11-20 15:00」，悬停看分给谁
     ...(企 && p.awaitAssignAt && !p.pooledAt && p.scheduledAssignAt ? { 定时分配: { 时: 短时刻(p.scheduledAssignAt, 今) ?? "", 给谁: p.scheduledAssignTo ? 名字.get(p.scheduledAssignTo) ?? "已不在的成员" : null } } : {}),
     ...(企 ? { 即将回收: 将收(p), 回收日: 规则 && !p.pooledAt ? 项目回收日(规则, p, 超时线们) : null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null, 指定回复: p.replyStartAt || p.replyEndAt ? 指定回复文字(p.replyStartAt, p.replyEndAt, 今) : null } : {}),
@@ -707,7 +734,7 @@ export async function 读项目列表(
     邀请们: 邀请.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })),
     // 企业版线索验证（P12）：等我复核 / 终验 / 认领的线索
     待复核们: 待复核.map((r) => ({ ...r, 更新于: r.更新于.toISOString() })),
-    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡 || (条件.待分配筛中 ? 待分配筛 : ""), phase: 阶进.阶段, node: 阶进.进程, creator: 创建人, channelId: 来源, level: 级别筛, projTag: 标签筛,
+    filters: { keyword: 词, ownerId: typeof sp.ownerId === "string" ? sp.ownerId : "", pool: sp.pool === "1" ? "1" : "", recycled: 收回筛, f: 卡 || (条件.待分配筛中 ? 待分配筛 : ""), phase: 阶进.阶段, node: 阶进.进程, creator: 创建人, channelId: 来源, level: 级别筛, projTag: 标签筛, source: 条件.来源筛,
       // 原样回给界面（选择器回显）；写错的那头 创建时间段 当没给
       createdFrom: 是日期(sp.createdFrom) ? sp.createdFrom : "", createdTo: 是日期(sp.createdTo) ? sp.createdTo : "",
       phone: 号码 ? 搜索词(sp.phone) : "",
