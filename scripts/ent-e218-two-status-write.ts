@@ -274,7 +274,8 @@ if (!要写) {
       const x = 一("SELECT custStatus FROM Customer WHERE id = ?", r.id);
       if (x?.custStatus !== r.改后) throw new Error(`回读 NO.${r.t.客户编号} 是「${显((x?.custStatus as string | null) ?? null)}」，应为「${r.改后}」`);
     }
-    const 日志数 = Number(一("SELECT count(*) n FROM AuditLog WHERE entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.批次') = ?", 批次)?.n);
+    // at >= T 走 AuditLog_at_idx：本批日志都记在 T；不带它会全表 json_extract（3703 副本 25 万条约 2 s，整段在写锁里）
+    const 日志数 = Number(一("SELECT count(*) n FROM AuditLog WHERE at >= ? AND entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.批次') = ?", T, 批次)?.n);
     if (日志数 !== 写了) throw new Error(`操作日志 ${日志数} 条 ≠ 改动 ${写了} 行`);
     // 客户 E-244：本批每条日志正文带前缀、detail 带 批次 / 执行 / 依据，逐条核，不对整批回滚
     const 核 = 前缀件.核本批(db, 批次, 依据号, T);
