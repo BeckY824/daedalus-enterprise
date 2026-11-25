@@ -533,6 +533,42 @@ for (const 宽 of [390, 1366]) {
   }, 60_000);
 }
 
+it("刚存完物流单号、页面还没刷新回来就选运输中（11-26）：认刚存上的单号，直接交运输中，不再被带去单号格；刷新回来单号空了照旧带去单号格", async () => {
+  const { page, errors } = await open(true, 1366);
+  try {
+    const 摆 = (单号: string | null, 状态: string | null = "待发货") => page.evaluate(([v, z]) => (window as unknown as { __over: (x: object) => void }).__over({ 备货物流: { 备货状态: null, 物流状态: { 值: z, 选项: ["待发货", "运输中"] }, 物流单号: v } }), [单号, 状态] as const);
+    const 编辑们 = () => page.evaluate(() => ((window as unknown as { __编辑?: unknown[] }).__编辑 ?? []).length);
+    const 最后 = () => page.evaluate(() => ((window as unknown as { __编辑: unknown[] }).__编辑).at(-1));
+    const 卡 = page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^交付$/ }) }).first();
+    const 单号框 = 卡.getByRole("textbox", { name: "物流单号" });
+    const 选运输中 = async () => {
+      await 卡.getByRole("button", { name: "改物流状态", exact: true }).click();
+      await 卡.getByRole("combobox", { name: "物流状态" }).waitFor();
+      await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: "运输中" }).click();
+    };
+    await 摆(null);
+    await 卡.locator(".proj-stock-rows").waitFor();
+    const 前 = await 编辑们();
+    // 先存单号（页面不刷新：桩里的 router.refresh 什么都不做，页面拿到的单号还是空）
+    await 卡.getByRole("button", { name: "改物流单号", exact: true }).click();
+    await 单号框.fill("SF77");
+    await 单号框.press("Enter");
+    await expect.poll(编辑们).toBe(前 + 1);
+    await expect.poll(() => 单号框.count()).toBe(0);
+    // 紧接着选运输中：直接交，不开单号格
+    await 选运输中();
+    await expect.poll(编辑们).toBe(前 + 2);
+    expect(await 最后()).toEqual(["p1", { logisticsStatus: "运输中" }]);
+    expect(await 单号框.count()).toBe(0);
+    // 刷新回来、单号是空的（比如别人刚清了单号、状态也退回没填）：只认页面，照旧带去单号格、不发请求
+    await 摆(null, null);
+    await 选运输中();
+    await 单号框.waitFor();
+    expect(await 编辑们()).toBe(前 + 2);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
 for (const 宽 of [390, 1024, 1280, 1366]) {
   it(`${宽}px 交付结清只在尾款结算（客户 11-19 定稿，跟节点推进开关一起生效）：开关开着停在别的订单节点交付卡不摆按钮、写清先推到尾款结算；到了尾款结算两勾齐才能点；开关关着中间节点照旧能点；不溢出`, async () => {
     const { page, errors } = await open(true, 宽);

@@ -688,7 +688,13 @@ export default function ProjectDetail({
   const [待运输中, set待运输中] = useState<string | null>(null);
   const [开单号, set开单号] = useState(0);
   const 运输中名们 = 备货物流?.运输中 ?? [默认运输中];
-  const 选运输中缺单号 = (v: string | null) => !!v && 运输中名们.includes(v) && !(备货物流?.物流单号 ?? "").trim();
+  /*
+    刚在单号格存上的单号（11-26）：存完 router.refresh 回来之前，页面拿到的 物流单号 还是旧的（空），紧接着选运输中会被当成缺单号、又被带去单号格。
+    记下存的那一下页面给的是哪一份（备货物流 这个对象）：还是那一份 = 还没刷新回来，认刚存的；刷新回来换了一份就只认页面（别人刚清了单号也认得出）
+  */
+  const [刚存单号, set刚存单号] = useState<{ 值: string; 页上: typeof 备货物流 } | null>(null);
+  const 现单号 = 刚存单号 && 刚存单号.页上 === 备货物流 ? 刚存单号.值 : (备货物流?.物流单号 ?? "");
+  const 选运输中缺单号 = (v: string | null) => !!v && 运输中名们.includes(v) && !现单号.trim();
   /** 存项目卡的一格：同一个 编辑项目（权限、字段权限、留痕都在里面）；失败把原因交回格子，留在编辑态 */
   const 存项目项 = async (patch: Parameters<typeof 编辑项目>[1]): Promise<string | null> => {
     const r = await 编辑项目(p.id, patch);
@@ -1701,7 +1707,11 @@ export default function ProjectDetail({
               能改={能就地改}
               回车存
               显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : p.必填?.还差.includes("物流单号") ? 占位确认("物流单号") : 待填("物流单号"))}
-              存={(v) => 存项目项({ trackingNo: 文字格改动(v), ...(待运输中 && v ? { logisticsStatus: 待运输中 } : {}) })}
+              存={async (v) => {
+                const 错 = await 存项目项({ trackingNo: 文字格改动(v), ...(待运输中 && v ? { logisticsStatus: 待运输中 } : {}) });
+                if (!错) set刚存单号({ 值: 文字格改动(v) ?? "", 页上: 备货物流 });
+                return 错;
+              }}
               打开={开单号}
               附言={待运输中 ? `先填物流单号；存上后物流状态一起改成「${待运输中}」` : undefined}
               收起时={() => set待运输中(null)}
