@@ -35,6 +35,7 @@ import { getBusiness } from "@/lib/business";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 算三态, 解除后几天收, 计时起算日, 三态扫过键, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
+import { 去掉合并挪来的 } from "./merge-moved-logs";
 import { 换负责人们of, 撤销计次方式, 并上撤销计次, 换人方式, type 换人行 } from "./tri-state-transfer";
 export { 换负责人们of } from "./tri-state-transfer";
 import { 待交接理由, 有内容的沟通, 沟通生效时刻, 沟通生效时刻SQL, 生效时刻余量, 额度沟通日of, type 额度候选沟通, type 动静事件, 暂缓回收次数, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
@@ -184,7 +185,8 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
     const 沟通日 = await 最近沟通日们(db, 批, 现在, 预读.占位词);
     const 导入 = await 导入完成日们(db, 批);
     const 预读换人 = 预读.换人 && 预读客户 && 预读客户.length === 批.length ? 预读.换人.filter((x) => 这批.has(x.customerId)) : null;
-    const 换人 = 预读换人 ?? await db.customerOwnerLog.findMany({ where: { customerId: { in: 批 } }, select: { id: true, customerId: true, at: true, kind: true, clockReset: true }, orderBy: [{ at: "asc" }, { id: "asc" }] });
+    // 合并客户挪来的（B 的）换人记录不拨 A 的钟：合并本身不拨钟、留下那家自己的历史优先（merge-moved-logs.ts）
+    const 换人 = await 去掉合并挪来的(db, 预读换人 ?? await db.customerOwnerLog.findMany({ where: { customerId: { in: 批 } }, select: { id: true, customerId: true, at: true, kind: true, clockReset: true }, orderBy: [{ at: "asc" }, { id: "asc" }] }));
     const 痕: 痕原行[] = await db.entCustomerStateLog.findMany({
       where: { customerId: { in: 批 } },
       select: { id: true, customerId: true, at: true, userId: true, fromState: true, toState: true, via: true, reason: true, holdDays: true, fromOwnerId: true },

@@ -599,6 +599,31 @@ describe("合并客户后按挪来的沟通重算三态", () => {
     expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).customerId).toBe(B);
     expect(await 钟()).toBe("沉睡");
   });
+
+  it("沉睡的 A 并进上周刚转过人（转让归零）的 B：B 的换人记录挪到 A，但不拨 A 的钟，A 照旧沉睡；撤回后 B 照旧认自己的转让", async () => {
+    await 开三态(95);
+    const 丙 = (await prisma.user.create({ data: { email: "丙", name: "丙", title: "", role: "SALES", password: "x" } })).id;
+    await prisma.entMember.create({ data: { userId: 丙, bizRole: "sales", line: "内贸" } });
+    const B = (await prisma.customer.create({ data: { name: "客户乙", phone: "", salesOwnerId: 乙, createdAt: 那天(400), contacts: { create: { name: "乙联系人", phone: "13800000002", isPrimary: true, createdAt: 那天(400) } } } })).id;
+    await prisma.project.create({ data: { name: "乙项目", customerId: B, ownerId: 乙, creatorId: 乙, phase: "商机", node: "明确需求", createdAt: 那天(400), updatedAt: 那天(400) } });
+    const 转 = await prisma.customerOwnerLog.create({ data: { customerId: B, userId: 乙, fromOwnerId: 丙, toOwnerId: 乙, kind: "assign", clockReset: true, at: 那天(7) } });
+    await 三态夜扫();
+    expect(await 钟()).toBe("沉睡");
+    expect((await 读一位三态(B))!).toMatchObject({ 状态: "活跃", 归零日: 前(7) });
+    const 我 = { id: 乙, name: "乙", role: "SALES" };
+    忘掉企业版范围();
+    const r = await 执行合并(prisma, 客户, B, 我);
+    expect(r).toMatchObject({ ok: true });
+    expect((await prisma.customerOwnerLog.findUniqueOrThrow({ where: { id: 转.id } })).customerId).toBe(客户);
+    expect(await 钟()).toBe("沉睡");
+    await 三态夜扫();
+    expect(await 钟()).toBe("沉睡");
+    expect((await 读一位三态(客户))!.状态).toBe("沉睡");
+    忘掉企业版范围();
+    expect(await 撤回合并(prisma, (r as { mergeId: string }).mergeId, 我)).toMatchObject({ ok: true });
+    expect((await prisma.customerOwnerLog.findUniqueOrThrow({ where: { id: 转.id } })).customerId).toBe(B);
+    expect((await 读一位三态(B))!).toMatchObject({ 状态: "活跃", 归零日: 前(7) });
+  });
 });
 
 /*

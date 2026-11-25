@@ -81,7 +81,7 @@ export function 公海项目算市场转(
  * 事务外（钉住老签约 前）传全局连接、事务里传 tx；不是企业版回 null
  */
 export async function 公海项目市场转(
-  db: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog" | "user">,
+  db: Pick<Prisma.TransactionClient, "customer" | "project" | "customerOwnerLog" | "user" | "entCustomerMerge">,
   org: 组织,
   p: { id: string; customerId: string },
   接手人: string,

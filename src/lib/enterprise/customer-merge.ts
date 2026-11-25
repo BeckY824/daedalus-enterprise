@@ -559,7 +559,7 @@ async function 带回新挂的(tx: Tx, A: string, B: string, 项目们: string[]
 /**
  * 撤回合并「只改一格」时随整组留下的联系人 / 项目留在原处的行（id → 原因）：
  *   - 号码、联系人挂靠：contactId 是留下的联系人
- *   - 沟通：经 FollowUpProject 挂在留下的项目上
+ *   - 沟通：经 FollowUpProject 挂在留下的项目上；没挂项目、contactId 是留下的联系人
  *   - 卡点：projectId 是留下的项目
  */
 async function 随留下的(tx: Tx, t: 改指表名, ids: string[], 留人: ReadonlySet<string>, 留项目: ReadonlySet<string>): Promise<Map<string, string>> {
@@ -574,6 +574,9 @@ async function 随留下的(tx: Tx, t: 改指表名, ids: string[], 留人: Read
         : await tx.contactCustomer.findMany({ where: { id: { in: 段 }, contactId: { in: 人们 } }, select: { id: true } });
       for (const r of 行) 随.set(r.id, "随联系人留在原处");
     }
+    // 只挂在留下的联系人身上、没挂项目的沟通跟着人留下（挂了项目的跟项目走：项目回 B 就回 B）
+    if (t === "followUp" && 人们.length)
+      for (const r of await tx.followUp.findMany({ where: { id: { in: 段 }, contactId: { in: 人们 }, projectNode: { is: null } }, select: { id: true } })) 随.set(r.id, "随联系人留在原处");
     if (t === "followUp" && 项目们.length)
       for (const r of await tx.followUpProject.findMany({ where: { followUpId: { in: 段 }, projectId: { in: 项目们 } }, select: { followUpId: true } })) 随.set(r.followUpId, "随项目留在原处");
     if (t === "entBlocker" && 项目们.length)

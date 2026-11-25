@@ -7,6 +7,7 @@ import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 系统 } from "@/lib/project/timeout";
 import { 当下归零, 记撤销转让 } from "@/lib/enterprise/tri-state-transfer";
 import { 待补建进公海关 } from "@/lib/enterprise/unbuilt-record";
+import { 去掉合并挪来的 } from "@/lib/enterprise/merge-moved-logs";
 
 /**
  * 客户换负责人的记录（企业版 D-36，2026-10-24）：谁转的、从谁到谁、什么时候；from = 「历史负责人」。
@@ -34,7 +35,7 @@ async function 挂靠审批跟着换(tx: Pick<Prisma.TransactionClient, "entDupe
 }
 
 export async function 记换负责人(
-  tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entDupeHit" | "setting" | "entCustomerStateLog">,
+  tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entDupeHit" | "setting" | "entCustomerStateLog" | "entCustomerMerge">,
   换: { customerId: string; from: string | null; to: string }[],
   操作人: string,
   kind: 换负责人种类,
@@ -109,14 +110,15 @@ export async function 是我刚换的(撤: { customerId: string; 原: string; �
 /**
  * 这位客户进公海前真正的负责人：公海里客户挂占位账号（M-公海-03），活还在原负责人名下，
  * 领 / 分 / 撤销时要按原负责人找活。旧 是真人时 to 不会等于他（pool-release 的 to 永远是占位），原样返回。
- * 取最近一条：进出过几次公海的，只认这一次进去时的那位
+ * 取最近一条：进出过几次公海的，只认这一次进去时的那位。
+ * 合并客户挪来的不认（两家都在公海、系统管理员并的：只认留下那家自己那条，merge-moved-logs.ts）
  */
-export async function 公海前负责人(tx: Pick<Prisma.TransactionClient, "customerOwnerLog">, customerId: string, 旧: string): Promise<string> {
-  const r = await tx.customerOwnerLog.findFirst({
+export async function 公海前负责人(tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entCustomerMerge">, customerId: string, 旧: string): Promise<string> {
+  const [r] = await 去掉合并挪来的(tx, await tx.customerOwnerLog.findMany({
     where: { customerId, toOwnerId: 旧, kind: "pool-release" },
     orderBy: [{ at: "desc" }, { id: "desc" }],
-    select: { fromOwnerId: true },
-  });
+    select: { id: true, customerId: true, fromOwnerId: true },
+  }));
   return r?.fromOwnerId ?? 旧;
 }
 
@@ -124,9 +126,10 @@ export async function 公海前负责人(tx: Pick<Prisma.TransactionClient, "cus
  * 公海里的客户，人们 里谁是「最近一次进公海时的负责人」（P-公海-04 原负责人回避）：回 客户 id → 那位。
  * 只认最近一次：最近那条「换到占位账号」的 from 才算；曾经负责过、后来转走的人不算（范围不比项目侧 公海里历史负责人是 更宽）。
  * 只看挂占位账号的客户：负责人还是真人的是部署前进公海的老数据，调用方接着按 salesOwnerId 认。
- * db 用不限定的（看全部里）：这时候公海里的客户原负责人本来就看不到
+ * db 用不限定的（看全部里）：这时候公海里的客户原负责人本来就看不到。
+ * 合并客户挪来的不认（两家都在公海并的：回避只认留下那家自己最近一次进公海时那位，merge-moved-logs.ts）
  */
-export async function 公海客户原负责人是(db: Pick<Prisma.TransactionClient, "user" | "customer" | "customerOwnerLog">, 人们: string[], 限定客户?: string[]): Promise<Map<string, string>> {
+export async function 公海客户原负责人是(db: Pick<Prisma.TransactionClient, "user" | "customer" | "customerOwnerLog" | "entCustomerMerge">, 人们: string[], 限定客户?: string[]): Promise<Map<string, string>> {
   const 出 = new Map<string, string>();
   if (!人们.length || (限定客户 && !限定客户.length)) return 出;
   const 占位 = (await db.user.findUnique({ where: { email: 无负责人占位邮箱 }, select: { id: true } }))?.id;
@@ -143,11 +146,11 @@ export async function 公海客户原负责人是(db: Pick<Prisma.TransactionCli
   });
   const 人 = new Set(人们);
   for (let i = 0; i < 候选.length; i += 400) {
-    const 记录 = await db.customerOwnerLog.findMany({
+    const 记录 = await 去掉合并挪来的(db, await db.customerOwnerLog.findMany({
       where: { customerId: { in: 候选.slice(i, i + 400).map((c) => c.id) }, toOwnerId: 占位 },
       orderBy: [{ at: "desc" }, { id: "desc" }],
-      select: { customerId: true, fromOwnerId: true },
-    });
+      select: { id: true, customerId: true, fromOwnerId: true },
+    }));
     const 看过 = new Set<string>();
     for (const r of 记录) {
       if (看过.has(r.customerId)) continue;
@@ -199,17 +202,18 @@ export async function 删被撤的换负责人记录(
 /**
  * 撤销放进公海（P-撤销-01，企业版）：负责人按进公海那条 pool-release 还回去，那条删掉。不信前端传的值。
  * 进公海时关掉的挂靠申请不跟着复活（挂靠申请进公海关），简单起见。
- * 老数据进公海没清负责人、没有这条的不动（负责人本来就是他）
+ * 老数据进公海没清负责人、没有这条的不动（负责人本来就是他）。
+ * 合并客户挪来的那条不认（两家都在公海并的：还给留下那家自己进公海前的负责人，merge-moved-logs.ts）
  */
-export async function 还原进公海前负责人(tx: Pick<Prisma.TransactionClient, "customer" | "customerOwnerLog">, 客户们: string[]): Promise<void> {
+export async function 还原进公海前负责人(tx: Pick<Prisma.TransactionClient, "customer" | "customerOwnerLog" | "entCustomerMerge">, 客户们: string[]): Promise<void> {
   for (const customerId of 客户们) {
     const c = await tx.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true } });
     if (!c) continue;
-    const r = await tx.customerOwnerLog.findFirst({
+    const [r] = await 去掉合并挪来的(tx, await tx.customerOwnerLog.findMany({
       where: { customerId, toOwnerId: c.salesOwnerId, kind: "pool-release" },
       orderBy: [{ at: "desc" }, { id: "desc" }],
-      select: { id: true, fromOwnerId: true },
-    });
+      select: { id: true, customerId: true, fromOwnerId: true },
+    }));
     if (!r?.fromOwnerId) continue;
     await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: r.fromOwnerId } });
     await tx.customerOwnerLog.delete({ where: { id: r.id } });

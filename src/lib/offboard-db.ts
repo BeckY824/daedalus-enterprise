@@ -62,7 +62,7 @@ export type 停用分拣结果 = {
   订单项目: number;
 };
 
-type 读库 = Pick<Prisma.TransactionClient, "customer" | "task" | "followPlan" | "lead" | "channel" | "entChannelMain" | "project" | "user" | "customerOwnerLog">;
+type 读库 = Pick<Prisma.TransactionClient, "customer" | "task" | "followPlan" | "lead" | "channel" | "entChannelMain" | "project" | "user" | "customerOwnerLog" | "entCustomerMerge">;
 
 /**
  * 已停用的同事（不含占位账号、不含 除了 里的人）：他们负责、挂在要转走的客户上的进行中项目随客户给接手人（P-转-18，11-09 定），

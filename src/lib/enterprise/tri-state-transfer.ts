@@ -15,6 +15,7 @@ import { BUSINESS_KEY, mergeBusiness, 企业版锁定, 企业版默认业务 } f
 import { beijingDay } from "@/lib/business-clock";
 import { 换负责人归零, type 换负责人记录, type 换负责人方式 } from "./tri-state";
 import { 企业版 } from "./switch";
+import { 去掉合并挪来的 } from "./merge-moved-logs";
 
 /**
  * 换负责人记录种类 → 三态的换负责人方式；不在表里的种类三态不认（不计次、不归零、不算动静）。
@@ -77,7 +78,7 @@ export async function 事务里三态规则(tx: Pick<Prisma.TransactionClient, "
  * 规则、日志都用 tx 读（转让事务里不能用外面的连接）；撤销了但照算次数的转让（T7）也算进以前的次数
  */
 export async function 当下归零(
-  tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "setting" | "entCustomerStateLog">,
+  tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "setting" | "entCustomerStateLog" | "entCustomerMerge">,
   customerIds: readonly string[],
   kind: string,
   现在: Date = new Date(),
@@ -87,11 +88,12 @@ export async function 当下归零(
   if (!企业版() || (方式 !== "转让" && 方式 !== "离职交接") || !customerIds.length) return 出;
   const 规则 = await 事务里三态规则(tx);
   if (!规则) return 出;
-  const 以前 = await tx.customerOwnerLog.findMany({
+  // 合并客户挪来的（B 的）转让不算 A 的转让次数（同 收三态客户，merge-moved-logs.ts）
+  const 以前 = await 去掉合并挪来的(tx, await tx.customerOwnerLog.findMany({
     where: { customerId: { in: [...customerIds] } },
     select: { id: true, customerId: true, at: true, kind: true, clockReset: true },
     orderBy: [{ at: "asc" }, { id: "asc" }],
-  });
+  }));
   const 按客户 = new Map<string, typeof 以前>();
   for (const r of 以前) 按客户.set(r.customerId, [...(按客户.get(r.customerId) ?? []), r]);
   const 计次 = await 撤销计次们(tx, customerIds);

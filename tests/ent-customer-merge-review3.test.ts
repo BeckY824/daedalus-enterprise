@@ -150,6 +150,28 @@ describe("必改 2 整组留在 A 的联系人 / 项目，名下的行不单独�
   });
 });
 
+describe("服务端第二单 4 只挂联系人、没挂项目的沟通随联系人留下", () => {
+  it("B 来的联系人整组留 A：只挂在他身上的沟通撤回后留 A（随联系人留在原处）；挂了挪回项目的跟项目回 B", async () => {
+    const a = await 客户(乙.id);
+    const b = await 客户(乙.id);
+    const b1 = await 主联系人(b);
+    const p = await 项目(乙.id, b);
+    const 只挂人 = await 沟通(b, { contactId: b1 });
+    const 挂项目 = await 沟通(b, { contactId: b1 });
+    await raw.followUpProject.create({ data: { followUpId: 挂项目.id, projectId: p, node: "x" } });
+    const mergeId = await 并成(a, b, 乙);
+    await raw.contact.update({ where: { id: b1 }, data: { isPrimary: true } });
+    const u = await 撤回合并(prisma, mergeId, 乙);
+    if (!u.ok) throw new Error(u.error);
+    expect((await raw.contact.findUniqueOrThrow({ where: { id: b1 } })).customerId).toBe(a);
+    expect((await raw.followUp.findUniqueOrThrow({ where: { id: 只挂人.id } })).customerId).toBe(a);
+    expect((await raw.project.findUniqueOrThrow({ where: { id: p } })).customerId).toBe(b);
+    expect((await raw.followUp.findUniqueOrThrow({ where: { id: 挂项目.id } })).customerId).toBe(b);
+    expect(u.没还原).toEqual(expect.arrayContaining([expect.objectContaining({ id: 只挂人.id, 原因: "随联系人留在原处" })]));
+    expect(u.没还原.some((x) => x.id === 挂项目.id)).toBe(false);
+  });
+});
+
 describe("建议 1 A 留下的项目引用了回 B 的人", () => {
   it("合并后在 A 上新建的项目把 B 来的人设成主联系人 / 项目联系人：撤回后人回 B、项目留 A，这几位挂靠到 A", async () => {
     const a = await 客户(乙.id);
