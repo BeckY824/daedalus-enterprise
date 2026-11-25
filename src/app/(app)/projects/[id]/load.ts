@@ -3,7 +3,7 @@ import { 能往项目记沟通, 能记售后回访 as 能记售后回访of } fro
 import { 只读客户 } from "@/lib/team-scope";
 import type { SessionUser } from "@/lib/auth";
 import { 项目收藏了吗 } from "@/lib/favorites";
-import { 能管项目, 能加组员, 能改组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 自动推得到, 超时成员线, 超时线 } from "@/lib/project/db";
+import { 回收认的最近跟进, 能管项目, 能加组员, 能改组员, 能放回公海, 能改节点, 上级只推, 往前推不给, 补全期不给, 直属才推, 角色字典, 异常类别字典, 能进公海的阶段, 看得到的客户, 露客户, 读必填数据, 自动推得到, 超时成员线, 超时线 } from "@/lib/project/db";
 import { 项目按必填走, 节点推进管, 节点必填, 还差, 有效沟通还差, 必填叫法, 项目来源有值, type 必填数据 } from "@/lib/project/required";
 import { 负责人候选 } from "@/lib/owners";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -287,7 +287,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   const 要下一步 = 记沟通要下一步时间(规则, p);
   const 字典 = 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null);
   // 最近一条留痕，超时自动转那行不算（同 lib/project/db.ts 补回收起点留痕，客户 11-19 第 14 题 B）
-  const 回收起点 = 超时起点(p.createdAt, 概况 ? 概况.回收起点留痕 : p.logs.find((l) => !是超时自动转痕(l))?.at, p.customer.lastFollowAt);
+  const 回收起点 = 超时起点(p.createdAt, 概况 ? 概况.回收起点留痕 : p.logs.find((l) => !是超时自动转痕(l))?.at, 规则.超时回收.开 ? await 回收认的最近跟进(p.customerId, p.customer.lastFollowAt) : p.customer.lastFollowAt);
+  // ↑ 客户最近跟进不算售后回访（E-318，同 lib/project/db.ts 项目回收日）；回收没开不查
   // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
   const 回收线 = 超时线(p, 规则.超时回收.开 ? await 超时成员线(规则) : null);
   const 回收日 = 超时回收日(规则, p, 回收起点, 字典, 回收线);

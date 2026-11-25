@@ -475,7 +475,8 @@ export async function saveFollowUp(input: FollowUpInput) {
     for (const audit of result.audits) await recordAudit(audit);
     刷新待办(input.customerId);
     // 客户最近跟进往后推了 = 名下项目的回收时钟续了：「再不跟进」的提醒跟着勾掉（11-03 B3-1）。按推进前的节点找提醒，放在自动推进前面
-    await 客户跟进后勾掉将回收提醒(input.customerId, now);
+    // 售后回访不续在推项目的回收钟（E-318，回收起点不认它：lib/project/db.ts 回收认的最近跟进们），兄弟项目的提醒也不勾
+    if (!售后) await 客户跟进后勾掉将回收提醒(input.customerId, now);
     // ⑤ 记录人本人 30 分钟内改（管理改自己记的也算）：不重跑「必填齐自动推进」（推进门槛按当时记的算）；管理改别人记的照旧
     // 推了哪几个回给前端说一句（记沟通推了节点不能悄悄推，11-20）
     /*

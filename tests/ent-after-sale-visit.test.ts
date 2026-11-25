@@ -23,7 +23,9 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { dayjs } from "@/lib/utils";
 import { saveFollowUp, 沟通可选项目, type FollowUpInput } from "@/app/(app)/customers/[id]/actions";
-import { 记项目沟通 } from "@/lib/project/db";
+import { 记项目沟通, 项目回收日, 算超时要的, 补回收起点留痕, 回收认的最近跟进 } from "@/lib/project/db";
+import { 生效组织规则 } from "@/lib/project/org-rules-store";
+import { 将回收提醒 } from "@/lib/project/timeout";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules";
 import { 三态夜扫 } from "@/lib/enterprise/tri-state-db";
@@ -426,5 +428,62 @@ describe("客户负责人那条售后回访：重读一条、收回、限时改�
       expect(await 带()).toMatchObject({ 本人售后: true });
       expect((await 带()).本人可改到).toBeUndefined();
     });
+  });
+});
+
+describe("[E-318] 售后回访不进项目超时回收（客户 11-25：「售后回访当前不进入超时回收范畴」）", () => {
+  /** 同客户：A 交付结清（记售后回访）、B 在推（潜客培育 30 天回收，29 天前建 = 明天回收），我名下一条 B 的「再不跟进」提醒；三态开着（成交活跃段 90 天 → 客户先是沉睡） */
+  async function 底子() {
+    await setSetting(规则.无意义沟通拦.key, false);
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { ...默认组织规则.超时回收, 开: true, 起算日: 加天(今天, -95), 节点天数: { 潜客培育: 30 } }, 三态: { ...默认三态规则, 开: true, 成交: { 活跃段: 90 } } });
+    invalidateSettingsCache();
+    const A = await 交付项目();
+    const B = await 项目({ phase: "线索", node: "潜客培育", createdAt: 那天(29) });
+    const 回收日 = async () => {
+      const [p] = await 补回收起点留痕([await prisma.project.findUniqueOrThrow({ where: { id: B.id }, select: 算超时要的 })]);
+      return 项目回收日(await 生效组织规则(), p);
+    };
+    const 原日 = await 回收日();
+    expect(原日).toBe(加天(今天, 1));
+    const 提醒 = await prisma.task.create({ data: { title: 将回收提醒(B.name, "潜客培育", 原日!), customerId: 客户, ownerId: 我, dueOn: 原日 } });
+    const 提醒勾了 = async () => (await prisma.task.findUniqueOrThrow({ where: { id: 提醒.id } })).done;
+    return { A, B, 回收日, 原日, 提醒勾了 };
+  }
+  const 最近跟进 = async () => (await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).lastFollowAt;
+
+  it("客户页、项目页记售后回访：B 的回收起点和提醒都不变；客户最近跟进照写（列表显示不变）、三态额度照常回满", async () => {
+    const { A, B, 回收日, 原日, 提醒勾了 } = await 底子();
+    await 三态夜扫();
+    // 客户名下有在推的 B，钟本来就是活跃：看继续持有额度回不回满（有效沟通回满额度，M-公海-38）
+    await prisma.entCustomerClock.update({ where: { customerId: 客户 }, data: { holdCount: 2, holdDays: 10, quotaResetDay: null } });
+    const 钟 = () => prisma.entCustomerClock.findUniqueOrThrow({ where: { customerId: 客户 } });
+    expect(await 记({ projectId: A.id, 售后回访: true })).toMatchObject({ ok: true });
+    expect(await 最近跟进()).not.toBeNull();
+    expect(await 回收日()).toBe(原日);
+    expect(await 提醒勾了()).toBe(false);
+    expect(await 项目上记(我, A.id)).toMatchObject({ ok: true });
+    expect(await 回收日()).toBe(原日);
+    expect(await 提醒勾了()).toBe(false);
+    // 项目详情 / 记沟通预演那条（一位客户）同一个口径：只有售后回访 = 不认
+    expect(await 回收认的最近跟进(客户, await 最近跟进())).toBeNull();
+    // 三态照常：有效的售后回访拨客户的钟（E-283 第 3 条、E-286 不动）
+    expect(await 钟()).toMatchObject({ state: "活跃", quotaResetDay: 今天 });
+    expect((await prisma.followUp.count({ where: { customerId: 客户, afterSale: true } }))).toBe(2);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: B.id } })).pooledAt).toBeNull();
+  });
+
+  it("普通沟通照旧续钟：客户页记在 B 上 → B 回收日后移、提醒勾掉；先有普通沟通再记售后回访，起点停在普通那条", async () => {
+    const { A, B, 回收日, 原日, 提醒勾了 } = await 底子();
+    const 早 = dayjs().subtract(2, "hour");
+    expect(await 记({ projectId: B.id, occurredAt: 早.format("YYYY-MM-DD HH:mm") })).toMatchObject({ ok: true });
+    const 续后 = await 回收日();
+    expect(续后).not.toBe(原日);
+    expect(续后! > 原日!).toBe(true);
+    expect(await 提醒勾了()).toBe(true);
+    // 再记一条售后回访（比普通那条晚）：最近跟进跟着写，回收起点停在普通那条
+    expect(await 记({ projectId: A.id, 售后回访: true })).toMatchObject({ ok: true });
+    expect((await 最近跟进())!.getTime()).toBeGreaterThan(早.toDate().getTime());
+    expect(await 回收日()).toBe(续后);
+    expect((await 回收认的最近跟进(客户, await 最近跟进()))?.getTime()).toBe(早.startOf("minute").toDate().getTime());
   });
 });

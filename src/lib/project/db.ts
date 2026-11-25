@@ -17,7 +17,7 @@ import { 企业版推进关, 记沟通阶段问题, 记沟通标记, 有效线�
 import { 记必填拦截, type 拦截入口, type 拦截种类 } from "./required-block";
 import { 等复核拦, 复核判死拦, 验证中不能改派, 进公海清验证 } from "./lead-verify-guard";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 同号标题问题 } from "@/lib/enterprise/same-number-mark";
+import { 同号标题问题, 不是同号留痕 } from "@/lib/enterprise/same-number-mark";
 import { 落到渠道 } from "@/lib/enterprise/channel-main";
 import { 是主渠道入口, 渠道启用 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
@@ -1196,8 +1196,11 @@ export const 算超时要的 = {
   source: true,
   customer: { select: { lastFollowAt: true, pool: { select: { customerId: true } } } },
 } satisfies Prisma.ProjectSelect;
-/** 算回收起点认的最近一条留痕（最近一条在前，只要时间；没有 = 空） */
-export type 回收起点留痕 = { logs: { at: Date }[] };
+/**
+ * 算回收起点认的最近一条留痕（最近一条在前，只要时间；没有 = 空）。
+ * 回收跟进：回收起点认的客户最近跟进（售后回访不算，E-318，见 回收认的最近跟进们）；没这一格 = 照 customer.lastFollowAt
+ */
+export type 回收起点留痕 = { logs: { at: Date }[]; 回收跟进?: Date | null };
 type 待查项目 = Prisma.ProjectGetPayload<{ select: typeof 算超时要的 }> & 回收起点留痕;
 
 /** 补回收起点留痕 一句查几个项目：IN 里的参数加上条件里的几个，压在 SQLite 一句参数上限（999）以下 */
@@ -1210,7 +1213,7 @@ const 留痕每批 = 500;
  * （Query parameter limit exceeded … negation filters … prevent the query from being split），所以这里自己按 留痕每批 拆。
  * 传进来的项目都已按范围取过，取留痕不再套「谁在看」；db 传 tx 时在事务里读
  */
-export async function 补回收起点留痕<T extends { id: string }>(rows: T[], db: Pick<Prisma.TransactionClient, "projectNodeLog"> = prisma): Promise<(T & 回收起点留痕)[]> {
+export async function 补回收起点留痕<T extends { id: string }>(rows: T[], db: Pick<Prisma.TransactionClient, "projectNodeLog" | "followUp"> = prisma): Promise<(T & 回收起点留痕)[]> {
   if (!rows.length) return [];
   const ids = [...new Set(rows.map((r) => r.id))];
   const 最近 = new Map<string, Date | null>();
@@ -1219,7 +1222,46 @@ export async function 补回收起点留痕<T extends { id: string }>(rows: T[],
     const 们 = await 看全部(() => db.projectNodeLog.groupBy({ by: ["projectId"], where: { projectId: { in: 批 }, ...算回收起点的留痕 }, _max: { at: true } }));
     for (const g of 们) 最近.set(g.projectId, g._max.at);
   }
-  return rows.map((r) => { const at = 最近.get(r.id); return { ...r, logs: at ? [{ at }] : [] }; });
+  // 取了 customer.lastFollowAt 的（算超时要的 那几处）顺带把售后回访撑起来的最近跟进换掉（E-318）
+  const 客们 = rows.flatMap((r) => { const c = (r as { customerId?: string; customer?: { lastFollowAt?: Date | null } }); return c.customerId && c.customer && "lastFollowAt" in c.customer ? [{ customerId: c.customerId, lastFollowAt: c.customer.lastFollowAt ?? null }] : []; });
+  const 换 = 客们.length ? await 回收认的最近跟进们(客们, db) : new Map<string, Date | null>();
+  return rows.map((r) => {
+    const at = 最近.get(r.id);
+    const cid = (r as { customerId?: string }).customerId;
+    return { ...r, logs: at ? [{ at }] : [], ...(cid && 换.has(cid) ? { 回收跟进: 换.get(cid)! } : {}) };
+  });
+}
+
+/**
+ * 项目超时回收认的「客户最近跟进」（E-318，客户 11-25：售后回访当前不进入超时回收范畴）：
+ * 客户的 lastFollowAt 是名下所有沟通里最晚的（含售后回访；客户列表「最近跟进」、客户公海、三态都照它 / 照沟通，不动）。
+ * 回收起点这里不认售后回访：交付结清项目上记一条售后回访，同客户在推项目的回收钟不续、「再不跟进」提醒不勾。
+ * 只换「最近跟进就是售后回访撑起来的」那几位（售后回访最晚一条不早于 lastFollowAt）：换成不算售后回访、不算同号留痕、没删、不晚于现在的最晚一条，没有 = null。
+ * 回：要换的那几位 客户 id → 换成的时间；不在里面的照 lastFollowAt。一批一句查售后回访，有要换的再一句
+ */
+export async function 回收认的最近跟进们(客们: readonly { customerId: string; lastFollowAt: Date | null }[], db: Pick<Prisma.TransactionClient, "followUp"> = prisma, 今: Date = new Date()): Promise<Map<string, Date | null>> {
+  const 最近跟进 = new Map<string, Date>();
+  for (const c of 客们) if (c.lastFollowAt) 最近跟进.set(c.customerId, c.lastFollowAt);
+  const 结果 = new Map<string, Date | null>();
+  if (!最近跟进.size) return 结果;
+  const cids = [...最近跟进.keys()];
+  for (let i = 0; i < cids.length; i += 留痕每批) {
+    const 批 = cids.slice(i, i + 留痕每批);
+    const 售后们 = await 看全部(() => db.followUp.groupBy({ by: ["customerId"], where: { customerId: { in: 批 }, afterSale: true, deletedAt: null, occurredAt: { lte: 今 } }, _max: { occurredAt: true } }));
+    const 要换 = 售后们.filter((g) => g._max.occurredAt && g._max.occurredAt.getTime() >= 最近跟进.get(g.customerId)!.getTime()).map((g) => g.customerId);
+    if (!要换.length) continue;
+    const 别的 = await 看全部(() => db.followUp.groupBy({ by: ["customerId"], where: { customerId: { in: 要换 }, afterSale: false, deletedAt: null, occurredAt: { lte: 今 }, ...不是同号留痕 }, _max: { occurredAt: true } }));
+    const 别的最近 = new Map(别的.map((g) => [g.customerId, g._max.occurredAt]));
+    for (const id of 要换) 结果.set(id, 别的最近.get(id) ?? null);
+  }
+  return 结果;
+}
+
+/** 一位客户的（项目详情、记沟通前预演回收日用）：同 回收认的最近跟进们 */
+export async function 回收认的最近跟进(customerId: string, lastFollowAt: Date | null | undefined): Promise<Date | null> {
+  if (!lastFollowAt) return null;
+  const 换 = await 回收认的最近跟进们([{ customerId, lastFollowAt }]);
+  return 换.has(customerId) ? 换.get(customerId)! : lastFollowAt;
 }
 
 /**
@@ -1244,7 +1286,9 @@ export function 超时线(p: { bizLine?: string | null; ownerId?: string | null 
  */
 export function 项目回收日(规则: 组织规则, p: 待查项目, 成员?: 成员线查 | null): string | null {
   if (p.customer.pool) return null;
-  return 超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, p.customer.lastFollowAt), 字典of(企业版()), 超时线(p, 成员));
+  // 客户最近跟进不算售后回访（E-318，补回收起点留痕 换好的 回收跟进）
+  const 跟进 = "回收跟进" in p ? p.回收跟进 : p.customer.lastFollowAt;
+  return 超时回收日(规则, p, 超时起点(p.createdAt, p.logs[0]?.at, 跟进), 字典of(企业版()), 超时线(p, 成员));
 }
 
 function 超时了(规则: 组织规则, p: 待查项目, 今: Date, 成员: 成员线查 | null): boolean {

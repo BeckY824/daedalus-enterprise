@@ -28,7 +28,7 @@ import { 规整向导, 规整沟通, 向导接着建, 规整只建客户, 只建
 import { 补潜客培育 } from "@/lib/project/nurture";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
-import { 读必填数据, 有效沟通差of, 补全期不给, 往前推不给, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 超时成员线, 超时线, 补回收起点留痕, 能管项目, type 交付项 } from "@/lib/project/db";
+import { 读必填数据, 有效沟通差of, 补全期不给, 往前推不给, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 超时成员线, 超时线, 补回收起点留痕, 回收认的最近跟进, 能管项目, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 三态改动摘要, 负责人可推, type 规则改动 } from "@/lib/project/org-rules";
 import { 组织规则改动摘要 } from "@/lib/project/org-rules-diff";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
@@ -1206,7 +1206,8 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
       const c = await 看全部(() => prisma.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
       // 最近一条留痕：超时自动转那行不算（客户 11-19 第 14 题 B，同 lib/project/db.ts 项目回收日）
       const [留] = await 补回收起点留痕([p]);
-      const 起点 = 超时起点(p.createdAt, 留.logs[0]?.at, c?.lastFollowAt);
+      // 客户最近跟进不算售后回访（E-318，同 lib/project/db.ts 项目回收日）
+      const 起点 = 超时起点(p.createdAt, 留.logs[0]?.at, await 回收认的最近跟进(p.customerId, c?.lastFollowAt));
       const 线 = 超时线(p, await 超时成员线(规则));  // 按项目业务线分内外贸天数（C7）
       const 天数 = 超时回收日(规则, p, 起点, 字典, 线) ? 节点超时天数(规则, p.node, 字典, 线) : null;
       if (天数) 回收预演 = { 起点日: 计时起点(规则, 起点).format("YYYY-MM-DD"), 天数 };  // 起算日之前不算（10-31）
