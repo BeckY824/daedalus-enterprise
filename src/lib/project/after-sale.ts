@@ -20,6 +20,7 @@
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
+import { 请求内记住 } from "@/lib/request-memo";
 import { 同名们 } from "./stage-dict";
 
 export { 后售培育名, 显示节点名 } from "./stage-dict";
@@ -63,12 +64,37 @@ export function 判后售(p: 判后售的项目, 最早结清: Date | null | und
 
 /**
  * 这几位客户里名下有交付结清项目的 → 最早一次结清时间（closedAt；没记的 null）。没有的不在表里。
- * 看全部、500 位一批，每批一条平铺查询；在事务里传 tx
+ * 看全部、500 位一批，每批一条平铺查询；在事务里传 tx。
+ * 同一请求里同一组客户只查一遍（lib/request-memo.ts 请求内记住：客户页抬头、项目页签、嵌入的读项目详情、历史变更各判一次，
+ * 都是这一位客户）：只在走默认库时记；只有一位客户时和客户页售后回访去处共用 客户名下交付结清 那一句。
+ * 看全部、不分人，键里只有客户 id；不跨请求，前面写过库就现读。记的 Map 调用方别改
  */
 export async function 交付结清客户们(customerIds: Iterable<string | null | undefined>, db: 读库 = prisma): Promise<Map<string, Date | null>> {
   const ids = [...new Set([...customerIds].filter((x): x is string => !!x))];
+  if (!ids.length) return new Map();
+  if (db !== prisma || ids.length > 一批) return 查交付结清客户们(ids, db);
+  if (ids.length === 1) {
+    const 表 = new Map<string, Date | null>();
+    for (const r of await 客户名下交付结清(ids[0])) 记最早(表, ids[0], r.closedAt);
+    return 表;
+  }
+  return 请求内记住(`after-sale:交付结清:${[...ids].sort().join(",")}`, () => 查交付结清客户们(ids, db));
+}
+
+/**
+ * 这位客户名下全部交付结清的项目（看全部、没软删，最近改的在前）：判后售（交付结清客户们 只有一位客户时）和
+ * 客户页售后回访去处（customer-follow-feed.ts 补进来的售后项目）共用，一次请求只查一句（请求内记住，不跨请求、写过库就现读）。
+ * 平铺一句、不 include；记的数组调用方别改
+ */
+export function 客户名下交付结清(customerId: string): Promise<{ id: string; name: string; ownerId: string; result: string | null; closedAt: Date | null }[]> {
+  return 请求内记住(`after-sale:客户交付结清:${customerId}`, () => 看全部(() => prisma.project.findMany({
+    where: { customerId, ...交付结清的项目 },
+    select: { id: true, name: true, ownerId: true, result: true, closedAt: true }, orderBy: { updatedAt: "desc" },
+  })));
+}
+
+async function 查交付结清客户们(ids: string[], db: 读库): Promise<Map<string, Date | null>> {
   const 表 = new Map<string, Date | null>();
-  if (!ids.length) return 表;
   // 客户多（公海全取、导出这类整池的）：点名要好多批，不如把交付结清的平铺扫一遍（交付结清的项目远少于客户），再留这几位的
   if (ids.length > 点名最多) {
     const 要 = new Set(ids);
