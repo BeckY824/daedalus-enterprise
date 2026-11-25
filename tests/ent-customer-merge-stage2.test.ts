@@ -251,6 +251,54 @@ describe("服务端动作", () => {
     expect(r.ok).toBe(true);
     expect(await 并进来的合并单(a)).toEqual([expect.objectContaining({ 从: "我的乙", status: "已合并", 能撤: true })]);
   });
+
+  it("合并单 能撤 和服务端撤回拦法对齐（PR #457 界面审查第 1 条）：留下那家不归本人 / 进了公海、两家有一家在交接中、只读角色都不摆", async () => {
+    const 丁 = await 造人("ding", "丁", "SALES");
+    await raw.entMember.create({ data: { userId: 丁.id, bizRole: "admin" } });
+    忘掉企业版范围();
+    const a = await 客户(乙.id, { name: "留下甲" });
+    const b = await 客户(乙.id, { name: "被并乙" });
+    const 留人 = await 联系人(a, "13900000051");
+    const 并人 = await 联系人(a, "13900000052");
+    const 合 = await 合成联系人(prisma, 留人, 并人, 乙);
+    if (!合.ok) throw new Error(合.error);
+    const r = await 执行合并(prisma, a, b, 乙);
+    if (!r.ok) throw new Error(r.error);
+    const 撤得了 = async (who: 人) => {
+      登录.人 = who;
+      忘掉企业版范围();
+      const 们 = await 并进来的合并单(a);
+      return { 客户: 们.find((x) => x.id === r.mergeId)?.能撤, 联系人: 们.find((x) => x.id === 合.mergeId)?.能撤 };
+    };
+    expect(await 撤得了(乙)).toEqual({ 客户: true, 联系人: true });
+    // 只读角色（管理员）：看得到，两张都不给撤
+    expect(await 撤得了(丁)).toEqual({ 客户: false, 联系人: false });
+    // 留下那家转给了丙：乙的客户单不摆（服务端「现在不归你负责」），合成单照旧（服务端不看负责人）；系统管理员照样能撤
+    await raw.customer.update({ where: { id: a }, data: { salesOwnerId: 丙.id } });
+    expect(await 撤得了(乙)).toEqual({ 客户: false, 联系人: true });
+    登录.人 = 乙;
+    expect(await 撤回合并(prisma, r.mergeId, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("不归你负责") });
+    expect(await 撤得了(老板)).toEqual({ 客户: true, 联系人: true });
+    // 回到乙名下、进了公海：同样不摆
+    await raw.customer.update({ where: { id: a }, data: { salesOwnerId: 乙.id } });
+    await raw.customerPool.create({ data: { customerId: a } });
+    expect((await 撤得了(乙)).客户).toBe(false);
+    await raw.customerPool.delete({ where: { customerId: a } });
+    expect((await 撤得了(乙)).客户).toBe(true);
+    // 被并那家（在回收站里）在转让交接中：系统管理员也不摆，合成单（只看留下这家）照旧
+    const 交 = await raw.entHandover.create({ data: { kind: "转让", fromUserId: 乙.id, toUserId: 丙.id, byUserId: 乙.id, customerIds: JSON.stringify([b]) } });
+    expect(await 撤得了(老板)).toEqual({ 客户: false, 联系人: true });
+    expect(await 撤回合并(prisma, r.mergeId, 老板)).toMatchObject({ ok: false, error: expect.stringContaining("转让交接中") });
+    await raw.entHandover.update({ where: { id: 交.id }, data: { status: "已撤回" } });
+    // 留下这家在转让交接中：两张都不摆
+    const 交2 = await raw.entHandover.create({ data: { kind: "转让", fromUserId: 乙.id, toUserId: 丙.id, byUserId: 乙.id, customerIds: JSON.stringify([a]) } });
+    expect(await 撤得了(乙)).toEqual({ 客户: false, 联系人: false });
+    await raw.entHandover.update({ where: { id: 交2.id }, data: { status: "已撤回" } });
+    // 乙在离职交接中（一键全部交给）：客户单不摆（同服务端 离职交接拦），合成单照旧
+    await raw.entHandover.create({ data: { kind: "离职", fromUserId: 乙.id, toUserId: 丙.id, byUserId: 老板.id, way: "全部" } });
+    expect(await 撤得了(乙)).toEqual({ 客户: false, 联系人: true });
+    expect(await 撤回合并(prisma, r.mergeId, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("离职交接中") });
+  });
 });
 
 describe("第三阶段界面要的（11-25）", () => {

@@ -18,7 +18,7 @@ import { showUndo } from "@/components/UndoBar";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { useShellNavGo } from "@/lib/nav-pending";
 import {
-  搜合并候选, 预览合并, 合并客户, 撤回合并单, 合成两位联系人, 预览项目换客户, 给项目换客户, 撤销换客户, type 合并候选,
+  搜合并候选, 预览合并, 合并客户, 撤回合并单, 合成两位联系人, 预览项目换客户, 给项目换客户, 撤销换客户, 能并同事的, type 合并候选,
 } from "../merge-actions";
 import { 合并桥, type 合成候选人 } from "./merge-bridge";
 
@@ -27,6 +27,27 @@ export const 已核对话 = "已核对，按留下那家的来源和创建人";
 /** 撤回期限（同 customer-merge.ts 撤回期限天数 = 回收站保留天数） */
 const 撤回天数 = 30;
 const 撤回话 = `${撤回天数} 天内可在「历史变更」里整单撤回`;
+/** 合并后果框「可撤回」那句：不是系统管理员的补上谁能撤（同服务端撤回合并：本人、且留下那家仍归本人负责） */
+const 撤回谁话 = "（要你本人、且这家仍归你负责，否则找系统管理员）";
+/**
+ * 联系人配对下拉：选项「名字 · 职务」没有上限，手机上不能撑出屏（选项自带一行省略、悬停看全）。
+ * 限了宽还要能横移：下拉左边贴着选择框，手机上选择框在右半边，默认只会左右翻、不会挪，右边照样出屏。
+ * 位置同 antd 6 Select 自带的四个（mergedBuiltinPlacements），只多一个 shiftX
+ */
+const 配对下拉样式 = { popup: { root: { maxWidth: "min(360px, calc(100vw - 32px))" } } };
+const 下拉位 = (points: [string, string], y: number) => ({ points, offset: [0, y], overflow: { adjustX: true, adjustY: true, shiftX: true, shiftY: true }, htmlRegion: "visible" as const, dynamicInset: true });
+const 配对下拉位 = { bottomLeft: 下拉位(["tl", "bl"], 4), bottomRight: 下拉位(["tr", "br"], 4), topLeft: 下拉位(["bl", "tl"], -4), topRight: 下拉位(["br", "tr"], -4) };
+
+/** 登录的人是不是系统管理员（能并 / 换到同事的客户）：只用来挑说法，谁能做服务端判；没读到按不是 */
+function useMerge管(): boolean | null {
+  const [管, set管] = useState<boolean | null>(null);
+  useEffect(() => {
+    let 还在 = true;
+    能并同事的().then((v) => { if (还在) set管(v === true); }).catch(() => { if (还在) set管(false); });
+    return () => { 还在 = false; };
+  }, []);
+  return 管;
+}
 
 type 预览 = Extract<Awaited<ReturnType<typeof 预览合并>>, { ok: true }>["预览"];
 type 换预览 = Extract<Awaited<ReturnType<typeof 预览项目换客户>>, { ok: true }>["预览"];
@@ -41,7 +62,8 @@ export default function MergeHost({ customerId, 客户名 }: { customerId: strin
 
 /* ───────────────────────── 搜客户（合并、换客户共用） ───────────────────────── */
 
-function CandidateSearch({ customerId, 提示, 选 }: { customerId: string; 提示: string; 选: (c: 合并候选) => void }) {
+/** 空话：搜不到时那句；不是系统管理员的写明只列自己负责、不在公海的（搜合并候选 同样限着） */
+function CandidateSearch({ customerId, 提示, 空话, 选 }: { customerId: string; 提示: string; 空话: string; 选: (c: 合并候选) => void }) {
   const [词, set词] = useState("");
   const [们, set们] = useState<合并候选[] | null>(null);
   const [忙, set忙] = useState(false);
@@ -69,7 +91,7 @@ function CandidateSearch({ customerId, 提示, 选 }: { customerId: string; 提�
       <Input.Search autoFocus allowClear value={词} onChange={(e) => 改词(e.target.value)} loading={忙} placeholder="客户名称、简称、编号或号码" aria-label="搜客户" />
       <p className="mrg-note">{提示}</p>
       {错 && <p role="alert" className="mrg-err">{错}</p>}
-      {们 && !忙 && 们.length === 0 && <p className="mrg-empty">没搜到能选的客户</p>}
+      {们 && !忙 && 们.length === 0 && <p className="mrg-empty" data-testid="merge-cand-empty">{空话}</p>}
       {们 && 们.length > 0 && (
         <ul className="mrg-cands" aria-label="搜到的客户">
           {们.map((c) => {
@@ -89,6 +111,9 @@ function CandidateSearch({ customerId, 提示, 选 }: { customerId: string; 提�
   );
 }
 
+/** 搜不到时那句：系统管理员不限，照旧；别人（含还没读到的）写明只列你负责的、要动同事的找谁 */
+const 空话of = (管: boolean | null, 找谁: string) => (管 ? "没搜到能选的客户" : `只列你负责、不在公海的客户；${找谁}`);
+
 /** 拦下的原因（服务端给的），一条一行 */
 function 原因块({ 原因 }: { 原因: string[] }) {
   return <Alert type="warning" showIcon className="mrg-why" message={原因.length > 1 ? "现在不能做：" : 原因[0]} description={原因.length > 1 ? <ul className="mrg-why-l">{原因.map((x) => <li key={x}>{x}</li>)}</ul> : undefined} />;
@@ -102,6 +127,7 @@ const 一行 = (v: ReactNode, 全: string, cls = "") => <span className={`mrg-on
 function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: string; 客户名: string; 关: () => void }) {
   const router = useRouter();
   const [问后果, 后果框] = useConsequence();
+  const 管 = useMerge管();
   const [并掉, set并掉] = useState<合并候选 | null>(null);
   const [预, set预] = useState<预览 | null>(null);
   const [读错, set读错] = useState<string | null>(null);
@@ -152,7 +178,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
         ...(对们.length ? [{ 标: "合成", 话: `${对们.length} 对联系人合成一位，号码、沟通、名片收到留下那位` }] : []),
         { 标: "不变", 话: "项目负责人、组员都不变；来源和创建人按留下这家" },
         { 标: "回收站", 话: `「${B}」进回收站，原来的链接都会跳到这里` },
-        { 标: "可撤回", 话: 撤回话 },
+        { 标: "可撤回", 话: 管 ? 撤回话 : `${撤回话}${撤回谁话}` },
       ],
       做: async () => {
         const r = await 合并客户(customerId, 并掉.id, { 已核对: 预.要勾选 ? 勾 : undefined, 同一个人: 对们 });
@@ -198,7 +224,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
         </div>
       ) : null}
     >
-      {!并掉 && <CandidateSearch customerId={customerId} 提示={`选要并进这位客户的那家：它的联系人、项目、沟通都挪过来，它进回收站；${撤回话}。`} 选={挑} />}
+      {!并掉 && <CandidateSearch customerId={customerId} 提示={`选要并进这位客户的那家：它的联系人、项目、沟通都挪过来，它进回收站；${撤回话}。`} 空话={空话of(管, "要并同事的客户请找系统管理员")} 选={挑} />}
       {并掉 && !预 && !读错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
       {并掉 && 读错 && <p role="alert" className="mrg-err">{读错}</p>}
       {并掉 && 预 && !预.能并 && <原因块 原因={预.原因} />}
@@ -246,6 +272,8 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
                       aria-label={`${b.name} 和留下这家的哪位配对`}
                       value={配上}
                       popupMatchSelectWidth={false}
+                      styles={配对下拉样式}
+                      builtinPlacements={配对下拉位}
                       onChange={(v?: string) => {
                         set配((m) => ({ ...m, [b.id]: v }));
                         if (!v) set同((s) => { const n = new Set(s); n.delete(b.id); return n; });
@@ -369,6 +397,7 @@ function ProjectMoveDialog({ customerId, 客户名, projectId, 项目名, 关 }:
   // 撤销条上的「去看看」：框已经关了，用壳里那份跳（等待条跟到新页提交）
   const 去页 = useShellNavGo();
   const [问后果, 后果框] = useConsequence();
+  const 管 = useMerge管();
   const [目标, set目标] = useState<合并候选 | null>(null);
   const [预, set预] = useState<换预览 | null>(null);
   const [读错, set读错] = useState<string | null>(null);
@@ -442,7 +471,7 @@ function ProjectMoveDialog({ customerId, 客户名, projectId, 项目名, 关 }:
         </div>
       ) : null}
     >
-      {!目标 && <CandidateSearch customerId={customerId} 提示="选这个项目该挂的客户：项目连沟通、附件、项目联系人一起挪过去。" 选={挑} />}
+      {!目标 && <CandidateSearch customerId={customerId} 提示="选这个项目该挂的客户：项目连沟通、附件、项目联系人一起挪过去。" 空话={空话of(管, "要换到同事的客户请找系统管理员")} 选={挑} />}
       {目标 && !预 && !读错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
       {目标 && 读错 && <p role="alert" className="mrg-err">{读错}</p>}
       {目标 && 预 && !预.能换 && <原因块 原因={预.原因} />}

@@ -19,7 +19,8 @@ const 动作 = `
   export const 合成两位联系人=async(留,并)=>{记('合成',留,并);return {ok:true,mergeId:'m2'}};
   export const 预览项目换客户=async(p,t)=>{记('换预览',p,t);return {ok:true,预览:window.__换预览}};
   export const 给项目换客户=async(p,t)=>{记('换',p,t);return {ok:true,沟通:4,挂靠:2,logId:'L1'}};
-  export const 撤销换客户=async(id)=>{记('撤销换',id);return {ok:true}};`;
+  export const 撤销换客户=async(id)=>{记('撤销换',id);return {ok:true}};
+  export const 能并同事的=async()=>window.__管===true;`;
 const plugin: Plugin = { name: "merge-customer", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/(^|\/)merge-actions$/, 补全动作桩("src/app/(app)/customers/merge-actions.ts", 动作));
@@ -122,7 +123,7 @@ it("合并客户：搜 → 并排预览标红 → 勾已核对才能合并 → �
     const 话 = await 框.innerText();
     expect(话).toContain("5 个项目（其中订单阶段 2 个）、回款 3 笔");
     expect(话).toContain("1 对联系人合成一位");
-    expect(话).toContain("30 天内可在「历史变更」里整单撤回");
+    expect(话).toContain("30 天内可在「历史变更」里整单撤回（要你本人、且这家仍归你负责，否则找系统管理员）");
     await 框.locator(".csq-foot .ant-btn-primary").click();
     await page.locator(".undo-bar").waitFor();
     expect(await page.locator(".undo-t").innerText()).toMatch(/^已把「.+」并进来，30 天内可在「历史变更」里整单撤回$/);
@@ -240,6 +241,62 @@ it("项目换客户：搜目标 → 预览列明订单阶段、回款几笔、�
     await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "撤销换"));
     expect((await 调(page)).find((x) => x[0] === "撤销换")).toEqual(["撤销换", "L1"]);
     expect((await 调(page)).filter((x) => x[0] === "换")).toHaveLength(1);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("搜不到：不是系统管理员写明只列自己负责、不在公海的、要并同事的找系统管理员；系统管理员照旧，后果框也不补谁能撤", async () => {
+  const { page, 错 } = await open(390, { 种: "客户" }, { __候选: [] });
+  try {
+    await page.getByLabel("搜客户").fill("没有的");
+    const 空 = page.getByTestId("merge-cand-empty");
+    await 空.waitFor();
+    expect(await 空.innerText()).toBe("只列你负责、不在公海的客户；要并同事的客户请找系统管理员");
+    expect(await 横滚(page)).toEqual([false, false]);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+  const 管 = await open(1280, { 种: "客户" }, { __候选: [], __管: true });
+  try {
+    await 管.page.getByLabel("搜客户").fill("没有的");
+    const 空 = 管.page.getByTestId("merge-cand-empty");
+    await 空.waitFor();
+    expect(await 空.innerText()).toBe("没搜到能选的客户");
+    await 管.page.evaluate((c) => Object.assign(window, { __候选: c }), [{ id: "b", name: "乙", 编号: "NO.00012", 负责人: "QA" }]);
+    await 管.page.getByLabel("搜客户").fill("乙");
+    await 管.page.getByTestId("merge-candidate").first().click();
+    await 管.page.getByTestId("merge-check").getByText("已核对，按留下那家的来源和创建人").click();
+    await 管.page.getByTestId("merge-go").click();
+    const 框 = 管.page.locator(".csq");
+    await 框.waitFor();
+    const 话 = await 框.innerText();
+    expect(话).toContain("30 天内可在「历史变更」里整单撤回");
+    expect(话).not.toContain("否则找系统管理员");
+    expect(管.错).toEqual([]);
+  } finally { await 管.page.close(); }
+}, 60_000);
+
+it("手机 390：联系人配对下拉打开后，长「名字 · 职务」不撑出屏（下拉限宽、选项一行省略、悬停看全）", async () => {
+  const 长人 = { id: "a3", name: "欧阳".repeat(10), position: "超长的职务名称用来撑宽下拉".repeat(4), 关键: false, 号: [] };
+  const p = 预览();
+  const { page, 错 } = await open(390, { 种: "客户" }, { __预览: { ...p, 联系人们: { ...p.联系人们, 留下: [...p.联系人们.留下, 长人] } } });
+  try {
+    await 到预览(page);
+    await page.locator(".mrg-ppl-sel").nth(1).click();
+    const 下拉 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)");
+    await 下拉.waitFor();
+    const 长项 = 下拉.locator(".ant-select-item-option").filter({ hasText: "欧阳" });
+    await 长项.waitFor();
+    const 量 = await page.evaluate(() => {
+      const d = document.querySelector(".ant-select-dropdown:not(.ant-select-dropdown-hidden)")!.getBoundingClientRect();
+      return { 页: document.documentElement.scrollWidth, 视: innerWidth, 左: d.left, 右: d.right };
+    });
+    expect(量.页).toBeLessThanOrEqual(量.视);
+    expect(量.左).toBeGreaterThanOrEqual(0);
+    expect(量.右).toBeLessThanOrEqual(量.视);
+    const 字 = 长项.locator(".ant-select-item-option-content");
+    expect(await 字.evaluate((e) => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth])).toEqual(["ellipsis", true]);
+    expect(await 长项.getAttribute("title")).toContain("超长的职务名称");
+    await 截图(page, "合并-配对下拉-390.png");
     expect(错).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);

@@ -16,7 +16,9 @@ import { requireUser } from "@/lib/auth";
 import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 是系统管理员 } from "@/lib/enterprise/permissions";
+import { 是系统管理员, 只读角色, 只看的人 } from "@/lib/enterprise/permissions";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
+import { 交接中的客户, 离职交接中的客户, 离职交接中的项目 } from "@/lib/enterprise/handover-db";
 import { 客户关键词条件, 搜索词 } from "@/lib/search-keyword";
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 import { 客户编号文字 } from "@/lib/customer-no";
@@ -76,6 +78,12 @@ export async function 搜合并候选(留下id: string, 关键词: string): Prom
     select: { ...显名列, salesOwner: { select: { name: true } } },
   }));
   return 们.map((c) => ({ id: c.id, name: 客户显名(c), 编号: 客户编号文字(c.customerNo) ?? null, 负责人: c.salesOwner?.name ?? null }));
+}
+
+/** 登录的人能不能并 / 换到同事的客户（= 系统管理员）：界面只用来挑说法（搜不到时那句、后果框谁能撤），谁能做照旧在数据层判 */
+export async function 能并同事的(): Promise<boolean> {
+  const me = await requireUser();
+  return 企业版() && 是系统管理员(me, await 权限组织());
 }
 
 export async function 预览合并(留下id: string, 并掉id: string): Promise<结果<{ 预览: 合并预览结果 }>> {
@@ -166,7 +174,11 @@ export type 合并单一条 = {
   /** 联系人单：合成进的那位（留下的联系人）名字 */
   到?: string;
   at: string; status: string;
-  /** 这会儿能不能撤：合并的人本人或系统管理员、没撤过、没过期 */
+  /**
+   * 这会儿能不能撤（和服务端拦法对齐，免得摆了按钮点了才说不行）：没撤过、没过期、不是只读 / 只看某人；
+   * 客户单：系统管理员，或合并的人本人且留下那家仍归本人负责、不在公海；两家都不在转让 / 离职交接中。
+   * 联系人单：合成的人本人或系统管理员；客户不在转让交接中
+   */
   能撤: boolean;
   /** 撤回过的：没还原的那几条（存在合并单 undoLeft 里，刷新后照样看得到）；先拆开过单独合成的一句话 */
   没还原?: Pick<没还原, "类" | "原因">[];
@@ -179,9 +191,12 @@ export type 合并单一条 = {
 export async function 并进来的合并单(customerId: string): Promise<合并单一条[]> {
   const me = await requireUser();
   if (!企业版() || !是id(customerId)) return [];
-  const c = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
+  const c = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
   if (!c) return [];
-  const 管 = 是系统管理员(me, await 权限组织());
+  const org = await 权限组织();
+  const 管 = 是系统管理员(me, org);
+  /** 能写（同服务端撤回合并 / 撤回合成第一道：只读角色、只看某人的一律不能撤） */
+  const 能写 = !!org && !只读角色(me, org) && !只看的人(org, me.id);
   const 人们 = await 看全部(() => prisma.contact.findMany({ where: { customerId, deletedAt: null }, select: { id: true, name: true } }));
   const 人名 = new Map(人们.map((x) => [x.id, x.name]));
   const 们 = await prisma.entCustomerMerge.findMany({
@@ -189,17 +204,45 @@ export async function 并进来的合并单(customerId: string): Promise<合并�
     orderBy: { at: "desc" }, take: 50,
   });
   const 线 = Date.now() - 撤回期限天数 * 86_400_000;
+  // 客户单：留下那家现在仍归本人负责、不在公海（系统管理员不限），同 customer-merge.ts 撤回合并
+  const 留下归我 = 管 || (c.salesOwnerId === me.id && !c.pool);
+  const 还能撤 = 们.filter((m) => m.status === "已合并" && m.at.getTime() >= 线 && 能写 && (m.byUserId === me.id || 管));
+  const 被并们 = [...new Set(还能撤.filter((m) => m.kind === 客户单).map((m) => m.fromId))];
+  const 拦 = 还能撤.length ? await 交接拦着(customerId, 被并们) : { 转让: new Set<string>(), 离职: new Set<string>(), 还在: new Set<string>() };
+  const 客户单能撤 = (fromId: string) => 留下归我 && 拦.还在.has(fromId) && ![customerId, fromId].some((id) => 拦.转让.has(id) || 拦.离职.has(id));
   return 们.map((m) => {
     const 撤 = m.status === "已撤回" ? 读没还原(m.undoLeft) : null;
     return {
       id: m.id, kind: m.kind, 从: m.fromName, 编号: m.kind === 客户单 ? 客户编号文字(m.fromNo) ?? null : null,
       ...(m.kind === 联系人单 ? { 到: 人名.get(m.intoId) ?? "" } : {}),
       at: m.at.toISOString(), status: m.status,
-      能撤: m.status === "已合并" && m.at.getTime() >= 线 && (m.byUserId === me.id || 管),
+      能撤: 还能撤.includes(m) && (m.kind === 客户单 ? 客户单能撤(m.fromId) : !拦.转让.has(customerId)),
       ...(m.status === "已撤回" ? { 没还原: (撤?.没还原 ?? []).map((x) => ({ 类: x.类, 原因: x.原因 })), ...(撤?.提示 ? { 提示: 撤.提示 } : {}) } : {}),
       ...(m.kind === 客户单 ? 被并备注of(m.detail) : {}),
     };
   });
+}
+
+/**
+ * 撤回按钮摆不摆：两家在交接中的（服务端撤回合并 / 撤回合成用的同几个判断函数，同样在 看已删 + 看全部 里查——被并那家在回收站里，别人发起的交接也算）。
+ *   转让 = 交接中的客户（客户单、联系人单都拦）；离职 = 离职交接中的客户 + 名下项目在离职交接中（只拦客户单，同 customer-merge.ts 离职交接拦）；
+ *   还在 = 被并那家还在库里（清出回收站的服务端拦「不能撤回」）
+ */
+async function 交接拦着(留下id: string, 被并们: string[]): Promise<{ 转让: Set<string>; 离职: Set<string>; 还在: Set<string> }> {
+  const ids = [留下id, ...被并们];
+  return 看已删(() => 看全部(async () => {
+    const [转让, 客户们, 项目们] = await Promise.all([
+      交接中的客户(ids),
+      prisma.customer.findMany({ where: { id: { in: ids } }, select: { id: true, salesOwnerId: true } }),
+      被并们.length ? prisma.project.findMany({ where: { customerId: { in: ids }, deletedAt: null }, select: { id: true, ownerId: true, customerId: true } }) : Promise.resolve([]),
+    ]);
+    const 离职 = 被并们.length ? await 离职交接中的客户(客户们) : new Set<string>();
+    if (项目们.length) {
+      const 项 = await 离职交接中的项目(项目们);
+      for (const p of 项目们) if (项.has(p.id)) 离职.add(p.customerId);
+    }
+    return { 转让, 离职, 还在: new Set(客户们.map((x) => x.id)) };
+  }));
 }
 
 /** 合并单明细里的 被并备注（留下那家有备注时，被并那家的没合进来） */

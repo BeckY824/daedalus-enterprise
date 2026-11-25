@@ -142,6 +142,16 @@ function CustomerPanel({ customerId, 有状态 }: { customerId: string; 有状�
   const [错, set错] = useState<string | null>(null);
   // 快速换筛选时只认最后一次的回包
   const 第几次 = useRef(0);
+  // 合并单（11-25）：和第一页一起取，两样都回来才一起画（BornCell、时间线不会被后到的合并单往下顶）；没读到写一行，不静默当没有
+  const [合并单, set合并单] = useState<合并单一条[] | null>(null);
+  const [合并错, set合并错] = useState(false);
+  useEffect(() => {
+    let 还在 = true;
+    并进来的合并单(customerId).then((r) => { if (还在) set合并单(r); }).catch(() => { if (还在) { set合并错(true); set合并单([]); } });
+    return () => { 还在 = false; };
+  }, [customerId]);
+  /** 合并单还在取：时间线先摆「正在读取…」，免得先画出来再被顶 */
+  const 画 = 合并单 ? 数据 : null;
   /** 原筛 = 换筛选前那个：这次没取成就把「筛」退回去（列表还是原来那一类的），再报没取成 */
   const 取 = useCallback(async (这筛: 历史筛选, 游标: 历史游标 | null, 原筛?: 历史筛选) => {
     const 次 = ++第几次.current;
@@ -187,14 +197,15 @@ function CustomerPanel({ customerId, 有状态 }: { customerId: string; 有状�
   };
   return (
     <>
-      <MergeOrders customerId={customerId} />
-      {数据?.建档 && <BornCell 格={数据.建档} />}
+      {画?.建档 && <BornCell 格={画.建档} />}
       <div className="hist-flt" role="group" aria-label="按类型看">
         {历史筛选们.filter((t) => 有状态 || t !== "状态").map((t) => (
           <button key={t} type="button" aria-pressed={筛 === t} onClick={() => 换筛(t)}>{t}</button>
         ))}
       </div>
-      <Timeline 数据={数据} 忙={忙} 错={错} 空话={筛 === "全部" ? "还没有变更记录" : "这一类还没有变更"} 更早={往下} />
+      {合并错 && <p role="alert" className="hist-err" data-testid="merge-orders-err">合并单没读到，请稍后再试</p>}
+      {合并单 && 合并单.length > 0 && <MergeOrders 们={合并单} set们={set合并单} />}
+      <Timeline 数据={画} 忙={忙} 错={合并单 ? 错 : null} 空话={筛 === "全部" ? "还没有变更记录" : "这一类还没有变更"} 更早={往下} />
     </>
   );
 }
@@ -271,27 +282,24 @@ function ProjectsPanel({ customerId, 当前项目 }: { customerId: string; 当�
   );
 }
 
+/** 撤回按钮 / 后果框确认键：合并客户的叫「撤回合并」，单独合成联系人的叫「撤回合成」 */
+const 撤钮 = (m: 合并单一条) => (m.kind === "联系人" ? "撤回合成" : "撤回合并");
+
 /**
  * 合并单（合并客户第一批，11-25）：并进这位客户的（「NO.xxxxx「B」并入这位客户」）、这位客户名下单独合成的联系人，
- * 30 天内合并的人或系统管理员能「撤回合并」；撤回结果写在那一张下面：留下几条没还原、各是为什么。没有合并单整块不摆
+ * 30 天内能撤的（merge-actions 并进来的合并单 能撤，和服务端拦法对齐）给「撤回合并」/「撤回合成」；撤回结果写在那一张下面：留下几条没还原、各是为什么。
+ * 数据由 CustomerPanel 和第一页一起取好递进来；没有合并单整块不摆
  */
-function MergeOrders({ customerId }: { customerId: string }) {
+function MergeOrders({ 们, set们 }: { 们: 合并单一条[]; set们: React.Dispatch<React.SetStateAction<合并单一条[] | null>> }) {
   const router = useRouter();
   const [问后果, 后果框] = useConsequence();
-  const [们, set们] = useState<合并单一条[] | null>(null);
   const [结果, set结果] = useState<Record<string, { 没还原: { 类: string; 原因: string }[]; 提示?: string }>>({});
-  useEffect(() => {
-    let 还在 = true;
-    并进来的合并单(customerId).then((r) => { if (还在) set们(r); }).catch(() => { if (还在) set们([]); });
-    return () => { 还在 = false; };
-  }, [customerId]);
-  if (!们?.length) return null;
   const 题 = (m: 合并单一条) => (m.kind === "联系人" ? `联系人「${m.从}」合成进「${m.到 ?? ""}」` : `${m.编号 ?? ""}「${m.从}」并入这位客户`);
   const 撤 = (m: 合并单一条) => void 问后果({
     题: m.kind === "联系人" ? `撤回合成：拆回「${m.从}」？` : `撤回合并：把「${m.从}」拆回去？`,
     宽: 480,
     危: false,
-    是: "撤回合并",
+    是: 撤钮(m),
     后果: m.kind === "联系人"
       ? [
           { 标: "拆回", 话: `「${m.从}」从回收站回来，合成时收过去的号码、沟通、名片分回给他`, 级: "警" },
@@ -323,7 +331,7 @@ function MergeOrders({ customerId }: { customerId: string }) {
                 <span className="mrg-order-k">{m.kind === "联系人" ? "合成" : "合并"}</span>
                 <span className="mrg-order-t" title={题(m)}>{题(m)}</span>
                 <span className="mrg-order-s" title={fmtDateTime(m.at)}>{m.status === "已撤回" ? "已撤回" : smartTime(m.at)}</span>
-                {m.能撤 && <Button size="small" onClick={() => 撤(m)} data-testid="merge-undo">撤回合并</Button>}
+                {m.能撤 && <Button size="small" onClick={() => 撤(m)} data-testid="merge-undo">{撤钮(m)}</Button>}
               </div>
               {m.被并备注 && <p className="mrg-note mrg-order-remark" title={m.被并备注} data-testid="merge-from-remark">并进来那家的备注（没合进来）：{m.被并备注}</p>}
               {撤了 && (
