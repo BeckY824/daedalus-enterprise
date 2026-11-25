@@ -490,8 +490,9 @@ export default function CustomersView({
         const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, res.ok ? res.给谁?.id : undefined, res.ok ? res.公海项目 : undefined);
         router.refresh();
         if (!r.ok) return { ok: false, error: `没能撤销：${r.error}` };
-        // 批量里撤成、已撤回、没撤成混着时服务端拼好了整句（「已撤销 N 位；M 位刚才已经撤回公海了；…」），撤销条原样写
-        return { ok: true, 提示: r.提示 };
+        // 批量里撤成、已撤回、没撤成混着时服务端拼好了整句（「已撤销 N 位；M 位刚才已经撤回公海了；…」），撤销条原样写；
+        // 有没撤成的（有没撤成）撤销条按出错样式留久一点
+        return { ok: true, 提示: r.提示, 有没撤成: r.有没撤成 };
       },
     });
   }

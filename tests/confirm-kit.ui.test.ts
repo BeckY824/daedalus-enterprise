@@ -51,8 +51,8 @@ beforeAll(async () => {
 
     W.__save = () => { W.__做 = []; W.__成了 = 0; 画(<div className="foot" style={{ paddingTop: 80 }}><Button>取消</Button><SaveButton 做={记('__做')} 成了={() => W.__成了++} /></div>); };
 
-    W.__undo = (话, p = {}) => { const id = 话; (W.__起 ||= []).push(id); return showUndo({ 话, 毫秒: p.毫秒 ?? 5000, 撤销: async () => { (W.__撤 ||= []).push(id); if (W.__慢撤) await 睡(W.__慢撤); if (W.__挡) return { ok: false, error: W.__挡 }; if (W.__提示) return { ok: true, 提示: W.__提示 }; }, 到点: p.已做 ? undefined : async () => { (W.__交 ||= []).push(id); }, ...(p.另 ? { 另一个动作: { 话: p.另, 做: () => (W.__另 ||= []).push(id) } } : {}) }); };
-    W.__undoReset = () => { dismissUndo(); W.__起 = []; W.__撤 = []; W.__交 = []; W.__另 = []; W.__挡 = null; W.__慢撤 = 0; W.__提示 = null; };
+    W.__undo = (话, p = {}) => { const id = 话; (W.__起 ||= []).push(id); return showUndo({ 话, 毫秒: p.毫秒 ?? 5000, 撤销: async () => { (W.__撤 ||= []).push(id); if (W.__慢撤) await 睡(W.__慢撤); if (W.__挡) return { ok: false, error: W.__挡 }; if (W.__提示) return { ok: true, 提示: W.__提示, ...(W.__有没撤成 ? { 有没撤成: true } : {}) }; }, 到点: p.已做 ? undefined : async () => { (W.__交 ||= []).push(id); }, ...(p.另 ? { 另一个动作: { 话: p.另, 做: () => (W.__另 ||= []).push(id) } } : {}) }); };
+    W.__undoReset = () => { dismissUndo(); W.__起 = []; W.__撤 = []; W.__交 = []; W.__另 = []; W.__挡 = null; W.__慢撤 = 0; W.__提示 = null; W.__有没撤成 = false; };
     function 发撤销的() { return <button type="button" onClick={() => W.__undo('已取消关注「Nordic Fun AB」', { 毫秒: 800 })}>取消关注</button>; }
     W.__undoCaller = () => 画(<发撤销的 />);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, logLevel: "silent" })).outputFiles[0].text;
@@ -424,6 +424,36 @@ describe("撤销条", () => {
     await 警.waitFor({ state: "detached" });
     await page.close();
   });
+
+  it("撤成了一部分（有没撤成）：按出错样式整句折行写全、留 5 秒，鼠标停着不收；全撤成那种 1.6 秒照旧（复审 11-26 M2）", async () => {
+    const { page, errors } = await open();
+    await 调(page, "__undoReset");
+    const 话 = "已撤销 1 位；2 位负责人刚被别人改过，这次没有撤销；1 位已经不归你、原负责人已停用或过了撤销时限，这次没有撤销";
+    await 设(page, "__提示", 话);
+    await 设(page, "__有没撤成", true);
+    await 调(page, "__undo", "已领取 4 个", { 已做: true });
+    // 点撤销：鼠标就停在条上
+    await page.getByRole("button", { name: "撤销" }).click();
+    const 警 = page.locator("#undo-host").getByRole("alert");
+    await 警.waitFor();
+    expect(await page.locator(".undo-bar").getAttribute("data-state")).toBe("半");
+    expect(await 警.locator(".undo-t").innerText()).toBe(话);
+    // 整句写全：折行、不截（条最宽 520，这句一行放不下）
+    const 量 = await 警.locator(".undo-t").evaluate((el) => ({ 没截: el.scrollWidth <= el.clientWidth + 1, 高: el.getBoundingClientRect().height }));
+    expect(量.没截).toBe(true);
+    expect(量.高).toBeGreaterThan(30);
+    // 鼠标停着：过了 1.6 秒、甚至 5 秒还在
+    await page.waitForTimeout(5400);
+    expect(await 警.count()).toBe(1);
+    // 移开再走 5 秒：3 秒时还在，之后收掉
+    await page.mouse.move(5, 5);
+    await page.waitForTimeout(3000);
+    expect(await 警.count()).toBe(1);
+    await 警.waitFor({ state: "detached", timeout: 4000 });
+    expect(await 不溢出(page)).toBe(true);
+    expect(errors).toEqual([]);
+    await page.close();
+  }, 30_000);
 
   it("撤成了但有一句要说的（提示）：接在「已撤销」后面写，不当报错；服务端拼好的「已撤销 N 位；…」原样写（11-26 审查）", async () => {
     const { page, errors } = await open();

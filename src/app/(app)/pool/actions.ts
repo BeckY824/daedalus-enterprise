@@ -30,7 +30,8 @@ import { 撤销公海 } from "@/app/(app)/customers/pool-actions";
 import { 在事务里分公海项目们, type 整包撤销 } from "@/lib/enterprise/pool-assign-projects";
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 
-export type 标记结果 = { ok: true; updated: number; unchanged: number } | { ok: false; error: string };
+/** 提示 / 有没撤成：撤销公海项目整包退回客户那一半带出来的话（撤销公海 同名字段，撤销条接着写） */
+export type 标记结果 = { ok: true; updated: number; unchanged: number; 提示?: string; 有没撤成?: true } | { ok: false; error: string };
 
 const 只企业版项目模式 = { ok: false as const, error: "统一公海只在企业版项目模式里有" };
 
@@ -221,9 +222,20 @@ export async function 撤销公海项目(动作: "领取" | "分配", ids: strin
       return 成;
     }));
   }
+  // 整包退回客户那一半：已撤回 / 改过 / 培育拦 / 事先筛掉 拼好的那句（提示、有没撤成）带出去，别只看 ok（复审 11-26 S1）。
+  // 客户那一半一位都没撤成、项目这边撤了的：项目照样算撤了、照记日志，客户那句当没撤成说
+  let 包话: string | undefined;
+  let 包没撤成 = false;
   if (包) {
     const r = await 撤销公海("分配", 包.原, 包.带过来, 现, 包.公海项目);
-    if (!r.ok) return r;
+    if (!r.ok) {
+      if (!撤了) return r;
+      包话 = `客户没撤销：${r.error}`;
+      包没撤成 = true;
+    } else {
+      包话 = r.提示;
+      包没撤成 = !!r.有没撤成;
+    }
   }
   if (撤了) {
     忘掉企业版范围(); // 回到公海，原负责人回避名单变了
@@ -234,5 +246,9 @@ export async function 撤销公海项目(动作: "领取" | "分配", ids: strin
     });
     刷新();
   }
-  return { ok: true, updated: 撤了, unchanged: 们.length - 撤了 };
+  return {
+    ok: true, updated: 撤了, unchanged: 们.length - 撤了,
+    ...(包话 ? { 提示: 包话 } : {}),
+    ...(包没撤成 ? { 有没撤成: true as const } : {}),
+  };
 }

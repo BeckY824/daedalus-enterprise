@@ -555,7 +555,7 @@ describe("撤销公海领取：领的销售自己退过公海（有原负责人�
     const 撤后 = await 以(丙, () => 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目));
     expect(mocks.钉住时).toBeNull();
     expect(撤后).toMatchObject({
-      ok: true, updated: 1, 已撤回: 1, unchanged: 1,
+      ok: true, updated: 1, 已撤回: 1, unchanged: 1, 有没撤成: true,
       提示: "已撤销 1 位；1 位刚才已经撤回公海了；1 位负责人刚被别人改过，这次没有撤销",
     });
     for (const c of [撤, 已]) expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
@@ -585,5 +585,87 @@ describe("撤销公海领取：领的销售自己退过公海（有原负责人�
     if (!r2.ok) throw new Error(r2.error);
     mocks.钉住时 = async () => { await prisma.customer.update({ where: { id: c }, data: { salesOwnerId: 甲.id } }); };
     expect(await 以(丙, () => 撤销公海("领取", r2.原负责人!, r2.带过来, undefined, r2.公海项目))).toEqual({ ok: false, error: "负责人刚被别人改过，这次没有撤销，刷新看看" });
+  });
+  /** 甲名下 n 位有项目的客户放进公海、丙领走：回领取结果 */
+  const 放了再领 = async (n: number, owner: 人 = 甲) => {
+    const 们: string[] = [];
+    for (let i = 0; i < n; i++) {
+      const c = await 客户(owner.id, "意向");
+      await 项目(c, owner.id);
+      们.push(c);
+    }
+    expect(await 以(owner, () => 放进公海(们, "客户主动终止"))).toMatchObject({ ok: true, updated: n });
+    忘掉企业版范围();
+    const r = await 以(丙, () => 领取(们));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.updated).toBe(n);
+    return { 们, r };
+  };
+
+  it("批量里全是并发先撤回去的（复审 11-26 S4）：按「N 位」说，算成了、不带 有没撤成", async () => {
+    const { r } = await 放了再领(2);
+    mocks.钉住时 = async () => {
+      expect(await 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目)).toMatchObject({ ok: true, updated: 2 });
+    };
+    const 后到 = await 以(丙, () => 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目));
+    expect(mocks.钉住时).toBeNull();
+    expect(后到).toEqual({ ok: true, updated: 0, unchanged: 0, 没权限: 0, 已撤回: 2, 提示: "2 位刚才已经撤回公海了" });
+  });
+
+  it("撤成 0、一位已撤回 + 一位被改走（复审 11-26 S4）：算成了（已撤回那位回了公海），句子里两件都说，带 有没撤成", async () => {
+    const { 们: [已, 改], r } = await 放了再领(2);
+    mocks.钉住时 = async () => {
+      expect(await 撤销公海("领取", r.原负责人!.filter((x) => x.id === 已), r.带过来, undefined, r.公海项目)).toMatchObject({ ok: true, updated: 1 });
+      await prisma.customer.update({ where: { id: 改 }, data: { salesOwnerId: 甲.id } });
+    };
+    const 撤后 = await 以(丙, () => 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目));
+    expect(撤后).toEqual({
+      ok: true, updated: 0, unchanged: 1, 没权限: 0, 已撤回: 1, 有没撤成: true,
+      提示: "1 位刚才已经撤回公海了；1 位负责人刚被别人改过，这次没有撤销",
+    });
+    expect(await prisma.customerPool.count({ where: { customerId: 改 } })).toBe(0);
+  });
+
+  it("事先筛掉的（原负责人已停用）也说出来（复审 11-26 M1）：一位撤成、一位留在名下——「已撤销 1 位；1 位已经不归你…」带 有没撤成", async () => {
+    const 丁 = await 造人("ding", "销售丁某", "SALES", "sales");
+    const 好 = await 客户(甲.id, "意向");
+    await 项目(好, 甲.id);
+    expect(await 以(甲, () => 放进公海([好], "客户主动终止"))).toMatchObject({ ok: true, updated: 1 });
+    // 负责人还是已停用的丁、在公海里的客户（老数据 / 停用前进的公海；企业版放进公海会改成占位账号，这里直接摆）
+    await prisma.user.update({ where: { id: 丁.id }, data: { active: false } });
+    const 停 = await 客户(丁.id, "意向");
+    await prisma.customerPool.create({ data: { customerId: 停, userId: 丁.id, reason: "手动" } });
+    忘掉企业版范围();
+    const r = await 以(丙, () => 领取([好, 停]));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.updated).toBe(2);
+    const 撤后 = await 以(丙, () => 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目));
+    expect(撤后).toMatchObject({
+      ok: true, updated: 1, unchanged: 1, 有没撤成: true,
+      提示: "已撤销 1 位；1 位已经不归你、原负责人已停用或过了撤销时限，这次没有撤销",
+    });
+    expect(await prisma.customerPool.count({ where: { customerId: 好 } })).toBe(1);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 停 } })).salesOwnerId).toBe(丙.id);
+    expect(await prisma.customerPool.count({ where: { customerId: 停 } })).toBe(0);
+  });
+
+  it("全没撤成、原因混着（被改走 + 培育动过，复审 11-26 S3）：ok:false，按人拼成一句，不只报培育那句", async () => {
+    // 一位有项目、一位零项目（领时补潜客培育）
+    const 有 = await 客户(甲.id, "意向");
+    await 项目(有, 甲.id);
+    const 零 = await 客户(甲.id, "意向");
+    expect(await 以(甲, () => 放进公海([有, 零], "客户主动终止"))).toMatchObject({ ok: true, updated: 2 });
+    忘掉企业版范围();
+    const r = await 以(丙, () => 领取([有, 零]));
+    if (!r.ok) throw new Error(r.error);
+    const 补的 = r.带过来!.培育!;
+    expect(补的.length).toBe(1);
+    await prisma.project.update({ where: { id: 补的[0] }, data: { remark: "改过", updatedAt: new Date(Date.now() + 10_000) } });
+    mocks.钉住时 = async () => { await prisma.customer.update({ where: { id: 有 }, data: { salesOwnerId: 甲.id } }); };
+    expect(await 以(丙, () => 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目))).toEqual({
+      ok: false,
+      error: "1 位负责人刚被别人改过，这次没有撤销；1 位刚补的潜客培育项目已经有人动过（记了沟通、换了节点或编辑过），这次没有撤销",
+    });
+    expect(await prisma.customerPool.count({ where: { customerId: { in: [有, 零] } } })).toBe(0);
   });
 });
