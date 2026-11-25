@@ -1603,7 +1603,7 @@ export async function 记项目沟通(
     let 下次挡: string | null = null;
     if (售后) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
-      const 错 = await 核售后回访(me, p, input.售后回访 === true, 组员?.inviteStatus);
+      const 错 = await 核售后回访(me, p, input.售后回访 === true, 组员?.inviteStatus, { tx, org });
       if (错) return { ok: false as const, error: 错 };
       if (带了下次) {
         下次挡 = await 客户事项挡(me, p.customerId, { tx, org });

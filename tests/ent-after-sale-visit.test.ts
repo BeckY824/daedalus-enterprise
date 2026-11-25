@@ -173,6 +173,22 @@ describe("谁能记", () => {
     // 纯判断：客户在公海一律不行
     expect(能记售后回访({ id: 我 }, { ownerId: 我, result: "交付结清", 客户负责人: 我, 客户在公海: true }, null, "JOINED")).toBe(false);
   });
+
+  it("只读通道关着（CRM_READ_POOL=0，主连接只有一个）：项目页记售后回访不卡死——事务里读客户走 tx，不走外面的 prisma", async () => {
+    const p = await 交付项目({ ownerId: 同事, creatorId: 同事 });
+    vi.stubEnv("CRM_READ_POOL", "0");
+    try {
+      // 顺手排下次回访也走一遍（客户事项挡 在事务里同样按 tx 读）
+      const 下次 = 加天(今天, 30);
+      const 记着 = 项目上记(我, p.id, { 下次回访: 下次 });
+      const 先到 = await Promise.race([记着, new Promise((ok) => setTimeout(() => ok("超时"), 3000))]);
+      // 卡住的那笔要等它自己超时放掉连接，别拖累后面的用例
+      if (先到 === "超时") await 记着.catch(() => null);
+      expect(先到).toMatchObject({ ok: true, 售后回访: true, 下次回访: 下次 });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
 });
 
 describe("挂哪个项目", () => {
