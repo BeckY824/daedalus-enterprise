@@ -241,3 +241,24 @@ describe("客户来源下拉：未填 + 渠道触点一组（F-049）", () => {
     } finally { await page.close(); }
   });
 });
+
+it("钉到外面：没选时框 160 宽；选中「客户介绍（触点）」框里一行写全、不截成「…」（F-049 审查，1280 宽）", async () => {
+  const 组 = 客户来源筛选项([{ value: "ch1", label: "展会渠道" }]);
+  const { page, errors } = await open({ what: "list", 企: true, 渠道: 组 }, 1280);
+  try {
+    await 更多筛选(page).click();
+    const 弹层 = page.locator(".ant-popover:visible");
+    await 弹层.getByText("自定义筛选项").click();
+    await 弹层.locator("label.ant-checkbox-wrapper", { hasText: "客户来源" }).click();
+    await 弹层.getByRole("button", { name: "返回" }).click();
+    await page.keyboard.press("Escape");
+    const 框 = page.locator(".list-bar .ant-select", { has: page.locator('[aria-label="客户来源"]') });
+    await expect.poll(() => 框.count()).toBe(1);
+    expect(await 框.evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(160);
+    // 选上以后（地址栏回来带着 channelId）：变成「客户来源：客户介绍（触点）」标签，字一行写全
+    await page.evaluate((筛) => (window as unknown as { __render: (x: unknown) => void }).__render({ what: "list", 能: true, 锁: false, 企: true, 渠道: 筛.组, 筛: { channelId: 筛.值 } }), { 组, 值: `${触点前缀}客户介绍` });
+    await expect.poll(() => 框.locator(".ant-select-content").textContent()).toBe("客户介绍（触点）");
+    expect(await 框.evaluate((el) => { const c = el.querySelector(".ant-select-content") as HTMLElement; return c.scrollWidth <= c.clientWidth; })).toBe(true);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

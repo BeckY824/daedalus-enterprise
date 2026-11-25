@@ -213,6 +213,16 @@ export function query_records参数(只用项目: boolean): string {
   );
 }
 
+/**
+ * 按渠道名找客户（search_customers、list_contracts 的 channelName）：企业版「公司资源」「客户介绍」不设主渠道、由渠道触点承载（P-渠道-08），
+ * 写的是触点名时挂着这个触点的也算（F-049，11-25）；别的照旧按渠道名包含
+ */
+function 按渠道或触点(channel: string): Prisma.CustomerWhereInput {
+  const 按名: Prisma.CustomerWhereInput = { channel: { name: { contains: channel } } };
+  const 触点 = 企业版() ? 认渠道触点(channel) : null;
+  return 触点 ? { OR: [按名, { touchpoint: 触点 }] } : 按名;
+}
+
 export const TOOLS: Tool[] = [
   {
     name: "search_customers",
@@ -254,7 +264,7 @@ export const TOOLS: Tool[] = [
         // （那个是「往上第二代」的归属口径，算提成用的）。「小红这个渠道里有谁」问的是
         // 整条链上的人，包括转介绍来的后代——所以是前者。两个口径的数字会不一样。
         // 企业版「公司资源」「客户介绍」不设主渠道、由渠道触点承载（P-渠道-08）：问这两个也要找得到挂着触点的（F-049，11-25）
-        ...(channel ? (企业版() && 认渠道触点(channel) ? { OR: [{ channel: { name: { contains: channel } } }, { touchpoint: 认渠道触点(channel)! }] } : { channel: { name: { contains: channel } } }) : {}),
+        ...(channel ? 按渠道或触点(channel) : {}),
         ...(owner ? { salesOwner: { name: { contains: owner } } } : {}),
         ...(statusKey ? { followStatus: statusKey } : {}),
         ...(decisionKey ? { decisionStatus: decisionKey } : {}),
@@ -265,7 +275,7 @@ export const TOOLS: Tool[] = [
       const 我的条件 = { salesOwnerId: me, pool: { is: null } } satisfies Prisma.CustomerWhereInput;
       const 我的 = { AND: [where, 我的条件] };
       const 别的 = { AND: [where, { OR: [{ salesOwnerId: { not: me } }, { pool: { isNot: null } }] }] };
-      const select = { id: true, name: true, shortName: true, customerNo: true, phone: true, contacts: 主联系人号码选, school: true, grade: true, major: true, followStatus: true, decisionStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } }, channel: { select: { name: true } }, expectedSignAt: true, expectedSignOn: true, createdAt: true, lastFollowAt: true } as const;
+      const select = { id: true, name: true, shortName: true, customerNo: true, phone: true, contacts: 主联系人号码选, school: true, grade: true, major: true, followStatus: true, decisionStatus: true, salesOwnerId: true, pool: { select: { customerId: true } }, salesOwner: { select: { name: true } }, channel: { select: { name: true } }, touchpoint: true, expectedSignAt: true, expectedSignOn: true, createdAt: true, lastFollowAt: true } as const;
       const read = (args: unknown) => prisma.customer.findMany({ ...(args as Prisma.CustomerFindManyArgs), select });
       type 行 = Awaited<ReturnType<typeof read>>;
       const 取 = (w: Prisma.CustomerWhereInput, n: number): Promise<行> =>
@@ -286,7 +296,7 @@ export const TOOLS: Tool[] = [
         范围: 范围说法[范围],
         分组: { [归属叫法.我]: 我的数, [归属叫法.别人]: total - 我的数 - 公海数, [归属叫法.公海]: 公海数 },
         ...(另有 ? { 另有, 另有说明: `另有 ${另有} 位你看得到、但不归你负责（同事或下属负责的、你在组里的项目挂的）；用户问团队 / 下属 / 同事的才用 scope=team 查，别混进「我的客户」` } : {}),
-        customers: rows.map((r) => ({ id: r.id, name: 客户显名(r), 归属: 客户归属(me, r), phone: 号(客户电话(r)), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 客户负责人名(r), channel: r.channel?.name ?? null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
+        customers: rows.map((r) => ({ id: r.id, name: 客户显名(r), 归属: 客户归属(me, r), phone: 号(客户电话(r)), school: r.school, grade: r.grade, major: r.major, followStatus: statusLabel(ctx.b, r.followStatus), decisionStatus: statusLabel(ctx.b, r.decisionStatus), owner: 客户负责人名(r), channel: r.channel?.name ?? null, touchpoint: r.touchpoint || null, expectedSignAt: r.expectedSignOn ?? (r.expectedSignAt ? dayjs(r.expectedSignAt).format("YYYY-MM-DD") : null), createdAt: dayjs(r.createdAt).format("YYYY-MM-DD"), lastFollowAt: r.lastFollowAt ? dayjs(r.lastFollowAt).format("MM-DD") : null })),
       };
       const 区间说法 = (r: { from?: Dayjs; to?: Dayjs }, 名: string) =>
         r.from || r.to ? `${名} ${r.from ? r.from.format("YYYY-MM-DD") : "最早"}~${r.to ? r.to.format("YYYY-MM-DD") : "今天"}` : "";
@@ -857,7 +867,7 @@ export const TOOLS: Tool[] = [
       "列签约记录（已经成交的单子：谁、多少钱、什么时候签的），按签约日期从近到远。" +
       "问「这个月签了哪几单」「李四这个季度签了多少」「小红这个渠道签了哪些」用它。" +
       "只要总数不要名单时用 query_metric(contract_amount / contract_count)。",
-    args: '{"from": "YYYY-MM-DD，可空", "to": "YYYY-MM-DD，可空（含当天）", "customerName": "客户姓名，可空", "ownerName": "销售负责人姓名，可空", "channelName": "渠道名称，可空"}',
+    args: '{"from": "YYYY-MM-DD，可空", "to": "YYYY-MM-DD，可空（含当天）", "customerName": "客户姓名，可空", "ownerName": "销售负责人姓名，可空", "channelName": "渠道名称（也可写渠道触点：公司资源 / 客户介绍），可空"}',
     async run(args) {
       // 写反了换过来，别回一个空名单让人以为真没签
       const 区间 = 日期区间(args.from, args.to);
@@ -875,7 +885,7 @@ export const TOOLS: Tool[] = [
           ? {
               customer: {
                 ...(name ? { name: { contains: name } } : {}),
-                ...(channel ? { channel: { name: { contains: channel } } } : {}),
+                ...(channel ? 按渠道或触点(channel) : {}),
               },
             }
           : {}),
@@ -901,7 +911,7 @@ export const TOOLS: Tool[] = [
           take: 30,
           select: {
             id: true, amount: true, signedAt: true, remark: true, ...带币种.签约,
-            customer: { select: { ...显名列, salesOwner: { select: { id: true, name: true, email: true } }, channelOwner: { select: { id: true, name: true, email: true } }, channel: { select: { name: true } } } },
+            customer: { select: { ...显名列, salesOwner: { select: { id: true, name: true, email: true } }, channelOwner: { select: { id: true, name: true, email: true } }, channel: { select: { name: true } }, touchpoint: true } },
             owner: { select: { salesOwnerId: true, channelOwnerId: true } },
           },
         }),
@@ -925,6 +935,7 @@ export const TOOLS: Tool[] = [
             签约日: dayjs(c.signedAt).format("YYYY-MM-DD"),
             负责人: 归属.销售(c)?.name ?? null,
             渠道: c.customer.channel?.name ?? null,
+            触点: c.customer.touchpoint || null,
             备注: c.remark || null,
           })),
         },

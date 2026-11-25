@@ -823,7 +823,8 @@ export default function CustomersView({
         }, {
           // 客户来源（11-06）：建档时选的渠道（Customer.channelId），停用的渠道也能筛，老客户还挂着
           // F-049（11-25）：多「未填」（主渠道和渠道触点都空）、按渠道触点（公司资源、客户介绍），值还在 channelId 这一个参数里
-          键: "channelId", 名: "客户来源", 宽: 150, 默认外露: false, 有值: !!f.channelId,
+          // 框 160（F-049 审查）：钉到外面时「全部客户来源」、选中后的「客户介绍（触点）」都留足；窄屏照 globals.css 收缩规则
+          键: "channelId", 名: "客户来源", 宽: 160, 默认外露: false, 有值: !!f.channelId,
           渲染: (style: CSSProperties) => (
             <Select style={style} placeholder="全部客户来源" allowClear aria-label="客户来源" showSearch={{ optionFilterProp: "label" }}
               popupMatchSelectWidth={false} classNames={{ popup: { root: "src-filter-pop" } }}
