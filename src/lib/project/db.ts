@@ -1575,17 +1575,15 @@ export async function 记项目沟通(
   input = 认;
   /*
     下次回访（E-283 第 1 条）：售后回访顺手排一条客户跟进计划。谁能排同客户页的待办 / 计划（客户事项挡：客户负责人、这位客户下项目的负责人；
-    组员、上级只看的、公海里的不给，P-沟通-04 组员不能建计划）。挡在事务外先查（它走外面的库，事务里不能等它）；
-    排不了的不拦这条回访，回 下次没排 一句；排得了才验日期（日历日、不早于今天），日期不对整条不记
+    组员、上级只看的、公海里的不给，P-沟通-04 组员不能建计划）。挡在事务里核（审查：事务外核过、进事务前客户被转走，组员身份照样建出计划），
+    用 tx 读这一刻的客户负责人、项目负责人；排不了的不拦这条回访，回 下次没排 一句；排得了才认日期（日历日、不早于今天），日期不对整条不记。
+    日期在这里先解析好，事务里只按挡的结果取用
   */
   const 带了下次 = 企业版() && input.售后回访 === true && typeof input.下次回访 === "string" && !!input.下次回访.trim();
-  const 下次挡 = 带了下次 ? await 下次回访挡(me, projectId) : null;
-  let 下次时间: ScheduleDate | null = null;
-  if (带了下次 && !下次挡) {
+  let 下次日期: ScheduleDate | { error: string } | null = null;
+  if (带了下次) {
     const t = parseScheduleDate(input.下次回访!.trim(), undefined, false);
-    if (!t?.on || !t.at) return { ok: false, error: 下次回访日期不对话 };
-    if (t.on < calendarDay(now)) return { ok: false, error: 下次回访早于今天话 };
-    下次时间 = t;
+    下次日期 = !t?.on || !t.at ? { error: 下次回访日期不对话 } : t.on < calendarDay(now) ? { error: 下次回访早于今天话 } : t;
   }
   const 规则 = await 生效组织规则();
   const 状态开 = await 客户状态自动();
@@ -1601,10 +1599,16 @@ export async function 记项目沟通(
     if (p.pooledAt) return { ok: false as const, error: 企业版() ? 沟通项目在公海话 : "这个项目在公海里，先领取再记" };
     // 售后回访（11-25）：交付结清的项目只认标了售后回访的，谁能记按客户判公海（交付结清项目的 pooledAt 永远空）
     const 售后 = 企业版() && 是交付(p.result);
+    /** 下次回访排不了的那句（事务里按这一刻的负责人核，见上） */
+    let 下次挡: string | null = null;
     if (售后) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
       const 错 = await 核售后回访(me, p, input.售后回访 === true, 组员?.inviteStatus);
       if (错) return { ok: false as const, error: 错 };
+      if (带了下次) {
+        下次挡 = await 客户事项挡(me, p.customerId, { tx, org });
+        if (!下次挡 && 下次日期 && "error" in 下次日期) return { ok: false as const, error: 下次日期.error };
+      }
     }
     // 沟通必须挂在推项目（11-17 客户定）：已结束的项目不再记沟通
     if (企业版() && p.result && !售后) return { ok: false as const, error: 沟通项目已结束话 };
@@ -1661,6 +1665,7 @@ export async function 记项目沟通(
       if (推.到.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
       if (!售后) await 勾掉将回收提醒(tx, 规则, p, now);
       // 下次回访（E-283）：和这条回访同一个事务；客户负责人不一定看得到这个项目、项目负责人不一定是客户负责人——上面 客户事项挡 核过人，按全部写
+      const 下次时间 = 下次日期 && !("error" in 下次日期) ? 下次日期 : null;
       const 下次: 下次回访结果 = !售后 ? {} : 下次挡 ? { 下次没排: 下次挡 } : 下次时间 ? await 看全部(async () => {
         const 计划 = await tx.followPlan.create({ data: { subject: 售后回访主题(p.name), plannedAt: 下次时间!.at!, plannedOn: 下次时间!.on, plannedHasTime: false, method: 好.method ?? FOLLOW_TYPE_MAP[好.type]?.label ?? "电话沟通", customerId: p.customerId, ownerId: me.id, afterSaleProjectId: p.id } });
         return { 下次计划id: 计划.id, 下次回访: 下次时间!.on!, 下次计划主题: 计划.subject };
@@ -1673,12 +1678,6 @@ export async function 记项目沟通(
 
 /** 记项目沟通 顺手排的下次回访（E-283）：排上了回 id 和日子（YYYY-MM-DD）；带了但这个人排不了回原因（这条回访照记） */
 export type 下次回访结果 = { 下次计划id?: string; 下次回访?: string; 下次计划主题?: string; 下次没排?: string };
-
-/** 下次回访谁能排：按项目的客户过 客户事项挡（同客户页排计划）；项目不在了回 null（事务里那句「不在了」为准） */
-async function 下次回访挡(me: 谁, projectId: string): Promise<string | null> {
-  const x = await 看全部(() => prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { customerId: true } }));
-  return x ? 客户事项挡(me, x.customerId) : null;
-}
 
 /**
  * 记项目沟通带的额外格子（客户页选了关联项目，10-31）：标题、联系人、状态、时长、参与人。

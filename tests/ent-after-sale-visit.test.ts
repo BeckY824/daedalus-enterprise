@@ -11,7 +11,19 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   user: { id: "", name: "小王", email: "s1", role: "SALES", title: "", avatar: null },
+  /** 模拟「事务外那道 客户事项挡 核的时候我还是客户负责人」：不带 于（不是事务里复核）的那次直接放行（E-283 审查 TOCTOU） */
+  事务外挡放行: false,
+  /** 客户页 saveFollowUp 事务外几道核完、进事务前跑一次（挂在无意义判定上：它是进事务前最后一道），模拟这时客户被转走 */
+  进事务前: null as null | (() => Promise<unknown>),
 }));
+vi.mock("@/lib/enterprise/meaningless-follow", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/meaningless-follow")>();
+  return { ...m, 沟通无意义挡: async (...a: Parameters<typeof m.沟通无意义挡>) => { const f = mocks.进事务前; mocks.进事务前 = null; await f?.(); return m.沟通无意义挡(...a); } };
+});
+vi.mock("@/lib/enterprise/follow-perm", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/follow-perm")>();
+  return { ...m, 客户事项挡: (...a: Parameters<typeof m.客户事项挡>) => (mocks.事务外挡放行 && !a[2] ? Promise.resolve(null) : m.客户事项挡(...a)) };
+});
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user, getCurrentUser: async () => mocks.user }));
 vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => true }));
@@ -61,6 +73,8 @@ const 挂在 = async (followUpId: string) => (await prisma.followUpProject.findU
 const 身份 = (id: string) => { mocks.user = { ...mocks.user, id }; };
 
 beforeEach(async () => {
+  mocks.事务外挡放行 = false;
+  mocks.进事务前 = null;
   await resetDb();
   invalidateSettingsCache();
   我 = (await prisma.user.create({ data: { email: "s1", name: "小王", title: "", role: "SALES", password: "x" } })).id;
@@ -253,6 +267,29 @@ describe("[E-283] 项目页记售后回访顺手排下次回访（记项目沟�
     expect(r).not.toHaveProperty("下次计划id");
     expect(await 项目上记(组员, p.id, { 下次回访: 日(-3) })).toMatchObject({ ok: true, 下次没排: 不能改客户事项话 });
     expect(await prisma.followUp.count()).toBe(2);
+    expect(await prisma.followPlan.count()).toBe(0);
+  });
+
+  it("事务外核过、进事务前客户被转走（审查 TOCTOU）：我只剩组员身份，回访照记、计划不建，回 下次没排", async () => {
+    // 我是客户负责人、又是同事那个交付结清项目的已进组组员；事务外核的那一刻我还是客户负责人（放行），进事务前客户转给了组员
+    const p = await 交付项目({ ownerId: 同事, creatorId: 同事 });
+    await prisma.projectMember.create({ data: { projectId: p.id, userId: 我, inviteStatus: "JOINED" } });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 组员 } });
+    mocks.事务外挡放行 = true;
+    const r = await 项目上记(我, p.id, { 下次回访: 日(30) });
+    expect(r).toMatchObject({ ok: true, 售后回访: true, 下次没排: 不能改客户事项话 });
+    expect(r).not.toHaveProperty("下次计划id");
+    expect(await prisma.followPlan.count()).toBe(0);
+  });
+
+  it("客户页同理（saveFollowUp 顺手排计划）：事务外核过、进事务前客户被转走，事务里复核拦下，回访和计划都不存", async () => {
+    // 我是客户负责人、又是同事那个交付结清项目的已进组组员；事务外几道都按客户负责人核过，进事务前客户转给了组员
+    const p = await 交付项目({ ownerId: 同事, creatorId: 同事 });
+    await prisma.projectMember.create({ data: { projectId: p.id, userId: 我, inviteStatus: "JOINED" } });
+    mocks.进事务前 = () => raw.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 组员 } });
+    const r = await 记({ projectId: p.id, 售后回访: true, 附带: { tasks: [], plan: { subject: "问问二期", plannedAt: dayjs().add(30, "day").format("YYYY-MM-DD"), method: "电话沟通" } } });
+    expect(r).toEqual({ ok: false, error: 不能改客户事项话 });
+    expect(await prisma.followUp.count()).toBe(0);
     expect(await prisma.followPlan.count()).toBe(0);
   });
 

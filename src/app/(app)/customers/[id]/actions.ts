@@ -294,8 +294,11 @@ export async function saveFollowUp(input: FollowUpInput) {
       企业版（审核 11-18 权限 P1-4）：顺手建待办 / 计划、带提醒时间的待办 / 提醒，同 saveTask / savePlan 过 客户事项挡（负责人本人）；
       顺手完成计划同 勾完成 走 本人勾完成挡。公海客户新记 = 先领再记（下面），领了就是自己的，不在这里挡
     */
+    /** 事务里要复核 客户事项挡（审查 E-283：这里核过、进事务前客户被转走，事务里照旧建出待办 / 计划）：组织表在这里读好 */
+    let 事项复核组织: Awaited<ReturnType<typeof 权限组织>> | undefined;
     if (企业版() && 目标 && !目标.pool) {
       const 建事项 = !!(extra?.tasks?.length || extra?.plan) || (!input.id && (input.type === "TASK" || input.type === "REMIND") && !!input.dueAt && input.status !== "已完成");
+      if (建事项) 事项复核组织 = await 权限组织();
       const 挡 = 建事项 ? await 客户事项挡(user, input.customerId) : null;
       if (挡) return { ok: false as const, error: 挡 };
       if (extra?.完成计划) {
@@ -399,6 +402,11 @@ export async function saveFollowUp(input: FollowUpInput) {
       const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: 显名列 });
       // 客户在、只是看不到（比如项目组员）：说没权限，不说「不在了」（11-03 B5-6）
       if (!customer) return { ok: false as const, error: (await 看全部(() => tx.customer.findUnique({ where: { id: input.customerId }, select: { id: true } }))) ? "你没有权限给这个客户记沟通，请找负责人" : "这个客户已经不在了，请刷新重试" };
+      // 顺手建待办 / 计划：按这一刻的客户负责人、项目负责人再核一遍（还没写任何东西，拦下整条不存）
+      if (事项复核组织 !== undefined) {
+        const 挡 = await 客户事项挡(user, input.customerId, { tx, org: 事项复核组织 });
+        if (挡) return { ok: false as const, error: 挡 };
+      }
       const plan = extra?.完成计划 ? await tx.followPlan.findFirst({ where: { id: extra.完成计划, customerId: input.customerId } }) : null;
       if (extra?.完成计划 && !plan) return { ok: false as const, error: "要完成的计划已不存在或不属于这位客户，请重新选择" };
       const audits: Parameters<typeof recordAudit>[0][] = [];

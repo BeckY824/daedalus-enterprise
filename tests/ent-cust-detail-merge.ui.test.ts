@@ -81,6 +81,8 @@ beforeAll(async () => {
     const 长='超长项目名字'.repeat(6);
     const 项目们={
       p1:项目('p1','项目一'+长,'c1',[['c1',['决策人'],null],['c2',['使用方'],'支持']]),
+      // E-283 审查：交付结清、我能记售后回访的页签（主按钮是「记售后回访」）
+      p8:项目('p8','交付项目乙','c1',[['c1',['决策人'],null]],{phase:'订单',node:'交付',result:'交付结清',能记沟通:false,能记售后回访:true}),
       p2:项目('p2','项目二'+长,'c3',[['c3',['决策人'],null]]),
     };
     const 页签们=[{id:'p1',name:项目们.p1.name,节点:'方案报价',阶段:'商机',结局:null},{id:'p2',name:项目们.p2.name,节点:'需求确认',阶段:'商机',结局:null}];
@@ -90,10 +92,10 @@ beforeAll(async () => {
     const 名单=<aside className='pane pane-roster'><div className='pane-h'><span className='pane-t'>客户</span></div><div className='pane-rows'>{Array.from({length:20},(_,i)=><div key={i}>客户{i}</div>)}</div></aside>;
     window.__render=(o={})=>{
       window.__sp=o.地址||'';window.__换=undefined;
-      const 签0=o.空?[]:o.多?(o.末?[...多页签.slice(1),多页签[0]]:多页签):o.单?[页签们[0]]:页签们;
+      const 签0=o.空?[]:o.售后签?[{id:'p8',name:项目们.p8.name,节点:'交付结清',阶段:'订单',结局:'交付结清'}]:o.多?(o.末?[...多页签.slice(1),多页签[0]]:多页签):o.单?[页签们[0]]:页签们;
       // 11-23 合同号式项目名：按位置换掉页签的名字
       const 签=o.名们?签0.map((t,i)=>({...t,name:o.名们[i]??t.name})):签0;
-      const 当前=o.空?null:当前of(项目们[o.选||'p1'],!o.只读);
+      const 当前=o.空?null:当前of(项目们[o.售后签?'p8':o.选||'p1'],!o.只读);
       if(当前&&o.只读) 当前.p={...当前.p,能记沟通:false,能放公海:false,能转让:false,能改节点:false,能删:false,关联:当前.p.关联};
       if(当前&&o.删) 当前.p={...当前.p,能删:true};
       // 11-23 项目组卡：一位已邀请没选角色的、一位进了组有角色的；在职里还有两位能邀请
@@ -108,7 +110,7 @@ beforeAll(async () => {
           contacts={o.八人?八人:contacts} {...(o.名片?{联系人分类附件数:{c1:{名片:1,相册:0},c2:{名片:0,相册:0},c3:{名片:0,相册:2}}}:{})} {...(o.历史?{换负责人记录:换负责人}:{})} contracts={[]} tasks={[{id:'t1',title:'周五带合同上门',dueAt:'2026-11-13T02:00:00.000Z',done:false}]} plan={null}
           users={[{id:'qa',name:'QA',email:'qa@x'},{id:'u2',name:'同事乙',email:'b@x'}]} channels={[]} aiEnabled={false} followUps={客户沟通} followUpsHasMore={false}
           项目们={签.map(t=>({id:t.id,name:t.name,phase:'商机',node:t.节点,result:null,pooledAt:null,amount:0,currency:'CNY'}))} 参与项目们={[]} 关联们={[]} 旺旺们={[]}
-          跟进去处={[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null,下一步文字:null},...(o.售后?[{id:'p9',名:'交付项目甲',主:true,结束:true,说明:'已结束',下一步:null,下一步文字:null,能记:false,能记售后:true}]:[])]} 待办计划={[]} 能放公海 新建项目={{节点们:['线索验证'],要下一步:false}}
+          跟进去处={[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null,下一步文字:null},...(o.售后签?[{id:'p8',名:'交付项目乙',主:true,结束:true,说明:'已结束',下一步:null,下一步文字:null,能记:false,能记售后:true}]:[]),...(o.售后?[{id:'p9',名:'交付项目甲',主:true,结束:true,说明:'已结束',下一步:null,下一步文字:null,能记:false,能记售后:true}]:[])]} 待办计划={[]} 能放公海 新建项目={{节点们:['线索验证'],要下一步:false}}
           只读={o.只读?'全':false} {...(o.合并?{合并口:<合并探针/>,能合并:o.合并,并入话:o.并入话??null}:{})} {...(o.不能转?{能转让客户:false}:{})} {...(o.不能放?{能放公海:false}:{})}
           三态条={o.提醒?{状态:'沉睡',文字:'满 90 天没有有效沟通，也可以用右上角「客户操作」转让或退回公海',悬停:'满 90 天没有有效沟通',旁注:null,按钮们:[{动作:'继续持有',字:'我还在跟',说明:'顺延 30 天',要理由:false,主:true}]}:null}
           项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}
@@ -132,7 +134,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 合并?: { 客户: boolean; 联系人: boolean }; 并入话?: string; 组员?: boolean | "只看"; 名片?: boolean; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean; 售后?: boolean };
+type 参 = { 合并?: { 客户: boolean; 联系人: boolean }; 并入话?: string; 组员?: boolean | "只看"; 名片?: boolean; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean; 售后?: boolean; 售后签?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -1539,6 +1541,35 @@ it("[E-283] 有在推页签时：沟通卡头「新建沟通」旁另摆一颗�
     await 画(page, { 空: true });
     expect(await page.getByTestId("project-zone-empty").innerText()).toMatch(/这位客户还没有项目/);
     expect(await page.getByTestId("cust-after-sale-visit").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+/*
+  E-283 审查第 3 条：页签全是有「记售后回访」主按钮的交付结清项目（我负责的 X），名下还有我能记、却没有页签的交付结清项目（同事负责的 Y，
+  我只是客户负责人）——卡头另摆一颗「其他项目售后回访」，框里只列 Y；没有页签外的就不摆
+*/
+it("[E-283] 页签是售后回访主按钮时：还有没页签的交付结清项目就另摆「其他项目售后回访」，框里只列它", async () => {
+  const { page, errors } = await 开(1280, { 售后签: true, 售后: true });
+  try {
+    await page.evaluate(x => { (window as unknown as { __须知: object }).__须知 = x; }, 售后须知);
+    const 卡头 = page.locator(".rec-zone .cd-comm .ant-card-head").first();
+    expect(await 卡头.getByTestId("follow-card-after-sale").innerText()).toMatch(/记售后回访/);
+    expect(await 卡头.getByTestId("cust-after-sale-visit").count()).toBe(0);
+    const 另 = 卡头.getByTestId("cust-after-sale-visit-other");
+    expect(await 另.innerText()).toMatch(/其他项目售后回访/);
+    await 另.click();
+    const 框 = page.locator(".ant-modal").filter({ hasText: "记售后回访" });
+    await 框.waitFor();
+    // 只列页签外的那个（只有一个就选好），页签里的交付项目乙不列
+    await 框.getByLabel("下次回访").waitFor();
+    expect(await 框.innerText()).toContain("交付项目甲");
+    expect(await 框.innerText()).not.toContain("交付项目乙");
+    await page.keyboard.press("Escape");
+    // 能记售后回访的只有页签里这一个：不摆
+    await 画(page, { 售后签: true });
+    expect(await page.getByTestId("follow-card-after-sale").count()).toBe(1);
+    expect(await page.getByTestId("cust-after-sale-visit-other").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

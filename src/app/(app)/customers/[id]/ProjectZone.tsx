@@ -355,6 +355,8 @@ export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据
     );
   }
   const 当前 = 数据.当前;
+  // 我能记售后回访、却没有页签的交付结清项目（看不到它，只是客户负责人）：页签上自带「记售后回访」时另给一颗只记它们的（E-283 审查）
+  const 页签外售后 = (槽.售后项目ids ?? []).filter((id) => !数据.页签们.some((t) => t.id === id));
   return (
     <ProjectDetail
       key={当前.p.id}
@@ -372,6 +374,7 @@ export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据
         无全部沟通: 槽.无全部沟通,
         走后去: 槽.走后去,
         记售后回访: 槽.记售后回访,
+        页签外售后回访: 槽.记这几个售后回访 && 页签外售后.length ? () => 槽.记这几个售后回访!(页签外售后) : null,
       }}
     />
   );

@@ -233,19 +233,23 @@ export const 不能改客户事项话 = "只有负责人能改这位客户的待
 
 /**
  * 企业版客户详情上跟着客户走的小事（待办、下次计划、联系人移出 / 挂回，11-02）：同沟通——客户负责人或这位客户下项目的负责人改，
- * 没业务角色、管理员、公海里的拒；上级、总管理只看。不是企业版 null（团队版限定层照旧）
+ * 没业务角色、管理员、公海里的拒；上级、总管理只看。不是企业版 null（团队版限定层照旧）。
+ * 于 = 事务里复核（E-283 审查：事务外挡过、进事务前客户被转走，事务里照旧建出计划）：客户负责人、项目负责人用 tx 读这一刻的
+ * （库只开 1 个连接，事务里走外面的库会等自己，lib/sqlite-url），组织表用事务外读好的
  */
-export async function 客户事项挡(me: 谁, customerId: string | null | undefined): Promise<string | null> {
+export async function 客户事项挡(me: 谁, customerId: string | null | undefined, 于?: { tx: Prisma.TransactionClient; org: 组织 | null }): Promise<string | null> {
   if (!企业版()) return null;
-  const org = await 权限组织();
+  const org = 于 ? 于.org : await 权限组织();
   if (!org || 没设业务角色(org, me.id)) return 没业务角色话;
   if (只读角色(me, org)) return 只读话of(me, org);
   if (!customerId) return null;
-  const c = await defaultClient.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
+  // 事务里的 tx 带限定层（组员、只负责项目的人看不到这位客户）：按 id 取全，谁能改下面判
+  const db: Prisma.TransactionClient = 于?.tx ?? defaultClient;
+  const c = await 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
   if (!c) return null; // 不在了：后面照原样报
   if (c.pool) return "这位客户在公海里，先领取再改";
   if (能改客户(me, { salesOwnerId: c.salesOwnerId, 在公海: false }, org)) return null;
-  const 项目 = await defaultClient.project.findMany({ where: { customerId, pooledAt: null }, select: { ownerId: true } });
+  const 项目 = await 看全部(() => db.project.findMany({ where: { customerId, pooledAt: null }, select: { ownerId: true } }));
   return 负责人能改of(me, 项目.map((x) => x.ownerId), org) ? null : 不能改客户事项话;
 }
 
