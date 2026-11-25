@@ -68,8 +68,10 @@ function 记整页(page: Page) {
   return 首次;
 }
 
-test("宽屏：保存后停 2 秒再一页一页重热左栏（跳转优化 PR-B）", async ({ page }) => {
+test("宽屏：保存后停 2 秒再一页一页重热左栏，只热常用的前 2 页、离上次预热不到 60 秒不热（跳转优化 PR-B）", async ({ page }) => {
   test.skip(不预热, "设了 none 不预热");
+  // 要等过 60 秒的限频（lib/prefetch-full 预热最短）
+  test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   await 登录(page);
   // 自己造一位：CI 按文件分片，这个文件落在哪一片、前面有没有用例造过客户都说不准
@@ -84,6 +86,7 @@ test("宽屏：保存后停 2 秒再一页一页重热左栏（跳转优化 PR-B
     await db.$disconnect();
   }
   await page.mouse.move(1, 1);
+  const 开页 = Date.now();
   await page.goto(`/customers/${id}`);
   // 等空闲预热跑完（requestIdleCallback 3 秒 + 每页隔 600ms）
   await page.waitForTimeout(7000);
@@ -91,14 +94,28 @@ test("宽屏：保存后停 2 秒再一页一页重热左栏（跳转优化 PR-B
   await expect(page.locator('aside.pane-roster:not([aria-busy="true"])')).toBeVisible();
   const 星 = page.locator(".rec-star").first();
   const 原 = await 星.getAttribute("aria-pressed");
+  const 算重热 = (首次: Map<string, number>) => [...首次].filter(([p]) => 可预热页.has(p) && (!列表 || 列表.includes(p))).sort((a, b) => a[1] - b[1]);
+
+  // 离打开时的预热不到 60 秒：存了也不重热（限频，审查 11-25）
+  const 限频内 = 记整页(page);
+  await 星.click();
+  await expect(星).toHaveAttribute("aria-pressed", 原 === "true" ? "false" : "true");
+  await page.waitForTimeout(5000);
+  expect(算重热(限频内), "离上次预热不到 60 秒就重热了").toEqual([]);
+  await 星.click();
+  await expect(星).toHaveAttribute("aria-pressed", 原 ?? "false");
+
+  // 过了 60 秒再存：停 2 秒后重热
+  await page.waitForTimeout(Math.max(0, 开页 + 63_000 - Date.now()));
   const 首次 = 记整页(page);
   const t0 = Date.now();
   await 星.click();
   await expect(星).toHaveAttribute("aria-pressed", 原 === "true" ? "false" : "true");
   await page.waitForTimeout(8000);
-  const 重热 = [...首次].filter(([p]) => 可预热页.has(p) && (!列表 || 列表.includes(p))).sort((a, b) => a[1] - b[1]);
-  // 收藏一下就是一次会刷新的保存：Next 清掉整个预取缓存，停 2 秒后重热
+  const 重热 = 算重热(首次);
+  // 收藏一下就是一次会刷新的保存：Next 清掉整个预取缓存，停 2 秒后重热；只热常用在前的前 2 页
   expect(重热.length, "保存后没重热左栏").toBeGreaterThan(0);
+  expect(重热.length, `重热了 ${重热.map((x) => x[0]).join(" ")}，多于 2 页`).toBeLessThanOrEqual(2);
   expect(重热[0][1] - t0, "保存后没停 2 秒就重热了").toBeGreaterThanOrEqual(1800);
   // 一页一页地发：相邻两页至少隔约 600ms（留 150ms 余量）
   for (let i = 1; i < 重热.length; i++) expect(重热[i][1] - 重热[i - 1][1], `${重热[i - 1][0]} → ${重热[i][0]} 挤在一起发了`).toBeGreaterThanOrEqual(450);
@@ -128,4 +145,28 @@ test("手机宽度：菜单一打开就取菜单里的页（跳转优化 PR-B）
   const 取过 = [...首次.keys()].filter((p) => 可预热页.has(p));
   expect(取过.length, "菜单打开了没取").toBeGreaterThan(0);
   if (列表) expect(取过.filter((p) => !列表.includes(p)), "取了名单外的页").toEqual([]);
+  // 只取菜单里真有的项（企业版手机菜单没有 /leads）
+  const 菜单项 = (await page.locator(".ant-dropdown-menu-item").evaluateAll((els) => els.map((e) => e.getAttribute("data-menu-id") ?? ""))).map((x) => x.slice(x.indexOf("/")));
+  expect(取过.filter((p) => !菜单项.includes(p)), "取了菜单里没有的页").toEqual([]);
+});
+
+test("手机宽度：菜单一关，还没取的就不取了（跳转优化 PR-B 审查）", async ({ page }) => {
+  test.skip(不预热, "设了 none 不预热");
+  test.skip(!!列表 && 列表.length < 3, "名单不到 3 页，看不出停没停");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await 登录(page);
+  await page.mouse.move(1, 1);
+  await page.goto("/follow-ups/plans");
+  await page.waitForTimeout(4000);
+  await expect(page.locator('aside.pane[aria-busy="true"]')).toHaveCount(0);
+  const 首次 = 记整页(page);
+  const 键 = page.getByRole("button", { name: "打开导航菜单" });
+  await 键.click();
+  await expect(page.locator(".ant-dropdown-menu-item").first()).toBeVisible();
+  // 再点一下菜单键收起（第一页打开时就发了，第二页要隔 300ms）
+  await 键.click();
+  await expect(page.locator(".ant-dropdown-menu-item").first()).toBeHidden();
+  await page.waitForTimeout(3000);
+  const 取过 = [...首次.keys()].filter((p) => 可预热页.has(p));
+  expect(取过.length, `菜单关了还在取：${取过.join(" ")}`).toBeLessThanOrEqual(2);
 });
