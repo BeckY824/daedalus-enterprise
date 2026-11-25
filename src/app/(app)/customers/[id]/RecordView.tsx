@@ -623,7 +623,7 @@ export default function RecordView({
     else router.refresh();
     if (!res.ok) return void 说就地(res.error, true);
     if (!res.updated) return void 说就地(动作 === "放进" ? "已经在公海里了" : "已经被别人领走了");
-    const 原 = 动作 === "领取" ? (res.原负责人 ?? []) : [{ id: customer.id, 值: "" }];
+    const 原 = 动作 === "领取" ? (res.原负责人 ?? []) : (res.原负责人?.length ? res.原负责人 : [{ id: customer.id, 值: "" }]);
     // 成了走底部撤销条（PR5a showUndo）：撤销 = 反着做一遍；撤不了原因写在条上
     showUndo({
       话: 动作 === "放进" ? "已放回公海，谁都能领" : `已领取，负责人改成你${带走说法(res.带走)}`,
@@ -735,7 +735,8 @@ export default function RecordView({
       话: `已把「${叫这位}」退回公海`,
       毫秒: 6000,
       撤销: async () => {
-        const u = await 撤销公海("放进", [{ id: customer.id, 值: "" }], r.带过来, undefined, r.公海项目);
+        // 原负责人 带着进公海前存的客户状态（状），撤销时还原
+        const u = await 撤销公海("放进", r.原负责人?.length ? r.原负责人 : [{ id: customer.id, 值: "" }], r.带过来, undefined, r.公海项目);
         router.refresh();
         return u;
       },

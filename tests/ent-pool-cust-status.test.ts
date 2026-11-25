@@ -6,6 +6,9 @@
  *   - 批量分配线索公海里的项目（公海页项目行，总管理分给销售）：几位客户一起从流失变潜在
  *   - 领取客户公海里的客户（名下公海项目一起带出来）→ 潜在；撤销这次领取（项目回公海）→ 流失
  *   - 不是企业版：不算、不改
+ * 撤销按原样回滚（审查 11-25，P-撤销-01）：撤销领取 / 分配 / 放进公海，客户状态还回动手前存的值（撤销条带回的 状），不按撤完的项目现算：
+ *   - 零项目存「成交」、存「潜在」只有一条流失线索（M-状态-01 不修那类）、存的和现算不一样的：撤销后都回原值
+ *   - 撤销条带的 状 不认得：不写它，照旧重算；名下没有活项目（没删、没结局）的进出公海不重算、不清空；没被领的公海客户不动
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -21,8 +24,9 @@ import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 放回公海, 领取公海项目, 公海超时收回 } from "@/lib/project/db";
 import { 默认组织规则 } from "@/lib/project/org-rules";
-import { 领取, 撤销公海 } from "@/app/(app)/customers/pool-actions";
-import { 分配公海项目 } from "@/app/(app)/pool/actions";
+import { 领取, 撤销公海, 放进公海 } from "@/app/(app)/customers/pool-actions";
+import { 分配公海项目, 撤销公海项目 } from "@/app/(app)/pool/actions";
+import { assignSalesOwner, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { 进出公海重算, 重算客户状态 } from "@/lib/enterprise/cust-status-auto-db";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
@@ -133,5 +137,154 @@ describe("开关", () => {
     vi.stubEnv("CRM_ENTERPRISE", "1");
     expect(await 进出公海重算(prisma, [c])).toBe(1);
     expect(await 状态(c)).toBe("潜在");
+  });
+});
+
+describe("撤销还回原值（审查 11-25）", () => {
+  /** 客户放进客户公海（原负责人甲放的，老数据） */
+  const 进客户公海 = (c: string) => prisma.customerPool.create({ data: { customerId: c, userId: 甲.id, reason: "手动" } });
+  /** 存「意向」（导入带的，和现算不一样）、名下一条流失线索 + 一条线索公海里的在推线索 */
+  const 存意向的 = async () => {
+    const c = await 客户(甲.id, "意向");
+    await 项目(c, 甲.id, { result: "线索流失" });
+    const 公 = await 公海线索(c);
+    return { c, 公 };
+  };
+
+  it("零项目的公海客户存「成交」：领取（补潜客培育）→ 潜在；撤销 → 回到「成交」", async () => {
+    const c = await 客户(甲.id, "成交");
+    await 进客户公海(c);
+    const r = await 以(丙, () => 领取([c]));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.带过来?.培育?.length).toBe(1);
+    expect(await 状态(c)).toBe("潜在");
+    expect(r.原负责人).toEqual([expect.objectContaining({ id: c, 状: "成交" })]);
+    expect(await 以(丙, () => 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目))).toMatchObject({ ok: true, updated: 1 });
+    expect(await prisma.project.count({ where: { customerId: c } })).toBe(0);
+    expect(await 状态(c)).toBe("成交");
+  });
+
+  it("存「潜在」、名下只有一条流失线索的公海客户：领取再撤销，仍是「潜在」", async () => {
+    const c = await 客户(甲.id, "潜在");
+    await 项目(c, 甲.id, { result: "线索流失" });
+    await 进客户公海(c);
+    const r = await 以(丙, () => 领取([c]));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.updated).toBe(1);
+    expect(await 以(丙, () => 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 状态(c)).toBe("潜在");
+  });
+
+  it("客户公海领取：存的和现算不一样（意向）→ 领取后潜在，撤销回到「意向」，不是现算的流失", async () => {
+    const { c } = await 存意向的();
+    await 进客户公海(c);
+    const r = await 以(丙, () => 领取([c]));
+    if (!r.ok) throw new Error(r.error);
+    expect(await 状态(c)).toBe("潜在");
+    expect(await 以(丙, () => 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 状态(c)).toBe("意向");
+  });
+
+  it("撤销条里带不认得的 状：不写这个值，照旧按项目重算", async () => {
+    const { c } = await 存意向的();
+    await 进客户公海(c);
+    const r = await 以(丙, () => 领取([c]));
+    if (!r.ok) throw new Error(r.error);
+    const 改过 = r.原负责人!.map((x) => ({ ...x, 状: "随便写的" }));
+    expect(await 以(丙, () => 撤销公海("领取", 改过, r.带过来, undefined, r.公海项目))).toMatchObject({ ok: true, updated: 1 });
+    // 不是「随便写的」，也不是原值「意向」：项目回了公海，按剩下的现算 = 流失
+    expect(await 状态(c)).toBe("流失");
+  });
+
+  it("老撤销条（没带 状）：照旧按项目重算", async () => {
+    const { c } = await 存意向的();
+    await 进客户公海(c);
+    const r = await 以(丙, () => 领取([c]));
+    if (!r.ok) throw new Error(r.error);
+    const 老 = r.原负责人!.map(({ 状: _状, ...x }) => x);
+    expect(await 以(丙, () => 撤销公海("领取", 老, r.带过来, undefined, r.公海项目))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 状态(c)).toBe("流失");
+  });
+
+  it("撤销放进公海：回到进公海前存的值", async () => {
+    // 存「意向」，名下一条流失线索 + 甲自己在推的线索：放进去在推的进线索公海，现算变流失；撤销回「意向」（现算会是潜在）
+    const c = await 客户(甲.id, "意向");
+    await 项目(c, 甲.id, { result: "线索流失" });
+    const 推 = await 项目(c, 甲.id);
+    const r = await 以(甲, () => 放进公海([c], "客户主动终止"));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.公海项目).toEqual([推]);
+    expect(await 状态(c)).toBe("流失");
+    expect(r.原负责人).toEqual([{ id: c, 值: "", 状: "意向" }]);
+    expect(await 以(甲, () => 撤销公海("放进", r.原负责人!, r.带过来, undefined, r.公海项目))).toMatchObject({ ok: true, updated: 1 });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 推 } })).pooledAt).toBeNull();
+    expect(await 状态(c)).toBe("意向");
+  });
+
+  it("项目级撤销领取（公海页只勾项目行）：回到原值", async () => {
+    const { c, 公 } = await 存意向的();
+    const r = await 以(丙, () => 领取([], undefined, [公]));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.项目?.领到).toEqual([公]);
+    expect(r.项目?.原状态).toEqual([{ id: c, 状: "意向" }]);
+    expect(await 状态(c)).toBe("潜在");
+    expect(await 以(丙, () => 撤销公海项目("领取", [公], undefined, undefined, r.项目?.原状态))).toMatchObject({ ok: true, updated: 1 });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 公 } })).pooledAt).not.toBeNull();
+    expect(await 状态(c)).toBe("意向");
+  });
+
+  it("项目级撤销分配（总管理分项目行）：回到原值；原状态里塞别的客户不认", async () => {
+    const { c, 公 } = await 存意向的();
+    const 旁 = await 客户(甲.id, "交付");
+    const r = await 以(总管, () => 分配公海项目([公], 丙.id));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.原状态).toEqual([{ id: c, 状: "意向" }]);
+    expect(await 状态(c)).toBe("潜在");
+    const 塞 = [...r.原状态!, { id: 旁, 状: "流失" }];
+    expect(await 以(总管, () => 撤销公海项目("分配", [公], 丙.id, r.整包, 塞))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 状态(c)).toBe("意向");
+    expect(await 状态(旁)).toBe("交付");
+  });
+
+  it("撤销批量改负责人（一起带出线索公海的项目放回去）：回到原值", async () => {
+    const { c, 公 } = await 存意向的();
+    const r = await 以(总管, () => assignSalesOwner([c], 丙.id));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.带过来?.公海项目).toEqual([公]);
+    expect(r.原值).toEqual([{ id: c, 值: 甲.id, 状: "意向" }]);
+    expect(await 状态(c)).toBe("潜在");
+    expect(await 以(总管, () => 撤销改负责人(r.原值!, 丙.id, r.带过来))).toMatchObject({ ok: true, updated: 1 });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 公 } })).pooledAt).not.toBeNull();
+    expect(await 状态(c)).toBe("意向");
+  });
+
+  it("名下没有活项目（没删、没结局）：进出公海重算不动、不清空", async () => {
+    const 零 = await 客户(甲.id, "成交");
+    const 只流失 = await 客户(甲.id, "潜在");
+    await 项目(只流失, 甲.id, { result: "线索流失" });
+    const 删了 = await 客户(甲.id, "意向");
+    await 项目(删了, 甲.id, { deletedAt: new Date() });
+    expect(await 进出公海重算(prisma, [零, 只流失, 删了])).toBe(0);
+    expect(await 状态(零)).toBe("成交");
+    expect(await 状态(只流失)).toBe("潜在");
+    expect(await 状态(删了)).toBe("意向");
+    // 有活项目的照算（在公海里没结局的也算活项目）
+    const { c } = await 存意向的();
+    expect(await 进出公海重算(prisma, [c])).toBe(1);
+    expect(await 状态(c)).toBe("流失");
+  });
+
+  it("没被领取的公海客户不受影响（领取、撤销都不动它）", async () => {
+    const { c } = await 存意向的();
+    const 旁 = await 存意向的();
+    await 进客户公海(c);
+    await 进客户公海(旁.c);
+    const r = await 以(丙, () => 领取([c]));
+    if (!r.ok) throw new Error(r.error);
+    expect(await 状态(旁.c)).toBe("意向");
+    // 撤销条里塞了没领的那位：不认（不是这次领到的）
+    expect(await 以(丙, () => 撤销公海("领取", [...r.原负责人!, { id: 旁.c, 值: 甲.id, 状: "成交" }], r.带过来, undefined, r.公海项目))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 状态(c)).toBe("意向");
+    expect(await 状态(旁.c)).toBe("意向");
   });
 });

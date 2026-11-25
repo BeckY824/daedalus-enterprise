@@ -48,7 +48,7 @@ import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
 import { 项目新字段改成, 备货单号改成, type 项目新字段, type 备货单号 } from "./proj-fields";
-import { 客户状态自动, 跟着项目重算, 项目变了重算, 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
+import { 客户状态自动, 跟着项目重算, 项目变了重算, 进出公海重算, type 客户原状态 } from "@/lib/enterprise/cust-status-auto-db";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
@@ -1020,9 +1020,9 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
  * 批量领公海项目（公海页勾了几行项目一起领）：一个事务里逐个领，领不了的（被人领走、原负责人、已结束……）各说各的原因、不拦别的；
  * 持有上限整批核（M-公海-18，11-10）：这一批领完会超上限就一个都不领，回 超 那句话。客户行一起勾了的走 pool-actions 领取（带 项目ids），同一个事务
  */
-export async function 领取公海项目们(me: 谁, projectIds: string[], 带待办?: boolean): Promise<{ ok: true; 领到: string[]; 没领到: { id: string; 原因: string }[] } | { ok: false; error: string }> {
+export async function 领取公海项目们(me: 谁, projectIds: string[], 带待办?: boolean): Promise<{ ok: true; 领到: string[]; 没领到: { id: string; 原因: string }[]; 原状态: 客户原状态[] } | { ok: false; error: string }> {
   const ids = [...new Set(projectIds.filter((x) => typeof x === "string" && x))];
-  if (!ids.length) return { ok: true, 领到: [], 没领到: [] };
+  if (!ids.length) return { ok: true, 领到: [], 没领到: [], 原状态: [] };
   const 备 = await 领公海项目准备(me, ids, 带待办);
   if (!备.ok) return 备;
   const r = await 整批或不做(() => 查完再写(async (tx) => {
@@ -1033,18 +1033,29 @@ export async function 领取公海项目们(me: 谁, projectIds: string[], 带�
   }));
   if (!r.ok) return { ok: false, error: r.超 };
   if (r.值.同事待分配.length) await (await import("@/lib/enterprise/notice-sources")).同事待分配随客户通知(me.id, me.id, r.值.同事待分配);
-  return { ok: true, 领到: r.值.领到, 没领到: r.值.没领到 };
+  return { ok: true, 领到: r.值.领到, 没领到: r.值.没领到, 原状态: r.值.原状态 };
 }
 
-/** 同一个事务里逐个领（不核上限，调用方整批核） */
+/**
+ * 同一个事务里逐个领（不核上限，调用方整批核）。
+ * 原状态 = 领到的项目各自客户动手前存的客户状态（领完会重算），撤销条带回去、撤销公海项目 还原（cust-status-auto-db.ts 还原客户状态）
+ */
 export async function 在事务里领公海项目们(
   tx: Prisma.TransactionClient, me: 谁, ids: string[], 上下文: 领项目上下文,
-): Promise<{ 领到: string[]; 没领到: { id: string; 原因: string }[]; 同事待分配: 同事待分配们 }> {
+): Promise<{ 领到: string[]; 没领到: { id: string; 原因: string }[]; 同事待分配: 同事待分配们; 原状态: 客户原状态[] }> {
   const 领到: string[] = [];
   const 没领到: { id: string; 原因: string }[] = [];
   const 同事待分配: 同事待分配们 = [];
   const 出了的客户 = new Set<string>();
+  /** 客户 id → 这一批第一次动它之前存的客户状态 */
+  const 原 = new Map<string, string | null>();
   for (const id of ids) {
+    // 动手前记下客户状态：同一位客户的第二个项目领的时候已经重算过了，只记第一次的
+    const 客户id = (await tx.project.findUnique({ where: { id }, select: { customerId: true } }))?.customerId;
+    if (客户id && !原.has(客户id)) {
+      const c = await 看全部(() => tx.customer.findUnique({ where: { id: 客户id }, select: { custStatus: true } }));
+      if (c) 原.set(客户id, c.custStatus);
+    }
     const x = await 领一个公海项目(tx, me, id, 上下文, false);
     if (x.ok) {
       领到.push(id);
@@ -1054,7 +1065,8 @@ export async function 在事务里领公海项目们(
   }
   // 整批领完攒齐客户一次重算客户状态（同 领取公海项目），不逐个项目算
   await 进出公海重算(tx, 出了的客户);
-  return { 领到, 没领到, 同事待分配 };
+  const 原状态 = [...出了的客户].filter((c) => 原.has(c)).map((c) => ({ id: c, 状: 原.get(c)! }));
+  return { 领到, 没领到, 同事待分配, 原状态 };
 }
 
 /** 领公海项目事务外先备好的：规则、市场转客户那一套（动态引）、带不带待办 */

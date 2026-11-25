@@ -141,8 +141,59 @@ export async function 跟着项目重算(db: 库, 开: boolean, customerIds: Ite
  * 批量的调用方攒齐客户一次调（重算客户状态 500 位一批），别逐个项目调
  */
 export async function 进出公海重算(db: 库, customerIds: Iterable<string | null | undefined>): Promise<number> {
-  return 企业版() ? 重算客户状态(db, customerIds) : 0;
+  if (!企业版()) return 0;
+  return 重算客户状态(db, await 有活项目的(db, customerIds));
 }
+
+/**
+ * 名下有活项目（没删、没结局，在不在公海都算）的那几位。进出公海只动 pooledAt，「在推」又只看没结局的项目，
+ * 一个活项目都没有的客户进出公海算出来的值不会因为这一下变：不重算，库里存的（导入带的、零项目的「成交」）不清成 null，
+ * 同 全量重算客户状态 不把导入带了状态的客户清空（审查 11-25）
+ */
+async function 有活项目的(db: 库, customerIds: Iterable<string | null | undefined>): Promise<string[]> {
+  const ids = [...new Set([...customerIds].filter((x): x is string => !!x))];
+  if (!ids.length) return [];
+  return 看全部(async () => {
+    const 出: string[] = [];
+    for (let i = 0; i < ids.length; i += 一批) {
+      const 行 = await db.project.findMany({
+        where: { customerId: { in: ids.slice(i, i + 一批) }, deletedAt: null, result: null },
+        select: { customerId: true }, distinct: ["customerId"],
+      });
+      for (const r of 行) if (r.customerId) 出.push(r.customerId);
+    }
+    return 出;
+  });
+}
+
+/**
+ * 撤销领取 / 分配 / 放进公海（P-撤销-01 按原样回滚）：客户状态还回动手前存的值，不按撤完的项目现算
+ * （现算会丢掉原值：零项目存「成交」的撤完成 null，M-状态-01 不修的那批存「潜在」的撤完成「流失」，审查 11-25）。
+ * 原值是撤销条从浏览器带回来的、不可信：只收 null / 空串（存成 null）或 客户状态名们 里的一项。
+ * 写回了回 true；没带（undefined，老撤销条）、不认得、不是企业版回 false，调用方照旧 进出公海重算。
+ * 要放在撤回项目（撤回项目公海 / 撤回连带项目 里面会重算）之后调；哪几位能还由调用方认（只还真撤成了的），不信前端带的 id
+ */
+export async function 还原客户状态(db: 库, customerId: string, 状: unknown, 名们?: readonly string[]): Promise<boolean> {
+  if (!企业版() || 状 === undefined) return false;
+  if (状 !== null && 状 !== "" && (typeof 状 !== "string" || !(名们 ?? (await 客户状态名们(db))).includes(状))) return false;
+  await db.customer.updateMany({ where: { id: customerId }, data: { custStatus: (状 as string | null) || null } });
+  return true;
+}
+
+/** 撤销条带回来的客户原状态清单（项目级撤销用）：只留形状对的，id → 状（null 或字符串，认不认得 还原客户状态 再核） */
+export function 规整原状态(x: unknown): Map<string, string | null> {
+  const 出 = new Map<string, string | null>();
+  if (!Array.isArray(x)) return 出;
+  for (const r of x.slice(0, 2000)) {
+    if (!r || typeof r !== "object") continue;
+    const { id, 状 } = r as { id?: unknown; 状?: unknown };
+    if (typeof id === "string" && (状 === null || typeof 状 === "string")) 出.set(id, 状);
+  }
+  return 出;
+}
+
+/** 项目级领取 / 分配返回的客户原状态（撤销条带回来，撤销时还原） */
+export type 客户原状态 = { id: string; 状: string | null };
 
 /** 不在事务里的写入口用：自己读开关、开着才算 */
 export async function 项目变了重算(customerIds: Iterable<string | null | undefined>): Promise<number> {

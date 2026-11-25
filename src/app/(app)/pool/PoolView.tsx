@@ -329,6 +329,8 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     }
     // 分配时客户整包出了客户公海（P-公海-10）：撤销时整包退回
     let 整包: 整包撤销 | undefined = 客户res?.ok ? 客户res.项目?.整包 : undefined;
+    // 项目行那几位客户动手前存的客户状态：撤销项目时原样还回去（撤销公海项目，审查 11-25）
+    const 原状态 = [...(客户res?.ok ? 客户res.项目?.原状态 ?? [] : [])];
     let 给谁: { id: string; name: string } | undefined = 客户res?.ok ? 客户res.给谁 : undefined;
     // 分配只勾了项目行：一次分（分配公海项目）
     if (项目们.length && 动作 === "分配" && !客户们.length) {
@@ -337,6 +339,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
       if (res.ok) {
         给谁 = res.给谁;
         整包 = res.整包;
+        原状态.push(...(res.原状态 ?? []));
         项目到.push(...res.分到);
         for (const x of res.没分到) 没领到.push({ 名: 行名(项目们.find((r) => r.projectId === x.id)!), 原因: x.原因 });
       } else for (const r of 项目们) 没领到.push({ 名: 行名(r), 原因: res.error });
@@ -365,7 +368,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
         if (r.ok) 撤了 += r.updated; else 错 = r.error;
       }
       if (项目到.length) {
-        const r = await 撤销公海项目(动作, 项目到, 给谁?.id, 整包);
+        const r = await 撤销公海项目(动作, 项目到, 给谁?.id, 整包, 原状态);
         if (r.ok) 撤了 += r.updated; else 错 = r.error;
       }
       router.refresh();

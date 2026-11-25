@@ -22,6 +22,7 @@ import { 持有上限起点, 整批核上限, 整批或不做 } from "@/lib/proj
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
+import { 还原客户状态, 规整原状态, type 客户原状态 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 公海分配通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
 import { 分配方式叫法, 选的原因 } from "@/lib/enterprise/dict";
@@ -106,7 +107,7 @@ export async function 恢复有效客户(ids: string[]): Promise<标记结果> {
 export type { 整包撤销 };
 
 export type 分项目结果 =
-  | { ok: true; 分到: string[]; 没分到: { id: string; 原因: string }[]; 给谁: { id: string; name: string }; 整包?: 整包撤销 }
+  | { ok: true; 分到: string[]; 没分到: { id: string; 原因: string }[]; 给谁: { id: string; name: string }; 整包?: 整包撤销; 原状态?: 客户原状态[] }
   | { ok: false; error: string };
 
 /**
@@ -144,7 +145,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
     return 结果;
   })));
   if (!整批.ok) return { ok: false, error: 整批.超 };
-  const { 分到, 没分到, 跟来, 连客户, 整包, 随客户 } = 整批.值;
+  const { 分到, 没分到, 跟来, 连客户, 整包, 随客户, 原状态 } = 整批.值;
   if (分到.length) {
     await recordAudit({
       user: me, action: "pool-assign", entity: "Project", entityId: 分到.length === 1 ? 分到[0] : null,
@@ -155,7 +156,7 @@ export async function 分配公海项目(ids: string[], userId: string, 带待�
     await 公海分配通知(me, 给.id, "项目", 分到, 跟来, 连客户);
     if (随客户.length) await 同事待分配随客户通知(me.id, 给.id, 随客户);
   }
-  return { ok: true, 分到, 没分到, 给谁: 给, ...(整包.原.length ? { 整包 } : {}) };
+  return { ok: true, 分到, 没分到, 给谁: 给, ...(整包.原.length ? { 整包 } : {}), ...(原状态.length ? { 原状态 } : {}) };
 }
 
 /** 撤销条带回来的 整包 不可信：只留形状对的，id 都是字符串 */
@@ -167,7 +168,9 @@ function 规整整包(x: unknown): 整包撤销 | null {
         // 分 = 出公海前的客户分配（customer-assign-way.ts）：空或字符串才留，认不认得撤销时再核
         .map((r) => {
           const 分 = (r as { 分?: unknown }).分;
-          return { id: r.id, 值: r.值, ...(分 === null || typeof 分 === "string" ? { 分 } : {}) };
+          // 状 = 出公海前存的客户状态（同 分），认不认得撤销时 还原客户状态 再核
+          const 状 = (r as { 状?: unknown }).状;
+          return { id: r.id, 值: r.值, ...(分 === null || typeof 分 === "string" ? { 分 } : {}), ...(状 === null || typeof 状 === "string" ? { 状 } : {}) };
         }).slice(0, 500)
     : [];
   if (!原.length) return null;
@@ -181,8 +184,10 @@ function 规整整包(x: unknown): 整包撤销 | null {
  * 分配时客户整包出了客户公海的（整包，P-公海-10）：整包退回——客户回客户公海、负责人还原，一起带出的项目回线索公海，
  * 带过来的活还回去，被撤的换负责人记录删掉（P-撤销-01、M-公海-01）。走 撤销公海 的分配那一支，认不认按它（得是我刚把客户从原负责人换给 给谁 的）。
  * 只退这次带出的：整包 是这次分配返回的，别的客户、项目不碰
+ * 客户状态（P-撤销-01 按原样回滚，审查 11-25）：原状态 = 领 / 分时回的各客户动手前存的值，一位客户这一批的项目全撤成了才还回它
+ * （同一个事务里、撤回项目公海 重算之后）；撤了一半、没带、带的不认得：照旧按 撤回项目公海 里的重算。还哪几位按库里项目的客户认，不信前端带的 id
  */
-export async function 撤销公海项目(动作: "领取" | "分配", ids: string[], 给谁?: string, 整包?: 整包撤销): Promise<标记结果> {
+export async function 撤销公海项目(动作: "领取" | "分配", ids: string[], 给谁?: string, 整包?: 整包撤销, 原状态?: unknown): Promise<标记结果> {
   const me = await requireUser();
   const org = 动作 === "分配" ? await 权限组织() : null;
   if (动作 === "分配" && (!能管公海(me, org) || !给谁)) return { ok: false, error: "只有总管理和销售管理能撤销分配" };
@@ -196,8 +201,21 @@ export async function 撤销公海项目(动作: "领取" | "分配", ids: strin
     if (别线) return { ok: false, error: 别线 };
   }
   let 撤了 = 0;
+  const 原状 = 规整原状态(原状态);
+  // 按客户分组、一位客户一个事务：这位的项目全撤成了才还客户状态（撤不成的项目各自不动，同原来逐个撤）
+  const 项目客户 = new Map((await 看全部(() => prisma.project.findMany({ where: { id: { in: 们 } }, select: { id: true, customerId: true } }))).map((p) => [p.id, p.customerId]));
+  const 组 = new Map<string, string[]>();
   for (const id of 们) {
-    if (await 看全部(() => 查完再写((tx) => 撤回项目公海(tx, id, 现, me.id)))) 撤了++;
+    const k = 项目客户.get(id) ?? `?${id}`;
+    组.set(k, [...(组.get(k) ?? []), id]);
+  }
+  for (const [客户, 这几个] of 组) {
+    撤了 += await 看全部(() => 查完再写(async (tx) => {
+      let 成 = 0;
+      for (const id of 这几个) if (await 撤回项目公海(tx, id, 现, me.id)) 成++;
+      if (成 && 成 === 这几个.length && 原状.has(客户)) await 还原客户状态(tx, 客户, 原状.get(客户));
+      return 成;
+    }));
   }
   if (包) {
     const r = await 撤销公海("分配", 包.原, 包.带过来, 现, 包.公海项目);

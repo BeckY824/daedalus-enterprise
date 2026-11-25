@@ -257,7 +257,7 @@ describe("出公海同时写「客户分配」和补潜客培育（合 #337 后�
     if (!r.ok) throw new Error(r.error);
     expect(await 分配of(a)).toBe("公海领取");
     expect(await 分配of(b)).toBe("公海领取");
-    expect(r.原负责人).toEqual([{ id: a, 值: 甲.id, 分: "非自持" }, { id: b, 值: 甲.id, 分: "自持" }]);
+    expect(r.原负责人).toEqual([{ id: a, 值: 甲.id, 分: "非自持", 状: null }, { id: b, 值: 甲.id, 分: "自持", 状: null }]);
     expect(r.带过来?.培育).toHaveLength(2);
     const b的 = (await 名下项目(b))[0].id;
     await prisma.project.update({ where: { id: b的 }, data: { remark: "改过", updatedAt: new Date(Date.now() + 10_000) } });

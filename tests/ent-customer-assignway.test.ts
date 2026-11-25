@@ -177,7 +177,7 @@ describe("出客户公海归销售：记「公海领取」，原值盖掉，撤�
     expect(r).toMatchObject({ ok: true, updated: 1 });
     expect(await 分配of(c)).toBe("公海领取");
     if (!r.ok) throw new Error("没领成");
-    expect(r.原负责人).toEqual([{ id: c, 值: 乙.id, 分: "非自持" }]);
+    expect(r.原负责人).toEqual([{ id: c, 值: 乙.id, 分: "非自持", 状: null }]);
     // 浏览器带回来的（过一遍 JSON）
     expect(await 以(丙, () => 撤销公海("领取", JSON.parse(JSON.stringify(r.原负责人)), r.带过来, undefined, r.公海项目))).toMatchObject({ ok: true, updated: 1 });
     expect(await 分配of(c)).toBe("非自持");
@@ -212,7 +212,7 @@ describe("出客户公海归销售：记「公海领取」，原值盖掉，撤�
     const r = await 以(总管, () => 分配公海项目([p], 丙.id));
     expect(r).toMatchObject({ ok: true, 分到: [p] });
     expect(await 分配of(c)).toBe("公海领取");
-    expect((r as { 整包?: { 原: unknown[] } }).整包?.原).toEqual([{ id: c, 值: 乙.id, 分: "非自持" }]);
+    expect((r as { 整包?: { 原: unknown[] } }).整包?.原).toEqual([{ id: c, 值: 乙.id, 分: "非自持", 状: null }]);
   });
 });
 

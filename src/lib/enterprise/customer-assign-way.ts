@@ -17,8 +17,12 @@ import { 是销售角色 } from "./assign-line";
 
 type 库 = Pick<Prisma.TransactionClient, "customer" | "entDictItem">;
 
-/** 出公海前各归谁（撤销领取 / 分配按它还）；分 = 出公海时「客户分配」被盖成公海领取之前的值，没盖过就没有这一项 */
-export type 出公海原值 = { id: string; 值: string; 分?: string | null };
+/**
+ * 出公海前各归谁（撤销领取 / 分配按它还）；分 = 出公海时「客户分配」被盖成公海领取之前的值，没盖过就没有这一项；
+ * 状 = 动手前库里存的客户状态（撤销时还回它，cust-status-auto-db.ts 还原客户状态；老撤销条没有这一项，撤销照旧重算）。
+ * 放进公海的撤销条也用这个形状（值 是空串，只带 状）
+ */
+export type 出公海原值 = { id: string; 值: string; 分?: string | null; 状?: string | null };
 
 /**
  * 新建客户记不记「自持」：企业版、建在自己名下、是销售（销售 / 销售管理，且不算市场：市场管理、渠运、按部门认的市场成员都不算，

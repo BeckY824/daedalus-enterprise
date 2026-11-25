@@ -86,7 +86,7 @@ describe("D1 批量改负责人、批量改状态：回原值，撤销能改回�
     const 待办 = await prisma.task.create({ data: { customerId: 客户.id, ownerId: mocks.user.id, title: "寄资料" } });
     const r = await assignSalesOwner([客户.id], 乙.id);
     if (!r.ok) throw new Error(r.error);
-    expect(r.原值).toEqual([{ id: 客户.id, 值: mocks.user.id }]);
+    expect(r.原值).toEqual([{ id: 客户.id, 值: mocks.user.id, 状: null }]);
     expect((await prisma.task.findUniqueOrThrow({ where: { id: 待办.id } })).ownerId).toBe(乙.id);
     expect(await 撤销改负责人(r.原值!, 乙.id, r.带过来)).toMatchObject({ ok: true, updated: 1 });
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户.id } })).salesOwnerId).toBe(mocks.user.id);
