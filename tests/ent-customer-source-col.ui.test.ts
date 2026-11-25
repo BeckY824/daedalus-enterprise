@@ -69,6 +69,8 @@ async function open(p: 参数, width = 1366) {
   return { page, errors };
 }
 
+// expect.poll 默认只等 1 秒，并发负载下不够：统一放宽到 5 秒
+const 轮询 = <T,>(fn: () => T | Promise<T>) => expect.poll(fn, { timeout: 5000 });
 const 长渠道 = "某某跨境电商直播间合作渠道（华东区）".repeat(3);
 const 表头 = (page: import("playwright").Page) => page.locator(".ant-table-thead th").allInnerTexts();
 async function 打开列设置(page: import("playwright").Page) {
@@ -85,7 +87,7 @@ it("企业版：「客户来源」默认收着，勾上才显示，长渠道名�
     expect(await 勾.count()).toBe(1);
     await 勾.click();
     await page.keyboard.press("Escape");
-    await expect.poll(async () => (await 表头(page)).some((t) => t.includes("客户来源"))).toBe(true);
+    await 轮询(async () => (await 表头(page)).some((t) => t.includes("客户来源"))).toBe(true);
     const 格 = page.locator(`.ant-table-tbody span[title="${长渠道}"]`);
     expect(await 格.count()).toBe(1);
     const 量 = await 格.evaluate((el) => ({ 一行: el.getBoundingClientRect().height < 30, 省略: el.scrollWidth > el.clientWidth }));
@@ -129,7 +131,7 @@ for (const [值, 该去] of [["未填", "/customers"], ["触点:客户介绍", "
     const { page, errors } = await open({ what: "list", 企: true, 市场: true, 筛: { channelId: 值 }, 地址: `?${new URLSearchParams({ channelId: 值, scope: "mine" })}` }, 1280);
     try {
       await page.getByText("我分出去的", { exact: true }).click();
-      await expect.poll(() => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "")).toBe(该去);
+      await 轮询(() => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "")).toBe(该去);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
@@ -168,20 +170,20 @@ it("自定义筛选：默认「客户来源」收着；钉到外面弹层不关�
 
     await 更多筛选(page).click();
     const 弹层 = page.locator(".ant-popover:visible");
-    await expect.poll(() => 弹层.getByLabel("客户来源").count()).toBe(1);
+    await 轮询(() => 弹层.getByLabel("客户来源").count()).toBe(1);
     await 弹层.getByText("自定义筛选项").click();
     await 弹层.locator("label.ant-checkbox-wrapper", { hasText: "客户来源" }).click();
-    await expect.poll(() => 弹层.locator("label.ant-checkbox-wrapper-checked", { hasText: "客户来源" }).count()).toBe(1);
+    await 轮询(() => 弹层.locator("label.ant-checkbox-wrapper-checked", { hasText: "客户来源" }).count()).toBe(1);
     await 弹层.getByRole("button", { name: "返回" }).click();
     await page.keyboard.press("Escape");
-    await expect.poll(async () => (await 外面的筛选(page)).some((t) => t.includes("客户来源"))).toBe(true);
+    await 轮询(async () => (await 外面的筛选(page)).some((t) => t.includes("客户来源"))).toBe(true);
     expect(await page.evaluate(() => localStorage.getItem("list-filters:customers"))).toContain("channelId");
 
     await 更多筛选(page).click();
     await 弹层.getByText("自定义筛选项").click();
     await 弹层.getByRole("button", { name: "恢复默认" }).click();
     await page.keyboard.press("Escape");
-    await expect.poll(async () => 外面的筛选(page)).toEqual(默认);
+    await 轮询(async () => 外面的筛选(page)).toEqual(默认);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
@@ -205,6 +207,9 @@ describe("客户来源下拉：未填 + 渠道触点一组（F-049）", () => {
     await 弹层.getByLabel("客户来源").click();
     const 下拉 = page.locator(".ant-select-dropdown:visible");
     await 下拉.waitFor();
+    // 选项是下拉展开后才渲染（虚拟列表）：等到第一条选项文字出现再交出去，读选项不抢跑
+    await 下拉.locator(".ant-select-item").first().waitFor();
+    await 轮询(() => 下拉.locator(".ant-select-item").count()).toBeGreaterThan(0);
     return 下拉;
   }
 
@@ -220,13 +225,13 @@ describe("客户来源下拉：未填 + 渠道触点一组（F-049）", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       // 下拉整个在屏幕里（不按长名撑到屏幕外）；悬停长名浮出全文
       expect(await 下拉.evaluate((d) => { const r = d.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; })).toBe(true);
-      await 长那条.hover();
-      await expect.poll(() => page.locator(".trunc-tip").textContent()).toBe(长渠道);
+      // 悬停全文：每轮重新悬停（鼠标事件可能早于浮层挂载），等到非空再断言
+      await 轮询(async () => { await 长那条.hover(); return (await page.locator(".trunc-tip").textContent({ timeout: 1000 }).catch(() => "")) ?? ""; }).toBe(长渠道);
       // 搜「公司资源」触点和停用的同名渠道都出来
       await page.keyboard.type("公司资源");
-      await expect.poll(() => 下拉.locator(".ant-select-item-option").allInnerTexts()).toEqual(["公司资源（触点）", "公司资源（已停用）"]);
+      await 轮询(() => 下拉.locator(".ant-select-item-option").allInnerTexts()).toEqual(["公司资源（触点）", "公司资源（已停用）"]);
       await 下拉.locator(".ant-select-item-option", { hasText: "公司资源（触点）" }).click();
-      await expect.poll(() => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "")).toContain(`channelId=${encodeURIComponent(`${触点前缀}公司资源`)}`);
+      await 轮询(() => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "")).toContain(`channelId=${encodeURIComponent(`${触点前缀}公司资源`)}`);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
@@ -236,7 +241,7 @@ describe("客户来源下拉：未填 + 渠道触点一组（F-049）", () => {
     try {
       const 下拉 = await 打开来源下拉(page);
       await 下拉.locator(".ant-select-item-option", { hasText: 来源未填 }).first().click();
-      await expect.poll(() => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "")).toContain(`channelId=${encodeURIComponent(来源未填)}`);
+      await 轮询(() => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "")).toContain(`channelId=${encodeURIComponent(来源未填)}`);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
@@ -253,11 +258,11 @@ it("钉到外面：没选时框 160 宽；选中「客户介绍（触点）」�
     await 弹层.getByRole("button", { name: "返回" }).click();
     await page.keyboard.press("Escape");
     const 框 = page.locator(".list-bar .ant-select", { has: page.locator('[aria-label="客户来源"]') });
-    await expect.poll(() => 框.count()).toBe(1);
+    await 轮询(() => 框.count()).toBe(1);
     expect(await 框.evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(160);
     // 选上以后（地址栏回来带着 channelId）：变成「客户来源：客户介绍（触点）」标签，字一行写全
     await page.evaluate((筛) => (window as unknown as { __render: (x: unknown) => void }).__render({ what: "list", 能: true, 锁: false, 企: true, 渠道: 筛.组, 筛: { channelId: 筛.值 } }), { 组, 值: `${触点前缀}客户介绍` });
-    await expect.poll(() => 框.locator(".ant-select-content").textContent()).toBe("客户介绍（触点）");
+    await 轮询(() => 框.locator(".ant-select-content").textContent()).toBe("客户介绍（触点）");
     expect(await 框.evaluate((el) => { const c = el.querySelector(".ant-select-content") as HTMLElement; return c.scrollWidth <= c.clientWidth; })).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
