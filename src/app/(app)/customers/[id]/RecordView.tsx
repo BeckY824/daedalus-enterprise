@@ -2,7 +2,8 @@
 
 import { 是空值, 有值, 去空, 空显, 空值符 } from "@/lib/empty-value";
 import { useFollowHistory } from "./useFollowHistory";
-import { loadCustomerFeed } from "./follow-history-actions";
+import { loadCustomerFeed, readCustomerFeedRow } from "./follow-history-actions";
+import { useViewAs } from "@/components/ViewAsContext";
 import { CustomerResearchCard, CustomerResearchTag } from "./useCustomerResearch";
 
 
@@ -248,7 +249,7 @@ export default function RecordView({
   const AI已用完 = useAiOutOfCredits();
   const b = useBusiness();
   // 企业版只用项目（P14 第 6 条）：时间线是各项目沟通记录的汇总，翻页走汇总那条查询
-  const history = useFollowHistory(customer.id, followUps, followUpsHasMore, 跟进去处 !== null ? loadCustomerFeed : undefined);
+  const history = useFollowHistory(customer.id, followUps, followUpsHasMore, 跟进去处 !== null ? loadCustomerFeed : undefined, 跟进去处 !== null ? readCustomerFeedRow : undefined);
   const { 先问转走的项目 } = useTransferConfirm(转让原因);
   const { 问放回公海 } = usePoolReturnConfirm();
   /** 后果框（PR5a）：企业版客户退回公海（dt.pool：后果分条、原因点选、其他原地写） */
@@ -2133,7 +2134,9 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
   const meta = FOLLOW_TYPE_MAP[f.type] ?? FOLLOW_TYPE_MAP.OTHER;
   const [srcOpen, setSrcOpen] = useState(false);
   // 汇总里本人记的售后回访（项目页进不去的那批）：30 分钟内这条摆「修改」
-  const 本人能改 = useOwnEditUntil(汇总 && f.本人售后 ? f.本人可改到 : undefined);
+  // 切换视图（看别人视角）时不摆：服务端 saveFollowUp 也拦（同 FollowAttachments 藏传 / 删）
+  const 视图中 = useViewAs();
+  const 本人能改 = useOwnEditUntil(汇总 && f.本人售后 && !视图中 ? f.本人可改到 : undefined);
   const 原文 = f.sourceText && (
     <div style={{ marginTop: 2 }}>
       <Typography.Link style={{ fontSize: 12, color: "var(--text-muted)" }} onClick={() => setSrcOpen((v) => !v)}>
@@ -2191,7 +2194,7 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         <div className="rec-tl-meta">
           {f.ownerName && <span>{f.ownerName}</span>}
           {f.已修改 && <span title="这条沟通提交后改过，改了什么见操作日志">已修改</span>}
-          {本人能改 && f.本人可改到 && <Typography.Link onClick={onEdit} data-testid="follow-own-edit">修改（{dayjs(f.本人可改到).format("HH:mm")} 前可改）</Typography.Link>}
+          {本人能改 && !视图中 && f.本人可改到 && <Typography.Link onClick={onEdit} data-testid="follow-own-edit">修改（{dayjs(f.本人可改到).format("HH:mm")} 前可改）</Typography.Link>}
           {f.duration ? <span>时长 {duration(f.duration)}</span> : null}
           {(f.contactName || f.contactId) && <span>{空显(f.contactName)}{f.contactPosition ? `（${f.contactPosition}）` : ""}</span>}
           {f.participants && <span>参与人：{f.participants}</span>}

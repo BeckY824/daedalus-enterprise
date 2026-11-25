@@ -44,7 +44,7 @@ type 找到 = { ok: true; 行: 项目行[]; 露: (p: 项目行) => boolean } | {
  * 按 projectId 或名字（项目名、客户名）找项目：先精确、再包含；只在当前账号看得到的范围里。
  * 按客户名找到、但这位客户此刻看不到的（公海里同事的）剔掉，免得拿名字试出来
  */
-async function 找项目(ctx: ToolContext, a: Record<string, unknown>, 限?: Prisma.ProjectWhereInput): Promise<找到> {
+async function 找项目(ctx: ToolContext, a: Record<string, unknown>, 限?: Prisma.ProjectWhereInput, 要卡点 = false): Promise<找到> {
   const id = str(a.projectId, 40);
   const 名 = str(a.project, 60);
   if (!id && !名) return { ok: false, 话: "要说是哪个项目：给 project（项目名或客户名）或 projectId" };
@@ -57,9 +57,14 @@ async function 找项目(ctx: ToolContext, a: Record<string, unknown>, 限?: Pri
     可见 = new Set([...可见, ...(await 看得到的客户(们.map((p) => p.customerId)))]);
     return 们.filter((p) => !名 || p.name.includes(名) || 露(p));
   };
+  /*
+    交付结清那一句（11-25 复审）：只在找到的里有交付结清的才带（企业版才有售后回访）；「不能加卡点」只在加卡点工具里说。
+    记沟通工具在企业版把交付结清的放进了候选（沟通卡 候选条件），一般到不了这里，到了（比如不是企业版）不说售后回访
+  */
+  const 交付话 = (全: 项目行[]) => (!企业版() || !全.some((p) => 是交付(p.result)) ? "" : 要卡点 ? "；交付结清的不能加卡点，只能记售后回访（propose_project_followup）" : "；交付结清的只能记售后回访");
   const 都不在推 = (全: 项目行[]): 找到 => ({
     ok: false,
-    话: 全.length > 1 ? `找到的这几个项目（${全.map((p) => p.name).join("、")}）都已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）；交付结清的只能记售后回访、不能加卡点` : `项目「${全[0].name}」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）；交付结清的只能记售后回访、不能加卡点`,
+    话: `${全.length > 1 ? `找到的这几个项目（${全.map((p) => p.name).join("、")}）都已结束或在公海` : `项目「${全[0].name}」已结束或在公海`}，沟通只能记在还在推进的项目上（没结局、不在公海）${交付话(全)}`,
   });
   /*
     限（记沟通 / 加卡点只找在推的，P-沟通-03）放进查询里：已结束、在公海的不占 候选上限 的名额，也不排在在推的前面。
@@ -452,7 +457,7 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
   */
   const 带售后 = !要卡点 && 企业版();
   const 候选条件: Prisma.ProjectWhereInput = 带售后 ? { OR: [在推项目条件, { result: { in: 同名们("交付结清") } }] } : 在推项目条件;
-  const 找 = await 找项目(ctx, a, 候选条件);
+  const 找 = await 找项目(ctx, a, 候选条件, 要卡点);
   if (!找.ok) return { summary: 找.话, data: { error: 找.话 } };
   const { 规则 } = await 字典();
   const [我, org] = await Promise.all([prisma.user.findUnique({ where: { id: ctx.userId }, select: { id: true, role: true } }), 权限组织()]);

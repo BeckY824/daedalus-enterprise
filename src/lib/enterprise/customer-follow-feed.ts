@@ -187,6 +187,16 @@ export async function 客户沟通汇总(me: { id: string; role?: string }, cust
 }
 
 /**
+ * 汇总里的一条（客户页改完一条后重读，11-25 复审）：同 客户沟通汇总 那几段、那几格（项目 / 附件 / 已修改 / 本人售后 / 本人可改到），只多一个 id 条件；
+ * 不在这位当前看得到的那几段里 = null（客户页就把这条收起）
+ */
+export async function 客户沟通汇总一条(me: { id: string; role?: string }, customerId: string, id: string, 可见: 可见法 = 看得到的客户): Promise<FollowUpRow | null> {
+  const 项目们 = await 汇总的项目(me, customerId, 可见);
+  const { rows } = await 汇总一页(customerId, 项目们, undefined, { me, 项目: await 本人售后项目(me, customerId, new Set(项目们.keys())) }, id);
+  return rows[0] ?? null;
+}
+
+/**
  * 客户页渲染一次要两样（沟通记录第一页 + 「跟进」菜单）：看得到的项目只算一遍（连挂过 = true），
  * 菜单滤掉只从「挂过」来的——和分开调 客户沟通汇总、跟进去处们 结果一样，少算一遍项目（主客户、关联、项目行、客户可见、回避各一句）
  */
@@ -288,7 +298,7 @@ export async function 客户跟进可见条件(me: { id: string; role?: string }
  * 本人售后：本人记的售后回访那一段（本人售后项目）——收进这位客户那一句；这几条标 本人售后（客户页这条能传截图 / 录音、项目名不做链接，项目页我进不去），
  * 30 分钟内的再给 本人可改到（客户页这条摆「修改」，服务端 saveFollowUp 照 本人限时改挡 核）
  */
-async function 汇总一页(customerId: string, 项目们: Map<string, string>, before?: 沟通游标, 本人售后?: { me: { id: string }; 项目: Map<string, string> }): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
+async function 汇总一页(customerId: string, 项目们: Map<string, string>, before?: 沟通游标, 本人售后?: { me: { id: string }; 项目: Map<string, string> }, 只这条?: string): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
   const ids = [...项目们.keys()];
   /*
     这位客户名下进了回收站的项目：挂在上面、记在这位客户名下的沟通照旧留在客户下（删项目时就是这么说的），
@@ -303,10 +313,10 @@ async function 汇总一页(customerId: string, 项目们: Map<string, string>, 
     每句各取 汇总每页 + 1 条，合起来再按同一个顺序截：全局前 n 条一定在各句的前 n 条里，所以页和 hasMore 跟原来一句时一样。
     别的客户：只能是挂在 ids 上的那几条的客户，先从 FollowUpProject 出发查出来（只多不少就行，每句自己还带着项目条件）
   */
-  const 游标 = before ? [{ OR: [
+  const 游标: Prisma.FollowUpWhereInput[] = [...(before ? [{ OR: [
     { occurredAt: { lt: new Date(before.occurredAt) } },
     { occurredAt: new Date(before.occurredAt), id: { lt: before.id } },
-  ] }] : [];
+  ] }] : []), ...(只这条 ? [{ id: 只这条 }] : [])];
   const 别的客户 = ids.length ? (await 挂项目的客户们(ids)).filter((c) => c !== customerId) : [];
   const 这位的项目 = [...ids, ...删了的];
   const 一位 = (c: string, 条件: Prisma.FollowUpWhereInput) => 看全部(() => prisma.followUp.findMany({
