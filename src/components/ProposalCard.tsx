@@ -19,6 +19,7 @@ import { 传附件 } from "@/lib/attachment-upload";
 import { describeProposal, missingFields, 只留选中的改动, 可改字段表, 区域去处叫法, 线索卡地址, type Proposal, type 线索待确认格, type 区域去处 } from "@/lib/agent/proposals";
 import { 线索号码种类, 线索号码上限, 线索号码行, type 线索联系方式 } from "@/lib/agent/proposals";
 import { 号码上限 } from "@/lib/enterprise/customer-v2";
+import { 认出备注里的号码 } from "@/lib/enterprise/remark-numbers";
 import { 三种业务线, 分配说明, 建议业务线, 认分给 } from "@/lib/enterprise/assign-line";
 import { 默认分配方向, 方向来源说明 } from "@/lib/enterprise/customer-region";
 import { 认渠道 } from "@/lib/enterprise/channel-match";
@@ -202,9 +203,10 @@ export default function ProposalCard({
   const [在推个数, set在推个数] = useState<number | null>(null);
   /**
    * 查重撞上的本机客户名下有交付结清的项目（11-25，P-界面-63）：「当前进程」的潜客培育那一项写后售培育（value 照旧潜客培育，存的不变）。
-   * 再点确认时不先清（写入中那一下不来回跳字），以服务端这次回的为准
+   * 再点确认时不先清（写入中那一下不来回跳字），以服务端这次回的为准。
+   * 记的是撞号那次交上去的号码签：人改了号码 / 联系方式（卡上几行、老格、备注里认得出的号）就不再算撞上，下次确认以服务端为准
    */
-  const [撞上后售, set撞上后售] = useState(false);
+  const [撞上后售签, set撞上后售签] = useState<string | null>(null);
   /**
    * 确认之后的回执：几点写入、怎么撤、建成的项目（企业版新线索卡，「查看」直接打开它）。
    * 存在任务表里（lib/ai-jobs 的 落印回执），卡片重挂也还在，刷新页面才没
@@ -267,6 +269,9 @@ export default function ProposalCard({
     .concat(跟进没项目 || 跟进要选 ? ["关联项目"] : []);
   // 写了但无意义（太短 / 只有表情标点）：写「还差有效的沟通内容」——内容框里有字，只说「还差沟通内容」像是没看见（11-26）；真空着的照旧「沟通内容」
   if (跟进无意义 && !missing.includes("沟通内容")) missing.unshift("有效的沟通内容");
+  /** 查重用到的号（同 dashboard/apply.ts 建成项目：卡上联系方式几行 + 备注里认出的号）；变了「撞上后售」就作废 */
+  const 号码签 = draft.kind === "add_lead" ? JSON.stringify([线索号码行(draft), 认出备注里的号码(draft.remark || "").号们.map((h) => h.键)]) : "";
+  const 撞上后售 = 撞上后售签 !== null && 撞上后售签 === 号码签;
   const 停用卡 = draft.kind === "add_opportunity";
   const 能确认 = state !== "saving" && !停用卡 && missing.length === 0 && 勾了.length > 0;
 
@@ -280,6 +285,7 @@ export default function ProposalCard({
   }
 
   async function 提交(): Promise<boolean> {
+    const 交时号码签 = 号码签;
     setState("saving");
     setErr("");
     set回收站号(null);
@@ -335,7 +341,7 @@ export default function ProposalCard({
     set公海号(r.公海号 ?? null);
     set同事号(r.同事号 ?? null);
     set在推个数(r.在推个数 ?? null);
-    set撞上后售(!!r.后售);
+    set撞上后售签(r.后售 ? 交时号码签 : null);
     return false;
   }
 
