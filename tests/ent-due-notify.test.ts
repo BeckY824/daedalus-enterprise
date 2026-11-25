@@ -466,7 +466,7 @@ describe("只提醒一次", () => {
   it("重复的那遍不撞唯一键：只查不写", async () => {
     await 计划();
     await 到期提醒扫一遍(今早);
-    const 写 = vi.spyOn(prisma.entNotice, "create");
+    const 写 = vi.spyOn(prisma.entNotice, "upsert");
     await 到期提醒扫一遍(今早);
     expect(写).not.toHaveBeenCalled();
   });

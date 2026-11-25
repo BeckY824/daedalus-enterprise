@@ -3,13 +3,13 @@
  *
  * notify(userIds, {kind, title, body, link, key})：给这几位各记一条，然后在后台试着推飞书（feishu-push.ts）。
  * - 只在企业版写；别的版本直接返回
- * - 同一人同一 key 只记一行：重复调用（双击、重试、两处都触发）不会重复提醒，也不会重复推
+ * - 同一人同一 key 只记一行：重复调用（双击、重试、两处都触发）不会重复提醒，也不会重复推；走 upsert，不靠撞唯一约束（不刷 prisma:error）
  *   key 不传时按内容 + 当前这一分钟算，挡住同一刻的重复调用；按事件区分的调用方自己传 key
  * - 写库、推送出任何错都只记日志，从不往外抛：通知不能挡住分配、验证这些主流程
  * - 标题、正文里像手机号 / 电话的数字串写库前一律打码（notice-mask.ts，P-转-12「提醒里不带手机号」，站内和飞书同一份）；
  *   这是兜底，客户名就是号码的也靠它。各处通知自己的文案照样不放号码，别只靠这一层
  */
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 推通知们 } from "@/lib/enterprise/feishu-push";
@@ -54,11 +54,18 @@ export async function notify(userIds: readonly (string | null | undefined)[], n:
   const 新的: string[] = [];
   for (const userId of 们) {
     try {
-      const r = await prisma.entNotice.create({
-        data: { userId, kind: n.kind, title, body, link: n.link ?? null, dedupeKey: key },
+      // 不用 create 撞唯一约束来去重（11-26）：撞上时 Prisma 自己先打一条 prisma:error 再抛 P2002，
+      // 「快轮到」每次分配都按同一轮的键再试一遍、同一分钟重复交也一样，服务日志、CI 日志里刷满这句（其实已被吞掉、不影响保存）。
+      // upsert + update 空：Prisma 在 SQLite 上是 BEGIN IMMEDIATE 里先查再写，同一人同一键已有就原样返回那一行、不报错；
+      // 先定好新行的 id，回来的是它才算新记的（是旧行的 id = 这条早就发过）
+      const id = randomUUID();
+      const r = await prisma.entNotice.upsert({
+        where: { userId_dedupeKey: { userId, dedupeKey: key } },
+        create: { id, userId, kind: n.kind, title, body, link: n.link ?? null, dedupeKey: key },
+        update: {},
         select: { id: true },
       });
-      新的.push(r.id);
+      if (r.id === id) 新的.push(r.id);
     } catch (e) {
       if (!是重复(e)) console.warn("[通知] 没记上：", e instanceof Error ? e.message : e);
     }
