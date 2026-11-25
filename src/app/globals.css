@@ -2409,6 +2409,8 @@ button.ais-hd-b { cursor: pointer; }
 .prop-f > .ant-input, .prop-f > .ant-select, .prop-f > .ant-picker, .prop-f > .amount-text { min-width: 0; max-width: 100%; }
 .prop-f-block { flex-basis: 100%; align-items: flex-start; }
 .prop-f-block > *:last-child { flex: 1; }
+/* 内容框 + 下面那一行无意义沟通提示（F-052）叠成一列；min-width 0 让提示的省略号生效、不撑宽卡片 */
+.prop-f-stack { display: flex; flex-direction: column; min-width: 0; }
 /* 整行的多选（AI 卡的阻碍原因）：占满剩下的宽，长标签不把卡撑宽 */
 .prop-f-block > .ant-select { min-width: 0; }
 /* AI 记沟通卡「关联项目」（11-17 沟通必须挂项目）：下拉定宽；只一个时项目名一行，放不下「…」悬停看全文（11-20 改，原来折行） */
@@ -4993,6 +4995,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 .pay-del-num { overflow-wrap: anywhere; }
 /* 下次跟进完成后就地说一句 + 「排下一次」（RecordView，不弹顶部提示） */
 .rec-plan-said { font-size: var(--fs-note); color: var(--text-muted); overflow-wrap: anywhere; animation: cd-pj-flash-in var(--t) var(--ease); }
+/* 记沟通内容框下面那一行（F-052 FollowMeaningLine）：灰字一行，放不下「…」、悬停 TruncTip 看全文；手机 390 宽不撑出横向滚动 */
+.follow-meaning { display: block; max-width: 100%; min-width: 0; margin-top: 4px; font-size: var(--fs-note); line-height: 1.5; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rec-said { margin: 4px 0 6px; }
 .rec-tag-err { margin-left: 6px; white-space: normal; }
 /* 卡点（dt.blocker，项目详情 / 复盘页卡点页签）：挂在哪条沟通、类型影响一行、认领就地变色 */

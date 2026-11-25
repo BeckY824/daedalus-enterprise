@@ -350,7 +350,7 @@ describe("「已修改」只认新格式留痕", () => {
     expect((await 改过的沟通们([id])).has(id)).toBe(false);
     await 痕("别的说法", { 改了: ["沟通内容"] });
     expect((await 改过的沟通们([id])).has(id)).toBe(true);
-    const id2 = await 记一条({ content: "第二条" });
+    const id2 = await 记一条({ content: "第二条沟通" });
     await raw.auditLog.create({ data: { userId: 销售, userName: "QA", action: "update", entity: "FollowUp", entityId: id2, summary: "改了沟通：QA 的一条电话，改了沟通内容" } });
     expect((await 改过的沟通们([id2])).has(id2)).toBe(true);
   });
@@ -361,7 +361,7 @@ describe("审核第二轮", () => {
     const 先 = await 记一条({ 下一步: "周五前发报价单", 下一步时间: dayjs().add(3, "day").format("YYYY-MM-DD") });
     await 记于(先, 5);
     const 项目前 = await raw.project.findUniqueOrThrow({ where: { id: 项目 } });
-    const r = await 以(() => saveFollowUp({ customerId: 客户, type: "PHONE", content: "AI 卡记的", status: "已完成", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), projectId: 项目 }));
+    const r = await 以(() => saveFollowUp({ customerId: 客户, type: "PHONE", content: "AI 卡上记的", status: "已完成", occurredAt: dayjs().format("YYYY-MM-DD HH:mm"), projectId: 项目 }));
     if (!r.ok) throw new Error(r.error);
     const 后 = r.id;
     expect((await raw.entFollowUpMeta.findUniqueOrThrow({ where: { followUpId: 后 } })).nextAt).toBeNull();
@@ -375,10 +375,10 @@ describe("审核第二轮", () => {
     // 人没动下一步：不带就不校验、不覆盖
     expect(await 改(后, { content: "AI 卡记的改一下" })).toEqual({ ok: true });
     // 硬带下一步（老页面 / 伪造）：内容照存，下一步丢掉
-    expect(await 改(后, { content: "再改", 下一步: "乱写", 下一步时间: dayjs().add(9, "day").format("YYYY-MM-DD") })).toEqual({ ok: true, 提示: 下一步没同步话 });
+    expect(await 改(后, { content: "再改一次内容", 下一步: "乱写", 下一步时间: dayjs().add(9, "day").format("YYYY-MM-DD") })).toEqual({ ok: true, 提示: 下一步没同步话 });
     const 项目后 = await raw.project.findUniqueOrThrow({ where: { id: 项目 } });
     expect({ 文字: 项目后.nextStepText, 时间: 项目后.nextStepAt?.getTime() }).toEqual({ 文字: 项目前.nextStepText, 时间: 项目前.nextStepAt?.getTime() });
-    expect(await 内容(后)).toBe("再改");
+    expect(await 内容(后)).toBe("再改一次内容");
   });
 
   it("低-3：导入建的（EntImportRow）、同号协作的系统留痕不走本人限时改，界面也不给「修改」", async () => {

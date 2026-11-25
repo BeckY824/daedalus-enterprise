@@ -128,7 +128,7 @@ import { 分配通知, 带放弃链接 } from "./notice-sources";
 import { 企业版 } from "./switch";
 import { 视图中跳过 } from "./view-as";
 import { 已回复的, 是有效沟通, 不是沟通的类型, 回复提醒时刻 } from "./reply-notice";
-import { 无效沟通原因of, 无效原因话, type 无效沟通原因 } from "./tri-state-quota";
+import { 无效沟通原因of, 无效原因话, 有效沟通最少字数, type 无效沟通原因 } from "./tri-state-quota";
 import { 系统操作人 } from "./scheduled-assign";
 import { 超时转令牌 } from "./scheduled-assign-token";
 import { 规则开着 } from "./rules";
@@ -465,6 +465,12 @@ async function 分来的of(p: { id: string; ownerId: string; creatorId: string }
 
 /** 超时提醒里那句（11-20）：只认负责人本人记的，别人（同事、管理、市场）代记不算 */
 export const 本人记话 = "需负责人本人记录有效沟通";
+/**
+ * 紧跟 本人记话 的半句（F-052）：说清什么算有效沟通。「无意义沟通不能保存」开着（默认）说存不进去，关着说字数和占位词。
+ * 站内和飞书同一条正文（notify 一份 body），去重键不变
+ */
+export const 有效沟通标准话 = (拦: boolean): string =>
+  拦 ? "（写清沟通内容；判为无意义的记录存不进去）" : `（写清沟通内容，中文至少 ${有效沟通最少字数} 个字；「跟进」「已联系」这类不算）`;
 /** 自留、自持的超时提醒那句（不说会自动收回） */
 export const 自留超时话 = "这条是你自己留着跟的，不会自动转走，请尽快联系客户并记一条有效沟通";
 
@@ -979,10 +985,11 @@ async function 发超时提醒(p: 链项目, since: Date, 接手的: boolean, �
     : `指定回复时间 ${指定回复文字(p.replyStartAt, p.replyEndAt, 现在)} 已过，还没记有效沟通`;
   // 负责人本人在这一位计时以后记过、但不算有效沟通的（E-259）：说清那条为什么不算，不然人以为记过了
   const 无效话 = await 无效沟通话of(p, since, 现在);
+  const 本人记 = `${本人记话}${有效沟通标准话(await 规则开着("无意义沟通拦"))}`;
   await notify([p.ownerId], {
     kind: 超时通知种类,
     title: `超时未跟进：${p.name}`,
-    body: 分来 ? `${头}。${无效话}${重计话}${本人记话}，${再提醒话}${转时} 前还没记，这条线索会自动收回、分给其他成员` : `${头}。${无效话}${本人记话}。${自留超时话}`,
+    body: 分来 ? `${头}。${无效话}${重计话}${本人记}，${再提醒话}${转时} 前还没记，这条线索会自动收回、分给其他成员` : `${头}。${无效话}${本人记}。${自留超时话}`,
     // 发这一刻他还能放弃（11-21）：带 ?giveup=1，飞书、铃铛多一个「放弃（豁免）」
     link: await 带放弃链接(p.ownerId, p.id, `/projects/${encodeURIComponent(p.id)}`, 现在),
     key: `reply-overdue:${p.id}:${p.ownerId}:${since.toISOString()}${重计于 ? `:重计:${重计于.toISOString()}` : ""}`,

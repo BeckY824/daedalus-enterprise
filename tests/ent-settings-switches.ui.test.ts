@@ -1,7 +1,7 @@
 /**
  * 设置 →「开关总览」（设置开关 N1 / N3 / N7，11-23）：
  *   - 只系统管理员目录里有（「团队与权限」第一项）；别的身份带 ?tab=switches 落回个人资料，也不调 开关现状
- *   - 17 张卡左边对齐（用户 11-23），子开关卡头写「属于：线索分配和配额」
+ *   - 18 张卡左边对齐（用户 11-23），子开关卡头写「属于：线索分配和配额」
  *   - 父开关关着：子开关开着的能关（照样弹后果框）、关着的打不开
  *   - 拨开关先弹后果框，取消不调 action；超时回收先数个数；持有上限只读显示、不放输入框
  *   - 每卡「上次：谁 · 几点 · 动作」，组织规则比不出的只写「操作日志里比不出」；搜「卡点」给一条去项目模式；「在 X 里看」切到那一栏
@@ -46,7 +46,7 @@ const props = (身份: "系统管理员" | "只读管理员" | "成员") => ({
 /** 正式服务器 11-23 的现值（线索分配这里拨成关，看子开关的规矩） */
 const 现状 = (改: Record<string, unknown> = {}) => ({
   ok: true,
-  值: { org_scope: true, field_perm: true, lead_assign: false, no_quota: false, reply_overdue: true, lead_giveup: true, market_review: true,
+  值: { org_scope: true, field_perm: true, lead_assign: false, no_quota: false, reply_overdue: true, lead_giveup: true, market_review: true, block_meaningless: true,
     node_advance: true, first_two: false, fill_period: false, push_perm: "负责人可推", hold_cap: true, node_timeout: false, tri_state: false,
     feishu_push: true, sync_feishu: false, coach_rec: false, ...改 },
   全员: 43,
@@ -65,7 +65,7 @@ async function 开(身份: Parameters<typeof props>[0], 宽 = 1280, 预览 = 0, 
 }
 const 调了 = async (page: Page, 名: string) => (await 调用们(page)).filter(([n]) => n === 名).map(([, a]) => a);
 
-it("系统管理员：目录「团队与权限」第一项是开关总览；17 张卡左边对齐，子开关写「属于」", async () => {
+it("系统管理员：目录「团队与权限」第一项是开关总览；18 张卡左边对齐，子开关写「属于」", async () => {
   const { page, errors } = await 开("系统管理员");
   try {
     await page.getByTestId("switches-tab").waitFor();
@@ -73,7 +73,7 @@ it("系统管理员：目录「团队与权限」第一项是开关总览；17 �
     expect(页签.indexOf("开关总览")).toBe(页签.indexOf("团队成员") - 1);
     expect(await page.getByRole("tab", { name: /开关总览/ }).getAttribute("aria-selected")).toBe("true");
     const 左 = await page.locator(".sw-card").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
-    expect(左).toHaveLength(17);
+    expect(左).toHaveLength(18);
     expect(new Set(左).size).toBe(1);
     expect(await page.getByTestId("sw-parent-no_quota").innerText()).toBe("属于：线索分配和配额");
     expect(await page.getByTestId("sw-parent-lead_giveup").innerText()).toBe("属于：线索分配和配额");

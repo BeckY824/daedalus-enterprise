@@ -4,6 +4,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 import { Select, Input, Tag } from "antd";
 import AmountTextInput from "@/components/AmountTextInput";
 import { FOLLOW_TYPES } from "@/lib/constants";
+import FollowMeaningLine from "@/components/FollowMeaningLine";
 import { 币种符号 } from "@/lib/currency";
 import { dayjs } from "@/lib/utils";
 import { 卡点类型们, 影响等级们, 原因最多, 清原因们 } from "@/lib/project/blocker-rules";
@@ -81,7 +82,11 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
             />
           </F>
           <F label="内容" block>
-            <Input.TextArea size="small" autoSize={{ minRows: 2, maxRows: 8 }} value={draft.content} onChange={(e) => 设({ content: e.target.value })} />
+            {/* 无意义沟通（F-052）：内容下面边改边说一行（判定读一页共用那份，没取到按默认），判为无意义的服务端不存 */}
+            <div className="prop-f-stack">
+              <Input.TextArea size="small" autoSize={{ minRows: 2, maxRows: 8 }} value={draft.content} onChange={(e) => 设({ content: e.target.value })} />
+              <FollowMeaningLine 内容={draft.content} 类型={draft.type} />
+            </div>
           </F>
           {/* 组员记（11-19 客户答复）：下一步归负责人，组员的卡不摆这两格 */}
           {!draft.组员记 && (

@@ -39,6 +39,7 @@ import dynamic from "next/dynamic";
 import DedupeClaimKey from "@/app/(app)/customers/DedupeClaimKey";
 import RescueKey from "@/app/(app)/customers/RescueKey";
 import { 沟通可选项目 } from "@/app/(app)/customers/[id]/actions";
+import FollowMeaningLine, { 记下判定 } from "@/components/FollowMeaningLine";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import ReplyWindowInput from "@/components/ReplyWindowInput";
 import ScheduleAssignInput from "@/components/ScheduleAssignInput";
@@ -226,7 +227,8 @@ export default function ProposalCard({
     if (!跟进客户) return;
     let 作废 = false;
     沟通可选项目(跟进客户).then(
-      (r) => { if (!作废) { set跟进项目们(r.ok ? r.项目们 : null); set跟进能建项目(r.ok && r.能建项目); } },
+      // 判定（F-052）：无意义沟通开关和占位词表一起带回来，记下给内容下面那一行用（不另调动作）
+      (r) => { if (r.ok && "判定" in r) 记下判定(r.判定); if (!作废) { set跟进项目们(r.ok ? r.项目们 : null); set跟进能建项目(r.ok && r.能建项目); } },
       () => { if (!作废) set跟进项目们(null); },
     );
     return () => { 作废 = true; };
@@ -601,12 +603,16 @@ export default function ProposalCard({
               />
             </Field>
             <Field label="内容" block>
-              <Input.TextArea
-                size="small"
-                autoSize={{ minRows: 2, maxRows: 8 }}
-                value={draft.content}
-                onChange={(e) => setDraft({ ...draft, content: e.target.value })}
-              />
+              <div className="prop-f-stack">
+                <Input.TextArea
+                  size="small"
+                  autoSize={{ minRows: 2, maxRows: 8 }}
+                  value={draft.content}
+                  onChange={(e) => setDraft({ ...draft, content: e.target.value })}
+                />
+                {/* 无意义沟通（F-052）：边改边说一行，判为无意义的服务端（saveFollowUp）不存 */}
+                <FollowMeaningLine 内容={draft.content} 类型={draft.type} />
+              </div>
             </Field>
             {要挂项目 && 跟进项目们!.length > 1 && (
               <Field label="关联项目">

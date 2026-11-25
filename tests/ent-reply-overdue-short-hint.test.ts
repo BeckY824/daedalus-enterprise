@@ -78,6 +78,8 @@ beforeEach(async () => {
   await setSetting(规则.线索分配.key, true);
   await setSetting(自动分配不参与key, { [老板.id]: "禁止" });
   await setSetting(超时转生效key, 京("2026-01-01 00:00").toISOString());
+  // 这一份测的是「照存 + 轻提示」：无意义沟通不能保存（F-052，默认开）关着。开着拦下的见 ent-f052-meaningless.test.ts
+  await setSetting(规则.无意义沟通拦.key, false);
   invalidateSettingsCache();
   mocks.user = { ...mocks.user, id: 甲.id, name: 甲.name };
 });
@@ -217,7 +219,7 @@ describe("E-259 超时提醒 / 收回通知正文带原因", () => {
     const 句 = "你 11-24 10:36 记的「加微信」不足 4 个字，不算有效沟通。";
     const 提 = await 超时通知(甲.id);
     expect(提).toHaveLength(1);
-    expect(提[0].body).toContain(`还没记有效沟通。${句}需负责人本人记录有效沟通`);
+    expect(提[0].body).toContain(`还没记有效沟通。${句}需负责人本人记录有效沟通（写清沟通内容，中文至少 4 个字；「跟进」「已联系」这类不算）`);
     expect(await 超时转扫一遍(京("2026-11-24 11:37"))).toMatchObject({ 转出: 1 });
     const 收 = (await 超时通知(甲.id)).at(-1)!;
     expect(收.title).toContain(收回话);

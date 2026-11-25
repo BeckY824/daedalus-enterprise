@@ -84,6 +84,8 @@ import { deleteContract, 删签约前清点, assignSalesOwner, 撤销改负责�
 import type { RecordProps, FollowUpRow, ContactRow } from "./types";
 import TriStateBar from "./TriStateBar";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import FollowMeaningLine from "@/components/FollowMeaningLine";
+import { useFollowJudge } from "@/components/useFollowJudge";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
 import { useMotionTheme } from "@/components/MotionTheme";
@@ -351,6 +353,8 @@ export default function RecordView({
 
   const [filter, setFilter] = useState<string>("全部");
   const [memo, setMemo] = useState("");
+  /** 无意义沟通（F-052）：速记「直接记」存成一条「其他记录」，框下面边写边说一行；判定一页取一次（记跟进弹窗也用这份） */
+  const 判定 = useFollowJudge();
   const [quickSaving, setQuickSaving] = useState(false);
   // 速记框打了没记的字留草稿（复盘第 1 类，25C）：按客户分，刷新、发版后带回；记上了（直接记、AI 解析后存上）就删
   const 速记稿 = useFormDraft({ 键: `客户速记:${customer.id}`, 值: { memo }, 带回: (v) => { if (v.memo !== undefined) setMemo(v.memo); } });
@@ -1647,6 +1651,7 @@ export default function RecordView({
               maxLength={5000}
               placeholder={customer.pool ? `公海${b.customer}：记一笔跟进就领取过来、归你跟进…` : 企业 ? "粘贴聊天记录或会议要点" : aiEnabled ? `记一笔，或直接粘贴和${b.customer}的微信聊天记录…` : "记一笔…"}
             />
+            <FollowMeaningLine 内容={memo} 类型="OTHER" 判定={判定} />
             <div className="rec-composer-bar">
               <span className="rec-composer-hint">
                 {aiEnabled ? "「AI 解析」会把它整理成沟通记录并留存原文；「直接记」原样存为一条记录" : "Enter 换行，写完点「直接记」"}

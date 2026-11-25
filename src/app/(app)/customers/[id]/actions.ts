@@ -43,6 +43,7 @@ import { 联系人查重, 联系人撞号话, 联系人回收站撞, 联系人�
 import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 超时短沟通提示 } from "@/lib/enterprise/reply-overdue";
+import { 沟通无意义挡, 读沟通判定须知, type 沟通判定须知 } from "@/lib/enterprise/meaningless-follow";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
 
 import { 客户显名, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
@@ -314,6 +315,11 @@ export async function saveFollowUp(input: FollowUpInput) {
     // 发起主体（11-01）：同上，改已有的、没变的不查停用
     const 发起 = await 定发起主体(input.initiator, 方式.type, input.id ? { 有: true, 值: 原?.initiator } : undefined);
     if (!发起.ok) return 发起;
+    /*
+      无意义沟通不能保存（F-052，开关默认开）：新记的判为无意义整条不存（下面挂项目、只读、公海那几道之后、领取公海之前：那几句更准，拦下的不顺手领走）；
+      改已有的只在内容改了时判（事务里和改前比），原样带回来的老记录照存。带速记原文的以 AI 生成结果判
+    */
+    const 无意义 = (内容: string) => 沟通无意义挡(内容, 方式.type, { 标题: input.title ?? 原标题, AI生成: !input.id && !!input.sourceText?.trim() });
     const data = {
       type: 方式.type, ...(方式.method !== undefined ? { method: 方式.method } : {}), ...(发起.initiator !== undefined ? { initiator: 发起.initiator } : {}), title: input.title?.trim() ?? "", content: input.content.trim(), status: input.status,
       duration: input.durationMinutes ? Math.round(input.durationMinutes * 60) : null,
@@ -359,12 +365,19 @@ export async function saveFollowUp(input: FollowUpInput) {
     }
     if (组员来记 && !挂到) return { ok: false as const, error: await 只读话(defaultClient) };
     if (无效要拦 && !挂到) return { ok: false as const, error: 无效客户不能记沟通话 };
+    // 客户不在 / 看不到（目标 = null）不在这里说，交给事务里那句「不在了 / 没权限」
+    if (!input.id && 目标) {
+      const 挡 = await 无意义(input.content.trim());
+      if (挡) return { ok: false as const, error: 挡, 无意义: true as const };
+    }
     const 领取了 = 在公海 && !无效公海 && await 领取([input.customerId]).then((r) => r.ok && r.updated > 0);
     // 组员来记（上面已核过）：这位客户在限定层是「只能看」，新建沟通会被拦，这一笔按全部写——只写这条沟通、挂项目、客户最近跟进
     // 本人改只读的（上面核过）同理：只写这一条沟通（和它带的待办），按全部写
     const 这一笔 = <T,>(f: () => Promise<T>) => (组员来记 || 本人改只读的 ? 看全部(f) : f());
     // 组织表在事务外读好：事务里再用全局连接去读，单连接时会等到事务超时
     const 挂时组织 = 挂到 ? await 权限组织() : null;
+    // 改已有的：新内容判为无意义时那句（事务外先判好，事务里内容真改了才用；开关、词表不在事务里读）
+    const 改无意义 = input.id ? await 无意义(input.content.trim()) : null;
     const result = await 这一笔(() => prisma.$transaction(async (tx) => {
       const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: 显名列 });
       // 客户在、只是看不到（比如项目组员）：说没权限，不说「不在了」（11-03 B5-6）
@@ -380,6 +393,7 @@ export async function saveFollowUp(input: FollowUpInput) {
       if (input.id) {
         const 改前 = await tx.followUp.findUnique({ where: { id: input.id }, select: { type: true, method: true, initiator: true, title: true, content: true, status: true, duration: true, occurredAt: true, dueAt: true, dueOn: true, dueHasTime: true, contactId: true, opportunityId: true, participants: true } });
         if (!改前) return { ok: false as const, error: "这条跟进已经不在了（可能在别处删了），刷新看看" };
+        if (改前.content !== data.content && 改无意义) return { ok: false as const, error: 改无意义, 无意义: true as const };
         const 时间 = parseScheduleDate(input.dueAt, { at: 改前.dueAt, on: 改前.dueOn, hasTime: 改前.dueHasTime }, input.dueHasTime)!;
         Object.assign(data, { dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime });
         // 沟通时间按分钟比（低-2）：弹窗只到分钟，带秒的老记录原样交回来不算改、不被截掉秒
@@ -457,16 +471,17 @@ export async function saveFollowUp(input: FollowUpInput) {
 }
 
 /**
- * 记沟通那几处（完成计划小框、首页 AI 记沟通卡）问：这位客户我能挂沟通的在推项目、我能不能新建项目。
+ * 记沟通那几处（完成计划小框、首页 AI 记沟通卡）问：这位客户我能挂沟通的在推项目、我能不能新建项目；顺带无意义沟通的判定须知（F-052）。
  * 不是企业版 项目们 = null（照旧不挂项目）
  */
-export async function 沟通可选项目(customerId: string): Promise<{ ok: true; 项目们: 可记项目[] | null; 能建项目: boolean } | { ok: false; error: string }> {
+export async function 沟通可选项目(customerId: string): Promise<{ ok: true; 项目们: 可记项目[] | null; 能建项目: boolean; 判定?: 沟通判定须知 } | { ok: false; error: string }> {
   const me = await requireUser();
   try {
     if (typeof customerId !== "string" || !customerId) return { ok: false, error: "要记哪位客户？" };
     if (!企业版()) return { ok: true, 项目们: null, 能建项目: false };
-    const 们 = await 可记沟通项目们(me, customerId);
-    return { ok: true, 项目们: 们.可记, 能建项目: 能新建和领取(me, await 权限组织()) };
+    const [们, 判定] = await Promise.all([可记沟通项目们(me, customerId), 读沟通判定须知()]);
+    // 判定（F-052）：无意义沟通开关和占位词表，框里那一行提示用（首页 AI 卡不另调动作）
+    return { ok: true, 项目们: 们.可记, 能建项目: 能新建和领取(me, await 权限组织()), 判定 };
   } catch (e) { return 不在了(e); }
 }
 
