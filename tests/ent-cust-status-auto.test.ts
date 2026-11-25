@@ -5,9 +5,11 @@
  *   - 在推项目优先（重复咨询第一步，11-23）：名下有在推项目（没结局、不在公海）时按在推项目定，已结束的丢单 / 流失不再压过它；交付、异常照旧最先
  *   - 判无效终判「重复线索」的那条（不算）不参与
  *   - 没项目 = null；软删的项目不算
+ *   - 仅记录用（X-147，来源仅记录用、还停在 线索 · 潜客培育）不参与、不算在推；只剩它 = null 且 只剩仅记录用（写库那一半不清旧值）；推进出去照常算
  */
 import { describe, it, expect } from "vitest";
-import { 算客户状态, 在推, 客户状态序号 as 序, 客户状态id } from "@/lib/enterprise/cust-status-auto";
+import { 算客户状态, 在推, 只剩仅记录用, 客户状态序号 as 序, 客户状态id } from "@/lib/enterprise/cust-status-auto";
+import { 仅记录用来源 } from "@/lib/project/system-created";
 import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 
 const 项 = (phase: string, node: string, result: string | null = null, deletedAt: Date | null = null) => ({ phase, node, result, deletedAt });
@@ -129,5 +131,36 @@ describe("算客户状态：先后和混着", () => {
     expect(算客户状态([项("订单", "物流运输", "异常状态", 删了), 线索])).toBe(序.潜在);
     expect(算客户状态([交付(), 交付(), 项("订单", "尾款结算", "成功交付", 删了)])).toBe(序.复购);
     expect(算客户状态([项("商机", "首款支付", null, 删了)])).toBeNull();
+  });
+
+  it("仅记录用（X-147）：不参与、不算在推；流失线索加一个仅记录用 = 仍是流失", () => {
+    const 记录 = { ...线索, source: 仅记录用来源 };
+    const 流失 = 项("线索", "线索推进", "线索流失");
+    expect(在推(记录)).toBe(false);
+    expect(算客户状态([流失, 记录])).toBe(序.流失);
+    expect(算客户状态([项("商机", "签约审批", "丢单"), 记录])).toBe(序.丢单);
+    expect(算客户状态([项("商机", "明确需求"), 记录])).toBe(序.意向);
+    expect(只剩仅记录用([流失, 记录])).toBe(false);
+  });
+
+  it("只剩仅记录用 = null（当没有项目），并标 只剩仅记录用（写库不清旧值）；软删 / 重复线索不算的不影响这个判断", () => {
+    const 记录 = { ...线索, source: 仅记录用来源 };
+    expect(算客户状态([记录])).toBeNull();
+    expect(只剩仅记录用([记录])).toBe(true);
+    expect(只剩仅记录用([记录, { ...线索, deletedAt: new Date() }])).toBe(true);
+    expect(只剩仅记录用([记录, { ...项("线索", "线索验证", "线索流失"), 不算: true }])).toBe(true);
+    // 真没有项目不是这一种：照旧 null、照旧清
+    expect(只剩仅记录用([])).toBe(false);
+    expect(只剩仅记录用([{ ...记录, deletedAt: new Date() }])).toBe(false);
+  });
+
+  it("仅记录用推进出潜客培育（或转了商机）：照常算在推", () => {
+    const 推了 = { ...项("线索", "线索验证"), source: 仅记录用来源 };
+    const 转了 = { ...项("商机", "明确需求"), source: 仅记录用来源 };
+    expect(在推(推了)).toBe(true);
+    expect(算客户状态([推了])).toBe(序.潜在);
+    expect(算客户状态([项("线索", "线索推进", "线索流失"), 推了])).toBe(序.潜在);
+    expect(算客户状态([转了])).toBe(序.意向);
+    expect(只剩仅记录用([推了])).toBe(false);
   });
 });

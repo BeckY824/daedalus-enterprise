@@ -57,6 +57,7 @@ import { recordAudit } from "@/lib/audit";
 import { getSetting, setSetting } from "@/lib/settings";
 import { 不是同号留痕SQL } from "./same-number-mark";
 import { beijingDay } from "@/lib/business-clock";
+import { 是仅记录用 } from "@/lib/project/system-created";
 
 type 库 = Prisma.TransactionClient | typeof prisma;
 type 号码种类表 = Awaited<ReturnType<typeof 退回号码种类表>>;
@@ -161,7 +162,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
     // 在推的、退回了项目公海的、软删了的一句读回来，下面分开。软删的只给额度重置当动静用（M-公海-54：删了项目额度不往回翻，同钟的 progressDay 兜底）
     const 连删的 = await 看已删(() => db.project.findMany({
       where: { customerId: { in: 批 } },
-      select: { id: true, customerId: true, ownerId: true, phase: true, result: true, bizLine: true, createdAt: true, updatedAt: true, pooledAt: true, deletedAt: true },
+      select: { id: true, customerId: true, ownerId: true, phase: true, node: true, source: true, result: true, bizLine: true, createdAt: true, updatedAt: true, pooledAt: true, deletedAt: true },
     }));
     const 全部项目 = 连删的.filter((p) => p.deletedAt === null);
     const 删了的 = 连删的.filter((p) => p.deletedAt !== null);
@@ -211,7 +212,8 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         const 推 = beijingDay(推进.get(p.id) ?? p.createdAt);
         最近推进 = 较晚日(最近推进, 推);
         const 同事负责 = !!p.ownerId && p.ownerId !== c.salesOwnerId;
-        const 基 = { 阶段: p.phase as 三态项目["阶段"], 业务线: 项目业务线(p, 成员线), 同事负责, 最近推进日: 推 };
+        // 仅记录用（X-147）只给成交条件用（不算还在推）；同事负责挡进公海照旧（同事的项目不跟客户进公海，见 pool-link.ts）
+        const 基 = { 阶段: p.phase as 三态项目["阶段"], 业务线: 项目业务线(p, 成员线), 同事负责, 最近推进日: 推, ...(是仅记录用(p) ? { 仅记录用: true } : {}) };
         return p.result ? { ...基, 结束: true as const, 结束日: beijingDay(结局.get(p.id) ?? p.updatedAt) } : { ...基, 结束: false as const };
       });
       for (const p of 退回of.get(c.id) ?? []) {

@@ -10,6 +10,7 @@ import { 暂未跟进负责人们 } from "./home-cards-db";
 import { 卡点看板范围 } from "./blocker";
 import { 复盘待办计数 } from "./board-todos-db";
 import { 补项目去 } from "./customer-detail-direct";
+import { 仅记录用的 } from "./system-created";
 
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 type 谁 = { id: string; role: string };
@@ -124,7 +125,8 @@ export async function 复盘概况of(
   const 人 = 负责人条件(范围);
   const 圈 = (w: object) => ({ AND: [w, ...(人 ? [人] : [])] });
   const [在跟, 计数, 分布, 钱们, 回公海, 规则] = await Promise.all([
-    prisma.project.count({ where: 圈({ result: null, pooledAt: null }) }),
+    // 在跟：仅记录用的（X-147，还停在潜客培育）不算在推、不数；历史分析回填的照旧算（这一格从来就数它们，口径不跟着改）
+    prisma.project.count({ where: 圈({ result: null, pooledAt: null, NOT: 仅记录用的 }) }),
     复盘待办计数(范围, now),
     卡点分布of(me),
     prisma.project.findMany({

@@ -32,7 +32,8 @@ import { 挡改设置 } from "@/lib/enterprise/edit-perm";
 import { 选的原因, 认跟进方式, 已签收物流状态, type 已签收认法结果 } from "@/lib/enterprise/dict";
 import { 去不填 } from "@/lib/enterprise/dict-kinds";
 import { 生效组织规则 } from "./org-rules-store";
-import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕 } from "./timeout";
+import { 仅记录用的, 是仅记录用 } from "./system-created";
+import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕, 记沟通要下一步时间 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
@@ -804,7 +805,9 @@ export const 能进公海的阶段 = ["线索", "商机"] as const;
  * 不管怎么到手的——自己建的、领的、被指派的、自动分配的——都算；待分配（awaitAssignAt 有值，建的人只是占着负责人那一格）的不算
  */
 /** 算持有的项目（同 超上限 的口径）：还在跟、不在公海、不是待分配、线索 / 商机阶段 */
-const 算持有 = { pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] } };
+// 仅记录用的（X-147，还停在潜客培育）不算在推，不占持有数。
+// 导出共用：设置「持有上限」卡的「手上 N 个」/ 到上限人数、开关总览「到上限人数」都按 ownerId groupBy 这一份，不再各写一份条件
+export const 算持有 = { pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] }, NOT: 仅记录用的 };
 
 export async function 持有数(db: Pick<Prisma.TransactionClient, "project">, userId: string): Promise<number> {
   // 数的是 userId 手上真有几个，不按谁在看限定（11-03 A3-1：市场管理分配时看不到别人名下的，少数了、突破上限）
@@ -831,15 +834,26 @@ export async function 超上限(
   db: Pick<Prisma.TransactionClient, "project" | "user">,
   规则: 组织规则,
   userId: string,
-  p: { phase: string; result: string | null },
+  p: 持有判定项目,
 ): Promise<string | null> {
   if (!企业版()) return null;
-  if (p.result || !(能进公海的阶段 as readonly string[]).includes(p.phase)) return null;
+  if (!算一个持有(p)) return null;
   return 超上限n(db, 规则, userId, 1);
 }
 
+/** 算不算持有要的几样（source / node 不给 = 不是仅记录用） */
+export type 持有判定项目 = { phase: string; result: string | null; node?: string | null; source?: string | null };
+/**
+ * 这一个项目进手算不算持有（同 算持有 / 算持有的项目 的口径，在内存里判）：线索 / 商机阶段、没结局、不是仅记录用（X-147 待定 5：
+ * 持有数排掉了仅记录用的，单个指派 / 领取核上限时它也不 +1，两边一致）
+ */
+export function 算一个持有(p: 持有判定项目): boolean {
+  if (p.result || !(能进公海的阶段 as readonly string[]).includes(p.phase)) return false;
+  return !是仅记录用({ source: p.source ?? null, phase: p.phase, node: p.node ?? null });
+}
+
 /** 算持有的项目条件（同 持有数 去掉 ownerId / awaitAssignAt）：线索 / 商机阶段、没结局 */
-export const 算持有的项目 = { result: null, phase: { in: [...能进公海的阶段] as string[] } };
+export const 算持有的项目 = { result: null, phase: { in: [...能进公海的阶段] as string[] }, NOT: 仅记录用的 };
 
 /**
  * 一次再给 userId 进 进 个算持有的项目，会不会超持有上限（同 超上限 的算法，进 = 1 时报错一字不差）。
@@ -1168,6 +1182,8 @@ const 超时扫过键 = "projectTimeoutSweptOn";
 /** 算回收日要的项目列。最近一条留痕不在这里取：用 补回收起点留痕 另取（见下） */
 export const 算超时要的 = {
   id: true, name: true, phase: true, node: true, result: true, pooledAt: true, nextStepAt: true, ownerId: true, customerId: true, createdAt: true, bizLine: true,
+  // 来源：仅记录用的默认不收（X-147，timeout.ts 超时回收日）
+  source: true,
   customer: { select: { lastFollowAt: true, pool: { select: { customerId: true } } } },
 } satisfies Prisma.ProjectSelect;
 /** 算回收起点认的最近一条留痕（最近一条在前，只要时间；没有 = 空） */
@@ -1499,7 +1515,8 @@ export async function 记项目沟通(
         不写项目的下一步文字 / 时间，也不跑按必填推进
       */
       const 组员记 = 企业版() && !能管;
-      const 要下一步 = !组员记 && 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+      // 仅记录用的不回收时不强制（X-147 待定 6，timeout.ts 记沟通要下一步时间）
+      const 要下一步 = !组员记 && 记沟通要下一步时间(规则, p);
       const 好 = 规整沟通(组员记 ? { ...input, 下一步: null, 下一步时间: null } : input, { 要下一步, now, 要下一步文字: !组员记 && opt.要下一步文字 });
       if ("error" in 好) return { ok: false as const, error: 好.error };
       const 阶段问题 = 记沟通阶段问题(input, p);
@@ -1843,6 +1860,9 @@ export async function 自动推得到(tx: Prisma.TransactionClient, 规则: 组�
   if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return null;
   // 节点推进不管的项目不自动推（项目按必填走：默认全部都管；设置成只管新建的时看 createdAt）；已结束、在公海的不推
   if (p.pooledAt || p.result || !项目按必填走(规则, p)) return null;
+  // 仅记录用的（X-147，来源仅记录用、还停在潜客培育）不自动推：口径「一律停在潜客培育」，记沟通、存字段把潜客培育必填填齐了也不推出去，
+  // 要真跟由负责人自己点「完成节点」往前推（推出去以后就是普通线索，照常自动推）。记项目沟通、客户页连带推、项目页「存一下会自动推」提示都经这里
+  if (是仅记录用(p)) return null;
   // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
   if (待分配占位(me, p)) return null;
   const 下 = 下一步(p, 字典of(企业版()));

@@ -11,7 +11,7 @@
 import { 是不限, type 组织规则 } from "./org-rules";
 
 /** 开关总览里，组织规则（orgRules 一个键）管的那几个开关 */
-export type 组织规则开关 = "hold_cap" | "node_timeout" | "node_advance" | "first_two" | "fill_period" | "push_perm" | "tri_state";
+export type 组织规则开关 = "hold_cap" | "node_timeout" | "node_advance" | "first_two" | "fill_period" | "push_perm" | "tri_state" | "record_only" | "record_only_recall";
 
 export type 一处改动 = {
   /** 哪项：「前两个进程要沟通」 */
@@ -61,6 +61,7 @@ export function 组织规则改动(旧: 组织规则, 新: 组织规则): 一处
   const 时长 = 变了几个(t0.节点天数, t1.节点天数) + 变了几个(t0.外贸节点天数, t1.外贸节点天数);
   数项("超时回收处理时长", 时长, `改了 ${时长} 处进程时长`, "改天数", "node_timeout");
   值项("超时计时起算日", t0.起算日 ?? "不设", t1.起算日 ?? "不设", "改起算日", "node_timeout");
+  开关项("「仅记录用」项目也超时回收", t0.仅记录用也回收 === true, t1.仅记录用也回收 === true, "record_only_recall");
 
   const p0 = 旧.节点推进, p1 = 新.节点推进;
   开关项("节点推进", p0.开, p1.开, "node_advance");
@@ -72,6 +73,7 @@ export function 组织规则改动(旧: 组织规则, 新: 组织规则): 一处
   if (s0.推进权限 !== s1.推进权限) 值项("谁能往前推进程", s0.推进权限, s1.推进权限, `改成「${s1.推进权限}」`, "push_perm");
   开关项("前两个进程要沟通", s0.前两节点要沟通, s1.前两节点要沟通, "first_two");
   开关项("需求状态补全期", s0.需求补全期, s1.需求补全期, "fill_period");
+  开关项("「仅记录用」项目", s0.仅记录用 === true, s1.仅记录用 === true, "record_only");
   值项("培育计划字数上限", 字数话(s0.培育计划上限), 字数话(s1.培育计划上限), "改字数上限");
   值项("无效原因字数上限", 字数话(s0.无效原因上限), 字数话(s1.无效原因上限), "改字数上限");
   const 叫法 = 变了几个(s0.出口叫法 as Record<string, unknown>, s1.出口叫法 as Record<string, unknown>);

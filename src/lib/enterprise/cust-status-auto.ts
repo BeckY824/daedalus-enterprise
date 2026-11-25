@@ -14,6 +14,11 @@
  *     交付个数、异常照旧排在最前（只放开丢单、流失两档）。在推项目全在公海的不算在推，照旧
  *   - 「终判无效 · 重复线索」的线索不参与计算（不算 = true，判定在 cust-status-auto-db.ts 重复线索不算）。排掉以后一个项目都不剩 = null
  *
+ * 仅记录用（X-147「为了记一条沟通而新建的项目……不算在推」）：来源仅记录用、还停在 线索 · 潜客培育 的项目（system-created.ts 是仅记录用，
+ * 和统计的 不进统计 同一个判定）不参与计算，也不算在推。名下只剩仅记录用的 = 当没有项目（null），但不清库里已有的值
+ * （只剩仅记录用，cust-status-auto-db.ts 见到就不写）：962 条补建给客户挂上的仅记录用项目，之后哪次重算都不改这位客户的状态。
+ * 推进出潜客培育（或转了商机）就不再是仅记录用，照常算
+ *
  * 模型里怎么对：
  *   - 交付结清 = result「交付结清」（库里存着旧名「成功交付」的也算，企业版 10-31 改名）；异常 = result「异常状态」；丢单 = result「丢单」；流失 = result「线索流失」（结局只认 result，不看阶段）
  *   - 「已转商机」「商机赢单」不是结局，是进了下一阶段第一个节点：已转商机 = phase 商机，赢单 = phase 订单
@@ -23,19 +28,35 @@
  */
 
 import { 企业版字典, 本套名, 是交付 } from "@/lib/project/stage-dict";
+import { 是仅记录用 } from "@/lib/project/system-created";
 
 /** 字典 custStatus 默认九项的序号（id = dict-custStatus-<序号>，排序换过、id 没动） */
 export const 客户状态序号 = { 潜在: 0, 意向: 1, 成交: 2, 交付: 3, 复购: 4, 忠诚: 5, 丢单: 6, 流失: 7, 异常: 8 } as const;
 export type 客户状态序号 = (typeof 客户状态序号)[keyof typeof 客户状态序号];
 
 /**
- * 算状态要的项目几列。pooledAt：在线索公海里的不算在推（不给 = 不在公海）；不算：终判无效、原因是重复线索的（不给 = 算）
+ * 算状态要的项目几列。pooledAt：在线索公海里的不算在推（不给 = 不在公海）；不算：终判无效、原因是重复线索的（不给 = 算）；
+ * source：仅记录用要看它（不给 = 不是仅记录用）
  */
-export type 算状态的项目 = { phase: string; node: string; result: string | null; deletedAt?: Date | null; pooledAt?: Date | null; 不算?: boolean };
+export type 算状态的项目 = { phase: string; node: string; result: string | null; deletedAt?: Date | null; pooledAt?: Date | null; 不算?: boolean; source?: string | null };
 
-/** 在推：没结局、不在公海（在推项目优先那一条认它） */
+/** 在推：没结局、不在公海、不是仅记录用（在推项目优先那一条、撞号面板在推个数都认它） */
 export function 在推(p: 算状态的项目): boolean {
-  return p.result == null && !p.pooledAt;
+  return p.result == null && !p.pooledAt && !是仅记录用(p);
+}
+
+/** 参与计算的：没软删、不是重复线索不算、不是仅记录用 */
+function 参与(p: 算状态的项目): boolean {
+  return !p.deletedAt && !p.不算 && !是仅记录用(p);
+}
+
+/**
+ * 名下只剩仅记录用的（没软删、不算重复线索的里面，参与计算的一个没有、仅记录用的至少一个）：算客户状态 给 null，
+ * 但写库那一半见到它就不写——不清库里已有的值（X-147 不算在推，挂上仅记录用不改客户状态）
+ */
+export function 只剩仅记录用(项目们: readonly 算状态的项目[]): boolean {
+  const 在的 = 项目们.filter((p) => !p.deletedAt && !p.不算);
+  return 在的.length > 0 && 在的.every((p) => 是仅记录用(p));
 }
 
 /** 付了首款：没结局，进了订单，或停在商机最后一个节点首款到账（库里旧名也认） */
@@ -48,9 +69,9 @@ function 在商机(p: 算状态的项目): boolean {
   return p.result == null && p.phase === "商机";
 }
 
-/** 一个客户名下的项目 → 客户状态序号；没有项目（软删的不算）= null */
+/** 一个客户名下的项目 → 客户状态序号；没有项目（软删的、重复线索不算的、仅记录用的不算）= null */
 export function 算客户状态(项目们: readonly 算状态的项目[]): 客户状态序号 | null {
-  const 在的 = 项目们.filter((p) => !p.deletedAt && !p.不算);
+  const 在的 = 项目们.filter(参与);
   if (!在的.length) return null;
   const 交付数 = 在的.filter((p) => 是交付(p.result)).length;
   if (交付数 >= 3) return 客户状态序号.忠诚;

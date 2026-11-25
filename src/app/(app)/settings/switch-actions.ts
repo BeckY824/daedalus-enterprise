@@ -1,7 +1,7 @@
 "use server";
 /**
  * 设置 →「开关总览」的两个只读动作（设置开关 N4 / N5，11-23）。不新增开关、不写库：
- *   开关现状()   —— 18 项开关的现值和卡上要的依赖（包一层现有读函数），一次读齐
+ *   开关现状()   —— 20 项开关的现值和卡上要的依赖（包一层现有读函数），一次读齐
  *   读开关改动() —— 每个开关最近一次真变了是谁、几点、打开还是关掉（读操作日志）；组织规则比不出的写 { 比不出: true }
  * **服务端各自先判「能进设置」**（P-全局-02：只有系统管理员；勾了「不管设置」的不算）：别的身份直接调也拿不到，回 403。
  * 拨开关不在这里：总览调的是原卡片用的那几个 action（设规则、设不设配额、改组织规则、设飞书推送、设通讯录同步、设录音点评开关）
@@ -19,7 +19,7 @@ import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 规整组织规则, 到上限的人数, type 组织规则 } from "@/lib/project/org-rules";
 import { 组织规则改动 } from "@/lib/project/org-rules-diff";
 import { 字典of } from "@/lib/project/stage-dict";
-import { 能进公海的阶段 } from "@/lib/project/db";
+import { 算持有 } from "@/lib/project/db";
 import { getSetting } from "@/lib/settings";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 飞书推送开关键 } from "@/lib/enterprise/feishu-push";
@@ -75,7 +75,8 @@ export async function 开关现状(): Promise<开关现状 | 拒> {
     读飞书推送(),
     通讯录概况(),
     读转写设置(人.me),
-    prisma.project.groupBy({ by: ["ownerId"], where: { pooledAt: null, result: null, phase: { in: [...能进公海的阶段] } }, _count: { _all: true } }),
+    // 同 持有数（db.ts 算持有：排待分配、仅记录用的）
+    prisma.project.groupBy({ by: ["ownerId"], where: 算持有, _count: { _all: true } }),
   ]);
   const 飞书源 = 通讯录.ok ? 通讯录.来源们.find((s) => s.源 === "feishu") : undefined;
   const 录音概况 = 录音 && "密钥" in 录音 ? 录音 : null;
@@ -85,9 +86,11 @@ export async function 开关现状(): Promise<开关现状 | 拒> {
     node_advance: 组织规则.节点推进.开,
     first_two: 组织规则.阶段.前两节点要沟通,
     fill_period: 组织规则.阶段.需求补全期,
+    record_only: 组织规则.阶段.仅记录用 === true,
     push_perm: 组织规则.阶段.推进权限,
     hold_cap: 组织规则.公海.持有上限开,
     node_timeout: 组织规则.超时回收.开,
+    record_only_recall: 组织规则.超时回收.仅记录用也回收 === true,
     tri_state: 组织规则.三态.开,
     feishu_push: !!推送?.开,
     sync_feishu: !!飞书源?.开,
@@ -169,7 +172,7 @@ export async function 读开关改动(): Promise<开关改动 | 拒> {
     if (!上次[k]) 上次[k] = { 谁: 行.userName || "系统", at: 行.at.toISOString(), 动作 };
   };
   const 规则行们 = 行们.filter((r) => r.entityId === "orgRules");
-  const 规则开关们: 开关键[] = ["hold_cap", "node_timeout", "node_advance", "first_two", "fill_period", "push_perm", "tri_state"];
+  const 规则开关们: 开关键[] = ["hold_cap", "node_timeout", "node_advance", "first_two", "fill_period", "push_perm", "tri_state", "record_only", "record_only_recall"];
   for (const r of 行们) {
     if (r.entity === "EntOrgSync") {
       const 动作 = 单键动作(r.summary);

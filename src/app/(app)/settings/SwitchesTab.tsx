@@ -179,9 +179,11 @@ export default function SwitchesTab({ 去卡 }: { 去卡: (tab: 原页签, 找: 
       case "node_advance": return () => 改组织规则({ 节点推进: { 开: v === true } });
       case "first_two": return () => 改组织规则({ 阶段: { 前两节点要沟通: v === true } });
       case "fill_period": return () => 改组织规则({ 阶段: { 需求补全期: v === true } });
+      case "record_only": return () => 改组织规则({ 阶段: { 仅记录用: v === true } });
       case "push_perm": return () => 改组织规则({ 阶段: { 推进权限: v as 推进权限 } });
       case "hold_cap": return () => 改组织规则({ 公海: { 持有上限开: v === true } });
       case "node_timeout": return () => 改组织规则({ 超时回收: { 开: v === true } });
+      case "record_only_recall": return () => 改组织规则({ 超时回收: { 仅记录用也回收: v === true } });
       case "tri_state": return () => 改组织规则({ 三态: { 开: v === true } });
       case "feishu_push": return () => 设飞书推送(v === true);
       case "sync_feishu": return () => 设通讯录同步("feishu", v === true);
@@ -197,8 +199,9 @@ export default function SwitchesTab({ 去卡 }: { 去卡: (tab: 原页签, 找: 
     // 只多一个入口的、持有上限关掉：一步完成
     if (s.小 || (v === false && s.关不问)) return void 直接跑(s.k, f, 动词);
     // 会当场动数据的：先数再问（和原卡同一个钩子）
-    if (s.k === "node_timeout" && v === true) {
-      const r = await 先数.超时回收({ 超时回收: { 开: true } }, () => 跑(s.k, f, 动词));
+    // 「仅记录用也回收」（X-147）打开也可能当场多收一批：同样先数
+    if ((s.k === "node_timeout" || s.k === "record_only_recall") && v === true) {
+      const r = await 先数.超时回收(s.k === "node_timeout" ? { 超时回收: { 开: true } } : { 超时回收: { 仅记录用也回收: true } }, () => 跑(s.k, f, 动词));
       if (r && !r.ok) 就地.error(r.error);
       return;
     }

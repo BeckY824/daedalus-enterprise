@@ -78,7 +78,7 @@ import { 线索初判Action, 编辑项目 } from "@/app/(app)/projects/actions";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
-import { 重复咨询来源 } from "@/lib/project/system-created";
+import { 重复咨询来源, 仅记录用来源 } from "@/lib/project/system-created";
 import { 看成客户编号, 看成客户编号严 } from "@/lib/customer-no";
 import { 读未建线索, type 未建线索记录 } from "@/lib/enterprise/dupe-ledger";
 import { 默认三态规则 } from "@/lib/project/org-rules";
@@ -429,6 +429,17 @@ describe("项目详情：这位客户其他在推的项目", () => {
     const 总管看 = await 以谁的身份(总管.id, () => 客户其他在推项目(这条, c.id));
     expect(总管看.看得到.length + 总管看.看不到).toBe(2);
   });
+
+  it("仅记录用的（X-147，还停在潜客培育）不算在推：不列也不数；推进出潜客培育照常列", async () => {
+    const c = await 同事客户(外贸甲.id);
+    const 这条 = await 造(c);
+    const 记录 = await prisma.project.create({ data: { name: "记一条用的", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "线索", node: "潜客培育", source: 仅记录用来源 } });
+    const r = await 以谁的身份(总管.id, () => 客户其他在推项目(这条, c.id));
+    expect(r.看得到.map((x) => x.name)).not.toContain("记一条用的");
+    expect(r.看得到.length + r.看不到).toBe(2);
+    await prisma.project.update({ where: { id: 记录.id }, data: { node: "线索验证" } });
+    expect((await 以谁的身份(总管.id, () => 客户其他在推项目(这条, c.id))).看得到.map((x) => x.name)).toContain("记一条用的");
+  });
 });
 
 describe("撞号面板：在推项目个数（只给市场成员，含 0）", () => {
@@ -455,6 +466,16 @@ describe("撞号面板：在推项目个数（只给市场成员，含 0）", ()
       // 只有个数：项目名、阶段都不在回给浏览器的结果里
       expect(JSON.stringify(r)).not.toMatch(/旧项目|乙的秘密项目|丢了的|公海里的|回收站里的|明确需求|潜客培育/);
     }
+  });
+
+  it("仅记录用的（X-147，还停在潜客培育）不算在推、不数；推进出潜客培育照常数", async () => {
+    const c = await 同事客户(外贸甲.id);
+    await 挂项目(c);
+    const 记录 = await prisma.project.create({ data: { name: "记一条用的", customerId: c.id, ownerId: 外贸甲.id, creatorId: 外贸甲.id, phase: "线索", node: "潜客培育", source: 仅记录用来源 } });
+    当(市场);
+    expect(await 查号码("手机号", c.号)).toMatchObject({ ok: true, 状态: "重复", 在推个数: 2 });
+    await prisma.project.update({ where: { id: 记录.id }, data: { node: "线索验证" } });
+    expect(await 查号码("手机号", c.号)).toMatchObject({ ok: true, 状态: "重复", 在推个数: 3 });
   });
 
   it("含 0：名下项目都结束了（或只剩公海里的）也带，写 0", async () => {

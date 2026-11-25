@@ -10,7 +10,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
-import { 来源字, 人名显示, 是重复咨询 } from "@/lib/project/system-created";
+import { 来源字, 人名显示, 是重复咨询, 是仅记录用, 仅记录用来源 } from "@/lib/project/system-created";
 import { 客户其他在推项目, 重复咨询原始客户 } from "@/lib/enterprise/repeat-inquiry";
 import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
@@ -25,7 +25,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 负责人可推 } from "@/lib/project/org-rules";
 import { 读项目提成 } from "@/lib/project/commission-db";
 import { 读项目主题 } from "@/lib/enterprise/coach-topic-db";
-import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点, 是超时自动转痕, 系统, 超时自动转理由, 放弃转理由 } from "@/lib/project/timeout";
+import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点, 是超时自动转痕, 系统, 超时自动转理由, 放弃转理由, 记沟通要下一步时间 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
@@ -281,7 +281,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   const 原负责人领不回 = 公海 && me.id === 上一任 && 拦原负责人();
 
   // 企业版超时回收：线索 / 商机阶段记沟通要填下一步时间；算出哪天会自动回公海（和 lib/project/db.ts 公海超时收回 同一个起点）
-  const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+  // 仅记录用的不回收时不强制（X-147 待定 6）
+  const 要下一步 = 记沟通要下一步时间(规则, p);
   const 字典 = 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null);
   // 最近一条留痕，超时自动转那行不算（同 lib/project/db.ts 补回收起点留痕，客户 11-19 第 14 题 B）
   const 回收起点 = 超时起点(p.createdAt, 概况 ? 概况.回收起点留痕 : p.logs.find((l) => !是超时自动转痕(l))?.at, p.customer.lastFollowAt);
@@ -355,7 +356,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
       : { name: 看得到客户.has(p.customerId) ? p.customer.channel?.name ?? "" : "", 跟客户: true },
     channelId: p.channelId,
     // 数据来源（迁移 151）：历史沟通分析回填的项目写「历史分析」；系统里正常建的不给（界面不摆那一行）
-    ...(p.source ? { 数据来源: 来源字(p.source) } : {}),
+    // 仅记录用（X-147）推进出潜客培育后照常统计：标签照留、后面说一句
+    ...(p.source ? { 数据来源: p.source === 仅记录用来源 && !是仅记录用(p) ? `${来源字(p.source)}（已推进，照常统计）` : 来源字(p.source) } : {}),
     // 老客户重复咨询（重复咨询第一步）：现算这位客户别的在推项目，给负责人判是不是同一需求；验证框里提示选「重复线索」
     ...(是重复咨询(p) ? { 重复咨询: await 其他在推带去处(me, p.id, p.customerId) } : {}),
     // 只读来源字段（迁移 163，客户 E-218）：原始客户编号 + 第几次；没有编辑入口，改项目的动作都不写这两列

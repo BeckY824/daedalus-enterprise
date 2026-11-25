@@ -9,7 +9,8 @@
  */
 import type { Tool, ToolContext, ToolResult } from "./tools";
 import { prisma } from "../prisma";
-import { 露客户, 看得到的客户, 异常类别字典, 能进公海的阶段, 能管项目 } from "../project/db";
+import { 露客户, 看得到的客户, 异常类别字典, 能管项目 } from "../project/db";
+import { 记沟通要下一步时间 } from "../project/timeout";
 import { 权限组织 } from "../enterprise/org";
 import { 本套位置, 字典of, type 阶段字典 } from "../project/nodes";
 import { 生效组织规则 } from "../project/org-rules-store";
@@ -32,8 +33,8 @@ const str = (v: unknown, max = 60) => (typeof v === "string" ? v.trim().slice(0,
 /** 一次最多给人挑几个 */
 const 候选上限 = 10;
 
-const 项目列 = { id: true, name: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, awaitAssignAt: true, phase: true, node: true, result: true, customer: { select: 显名列 } } as const;
-type 项目行 = { id: string; name: string; customerId: string; ownerId: string; creatorId: string; pooledAt: Date | null; awaitAssignAt: Date | null; phase: string; node: string; result: string | null; customer: { id: string; name: string; shortName: string | null; customerNo: number | null } };
+const 项目列 = { id: true, name: true, customerId: true, ownerId: true, creatorId: true, pooledAt: true, awaitAssignAt: true, phase: true, node: true, result: true, source: true, customer: { select: 显名列 } } as const;
+type 项目行 = { id: string; name: string; customerId: string; ownerId: string; creatorId: string; pooledAt: Date | null; awaitAssignAt: Date | null; phase: string; node: string; result: string | null; source: string | null; customer: { id: string; name: string; shortName: string | null; customerNo: number | null } };
 
 type 找到 = { ok: true; 行: 项目行[]; 露: (p: 项目行) => boolean } | { ok: false; 话: string };
 
@@ -448,7 +449,8 @@ async function 沟通卡(a: Record<string, unknown>, ctx: ToolContext, 要卡点
   const { 规则 } = await 字典();
   const [我, org] = await Promise.all([prisma.user.findUnique({ where: { id: ctx.userId }, select: { id: true, role: true } }), 权限组织()]);
   const 组员记 = (p: 项目行) => !我 || !能管项目(我, p, org);
-  const 要时间 = (p: 项目行) => !组员记(p) && 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+  // 仅记录用的不回收时不强制（X-147 待定 6，同 记项目沟通）
+  const 要时间 = (p: 项目行) => !组员记(p) && 记沟通要下一步时间(规则, p);
   /*
     加卡点：发不了卡点的项目（组员记、没卡点权限、在公海……同 发布卡点 的判断）不出卡——出了也是死路：卡上去不掉卡点，
     确认时 记项目沟通Action 先查后写整条拦下，沟通也记不上。几个候选的把发不了的剔掉，全剔光了才报错、指路去只记沟通。
