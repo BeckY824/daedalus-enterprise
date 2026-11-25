@@ -28,7 +28,7 @@ import { 规整向导, 规整沟通, 向导接着建, 规整只建客户, 只建
 import { 补潜客培育 } from "@/lib/project/nurture";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
-import { 读必填数据, 有效沟通差of, 补全期不给, 往前推不给, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 能进公海的阶段, 超时成员线, 超时线, 补回收起点留痕, 能管项目, type 交付项 } from "@/lib/project/db";
+import { 读必填数据, 有效沟通差of, 补全期不给, 往前推不给, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 超时成员线, 超时线, 补回收起点留痕, 能管项目, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 三态改动摘要, 负责人可推, type 规则改动 } from "@/lib/project/org-rules";
 import { 组织规则改动摘要 } from "@/lib/project/org-rules-diff";
 import { 读组织规则, 生效组织规则, 存组织规则 } from "@/lib/project/org-rules-store";
@@ -47,7 +47,7 @@ import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 分给你通知, 项目分给你通知, 验证待办通知, 邀请通知, 转项目通知, 卡点发布通知, 项目被删通知, 项目放回公海通知, 市场改分通知 } from "@/lib/enterprise/notice-sources";
 import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-transfer";
 import { 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
-import { 超时回收日, 超时起点, 节点超时天数, 计时起点 } from "@/lib/project/timeout";
+import { 超时回收日, 超时起点, 节点超时天数, 计时起点, 记沟通要下一步时间 } from "@/lib/project/timeout";
 import { 项目按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
 import { 字典of } from "@/lib/project/stage-dict";
 import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
@@ -1157,7 +1157,8 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
     if (!能往项目记沟通(me, p, org, 组员?.inviteStatus)) return { ok: true, 能记: false };
     const 组员记 = !能管项目(me, p, org);
     const 规则 = await 生效组织规则();
-    const 要下一步 = !组员记 && 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+    // 仅记录用的不回收时不强制（X-147 待定 6）
+    const 要下一步 = !组员记 && 记沟通要下一步时间(规则, p);
     let 回收预演: 回收预演底子 | null = null;
     // 验证中的线索不参与超时回收（X-78）：不预演回收日
     const 验证中 = !!(await prisma.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { pending: true } }))?.pending;
@@ -1229,10 +1230,11 @@ export async function 改项目沟通(projectId: string, followUpId: string, inp
     let 新下一步: { 文字: string | null; 时间: Date | null } | null = null;
     let 资格: { 写过: boolean; 能管: boolean } | null = null;
     if (带下一步) {
-      const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, result: true, phase: true } }));
+      const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, result: true, phase: true, node: true, source: true } }));
       if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
       const 规则 = await 生效组织规则();
-      const 要下一步 = 规则.超时回收.开 && (能进公海的阶段 as readonly string[]).includes(p.phase);
+      // 改沟通时只看阶段（结局不看，照原样）；仅记录用的不回收时不强制（X-147 待定 6）
+      const 要下一步 = 记沟通要下一步时间(规则, { ...p, result: null });
       // 和记的时候同一套校验（项目详情「记一条」：下一步做什么必填，线索 / 商机阶段开了超时回收时间也必填）
       const 好 = 规整沟通({ type: input.type, method: input.method, initiator: input.initiator, content: input.content, occurredAt: input.occurredAt, 下一步: input.下一步 ?? null, 下一步时间: input.下一步时间 ?? null } as 向导跟进, { 要下一步, 要下一步文字: true });
       if ("error" in 好) return { ok: false as const, error: 好.error };

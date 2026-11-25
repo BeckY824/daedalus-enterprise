@@ -37,7 +37,9 @@ import { 销售初判, 能拍板, 市场复核, 待我复核的 } from "@/lib/pr
 import { 验证待办通知 } from "@/lib/enterprise/notice-sources";
 import { 读组织于, 市场复核要读的, 建组织 } from "@/lib/enterprise/org";
 import { 市场分配进验证理由, 算市场分给销售 } from "@/lib/enterprise/market-assign-node";
-import { 补建创建人, 补建批次, 补建的, 不算补建, 是补建 } from "@/lib/project/system-created";
+import { 补建创建人, 补建批次, 补建的, 不算补建, 是补建, 仅记录用来源 } from "@/lib/project/system-created";
+import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
+import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 
 type 人 = { id: string; name: string; role: string };
@@ -363,5 +365,54 @@ describe("B 补建认标记（creatorId = system 或 importBatch = 补建批次�
     expect(是补建({ creatorId: 市管.id, importBatch: 补建批次 })).toBe(true);
     expect(是补建({ creatorId: 补建创建人, importBatch: null })).toBe(true);
     expect(是补建({ creatorId: 市管.id, importBatch: null })).toBe(false);
+  });
+});
+
+describe("X-147 待定 4：仅记录用的市场分给销售也停在潜客培育", () => {
+  it("市场管理在客户页勾着仅记录用建、指定给销售：停在潜客培育，不留进线索验证的痕", async () => {
+    await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 仅记录用: true } });
+    const c = await 建客户(市管.id, 市管.id);
+    当(市管);
+    const 建 = (仅记录用: boolean) => 给客户建项目({
+      customerId: c,
+      项目: { name: `记沟通${仅记录用 ? "仅记录用" : "普通"}`, amount: 0, currency: "CNY", ownerId: 销售.id },
+      跟进: { type: "PHONE", content: "问了一下", occurredAt: "2026-11-20 10:00", 节点: "潜客培育" },
+      仅记录用,
+    });
+    const r = await 建(true);
+    if (!r.ok) throw new Error(r.error);
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: r.projectId }, select: { ownerId: true, node: true, source: true } }))
+      .toEqual({ ownerId: 销售.id, node: "潜客培育", source: 仅记录用来源 });
+    expect(await 推进痕(r.projectId)).toBe(0);
+  });
+
+  it("对照：市场管理客户页建普通项目指定给销售照进线索验证；仅记录用的之后再分 / 转给销售也不推", async () => {
+    const c = await 建客户(市管.id, 市管.id);
+    当(市管);
+    const r = await 给客户建项目({
+      customerId: c,
+      项目: { name: "普通", amount: 0, currency: "CNY", ownerId: 销售.id },
+      跟进: { type: "PHONE", content: "问了一下", occurredAt: "2026-11-20 10:00", 节点: "潜客培育" },
+    });
+    if (!r.ok) throw new Error(r.error);
+    expect(await 节点(r.projectId)).toBe("线索验证");
+    // 已有的仅记录用项目（962 补建那种）：市场管理分配线索给销售，负责人换了、节点不动
+    const c2 = await 建客户(市管.id, 市管.id);
+    const P = (await prisma.project.create({ data: { name: "补建", customerId: c2, ownerId: 市管.id, creatorId: 市管.id, phase: "线索", node: "潜客培育", bizLine: "外贸", source: 仅记录用来源 } })).id;
+    expect((await 分配线索({ projectId: P, toUserId: 销售.id, 原负责人: 市管.id })).ok).toBe(true);
+    expect(await prisma.project.findUniqueOrThrow({ where: { id: P }, select: { ownerId: true, node: true } })).toEqual({ ownerId: 销售.id, node: "潜客培育" });
+    expect(await 推进痕(P)).toBe(0);
+  });
+
+  it("待定 5：销售到了持有上限，市场管理再分一个仅记录用的给他不拦（普通的照拦）", async () => {
+    await setSetting("orgRules", { ...默认组织规则, 公海: { ...默认组织规则.公海, 持有上限开: true, 默认上限: 1 } });
+    const c0 = await 建客户(销售.id);
+    await 建项目(c0, { ownerId: 销售.id, creatorId: 销售.id, node: "潜客培育" });
+    const c = await 建客户(市管.id, 市管.id);
+    const 普 = await 建项目(c, { ownerId: 市管.id, creatorId: 市管.id, node: "潜客培育" });
+    const 记 = (await prisma.project.create({ data: { name: "补建", customerId: c, ownerId: 市管.id, creatorId: 市管.id, phase: "线索", node: "潜客培育", bizLine: "外贸", source: 仅记录用来源 } })).id;
+    当(市管);
+    expect(await 分配线索({ projectId: 普, toUserId: 销售.id, 原负责人: 市管.id })).toMatchObject({ ok: false, error: expect.stringContaining("持有上限") });
+    expect(await 分配线索({ projectId: 记, toUserId: 销售.id, 原负责人: 市管.id })).toMatchObject({ ok: true });
   });
 });

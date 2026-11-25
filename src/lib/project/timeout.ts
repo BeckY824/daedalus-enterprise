@@ -116,6 +116,18 @@ export function 超时回收日(规则: 组织规则, p: 超时项目, 起点: D
   return 计时起点(规则, 起点).add(天数, "day").format("YYYY-MM-DD");
 }
 
+/**
+ * 记沟通要不要强制填下一步时间（开了超时回收，线索 / 商机阶段、没结局的项目要填，记沟通的组员另判）。
+ * 仅记录用的（X-147 待定 6，还停在潜客培育）：不回收时（仅记录用也回收 关着）不强制——它本来就不会被收，填了只提醒；
+ * 仅记录用也回收 开着照普通项目要。超时回收整个关着本来就不要。source / node 不给 = 不是仅记录用
+ */
+export function 记沟通要下一步时间(规则: 组织规则, p: { phase: string; result?: string | null; node?: string | null; source?: string | null }): boolean {
+  if (!规则.超时回收.开 || p.result) return false;
+  if (p.phase !== "线索" && p.phase !== "商机") return false;
+  if (是仅记录用({ source: p.source ?? null, phase: p.phase, node: p.node ?? null }) && !规则.超时回收.仅记录用也回收) return false;
+  return true;
+}
+
 /** 到了回收日就算超时 */
 export function 已超时(回收日: string | null, 今: Date | string = new Date()): boolean {
   if (!回收日) return false;

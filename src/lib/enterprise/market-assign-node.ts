@@ -9,7 +9,9 @@
  *   - 下一步（文字、时间）不清：同分配（11-03 A2-3，下一步跟着项目走）。
  *   - 撤销分配时推回潜客培育、删掉这一行（推回潜客培育）。
  * 不推：销售自建自持（创建人是销售、分之前就在他手里）、公海领取 / 公海分配（market-transfer 推节点 = false）、
- * 销售管理 / 总管理之间转让（交出去的人不是市场成员）、暂不分配（没交给销售）。
+ * 销售管理 / 总管理之间转让（交出去的人不是市场成员）、暂不分配（没交给销售）、
+ * 仅记录用的（X-147 待定 4：来源仅记录用，客户原话「一律停在潜客培育」；市场勾着仅记录用建给销售、之后分 / 转给销售都不推，
+ * 要真跟了由负责人自己往前推，推出去才照常统计，system-created.ts 是仅记录用）。
  * 调用点只加一两行，判定和落库都在这里（11-18：几个热修分支也在改 assign-actions.ts / projects/actions.ts，收在一处方便合并）。
  */
 import type { Prisma } from "@/generated/prisma";
@@ -17,6 +19,7 @@ import { 企业版 } from "./switch";
 import { 是市场成员of, type 组织 } from "./org-core";
 import { 是销售角色 } from "./permissions";
 import { 看全部 } from "@/lib/team-scope";
+import { 仅记录用来源 } from "@/lib/project/system-created";
 
 /** 从哪进哪：企业版、团队版字典里线索阶段前两个节点同名（stage-dict.ts） */
 export const 市场分配从 = "潜客培育";
@@ -60,7 +63,11 @@ export async function 市场分配进线索验证(
     const 推: string[] = [];
     for (let i = 0; i < 们.length; i += 500) {
       const ps = await tx.project.findMany({
-        where: { id: { in: 们.slice(i, i + 500) }, ownerId: 接手人, phase: "线索", node: 市场分配从, result: null, pooledAt: null, awaitAssignAt: null },
+        where: {
+          id: { in: 们.slice(i, i + 500) }, ownerId: 接手人, phase: "线索", node: 市场分配从, result: null, pooledAt: null, awaitAssignAt: null,
+          // 仅记录用的（X-147 待定 4）停在潜客培育不推（source 空的照推：OR 里写明 null，不靠 NOT 遇 NULL）
+          OR: [{ source: null }, { source: { not: 仅记录用来源 } }],
+        },
         select: { id: true },
       });
       if (!ps.length) continue;

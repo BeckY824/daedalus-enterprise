@@ -6,6 +6,8 @@
  *   - 持有数、首页卡（本月新增、重点、暂未跟进）、渠道项目条件不算它
  *   - 超时回收日：默认不收，开了「仅记录用也回收」照收；推进出去的照收
  *   - 客户页新建项目（给客户建项目）：开关关着交了仅记录用也当普通项目；开着记来源、只能潜客培育
+ *   - 待定 5：单个指派 / 领取核持有上限时仅记录用的不 +1（算一个持有、超上限，同持有数）
+ *   - 待定 6：仅记录用的不回收时记沟通不强制下一步时间（记沟通要下一步时间、记项目沟通、给客户建项目）；仅记录用也回收 开着照旧要
  */
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -28,10 +30,10 @@ import { 项目现在, 项目一段 } from "../src/app/(app)/overview/project-st
 import {
   仅记录用来源, 仅记录用的, 是仅记录用, 不进统计, 不算补建, 来源字, 历史分析来源,
 } from "@/lib/project/system-created";
-import { 持有数 } from "@/lib/project/db";
+import { 持有数, 算一个持有, 超上限, 记项目沟通 } from "@/lib/project/db";
 import { 首页卡条件 } from "@/lib/project/home-cards";
 import { 渠道项目条件 } from "@/lib/enterprise/channel-stats-db";
-import { 超时回收日 } from "@/lib/project/timeout";
+import { 超时回收日, 记沟通要下一步时间 } from "@/lib/project/timeout";
 import { 默认组织规则, 规整组织规则, 合上改动, type 组织规则 } from "@/lib/project/org-rules";
 import { 企业版字典 } from "@/lib/project/nodes";
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
@@ -185,5 +187,63 @@ describe("客户页新建项目（给客户建项目）", () => {
     const r = await 建项目({ 仅记录用: true, 节点: "线索验证" });
     expect(r).toMatchObject({ ok: false, error: expect.stringContaining("仅记录用") });
     expect(await prisma.project.count()).toBe(0);
+  });
+});
+
+describe("待定 5：核持有上限时仅记录用的不 +1", () => {
+  const 上限1: 组织规则 = { ...默认组织规则, 公海: { ...默认组织规则.公海, 持有上限开: true, 默认上限: 1 } };
+  it("算一个持有：仅记录用的不算，推进出去 / 普通的算，有结局 / 订单阶段不算", () => {
+    expect(算一个持有({ phase: "线索", node: "潜客培育", result: null, source: 仅记录用来源 })).toBe(false);
+    expect(算一个持有({ phase: "线索", node: "线索验证", result: null, source: 仅记录用来源 })).toBe(true);
+    expect(算一个持有({ phase: "线索", node: "潜客培育", result: null, source: null })).toBe(true);
+    expect(算一个持有({ phase: "线索", result: null })).toBe(true);
+    expect(算一个持有({ phase: "线索", result: "线索流失" })).toBe(false);
+    expect(算一个持有({ phase: "订单", result: null })).toBe(false);
+  });
+
+  it("超上限：到了上限再给一个仅记录用的不拦，普通的照拦", async () => {
+    await 建({ name: "普通" });
+    const 记 = await 记录用();
+    expect(await 超上限(prisma, 上限1, 王, 记)).toBeNull();
+    expect(await 超上限(prisma, 上限1, 王, { phase: "线索", node: "潜客培育", result: null, source: null })).toContain("持有上限");
+  });
+});
+
+describe("待定 6：仅记录用的不回收时记沟通不强制下一步时间", () => {
+  const 开了: 组织规则 = { ...默认组织规则, 超时回收: { ...默认组织规则.超时回收, 开: true, 节点天数: { 潜客培育: 7 }, 起算日: null } };
+  const 也回收: 组织规则 = { ...开了, 超时回收: { ...开了.超时回收, 仅记录用也回收: true } };
+  const 记 = { phase: "线索", node: "潜客培育", result: null, source: 仅记录用来源 };
+  it("记沟通要下一步时间：仅记录用也回收 关着不要；开着要；推进出去的、普通的照要；超时回收整个关着都不要", () => {
+    expect(记沟通要下一步时间(开了, 记)).toBe(false);
+    expect(记沟通要下一步时间(也回收, 记)).toBe(true);
+    expect(记沟通要下一步时间(开了, { ...记, node: "线索验证" })).toBe(true);
+    expect(记沟通要下一步时间(开了, { ...记, source: null })).toBe(true);
+    expect(记沟通要下一步时间(默认组织规则, { ...记, source: null })).toBe(false);
+    expect(记沟通要下一步时间(开了, { ...记, source: null, result: "线索流失" })).toBe(false);
+  });
+
+  it("记项目沟通：仅记录用的不填下一步时间也能记；打开仅记录用也回收后照普通项目拦", async () => {
+    await setSetting("orgRules", 开了);
+    const p = await 记录用();
+    const 沟通 = { type: "PHONE", content: "又问了一次价格", occurredAt: "2026-11-20 10:00", 阶段: "线索", 明确回复: true, 下一步: "下周再问" };
+    const r = await 记项目沟通({ id: 王, role: "SALES" }, p.id, 沟通 as never);
+    expect(r).toMatchObject({ ok: true });
+    const 普 = await 建({ name: "普通" });
+    expect(await 记项目沟通({ id: 王, role: "SALES" }, 普.id, 沟通 as never)).toMatchObject({ ok: false, error: expect.stringContaining("下一步") });
+    await setSetting("orgRules", 也回收);
+    invalidateSettingsCache();
+    expect(await 记项目沟通({ id: 王, role: "SALES" }, p.id, 沟通 as never)).toMatchObject({ ok: false, error: expect.stringContaining("下一步") });
+  });
+
+  it("给客户建项目：勾着仅记录用、不回收时首条沟通不填下一步也能建；不勾照旧要填", async () => {
+    await setSetting("orgRules", { ...开了, 阶段: { ...开了.阶段, 仅记录用: true } });
+    const 建项目 = (仅记录用: boolean) => 给客户建项目({
+      customerId: 客户,
+      项目: { name: "为记沟通", amount: 0, currency: "CNY", ownerId: 王 },
+      跟进: { type: "PHONE", content: "问了价格", occurredAt: "2026-11-20 10:00", 节点: "潜客培育" },
+      仅记录用,
+    });
+    expect(await 建项目(true)).toMatchObject({ ok: true });
+    expect(await 建项目(false)).toMatchObject({ ok: false, error: expect.stringContaining("下一步") });
   });
 });

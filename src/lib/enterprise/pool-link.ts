@@ -16,7 +16,7 @@ import { 看全部 } from "@/lib/team-scope";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 带走一位, 带走公海项目, type 带走的 } from "@/lib/carry-over-db";
 import { 公海分配痕 } from "@/lib/project/carry-tasks";
-import { 记转让, 能进公海的阶段, 超上限n, 算持有的项目 } from "@/lib/project/db";
+import { 记转让, 能进公海的阶段, 超上限n, 算持有的项目, 算一个持有, type 持有判定项目 } from "@/lib/project/db";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 进公海后负责人, 进公海关待办, 进公海清组员, 进公海关主题 } from "@/lib/project/pool-owner";
 import { 进公海清验证 } from "@/lib/project/lead-verify-guard";
@@ -134,12 +134,13 @@ export async function 领项目连带超上限(
   tx: Prisma.TransactionClient,
   规则: 组织规则,
   新: string,
-  p: { id: string; customerId: string; phase: string; result: string | null },
+  p: { id: string; customerId: string } & 持有判定项目,
   另进 = 0,
   整包 = false,
 ): Promise<string | null> {
   if (!企业版()) return null;
-  const 一 = !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase) ? 1 : 0;
+  // 手上这个算持有才进 1 个；仅记录用的（X-147）不占持有数，也不 +1
+  const 一 = 算一个持有(p) ? 1 : 0;
   const 带 = (整包 || 公海规则.领项目带走单项目客户) && 公海规则.领客户带走公海里的项目
     ? await 看全部(async () => (await tx.customerPool.findUnique({ where: { customerId: p.customerId }, select: { customerId: true } }))
       ? tx.project.count({ where: { customerId: p.customerId, pooledAt: { not: null }, id: { not: p.id }, ...算持有的项目 } })

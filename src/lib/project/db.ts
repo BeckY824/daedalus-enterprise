@@ -32,8 +32,8 @@ import { 挡改设置 } from "@/lib/enterprise/edit-perm";
 import { 选的原因, 认跟进方式, 已签收物流状态, type 已签收认法结果 } from "@/lib/enterprise/dict";
 import { 去不填 } from "@/lib/enterprise/dict-kinds";
 import { 生效组织规则 } from "./org-rules-store";
-import { 仅记录用的 } from "./system-created";
-import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕 } from "./timeout";
+import { 仅记录用的, 是仅记录用 } from "./system-created";
+import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕, 记沟通要下一步时间 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
@@ -831,11 +831,22 @@ export async function 超上限(
   db: Pick<Prisma.TransactionClient, "project" | "user">,
   规则: 组织规则,
   userId: string,
-  p: { phase: string; result: string | null },
+  p: 持有判定项目,
 ): Promise<string | null> {
   if (!企业版()) return null;
-  if (p.result || !(能进公海的阶段 as readonly string[]).includes(p.phase)) return null;
+  if (!算一个持有(p)) return null;
   return 超上限n(db, 规则, userId, 1);
+}
+
+/** 算不算持有要的几样（source / node 不给 = 不是仅记录用） */
+export type 持有判定项目 = { phase: string; result: string | null; node?: string | null; source?: string | null };
+/**
+ * 这一个项目进手算不算持有（同 算持有 / 算持有的项目 的口径，在内存里判）：线索 / 商机阶段、没结局、不是仅记录用（X-147 待定 5：
+ * 持有数排掉了仅记录用的，单个指派 / 领取核上限时它也不 +1，两边一致）
+ */
+export function 算一个持有(p: 持有判定项目): boolean {
+  if (p.result || !(能进公海的阶段 as readonly string[]).includes(p.phase)) return false;
+  return !是仅记录用({ source: p.source ?? null, phase: p.phase, node: p.node ?? null });
 }
 
 /** 算持有的项目条件（同 持有数 去掉 ownerId / awaitAssignAt）：线索 / 商机阶段、没结局 */
@@ -1469,7 +1480,8 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
         不写项目的下一步文字 / 时间，也不跑按必填推进
       */
       const 组员记 = 企业版() && !能管;
-      const 要下一步 = !组员记 && 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+      // 仅记录用的不回收时不强制（X-147 待定 6，timeout.ts 记沟通要下一步时间）
+      const 要下一步 = !组员记 && 记沟通要下一步时间(规则, p);
       const 好 = 规整沟通(组员记 ? { ...input, 下一步: null, 下一步时间: null } : input, { 要下一步, now, 要下一步文字: !组员记 && opt.要下一步文字 });
       if ("error" in 好) return { ok: false as const, error: 好.error };
       const 阶段问题 = 记沟通阶段问题(input, p);

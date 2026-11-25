@@ -1934,6 +1934,7 @@ export default function RecordView({
           customer={{ id: customer.id, name: customer.name, shortName: customer.shortName, customerNo: customer.customerNo, salesOwnerId: customer.salesOwnerId }}
           联系人们={contacts.filter((c) => !c.挂靠).map((c) => ({ id: c.id, name: c.name, isPrimary: c.isPrimary }))}
           仅记录用={建项目为记沟通 && 新建项目.仅记录用 === true}
+          仅记录用也回收={新建项目.仅记录用也回收 === true}
         />
       )}
     </div>

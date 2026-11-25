@@ -24,7 +24,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 负责人可推 } from "@/lib/project/org-rules";
 import { 读项目提成 } from "@/lib/project/commission-db";
 import { 读项目主题 } from "@/lib/enterprise/coach-topic-db";
-import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点, 是超时自动转痕, 系统, 超时自动转理由, 放弃转理由 } from "@/lib/project/timeout";
+import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点, 是超时自动转痕, 系统, 超时自动转理由, 放弃转理由, 记沟通要下一步时间 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
@@ -263,7 +263,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   const 原负责人领不回 = 公海 && me.id === 上一任 && 拦原负责人();
 
   // 企业版超时回收：线索 / 商机阶段记沟通要填下一步时间；算出哪天会自动回公海（和 lib/project/db.ts 公海超时收回 同一个起点）
-  const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+  // 仅记录用的不回收时不强制（X-147 待定 6）
+  const 要下一步 = 记沟通要下一步时间(规则, p);
   const 字典 = 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null);
   // 最近一条留痕，超时自动转那行不算（同 lib/project/db.ts 补回收起点留痕，客户 11-19 第 14 题 B）
   const 回收起点 = 超时起点(p.createdAt, 概况 ? 概况.回收起点留痕 : p.logs.find((l) => !是超时自动转痕(l))?.at, p.customer.lastFollowAt);
