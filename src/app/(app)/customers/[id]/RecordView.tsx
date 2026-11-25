@@ -367,10 +367,13 @@ export default function RecordView({
     const 参 = new URLSearchParams(window.location.search);
     /* 首页背调卡上点「记一条跟进」带过来的（?do=followup）：进来就打开跟进表单，打开后把参数去掉，刷新不会再弹 */
     if (参.get("do") === "followup") {
-      window.history.replaceState(null, "", window.location.pathname);
       // 等这一页画完再弹：表单要量弹窗位置，挂载同一拍里打开会先闪一下
       // 企业版只用项目：跟进记在项目里，这里同「跟进」按钮一样跳到项目（P14 第 3 条）
-      const t = setTimeout(() => 点跟进首次.current(), 0);
+      // 去参数也放进定时器（同下面 ?建项目=1）：开发模式 effect 跑两遍、首屏接管时这层重挂，第一遍的定时器被清掉，参数得还在、第二遍才开得出框
+      const t = setTimeout(() => {
+        window.history.replaceState(null, "", window.location.pathname);
+        点跟进首次.current();
+      }, 0);
       return () => clearTimeout(t);
     }
     const 要 = 参.get("focus");

@@ -107,15 +107,31 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
 });
 
 /*
-  带截图记（PR-B 审查 11-25）：截图在 记项目沟通Action 之后另走 /api/attachments（fetch，不重渲染），
-  记录页保存后不再 router.refresh，FollowUpForm 传上了截图要自己刷一次，不然新的那条要刷新页面才看得到缩略图
+  带截图记（PR-B 审查 11-25）：截图在记沟通之后另走 /api/attachments（fetch，不重渲染），新的那条要再刷一次才带上缩略图。
+  项目块里「新建沟通」是项目详情那张框（ProjectDetail 的 交，传完自己 refresh）；
+  记录页那张框（FollowUpForm 项目模式：?do=followup、AI 面板、背调卡「记一条沟通」）原来靠记录页 onSaved 的 router.refresh，
+  PR-B 去掉了那一下，改成 FollowUpForm 传上了截图自己刷一次——两条入口各钉一条
 */
+/*
+  截图上传压慢 2 秒：记沟通动作 revalidatePath 了，Next 在动作回来后自己对当前页再取一次（server-action-reducer 的 RefreshAll），
+  这一次和 /api/attachments 赛跑——1×1 小图常常抢在那次读库之前存好，不压慢的话少了「传完自己刷一次」也看得见缩略图（改前不红）
+*/
+async function 截图慢点传(page: Page) {
+  await page.route(/\/api\/attachments\?/, async (r) => {
+    if (r.request().method() === "POST") await new Promise((好) => setTimeout(好, 2_000));
+    await r.continue();
+  });
+}
+
+const 一像素图 = () => Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+
 test("带一张截图记沟通：不刷新页面，新的那条就能看到缩略图", async ({ page }) => {
   const 内容 = `带截图的沟通${后缀}`;
   const 图名 = `截图${后缀}.png`;
   const { 框, 正文 } = await 开记沟通框(page);
+  await 截图慢点传(page);
   // 1×1 的 PNG：服务端按文件头认类型
-  const 图 = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  const 图 = 一像素图();
   await 框.locator('input[type="file"]').setInputFiles({ name: 图名, mimeType: "image/png", buffer: 图 });
   await expect(框.getByText(图名)).toBeVisible();
   await 填好存下(page, 框, 内容);
@@ -124,4 +140,42 @@ test("带一张截图记沟通：不刷新页面，新的那条就能看到缩�
   await expect(正文.getByRole("img", { name: 图名 }).first()).toBeVisible({ timeout: 15_000 });
   const 记的 = await db.followUp.findFirstOrThrow({ where: { customerId: 客户, content: 内容 }, select: { id: true } });
   expect(await db.attachment.count({ where: { followUpId: 记的.id } })).toBe(1);
+});
+
+test("记录页的记沟通框（?do=followup，FollowUpForm 项目模式）带一张截图：不刷新页面，新的那条就能看到缩略图", async ({ page }) => {
+  const 内容 = `记录页框带截图${后缀}`;
+  const 图名 = `记录页截图${后缀}.png`;
+  await 登录(page, "销售1");
+  // 首页背调卡「记一条沟通」过来就带 ?do=followup：进来就开记录页那张框（不是项目块里项目详情那张）。
+  // 只有一个项目时客户层没有「沟通记录」汇总卡，这张框在页面上没有别的常驻按钮，AI 面板、背调卡走的也是这条 点跟进
+  await page.goto(`/customers/${客户}?do=followup`);
+  const 正文 = page.getByRole("main");
+  const 框 = page.getByRole("dialog", { name: "新建沟通" });
+  await expect(框).toBeVisible({ timeout: 30_000 });
+  // 开完把参数去掉，刷新不再弹
+  await expect(page).not.toHaveURL(/do=followup/);
+  await 截图慢点传(page);
+  // 项目模式：关联项目默认选上这一个
+  await expect(框.getByText(`记沟通项目${后缀}`).first()).toBeVisible();
+  await 框.locator('input[type="file"]').setInputFiles({ name: 图名, mimeType: "image/png", buffer: 一像素图() });
+  await expect(框.getByText(图名)).toBeVisible();
+  // 这张是 FollowUpForm（antd 表单）：下一步时间默认就是 3 天后，不另点；存上后有话要说（自动推进、短沟通……）框会停下等「知道了」
+  const 主体 = 框.getByRole("combobox", { name: "发起主体" });
+  if (!(await 框.getByText("我方发起", { exact: true }).count())) {
+    await 主体.click();
+    await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option").first().click();
+  }
+  await 框.getByLabel("沟通内容").fill(内容);
+  await 框.getByLabel("下一步计划").fill(`下一步：发报价${后缀}`);
+  await 框.getByRole("button", { name: "保存", exact: true }).click();
+  const 知道了 = 框.getByRole("button", { name: "知道了" });
+  await expect(async () => {
+    if (await 知道了.isVisible()) await 知道了.click();
+    await expect(框).toBeHidden({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(正文.getByText(内容).first()).toBeVisible();
+  const 记的 = await db.followUp.findFirstOrThrow({ where: { customerId: 客户, content: 内容 }, select: { id: true } });
+  await expect.poll(() => db.attachment.count({ where: { followUpId: 记的.id } })).toBe(1);
+  // 不 reload：新的那条下面就有这张图的缩略图
+  await expect(正文.getByRole("img", { name: 图名 }).first()).toBeVisible({ timeout: 15_000 });
 });
