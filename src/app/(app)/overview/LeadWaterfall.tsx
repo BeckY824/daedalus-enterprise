@@ -7,10 +7,11 @@ import Chart from "@/components/Chart";
 import EmptyState from "@/components/EmptyState";
 import { palette, categorical } from "@/lib/palette";
 import type { 线索节点格 } from "./project-stats";
+import { 后售培育名 } from "@/lib/project/stage-dict";
 
 /**
  * 复盘页 · 线索瀑布（P15；10-29 定稿：横向瀑布要看得出每个节点流出去多少）：和左边的漏斗并排。
- * 线索阶段各节点（潜客培育 → 线索验证 → 线索推进，节点名取 nodes.ts）横着一条接一条往右垒，每条拆成四段：
+ * 线索阶段各节点（潜客培育 → 后售培育 → 线索验证 → 线索推进，节点名取 nodes.ts；后售培育是从潜客培育里拆出来的一行，P-界面-65）横着一条接一条往右垒，每条拆成四段：
  * 还停着的、线索流失、判无效、退回公海（口径见 project-stats.ts 线索节点of）；再垒一条「已转商机」，最后一条是线索合计。
  * 底座是一段透明的柱子（echarts 瀑布图的常规画法）；提示框报这一条各段几个，条尾写这一条一共几个。
  */
@@ -21,6 +22,9 @@ const tooltip = {
   textStyle: { color: palette.inkSoft, fontSize: 12 },
   extraCssText: "box-shadow:var(--shadow-pop);border-radius:10px;",
 };
+
+/** 后售培育那一行（project-stats.ts 后售行名）悬停多写的一句：它从潜客培育里拆出来、按什么算（各进程的项目那张图同一句） */
+export const 后售悬停字 = "客户已有交付结清的项目";
 
 /** 每条拆成哪几段、什么颜色：停着的是中性色，流出去的三样按轻重给红 / 橙 / 灰，转商机是好出口给绿，合计用品牌色 */
 const 段们 = [
@@ -59,7 +63,8 @@ export default function LeadWaterfall({ 节点, 转商机, 说明 }: { 节点: �
           if (i >= 节点.length) return `${名[i]}<br/>${末[i]} 个`;
           const n = 节点[i];
           const 行 = 段们.filter((d) => d.键 === "count" || n[d.键] > 0).map((d) => `${d.名} ${n[d.键]} 个`);
-          return `${名[i]} · 共 ${末[i]} 个<br/>${行.join("<br/>")}`;
+          const 注 = n.node === 后售培育名 ? `${后售悬停字}<br/>` : "";
+          return `${名[i]} · 共 ${末[i]} 个<br/>${注}${行.join("<br/>")}`;
         },
       },
       legend: { top: 0, left: 0, itemWidth: 10, itemHeight: 10, textStyle: 轴字, data: [...段们.map((d) => d.名), "已转商机阶段"] },
@@ -99,7 +104,7 @@ export default function LeadWaterfall({ 节点, 转商机, 说明 }: { 节点: �
       {合计 > 0 ? (
         <Chart option={option} height={(节点.length + 2) * 30 + 42} />
       ) : (
-        <EmptyState title="没有线索阶段的项目" hint="新建一条线索，这里按潜客培育、线索验证、线索推进垒出来，流失、判无效、放回公海也拆开看。" demo={false} />
+        <EmptyState title="没有线索阶段的项目" hint="新建一条线索，这里按潜客培育、后售培育、线索验证、线索推进垒出来，流失、判无效、放回公海也拆开看。" demo={false} />
       )}
     </Card>
   );
