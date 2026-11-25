@@ -36,9 +36,9 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 type 结果 = { ok: boolean; error?: string };
 type 筛 = "all" | "on" | "off" | "chg";
 
-/** 组织规则那 6 条：总览开关键 → 规则名（设规则 的第二个参数） */
+/** 组织规则那 7 条：总览开关键 → 规则名（设规则 的第二个参数） */
 const 规则名of: Partial<Record<开关键, 规则名>> = {
-  org_scope: "按组织看客户", field_perm: "字段权限", lead_assign: "线索分配", market_review: "市场复核", reply_overdue: "超时自动转", lead_giveup: "主动放弃",
+  org_scope: "按组织看客户", field_perm: "字段权限", lead_assign: "线索分配", market_review: "市场复核", reply_overdue: "超时自动转", lead_giveup: "主动放弃", block_meaningless: "无意义沟通拦",
 };
 
 /** 北京时间的「今天 09:30 / 昨天 / 11 月 3 日」 */

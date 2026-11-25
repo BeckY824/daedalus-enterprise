@@ -1,7 +1,7 @@
 "use server";
 /**
  * 设置 →「开关总览」的两个只读动作（设置开关 N4 / N5，11-23）。不新增开关、不写库：
- *   开关现状()   —— 17 项开关的现值和卡上要的依赖（包一层现有读函数），一次读齐
+ *   开关现状()   —— 18 项开关的现值和卡上要的依赖（包一层现有读函数），一次读齐
  *   读开关改动() —— 每个开关最近一次真变了是谁、几点、打开还是关掉（读操作日志）；组织规则比不出的写 { 比不出: true }
  * **服务端各自先判「能进设置」**（P-全局-02：只有系统管理员；勾了「不管设置」的不算）：别的身份直接调也拿不到，回 403。
  * 拨开关不在这里：总览调的是原卡片用的那几个 action（设规则、设不设配额、改组织规则、设飞书推送、设通讯录同步、设录音点评开关）
@@ -42,7 +42,7 @@ async function 认人(): Promise<{ me: Awaited<ReturnType<typeof requireUser>> }
 
 /** 组织规则开关键 ↔ 总览开关 */
 const 规则开关: Record<规则名, 开关键> = {
-  按组织看客户: "org_scope", 字段权限: "field_perm", 线索分配: "lead_assign", 市场复核: "market_review", 超时自动转: "reply_overdue", 主动放弃: "lead_giveup",
+  按组织看客户: "org_scope", 字段权限: "field_perm", 线索分配: "lead_assign", 市场复核: "market_review", 超时自动转: "reply_overdue", 主动放弃: "lead_giveup", 无意义沟通拦: "block_meaningless",
 };
 
 export type 开关现状 = {

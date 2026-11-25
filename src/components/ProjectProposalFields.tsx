@@ -4,6 +4,8 @@ import DatePicker from "@/components/BusinessDatePicker";
 import { Select, Input, Tag } from "antd";
 import AmountTextInput from "@/components/AmountTextInput";
 import { FOLLOW_TYPES } from "@/lib/constants";
+import FollowMeaningLine from "@/components/FollowMeaningLine";
+import { useFollowJudge } from "@/components/useFollowJudge";
 import { 币种符号 } from "@/lib/currency";
 import { dayjs } from "@/lib/utils";
 import { 卡点类型们, 影响等级们, 原因最多, 清原因们 } from "@/lib/project/blocker-rules";
@@ -21,6 +23,8 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
   const 候 = draft.候选 ?? [];
   const 日 = (v: string) => (v ? dayjs(v) : null);
   const 设 = (patch: Record<string, unknown>) => setDraft({ ...draft, ...patch } as 项目卡);
+  // 无意义沟通（F-052）：记沟通的卡自己取一次开关（关着时那一行改说「不算有效沟通」）；别的卡不取
+  const 判定 = useFollowJudge(draft.kind === "project_followup");
 
   return (
     <>
@@ -81,7 +85,11 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
             />
           </F>
           <F label="内容" block>
-            <Input.TextArea size="small" autoSize={{ minRows: 2, maxRows: 8 }} value={draft.content} onChange={(e) => 设({ content: e.target.value })} />
+            {/* 无意义沟通（F-052）：内容下面边改边说一行（判定这张卡自己取、一页共用一份，没取到按默认），判为无意义的服务端不存 */}
+            <div className="prop-f-stack">
+              <Input.TextArea size="small" autoSize={{ minRows: 2, maxRows: 8 }} value={draft.content} onChange={(e) => 设({ content: e.target.value })} />
+              <FollowMeaningLine 内容={draft.content} 类型={draft.type} 判定={判定} />
+            </div>
           </F>
           {/* 组员记（11-19 客户答复）：下一步归负责人，组员的卡不摆这两格 */}
           {!draft.组员记 && (

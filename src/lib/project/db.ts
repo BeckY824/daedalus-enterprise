@@ -1432,7 +1432,11 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员�
  * 跟进挂在客户上（客户页也看得到）+ 挂上项目当时的节点；客户的最近跟进往后推；填了下一步（文字 / 时间）写到项目上。
  * 要下一步文字 = 项目详情「记一条」那条路（10-29）：下一步做什么必填一句话
  */
-export async function 记项目沟通(me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(), opt: { 要下一步文字?: boolean } = {}): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 推前?: 推前; 写了下一步?: boolean }> {
+export async function 记项目沟通(
+  me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(),
+  /** 无意义：调用方判好的无意义沟通那句（F-052，meaningless-follow.ts 沟通无意义挡）；核完项目、权限后才拦（那几句更准） */
+  opt: { 要下一步文字?: boolean; 无意义?: string | null } = {},
+): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 推前?: 推前; 写了下一步?: boolean; 无意义?: true }> {
   if (!input || typeof input !== "object") return { ok: false, error: "要记什么？" };
   const 认 = await 认跟进方式(input);
   if ("error" in 认) return { ok: false, error: 认.error };
@@ -1453,6 +1457,7 @@ export async function 记项目沟通(me: 谁, projectId: string, input: 向导�
       if (企业版() && !能往项目记沟通(me, p, org, 组员?.inviteStatus)) return { ok: false as const, error: 沟通不是组员话 };
       if (组员?.inviteStatus !== "JOINED") return { ok: false as const, error: "只有项目负责人、项目组成员、老板或主管能记沟通" };
     }
+    if (opt.无意义) return { ok: false as const, error: opt.无意义, 无意义: true as const };
     /*
       企业版组员（11-17 客户定）：上面核过「已进组、在推、有业务角色」，这条沟通该记。组员看客户是连带只读的（P-看-08，限定层把这位客户
       记在「只能看」里，在下面新建沟通会被拦），这一笔按全部写：只写这条沟通和它连带的几样（挂项目、编号、标记、项目下一步、客户最近跟进和跟着算的状态），

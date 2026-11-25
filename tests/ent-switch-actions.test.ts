@@ -1,7 +1,7 @@
 /**
  * 设置开关 N4 / N5（11-23）：开关总览的两个读动作服务端各自判「能进设置」。
  *   - 条线总管理、销售管理（账号 ADMIN 也一样）、只读管理员、市场管理、销售、勾了「不管设置」的总管理：都 403，什么都不给
- *   - 系统管理员：开关现状 给齐 17 项的值（子开关在父开关关着时照实给）、持有上限先数、字段权限表改没改过
+ *   - 系统管理员：开关现状 给齐 18 项的值（子开关在父开关关着时照实给）、持有上限先数、字段权限表改没改过
  *   - 读开关改动：每个开关最近一次真变了的那行（orgRules 相邻两行比），比不出写 { 比不出: true }，不挂人名和时间
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -60,12 +60,12 @@ describe("只有系统管理员拿得到", () => {
 describe("系统管理员", () => {
   beforeEach(() => 当(系统, "ADMIN"));
 
-  it("开关现状：17 项的值、默认值；父开关关着子开关照实给；字段权限表没改过", async () => {
+  it("开关现状：18 项的值、默认值；父开关关着子开关照实给；字段权限表没改过", async () => {
     await setSetting("enterprise.lead_assign.no_quota", true);
     const r = await 开关现状();
     if (!r.ok) throw new Error(r.error);
-    expect(Object.keys(r.值).sort()).toHaveLength(17);
-    expect(r.值).toMatchObject({ org_scope: false, lead_assign: false, no_quota: true, reply_overdue: true, market_review: true, lead_giveup: false, push_perm: "负责人可推", hold_cap: false, tri_state: false });
+    expect(Object.keys(r.值).sort()).toHaveLength(18);
+    expect(r.值).toMatchObject({ org_scope: false, lead_assign: false, no_quota: true, reply_overdue: true, market_review: true, lead_giveup: false, block_meaningless: true, push_perm: "负责人可推", hold_cap: false, tri_state: false });
     expect(r.字段权限表改过).toBe(false);
     expect(r.全员).toBe(7);
     expect(r.持有上限).toEqual({ 默认上限: 30, 单设人数: 0, 到上限: 0 });

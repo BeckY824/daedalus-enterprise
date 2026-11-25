@@ -13,6 +13,8 @@ import BusinessDatePicker from "@/components/BusinessDatePicker";
 import { 记项目沟通Action } from "../projects/actions";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 超时短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import FollowMeaningLine from "@/components/FollowMeaningLine";
+import { useFollowJudge } from "@/components/useFollowJudge";
 import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
 import { 跟进类型们 } from "@/lib/constants";
 import type { 预警行 } from "@/lib/project/review-extras";
@@ -435,6 +437,8 @@ function RecycleProjectRow({ p, 只读 = false }: { p: 预警行; 只读?: boole
   const router = useRouter();
   const [记, set记] = useState(false);
   const [内容, set内容] = useState("");
+  /** 无意义沟通（F-052）：内容框下面边写边说一行，判为无意义的服务端（记项目沟通Action）不存；展开才取 */
+  const 判定 = useFollowJudge(记);
   const [下一步, set下一步] = useState("");
   const [下一步时间, set下一步时间] = useState(() => dayjs().add(3, "day"));
   /** 记上了、顺带按必填把节点推了一格：框收起后在这一行下面说推到哪（不悄悄推，11-20）；再点「记一条沟通」清掉 */
@@ -480,6 +484,7 @@ function RecycleProjectRow({ p, 只读 = false }: { p: 预警行; 只读?: boole
             onChange={(v) => { 人改了方式(); set类型(v.type); set方式(v.method); }}
           />
           <Input.TextArea aria-label={`和「${p.名}」沟通了什么`} placeholder="沟通了什么" autoSize={{ minRows: 2, maxRows: 5 }} maxLength={2000} value={内容} onChange={(e) => set内容(e.target.value)} />
+          <FollowMeaningLine 内容={内容} 类型={类型} 判定={判定} />
           <div className="ov-rc-next">
             <Input aria-label="下一步计划" placeholder="下一步计划（一句话）" maxLength={200} value={下一步} onChange={(e) => set下一步(e.target.value)} />
             <BusinessDatePicker aria-label="下一步时间" value={下一步时间} onChange={(v) => v && set下一步时间(v)} allowClear={false} />

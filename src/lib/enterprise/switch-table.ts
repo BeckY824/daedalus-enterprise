@@ -3,7 +3,7 @@
  * 总览（SwitchesTab）和原卡片上新补的后果框（ProjectSettingsTab 节点推进 / 阶段规则，N6）共用这一份。
  *
  * 纯数据（照 rules-table.ts 的写法）：别在这里 import 任何服务端模块，动态 import 也不行，会被打进浏览器包。
- * 只列正式服务器上用得到的 17 项（16 个开关 + 往前推权限二选一）；不新增后端开关，每项都走现有的设置键和 action。
+ * 只列正式服务器上用得到的 18 项（17 个开关 + 往前推权限二选一）；每项都走现有的设置键和 action（11-25 F-052 加「无意义沟通不能保存」，走组织规则 设规则）。
  * 称呼定一种（OrgTab「只有总管理能改」、IdentityTabs「总管理（系统管理员）」）：见 改的人 / 只有总管理能改
  */
 
@@ -13,7 +13,7 @@ export const 改的人 = "总管理（系统管理员）";
 export const 只有总管理能改 = "只有总管理能改";
 
 export type 开关键 =
-  | "org_scope" | "field_perm" | "lead_assign" | "no_quota" | "reply_overdue" | "lead_giveup" | "market_review"
+  | "org_scope" | "field_perm" | "lead_assign" | "no_quota" | "reply_overdue" | "lead_giveup" | "market_review" | "block_meaningless"
   | "node_advance" | "first_two" | "fill_period" | "push_perm"
   | "hold_cap" | "node_timeout" | "tri_state"
   | "feishu_push" | "sync_feishu" | "coach_rec";
@@ -100,6 +100,11 @@ export const 开关表: readonly 开关定义[] = [
     what: "开着：销售判无效先到市场管理复核，市场判有效的退回销售终验；关掉：判无效直接交总管理终判。",
     影响: "销售、市场管理、总管理", when: "之后新判的无效线索", 默认: true,
     off: "关掉以后销售判无效直接交总管理终判，市场管理不再复核" },
+  // F-052（11-25 客户定「判为无意义就不能提交」）：一期判据「不足 4 个字」，tri-state-quota.ts 判沟通无意义
+  { k: "block_meaningless", g: "flow", 名: "无意义沟通不能保存", tab: "org", 找: "组织规则", 位: "组织架构 → 组织规则", alias: "无意义 有效沟通 4 个字 太短 字数 沟通内容 不能保存",
+    what: "开着：记沟通写得太短（去掉空白、标点、表情后中文不足 4 个字、英文不足 2 个单词）存不进去，填的时候就提示还差几个字；占位词、只贴链接的照存、只提示不算有效沟通。任务、提醒、导入、飞书 / 钉钉同步不拦。",
+    影响: "全员（{全员} 人）记沟通", when: "立即", 默认: true,
+    off: "关掉以后写得太短的沟通照存，填的时候那一行改说「不算有效沟通」、不再说不能保存" },
 
   { k: "node_advance", g: "flow", 名: "节点推进", tab: "project", 找: "节点推进", 位: "项目模式 → 节点推进", alias: "进程推进 必填 自动推进 节点 进程",
     what: "开着：配了必填的进程填齐了自动推到下一个（一次一格）；没填齐谁都不能往前推，往后退照旧。",

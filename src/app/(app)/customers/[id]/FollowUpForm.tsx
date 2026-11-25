@@ -36,6 +36,8 @@ import { useFormGuard } from "@/lib/form-guard";
 import { 卡点类型们, 影响等级们, 原因最多, 缺原因话, 清原因们, type 卡点默认 } from "@/lib/project/blocker-rules";
 import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
+import { MeaningNote, 意义话of } from "@/components/FollowMeaningLine";
+import { useFollowJudge } from "@/components/useFollowJudge";
 import { 同号标题问题, 同号留痕标题不能改话, 是同号留痕 } from "@/lib/enterprise/same-number-mark";
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -238,6 +240,9 @@ export default function FollowUpForm({
   /** 还在问：先别让保存，免得走错路 */
   const 须知问着 = 要须知 && !!projectId && !须知r;
   const 项目模式 = !!须知 && type !== "TASK" && type !== "REMIND";
+  /** 无意义沟通（F-052）：边写边在内容框下面说一行；开关、占位词表一页取一次 */
+  const 内容 = Form.useWatch("content", form) as string | undefined;
+  const 判定 = useFollowJudge(open);
   /*
     F-跟进-06：项目模式下主区只留沟通内容、卡点、下一步、下一步时间、截图录音，别的收进默认折叠的「更多」。
     AI 速记框里有字（带原文打开、或已解析过）就展开着，不然人看不到 AI 在干什么
@@ -682,6 +687,13 @@ export default function FollowUpForm({
     return { ok: true };
   }
 
+  /*
+    内容框下面那一行（F-052）：改已有的、内容没动的不说（服务端只在内容改了时拦）；
+    AI 解析过的同样只量框里最后的内容，同服务端
+  */
+  const 意义话 = record?.id && (内容 ?? "").trim() === (record.content ?? "").trim() ? null
+    : 意义话of({ 内容, 类型: type, 标题: record?.title }, 判定);
+  const 内容提示 = 意义话 ? <MeaningNote 话={意义话} /> : undefined;
   const showDuration = type === "PHONE" || type === "MEETING";
   const showDue = type === "TASK" || type === "REMIND";
   const showAi = aiEnabled && !record?.id;
@@ -837,7 +849,7 @@ export default function FollowUpForm({
             <Col span={主体格 ? 12 : 24}>{方式格}</Col>
             {主体格 && <Col span={12}>{主体格}</Col>}
             <Col span={24}>
-              <Form.Item name="content" label="沟通内容" rules={[requiredText("请填写沟通内容")]}>
+              <Form.Item name="content" label="沟通内容" rules={[requiredText("请填写沟通内容")]} extra={内容提示}>
                 <Input.TextArea rows={4} placeholder="记录沟通要点、客户反馈、下一步动作…" />
               </Form.Item>
             </Col>
@@ -989,7 +1001,7 @@ export default function FollowUpForm({
               </Form.Item>
             </Col>
             <Col span={24}>
-              <Form.Item name="content" label="沟通内容" rules={[requiredText("请填写沟通内容")]}>
+              <Form.Item name="content" label="沟通内容" rules={[requiredText("请填写沟通内容")]} extra={内容提示}>
                 <Input.TextArea rows={4} placeholder="记录沟通要点、客户反馈、下一步动作…" />
               </Form.Item>
             </Col>
