@@ -413,17 +413,22 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     await new Promise((ok) => setTimeout(ok, 读一句停留));
     走();
   };
-  /** 建好之后凭票传首条沟通的附件：全传上回 null，有没传上的回一句（建好照旧，读完点「知道了」再走） */
+  /**
+   * 建好之后凭票传首条沟通的附件：全传上回 null，有没传上的回一句（建好照旧，读完点「知道了」再走）。
+   * 转走了（指定给别人 / 自动分配 / 进公海）：录入人已不是负责人、补不了（时间线不让传、项目页要负责人或记的人），叫他找负责人；
+   * 前一句提示里写着分给了谁。还在我名下的照旧「到这条沟通上补传」
+   */
   const 传首条附件 = async (r: object): Promise<string | null> => {
     if (!附件们.length) return null;
     const 票 = "附件票" in r ? (r as { 附件票?: { followUpId: string; 票: string } }).附件票 : undefined;
-    if (!票) return "建好了，截图 / 附件没传上：没拿到上传凭据，到这条沟通上补传";
+    const 找谁 = "转走" in r && r.转走 ? "请让负责人在这条沟通上补传" : "到这条沟通上补传";
+    if (!票) return `建好了，截图 / 附件没传上：没拿到上传凭据，${找谁}`;
     set建后话({ 话: `建好了，正在传 ${附件们.length} 个截图 / 附件…`, 警: false });
     const 错 = await 传沟通附件(票.followUpId, 附件们, 票.票);
     if (!错.length) return null;
     return 错.length === 附件们.length
-      ? `建好了，截图 / 附件没传上（${错[0]}），到这条沟通上补传`
-      : `建好了，${附件们.length} 个截图 / 附件传上 ${附件们.length - 错.length} 个，${错.length} 个没传上（${错[0]}），到这条沟通上补传`;
+      ? `建好了，截图 / 附件没传上（${错[0]}），${找谁}`
+      : `建好了，${附件们.length} 个截图 / 附件传上 ${附件们.length - 错.length} 个，${错.length} 个没传上（${错[0]}），${找谁}`;
   };
   const [显错, set显错] = useState(false);
   /**
@@ -974,7 +979,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 // 查重领取成了（F-016）：面板收成只剩「已领取」那句。不重查——客户已在销售名下，重查是「重复」，会记撞号台账、摆挂靠 / 同号协同，
                 // 把市场成员引去挂靠自己刚交出去的客户。下次查号清掉。出口 C 建成了（重复咨询第一步）同样只剩那一句
                 : 领成话 ? <Alert type="success" showIcon title={<span role="status" data-testid="dedupe-claim-done">{领成话}</span>} />
-                : <撞号面板 查={企查} users={users} 类型={d.号码类型 ?? ""} 捞回了={set企查} 渠道={d.客户.渠道 || null} 触点={d.客户.触点 || null} 领成了={set领成话} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />}
+                : <撞号面板 查={企查} users={users} 类型={d.号码类型 ?? ""} 捞回了={set企查} 渠道={d.客户.渠道 || null} 触点={d.客户.触点 || null} 领成了={set领成话} 附件们={附件们} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />}
             </div>
           )}
           {!企业版 && 号查过 && (
@@ -1267,9 +1272,9 @@ function 去符号(s: string): string {
  * 企业版查重撞了（P0-7）：把撞到的那条摆出来，并给出口，而不是只说「已存在」。
  * 看不到的客户不给名字（撞号结论 按 看得到 收），写「领取后可见」；在公海的给「去领取」，在同事名下的给「联系负责人」
  */
-function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了, 协同 }: {
+function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了, 附件们, 协同 }: {
   查: Extract<查号码结果, { ok: true }>; users: 可选成员[]; 类型: string; 捞回了: (查: 查号码结果) => void;
-  渠道?: string | null; 触点?: string | null; 领成了?: (话: string) => void; 协同?: React.ReactNode;
+  渠道?: string | null; 触点?: string | null; 领成了?: (话: string) => void; 附件们?: File[]; 协同?: React.ReactNode;
 }) {
   const 撞 = 查.撞;
   const 在公海 = 查.状态 === "公海待捞";
@@ -1311,6 +1316,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了
             {市场领 && (
               <DedupeClaimKey
                 类型={类型} 值={查.值} 客户id={撞?.id} 渠道={{ id: 渠道 }} 触点={触点}
+                带来的附件={附件们}
                 领了={领成了}
               />
             )}

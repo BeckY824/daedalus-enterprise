@@ -5,6 +5,7 @@
  *   有国家 / 城市：出「国家 / 城市填到」，没勾不能确认；勾了交上去带 区域去处
  *   Windows 1024 / 1280 / 1366：超长公司名、超长渠道名不横向撑出，「确认」点得中
  *   渠道下拉：375（手机）和 1024 宽都显示全名，不省略、不出屏
+ *   撞上公海转「领取并记沟通」（F-054）：勾了存截图把对话截图带进领取框，没勾不带
  *   撞号（重复咨询方案「撞号面板只露在推项目个数」）：服务端带 在推个数（市场成员，含 0）时错误下面写「在推项目 N 个」，不带就没有
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -23,12 +24,12 @@ const plugin: Plugin = { name: "ai-lead-card-boundaries", setup(b) {
   stub(/customers\/\[id\]\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "export const 沟通可选项目=async()=>(window.__可选??{ok:true,项目们:null,能建项目:true});"));
   // F-052：AI 项目沟通卡（ProjectProposalFields）自己取无意义沟通开关；回 null 按默认（开着）
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通判定须知=async()=>null;", "async()=>null"));
-  stub(/dashboard\/apply$/, "export const applyProposal=async(p,o)=>{window.__交=p;window.__选项=o;if(window.__回)return window.__回;return{ok:true,...(o&&o.首条附件?{首条附件票:{followUpId:'f1',票:'t1'}}:{})}};export const undoProposal=async()=>({ok:true});");
+  stub(/dashboard\/apply$/, "export const applyProposal=async(p,o)=>{window.__交=p;window.__选项=o;if(window.__回)return window.__回;if(window.__撞公海)return{ok:false,error:'这个号码的客户在公海',公海号:{类型:'手机号',值:'13812000000'}};return{ok:true,...(o&&o.首条附件?{首条附件票:{followUpId:'f1',票:'t1'}}:{})}};export const undoProposal=async()=>({ok:true});");
   stub(/card-scan\/originals$/, "export const 取走名片原图=()=>[],记下刚建的=()=>{},忘掉刚建的=()=>{};");
   stub(/attachment-upload$/, "export const 传附件=async(挂,f,类,票)=>{(window.__传??=[]).push({挂,名:f.name,票});return{ok:true}};");
   stub(/customers\/RescueKey$/, "export default function R(){return null}");
   stub(/customers\/RepeatInquiryKey$/, "export default function R(){return null}");
-  stub(/customers\/DedupeClaimKey$/, "export default function D(){return null}");
+  stub(/customers\/DedupeClaimKey$/, "export default function D(p){window.__领附件=p.带来的附件?p.带来的附件.map(f=>f.name):null;return <span data-testid='claim-stub'/>}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -240,6 +241,22 @@ it("取消勾选：确认不交 首条附件、不传；没带图：卡上不摆
     expect(await 格(无.page, "截图").count()).toBe(0);
     expect(await 无.page.locator(".prop-shot").count()).toBe(0);
   } finally { await 无.page.close(); }
+});
+
+it("撞上公海转领取并记沟通（F-054）：勾了存截图，对话截图带进领取框；取消勾选不带", async () => {
+  const 填齐 = { 分配方式: 0, ownerId: "u1", 业务线: "外贸", 下一步: "发报价单", 区域去处: ["客户"] };
+  for (const 勾着 of [true, false]) {
+    const { page, errors } = await open(1024, 900, 填齐, {}, 2);
+    try {
+      await page.evaluate(() => Reflect.set(window, "__撞公海", true));
+      if (!勾着) await 格(page, "截图").locator(".ant-checkbox-wrapper").click();
+      await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+      await page.locator(".prop-ok").click();
+      await page.getByTestId("claim-stub").waitFor({ state: "attached" });
+      expect(await page.evaluate(() => Reflect.get(window, "__领附件"))).toEqual(勾着 ? ["微信截图0.png", "微信截图1.png"] : null);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });
 
 // 11-18：市场成员选自动分配，业务线换成可改的「分配方向」：默认 区域 → 手机号 → 我的事业部，写明来源；只写城市也算区域；判不出显示未填提示，确认不卡业务线
