@@ -4,7 +4,7 @@
  * 团队版项目模式 1a 的写（2026-10-23，D-31）。开关关着时每个动作都直接拦，一行不写。
  * 规矩在 lib/project/nodes.ts、读写在 lib/project/db.ts、建档向导在 lib/project/wizard.ts，这里只管登录、开关、操作日志和刷新。
  */
-import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
+import { 能往项目记沟通, 核售后回访 } from "@/lib/project/follow-needs-project";
 import { 本人限时可改of, 下一步跟着改of, 改沟通时顺带, 下一步没同步话 } from "@/lib/enterprise/follow-perm";
 import { 写过下一步, 写了下一步标记 } from "@/lib/enterprise/follow-edited";
 import { revalidatePath } from "next/cache";
@@ -49,7 +49,7 @@ import { 算市场转客户, 转客户给销售 } from "@/lib/enterprise/market-
 import { 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 超时回收日, 超时起点, 节点超时天数, 计时起点, 记沟通要下一步时间 } from "@/lib/project/timeout";
 import { 项目按必填走, 是占位值, 还差 as 必填还差, 必填叫法 } from "@/lib/project/required";
-import { 字典of } from "@/lib/project/stage-dict";
+import { 字典of, 是交付 } from "@/lib/project/stage-dict";
 import type { 回收预演底子 } from "@/lib/enterprise/recycle-text";
 import { 读团队 } from "@/lib/sync/client";
 import { 要写原因, 本套位置, 节点序号, 下一步, type 位置 } from "@/lib/project/nodes";
@@ -1088,12 +1088,17 @@ export async function 预览客户回收(改: 规则改动) {
  * 10-31 F-跟进-08：可顺带一个卡点（类型「暂无」就不生成；11-19 起选了类型阻碍原因必填，lib/project/blocker-rules.ts 沟通卡点）。
  * 卡点先验好再记沟通；沟通记上了、卡点没发成（比如没有发卡点的权限）不回滚沟通，回一句 卡点没发 给界面提示
  */
-/** 判无意义之前先看这个项目我能不能记沟通（同 项目沟通须知 / lib/project/db.ts 记项目沟通）：不在、在公海、已结束、记不了的回 false */
-async function 项目能记沟通(me: Awaited<ReturnType<typeof requireUser>>, projectId: string): Promise<boolean> {
+/**
+ * 判无意义之前先看这个项目我能不能记沟通（同 项目沟通须知 / lib/project/db.ts 记项目沟通）：不在、在公海、已结束、记不了的回 false；
+ * 交付结清的项目按售后回访那道核（11-25，标了售后回访才算能记）
+ */
+async function 项目能记沟通(me: Awaited<ReturnType<typeof requireUser>>, projectId: string, 售后回访: boolean): Promise<boolean> {
   if (typeof projectId !== "string" || !projectId) return false;
-  const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, result: true } });
-  if (!p || p.pooledAt || p.result) return false;
+  const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, customerId: true, ownerId: true, pooledAt: true, result: true } }));
+  if (!p || p.pooledAt) return false;
   const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+  if (是交付(p.result)) return !(await 核售后回访(me, p, 售后回访, 组员?.inviteStatus));
+  if (p.result) return false;
   return 能往项目记沟通(me, p, await 权限组织(), 组员?.inviteStatus);
 }
 
@@ -1109,7 +1114,7 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
     */
     const 无意义 = input && typeof input === "object" && typeof input.content === "string"
       ? await 沟通无意义挡(input.content.trim(), input.type, { 标题: input.额外?.title ?? null }) : null;
-    if (无意义 && await 项目能记沟通(me, projectId)) return { ok: false as const, error: 无意义, 无意义: true as const };
+    if (无意义 && await 项目能记沟通(me, projectId, input.售后回访 === true)) return { ok: false as const, error: 无意义, 无意义: true as const };
     const 要发 = 卡点 == null ? null : 沟通卡点(卡点, await 读卡点默认());
     if (要发 && "error" in 要发) return { ok: false as const, error: `卡点：${要发.error}` };
     // 11-19 先查后写：卡点会被拒（没权限、项目在公海、原因停用了）就整条拦下，沟通也不写，免得「沟通记上了、卡点没发」
@@ -1129,10 +1134,12 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
       } else if (!b.ok) 卡点结果 = { 卡点没发: b.error };
     }
     if (r.ok) {
-      const p = await prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
+      // 售后回访的客户负责人不一定看得到这个项目（企业版项目不跟客户走）：按 id 取全，三态重算要客户 id
+      const 取 = () => prisma.project.findUnique({ where: { id: projectId }, select: { name: true, customerId: true } });
+      const p = r.售后回访 ? await 看全部(取) : await 取();
       await recordAudit({
         user: me, action: "create", entity: "FollowUp", entityId: r.followUpId,
-        summary: `在项目「${p?.name ?? ""}」上记了一条沟通（${input.阶段 ?? ""}阶段）`,
+        summary: r.售后回访 ? `在交付结清的项目「${p?.name ?? ""}」上记了一条售后回访` : `在项目「${p?.name ?? ""}」上记了一条沟通（${input.阶段 ?? ""}阶段）`,
         // 这条写了项目上的下一步：打标记（30 分钟内改这条时下一步才跟着改，follow-edited.ts 写过下一步）
         ...(r.写了下一步 ? { detail: 写了下一步标记 } : {}),
       });
@@ -1153,7 +1160,12 @@ export type 项目沟通须知结果 =
   /** 卡点默认：能发卡点才给（F-跟进-08，表单摆卡点那一块）；null = 不摆 */
   | { ok: true; 能记: true; phase: string; 要下一步: boolean; 回收预演: 回收预演底子 | null; contactId: string | null; 卡点默认: 卡点默认 | null; 卡点原因们: string[];
     /** 记的人是组员（不是能改项目的人，11-19 客户答复）：下一步是负责人的格，表单不摆下一步、服务端也不写 */
-    组员记: boolean }
+    组员记: boolean;
+    /**
+     * 交付结清的项目（11-25 售后回访）：这条只能记售后回访——表单锁着「售后回访」标、保存带 售后回访: true，
+     * 不摆下一步和卡点（要下一步 false、回收预演 null、卡点默认 null），下一步换成「下次回访（选填）」走客户跟进计划
+     */
+    售后回访?: true }
   | { ok: true; 能记: false }
   | { ok: false; error: string };
 
@@ -1166,9 +1178,18 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
   try {
     const me = await requireUser();
     if (!(await 开着()) || !企业版() || typeof projectId !== "string" || !projectId) return { ok: true, 能记: false };
-    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true, source: true } });
+    const 取 = () => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true, source: true } });
+    // 客户负责人不一定看得到别人负责的项目（企业版项目不跟客户走）：限定层没给的只认交付结清的（售后回访，下面再核人），同 记项目沟通
+    const p = (await 取()) ?? await 看全部(取).then((x) => (x && 是交付(x.result) ? x : null));
+    if (!p || p.pooledAt) return { ok: true, 能记: false };
+    // 交付结清的项目（11-25 售后回访）：客户不在公海、我是项目负责人 / 组员 / 客户负责人才能记，只能记售后回访
+    if (是交付(p.result)) {
+      const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+      if (await 核售后回访(me, p, true, 组员?.inviteStatus)) return { ok: true, 能记: false };
+      return { ok: true, 能记: true, phase: p.phase, 要下一步: false, 回收预演: null, contactId: p.contactId ?? null, 卡点默认: null, 卡点原因们: [], 组员记: !能管项目(me, p, await 权限组织()), 售后回访: true };
+    }
     // 已结束 / 在公海的不走项目那条（11-17 沟通必须挂在推项目：落到 saveFollowUp 也会拦下、说清楚）
-    if (!p || p.pooledAt || p.result) return { ok: true, 能记: false };
+    if (p.result) return { ok: true, 能记: false };
     // 11-17：负责人或已进组的组员能记（和 lib/project/db.ts 记项目沟通 同一个判断）
     const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
     const org = await 权限组织();

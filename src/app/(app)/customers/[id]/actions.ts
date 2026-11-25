@@ -27,7 +27,7 @@ import { 能改这条沟通, 能删沟通, 不能删沟通话, 本人限时改�
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
-import { 定沟通挂哪个项目, 可记沟通项目们, 要挂项目的类型, 免挂项目中, 能往项目记沟通, 沟通客户在公海话, 沟通项目不在话, 待办改沟通话, 沟通不是组员话, 沟通都不能记话, type 可记项目 } from "@/lib/project/follow-needs-project";
+import { 能记售后回访, 售后不能记话, 售后回访主题, 定沟通挂哪个项目, 可记沟通项目们, 要挂项目的类型, 免挂项目中, 能往项目记沟通, 沟通客户在公海话, 沟通项目不在话, 待办改沟通话, 沟通不是组员话, 沟通都不能记话, type 可记项目 } from "@/lib/project/follow-needs-project";
 import { 记沟通标记 } from "@/lib/project/stage-gates";
 import { 版本冲突, 版本条件, 推进版本 } from "@/lib/edit-version";
 import { dayjs } from "@/lib/utils";
@@ -40,7 +40,7 @@ import { 验联系人号码们, 存联系人号码, 种类叫法, 号码种类�
 import { 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 摘联系人号 } from "@/lib/enterprise/contact-number-detach";
 import { 联系人查重, 联系人撞号话, 联系人回收站撞, 联系人回收站撞话, type 撞到的联系人 } from "@/lib/enterprise/contact-dedupe";
-import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
+import { 企业版字典, 本套名, 同名们 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 超时短沟通提示 } from "@/lib/enterprise/reply-overdue";
 import { 沟通无意义挡, 读沟通判定须知, type 沟通判定须知 } from "@/lib/enterprise/meaningless-follow";
@@ -102,6 +102,11 @@ export type FollowUpInput = {
    * 给了就只认这位客户自己、没结束、不在公海、我是负责人或组员的项目，不对就拦（不再存成客户沟通）。编辑时忽略
    */
   projectId?: string | null;
+  /**
+   * 售后回访（11-25，E-283）：新记的挂在交付结清的项目上时必须带 true（不带被拦），挂在推项目上带 true 被拦；没给项目带 true 要人选（不自动挂）。
+   * 带了：这条打上 FollowUp.afterSale、不跑自动推进；顺手排的计划主题带「售后回访 · 项目名」、记下 afterSaleProjectId（下次回访）。编辑时忽略，标记不给手改
+   */
+  售后回访?: boolean | null;
   participants?: string | null;
   /**
    * 速记解析时粘贴的原文（聊天记录 / 口述）。只在新建且经 AI 起草时有值，
@@ -158,10 +163,16 @@ async function 跟着改待办(customerId: string, 旧: 带时间的跟进, 新:
  * 项目页的沟通里也看得到。事务外已经按「沟通必须挂项目」（lib/project/follow-needs-project.ts）定好了挂哪个，
  * 这里在事务里再核一遍（期间项目刚结束 / 进公海 / 我被移出组）：核不过返回那一句，调用方整条回滚、不存
  */
-async function 挂项目(me: { id: string; role: string }, followUpId: string, customerId: string, projectId: string, db: Prisma.TransactionClient, org: 组织 | null): Promise<string | null> {
-  const p = await 看全部(() => db.project.findFirst({ where: { id: projectId, customerId, ...在推项目条件 }, select: { id: true, node: true, phase: true, ownerId: true, pooledAt: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } } }));
+async function 挂项目(me: { id: string; role: string }, followUpId: string, customerId: string, projectId: string, db: Prisma.TransactionClient, org: 组织 | null, 售后回访 = false): Promise<string | null> {
+  // 售后回访（11-25）：挂交付结清的项目，再核一遍客户不在公海、我能记（期间项目刚撤回交付结清 / 客户进了公海 / 我被移出组）
+  const 条件 = 售后回访 ? { result: { in: 同名们("交付结清") } } : 在推项目条件;
+  const p = await 看全部(() => db.project.findFirst({ where: { id: projectId, customerId, ...条件 }, select: { id: true, name: true, node: true, phase: true, ownerId: true, pooledAt: true, result: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } } }));
   if (!p) return 沟通项目不在话;
-  if (!能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)) return 沟通不是组员话;
+  if (售后回访) {
+    const c = await 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
+    if (c?.pool) return 沟通客户在公海话;
+    if (!能记售后回访(me, { ...p, 客户负责人: c?.salesOwnerId, 客户在公海: false }, org, p.members[0]?.inviteStatus)) return 售后不能记话;
+  } else if (!能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)) return 沟通不是组员话;
   // 库里存着旧节点名的按企业版的新名记（10-31 改名，写入一律新名）
   await db.followUpProject.create({ data: { followUpId, projectId: p.id, node: 本套名(p.node, 企业版字典) } });
   await 记沟通编号(db, followUpId, p.id, null);
@@ -353,16 +364,21 @@ export async function saveFollowUp(input: FollowUpInput) {
     // 挂哪个项目放在公海两道角色拦之后（那两句更准）、领取之前：拦下的不顺手领走
     const 给的项目 = typeof input.projectId === "string" && input.projectId ? input.projectId : null;
     let 挂到: string | null = null;
+    /** 这条是售后回访（挂上了交付结清的项目，11-25）：只认沟通类型，待办 / 提醒带了也不算 */
+    let 售后 = false;
+    const 要售后 = !input.id && 企业版() && input.售后回访 === true && 要挂项目的类型(方式.type);
     // 客户不在 / 看不到（目标 = null）不在这里说，交给事务里那句「不在了 / 没权限」
     if (!input.id && 目标 && 企业版() && !免挂项目中() && (给的项目 || 要挂项目的类型(方式.type))) {
-      const 定 = await 定沟通挂哪个项目(user, input.customerId, 给的项目);
-      // 组员来记：没有我能记的在推项目 = 这位客户我只能看，照旧说只读（不叫他去建项目）；几个要选、选的不行照说
-      if (!定.ok && 组员来记 && (定.没项目 || 定.error === 沟通都不能记话)) return { ok: false as const, error: await 只读话(defaultClient) };
+      const 定 = await 定沟通挂哪个项目(user, input.customerId, 给的项目, 要售后);
+      // 组员来记：没有我能记的在推项目 = 这位客户我只能看，照旧说只读（不叫他去建项目）；几个要选、选的不行照说。
+      // 有我能记售后回访的交付结清项目（组员进了那个项目的组）照原话说，让他选
+      if (!定.ok && 组员来记 && !定.售后?.length && (定.没项目 || 定.error === 沟通都不能记话)) return { ok: false as const, error: await 只读话(defaultClient) };
       // 确实没有我能记的在推项目才换成无效那句；「请选一个关联项目」、带了项目但这个项目不行的照原话说
       if (!定.ok && 无效要拦 && !给的项目 && (定.没项目 || 定.error === 沟通都不能记话)) return { ok: false as const, error: 无效客户不能记沟通话 };
       // 公海客户没选项目说「先领取再选」；标了无效的领不了，不叫他去领，照原话（如「请选一个关联项目」）
-      if (!定.ok) return { ok: false as const, error: 在公海 && !给的项目 && !无效公海 ? 沟通客户在公海话 : 定.error, ...(定.没项目 ? { 没项目: true as const } : {}) };
+      if (!定.ok) return { ok: false as const, error: 在公海 && !给的项目 && !无效公海 ? 沟通客户在公海话 : 定.error, ...(定.没项目 ? { 没项目: true as const } : {}), ...(定.售后?.length ? { 售后: 定.售后 } : {}) };
       挂到 = 定.projectId;
+      售后 = 定.售后回访;
     }
     if (组员来记 && !挂到) return { ok: false as const, error: await 只读话(defaultClient) };
     if (无效要拦 && !挂到) return { ok: false as const, error: 无效客户不能记沟通话 };
@@ -413,7 +429,7 @@ export async function saveFollowUp(input: FollowUpInput) {
         await 改沟通的顺带(input.id)?.(tx);
       } else {
         const sourceText = input.sourceText?.trim().slice(0, SOURCE_TEXT_MAX);
-        id = (await tx.followUp.create({ data: { ...data, ownerId: user.id, source: sourceText ? { create: { text: sourceText } } : undefined } })).id;
+        id = (await tx.followUp.create({ data: { ...data, ownerId: user.id, afterSale: 售后, source: sourceText ? { create: { text: sourceText } } : undefined } })).id;
         if (会带待办(data) && data.status !== "已完成") 待办id = (await tx.task.create({ data: { title: 待办标题(data), dueAt: data.dueAt!, dueOn: data.dueOn, dueHasTime: data.dueHasTime, customerId: input.customerId, ownerId: user.id } })).id;
       }
       // 企业版改沟通（11-19）：留痕写「改了沟通」和改了哪几格；一格没变（点了保存没改）不留，免得列表上标「已修改」
@@ -422,8 +438,10 @@ export async function saveFollowUp(input: FollowUpInput) {
           ? `改了沟通：${全称或显名(customer)}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}（${dayjs(data.occurredAt).format("YYYY-MM-DD")}），改了${改了.join("、")}${本人窗口内 ? "（记录人本人提交后 30 分钟内修改）" : ""}`
           : `${input.id ? "修改" : "记了"}${全称或显名(customer)}的一条${"method" in data && data.method ? data.method : 类型名(data.type)}跟进（${dayjs(data.occurredAt).format("YYYY-MM-DD")}）`,
         detail: { 客户: 全称或显名(customer), 类型: "method" in data && data.method ? data.method : 类型名(data.type), 状态: data.status, 内容: data.content.slice(0, 120), ...(input.id && 企业版() ? { 改了, ...(本人窗口内 ? { 本人限时改: true } : {}) } : {}) } });
-      const 挂不上 = 挂到 ? await 挂项目(user, id, input.customerId, 挂到, tx, 挂时组织) : null;
+      const 挂不上 = 挂到 ? await 挂项目(user, id, input.customerId, 挂到, tx, 挂时组织, 售后) : null;
       if (挂不上) throw new 挂不上项目(挂不上);
+      // 售后回访顺手排的计划 = 下次回访：主题带「售后回访 · 项目名」，记下给哪个交付结清项目排的（完成计划时默认挂回它，11-25 第十节第 15 条）
+      const 回访项目名 = 售后 && 挂到 && extra?.plan ? (await 看全部(() => tx.project.findUnique({ where: { id: 挂到! }, select: { name: true } })))?.name ?? "" : null;
       for (const item of extra?.tasks ?? []) {
         const 时间 = parseScheduleDate(item.dueAt)!;
         const task = await tx.task.create({ data: { title: item.title.trim(), dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime, customerId: input.customerId, ownerId: user.id } });
@@ -431,7 +449,10 @@ export async function saveFollowUp(input: FollowUpInput) {
       }
       if (extra?.plan) {
         const 时间 = parseScheduleDate(extra.plan.plannedAt)!;
-        const next = await tx.followPlan.create({ data: { subject: extra.plan.subject.trim(), plannedAt: 时间.at!, plannedOn: 时间.on, plannedHasTime: 时间.hasTime, method: extra.plan.method, customerId: input.customerId, ownerId: user.id } });
+        const 头 = 回访项目名 != null ? 售后回访主题(回访项目名) : null;
+        const 主题 = extra.plan.subject.trim();
+        const subject = !头 || 主题.startsWith(头) ? 主题 : `${头} · ${主题}`;
+        const next = await tx.followPlan.create({ data: { subject, plannedAt: 时间.at!, plannedOn: 时间.on, plannedHasTime: 时间.hasTime, method: extra.plan.method, customerId: input.customerId, ownerId: user.id, afterSaleProjectId: 头 ? 挂到 : null } });
         下次计划id = next.id;
         audits.push({ user, action: "create", entity: "FollowPlan", entityId: next.id, summary: `给${全称或显名(customer)}排了跟进计划（${dayjs(next.plannedAt).format("YYYY-MM-DD")} ${next.method}·${next.subject}）` });
       }
@@ -462,7 +483,8 @@ export async function saveFollowUp(input: FollowUpInput) {
       客户我看得到时，推哪几个按项目逐个判（客户项目按必填推进 只推我能改节点的，11-20 复审）：同事负责、我只是组员的不推，
       挂到的是同事的项目也照推我自己名下齐了的；销售管理改下属记的沟通也不推下属的项目（C2）
     */
-    const 自动推进 = 本人窗口内 || 组员来记 ? [] : await 客户存了推项目(user, input.customerId);
+    // 售后回访不跑（11-25 口径 5：项目仍是交付结清、不重开；这条和在推项目无关，不顺手推它们）
+    const 自动推进 = 本人窗口内 || 组员来记 || 售后 ? [] : await 客户存了推项目(user, input.customerId);
     // 客户三态：新建 / 改了一条沟通，马上重算这位的钟（不等夜扫；关着不查库，出错不影响保存）
     await 存沟通后重算三态(input.customerId);
     // 新记的这条不算有效沟通，回原因给前端一句轻提示（不拦）：挂的线索正在超时未跟进计时的，不看三态开关、说计时不会停（E-259）；
@@ -477,14 +499,31 @@ export async function saveFollowUp(input: FollowUpInput) {
  * 记沟通那几处（完成计划小框、首页 AI 记沟通卡）问：这位客户我能挂沟通的在推项目、我能不能新建项目；顺带无意义沟通的判定须知（F-052）。
  * 不是企业版 项目们 = null（照旧不挂项目）
  */
-export async function 沟通可选项目(customerId: string): Promise<{ ok: true; 项目们: 可记项目[] | null; 能建项目: boolean; 判定?: 沟通判定须知 } | { ok: false; error: string }> {
+export async function 沟通可选项目(customerId: string, 计划id?: string | null): Promise<{
+  ok: true; 项目们: 可记项目[] | null; 能建项目: boolean; 判定?: 沟通判定须知;
+  /** 售后回访（11-25）：我能记售后回访的交付结清项目，另列一组（客户在公海时为空）；选了它保存带 售后回访: true。不自动挂 */
+  售后?: 可记项目[];
+  /**
+   * 给了 计划id（完成跟进计划小框）：这条计划是售后回访排的（afterSaleProjectId）时那个项目——还在 售后 里 = 默认选中它、带标记；
+   * 计划带着项目但已核不过（项目已不是交付结清 / 删了 / 客户进了公海 / 我记不了）= 售后计划失效，框里退回普通选法、提示一句；没带 = 都不给
+   */
+  计划售后项目?: string; 售后计划失效?: true;
+} | { ok: false; error: string }> {
   const me = await requireUser();
   try {
     if (typeof customerId !== "string" || !customerId) return { ok: false, error: "要记哪位客户？" };
     if (!企业版()) return { ok: true, 项目们: null, 能建项目: false };
-    const [们, 判定] = await Promise.all([可记沟通项目们(me, customerId), 读沟通判定须知()]);
+    const 计划 = typeof 计划id === "string" && 计划id
+      ? prisma.followPlan.findFirst({ where: { id: 计划id, customerId }, select: { afterSaleProjectId: true } })
+      : Promise.resolve(null);
+    const [们, 判定, 那条计划] = await Promise.all([可记沟通项目们(me, customerId), 读沟通判定须知(), 计划]);
+    const 计划项目 = 那条计划?.afterSaleProjectId ?? null;
+    const 计划还能记 = !!计划项目 && 们.售后.some((x) => x.id === 计划项目);
     // 判定（F-052）：无意义沟通开关和占位词表，框里那一行提示用（首页 AI 卡不另调动作）
-    return { ok: true, 项目们: 们.可记, 能建项目: 能新建和领取(me, await 权限组织()), 判定 };
+    return {
+      ok: true, 项目们: 们.可记, 能建项目: 能新建和领取(me, await 权限组织()), 判定, 售后: 们.售后,
+      ...(计划还能记 ? { 计划售后项目: 计划项目! } : 计划项目 ? { 售后计划失效: true as const } : {}),
+    };
   } catch (e) { return 不在了(e); }
 }
 

@@ -16,7 +16,8 @@ import { 权限组织, type 组织 } from "./org";
 import { 能删除, 有业务角色, 只读角色, 只读话of, 没设业务角色, 能改客户, 只看的人, 只看某人话 } from "./permissions";
 import { defaultClient, prisma } from "@/lib/prisma";
 import { 限定的我, 看全部 } from "@/lib/team-scope";
-import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
+import { 能往项目记沟通, 能记售后回访 } from "@/lib/project/follow-needs-project";
+import { 是交付 } from "@/lib/project/stage-dict";
 import { 看得到的客户 } from "@/lib/project/db";
 import { 全进程上下文 } from "@/lib/process-als";
 import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -147,9 +148,18 @@ export async function 本人限时改挡(me: 谁, f: { id: string; ownerId: stri
   // 组员看客户是连带只读，项目按 id 取全（同 定沟通挂哪个项目），能不能记下面判
   const 挂 = await 看全部(() => defaultClient.followUpProject.findUnique({
     where: { followUpId: f.id },
-    select: { project: { select: { ownerId: true, pooledAt: true, result: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } } } },
+    select: {
+      followUp: { select: { afterSale: true } },
+      project: { select: { ownerId: true, pooledAt: true, result: true, customer: { select: { salesOwnerId: true, pool: { select: { customerId: true } } } }, members: { where: { userId: me.id }, select: { inviteStatus: true } } } },
+    },
   }));
-  if (挂?.project && (挂.project.result || !能往项目记沟通(me, 挂.project, org, 挂.project.members[0]?.inviteStatus))) return 本人改沟通项目话;
+  /*
+    售后回访（11-25，第十节第 11 条「本人限时改照放行」）：标了售后回访、挂的项目还是交付结清的，按 能记售后回访 判
+    （客户不在公海、我是项目负责人 / 组员 / 客户负责人）；项目撤回交付结清以后照在推项目那道判。别的结局、没标的照旧拒
+  */
+  const 售后 = !!挂?.project && 挂.followUp.afterSale && 是交付(挂.project.result);
+  if (售后 && !能记售后回访(me, { ...挂!.project!, 客户负责人: 挂!.project!.customer?.salesOwnerId, 客户在公海: !!挂!.project!.customer?.pool }, org, 挂!.project!.members[0]?.inviteStatus)) return 本人改沟通项目话;
+  if (!售后 && 挂?.project && (挂.project.result || !能往项目记沟通(me, 挂.project, org, 挂.project.members[0]?.inviteStatus))) return 本人改沟通项目话;
   // 没挂项目的老沟通（低-5）：客户进了公海也不能改（同挂项目的「进了公海」那条收窄）
   if (!挂?.project && (await 看全部(() => defaultClient.customerPool.count({ where: { customerId: f.customerId } })))) return 本人改公海话;
   return null;

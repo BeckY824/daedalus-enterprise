@@ -2,7 +2,7 @@
  * 团队版项目模式 1a 的读写（2026-10-23，D-31）。取值规矩在 lib/project/nodes.ts，界面的写在 app/(app)/projects/actions.ts。
  * 这里不管登录、不管开关，只管「谁能改」和「改了留什么痕」，方便单测直接调。
  */
-import { 能往项目记沟通, 沟通项目在公海话, 沟通项目已结束话, 沟通不是组员话 } from "./follow-needs-project";
+import { 能往项目记沟通, 核售后回访, 沟通项目在公海话, 沟通项目已结束话, 沟通不是组员话, 售后只在交付结清话 } from "./follow-needs-project";
 import { 项目退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 import { Prisma, type Project } from "@/generated/prisma";
 import { prisma, defaultClient } from "../prisma";
@@ -1483,13 +1483,16 @@ async function 提醒明天收(规则: 组织规则, 今: Date, 成员: 成员�
  * 在项目上记一条沟通：负责人、老板、主管、项目组成员能记；在公海里的先领取。
  * 开了超时回收、项目在线索 / 商机阶段（还没结局）时必须填下一步时间。
  * 跟进挂在客户上（客户页也看得到）+ 挂上项目当时的节点；客户的最近跟进往后推；填了下一步（文字 / 时间）写到项目上。
- * 要下一步文字 = 项目详情「记一条」那条路（10-29）：下一步做什么必填一句话
+ * 要下一步文字 = 项目详情「记一条」那条路（10-29）：下一步做什么必填一句话。
+ * 售后回访（11-25，P-沟通-03 的例外）：企业版交付结清的项目上只能记 input.售后回访 = true 的；谁能记见 follow-needs-project.ts 能记售后回访（公海按客户判）。
+ * 这一支只写沟通和它连带的几样（挂项目、编号、阶段标记、客户最近跟进），项目照旧交付结清、不重开：不要下一步、不写项目任何一格（三态结束日会回落到
+ * project.updatedAt，tri-state-db.ts）、不跑按必填推进、不勾回收提醒
  */
 export async function 记项目沟通(
   me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(),
   /** 无意义：调用方判好的无意义沟通那句（F-052，meaningless-follow.ts 沟通无意义挡）；核完项目、权限后才拦（那几句更准） */
   opt: { 要下一步文字?: boolean; 无意义?: string | null } = {},
-): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 推前?: 推前; 写了下一步?: boolean; 无意义?: true }> {
+): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 推前?: 推前; 写了下一步?: boolean; 无意义?: true; 售后回访?: true }> {
   if (!input || typeof input !== "object") return { ok: false, error: "要记什么？" };
   const 认 = await 认跟进方式(input);
   if ("error" in 认) return { ok: false, error: 认.error };
@@ -1498,13 +1501,26 @@ export async function 记项目沟通(
   const 状态开 = await 客户状态自动();
   const org = await 权限组织();
   return 查完再写(async (tx) => {
-    const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
+    /*
+      企业版项目不跟客户走（team-scope 看得到的项目）：客户负责人不一定看得到自己客户名下别人负责的项目。
+      售后回访放开了客户负责人（11-25），所以限定层没给的再按 id 取全、只认交付结清的（下面 核售后回访 再核人），别的照旧说不在了
+    */
+    const 取 = () => tx.project.findUnique({ where: { id: String(projectId ?? "") } });
+    const p = (await 取()) ?? (企业版() ? await 看全部(取).then((x) => (x && 是交付(x.result) ? x : null)) : null);
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     if (p.pooledAt) return { ok: false as const, error: 企业版() ? 沟通项目在公海话 : "这个项目在公海里，先领取再记" };
+    // 售后回访（11-25）：交付结清的项目只认标了售后回访的，谁能记按客户判公海（交付结清项目的 pooledAt 永远空）
+    const 售后 = 企业版() && 是交付(p.result);
+    if (售后) {
+      const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
+      const 错 = await 核售后回访(me, p, input.售后回访 === true, 组员?.inviteStatus);
+      if (错) return { ok: false as const, error: 错 };
+    }
     // 沟通必须挂在推项目（11-17 客户定）：已结束的项目不再记沟通
-    if (企业版() && p.result) return { ok: false as const, error: 沟通项目已结束话 };
+    if (企业版() && p.result && !售后) return { ok: false as const, error: 沟通项目已结束话 };
+    if (企业版() && !售后 && input.售后回访 === true) return { ok: false as const, error: 售后只在交付结清话 };
     const 能管 = 能管项目(me, p, org);
-    if (!能管) {
+    if (!能管 && !售后) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
       // 企业版（11-17 客户定，改 11-01 规则 6）：已进组的项目组员也能把沟通记到别人名下的项目上，记录上是谁记的就是谁，负责人不变
       // 设了「只看某人」的进了组也只能看（P-看-19 只放开看），说只读那句
@@ -1525,16 +1541,19 @@ export async function 记项目沟通(
         不写项目的下一步文字 / 时间，也不跑按必填推进
       */
       const 组员记 = 企业版() && !能管;
+      // 售后回访同组员记：下一步不认、不要求，不写项目，不推进（项目已有结局）
+      const 不写项目 = 组员记 || 售后;
       // 仅记录用的不回收时不强制（X-147 待定 6，timeout.ts 记沟通要下一步时间）
-      const 要下一步 = !组员记 && 记沟通要下一步时间(规则, p);
-      const 好 = 规整沟通(组员记 ? { ...input, 下一步: null, 下一步时间: null } : input, { 要下一步, now, 要下一步文字: !组员记 && opt.要下一步文字 });
+      const 要下一步 = !不写项目 && 记沟通要下一步时间(规则, p);
+      const 好 = 规整沟通(不写项目 ? { ...input, 下一步: null, 下一步时间: null } : input, { 要下一步, now, 要下一步文字: !不写项目 && opt.要下一步文字 });
       if ("error" in 好) return { ok: false as const, error: 好.error };
-      const 阶段问题 = 记沟通阶段问题(input, p);
+      // 售后回访没带阶段的不拦（项目已结束，阶段只是记一笔）；带了照核
+      const 阶段问题 = 售后 && input.阶段 == null ? null : 记沟通阶段问题(input, p);
       if (阶段问题) return { ok: false as const, error: 阶段问题 };
       const 额外 = await 认沟通额外(tx, input.额外, p.customerId);
       if ("error" in 额外) return { ok: false as const, error: 额外.error };
       const 跟进 = await tx.followUp.create({
-        data: { type: 好.type, method: 好.method, initiator: 好.initiator, content: 好.content, occurredAt: 好.occurredAt, title: 额外.title, status: 额外.status, duration: 额外.duration, participants: 额外.participants, customerId: p.customerId, contactId: 额外.contactId === undefined ? p.contactId : 额外.contactId, ownerId: me.id },
+        data: { type: 好.type, method: 好.method, initiator: 好.initiator, content: 好.content, occurredAt: 好.occurredAt, title: 额外.title, status: 额外.status, duration: 额外.duration, participants: 额外.participants, customerId: p.customerId, contactId: 额外.contactId === undefined ? p.contactId : 额外.contactId, ownerId: me.id, afterSale: 售后 },
       });
       // 挂的节点写新名（库里存着旧名的企业版项目按 本套名 对上）
       await tx.followUpProject.create({ data: { followUpId: 跟进.id, projectId: p.id, node: 本套名(p.node, 字典of(企业版())) } });
@@ -1544,15 +1563,15 @@ export async function 记项目沟通(
       const c = await 看全部(() => tx.customer.findUnique({ where: { id: p.customerId }, select: { lastFollowAt: true } }));
       if (!c?.lastFollowAt || c.lastFollowAt < 好.occurredAt) await 看全部(() => tx.customer.update({ where: { id: p.customerId }, data: { lastFollowAt: 好.occurredAt } }));
       // 下一步：写了文字就文字 + 时间一起换（时间可空，空就清掉上一次的时间）；老入口只给时间，照旧只改时间、文字不动
-      if (好.nextStepText) await tx.project.update({ where: { id: p.id }, data: { nextStepText: 好.nextStepText, nextStepAt: 好.nextStepAt } });
-      else if (好.nextStepAt) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
+      if (好.nextStepText && !售后) await tx.project.update({ where: { id: p.id }, data: { nextStepText: 好.nextStepText, nextStepAt: 好.nextStepAt } });
+      else if (好.nextStepAt && !售后) await tx.project.update({ where: { id: p.id }, data: { nextStepAt: 好.nextStepAt } });
       // 这次写了下一步：自动推进不清它（按必填推进详 留下一步，11-20 审查）；推前 回给前端，撤销回到这一格、带回这份下一步
       const 写了下一步 = !!(好.nextStepText || 好.nextStepAt);
-      const 推 = 组员记 ? { 到: [] as string[] } : await 按必填推进详(tx, 规则, me, p.id, { 留下一步: 写了下一步 });
+      const 推 = 不写项目 ? { 到: [] as string[] } : await 按必填推进详(tx, 规则, me, p.id, { 留下一步: 写了下一步 });
       if (推.到.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
-      await 勾掉将回收提醒(tx, 规则, p, now);
+      if (!售后) await 勾掉将回收提醒(tx, 规则, p, now);
       // 写了项目上的下一步（文字或时间）：调用方在「记了一条沟通」日志里打标记，30 分钟内改这条时下一步才跟着改（follow-perm 下一步跟着改of）
-      return { ok: true as const, followUpId: 跟进.id, 写了下一步, ...带推进(推.到), ...(推.推前 ? { 推前: 推.推前 } : {}) };
+      return { ok: true as const, followUpId: 跟进.id, 写了下一步, ...带推进(推.到), ...(推.推前 ? { 推前: 推.推前 } : {}), ...(售后 ? { 售后回访: true as const } : {}) };
     });
   });
 }
