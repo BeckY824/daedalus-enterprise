@@ -49,10 +49,12 @@ const 造人 = async (key: string, bizRole: string, managerId?: string): Promise
 };
 const 以 = <T,>(u: 人, fn: () => Promise<T>): Promise<T> => { mocks.user = { ...u }; return 以谁的身份(u.id, fn); };
 /** 真打开 /projects/<id>（可带 ?giveup=1）：跳了 = 跳去的地址；没跳 = 照原样给的那个链接（留在项目页、404、放弃不了的那句） */
-const 打开落点 = async (u: 人, id: string, giveup = false): Promise<string> => {
-  const 原 = `/projects/${encodeURIComponent(id)}${giveup ? "?giveup=1" : ""}`;
+const 打开落点 = async (u: 人, id: string, giveup = false, 查询: Record<string, string> = {}): Promise<string> => {
+  const sp = { ...(giveup ? { giveup: "1" } : {}), ...查询 };
+  const q = new URLSearchParams(sp).toString();
+  const 原 = `/projects/${encodeURIComponent(id)}${q ? `?${q}` : ""}`;
   try {
-    await 以(u, () => ProjectPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve(giveup ? { giveup: "1" } : {}) } as never));
+    await 以(u, () => ProjectPage({ params: Promise.resolve({ id }), searchParams: Promise.resolve(sp) } as never));
     return 原;
   } catch (e) {
     const m = /^REDIRECT:(.*)$/.exec((e as Error).message);
@@ -147,11 +149,13 @@ describe("项目链接们 = /projects/<id> 重定向的落点", () => {
 });
 
 describe("改直达链接们（通知存着的链接）", () => {
-  it("带 ?giveup=1 的跟项目页一样带过去；别的参数照项目页那条跳转丢；不是项目页 / 带 # / 拿不准的原样", async () => {
+  it("带 ?giveup=1、录音通知的 crec=<编号> 跟项目页一样带过去；别的参数照项目页那条跳转丢；不是项目页 / 带 # / 拿不准的原样", async () => {
     const 链接们 = [
       `/projects/${项.我的}`,
       `/projects/${项.我的}?giveup=1`,
       `/projects/${项.我的}?crec=x1`,
+      `/projects/${项.我的}?giveup=1&crec=x1&tab=2`,
+      `/projects/${项.我的}?crec=<bad>`,
       `/projects/${项.同事的}`,
       `/projects/${项.我的}#project-follow`,
       "/projects",
@@ -162,6 +166,8 @@ describe("改直达链接们（通知存着的链接）", () => {
     expect(到).toEqual([
       `/customers/${客户}?project=${项.我的}`,
       `/customers/${客户}?project=${项.我的}&giveup=1`,
+      `/customers/${客户}?project=${项.我的}&crec=x1`,
+      `/customers/${客户}?project=${项.我的}&giveup=1&crec=x1`,
       `/customers/${客户}?project=${项.我的}`,
       `/projects/${项.同事的}`,
       `/projects/${项.我的}#project-follow`,
@@ -172,6 +178,10 @@ describe("改直达链接们（通知存着的链接）", () => {
     // 和真打开项目页一致（带 giveup 的那条也是）
     expect(到[0]).toBe(await 打开落点(甲, 项.我的));
     expect(到[1]).toBe(await 打开落点(甲, 项.我的, true));
+    // 录音「整理好了」通知点进来：真打开项目页跳客户页也带着 crec（客户页沟通卡认出来直接开确认框）
+    expect(到[2]).toBe(await 打开落点(甲, 项.我的, false, { crec: "x1" }));
+    expect(到[3]).toBe(await 打开落点(甲, 项.我的, true, { crec: "x1", tab: "2" }));
+    expect(到[4]).toBe(await 打开落点(甲, 项.我的, false, { crec: "<bad>" }));
   });
 });
 

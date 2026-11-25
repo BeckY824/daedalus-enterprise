@@ -5,7 +5,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import ProjectDetail from "./ProjectDetail";
 import SameNumberBanner from "./SameNumberBanner";
 import { 读项目详情, 项目页去向 } from "./load";
-import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
+import { 客户页项目地址, 录音确认参数, 带录音确认参数 } from "@/lib/project/customer-detail-href";
 import { 放弃参数, 带放弃参数 } from "@/lib/enterprise/lead-giveup-core";
 import { GiveUpGone } from "./GiveUpBanner";
 
@@ -18,7 +18,9 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const [{ id }, sp = {}] = await Promise.all([params, searchParams]);
   // 从通知点「放弃（豁免）」来的（?giveup=1，11-21）：跳客户页时带过去；这条已经进不去了，说一句为什么，不落 404
   const 放弃来 = 企业版() && sp[放弃参数] === "1";
-  const 带上 = (到: string) => (放弃来 ? 带放弃参数(到) : 到);
+  // 跳客户页时跟着带过去的只有两样：giveup=1、录音通知的 crec=<编号>（客户页沟通卡认出来直接开确认框）；别的参数照丢
+  const 录音号 = typeof sp[录音确认参数] === "string" ? (sp[录音确认参数] as string) : undefined;
+  const 带上 = (到: string) => 带录音确认参数(放弃来 ? 带放弃参数(到) : 到, 录音号);
   // 先轻判断跳不跳（审查 #3）：跳去客户页的不读整份详情
   const 去 = await 项目页去向(me, id);
   if (去.种 === "无") return 放弃来 ? <GiveUpGone /> : notFound();
