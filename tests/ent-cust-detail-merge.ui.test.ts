@@ -248,6 +248,9 @@ it("同事项目只给带锁的个数：不是链接、不是按钮，不露项�
     await 画(page, { 空: true, 锁数: 1 });
     expect(await page.getByTestId("project-zone-empty").innerText()).toMatch(/没有你能看的项目/);
     expect(await page.locator(".cd-pj .cd-lock").count()).toBe(1);
+    // 有我能记售后回访的交付结清项目、同事还有锁着的在推项目：标题说「没有你能看的在推项目」，不说「没有在推的项目」（同事明明有在推的）
+    await 画(page, { 空: true, 锁数: 1, 售后: true });
+    expect(await page.getByTestId("project-zone-empty").locator(".cd-empty-t").innerText()).toBe("没有你能看的在推项目");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
