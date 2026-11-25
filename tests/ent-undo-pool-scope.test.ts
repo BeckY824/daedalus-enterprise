@@ -168,3 +168,45 @@ describe("公海撤销只撤自己刚才那一下", () => {
     expect(await 在公海(c.id)).toBe(false);
   });
 });
+
+/**
+ * 撤销放进公海也照领取 / 分配的口径（复审 11-26 M1）：一位都没撤成回 ok:false + 原因，撤销条不再报「已撤销」；
+ * 撤成一部分带 有没撤成 + 整句提示。原来放进这一支照旧回 ok:true, updated:0，客户早被人领走了界面还说「已撤销」
+ */
+describe("撤销放进公海：没撤成的要说出来", () => {
+  it("放进去之后被同事领走了：一位都没撤成，ok:false 说清原因，客户还归领走的人", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    expect(await 放进公海([c.id], "客户主动终止")).toMatchObject({ ok: true, updated: 1 });
+    当(小王);
+    expect(await 领取([c.id])).toMatchObject({ ok: true, updated: 1 });
+    当(小李);
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toEqual({ ok: false, error: "这位已经被人领走或分走了，这次没有撤销" });
+    expect(await 归谁(c.id)).toBe(小王.id);
+  });
+
+  it("过了撤销时限：还在公海里，ok:false 说过了时限", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    await 放进公海([c.id], "客户主动终止");
+    await prisma.customerPool.updateMany({ where: { customerId: c.id }, data: { at: new Date(Date.now() - 31 * 60_000) } });
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toEqual({ ok: false, error: "这位过了撤销时限或不是你放进公海的，这次没有撤销" });
+    expect(await 在公海(c.id)).toBe(true);
+  });
+
+  it("两位里一位被领走：撤成的照撤，带 有没撤成 + 整句提示", async () => {
+    const a = await 客户(小李.id);
+    const b = await 客户(小李.id);
+    当(小李);
+    expect(await 放进公海([a.id, b.id], "客户主动终止")).toMatchObject({ ok: true, updated: 2 });
+    当(小王);
+    await 领取([b.id]);
+    当(小李);
+    expect(await 撤销公海("放进", [{ id: a.id, 值: "" }, { id: b.id, 值: "" }])).toEqual({
+      ok: true, updated: 1, unchanged: 1, 没权限: 0, 有没撤成: true, 提示: "已撤销 1 位；1 位已经被人领走或分走了，这次没有撤销",
+    });
+    expect(await 归谁(a.id)).toBe(小李.id);
+    expect(await 在公海(a.id)).toBe(false);
+    expect(await 归谁(b.id)).toBe(小王.id);
+  });
+});

@@ -637,7 +637,21 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       });
     }
     刷新(ids);
-    return { ok: true, updated: r.count, unchanged: ids.length - r.count, 没权限: 0 };
+    // 没撤成的要说出来，口径同撤销领取 / 分配（复审 11-26 M1）：一位都没撤成回 ok:false + 原因，撤成一部分带 有没撤成 + 整句。
+    // 不在公海了 = 被人领走 / 分走；还在公海 = 过了时限，或那一行不是我放的（系统补记、别人放的）
+    const 撤了 = new Set(撤);
+    const 没撤 = [...new Set(ids)].filter((id) => !撤了.has(id));
+    if (!没撤.length) return { ok: true, updated: r.count, unchanged: ids.length - r.count, 没权限: 0 };
+    const 还在 = new Set((await 看全部(() => prisma.customerPool.findMany({ where: { customerId: { in: 没撤 } }, select: { customerId: true } }))).map((x) => x.customerId));
+    const 位 = (n: number) => (ids.length === 1 ? "这位" : `${n} 位`);
+    const 走了 = 没撤.length - 还在.size;
+    const 话 = [
+      r.count && `已撤销 ${r.count} 位`,
+      走了 && `${位(走了)}已经被人领走或分走了，这次没有撤销`,
+      还在.size && `${位(还在.size)}过了撤销时限或不是你放进公海的，这次没有撤销`,
+    ].filter(Boolean).join("；");
+    if (!r.count) return { ok: false, error: 话 };
+    return { ok: true, updated: r.count, unchanged: ids.length - r.count, 没权限: 0, 提示: 话, 有没撤成: true };
   }
   const 还归我 = await prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: 现, pool: null }, select: { id: true } });
   const 在职的 = new Set((await prisma.user.findMany({ where: { id: { in: 原.map((x) => x.值) }, OR: [{ active: true }, { email: 无负责人占位邮箱 }] }, select: { id: true } })).map((u) => u.id));
