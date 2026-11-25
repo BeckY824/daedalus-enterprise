@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 字典定义 } from "./dict-kinds";
 import { 企业版只用项目 } from "./project-only";
+import { 企业版 } from "./switch";
 import { 算客户状态, 客户状态id, type 算状态的项目 } from "./cust-status-auto";
 
 type 库 = Prisma.TransactionClient;
@@ -130,6 +131,17 @@ export async function 显示用客户状态(customerId: string, 存的: string |
 /** 写入口用：开着才算（开 = 事务外面读好的 客户状态自动()），关着什么都不做 */
 export async function 跟着项目重算(db: 库, 开: boolean, customerIds: Iterable<string | null | undefined>): Promise<number> {
   return 开 ? 重算客户状态(db, customerIds) : 0;
+}
+
+/**
+ * 项目进出公海的写入口用（11-25）：领取、分配、放回、超时回收、撤销、离职 / 三态进公海……项目 pooledAt 变了，
+ * 「在推项目优先」认的在推（没结局、不在公海）跟着变，客户状态要在同一笔事务里重算落库（B37「随领取和项目变动自然落库」、M-状态-01）。
+ * 开关不另读：企业版项目模式锁死开着（business-config.ts 企业版锁定），企业版() 就等于 客户状态自动()；
+ * 这几处多在事务里的底层帮手（带走公海项目、客户名下在推项目进公海……），拿不到事务外读好的开关，所以同步判。
+ * 批量的调用方攒齐客户一次调（重算客户状态 500 位一批），别逐个项目调
+ */
+export async function 进出公海重算(db: 库, customerIds: Iterable<string | null | undefined>): Promise<number> {
+  return 企业版() ? 重算客户状态(db, customerIds) : 0;
 }
 
 /** 不在事务里的写入口用：自己读开关、开着才算 */

@@ -28,6 +28,7 @@ import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 交接中的客户 } from "./handover-db";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 写公海领取 } from "./customer-assign-way";
+import { 进出公海重算 } from "./cust-status-auto-db";
 
 /**
  * 客户刚进了客户公海（手动放进公海、离职公海方式），同一笔事务里：负责人清空（M-公海-03）。
@@ -102,6 +103,7 @@ export async function 客户名下在推项目进公海(
   return 看全部(async () => {
     const 主 = new Map(们.map((c) => [c.id, c.salesOwnerId]));
     const 放了: string[] = [];
+    const 进了 = new Set<string>();
     for (let i = 0; i < 们.length; i += 500) {
       const 项目 = await tx.project.findMany({
         where: { customerId: { in: 们.slice(i, i + 500).map((c) => c.id) }, ...在推项目条件, phase: { in: [...能进公海的阶段] } },
@@ -117,8 +119,11 @@ export async function 客户名下在推项目进公海(
         // 客户这时已经在公海里：原负责人在这位客户上没做完的待办全关（pool-owner.ts 进公海关待办）
         await 进公海关待办(tx, p, p.ownerId, 现在);
         放了.push(p.id);
+        进了.add(p.customerId);
       }
     }
+    // 在推的进了公海，客户状态按剩下的重算（在推项目优先不再护着它，流失 / 丢单可能压上来；cust-status-auto-db.ts 进出公海重算）
+    await 进出公海重算(tx, 进了);
     return 放了;
   });
 }

@@ -11,6 +11,7 @@ import type { 带走的 } from "@/lib/carry-over-db";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import type { 出公海原值 } from "@/lib/enterprise/customer-assign-way";
+import { 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
 
 /**
  * 分配时客户在客户公海里、整包出公海的那几位（P-公海-10）：撤销条原样带回 撤销公海项目，整包退回。
@@ -45,6 +46,7 @@ export async function 在事务里分公海项目们(
 ): Promise<分项目们结果> {
   const { org, way, 带 } = 上下文;
   const 出: 分项目们结果 = { 分到: [], 没分到: [], 跟来: 0, 连客户: 0, 整包: { 原: [], 带过来: { 计划: [], 待办: [], 商机: [], 项目: [] }, 公海项目: [] }, 随客户: [] };
+  const 出了的客户 = new Set<string>();
   for (const id of ids) {
     let 包: 整包出公海 | null = null;
     let 同事待分配: 同事待分配条[] = [];
@@ -74,6 +76,7 @@ export async function 在事务里分公海项目们(
       else await 单项目客户跟着领(tx, p.customerId, 给, 操作人, 这带);
       // 推节点 false：公海分配不推进线索验证（审核 11-18；这条路的撤销也不带 带过来）
       if (转) 同事待分配 = (await 转客户给销售(tx, p.customerId, 转.原, 给, 操作人, way, false)).同事待分配;
+      出了的客户.add(p.customerId);
       return null;
     })();
     if (原因) {
@@ -91,5 +94,7 @@ export async function 在事务里分公海项目们(
       for (const k of ["计划", "待办", "商机", "项目"] as const) 出.整包.带过来[k]!.push(...(带来.带过来[k] ?? []));
     }
   }
+  // 分出了公海 = 又在推：整批分完攒齐客户一次重算（cust-status-auto-db.ts 进出公海重算），不逐个项目算
+  await 进出公海重算(tx, 出了的客户);
   return 出;
 }

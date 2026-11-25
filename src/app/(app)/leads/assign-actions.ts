@@ -18,6 +18,7 @@ import { 能改后台设置, 是市场角色, 是销售角色, 能管公海 } fr
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterprise/dict";
 import { 能自动分配客户, 不是市场话, 市场分配限指定 } from "@/lib/enterprise/cust-auto-assign";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
@@ -346,6 +347,8 @@ async function 分项目给(
       data: { ...换负责人(input.toUserId), pooledAt: null, ...(改方式 ? { assignMode: input.way } : {}) },
     });
     if (改.count !== 1) return 已被分配;
+    // 从线索公海里分出来 = 又在推：客户状态按在推项目优先重算（cust-status-auto-db.ts 进出公海重算）；不在公海的分配不动阶段 / 结局，不用算
+    if (p.pooledAt) await 进出公海重算(tx, [p.customerId]);
     // 市场转客户要在动待办之前判（上面判好了）：这条路径上传来的勾不算数
     const 带待办 = 市场转客户 ? undefined : input.带待办;
     await 将回收提醒跟着换人(tx, p, 原, input.toUserId);

@@ -55,6 +55,7 @@ import { 本月分配行, 读挑人底子 } from "@/lib/enterprise/assign-eta";
 import { 找待用补位, 用掉补位, 待用补位行 } from "@/lib/enterprise/invalid-makeup";
 import { 分配通知 } from "@/lib/enterprise/notice-sources";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
+import { 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
 import {
   能查重领取, 不是市场成员查重领取话, 没撞上公海话, 查重领取作废, 查重领取换人, 公海客户的原负责人, 客户创建人, 要回避, 最近的公海项目, 最近的在推项目,
   查重领取候选们, 查重领取理由, 候选挑不到为什么, 挑不到话, 查重领取记沟通, 查重领取口径, 撞上的联系人, 查重领取建线索项目, 认对接人, 落对接人, 发起人领不回, type 认好的对接人, type 录的对接人,
@@ -260,6 +261,7 @@ async function 撤回连带项目(tx: Prisma.TransactionClient, 客户们: strin
   if (!ids.length || !客户们.length) return;
   await 看全部(async () => {
     const 们 = await tx.project.findMany({ where: { id: { in: ids }, customerId: { in: 客户们 }, pooledAt: { not: null } }, select: { id: true, customerId: true, name: true, pooledAt: true } });
+    const 还了 = new Set<string>();
     for (const p of 们) {
       const 痕 = await tx.projectNodeLog.findFirst({ where: { projectId: p.id }, orderBy: [{ at: "desc" }, { id: "desc" }], select: { id: true, kind: true, userId: true, fromOwnerId: true, at: true } });
       if (!痕 || 痕.kind !== "pool-release" || 痕.userId !== 操作人 || !痕.fromOwnerId) continue;
@@ -268,7 +270,10 @@ async function 撤回连带项目(tx: Prisma.TransactionClient, 客户们: strin
       await tx.project.update({ where: { id: p.id }, data: { ...还负责人(痕.fromOwnerId), pooledAt: null } });
       await 还原清掉的组员(tx, p.id, 痕.at, 痕.fromOwnerId);
       await tx.projectNodeLog.delete({ where: { id: 痕.id } });
+      还了.add(p.customerId);
     }
+    // 还给原负责人 = 出了公海又在推：客户状态重算（cust-status-auto-db.ts 进出公海重算）
+    await 进出公海重算(tx, 还了);
   });
 }
 
@@ -425,6 +430,9 @@ async function 公海客户出手(
     }
     // 查重领取的那几样（新建线索项目、记分配、写沟通）放在核上限前面：新建的那条也算进接手人的持有数（同补培育）
     if (附?.然后) await 看全部(() => 附.然后!(tx, 客户部分));
+    // 出了公海的客户：带出线索公海的项目又在推、补了潜客培育、查重领取新建了线索，客户状态都按项目重算（B37「随领取和项目变动自然落库」，
+    // cust-status-auto-db.ts 进出公海重算；带走公海项目 里已算过的再算一遍，没变的不写）
+    await 进出公海重算(tx, 客户部分.到.map((x) => x.id));
     await 整批核上限(tx, 起, kind === "claim" ? "领" : "接");
     return { ...客户部分, 项目结果, 分项目结果 };
   }));
@@ -625,6 +633,8 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
           for (const p of 们) await 撤回项目公海(tx, p.id, 现, me.id);
         });
       }
+      // 带出来的项目回了公海、补的潜客培育删了：客户状态按剩下的重算（撤回项目公海 里算过的再算一遍，没变的不写）
+      await 进出公海重算(tx, [x.id]);
       return true;
     }).catch((e) => {
       if (e instanceof Error && e.message === 负责人被改过) return false;
