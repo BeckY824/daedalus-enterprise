@@ -15,6 +15,7 @@ import { 主联系人号码选, 客户电话 } from "@/lib/enterprise/primary-co
 import { 视图外部拒, 视图外部拦 } from "@/lib/enterprise/view-as";
 import { recordAudit } from "@/lib/audit";
 import { 全称或显名 } from "@/lib/enterprise/customer-title";
+import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 
 /** 旧调用保留有明确截断标志的有界结果；产品按钮使用下面的完整分批出口。 */
 const 导出上限 = 20_000;
@@ -22,11 +23,13 @@ const 跟进上限 = 50_000;
 
 /**
   主联系人另查、每段 500 位（11-25 3703 实操：总管理导 1.5 万 / 1.95 万位客户失败）。
-  Prisma 6.16 + SQLite：嵌套关系带 orderBy / take（主联系人号码选 的 contacts 和它下面的 contactMethods 都带），
-  父记录一句里超过 999 条、引擎拆 IN 批时查询引擎 panic（record.rs:69 no entry found for key），整句失败、导出报「导出失败，请重试」。
+  Prisma 6.16 + SQLite 实测：第二层关系（contacts 下面的 contactMethods）带 orderBy、且第一层（客户）一句里超过 999 行时，
+  引擎拆 IN 批查询引擎 panic（record.rs:69 no entry found for key），整句失败、导出报「导出失败，请重试」。
   客户每批 1000 + 1 条、跟进每批 2500 条（涉及 1600 多位客户）都过了这条线；630 位的小范围不过线所以正常。
-  所以导出的主查询不带 contacts，取回来按客户 id 每段 500 位、照 主联系人号码选 原样另查一次再拼回去：
-  主联系人只取一位，下面号码几行的父记录也不超过 500，两层都在线内；拼出来的行和原来一字不差（列、打码、指纹都不变）
+  所以导出的主查询不带 contacts，取回来按客户 id 每段 500 位、照 主联系人号码选 原样另查一次再拼回去；拼出来的行和原来一字不差（列、打码、指纹都不变）。
+  每段 500 安全的前提是 主联系人号码选 的 contacts 带 take: 1（每位只取一位联系人，contactMethods 的父记录也不过 500）：
+  以后去掉这个 take、或把每段加大过 999，会再踩到这条线。
+  每段各包一次 按主键取没删的：顶层「id in 段」不并 deletedAt IS NULL，走主键、不走 Customer_deletedAt_idx（见那个函数的注释）
 */
 const 联系人每段 = 500;
 type 主联系人行 = Prisma.CustomerGetPayload<{ select: { contacts: typeof 主联系人号码选 } }>["contacts"];
@@ -35,7 +38,7 @@ async function 主联系人们(ids: readonly string[]): Promise<Map<string, 主�
   const 出 = new Map<string, 主联系人行>();
   const 去重 = [...new Set(ids)];
   for (let i = 0; i < 去重.length; i += 联系人每段) {
-    const 段 = await prisma.customer.findMany({ where: { id: { in: 去重.slice(i, i + 联系人每段) } }, select: { id: true, contacts: 主联系人号码选 } });
+    const 段 = await 按主键取没删的(() => prisma.customer.findMany({ where: { id: { in: 去重.slice(i, i + 联系人每段) } }, select: { id: true, deletedAt: true, contacts: 主联系人号码选 } }));
     for (const r of 段) 出.set(r.id, r.contacts);
   }
   return 出;

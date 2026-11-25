@@ -7,7 +7,11 @@ vi.mock("@/lib/enterprise/phone-mask", () => ({ 号码脱敏器: async () => (p:
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 开始完整导出, 读取完整导出批次, 校验完整导出, 导出客户 } from "@/app/(app)/customers/export-action";
-import { 客户行字段 } from "@/app/(app)/customers/query";
+import { 客户行字段, 成客户行 } from "@/app/(app)/customers/query";
+import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
+import { 主联系人号码选, 客户电话 } from "@/lib/enterprise/primary-contact-phone";
+import { 全称或显名 } from "@/lib/enterprise/customer-title";
+import { 客户附件个数 } from "@/lib/attachments";
 
 /*
   11-25 3703 实操：总管理「客户完整导出」1.5 万 / 1.95 万位失败（Prisma 查询引擎 panic：record.rs:69 no entry found for key）。
@@ -16,11 +20,31 @@ import { 客户行字段 } from "@/app/(app)/customers/query";
 */
 const 位数 = 1200;
 const 客户id = (i: number) => `big-${String(i).padStart(5, "0")}`;
-/** 每位客户预期的「联系电话」：主联系人的号（主表空就取号码几行的第一个号码类）；每 7 位一位没有联系人 */
+/**
+  每位客户的联系人摆法（按先后判，前面的优先）：
+  - 每 7 位：没有联系人
+  - 每 11 位：主联系人进了回收站（deletedAt 有值）→ 落到下一位（次要那位）
+  - 每 13 位：两位都不是主联系人，后插的那位建得早 → 按 createdAt 取建得早的（次要那位）
+  - 每 17 位：两位都不是主联系人、建的时刻相同，先插的 id 大 → 按 id 取 id 小的（c1）
+  - 其余：c1 是主联系人
+*/
+type 情形 = "无" | "主删" | "都非主按时间" | "都非主按id" | "常规";
+function 情形of(i: number): 情形 {
+  if (i % 7 === 0) return "无";
+  if (i % 11 === 0) return "主删";
+  if (i % 13 === 0) return "都非主按时间";
+  if (i % 17 === 0) return "都非主按id";
+  return "常规";
+}
+/** c1 的号：主表空（每 10 位）就取他号码几行的第一个号码类 */
+const c1号 = (i: number) => (i % 10 === 0 ? `139${String(i).padStart(8, "0")}` : `138${String(i).padStart(8, "0")}`);
+const c2号 = (i: number) => `137${String(i).padStart(8, "0")}`;
+/** 每位客户预期的「联系电话」：排在第一位的联系人的号（主表空就取号码几行的第一个号码类） */
 function 预期电话(i: number) {
-  if (i % 7 === 0) return "";
-  if (i % 10 === 0) return `139${String(i).padStart(8, "0")}`;
-  return `138${String(i).padStart(8, "0")}`;
+  const 情 = 情形of(i);
+  if (情 === "无") return "";
+  if (情 === "主删" || 情 === "都非主按时间") return c2号(i);
+  return c1号(i);
 }
 
 beforeAll(() => { vi.stubEnv("CRM_ENTERPRISE", "1"); });
@@ -38,17 +62,21 @@ beforeEach(async () => {
   const at = new Date("2026-01-01T00:00:00Z");
   const 客户 = Array.from({ length: 位数 }, (_, i) => ({ id: 客户id(i), name: `大批客户${i}`, phone: "", salesOwnerId: "big-boss", createdAt: at, updatedAt: at }));
   await prisma.customer.createMany({ data: 客户 });
-  const 联系人: { id: string; customerId: string; name: string; phone: string | null; isPrimary: boolean; createdAt: Date }[] = [];
+  const 联系人: { id: string; customerId: string; name: string; phone: string | null; isPrimary: boolean; createdAt: Date; deletedAt?: Date }[] = [];
   const 号码们: { customerId: string; contactId: string; kind: string; value: string; numberKey: string; createdAt: Date }[] = [];
+  const 晚 = new Date(at.getTime() + 1000);
   for (let i = 0; i < 位数; i++) {
-    if (i % 7 === 0) continue;
-    // 先建的是非主联系人：排序要靠 isPrimary 把主联系人顶到前面
-    联系人.push({ id: `${客户id(i)}-c2`, customerId: 客户id(i), name: "次要", phone: `137${String(i).padStart(8, "0")}`, isPrimary: false, createdAt: at });
+    const 情 = 情形of(i);
+    if (情 === "无") continue;
     const 主 = `${客户id(i)}-c1`;
-    联系人.push({ id: 主, customerId: 客户id(i), name: "主", phone: i % 10 === 0 ? null : 预期电话(i), isPrimary: true, createdAt: new Date(at.getTime() + 1000) });
+    const c1 = { id: 主, customerId: 客户id(i), name: "主", phone: i % 10 === 0 ? null : c1号(i), isPrimary: 情 === "常规" || 情 === "主删", createdAt: 情 === "都非主按id" ? at : 晚, ...(情 === "主删" ? { deletedAt: at } : {}) };
+    const c2 = { id: `${客户id(i)}-c2`, customerId: 客户id(i), name: "次要", phone: c2号(i), isPrimary: false, createdAt: at };
+    // 插入先后和预期相反：常规 / 主删 / 按 id 先插 c2（要靠 isPrimary、deletedAt、id 排到对的那位）；按时间先插 c1（要靠 createdAt）
+    if (情 === "都非主按时间") 联系人.push(c1, c2);
+    else 联系人.push(c2, c1);
     if (i % 10 === 0) {
       号码们.push({ customerId: 客户id(i), contactId: 主, kind: "email", value: `x${i}@local`, numberKey: `x${i}@local`, createdAt: at });
-      号码们.push({ customerId: 客户id(i), contactId: 主, kind: "phone", value: 预期电话(i), numberKey: 预期电话(i), createdAt: new Date(at.getTime() + 1000) });
+      号码们.push({ customerId: 客户id(i), contactId: 主, kind: "phone", value: c1号(i), numberKey: c1号(i), createdAt: 晚 });
     }
   }
   await prisma.contact.createMany({ data: 联系人 });
@@ -86,17 +114,41 @@ it("过 999 线的客户批、跟进批照样导完，复核通过，主联系�
   await expect(校验完整导出({}, r.start, r.fingerprints)).resolves.toEqual({ ok: true });
 }, 60_000);
 
-it("列不变：客户表每行的键和原来带 contacts 一句取的一模一样", async () => {
-  const r = await 导出全部();
-  // 原样一句取（小批、不过线）对照：列、值都应一致
-  const 小批 = await prisma.customer.findMany({ where: { id: { in: [客户id(1), 客户id(7), 客户id(10)] } }, select: 客户行字段 });
-  expect(小批.map((x) => x.contacts.length)).toEqual([1, 0, 1]);
-  const 导出的 = r.客户.find((x) => x.id === 客户id(10))!;
-  expect(Object.keys(导出的)).toEqual(Object.keys(r.客户[0]));
-  expect(Object.keys(导出的)).toContain("phone");
-  expect(Object.keys(导出的)).toContain("附件数");
-  expect(Object.keys(r.跟进[0]).sort()).toEqual(["content", "customerId", "customerName", "customerNo", "id", "method", "occurredAt", "ownerName", "phone", "status", "title", "type"]);
-}, 60_000);
+it("列不变：小批（不过 999 线）用原来的一句嵌套查询，和导出的同 id 行整行一致（客户表、跟进表，打不打码都一样）", async () => {
+  // 小批里五种联系人摆法都有（7、11、13、17 的倍数和常规）
+  const ids = Array.from({ length: 300 }, (_, i) => 客户id(i));
+  expect(new Set(ids.map((_, i) => 情形of(i)))).toEqual(new Set(["无", "主删", "都非主按时间", "都非主按id", "常规"]));
+  for (const 打码 of [false, true]) {
+    当前.打码 = 打码;
+    const r = await 导出全部();
+    const 号 = await 号码脱敏器();
+    // 客户表：原来的 select（带 contacts: 主联系人号码选）一句取，套 成客户行
+    const 原客户 = await prisma.customer.findMany({ where: { id: { in: ids } }, select: 客户行字段 });
+    expect(原客户).toHaveLength(ids.length);
+    const 附件 = await 客户附件个数(prisma, ids, true);
+    const 导出客户 = new Map(r.客户.map((x) => [x.id as string, x]));
+    for (const c of 原客户) {
+      const 预期 = { ...成客户行(c, 号), 附件数: 附件.get(c.id) ?? null };
+      const 实际 = 导出客户.get(c.id);
+      expect(实际).toEqual(预期);
+      // 指纹按 JSON 原样字节算：键的先后也要一样
+      expect(Object.keys(实际!)).toEqual(Object.keys(预期));
+    }
+    // 跟进表：原来的 select（customer 下带 contacts: 主联系人号码选）一句取，照原来的映射
+    const 原跟进 = await prisma.followUp.findMany({
+      where: { customerId: { in: ids } },
+      select: { id: true, customerId: true, customer: { select: { id: true, name: true, shortName: true, phone: true, customerNo: true, contacts: 主联系人号码选 } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true, owner: { select: { name: true } } },
+    });
+    expect(原跟进).toHaveLength(ids.length);
+    const 导出跟进 = new Map(r.跟进.map((x) => [x.id as string, x]));
+    for (const f of 原跟进) {
+      const 预期 = { id: f.id, customerId: f.customerId, customerName: 全称或显名(f.customer), phone: 号(客户电话(f.customer)), customerNo: f.customer.customerNo, occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, ownerName: f.owner.name };
+      const 实际 = 导出跟进.get(f.id);
+      expect(实际).toEqual(预期);
+      expect(Object.keys(实际!)).toEqual(Object.keys(预期));
+    }
+  }
+}, 120_000);
 
 it("打码照旧：电话藏着时两张表的号码都打码", async () => {
   当前.打码 = true;
