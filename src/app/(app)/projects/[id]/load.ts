@@ -12,7 +12,7 @@ import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
 import { 来源字, 人名显示, 是重复咨询, 是仅记录用, 仅记录用来源 } from "@/lib/project/system-created";
 import { 客户其他在推项目, 重复咨询原始客户 } from "@/lib/enterprise/repeat-inquiry";
-import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, type 字典种类 } from "@/lib/enterprise/dict";
+import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, 运输中认法, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选, 是系统管理员, 只读角色, 只看的人, type 权限项目 } from "@/lib/enterprise/permissions";
 import { 项目来历 } from "@/lib/enterprise/customer-merge";
@@ -176,6 +176,8 @@ async function 备货物流格(p: { stockStatus: string | null; logisticsStatus:
   return {
     备货状态: 备货状态显示(p.stockStatus), 物流状态, 物流单号: p.trackingNo,
     已签收: { 名们: 签收.名们, 现名: 签收.现名, 能选: 物流状态.选项.some((x) => 签收.名们.includes(x)) },
+    // 算「运输中」的名字（db.ts 改项目：运输中时物流单号必填）：交付卡就地改、完成节点框提前知道要单号，不先发一次被拒
+    运输中: 运输中认法(行们).名们,
   };
 }
 

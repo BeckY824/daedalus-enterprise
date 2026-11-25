@@ -8,7 +8,7 @@
  *     退回来的节点不自动推，那时才手动推（画像项 11-19 起和项目字段一样会自动推）
  */
 import { 必填项们, 是占位值, type 必填项 } from "./required";
-import { 生效的合同状态, 已备货的备货状态, 默认已签收 } from "./proj-fields";
+import { 生效的合同状态, 已备货的备货状态, 默认已签收, 默认运输中 } from "./proj-fields";
 import { 钱格改动, 文字格改动, type 钱格值 } from "./inline-edit";
 import { 规整地址, type 客户地址 } from "@/lib/enterprise/customer-v2";
 import { 默认币种 } from "@/lib/currency";
@@ -116,8 +116,8 @@ export type 补齐项目 = {
   所在地?: (客户地址 & { location: string | null }) | null;
   成交钱?: 项目成交钱;
   项目新字段?: { painPoints?: string | null; contractStatus?: string | null };
-  /** 备货状态、物流状态（现值 + 字典选项）、物流单号（企业版才有） */
-  备货物流?: { 备货状态: string | null; 物流状态: { 值: string | null; 选项: string[] }; 物流单号: string | null; 已签收?: 已签收格 };
+  /** 备货状态、物流状态（现值 + 字典选项）、物流单号（企业版才有）；运输中 = 物流状态里算「运输中」的名字（没给 = 只认默认名） */
+  备货物流?: { 备货状态: string | null; 物流状态: { 值: string | null; 选项: string[] }; 物流单号: string | null; 已签收?: 已签收格; 运输中?: readonly string[] };
   画像?: { 值: Partial<Record<string, string | string[] | null>> } | null;
   acceptancePassed: boolean;
   balanceSettled: boolean;
@@ -343,14 +343,34 @@ export function 算窗口状态(行们: readonly string[], 环: 窗里环境, �
   return 态;
 }
 
+/**
+ * 要不要把「物流单号」临时带进框里（审查 11-25）：管理员可能只给这个节点配了「物流状态」、没配「物流单号」。
+ * 框里物流状态选了「运输中」、项目上单号又空着，服务端（db.ts 改项目）会拒存，框里却没有单号格——这时带出单号格一起填，
+ * 算窗口状态 把它当一项必填（不填不亮「保存并完成节点」），依次保存 先存它。行们里已经有单号、物流那行填不了（窗外）或这样选不算数的不带
+ */
+export function 要带出单号(行们: readonly string[], 环: 窗里环境, 草稿: (k: 必填项) => 草稿值 | undefined, p: Pick<补齐项目, "备货物流">, 已存: readonly string[] = []): boolean {
+  if (行们.includes("物流单号") || 有字(p.备货物流?.物流单号)) return false;
+  const 运输 = p.备货物流?.运输中 ?? [默认运输中];
+  return 行们.some((k) => {
+    if (!是必填项(k) || 已存.includes(k) || 填法表[k].控件 !== "物流") return false;
+    // 物流那行要能当场填、这样选算数（「已签收」那行选了运输中本来就存不了，不另带一格）
+    if (归类(k, 环).类 !== "填" || 草稿问题(k, 草稿(k), 环)) return false;
+    return 运输.includes(字(草稿(k)));
+  });
+}
+
 export type 存一项结果 = { ok: boolean; error?: string; 自动推到?: string[] };
 export type 依次保存结果 = { 已存: 必填项[]; 失败: Partial<Record<必填项, string>>; 自动推到: string[] };
 const 没存上 = "没存上，请稍后再试";
 
-/** 一项一项存：一项失败（返回 ok:false 或抛错）记下原因，接着存别的 */
+/**
+ * 一项一项存：一项失败（返回 ok:false 或抛错）记下原因，接着存别的。
+ * 物流单号排最前（其余照原顺序）：物流状态选「运输中」时服务端要单号已经在（db.ts 改项目），同一批里先存状态会被拦
+ */
 export async function 依次保存(项们: readonly 必填项[], 存一项: (k: 必填项) => Promise<存一项结果>): Promise<依次保存结果> {
   const 果: 依次保存结果 = { 已存: [], 失败: {}, 自动推到: [] };
-  for (const k of 项们) {
+  const 单号先 = [...项们.filter((k) => k === "物流单号"), ...项们.filter((k) => k !== "物流单号")];
+  for (const k of 单号先) {
     try {
       const r = await 存一项(k);
       if (r.ok) {

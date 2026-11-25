@@ -45,7 +45,11 @@ beforeEach(async () => {
   await prisma.entMember.createMany({ data: [{ userId: "tester-id", bizRole: "sales" }, { userId: 销售, bizRole: "sales" }] });
 });
 afterEach(() => vi.unstubAllEnvs());
-afterAll(() => prisma.$disconnect());
+afterAll(async () => {
+  // 跑完清库（同 beforeEach 那套 resetDb）：附件不挂外键，留在共享 test.db 会绊倒后面从它拷库、自带清库清单的用例
+  await resetDb();
+  await prisma.$disconnect();
+});
 
 const 新建 = (改: Record<string, unknown> = {}) =>
   saveCustomer({

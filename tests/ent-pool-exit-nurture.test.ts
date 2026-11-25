@@ -10,7 +10,7 @@
  *   - 「新建」类不算它：首页卡本月新增、数据页 新建（走势、按人、本段漏斗）、渠道分档的总线索 / 关联项目（「全部」照算）
  *   - 首页卡暂未跟进：补建的项目客户身上有过沟通（没挂项目的老沟通）就不算暂未跟进；别的项目照旧只看挂在项目上的沟通
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterAll, describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null } }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
@@ -515,3 +515,6 @@ describe("历史分析回填（11-18，M-公海-14「领走补一个能推进的
     expect(们.filter((p) => !p.result)).toEqual([expect.objectContaining({ ownerId: 丙.id, creatorId: 总管.id, node: 第一个节点.node, source: null })]);
   });
 });
+
+// 跑完清库（同 beforeEach 那套 resetDb）：附件不挂外键，留在共享 test.db 会绊倒后面从它拷库、自带清库清单的用例
+afterAll(async () => { await resetDb(); });

@@ -13,7 +13,7 @@
  *   - 字段权限表：两列各挂自己那一行、能藏
  * 项目方案附件的传、列、删、权限在 ent-project-attachments.test.ts
  */
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
@@ -269,3 +269,6 @@ describe("真库：改项目 / 读必填数据 / 新建项目", () => {
     expect(await prisma.project.findUniqueOrThrow({ where: { id: 团队 } })).toMatchObject({ contractStatus: null, assignMode: null });
   });
 });
+
+// 跑完清库（同 beforeEach 那套 resetDb）：附件不挂外键，留在共享 test.db 会绊倒后面从它拷库、自带清库清单的用例
+afterAll(async () => { await resetDb(); });

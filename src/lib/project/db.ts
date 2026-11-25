@@ -29,7 +29,7 @@ import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
-import { 选的原因, 认跟进方式, 已签收物流状态, type 已签收认法结果 } from "@/lib/enterprise/dict";
+import { 选的原因, 认跟进方式, 已签收物流状态, 运输中物流状态, type 已签收认法结果 } from "@/lib/enterprise/dict";
 import { 去不填 } from "@/lib/enterprise/dict-kinds";
 import { 生效组织规则 } from "./org-rules-store";
 import { 仅记录用的, 是仅记录用 } from "./system-created";
@@ -48,7 +48,7 @@ import { 单项目客户跟进公海, 单项目客户跟着领, 领项目连带�
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
-import { 项目新字段改成, 备货单号改成, type 项目新字段, type 备货单号 } from "./proj-fields";
+import { 项目新字段改成, 备货单号改成, 运输中要单号, type 项目新字段, type 备货单号 } from "./proj-fields";
 import { 客户状态自动, 跟着项目重算, 项目变了重算, 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 读客户状态, 项目的客户们, 原状态记到出公海痕 } from "@/lib/enterprise/cust-status-undo";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
@@ -705,6 +705,16 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     // 企业版字段权限：动了「只能看」的金额（含合同金额、定金金额、成交需求）/ 负责人 / 预计成交日期 / 痛点标注 / 合同状态就拒（名称、备注、联系人不在表里，照旧能改）
     const 挡 = 改不了的话(级别, 变了.flatMap((k) => (项目列字段[k] ? [项目列字段[k]] : [])));
     if (挡) return { ok: false as const, error: 挡 };
+    // 物流状态「运输中」时物流单号必填（客户原话「当物流状态变为运输中时必填」）：这次动了物流状态或单号才判，
+    // 改完是运输中（按默认项 dict-projLogistics-1 认，改了名也认）且单号空就拒；就地改、编辑框、完成节点框、ProjectTeam 都走这里
+    if (企业版() && (变了.includes("logisticsStatus") || 变了.includes("trackingNo"))) {
+      const 状态 = 物流?.ok ? 物流.值 : p.logisticsStatus;
+      const 单号 = 备货?.ok ? 备货.值.trackingNo : p.trackingNo;
+      if (状态 && !单号) {
+        const 运输 = await 运输中物流状态(tx);
+        if (运输.名们.includes(状态)) return { ok: false as const, error: 运输中要单号(状态) };
+      }
+    }
     const 换人 = 新.ownerId !== p.ownerId;
     if (换人) {
       // 客户在客户公海里的，项目随整包，不能转出去（M-公海-06、X-13）；放在事务里，弹框开着时客户刚进公海也拦。线索公海（客户不在公海）照转。
