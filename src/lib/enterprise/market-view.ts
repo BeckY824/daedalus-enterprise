@@ -13,7 +13,7 @@
  * 例外：等「市场复核」、我能拍板的那条（复核要进详情看来龙去脉），照旧能进。
  */
 import { 实线下属, type 组织 } from "./org-core";
-import { 只看的人, 业务线放行, 是市场角色 } from "./permissions";
+import { 只看的人, 业务线放行, 是市场角色, 能看全部, 只读角色 } from "./permissions";
 
 export type 市场视角 = "市场成员" | "市场管理";
 
@@ -81,6 +81,8 @@ export function 市场挡详情(
  */
 export function 部门市场无市场角色(org: 组织 | null, id: string, 市场成员集: ReadonlySet<string>): boolean {
   if (!org || 只看的人(org, id) || !市场成员集.has(id)) return false;
+  // 系统管理员、只读管理员、教练详情本来都进得去，不会被挡；排除掉，免得手动带 hl 打开客户页落到市场那套项目页
+  if (能看全部({ id }, org) || 只读角色({ id }, org)) return false;
   return !是市场角色(org, id) && 市场视角of(org, id, 市场成员集) === null;
 }
 

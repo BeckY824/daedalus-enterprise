@@ -60,8 +60,9 @@ describe("市场视角", () => {
       成员: new Map([...org.成员, 人("ms", ["sales"]), 人("mo", ["channel_ops", "sales"]), 人("mm", ["sales", "sales_mgr"]), 人("mp", ["sales_mgr", "project_ops"]), 人("po", ["project_ops"]), 人("mk", ["marketing_mgr", "sales"])]),
     };
     const 集 = new Set([...市场成员集, "ms", "mo", "mm", "mp", "po", "mk", "s", "w"]);
-    // 兼销管（mm、mp）、教练（c，看全部，能看项目 过、不会真跳）都算；有市场角色（mo、mk）、市场视角认的（a、纯项目组员 po）、只看某人（w）不算
-    expect(["ms", "mo", "mm", "mp", "po", "mk", "a", "c", "s", "w"].map((x) => 部门市场无市场角色(o, x, 集))).toEqual([true, false, true, true, false, false, false, true, true, false]);
+    // 兼销管（mm、mp）都算；教练（c，看全部）不算；有市场角色（mo、mk）、市场视角认的（a、纯项目组员 po）、只看某人（w）不算
+    expect(["ms", "mo", "mm", "mp", "po", "mk", "a", "c", "s", "w"].map((x) => 部门市场无市场角色(o, x, 集))).toEqual([true, false, true, true, false, false, false, false, true, false]);
+    // 教练（c）、系统管理员、只读管理员详情本来进得去，不算这一类（手动带 hl 不落到市场那套项目页，总控 11-25 收紧）
     expect(部门市场无市场角色(o, "s", 市场成员集)).toBe(false);
     expect(部门市场无市场角色(null, "ms", 集)).toBe(false);
     expect([
