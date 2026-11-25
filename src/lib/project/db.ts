@@ -3,6 +3,9 @@
  * 这里不管登录、不管开关，只管「谁能改」和「改了留什么痕」，方便单测直接调。
  */
 import { 能往项目记沟通, 核售后回访, 沟通项目在公海话, 沟通项目已结束话, 沟通不是组员话, 售后只在交付结清话 } from "./follow-needs-project";
+import { 售后回访主题, 下次回访日期不对话, 下次回访早于今天话 } from "./follow-needs-project-text";
+import { 客户事项挡 } from "@/lib/enterprise/follow-perm";
+import { parseScheduleDate, calendarDay, type ScheduleDate } from "@/lib/schedule-date";
 import { 项目退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 import { Prisma, type Project } from "@/generated/prisma";
 import { prisma, defaultClient } from "../prisma";
@@ -39,7 +42,7 @@ import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
 import { dayjs } from "../utils";
 import { 看全部, 只读身份中, 系统写 } from "../team-scope";
-import { FOLLOW_RECORD_STATUSES } from "../constants";
+import { FOLLOW_RECORD_STATUSES, FOLLOW_TYPE_MAP } from "../constants";
 import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
 import { 节点变了的提成 } from "./commission-db";
@@ -1565,11 +1568,25 @@ export async function 记项目沟通(
   me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(),
   /** 无意义：调用方判好的无意义沟通那句（F-052，meaningless-follow.ts 沟通无意义挡）；核完项目、权限后才拦（那几句更准） */
   opt: { 要下一步文字?: boolean; 无意义?: string | null } = {},
-): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 推前?: 推前; 写了下一步?: boolean; 无意义?: true; 售后回访?: true }> {
+): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 推前?: 推前; 写了下一步?: boolean; 无意义?: true; 售后回访?: true } & 下次回访结果> {
   if (!input || typeof input !== "object") return { ok: false, error: "要记什么？" };
   const 认 = await 认跟进方式(input);
   if ("error" in 认) return { ok: false, error: 认.error };
   input = 认;
+  /*
+    下次回访（E-283 第 1 条）：售后回访顺手排一条客户跟进计划。谁能排同客户页的待办 / 计划（客户事项挡：客户负责人、这位客户下项目的负责人；
+    组员、上级只看的、公海里的不给，P-沟通-04 组员不能建计划）。挡在事务外先查（它走外面的库，事务里不能等它）；
+    排不了的不拦这条回访，回 下次没排 一句；排得了才验日期（日历日、不早于今天），日期不对整条不记
+  */
+  const 带了下次 = 企业版() && input.售后回访 === true && typeof input.下次回访 === "string" && !!input.下次回访.trim();
+  const 下次挡 = 带了下次 ? await 下次回访挡(me, projectId) : null;
+  let 下次时间: ScheduleDate | null = null;
+  if (带了下次 && !下次挡) {
+    const t = parseScheduleDate(input.下次回访!.trim(), undefined, false);
+    if (!t?.on || !t.at) return { ok: false, error: 下次回访日期不对话 };
+    if (t.on < calendarDay(now)) return { ok: false, error: 下次回访早于今天话 };
+    下次时间 = t;
+  }
   const 规则 = await 生效组织规则();
   const 状态开 = await 客户状态自动();
   const org = await 权限组织();
@@ -1643,10 +1660,24 @@ export async function 记项目沟通(
       const 推 = 不写项目 ? { 到: [] as string[] } : await 按必填推进详(tx, 规则, me, p.id, { 留下一步: 写了下一步 });
       if (推.到.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
       if (!售后) await 勾掉将回收提醒(tx, 规则, p, now);
+      // 下次回访（E-283）：和这条回访同一个事务；客户负责人不一定看得到这个项目、项目负责人不一定是客户负责人——上面 客户事项挡 核过人，按全部写
+      const 下次: 下次回访结果 = !售后 ? {} : 下次挡 ? { 下次没排: 下次挡 } : 下次时间 ? await 看全部(async () => {
+        const 计划 = await tx.followPlan.create({ data: { subject: 售后回访主题(p.name), plannedAt: 下次时间!.at!, plannedOn: 下次时间!.on, plannedHasTime: false, method: 好.method ?? FOLLOW_TYPE_MAP[好.type]?.label ?? "电话沟通", customerId: p.customerId, ownerId: me.id, afterSaleProjectId: p.id } });
+        return { 下次计划id: 计划.id, 下次回访: 下次时间!.on!, 下次计划主题: 计划.subject };
+      }) : {};
       // 写了项目上的下一步（文字或时间）：调用方在「记了一条沟通」日志里打标记，30 分钟内改这条时下一步才跟着改（follow-perm 下一步跟着改of）
-      return { ok: true as const, followUpId: 跟进.id, 写了下一步, ...带推进(推.到), ...(推.推前 ? { 推前: 推.推前 } : {}), ...(售后 ? { 售后回访: true as const } : {}) };
+      return { ok: true as const, followUpId: 跟进.id, 写了下一步, ...带推进(推.到), ...(推.推前 ? { 推前: 推.推前 } : {}), ...(售后 ? { 售后回访: true as const } : {}), ...下次 };
     });
   });
+}
+
+/** 记项目沟通 顺手排的下次回访（E-283）：排上了回 id 和日子（YYYY-MM-DD）；带了但这个人排不了回原因（这条回访照记） */
+export type 下次回访结果 = { 下次计划id?: string; 下次回访?: string; 下次计划主题?: string; 下次没排?: string };
+
+/** 下次回访谁能排：按项目的客户过 客户事项挡（同客户页排计划）；项目不在了回 null（事务里那句「不在了」为准） */
+async function 下次回访挡(me: 谁, projectId: string): Promise<string | null> {
+  const x = await 看全部(() => prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { customerId: true } }));
+  return x ? 客户事项挡(me, x.customerId) : null;
 }
 
 /**

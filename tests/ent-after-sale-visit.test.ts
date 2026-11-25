@@ -38,8 +38,9 @@ import { 认父记录 } from "@/app/api/attachments/access";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 看全部 } from "@/lib/team-scope";
+import { 不能改客户事项话 } from "@/lib/enterprise/follow-perm";
 import {
-  交付结清要售后回访话, 请选在推或售后话, 售后只在交付结清话, 售后不能记话, 售后回访主题, 沟通客户在公海话, 沟通项目已结束话, 能记售后回访, 售后客户,
+  交付结清要售后回访话, 请选在推或售后话, 售后只在交付结清话, 售后不能记话, 售后回访主题, 售后客户在公海话, 下次回访早于今天话, 下次回访日期不对话, 沟通项目已结束话, 能记售后回访, 售后客户,
 } from "@/lib/project/follow-needs-project";
 
 const 今天 = beijingDay(new Date());
@@ -149,11 +150,11 @@ describe("谁能记", () => {
     await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动" } });
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 我负责的.id } })).pooledAt).toBeNull();
     // 项目负责人（我也是原客户负责人）
-    expect(await 项目上记(我, 我负责的.id)).toEqual({ ok: false, error: 沟通客户在公海话 });
+    expect(await 项目上记(我, 我负责的.id)).toEqual({ ok: false, error: 售后客户在公海话 });
     // 组员
-    expect(await 项目上记(组员, 同事负责的.id)).toEqual({ ok: false, error: 沟通客户在公海话 });
+    expect(await 项目上记(组员, 同事负责的.id)).toEqual({ ok: false, error: 售后客户在公海话 });
     // 客户负责人（客户页那条路）
-    expect(await 记({ projectId: 同事负责的.id, 售后回访: true })).toMatchObject({ ok: false, error: 沟通客户在公海话 });
+    expect(await 记({ projectId: 同事负责的.id, 售后回访: true })).toMatchObject({ ok: false, error: 售后客户在公海话 });
     expect(await prisma.followUp.count()).toBe(0);
     // 纯判断：客户在公海一律不行
     expect(能记售后回访({ id: 我 }, { ownerId: 我, result: "交付结清", 客户负责人: 我, 客户在公海: true }, null, "JOINED")).toBe(false);
@@ -207,6 +208,77 @@ describe("下次回访计划", () => {
     const r = await 记({ 附带: { tasks: [], plan: { subject: "问问报价", plannedAt: dayjs().add(3, "day").format("YYYY-MM-DD"), method: "电话沟通" } } });
     const 计划 = await prisma.followPlan.findUniqueOrThrow({ where: { id: (r as { 下次计划id: string }).下次计划id } });
     expect(计划).toMatchObject({ subject: "问问报价", afterSaleProjectId: null });
+  });
+});
+
+describe("[E-283] 项目页记售后回访顺手排下次回访（记项目沟通带 下次回访）", () => {
+  const 日 = (n: number) => 加天(今天, n);
+  it("项目负责人（也是客户负责人）：同一笔建出计划——主题「售后回访 · 项目名」、afterSaleProjectId、ownerId、plannedOn、方式都对，回 下次计划id / 下次回访", async () => {
+    const p = await 交付项目();
+    const r = await 项目上记(我, p.id, { 下次回访: 日(30) });
+    expect(r).toMatchObject({ ok: true, 售后回访: true, 下次回访: 日(30) });
+    const 计划 = await prisma.followPlan.findUniqueOrThrow({ where: { id: r.下次计划id! } });
+    const 回访 = await prisma.followUp.findUniqueOrThrow({ where: { id: r.followUpId! } });
+    expect(计划).toMatchObject({ subject: 售后回访主题(p.name), afterSaleProjectId: p.id, ownerId: 我, customerId: 客户, plannedOn: 日(30), plannedHasTime: false, done: false, method: 回访.method ?? "电话沟通" });
+    // 项目仍一格不动（排计划不写项目）
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).updatedAt.getTime()).toBe(那天(400).getTime());
+  });
+
+  it("今天也能排；不带 / 空串不排", async () => {
+    const p = await 交付项目();
+    expect(await 项目上记(我, p.id, { 下次回访: 日(0) })).toMatchObject({ ok: true, 下次回访: 日(0) });
+    expect(await 项目上记(我, p.id)).not.toHaveProperty("下次计划id");
+    expect(await 项目上记(我, p.id, { 下次回访: "" })).not.toHaveProperty("下次计划id");
+    expect(await prisma.followPlan.count()).toBe(1);
+  });
+
+  it("只是客户负责人（项目是同事的、我不在组）能排；只是项目负责人（客户是同事的）也能排", async () => {
+    const 同事的项目 = await 交付项目({ ownerId: 同事, creatorId: 同事 });
+    const r1 = await 项目上记(我, 同事的项目.id, { 下次回访: 日(7) });
+    expect(r1).toMatchObject({ ok: true, 下次回访: 日(7) });
+    expect(await prisma.followPlan.findUniqueOrThrow({ where: { id: r1.下次计划id! } })).toMatchObject({ ownerId: 我, afterSaleProjectId: 同事的项目.id });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事 } });
+    const 我的项目 = await 交付项目();
+    const r2 = await 项目上记(我, 我的项目.id, { 下次回访: 日(7) });
+    expect(r2).toMatchObject({ ok: true, 下次回访: 日(7) });
+    expect(await prisma.followPlan.findUniqueOrThrow({ where: { id: r2.下次计划id! } })).toMatchObject({ ownerId: 我, afterSaleProjectId: 我的项目.id });
+  });
+
+  it("组员能记回访、不能排（P-沟通-04）：回访照记、计划一条不建，回 下次没排；组员带了过去的日子也不拦回访", async () => {
+    const p = await 交付项目({ ownerId: 同事, creatorId: 同事 });
+    await prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事 } });
+    await prisma.projectMember.create({ data: { projectId: p.id, userId: 组员, inviteStatus: "JOINED" } });
+    const r = await 项目上记(组员, p.id, { 下次回访: 日(30) });
+    expect(r).toMatchObject({ ok: true, 售后回访: true, 下次没排: 不能改客户事项话 });
+    expect(r).not.toHaveProperty("下次计划id");
+    expect(await 项目上记(组员, p.id, { 下次回访: 日(-3) })).toMatchObject({ ok: true, 下次没排: 不能改客户事项话 });
+    expect(await prisma.followUp.count()).toBe(2);
+    expect(await prisma.followPlan.count()).toBe(0);
+  });
+
+  it("在推项目上：标了售后回访照旧被拦；没标的普通沟通带了 下次回访 不认，不建计划", async () => {
+    const p = await 项目();
+    expect(await 项目上记(我, p.id, { 阶段: "商机", 下次回访: 日(30) })).toEqual({ ok: false, error: 售后只在交付结清话 });
+    const r = await 项目上记(我, p.id, { 售后回访: false, 阶段: "商机", 下一步: "发报价", 下一步时间: 日(3), 下次回访: 日(30) });
+    expect(r).toMatchObject({ ok: true });
+    expect(r).not.toHaveProperty("下次计划id");
+    expect(await prisma.followPlan.count()).toBe(0);
+  });
+
+  it("不能选今天以前、日期不对：整条不记（回访和计划都没有）", async () => {
+    const p = await 交付项目();
+    expect(await 项目上记(我, p.id, { 下次回访: 日(-1) })).toEqual({ ok: false, error: 下次回访早于今天话 });
+    expect(await 项目上记(我, p.id, { 下次回访: "2026-13-45" })).toEqual({ ok: false, error: 下次回访日期不对话 });
+    expect(await 项目上记(我, p.id, { 下次回访: "下个月" })).toEqual({ ok: false, error: 下次回访日期不对话 });
+    expect(await prisma.followUp.count()).toBe(0);
+    expect(await prisma.followPlan.count()).toBe(0);
+  });
+
+  it("客户进了公海：回访被拦（售后那句），计划也不建", async () => {
+    const p = await 交付项目();
+    await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动" } });
+    expect(await 项目上记(我, p.id, { 下次回访: 日(30) })).toEqual({ ok: false, error: 售后客户在公海话 });
+    expect(await prisma.followPlan.count()).toBe(0);
   });
 });
 

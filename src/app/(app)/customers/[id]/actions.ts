@@ -27,7 +27,7 @@ import { 能改这条沟通, 能删沟通, 不能删沟通话, 本人限时改�
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
-import { 能记售后回访, 售后不能记话, 售后回访主题, 定沟通挂哪个项目, 可记沟通项目们, 要挂项目的类型, 免挂项目中, 能往项目记沟通, 沟通客户在公海话, 沟通项目不在话, 待办改沟通话, 沟通不是组员话, 沟通都不能记话, type 可记项目 } from "@/lib/project/follow-needs-project";
+import { 能记售后回访, 售后不能记话, 售后回访主题, 定沟通挂哪个项目, 可记沟通项目们, 要挂项目的类型, 免挂项目中, 能往项目记沟通, 沟通客户在公海话, 售后客户在公海话, 沟通项目不在话, 待办改沟通话, 沟通不是组员话, 沟通都不能记话, type 可记项目 } from "@/lib/project/follow-needs-project";
 import { 记沟通标记 } from "@/lib/project/stage-gates";
 import { 版本冲突, 版本条件, 推进版本 } from "@/lib/edit-version";
 import { dayjs } from "@/lib/utils";
@@ -170,7 +170,7 @@ async function 挂项目(me: { id: string; role: string }, followUpId: string, c
   if (!p) return 沟通项目不在话;
   if (售后回访) {
     const c = await 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
-    if (c?.pool) return 沟通客户在公海话;
+    if (c?.pool) return 售后客户在公海话;
     if (!能记售后回访(me, { ...p, 客户负责人: c?.salesOwnerId, 客户在公海: false }, org, p.members[0]?.inviteStatus)) return 售后不能记话;
   } else if (!能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)) return 沟通不是组员话;
   // 库里存着旧节点名的按企业版的新名记（10-31 改名，写入一律新名）
@@ -376,7 +376,7 @@ export async function saveFollowUp(input: FollowUpInput) {
       // 确实没有我能记的在推项目才换成无效那句；「请选一个关联项目」、带了项目但这个项目不行的照原话说
       if (!定.ok && 无效要拦 && !给的项目 && (定.没项目 || 定.error === 沟通都不能记话)) return { ok: false as const, error: 无效客户不能记沟通话 };
       // 公海客户没选项目说「先领取再选」；标了无效的领不了，不叫他去领，照原话（如「请选一个关联项目」）
-      if (!定.ok) return { ok: false as const, error: 在公海 && !给的项目 && !无效公海 ? 沟通客户在公海话 : 定.error, ...(定.没项目 ? { 没项目: true as const } : {}), ...(定.售后?.length ? { 售后: 定.售后 } : {}) };
+      if (!定.ok) return { ok: false as const, error: 在公海 && !给的项目 && !无效公海 ? (要售后 ? 售后客户在公海话 : 沟通客户在公海话) : 定.error, ...(定.没项目 ? { 没项目: true as const } : {}), ...(定.售后?.length ? { 售后: 定.售后 } : {}) };
       挂到 = 定.projectId;
       售后 = 定.售后回访;
     }
