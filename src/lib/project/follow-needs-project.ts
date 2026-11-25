@@ -11,6 +11,7 @@
  * 组员在只读客户上只能新记沟通，改已有的、建待办 / 计划照旧只读（P-沟通-04）。
  */
 import { prisma } from "../prisma";
+import type { Prisma } from "@/generated/prisma";
 import { 看全部 } from "../team-scope";
 import { 全进程上下文 } from "../process-als";
 import { 企业版 } from "../enterprise/switch";
@@ -63,9 +64,13 @@ export function 能记售后回访(
   return 组员状态 === "JOINED" || (!!p.客户负责人 && p.客户负责人 === me.id);
 }
 
-/** 记售后回访要的客户两格：客户负责人、在不在公海（组员不一定看得到这位客户，按 id 取全） */
-export async function 售后客户(customerId: string): Promise<{ 客户负责人: string | null; 客户在公海: boolean }> {
-  const c = await 看全部(() => prisma.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
+/**
+ * 记售后回访要的客户两格：客户负责人、在不在公海（组员不一定看得到这位客户，按 id 取全）。
+ * 事务里调要传 tx（同 客户事项挡 的 于）：外面的 prisma 在 CRM_READ_POOL=0 时排在主连接上，主连接被这笔事务占着就卡死
+ */
+export async function 售后客户(customerId: string, tx?: Prisma.TransactionClient): Promise<{ 客户负责人: string | null; 客户在公海: boolean }> {
+  const db: Pick<Prisma.TransactionClient, "customer"> = tx ?? prisma;
+  const c = await 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
   return { 客户负责人: c?.salesOwnerId ?? null, 客户在公海: !!c?.pool };
 }
 
@@ -116,14 +121,18 @@ export async function 核沟通项目(me: 谁, customerId: string, projectId: st
   return null;
 }
 
-/** 交付结清的项目上记沟通（核沟通项目、记项目沟通共用）：客户在公海 → 先领取那句；只看某人 → 只读那句；记不了 → 售后不能记话；没标 → 只能记售后回访 */
+/**
+ * 交付结清的项目上记沟通（核沟通项目、记项目沟通共用）：客户在公海 → 先领取那句；只看某人 → 只读那句；记不了 → 售后不能记话；没标 → 只能记售后回访。
+ * 事务里核（记项目沟通）传 于 = { tx, org }，同 客户事项挡：读客户走 tx，不在事务里另走外面的 prisma（CRM_READ_POOL=0 时卡死主连接）
+ */
 export async function 核售后回访(
   me: 谁, p: { customerId: string; ownerId: string; result: string | null; members?: { inviteStatus: string }[] }, 售后回访: boolean | undefined,
   组员状态: string | null | undefined = p.members?.[0]?.inviteStatus,
+  于?: { tx: Prisma.TransactionClient; org: 组织 | null },
 ): Promise<string | null> {
-  const 客 = await 售后客户(p.customerId);
+  const 客 = await 售后客户(p.customerId, 于?.tx);
   if (客.客户在公海) return 售后客户在公海话;
-  const org = await 权限组织();
+  const org = 于 ? 于.org : await 权限组织();
   if (只看的人(org, me.id)) return 只看某人话;
   if (!能记售后回访(me, { ...p, ...客 }, org, 组员状态)) return 售后不能记话;
   if (!售后回访) return 交付结清要售后回访话;

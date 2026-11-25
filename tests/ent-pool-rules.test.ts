@@ -796,7 +796,8 @@ describe("默认：线索公海的项目能单独领，客户不动（11-09，M-
     // 客户那一半筛掉的那位写进提示带出来（复审 11-26 S1），不只看 ok
     expect(await 撤销公海项目("分配", r.分到, 丙.id, 假)).toMatchObject({
       ok: true, updated: 1, 有没撤成: true,
-      提示: "已撤销 1 位；1 位已经不归分到的人、不是你刚才分的、原负责人已停用或过了撤销时限，这次没有撤销",
+      // 只勾了项目行：撤销条先说撤了几个项目，客户那一半接在后面（复审 S-b）
+      提示: "已撤销 1 个项目；另撤销 1 位客户；1 位已经不归分到的人、不是你刚才分的、原负责人已停用或过了撤销时限，这次没有撤销",
     });
     expect(await 在客户公海(c)).toBe(true);
     expect(await 在客户公海(丙的)).toBe(false);
@@ -815,7 +816,7 @@ describe("默认：线索公海的项目能单独领，客户不动（11-09，M-
     await prisma.customer.update({ where: { id: c }, data: { salesOwnerId: 经理.id } });
     expect(await 撤销公海项目("分配", r.分到, 丙.id, r.整包)).toEqual({
       ok: true, updated: 1, unchanged: 0, 有没撤成: true,
-      提示: "客户没撤销：这位已经不归分到的人、不是你刚才分的、原负责人已停用或过了撤销时限，这次没有撤销",
+      提示: "已撤销 1 个项目；客户没撤销：这位已经不归分到的人、不是你刚才分的、原负责人已停用或过了撤销时限，这次没有撤销",
     });
     expect(await 项目在公海(p)).toBe(true);
     expect(await 负责人(c)).toBe(经理.id);
