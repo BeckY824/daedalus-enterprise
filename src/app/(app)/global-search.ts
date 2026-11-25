@@ -8,6 +8,9 @@ import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 读市场身份, 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 import { 项目链接们 } from "@/lib/project/customer-detail-direct";
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
+import { 看已删 } from "@/lib/enterprise/soft-delete-core";
+import { 并入去向们, 并入后去处 } from "@/lib/enterprise/customer-merge";
+import type { Prisma } from "@/generated/prisma";
 
 /**
  * 顶部全局搜索（U-项目-04，企业版项目模式）：⌘K / 左栏搜索框里打两个字以上，顺带搜客户、项目、联系人。
@@ -60,6 +63,9 @@ export async function 全局搜索(关键词: string): Promise<全局搜索结�
     }),
   ]);
 
+  // 合并客户（E-277）：搜中已并入别家的 B（名字、编号），给留下的 A，附注写「已并入」；A 本来就在结果里的不重复
+  const 并入的 = 客户们.length < 每组上限 && Object.keys(客户条件).length ? await 搜到并入的(客户条件, new Set(客户们.map((c) => c.id))) : [];
+
   // 市场角色（11-04 P-看-06）：只看进度的那条不进搜索结果（详情页本来也挡）
   const 市场挡 = 市场 ? await 市场进不了详情的(me.id, 项目们.map((p) => p.id)) : new Set<string>();
   const 能开项目 = 项目们.filter((p) => !市场挡.has(p.id)).slice(0, 每组上限);
@@ -68,9 +74,27 @@ export async function 全局搜索(关键词: string): Promise<全局搜索结�
   const 拼 = (...xs: (string | null | undefined)[]) => xs.filter(Boolean).join(" · ") || null;
   return {
     // 全称选填（11-19）：名字空着的客户给显名（简称 → 全称 → 客户编号），结果里不出空白行
-    客户: 客户们.map((c) => ({ id: c.id, name: 客户显名(c), 附注: 拼(c.school), 去: `/customers/${c.id}` })),
+    客户: [...客户们.map((c) => ({ id: c.id, name: 客户显名(c), 附注: 拼(c.school), 去: `/customers/${c.id}` })), ...并入的].slice(0, 每组上限),
     项目: 能开项目.map((p) => ({ id: p.id, name: p.name, 附注: 拼(p.customer ? 客户显名(p.customer) : null, p.phase, p.node), 去: 链.get(p.id) ?? `/projects/${p.id}` })),
     // 联系人没有自己的详情页，点了去所属客户
     联系人: 联系人们.map((c) => ({ id: c.id, name: c.name, 附注: 拼(c.customer ? 客户显名(c.customer) : null, c.position, 号(c.phone)), 去: `/customers/${c.customerId}` })),
   };
+}
+
+/** 回收站里、已并入别家（合并单没撤回）的客户命中了关键词：换成留下那家（看得到的才给） */
+async function 搜到并入的(客户条件: Prisma.CustomerWhereInput, 已有: Set<string>): Promise<搜到的一条[]> {
+  const 删了的 = await 看已删(() => prisma.customer.findMany({ where: { AND: [客户条件, { deletedAt: { not: null } }] }, take: 每组上限, select: 显名列 }));
+  if (!删了的.length) return [];
+  const 去向 = await 并入去向们(prisma, 删了的.map((c) => c.id));
+  if (!去向.size) return [];
+  const 留下 = new Map((await prisma.customer.findMany({ where: { id: { in: [...new Set([...去向.values()].map((x) => x.intoId))] } }, select: 显名列 })).map((c) => [c.id, c]));
+  const out: 搜到的一条[] = [];
+  for (const b of 删了的) {
+    const 去 = 去向.get(b.id);
+    const a = 去 && 留下.get(去.intoId);
+    if (!去 || !a || 已有.has(a.id)) continue;
+    已有.add(a.id);
+    out.push({ id: a.id, name: 客户显名(a), 附注: `「${客户显名(b)}」已并入这位客户`, 去: 并入后去处(a.id, b.id) });
+  }
+  return out;
 }

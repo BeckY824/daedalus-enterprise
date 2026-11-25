@@ -30,6 +30,8 @@ import { 通知里的客户名 } from "./notice-mask";
 import { 客户编号文字 } from "@/lib/customer-no";
 import { 同事项目几个话 } from "@/lib/carry-over";
 import { 忘掉企业版范围 } from "./visibility";
+import { 合成一对, 拆开一对 } from "./contact-merge";
+import { 号码脱敏器 } from "./phone-mask";
 
 type 库 = PrismaClient;
 type Tx = Prisma.TransactionClient;
@@ -40,6 +42,9 @@ type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 export const 撤回期限天数 = 回收站保留天数;
 export const 合并通知种类 = "合并客户";
 export const 已核对话 = "已核对，按留下那家的来源和创建人";
+/** 合并单 kind：客户合并 / 合成联系人（单独合成的 parentId 空；合并客户时勾的挂在客户合并单下） */
+export const 客户单 = "客户";
+export const 联系人单 = "联系人";
 
 /* ───────────────────────── 读两家 ───────────────────────── */
 
@@ -53,9 +58,9 @@ const 客户列 = {
   extra: { select: { country: true, website: true, level: true } },
   channel: { select: { name: true, channelOwnerId: true } },
 } satisfies Prisma.CustomerSelect;
-type 客户行 = Prisma.CustomerGetPayload<{ select: typeof 客户列 }>;
+export type 客户行 = Prisma.CustomerGetPayload<{ select: typeof 客户列 }>;
 
-async function 读客户(db: Pick<Tx, "customer">, id: string): Promise<客户行 | null> {
+export async function 读客户(db: Pick<Tx, "customer">, id: string): Promise<客户行 | null> {
   return 看全部(() => db.customer.findFirst({ where: { id, deletedAt: null }, select: 客户列 }));
 }
 
@@ -135,7 +140,21 @@ export type 合并预览结果 = {
   要勾选: boolean;
   /** 留下那家空着、要用被并那家补上的格（叫法） */
   补空: string[];
+  /** 两家的联系人（勾「是同一个人」用；号码照看的人的打码规则） */
+  联系人们: { 留下: 预览联系人[]; 并掉: 预览联系人[] };
 };
+export type 预览联系人 = { id: string; name: string; position: string | null; 关键: boolean; 号: string[] };
+
+async function 预览联系人们(db: 库, customerId: string, me: 合并人): Promise<预览联系人[]> {
+  const [们, 号] = await Promise.all([
+    看全部(() => db.contact.findMany({
+      where: { customerId, deletedAt: null }, orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }, { id: "asc" }],
+      select: { id: true, name: true, position: true, isPrimary: true, contactMethods: { select: { kind: true, value: true }, orderBy: { createdAt: "asc" } } },
+    })),
+    号码脱敏器(me.id),
+  ]);
+  return 们.map((c) => ({ id: c.id, name: c.name, position: c.position, 关键: c.isPrimary, 号: c.contactMethods.map((m) => (m.kind === "phone" ? 号(m.value) : m.value)) }));
+}
 
 async function 人名们(db: Pick<Tx, "user">, ids: (string | null | undefined)[]): Promise<Map<string, string>> {
   const 们 = [...new Set(ids.filter((x): x is string => !!x))];
@@ -172,7 +191,7 @@ export async function 合并预览(db: 库, 留下id: string, 并掉id: string, 
   const org = await 权限组织();
   const [A, B] = await Promise.all([读客户(db, 留下id), 读客户(db, 并掉id)]);
   const 原因 = await 拦的原因(db, A, B, me, org);
-  if (!A || !B) return { 能并: false, 原因, 并排: [], 条数: null, 要勾选: false, 补空: [] };
+  if (!A || !B) return { 能并: false, 原因, 并排: [], 条数: null, 要勾选: false, 补空: [], 联系人们: { 留下: [], 并掉: [] } };
   const 人 = await 人名们(db, [A.salesOwnerId, B.salesOwnerId, A.creator?.userId, B.creator?.userId]);
   const 日 = (d: Date) => d.toISOString().slice(0, 10);
   const 行 = (格: string, a: string, b: string, 标红 = false): 并排格 => ({ 格, 留下: a, 并掉: b, 不同: a !== b, ...(标红 && a !== b ? { 标红: true } : {}) });
@@ -191,7 +210,9 @@ export async function 合并预览(db: 库, 留下id: string, 并掉id: string, 
     行("客户状态", A.custStatus ?? "", B.custStatus ?? ""),
     行("建档时间", 日(A.createdAt), 日(B.createdAt)),
   ];
-  return { 能并: 原因.length === 0, 原因, 并排, 条数: await 数条数(db, B.id), 要勾选: 来源或创建人不同(A, B), 补空: 补空叫法(算补空(A, B)) };
+  // 拦住的不给联系人明细（只给能并的人看两家的人和号）
+  const 联系人们 = 原因.length ? { 留下: [], 并掉: [] } : { 留下: await 预览联系人们(db, A.id, me), 并掉: await 预览联系人们(db, B.id, me) };
+  return { 能并: 原因.length === 0, 原因, 并排, 条数: await 数条数(db, B.id), 要勾选: 来源或创建人不同(A, B), 补空: 补空叫法(算补空(A, B)), 联系人们 };
 }
 
 /* ───────────────────────── 合并单明细 ───────────────────────── */
@@ -246,12 +267,24 @@ async function 改指(tx: Tx, t: string, 列: string, from: string, to: string |
 
 /* ───────────────────────── 执行合并 ───────────────────────── */
 
-class 拦下 extends Error {}
+export class 拦下 extends Error {}
 
-export type 合并完 = { mergeId: string; 条数: 合并条数 };
+export type 合并完 = { mergeId: string; 条数: 合并条数; 合成: number };
+/** 勾的「是同一个人」：留 = 留下那家的联系人，并 = 被并那家的联系人 */
+export type 同一个人 = { 留: string; 并: string };
 
-/** 执行合并：B 并进 A。已核对 = 预览里要勾选时勾过了 */
-export async function 执行合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 已核对?: boolean; 现在?: Date } = {}): Promise<结果<合并完>> {
+/** 「是同一个人」那几对查一遍：留的是 A 的、并的是 B 的，都没删，一位只出现一次 */
+async function 查同一个人(tx: Tx, A: string, B: string, 对们: readonly 同一个人[]): Promise<string | null> {
+  if (!对们.length) return null;
+  const ids = 对们.flatMap((x) => [x.留, x.并]);
+  if (new Set(ids).size !== ids.length) return "同一位联系人只能勾一次「是同一个人」";
+  const 们 = new Map((await tx.contact.findMany({ where: { id: { in: ids }, deletedAt: null }, select: { id: true, customerId: true } })).map((c) => [c.id, c.customerId]));
+  for (const x of 对们) if (们.get(x.留) !== A || 们.get(x.并) !== B) return "勾的「是同一个人」对不上两家的联系人，刷新再勾";
+  return null;
+}
+
+/** 执行合并：B 并进 A。已核对 = 预览里要勾选时勾过了；同一个人 = 勾了「是同一个人」的几对联系人，合成一位 */
+export async function 执行合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 已核对?: boolean; 现在?: Date; 同一个人?: readonly 同一个人[] } = {}): Promise<结果<合并完>> {
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   const 开 = await 客户状态自动();
@@ -265,7 +298,23 @@ export async function 执行合并(db: 库, 留下id: string, 并掉id: string, 
           const 原因 = await 拦的原因(tx, A, B, me, org);
           if (原因.length) throw new 拦下(原因.join("；"));
           if (来源或创建人不同(A!, B!) && !opt.已核对) throw new 拦下(`两家的来源或创建人不一样，请先勾选「${已核对话}」`);
+          const 对们 = opt.同一个人 ?? [];
+          const 对不上 = await 查同一个人(tx, A!.id, B!.id, 对们);
+          if (对不上) throw new 拦下(对不上);
+          // 先读好每对两位当时的样子（关键标、主客户），挪完再合成
+          const 两位 = new Map((await tx.contact.findMany({ where: { id: { in: 对们.flatMap((x) => [x.留, x.并]) } }, select: { id: true, name: true, customerId: true, isPrimary: true, deletedAt: true } })).map((c) => [c.id, c]));
           const 结 = await 挪(tx, A!, B!, me, 现在, 开);
+          for (const x of 对们) {
+            // 挪的时候 B 的关键标可能已经去掉了：按挪完的样子合成
+            const 现 = await tx.contact.findMany({ where: { id: { in: [x.留, x.并] } }, select: { id: true, name: true, customerId: true, isPrimary: true, deletedAt: true } });
+            const 留 = 现.find((c) => c.id === x.留) ?? 两位.get(x.留)!;
+            const 并 = 现.find((c) => c.id === x.并) ?? 两位.get(x.并)!;
+            const 明 = await 合成一对(tx, 留, 并, 现在);
+            await tx.entCustomerMerge.create({
+              data: { kind: 联系人单, fromId: 并.id, intoId: 留.id, parentId: 结.mergeId, status: "已合并", byUserId: me.id, fromName: 并.name, detail: JSON.stringify(明), at: 现在 },
+            });
+          }
+          结.合成 = 对们.length;
           通知要 = { A: A!, B: B! };
           return 结;
         }, { timeout: 60_000 }),
@@ -401,7 +450,7 @@ async function 挪(tx: Tx, A: 客户行, B: 客户行, me: 合并人, 现在: Da
 
   const 单 = await tx.entCustomerMerge.create({
     data: {
-      kind: "客户", fromId: B.id, intoId: A.id, status: "已合并", byUserId: me.id,
+      kind: 客户单, fromId: B.id, intoId: A.id, status: "已合并", byUserId: me.id,
       fromName: B.name ?? "", fromNo: B.customerNo, fromOwnerId: B.salesOwnerId || null, fromCreatorId: B.creator?.userId ?? null,
       fromChannelId: B.channelId, fromTouchpoint: B.touchpoint, counts: JSON.stringify(条数), detail: JSON.stringify(明), at: 现在,
     },
@@ -416,11 +465,11 @@ async function 挪(tx: Tx, A: 客户行, B: 客户行, me: 合并人, 现在: Da
         summary: `合并客户：已并入「${名(A)}」${编号(A)}`, detail: JSON.stringify({ mergeId: 单.id, 留下: A.id }) },
     ],
   });
-  return { mergeId: 单.id, 条数 };
+  return { mergeId: 单.id, 条数, 合成: 0 };
 }
 
 /** 最近跟进按没删的沟通重算（同 soft-delete.ts 重算最近跟进）；同号留痕不算 */
-async function 重算最近跟进(tx: Tx, customerId: string) {
+export async function 重算最近跟进(tx: Tx, customerId: string) {
   const latest = await tx.followUp.findFirst({ where: { customerId, deletedAt: null, occurredAt: { lte: new Date() }, ...不是同号留痕 }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
   await tx.customer.updateMany({ where: { id: customerId }, data: { lastFollowAt: latest?.occurredAt ?? null } });
 }
@@ -446,23 +495,99 @@ export type 没还原 = { 类: string; id: string; 原因: string };
 
 /** B 已并入哪位（还在撤回期内的合并单）；回收站、旧链接跳转用 */
 export async function 并入去向(db: 库, customerId: string): Promise<{ mergeId: string; intoId: string; at: Date } | null> {
-  const m = await db.entCustomerMerge.findFirst({ where: { kind: "客户", fromId: customerId, status: "已合并" }, orderBy: { at: "desc" }, select: { id: true, intoId: true, at: true } });
+  const m = await db.entCustomerMerge.findFirst({ where: { kind: 客户单, fromId: customerId, status: "已合并" }, orderBy: { at: "desc" }, select: { id: true, intoId: true, at: true } });
   return m ? { mergeId: m.id, intoId: m.intoId, at: m.at } : null;
 }
 
-/** 撤回合并（整单）：合并的人本人或系统管理员，30 天内 */
+/** 打开已并入的 B：去 A 的地址，带 ?merged=B，别的参数照带（merged 自己不重复带） */
+export function 并入后去处(intoId: string, fromId: string, sp: Record<string, string | string[] | undefined> = {}): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(sp)) if (k !== "merged" && typeof v === "string") q.set(k, v);
+  q.set("merged", fromId);
+  return `/customers/${intoId}?${q.toString()}`;
+}
+
+/** A 页顶上那句「NO.xxxxx「B」已并入这位客户」：merged 参数对得上一张没撤回、并进 A 的合并单才给；对不上给 null */
+export async function 并入提示(db: 库, 留下id: string, merged: string | null | undefined): Promise<string | null> {
+  if (!merged || !企业版()) return null;
+  const m = await db.entCustomerMerge.findFirst({ where: { kind: 客户单, fromId: merged, intoId: 留下id, status: "已合并" }, orderBy: { at: "desc" }, select: { fromName: true, fromNo: true } });
+  if (!m) return null;
+  const 编号 = 客户编号文字(m.fromNo);
+  return `${编号 ?? ""}${m.fromName ? `「${m.fromName}」` : ""}已并入这位客户，原来的链接都会跳到这里`;
+}
+
+/** 联系人已合成进哪位（还没撤回的合成单）；回收站用 */
+export async function 合成去向(db: 库, contactIds: string[]): Promise<Map<string, { mergeId: string; intoId: string; parentId: string | null }>> {
+  if (!contactIds.length) return new Map();
+  const 们 = await db.entCustomerMerge.findMany({ where: { kind: 联系人单, fromId: { in: contactIds }, status: "已合并" }, orderBy: { at: "desc" }, select: { id: true, fromId: true, intoId: true, parentId: true } });
+  const m = new Map<string, { mergeId: string; intoId: string; parentId: string | null }>();
+  for (const x of 们) if (!m.has(x.fromId)) m.set(x.fromId, { mergeId: x.id, intoId: x.intoId, parentId: x.parentId });
+  return m;
+}
+
+/** 几位客户各自并入了哪位（还没撤回的合并单）；回收站列表、导入撤回、全局搜索用 */
+export async function 并入去向们(db: 库, customerIds: string[]): Promise<Map<string, { mergeId: string; intoId: string; at: Date }>> {
+  if (!customerIds.length) return new Map();
+  const 们 = await db.entCustomerMerge.findMany({ where: { kind: 客户单, fromId: { in: customerIds }, status: "已合并" }, orderBy: { at: "desc" }, select: { id: true, fromId: true, intoId: true, at: true } });
+  const m = new Map<string, { mergeId: string; intoId: string; at: Date }>();
+  for (const x of 们) if (!m.has(x.fromId)) m.set(x.fromId, { mergeId: x.id, intoId: x.intoId, at: x.at });
+  return m;
+}
+
+/** 单独合成联系人：同一位客户名下两位，「并」收进「留」。负责人本人（能删客户的角色）或系统管理员；公海里的先领 */
+export async function 合成联系人(db: 库, 留id: string, 并id: string, me: 合并人, 现在: Date = new Date()): Promise<结果<{ mergeId: string }>> {
+  if (!企业版()) return { ok: false, error: "只有企业版能合成联系人" };
+  if (留id === 并id) return { ok: false, error: "请选另一位联系人" };
+  const org = await 权限组织();
+  try {
+    const id = await 看全部(() =>
+      db.$transaction(async (tx) => {
+        const 们 = await tx.contact.findMany({ where: { id: { in: [留id, 并id] }, deletedAt: null }, select: { id: true, name: true, customerId: true, isPrimary: true, deletedAt: true } });
+        const 留 = 们.find((c) => c.id === 留id);
+        const 并 = 们.find((c) => c.id === 并id);
+        if (!留 || !并) throw new 拦下("联系人不存在或已删除，刷新看看");
+        if (留.customerId !== 并.customerId) throw new 拦下("只能合成同一位客户名下的两位联系人；挂靠过来的联系人请到他的主客户上合成");
+        const c = await tx.customer.findFirst({ where: { id: 留.customerId, deletedAt: null }, select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
+        if (!c) throw new 拦下("客户不存在或已删除，刷新看看");
+        if (!org || 只读角色(me, org) || 只看的人(org, me.id)) throw new 拦下("你只能看，不能合成联系人");
+        if (!是系统管理员(me, org)) {
+          if (c.pool) throw new 拦下("客户在公海里，先领出来再合成联系人");
+          if (!能删除(me, org, c.salesOwnerId)) throw new 拦下("只有客户负责人本人或系统管理员能合成联系人");
+        }
+        const 明 = await 合成一对(tx, 留, 并, 现在);
+        const 单 = await tx.entCustomerMerge.create({ data: { kind: 联系人单, fromId: 并.id, intoId: 留.id, status: "已合并", byUserId: me.id, fromName: 并.name, detail: JSON.stringify(明), at: 现在 } });
+        await tx.auditLog.createMany({
+          data: [
+            { userId: me.id, userName: me.name, action: "merge", entity: "Contact", entityId: 留.id, at: 现在, summary: `合成联系人：把「${并.name}」合成进这位联系人，${撤回期限天数} 天内可撤回`, detail: JSON.stringify({ mergeId: 单.id, 并掉: 并.id }) },
+            { userId: me.id, userName: me.name, action: "merge", entity: "Customer", entityId: c.id, at: 现在, summary: `合成联系人：「${并.name}」合成进「${留.name}」`, detail: JSON.stringify({ mergeId: 单.id }) },
+          ],
+        });
+        return 单.id;
+      }),
+    );
+    忘掉企业版范围();
+    return { ok: true, mergeId: id };
+  } catch (e) {
+    if (e instanceof 拦下) return { ok: false, error: e.message };
+    throw e;
+  }
+}
+
+/** 撤回合并（整单）：合并的人本人或系统管理员，30 天内。单独合成的联系人也走这里（kind = 联系人） */
 export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现在: Date = new Date()): Promise<结果<{ 没还原: 没还原[] }>> {
   if (!企业版()) return { ok: false, error: "只有企业版能撤回合并" };
+  const 看单 = await db.entCustomerMerge.findUnique({ where: { id: mergeId }, select: { kind: true } });
+  if (看单?.kind === 联系人单) return 撤回合成(db, mergeId, me, 现在);
   const org = await 权限组织();
   const 开 = await 客户状态自动();
-  let 结: 没还原[] = [];
+  const 结: 没还原[] = [];
   let 两家: [string, string] | null = null;
   try {
     await 看已删(() =>
       看全部(() =>
         db.$transaction(async (tx) => {
           const m = await tx.entCustomerMerge.findUnique({ where: { id: mergeId } });
-          if (!m || m.kind !== "客户") throw new 拦下("找不到这张合并单");
+          if (!m || m.kind !== 客户单) throw new 拦下("找不到这张合并单");
           if (m.status !== "已合并") throw new 拦下("这张合并单已经撤回过了");
           if (!org || 只读角色(me, org) || 只看的人(org, me.id) || (m.byUserId !== me.id && !是系统管理员(me, org))) throw new 拦下("只有合并的人或系统管理员能撤回合并");
           if (现在.getTime() - m.at.getTime() > 撤回期限天数 * 86_400_000) throw new 拦下(`合并已超过 ${撤回期限天数} 天，不能整单撤回`);
@@ -473,7 +598,12 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
           if (!B) throw new 拦下("被并的客户已清出回收站，不能撤回");
           if (!A) throw new 拦下("留下的客户已彻底删除，不能撤回");
           if (A.deletedAt) throw new 拦下(`「${名(A)}」在回收站里，先恢复再撤回合并`);
-          结 = await 挪回(tx, m.detail, A.id, B.id, A.poolReturns);
+          // 合并时勾的「是同一个人」：先拆开（「并」那位回来、还挂在 A 名下），下面再随联系人一起挪回 B
+          for (const 子 of await tx.entCustomerMerge.findMany({ where: { parentId: m.id, kind: 联系人单, status: "已合并" } })) {
+            结.push(...(await 拆开一对(tx, 子.detail, 子.intoId, 子.fromId)));
+            await tx.entCustomerMerge.update({ where: { id: 子.id }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id } });
+          }
+          结.push(...(await 挪回(tx, m.detail, A.id, B.id, A.poolReturns)));
           await tx.customer.update({ where: { id: B.id }, data: { deletedAt: null } });
           await 重算最近跟进(tx, A.id);
           await 重算最近跟进(tx, B.id);
@@ -497,6 +627,37 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
   忘掉企业版范围();
   if (两家) await 存沟通后重算三态(两家, 现在).catch((e) => console.warn("[撤回合并] 三态没重算上：", e instanceof Error ? e.message : e));
   return { ok: true, 没还原: 结 };
+}
+
+async function 撤回合成(db: 库, mergeId: string, me: 合并人, 现在: Date): Promise<结果<{ 没还原: 没还原[] }>> {
+  const org = await 权限组织();
+  try {
+    const 结 = await 看已删(() =>
+      看全部(() =>
+        db.$transaction(async (tx) => {
+          const m = await tx.entCustomerMerge.findUnique({ where: { id: mergeId } });
+          if (!m) throw new 拦下("找不到这张合成单");
+          if (m.parentId) throw new 拦下("这两位是合并客户时合成的，请撤回那次合并客户");
+          if (m.status !== "已合并") throw new 拦下("这张合成单已经撤回过了");
+          if (!org || 只读角色(me, org) || 只看的人(org, me.id) || (m.byUserId !== me.id && !是系统管理员(me, org))) throw new 拦下("只有合成的人或系统管理员能撤回");
+          if (现在.getTime() - m.at.getTime() > 撤回期限天数 * 86_400_000) throw new 拦下(`合成已超过 ${撤回期限天数} 天，不能撤回`);
+          const 并 = await tx.contact.findUnique({ where: { id: m.fromId }, select: { id: true, name: true, customerId: true } });
+          if (!并) throw new 拦下("合成掉的那位已清出回收站，不能撤回");
+          const 主 = await tx.customer.findUnique({ where: { id: 并.customerId }, select: { deletedAt: true } });
+          if (主?.deletedAt) throw new 拦下("客户在回收站里，先恢复客户再撤回");
+          const 留 = await 拆开一对(tx, m.detail, m.intoId, m.fromId);
+          await tx.entCustomerMerge.update({ where: { id: m.id }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id, undoLeft: 留.length ? JSON.stringify(留) : null } });
+          await tx.auditLog.create({ data: { userId: me.id, userName: me.name, action: "merge-undo", entity: "Contact", entityId: m.intoId, at: 现在, summary: `撤回合成联系人：「${并.name}」已拆回${留.length ? `；${留.length} 条之后被改过，留在原处` : ""}`, detail: JSON.stringify({ mergeId: m.id, 没还原: 留 }) } });
+          return 留;
+        }),
+      ),
+    );
+    忘掉企业版范围();
+    return { ok: true, 没还原: 结 };
+  } catch (e) {
+    if (e instanceof 拦下) return { ok: false, error: e.message };
+    throw e;
+  }
 }
 
 async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: number): Promise<没还原[]> {

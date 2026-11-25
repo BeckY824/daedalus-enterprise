@@ -1,6 +1,7 @@
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
 import { 负责人显示名 } from "@/lib/pool";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { 并入去向, 并入后去处 } from "@/lib/enterprise/customer-merge";
 import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 历史负责人of, 我放出去的公海客户 } from "@/lib/owner-log-db";
@@ -104,6 +105,10 @@ export default async function CustomerDetailPage({
   });
 
   if (!customer) {
+    // 合并客户（customer-merge.ts，E-277）：旧通知、提醒、待办、书签里的 /customers/B 跳到留下的 A，带上 ?merged=B 给 A 页提示「已并入」；
+    // 别的参数（focus=plan:…、project=…）照带，计划、项目都已挪到 A
+    const 去 = 企业版() ? await 并入去向(prisma, id) : null;
+    if (去) redirect(并入后去处(去.intoId, id, sp));
     // 只负责项目的人（用户 11-12 定）：客户看不到、名下有自己负责的项目 = 受限详情（只读卡 + 只有自己的项目）；别的照旧 404
     const 受限 = 只项目 ? await 读受限客户详情(me, id, sp.project ?? null) : null;
     if (!受限) notFound();

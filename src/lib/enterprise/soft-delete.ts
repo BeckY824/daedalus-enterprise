@@ -159,6 +159,9 @@ async function 只恢复(t: 软删表名, id: string, 操作人 = ""): Promise<�
     const 行 = await 表(tx, t).findUnique({ where: { id }, select: t === "Customer" ? { id: true, deletedAt: true } : { id: true, deletedAt: true, customerId: true } });
     const 时刻 = 行?.deletedAt as Date | null | undefined;
     if (!行 || !时刻) return { ok: false as const, error: "这一条已经不在回收站里了，刷新看看" };
+    // 已并入 / 已合成的只能走撤回合并（回收站页、查重捞回都挡）
+    const 并 = (await 并入了哪(tx, t, [id])).get(id);
+    if (并) return { ok: false as const, error: 并入了话(t, 并) };
     const customerId = t === "Customer" ? id : String(行.customerId);
     if (t !== "Customer") {
       const c = await tx.customer.findUnique({ where: { id: customerId }, select: { ...显名列, deletedAt: true } });
@@ -254,12 +257,39 @@ async function 清孤儿行(tx: Tx) {
   await tx.$executeRawUnsafe('DELETE FROM "EntDupeHit" WHERE "customerId" NOT IN (SELECT id FROM "Customer")');
 }
 
+/**
+ * 合并客户 / 合成联系人（customer-merge.ts，E-277）：被并掉的客户、合成掉的联系人在回收站里标「已并入 → 留下那位」，
+ * 不能单独恢复、不能单独彻底删除，只能走撤回合并（单独恢复会回来一位空壳，彻底删了就撤不回了）。
+ * 只查合并单（不引 customer-merge.ts：它引着三态 → 项目 → 本文件）
+ */
+export type 并入了 = { mergeId: string; 去: { id: string; 名: string } };
+export async function 并入了哪(db: Pick<Tx, "entCustomerMerge" | "customer" | "contact">, t: 软删表名, ids: string[]): Promise<Map<string, 并入了>> {
+  const out = new Map<string, 并入了>();
+  if ((t !== "Customer" && t !== "Contact") || !ids.length || !企业版()) return out;
+  const 单们 = await db.entCustomerMerge.findMany({ where: { kind: t === "Customer" ? "客户" : "联系人", fromId: { in: ids }, status: "已合并" }, orderBy: { at: "desc" }, select: { id: true, fromId: true, intoId: true } });
+  if (!单们.length) return out;
+  const 到 = [...new Set(单们.map((x) => x.intoId))];
+  const 名们 = new Map<string, string>(
+    t === "Customer"
+      ? (await 看全部(() => 看已删(() => db.customer.findMany({ where: { id: { in: 到 } }, select: 显名列 })))).map((c) => [c.id, 客户显名(c)])
+      : (await 看全部(() => 看已删(() => db.contact.findMany({ where: { id: { in: 到 } }, select: { id: true, name: true } })))).map((c) => [c.id, c.name]),
+  );
+  for (const x of 单们) if (!out.has(x.fromId)) out.set(x.fromId, { mergeId: x.id, 去: { id: x.intoId, 名: 名们.get(x.intoId) ?? "" } });
+  return out;
+}
+export const 并入了话 = (t: 软删表名, x: 并入了) =>
+  t === "Customer"
+    ? `这位客户已并入「${x.去.名}」，不能单独恢复或彻底删除；要拆开请到「${x.去.名}」上撤回合并`
+    : `这位联系人已合成进「${x.去.名}」，不能单独恢复或彻底删除；要拆开请撤回合成`;
+
 /** 彻底删除回收站里的一条：只有系统管理员。客户连同名下的一起真删（外键级联） */
 export async function 彻底删除(me: 谁, t: 软删表名, id: string): Promise<结果<{ name: string }>> {
   if (!(await 能彻底删除(me))) return { ok: false, error: "只有系统管理员能彻底删除" };
   return prisma.$transaction((tx) => 看已删(async () => {
     const 行 = await 表(tx, t).findUnique({ where: { id }, select: { id: true, deletedAt: true } });
     if (!行?.deletedAt) return { ok: false as const, error: "这一条不在回收站里了，刷新看看" };
+    const 并 = (await 并入了哪(tx, t, [id])).get(id);
+    if (并) return { ok: false as const, error: 并入了话(t, 并) };
     const name = await 叫什么(tx, t, id);
     if (t === "Customer") await 看全部(() => 线索退回(tx, [id]));
     // 联系人真删之前先摘他的号：外键置空会把号留在客户上，之后一直撞号（审核 11-18 P1-4）。客户整个删的，号跟着客户级联删
@@ -330,6 +360,8 @@ export type 回收站条目 = {
   剩几天: number;
   /** 客户这一条：同一时刻一起进回收站的 */
   连带?: { 联系人: number; 项目: number; 沟通记录: number };
+  /** 合并客户 / 合成联系人并掉的：「已并入 → 留下那位」，不能单独恢复、彻底删除 */
+  已并入?: { id: string; 名: string };
 };
 
 /**
@@ -370,6 +402,14 @@ export async function 回收站列表(me: 谁, 现在: Date = new Date()): Promi
     for (const f of 记录们) 子("FollowUp", "沟通记录", f, (f.title || f.content).slice(0, 40));
     for (const c of 客户们) {
       out.push({ 表: "Customer", id: c.id, 名称: 客户显名(c), 客户: null, deletedAt: c.deletedAt!.toISOString(), 剩几天: 剩(c.deletedAt!), 连带: 连带数.get(连带键(c.id, c.deletedAt!)) ?? { 联系人: 0, 项目: 0, 沟通记录: 0 } });
+    }
+    const [并客户, 并联系人] = await Promise.all([
+      并入了哪(prisma, "Customer", out.filter((x) => x.表 === "Customer").map((x) => x.id)),
+      并入了哪(prisma, "Contact", out.filter((x) => x.表 === "Contact").map((x) => x.id)),
+    ]);
+    for (const x of out) {
+      const 并 = (x.表 === "Customer" ? 并客户 : x.表 === "Contact" ? 并联系人 : null)?.get(x.id);
+      if (并) x.已并入 = 并.去;
     }
     return out.sort((a, b) => b.deletedAt.localeCompare(a.deletedAt));
   });
