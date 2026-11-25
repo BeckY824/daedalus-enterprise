@@ -222,7 +222,7 @@ describe("复查补的几条", () => {
     const r = await 领取([c.id]);
     if (!r.ok) throw new Error(r.error);
     await prisma.user.update({ where: { id: 同事 }, data: { active: false } });
-    expect(await 撤销公海("领取", r.原负责人!, r.带过来)).toMatchObject({ ok: true, updated: 0, unchanged: 1 });
+    expect(await 撤销公海("领取", r.原负责人!, r.带过来)).toEqual({ ok: false, error: "这位已经不归你、原负责人已停用或过了撤销时限，这次没有撤销" });
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(我);
   });
 });

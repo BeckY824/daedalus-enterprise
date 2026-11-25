@@ -83,7 +83,14 @@ function 定时收(id: number, ms: number) {
   if (!手 || 当前?.id !== id) return;
   手.剩 = ms;
   手.起 = Date.now();
-  if (当前.停 && 能停(当前.态)) return;
+  if (当前.停 && 能停(当前.态)) {
+    // 键盘回车撤销后按钮被拿掉、浏览器不发 blur，「停」会一直挂着（复审 11-26 S-d）：
+    // 只在鼠标确实还在条上、或焦点还在条里时才停；否则照常走表
+    const 条el = typeof document !== "undefined" ? document.querySelector(".undo-bar") : null;
+    const 还在 = !!条el && (条el.matches(":hover") || 条el.contains(document.activeElement));
+    if (还在) return;
+    改(id, { 停: false });
+  }
   手.计时 = setTimeout(() => 收起(id), ms);
 }
 
