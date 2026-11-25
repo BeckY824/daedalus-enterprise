@@ -111,6 +111,23 @@ describe("M3 合并后单独合成过联系人，撤回合并", () => {
     expect(await raw.contact.findUniqueOrThrow({ where: { id: b1 } })).toMatchObject({ customerId: b, deletedAt: null, isPrimary: true });
   });
 
+  it("不连锁拆：B 来的人合进 A 的人之后，A 的人又合进 A 自家另一位——后一次不拆，号码留在原处记没还原", async () => {
+    const a = await 客户(乙.id);
+    const b = await 客户(乙.id);
+    const a1 = await 主联系人(a);
+    const a2 = (await raw.contact.create({ data: { name: "a2", customerId: a } })).id;
+    const b1 = await 主联系人(b);
+    const m = await 号(b, b1, "13866667777");
+    const mergeId = await 并成(a, b, 乙);
+    await 合成(a1, b1, 乙);
+    const 连锁 = await 合成(a2, a1, 乙);
+    const u = await 撤回合并(prisma, mergeId, 乙);
+    expect(u).toMatchObject({ ok: true, 提示: "先拆开了 1 次联系人合成" });
+    expect((u as { 没还原: { id: string }[] }).没还原.filter((x) => x.id === m.id)).toHaveLength(1);
+    expect((await raw.entCustomerMerge.findUniqueOrThrow({ where: { id: 连锁 } })).status).toBe("已合并");
+    expect(await raw.contactMethod.findUniqueOrThrow({ where: { id: m.id } })).toMatchObject({ contactId: a2, customerId: a });
+  });
+
   it("合并之前 B 自己合成过的不拆；只有 A 自己两位之间的合成也不拆", async () => {
     const a = await 客户(乙.id);
     const b = await 客户(乙.id);
@@ -256,6 +273,26 @@ describe("建议 7 撤回后原负责人已停用", () => {
     expect(B.salesOwnerId).not.toBe(丙.id);
     // A 没动（不是这次恢复回来的）
     expect((await raw.customer.findUniqueOrThrow({ where: { id: a }, select: { salesOwnerId: true } })).salesOwnerId).toBe(丙.id);
+  });
+
+  it("知会一声用撤回合并的话：系统管理员收到「撤回了合并……拆回来了」，不说从回收站恢复；撤回的人自己不收", async () => {
+    await raw.user.create({ data: { email: 无负责人占位邮箱, name: "无负责人", role: "SALES", password: "x", active: false } });
+    const 老板二 = await 造人("boss2", "老板二", "ADMIN");
+    await raw.entMember.create({ data: { userId: 老板二.id, bizRole: "director" } });
+    const a = await 客户(丙.id);
+    const b = await 客户(丙.id);
+    const mergeId = await 并成(a, b, 老板);
+    await raw.user.update({ where: { id: 丙.id }, data: { active: false } });
+    忘掉企业版范围();
+    expect((await 撤回合并(prisma, mergeId, 老板)).ok).toBe(true);
+    await 等通知推完();
+    const 收到 = (await raw.entNotice.findMany({ where: { userId: 老板二.id }, select: { title: true } })).map((n) => n.title).filter((t) => t.includes("已停用"));
+    expect(收到).toHaveLength(1);
+    expect(收到[0]).toContain("老板 撤回了合并");
+    expect(收到[0]).toContain("拆回来了");
+    expect(收到[0]).toContain("丙");
+    expect(收到[0]).not.toContain("回收站");
+    expect((await raw.entNotice.findMany({ where: { userId: 老板.id, title: { contains: "已停用" } } }))).toHaveLength(0);
   });
 });
 

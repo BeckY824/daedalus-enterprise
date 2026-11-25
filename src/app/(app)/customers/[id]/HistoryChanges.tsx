@@ -279,7 +279,7 @@ function MergeOrders({ customerId }: { customerId: string }) {
   const router = useRouter();
   const [问后果, 后果框] = useConsequence();
   const [们, set们] = useState<合并单一条[] | null>(null);
-  const [结果, set结果] = useState<Record<string, { 没还原: { 类: string; 原因: string }[] }>>({});
+  const [结果, set结果] = useState<Record<string, { 没还原: { 类: string; 原因: string }[]; 提示?: string }>>({});
   useEffect(() => {
     let 还在 = true;
     并进来的合并单(customerId).then((r) => { if (还在) set们(r); }).catch(() => { if (还在) set们([]); });
@@ -299,13 +299,13 @@ function MergeOrders({ customerId }: { customerId: string }) {
         ]
       : [
           { 标: "拆回", 话: `「${m.从}」从回收站回来，合并时挪过来的联系人、项目、沟通回到他名下`, 级: "警" },
-          { 标: "留着", 话: "合并之后在这位客户上新记的沟通、新建的项目不跟着走；之后又改过的对不上，留下不动，撤完列出来" },
+          { 标: "留着", 话: "合并之后在这位客户本身上新记的沟通、新建的项目不跟着走（记在挪回去的项目、联系人上的跟着回）；之后又改过的对不上，留下不动，撤完列出来" },
           { 标: "不变", 话: "挪过来的项目后来换了负责人或结束了的，照样回去，负责人、结局不动" },
         ],
     做: async () => {
       const r = await 撤回合并单(m.id);
       if (!r.ok) return r;
-      set结果((x) => ({ ...x, [m.id]: { 没还原: r.没还原 } }));
+      set结果((x) => ({ ...x, [m.id]: { 没还原: r.没还原, ...(r.提示 ? { 提示: r.提示 } : {}) } }));
       set们((xs) => xs?.map((y) => (y.id === m.id ? { ...y, status: "已撤回", 能撤: false } : y)) ?? xs);
       router.refresh();
     },
@@ -314,7 +314,9 @@ function MergeOrders({ customerId }: { customerId: string }) {
     <>
       <ul className="mrg-orders" aria-label="合并单" data-testid="merge-orders">
         {们.map((m) => {
-          const 撤了 = 结果[m.id];
+          // 刚撤的用这次的结果；刷新后读合并单里存的（undoLeft）
+          const 撤了 = 结果[m.id] ?? (m.status === "已撤回" && m.没还原 ? { 没还原: m.没还原, 提示: m.提示 } : null);
+          const 先话 = 撤了?.提示 ? `${撤了.提示}；` : "";
           return (
             <li key={m.id} className={`mrg-order${m.status === "已撤回" ? " is-undone" : ""}`} data-testid="merge-order">
               <div className="mrg-order-h">
@@ -323,12 +325,13 @@ function MergeOrders({ customerId }: { customerId: string }) {
                 <span className="mrg-order-s" title={fmtDateTime(m.at)}>{m.status === "已撤回" ? "已撤回" : smartTime(m.at)}</span>
                 {m.能撤 && <Button size="small" onClick={() => 撤(m)} data-testid="merge-undo">撤回合并</Button>}
               </div>
+              {m.被并备注 && <p className="mrg-note mrg-order-remark" title={m.被并备注} data-testid="merge-from-remark">并进来那家的备注（没合进来）：{m.被并备注}</p>}
               {撤了 && (
                 撤了.没还原.length === 0
-                  ? <p className="mrg-note" role="status">已撤回，全部还原了</p>
+                  ? <p className="mrg-note" role="status">已撤回，{先话}全部还原了</p>
                   : (
                     <>
-                      <p className="mrg-note" role="status">已撤回；留下 {撤了.没还原.length} 条没还原：</p>
+                      <p className="mrg-note" role="status">已撤回；{先话}留下 {撤了.没还原.length} 条没还原：</p>
                       <ul className="mrg-left" data-testid="merge-undo-left">
                         {撤了.没还原.map((x, i) => <li key={i}>{x.类}：{x.原因}</li>)}
                       </ul>

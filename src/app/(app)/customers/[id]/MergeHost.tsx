@@ -219,6 +219,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
             ))}
           </div>
           {预.补空.length > 0 && <p className="mrg-note">留下这家空着的{预.补空.join("、")}，用并进来那家的补上；其余两家不同的格都按留下这家。</p>}
+          {(预.号格留下有值?.length ?? 0) > 0 && <p className="mrg-note" data-testid="merge-keep-keys">{预.号格留下有值.join("、")}两家都填了：留下这家的不动，并进来那家的随它进回收站（撤回时一起回来）。</p>}
           {预.要勾选 && (
             <div className="mrg-check" data-testid="merge-check">
               <Checkbox checked={勾} onChange={(e) => set勾(e.target.checked)}>{已核对话}</Checkbox>

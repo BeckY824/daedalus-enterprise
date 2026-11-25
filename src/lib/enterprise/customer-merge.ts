@@ -756,7 +756,9 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
             结.push(...(await 拆开一对(tx, 子.detail, 子.intoId, 子.fromId)));
             await tx.entCustomerMerge.update({ where: { id: 子.id }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id } });
           }
-          结.push(...(await 挪回(tx, m.detail, A.id, B.id, A.poolReturns)));
+          // 拆开合成时没能回到原来那位的号码 / 沟通（之后又合成到别人身上了，不连锁拆）：留在原处，挪回时也不改客户，免得号码挂 A 的人、记 B 的账
+          const 拆没回 = new Set(结.map((x) => x.id));
+          结.push(...(await 挪回(tx, m.detail, A.id, B.id, A.poolReturns, 拆没回)));
           await tx.customer.update({ where: { id: B.id }, data: { deletedAt: null } });
           await 重算最近跟进(tx, A.id);
           await 重算最近跟进(tx, B.id);
@@ -814,7 +816,7 @@ async function 回来后停用负责人(B: string, me: 合并人): Promise<void>
     if (!去) return;
     if (去.进了公海) 忘掉企业版范围();
     const { 恢复到停用负责人通知 } = await import("./notice-sources");
-    await 恢复到停用负责人通知(me, [{ id: B, ...去 }]);
+    await 恢复到停用负责人通知(me, [{ id: B, ...去 }], "撤回合并");
   } catch (e) {
     console.warn("[撤回合并] 原负责人已停用，进公海没办成：", e instanceof Error ? e.message : e);
   }
@@ -855,7 +857,7 @@ async function 撤回合成(db: 库, mergeId: string, me: 合并人, 现在: Dat
   }
 }
 
-async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: number): Promise<没还原[]> {
+async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: number, 拆没回: ReadonlySet<string> = new Set()): Promise<没还原[]> {
   const 明 = JSON.parse(原文) as 合并明细;
   const 留: 没还原[] = [];
   const 留下 = (类: string, ids: string[], 原因: string) => ids.forEach((id) => 留.push({ 类, id, 原因 }));
@@ -890,8 +892,10 @@ async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: num
     });
   }
   // 只改一格的
-  for (const [键, ids] of Object.entries(明.改指)) {
+  for (const [键, 全] of Object.entries(明.改指)) {
     const [t, 列] = 键.split(".") as [改指表名, string];
+    // 号码、沟通跟着联系人走：拆开合成时没回到原来那位的（已记没还原）不动
+    const ids = t === "contactMethod" || t === "followUp" ? 全.filter((id) => !拆没回.has(id)) : 全;
     for (const 段 of 分段(ids)) {
       await 表(tx, t).updateMany({ where: { id: { in: 段 }, [列]: A }, data: { [列]: B } });
       const 没回 = (await 表(tx, t).findMany({ where: { id: { in: 段 }, NOT: { [列]: B } }, select: { id: true } })).map((r) => r.id as string);

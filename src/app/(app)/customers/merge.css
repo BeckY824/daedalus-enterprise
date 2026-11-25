@@ -18,6 +18,8 @@
 
 .mrg-body { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
 .mrg-note { margin: 0; color: var(--text-muted); font-size: var(--fs-note); line-height: 1.5; }
+/* 合并单里被并那家的备注：备注全站唯一折行的格（11-04 一行规矩的例外），长串不撑破 */
+.mrg-order-remark { margin-top: var(--s1); white-space: pre-wrap; overflow-wrap: anywhere; }
 .mrg-empty { margin: var(--s3) 0; color: var(--text-muted); font-size: var(--fs-note); }
 .mrg-err { margin: var(--s2) 0 0; color: var(--danger-text); font-size: var(--fs-note); }
 .mrg-why-l { margin: 0; padding-left: 1.2em; }
