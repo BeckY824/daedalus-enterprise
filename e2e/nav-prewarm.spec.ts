@@ -129,9 +129,7 @@ test("宽屏：保存后重热左栏只热常用的前 2 页；离上次预热�
   expect(重热[0][1] - 开页, "没等满 60 秒就补热了").toBeGreaterThanOrEqual(60_000);
   // 一页一页地发：相邻两页至少隔约 600ms（留 150ms 余量）
   for (let i = 1; i < 重热.length; i++) expect(重热[i][1] - 重热[i - 1][1], `${重热[i - 1][0]} → ${重热[i][0]} 挤在一起发了`).toBeGreaterThanOrEqual(450);
-  // 收藏点回去、人删掉，不留给别的用例
-  await 星.click();
-  await expect(星).toHaveAttribute("aria-pressed", 原 ?? "false");
+  // 收藏前面已经点回去了；人删掉，不留给别的用例
   const 收 = 连库();
   try {
     await 收.customer.deleteMany({ where: { name: 名 } });
