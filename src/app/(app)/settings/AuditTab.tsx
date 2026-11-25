@@ -21,7 +21,7 @@ export type AuditRow = {
 const ACTION_LABEL: Record<string, string> = {
   create: "新建", update: "修改", delete: "删除", assign: "转派",
   convert: "转化", deactivate: "停用", reactivate: "恢复", password: "改密码", device_revoke: "退出机器", ai_use: "AI", ai_apply: "确认 AI 建议", ai_undo: "撤销 AI 建议",
-  pool: "放回公海", claim: "领取", import: "导入", merge: "合并重复",
+  pool: "放回公海", claim: "领取", import: "导入", merge: "合并",
   restore: "从回收站恢复", purge: "彻底删除", sync: "同步", export: "导出", handover: "离职交接",
   // 教练主题（11-17）
   reply: "回复", close: "关闭", "pool-close": "进公海自动关闭",
@@ -29,6 +29,8 @@ const ACTION_LABEL: Record<string, string> = {
   giveup: "主动放弃",
   // 出口 C 没建、待补建记录没写成（11-23，P-公海-15：整份记录在明细里，补建照它）
   unbuilt_failed: "待补建没写成",
+  // 合并客户第一批（11-25）：合并客户 / 合成联系人记 merge，撤回记 merge-undo；项目换客户在项目、两位客户上各一条
+  "merge-undo": "撤回合并", "project-move-customer": "项目换客户",
 };
 const ENTITY_LABEL: Record<string, string> = {
   EntRequiredBlock: "必填拦截记录",
@@ -58,6 +60,7 @@ const ACTION_COLOR: Record<string, string> = {
   create: "success", update: "processing", delete: "error",
   assign: "cyan", convert: "gold", deactivate: "warning", reactivate: "default", password: "default", ai_use: "purple", ai_apply: "green", ai_undo: "default",
   pool: "default", claim: "cyan", merge: "geekblue", restore: "green", purge: "error", export: "magenta",
+  "merge-undo": "default", "project-move-customer": "geekblue",
 };
 
 /** 导出 = 设置 →「导出记录」：同一张表只放导出那几条，抬头换成导出的说法（11-03） */

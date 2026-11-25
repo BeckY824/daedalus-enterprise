@@ -61,4 +61,16 @@ describe("操作日志：写进去的动作、对象都有中文叫法（D6-2）
     expect(段("合并原因Action")).toMatch(/"merge"/);
     expect(段("新增原因Action")).toMatch(/"create"/);
   });
+
+  it("合并客户第一批（11-25）：auditLog.createMany 直接写的 merge / merge-undo / project-move-customer 也有叫法", () => {
+    const 写的 = new Set<string>();
+    for (const f of ["src/lib/enterprise/customer-merge.ts", "src/lib/enterprise/project-move-customer.ts"]) {
+      for (const m of 读(f).matchAll(/action:\s*"([\w-]+)"/g)) 写的.add(m[1]);
+    }
+    expect([...写的].sort()).toEqual(["merge", "merge-undo", "project-move-customer"]);
+    const 表 = 页.match(/const ACTION_LABEL: Record<string, string> = \{([\s\S]*?)\n\};/)![1];
+    expect(表).toMatch(/\bmerge: "合并"/);
+    expect(表).toMatch(/"merge-undo": "撤回合并"/);
+    expect(表).toMatch(/"project-move-customer": "项目换客户"/);
+  });
 });

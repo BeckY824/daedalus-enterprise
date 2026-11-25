@@ -136,6 +136,10 @@ export type 项目详情 = {
   企业版: boolean;
   /** 能删这个项目：企业版系统管理员或负责人本人（销售、销管、渠运，V3.5.1；进回收站），别的版本 = 能改 */
   能删?: boolean;
+  /** 摆不摆「换客户」（合并客户第一批，11-25）：企业版、看得到客户、客户负责人本人（能删客户的角色）或系统管理员；拦不拦在预览里说 */
+  能换客户?: boolean;
+  /** 这个项目是怎么到这位客户名下的：「从 NO.xxxxx「B」并入」（合并客户 / 项目换客户，customer-merge.ts 项目来历）；没有 = 不摆那一行 */
+  并入自?: { 话: string; 怎么来: "合并客户" | "项目换客户"; at: string } | null;
   /** 能往项目组里拉人：能改的人，企业版加上已进组的项目组员（V3.5.1） */
   能加组员?: boolean;
   /** 能换组员角色、移出组员：能改内容的人；公海里的项目系统管理员也能（X-72） */
@@ -1516,6 +1520,15 @@ export default function ProjectDetail({
         </>
       )}
       {p.企业版 && p.数据来源 && <div {...资料行()} data-testid="project-data-source-row"><span {...键}>数据来源</span><span className="proj-one"><Tag bordered={false} color="purple">{p.数据来源}</Tag></span></div>}
+      {/* 合并客户第一批（11-25）：从另一位客户挪过来的项目（合并客户、项目换客户）写一句「从 NO.xxxxx「B」并入」，只读 */}
+      {p.企业版 && p.并入自 && (
+        <div {...资料行()} data-testid="project-merged-from-row">
+          <span {...键}>并入</span>
+          <span className="proj-one" title={`${p.并入自.话}（${p.并入自.怎么来}，${fmtDateTime(p.并入自.at)}）`}>
+            {p.并入自.话}<span className="muted">（{p.并入自.怎么来}）</span>
+          </span>
+        </div>
+      )}
       {p.企业版 && p.重复咨询来自 && (
         <div {...资料行()} data-testid="project-repeat-origin-row">
           <span {...键}>原始客户编号</span>
@@ -1968,7 +1981,8 @@ export default function ProjectDetail({
     if (key === "claim") { if (p.能领取) void 跑(() => 领取项目(p.id), "已领取，你是这个项目的负责人了"); }
     else if (key === "transfer") { set转给谁(null); set转给带待办(公海规则.带待办默认勾); set转给框(true); }
     else if (key === "pool") { if (!等复核) 放回问(); }
-    else 删问();
+    else if (key === "delete") 删问();
+    // move（换客户）：客户页自己开框（MergeHost），不递到这里
   };
   const 做动作ref = useRef(做动作);
   useEffect(() => { 做动作ref.current = 做动作; });

@@ -10,13 +10,17 @@
  * 原来项目区右栏「项目进程变更」卡、卡里「客户状态」一段、没项目时左栏的状态留痕，都挪到这里
  */
 import "./history-changes.css";
+import "../merge.css";
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Drawer, Grid, Modal } from "antd";
+import { Button, Drawer, Grid, Modal } from "antd";
+import { useRouter } from "next/navigation";
+import { useConsequence } from "@/components/ConsequenceDialog";
 import { ClockCircleOutlined, DownOutlined, RightOutlined } from "@ant-design/icons";
 import { dayjs, fmtDateTime, smartTime } from "@/lib/utils";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { 历史筛选们, type 历史筛选, type 历史行, type 历史事件, type 历史游标, type 建档格, type 项目概要, type 历史摘要 } from "./history-types";
 import { 读客户历史, 读项目历史, 读项目历史们 } from "./history-actions";
+import { 并进来的合并单, 撤回合并单, type 合并单一条 } from "../merge-actions";
 
 const 读不到话 = "没读到历史变更，请稍后再试";
 /** 只用来认「水合完了没有」（同 CustomersView 已水合）：入口上的「· 最近」是相对时间，按浏览器的钟算，服务端和首帧不画，免得水合对不上 */
@@ -183,6 +187,7 @@ function CustomerPanel({ customerId, 有状态 }: { customerId: string; 有状�
   };
   return (
     <>
+      <MergeOrders customerId={customerId} />
       {数据?.建档 && <BornCell 格={数据.建档} />}
       <div className="hist-flt" role="group" aria-label="按类型看">
         {历史筛选们.filter((t) => 有状态 || t !== "状态").map((t) => (
@@ -262,6 +267,79 @@ function ProjectsPanel({ customerId, 当前项目 }: { customerId: string; 当�
         );
       })}
       {概要.看不到 > 0 && <p className="hist-lock" data-testid="history-hidden">还有 {概要.看不到} 个同事在推的项目你看不到，变更不显示。</p>}
+    </>
+  );
+}
+
+/**
+ * 合并单（合并客户第一批，11-25）：并进这位客户的（「NO.xxxxx「B」并入这位客户」）、这位客户名下单独合成的联系人，
+ * 30 天内合并的人或系统管理员能「撤回合并」；撤回结果写在那一张下面：留下几条没还原、各是为什么。没有合并单整块不摆
+ */
+function MergeOrders({ customerId }: { customerId: string }) {
+  const router = useRouter();
+  const [问后果, 后果框] = useConsequence();
+  const [们, set们] = useState<合并单一条[] | null>(null);
+  const [结果, set结果] = useState<Record<string, { 没还原: { 类: string; 原因: string }[] }>>({});
+  useEffect(() => {
+    let 还在 = true;
+    并进来的合并单(customerId).then((r) => { if (还在) set们(r); }).catch(() => { if (还在) set们([]); });
+    return () => { 还在 = false; };
+  }, [customerId]);
+  if (!们?.length) return null;
+  const 题 = (m: 合并单一条) => (m.kind === "联系人" ? `联系人「${m.从}」合成进「${m.到 ?? ""}」` : `${m.编号 ?? ""}「${m.从}」并入这位客户`);
+  const 撤 = (m: 合并单一条) => void 问后果({
+    题: m.kind === "联系人" ? `撤回合成：拆回「${m.从}」？` : `撤回合并：把「${m.从}」拆回去？`,
+    宽: 480,
+    危: false,
+    是: "撤回合并",
+    后果: m.kind === "联系人"
+      ? [
+          { 标: "拆回", 话: `「${m.从}」从回收站回来，合成时收过去的号码、沟通、名片分回给他`, 级: "警" },
+          { 标: "留着", 话: "合成之后又改过的那几条对不上，留在原处不动，撤完列出来" },
+        ]
+      : [
+          { 标: "拆回", 话: `「${m.从}」从回收站回来，合并时挪过来的联系人、项目、沟通回到他名下`, 级: "警" },
+          { 标: "留着", 话: "合并之后在这位客户上新记的沟通、新建的项目不跟着走；之后又改过的对不上，留下不动，撤完列出来" },
+          { 标: "不变", 话: "挪过来的项目后来换了负责人或结束了的，照样回去，负责人、结局不动" },
+        ],
+    做: async () => {
+      const r = await 撤回合并单(m.id);
+      if (!r.ok) return r;
+      set结果((x) => ({ ...x, [m.id]: { 没还原: r.没还原 } }));
+      set们((xs) => xs?.map((y) => (y.id === m.id ? { ...y, status: "已撤回", 能撤: false } : y)) ?? xs);
+      router.refresh();
+    },
+  });
+  return (
+    <>
+      <ul className="mrg-orders" aria-label="合并单" data-testid="merge-orders">
+        {们.map((m) => {
+          const 撤了 = 结果[m.id];
+          return (
+            <li key={m.id} className={`mrg-order${m.status === "已撤回" ? " is-undone" : ""}`} data-testid="merge-order">
+              <div className="mrg-order-h">
+                <span className="mrg-order-k">{m.kind === "联系人" ? "合成" : "合并"}</span>
+                <span className="mrg-order-t" title={题(m)}>{题(m)}</span>
+                <span className="mrg-order-s" title={fmtDateTime(m.at)}>{m.status === "已撤回" ? "已撤回" : smartTime(m.at)}</span>
+                {m.能撤 && <Button size="small" onClick={() => 撤(m)} data-testid="merge-undo">撤回合并</Button>}
+              </div>
+              {撤了 && (
+                撤了.没还原.length === 0
+                  ? <p className="mrg-note" role="status">已撤回，全部还原了</p>
+                  : (
+                    <>
+                      <p className="mrg-note" role="status">已撤回；留下 {撤了.没还原.length} 条没还原：</p>
+                      <ul className="mrg-left" data-testid="merge-undo-left">
+                        {撤了.没还原.map((x, i) => <li key={i}>{x.类}：{x.原因}</li>)}
+                      </ul>
+                    </>
+                  )
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {后果框}
     </>
   );
 }

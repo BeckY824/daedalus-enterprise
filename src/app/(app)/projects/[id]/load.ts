@@ -14,7 +14,8 @@ import { 来源字, 人名显示, 是重复咨询 } from "@/lib/project/system-c
 import { 客户其他在推项目, 重复咨询原始客户 } from "@/lib/enterprise/repeat-inquiry";
 import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选 } from "@/lib/enterprise/permissions";
+import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选, 是系统管理员, 只读角色, 只看的人 } from "@/lib/enterprise/permissions";
+import { 项目来历 } from "@/lib/enterprise/customer-merge";
 import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
 import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
 import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -342,6 +343,11 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
     ...(是重复咨询(p) ? { 重复咨询: await 其他在推带去处(me, p.id, p.customerId) } : {}),
     // 只读来源字段（迁移 163，客户 E-218）：原始客户编号 + 第几次；没有编辑入口，改项目的动作都不写这两列
     ...(是重复咨询(p) && p.repeatOfCustomerId ? { 重复咨询来自: await 重复咨询原始客户(p) } : {}),
+    // 合并客户第一批（11-25）：从另一位客户挪过来的（合并客户 / 项目换客户）写「从 NO.xxxxx「B」并入」；原客户名字只给看得到它的人
+    并入自: await 项目来历(prisma, p.id, p.customerId, async (id) => (await 页面看得到的客户([id])).has(id)),
+    // 「换客户」：看得到客户、客户负责人本人（能删客户的角色）或系统管理员才摆；同事负责没结束的、交接中、业务线不同……在预览里说（同 project-move-customer.ts 拦的原因）
+    能换客户: 看得到客户.has(p.customerId) && !!org && !只读角色(me, org) && !只看的人(org, me.id)
+      && (是系统管理员(me, org) || (!p.customer.pool && 能删除(me, org, p.customer.salesOwnerId) && (!!p.result || 公海 || !p.ownerId || p.ownerId === me.id))),
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
     aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,

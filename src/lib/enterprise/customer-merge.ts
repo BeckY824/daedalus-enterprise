@@ -516,6 +516,41 @@ export async function 并入提示(db: 库, 留下id: string, merged: string | n
   return `${编号 ?? ""}${m.fromName ? `「${m.fromName}」` : ""}已并入这位客户，原来的链接都会跳到这里`;
 }
 
+/**
+ * 项目详情那一行「从 NO.xxxxx「B」并入」：这个项目是怎么到这位客户名下的，取最近一次——
+ *   - 合并客户：一张没撤回、并进这位客户的合并单里，这个项目是从 B 挪过来的（明细 项目[].挪客户）
+ *   - 项目换客户：项目上最近一条 project-move-customer 日志，换到的就是这位客户
+ * 都没有给 null。看名字 = 能不能看原来那位客户的名字（合并的 B 已并进这位客户，看得到这位就给；换客户的原客户要另判，调用方给）
+ */
+export async function 项目来历(
+  db: 库, projectId: string, customerId: string, 看得到原客户: (id: string) => Promise<boolean>,
+): Promise<{ 话: string; 怎么来: "合并客户" | "项目换客户"; at: string } | null> {
+  if (!企业版()) return null;
+  const [单, 日志] = await Promise.all([
+    db.entCustomerMerge.findFirst({
+      where: { kind: 客户单, intoId: customerId, status: "已合并", detail: { contains: `"id":${JSON.stringify(projectId)},"挪客户":true` } },
+      orderBy: { at: "desc" }, select: { fromName: true, fromNo: true, at: true },
+    }),
+    db.auditLog.findFirst({ where: { entity: "Project", entityId: projectId, action: "project-move-customer" }, orderBy: { at: "desc" }, select: { at: true, detail: true } }),
+  ]);
+  let 换: { 从: string; at: Date } | null = null;
+  if (日志?.detail) {
+    try {
+      const d = JSON.parse(日志.detail) as { 从?: unknown; 到?: unknown };
+      if (d.到 === customerId && typeof d.从 === "string") 换 = { 从: d.从, at: 日志.at };
+    } catch { /* 坏明细不认 */ }
+  }
+  if (单 && (!换 || 单.at >= 换.at)) {
+    return { 话: `从 ${[客户编号文字(单.fromNo), 单.fromName ? `「${单.fromName}」` : ""].filter(Boolean).join("")} 并入`, 怎么来: "合并客户", at: 单.at.toISOString() };
+  }
+  if (!换) return null;
+  const 原 = await 看全部(() => 看已删(() => db.customer.findUnique({ where: { id: 换!.从 }, select: { customerNo: true, name: true, shortName: true } })));
+  const 编号 = 客户编号文字(原?.customerNo ?? null);
+  const 名字 = 原 && (await 看得到原客户(换.从)) ? 原.name?.trim() || 原.shortName || "" : "";
+  const 谁 = [编号, 名字 ? `「${名字}」` : ""].filter(Boolean).join("");
+  return { 话: 谁 ? `从 ${谁} 并入` : "从另一位客户并入", 怎么来: "项目换客户", at: 换.at.toISOString() };
+}
+
 /** 联系人已合成进哪位（还没撤回的合成单）；回收站用 */
 export async function 合成去向(db: 库, contactIds: string[]): Promise<Map<string, { mergeId: string; intoId: string; parentId: string | null }>> {
   if (!contactIds.length) return new Map();

@@ -7,7 +7,8 @@ import type { 项目详情Props } from "./ProjectDetail";
  * 给不给、灰不灰、灰着写什么，和项目详情页头那几颗按钮是同一套判断（ProjectDetail 也从这里取），改一处两边一起变。
  * 点了做什么还在 ProjectDetail 里（弹框、确认都是它的），客户页只把 key 递过去
  */
-export type 项目动作键 = "claim" | "transfer" | "pool" | "delete";
+/** move = 换客户（合并客户第一批，11-25）：框在客户页 MergeHost 里，客户页「更多操作 ▾」直接开，不经嵌入版 ProjectDetail */
+export type 项目动作键 = "claim" | "transfer" | "pool" | "move" | "delete";
 export type 项目菜单项 = { key: 项目动作键; 字: string; /** 灰着的原因；有 = 点不了 */ 灰?: string; /** 悬停说明 */ 注?: string; 危险?: boolean };
 
 /** 线索还在等复核 / 终判：暂时不能退回公海（项目详情页头同一句） */
@@ -26,6 +27,7 @@ export function 项目菜单项们({ p, 候选 }: Pick<项目详情Props, "p" | 
     const 等 = 等复核说法(p);
     项们.push({ key: "pool", 字: "项目退回公海", 注: "只退回当前项目，客户不动", 灰: 等 ? `${等}，暂时不能退回公海` : undefined });
   }
+  if (p.能换客户) 项们.push({ key: "move", 字: "换客户", 注: "项目挂错了客户：连沟通、项目联系人挪到另一位客户" });
   if (p.能删) 项们.push({ key: "delete", 字: "删除项目", 危险: true });
   return 项们;
 }

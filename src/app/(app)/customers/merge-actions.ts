@@ -21,7 +21,7 @@ import { 客户关键词条件, 搜索词 } from "@/lib/search-keyword";
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 import { 客户编号文字 } from "@/lib/customer-no";
 import {
-  合并预览, 执行合并, 撤回合并, 合成联系人, 撤回期限天数, 客户单,
+  合并预览, 执行合并, 撤回合并, 合成联系人, 撤回期限天数, 客户单, 联系人单,
   type 合并预览结果, type 合并完, type 没还原, type 同一个人,
 } from "@/lib/enterprise/customer-merge";
 import { 项目换客户预览, 项目换客户, type 换客户预览结果 } from "@/lib/enterprise/project-move-customer";
@@ -143,22 +143,35 @@ export async function 给项目换客户(projectId: string, 目标id: string): P
 }
 
 export type 合并单一条 = {
-  id: string; kind: string; 从: string; 编号: string | null; at: string; status: string;
+  id: string;
+  /** 客户：别的客户并进这位；联系人：这位客户名下单独合成的两位联系人（合并客户时勾的随客户合并单走，不单列） */
+  kind: string;
+  从: string; 编号: string | null;
+  /** 联系人单：合成进的那位（留下的联系人）名字 */
+  到?: string;
+  at: string; status: string;
   /** 这会儿能不能撤：合并的人本人或系统管理员、没撤过、没过期 */
   能撤: boolean;
 };
 
-/** 并进这位客户的合并单（客户详情的历史变更、撤回入口用）。看得到这位客户的才给 */
+/** 并进这位客户的合并单 + 这位客户名下单独合成的联系人（客户详情的历史变更、撤回入口用）。看得到这位客户的才给 */
 export async function 并进来的合并单(customerId: string): Promise<合并单一条[]> {
   const me = await requireUser();
   if (!企业版() || !是id(customerId)) return [];
   const c = await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } });
   if (!c) return [];
   const 管 = 是系统管理员(me, await 权限组织());
-  const 们 = await prisma.entCustomerMerge.findMany({ where: { kind: 客户单, intoId: customerId }, orderBy: { at: "desc" }, take: 50 });
+  const 人们 = await 看全部(() => prisma.contact.findMany({ where: { customerId, deletedAt: null }, select: { id: true, name: true } }));
+  const 人名 = new Map(人们.map((x) => [x.id, x.name]));
+  const 们 = await prisma.entCustomerMerge.findMany({
+    where: { OR: [{ kind: 客户单, intoId: customerId }, ...(人们.length ? [{ kind: 联系人单, parentId: null, intoId: { in: [...人名.keys()] } }] : [])] },
+    orderBy: { at: "desc" }, take: 50,
+  });
   const 线 = Date.now() - 撤回期限天数 * 86_400_000;
   return 们.map((m) => ({
-    id: m.id, kind: m.kind, 从: m.fromName, 编号: 客户编号文字(m.fromNo) ?? null, at: m.at.toISOString(), status: m.status,
+    id: m.id, kind: m.kind, 从: m.fromName, 编号: m.kind === 客户单 ? 客户编号文字(m.fromNo) ?? null : null,
+    ...(m.kind === 联系人单 ? { 到: 人名.get(m.intoId) ?? "" } : {}),
+    at: m.at.toISOString(), status: m.status,
     能撤: m.status === "已合并" && m.at.getTime() >= 线 && (m.byUserId === me.id || 管),
   }));
 }

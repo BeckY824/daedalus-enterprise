@@ -24,8 +24,14 @@ const 动作 = `
       {id:'p1',名:'${"超长的项目名称".repeat(8)}',阶段:'商机 · 方案报价',条数:12},{id:'p2',名:'第二个项目',阶段:'线索 · 潜客培育',条数:3}],
     看不到:2,展开:展开?{id:展开,...项目页(展开)}:null}};
   export const 读项目历史=async(id,pid)=>{(window.__调??=[]).push(['项目',pid]);return {ok:true,...项目页(pid)}};`;
+const 合并动作 = `
+  export const 并进来的合并单=async(id)=>{(window.__合并调??=[]).push(['合并单',id]);return window.__合并单??[]};
+  export const 撤回合并单=async(mid)=>{(window.__合并调??=[]).push(['撤回',mid]);return window.__撤回结果??{ok:true,没还原:[]}};`;
 const plugin: Plugin = { name: "history-changes", setup(b) {
   b.onResolve({ filter: /^\.\/history-actions$/ }, a => ({ path: a.path, namespace: "fixture", pluginData: 补全动作桩("src/app/(app)/customers/[id]/history-actions.ts", 动作) }));
+  // 合并单（合并客户第一批 11-25）：window.__合并单 给几张；撤回回 window.__撤回结果
+  b.onResolve({ filter: /(^|\/)merge-actions$/ }, a => ({ path: a.path, namespace: "fixture", pluginData: 补全动作桩("src/app/(app)/customers/merge-actions.ts", 合并动作) }));
+  b.onResolve({ filter: /^next\/navigation$/ }, a => ({ path: a.path, namespace: "fixture", pluginData: "export const useRouter=()=>({refresh(){window.__刷新=(window.__刷新||0)+1},push(){},replace(){},prefetch(){}});" }));
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {
@@ -51,6 +57,7 @@ async function open(width: number, 暗 = false) {
   await page.goto("http://hist.test");
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ path: path.resolve("src/app/(app)/customers/[id]/history-changes.css") });
+  await page.addStyleTag({ path: path.resolve("src/app/(app)/customers/merge.css") });
   if (暗) { await page.addStyleTag({ path: path.resolve("src/app/dark.css") }); await page.evaluate(() => document.documentElement.setAttribute("data-mode", "dark")); }
   await page.addScriptTag({ content: bundle });
   await page.evaluate(() => (window as unknown as { __render: () => void }).__render());
@@ -212,3 +219,42 @@ it("服务端先画再水合：服务端那一版入口不带「· 最近」（�
     expect(错.filter((x) => /水合|hydrat|Hydrat/.test(x))).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
+
+it("合并单（合并客户第一批 11-25）：客户块顶上列出并进来的合并单和单独合成的联系人；能撤的给「撤回合并」，后果框确认后写明留下几条、为什么；手机 390 不横滚", async () => {
+  for (const 宽 of [1280, 390]) {
+    const { page, 错 } = await open(宽);
+    try {
+      await page.evaluate((长名) => {
+        const w = window as unknown as Record<string, unknown>;
+        w.__合并单 = [
+          { id: "m1", kind: "客户", 从: 长名, 编号: "NO.00012", at: new Date(Date.now() - 3600_000).toISOString(), status: "已合并", 能撤: true },
+          { id: "m2", kind: "联系人", 从: "王五", 到: "王 五", 编号: null, at: new Date(Date.now() - 86_400_000).toISOString(), status: "已撤回", 能撤: false },
+        ];
+        w.__撤回结果 = { ok: true, 没还原: [{ 类: "项目", id: "p1", 原因: "合并之后被改到别的客户，没改回" }, { 类: "联系人", id: "c1", 原因: "主客户之后又改过，整组留下" }] };
+      }, "超长的被并客户名称".repeat(5));
+      await page.getByTestId("history-entry").click();
+      await page.getByTestId("merge-order").first().waitFor();
+      expect(await page.getByTestId("merge-order").count()).toBe(2);
+      const 第一张 = page.getByTestId("merge-order").first();
+      expect(await 第一张.locator(".mrg-order-t").innerText()).toContain("NO.00012「超长的被并客户名称");
+      expect(await 第一张.locator(".mrg-order-t").evaluate((e) => getComputedStyle(e).textOverflow)).toBe("ellipsis");
+      // 已撤回的那张不给按钮
+      expect(await page.getByTestId("merge-undo").count()).toBe(1);
+      expect(await page.getByTestId("merge-order").nth(1).innerText()).toContain("已撤回");
+      expect(await 横滚(page)).toEqual([false, false]);
+      await page.getByTestId("merge-undo").click();
+      const 框 = page.locator(".csq");
+      await 框.waitFor();
+      expect(await 框.innerText()).toContain("新建的项目不跟着走");
+      await 框.getByRole("button", { name: "撤回合并" }).click();
+      await page.getByTestId("merge-undo-left").waitFor();
+      expect(await page.getByTestId("merge-undo-left").innerText()).toContain("项目：合并之后被改到别的客户，没改回");
+      expect(await 第一张.innerText()).toContain("留下 2 条没还原");
+      expect(await page.getByTestId("merge-undo").count()).toBe(0);
+      expect(await page.evaluate(() => (window as unknown as { __合并调?: unknown[] }).__合并调)).toEqual([["合并单", "a"], ["撤回", "m1"]]);
+      expect(await 横滚(page)).toEqual([false, false]);
+      await 截图(page, `历史变更-合并单-${宽}.png`);
+      expect(错).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 90_000);
