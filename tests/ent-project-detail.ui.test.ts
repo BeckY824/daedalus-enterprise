@@ -476,6 +476,63 @@ for (const 宽 of [390, 1024, 1280, 1366]) {
   }, 60_000);
 }
 
+for (const 宽 of [390, 1366]) {
+  it(`${宽}px 物流状态「运输中」时物流单号必填（审查 11-25）：单号空着选运输中不发请求、状态格回原值，焦点带到单号格，单号存时一起改运输中；Esc 不改；服务端拒了下拉回原值、原因看得到`, async () => {
+    const { page, errors } = await open(true, 宽);
+    try {
+      const 摆 = (单号: string | null) => page.evaluate(v => (window as unknown as { __over: (x: object) => void }).__over({ 备货物流: { 备货状态: null, 物流状态: { 值: "待发货", 选项: ["待发货", "运输中"] }, 物流单号: v } }), 单号);
+      const 编辑们 = () => page.evaluate(() => ((window as unknown as { __编辑?: unknown[] }).__编辑 ?? []).length);
+      const 卡 = page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^交付$/ }) }).first();
+      const 状态格 = 卡.locator('[data-inline-field="物流状态"]');
+      const 单号框 = 卡.getByRole("textbox", { name: "物流单号" });
+      const 选运输中 = async () => {
+        await 卡.getByRole("button", { name: "改物流状态", exact: true }).click();
+        await 卡.getByRole("combobox", { name: "物流状态" }).waitFor();
+        await page.locator(".ant-select-dropdown:visible .ant-select-item-option").filter({ hasText: "运输中" }).click();
+      };
+      await 摆(null);
+      await 卡.locator(".proj-stock-rows").waitFor();
+      const 前 = await 编辑们();
+      await 选运输中();
+      // 不发请求；状态格收起、还是原值；单号格打开、焦点在输入框、写清存上后一起改
+      await 单号框.waitFor();
+      await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("物流单号");
+      expect(await 编辑们()).toBe(前);
+      expect(await 卡.getByRole("combobox", { name: "物流状态" }).count()).toBe(0);
+      expect((await 状态格.innerText()).trim()).toBe("待发货");
+      expect(await 卡.locator('[data-inline-field="物流单号"]').innerText()).toContain("先填物流单号；存上后物流状态一起改成「运输中」");
+      // Esc：不改了，运输中丢掉；再开单号格只交单号
+      await 单号框.press("Escape");
+      await expect.poll(() => 单号框.count()).toBe(0);
+      expect(await 编辑们()).toBe(前);
+      await 卡.getByRole("button", { name: "改物流单号", exact: true }).click();
+      expect(await 卡.locator('[data-inline-field="物流单号"]').innerText()).not.toContain("运输中");
+      await 单号框.fill("SF0");
+      await 单号框.press("Enter");
+      await expect.poll(编辑们).toBe(前 + 1);
+      expect(await page.evaluate(() => ((window as unknown as { __编辑: unknown[] }).__编辑).at(-1))).toEqual(["p1", { trackingNo: "SF0" }]);
+      // 再来：选运输中 → 敲单号 → 回车，一次请求交两列
+      await 摆(null);
+      await 选运输中();
+      await 单号框.waitFor();
+      await 单号框.fill(" SF123 ");
+      await 单号框.press("Enter");
+      await expect.poll(编辑们).toBe(前 + 2);
+      expect(await page.evaluate(() => ((window as unknown as { __编辑: unknown[] }).__编辑).at(-1))).toEqual(["p1", { trackingNo: "SF123", logisticsStatus: "运输中" }]);
+      await expect.poll(() => 单号框.count()).toBe(0);
+      // 单号已有：照常交物流状态；服务端拒了（比如别人刚清了单号）——下拉回到原值，原因写在格子下面
+      await page.evaluate(() => Reflect.set(window, "__编辑回", { ok: false, error: "物流状态是「运输中」时物流单号必填，填上单号再存" }));
+      await 摆("SF9");
+      await 选运输中();
+      await expect.poll(编辑们).toBe(前 + 3);
+      expect(await page.evaluate(() => ((window as unknown as { __编辑: unknown[] }).__编辑).at(-1))).toEqual(["p1", { logisticsStatus: "运输中" }]);
+      await expect.poll(() => 状态格.getByRole("alert").innerText()).toBe("物流状态是「运输中」时物流单号必填，填上单号再存");
+      expect((await 状态格.locator(".ant-select").filter({ has: page.getByRole("combobox", { name: "物流状态" }) }).innerText()).trim()).toBe("待发货");
+      expect(errors).toEqual([]);
+    } finally { await page.evaluate(() => Reflect.deleteProperty(window, "__编辑回")).catch(() => {}); await page.close(); }
+  }, 60_000);
+}
+
 for (const 宽 of [390, 1024, 1280, 1366]) {
   it(`${宽}px 交付结清只在尾款结算（客户 11-19 定稿，跟节点推进开关一起生效）：开关开着停在别的订单节点交付卡不摆按钮、写清先推到尾款结算；到了尾款结算两勾齐才能点；开关关着中间节点照旧能点；不溢出`, async () => {
     const { page, errors } = await open(true, 宽);

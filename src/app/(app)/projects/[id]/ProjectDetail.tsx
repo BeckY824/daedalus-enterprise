@@ -65,7 +65,7 @@ import { 定时时刻格 } from "@/components/ScheduleAssignInput";
 import { 改定时分配, 取消定时分配, 定时分配现在分 } from "../../leads/schedule-actions";
 import { 指定回复文字, 北京墙钟转时刻, 回复晚于回收, 短时刻, 客户在谁名下话 } from "@/lib/project/time-fields";
 import { 成交需求上限, 详细地址上限, 详细地址提示, 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
-import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限, type 合同状态, type 备货状态 } from "@/lib/project/proj-fields";
+import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限, 默认运输中, type 合同状态, type 备货状态 } from "@/lib/project/proj-fields";
 import { 备注上限 } from "@/lib/project/wizard";
 import { 文字格改动, 沟通正文改动, type 钱格值 } from "@/lib/project/inline-edit";
 import ProjectInlineField, { type 编辑器参数 } from "./ProjectInlineField";
@@ -209,9 +209,9 @@ export type 项目详情 = {
   /**
    * 企业版备货状态、物流状态、物流单号（迁移 154，客户 11-19）：不是企业版不传。备货状态三项固定，没填 null；
    * 物流状态 = 存的选项名 + 字典 projLogistics 启用着的（同项目标签）；物流单号一行文字；
-   * 已签收 = 物流状态里算「已签收」的（客户 11-19 定稿，load.ts 备货物流格）
+   * 已签收 = 物流状态里算「已签收」的（客户 11-19 定稿，load.ts 备货物流格）；运输中 = 算「运输中」的名字（选它时物流单号必填，没给 = 只认默认名）
    */
-  备货物流?: { 备货状态: 备货状态 | null; 物流状态: { 值: string | null; 选项: string[] }; 物流单号: string | null; 已签收?: 已签收格 };
+  备货物流?: { 备货状态: 备货状态 | null; 物流状态: { 值: string | null; 选项: string[] }; 物流单号: string | null; 已签收?: 已签收格; 运输中?: readonly string[] };
   /**
    * 企业版节点必填：这个节点配了必填才有（没开 / 没配 / 有结局 / 在公海 = null）。填齐了自动往前推一格；
    * 缺着必填谁都不能手动往前推（客户 11-19 定稿，全员统一；往后退、点结局照旧）
@@ -679,6 +679,16 @@ export default function ProjectDetail({
   const 能就地改 = 可改 && p.企业版;
   const 字段能改 = (名: string) => 能就地改 && !p.只能看字段?.includes(名);
   const 备货物流 = p.备货物流;
+  /*
+    物流状态「运输中」时物流单号必填（db.ts 改项目拒存）。交付卡上状态那格排在单号上面，照顺序先选运输中一定被拒（审查 11-25）：
+    单号空着时选运输中不发请求，状态格回到原值收起，直接打开单号格（焦点在输入框）、写一句「存上单号后物流状态一起改成运输中」；
+    单号存的那一下把运输中一起交（一次请求，服务端同一次判）。选 → 敲单号 → 回车，三步；不用先被拒、再去单号格、再回来重选。
+    单号格 Esc / 没填就点走 = 不改了，运输中丢掉
+  */
+  const [待运输中, set待运输中] = useState<string | null>(null);
+  const [开单号, set开单号] = useState(0);
+  const 运输中名们 = 备货物流?.运输中 ?? [默认运输中];
+  const 选运输中缺单号 = (v: string | null) => !!v && 运输中名们.includes(v) && !(备货物流?.物流单号 ?? "").trim();
   /** 存项目卡的一格：同一个 编辑项目（权限、字段权限、留痕都在里面）；失败把原因交回格子，留在编辑态 */
   const 存项目项 = async (patch: Parameters<typeof 编辑项目>[1]): Promise<string | null> => {
     const r = await 编辑项目(p.id, patch);
@@ -1670,6 +1680,13 @@ export default function ProjectDetail({
               能改={能就地改}
               显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : (p.必填?.还差.includes("物流状态") || p.必填?.还差.includes("已签收")) ? 占位确认("物流状态") : 待填("物流状态"))}
               存={(v) => 存项目项({ logisticsStatus: v })}
+              转交={(v) => {
+                if (!选运输中缺单号(v)) return false;
+                set待运输中(v);
+                set开单号((n) => n + 1);
+                return true;
+              }}
+              败后还原
               编辑器={({ 草稿, 提交, 忙 }) => (
                 <Select aria-label="物流状态" autoFocus defaultOpen allowClear disabled={忙} placeholder={未选占位} style={满宽} value={草稿 ?? undefined} options={[不填项, ...备货物流.物流状态.选项.map((x) => ({ value: x, label: x }))]} onChange={(v?: string) => 提交(去不填(v))} />
               )}
@@ -1684,7 +1701,10 @@ export default function ProjectDetail({
               能改={能就地改}
               回车存
               显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : p.必填?.还差.includes("物流单号") ? 占位确认("物流单号") : 待填("物流单号"))}
-              存={(v) => 存项目项({ trackingNo: 文字格改动(v) })}
+              存={(v) => 存项目项({ trackingNo: 文字格改动(v), ...(待运输中 && v ? { logisticsStatus: 待运输中 } : {}) })}
+              打开={开单号}
+              附言={待运输中 ? `先填物流单号；存上后物流状态一起改成「${待运输中}」` : undefined}
+              收起时={() => set待运输中(null)}
               编辑器={单行编辑器("物流单号", 物流单号上限)}
             />
           </div>

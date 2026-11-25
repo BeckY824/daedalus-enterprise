@@ -158,6 +158,41 @@ describe("完成节点框：一窗填完", () => {
     await page.close();
   }, 60_000);
 
+  it("节点只配了物流状态、没配物流单号（审查 11-25）：选「运输中」而项目上单号空着，带出单号格一起填，单号先存；选别的、单号已有不带", async () => {
+    const { page, errors } = await 开({ 还差: ["物流状态"] });
+    const 单号行 = page.locator('[data-required="物流单号"]');
+    expect(await 单号行.count()).toBe(0);
+    await 选(page, "物流状态", "运输中");
+    await 单号行.waitFor();
+    expect(await 单号行.innerText()).toContain("物流状态选了「运输中」，物流单号要一起填上才存得了");
+    // 单号没填：主按钮灰着，写还差单号（不然点下去服务端拒存，框里又没有单号格）
+    await expect.poll(() => 主按钮(page).isDisabled()).toBe(true);
+    expect(await page.locator(".proj-fill-foot").innerText()).toContain("还没填好：物流单号");
+    // 改选别的：单号格收回去，能直接推
+    await 选(page, "物流状态", "待发货");
+    await expect.poll(() => 单号行.count()).toBe(0);
+    await expect.poll(() => 主按钮(page).isEnabled()).toBe(true);
+    await 选(page, "物流状态", "运输中");
+    await 单号行.getByRole("textbox", { name: "物流单号" }).fill("SF100");
+    await expect.poll(() => 主按钮(page).isEnabled()).toBe(true);
+    await 主按钮(page).click();
+    await page.locator("#关了").waitFor();
+    expect(await 窗口变量(page, "__存")).toEqual([["项目", { trackingNo: "SF100" }], ["项目", { logisticsStatus: "运输中" }]]);
+    expect(await 窗口变量(page, "__推")).toBe(1);
+    expect(errors).toEqual([]);
+    await page.close();
+    // 项目上已经有单号：不带；字典里「运输中」改了名（运输中 给了新名）也认
+    const 二 = await 开({ 还差: ["物流状态"], p: { 备货物流: { 备货状态: null, 物流状态: { 值: null, 选项: ["待发货", "在途"] }, 物流单号: null, 运输中: ["在途", "运输中"] } } });
+    await 选(二.page, "物流状态", "在途");
+    await 二.page.locator('[data-required="物流单号"]').waitFor();
+    await 二.page.close();
+    const 三 = await 开({ 还差: ["物流状态"], p: { 备货物流: { 备货状态: null, 物流状态: { 值: null, 选项: ["待发货", "运输中"] }, 物流单号: "SF9" } } });
+    await 选(三.page, "物流状态", "运输中");
+    await expect.poll(() => 主按钮(三.page).isEnabled()).toBe(true);
+    expect(await 三.page.locator('[data-required="物流单号"]').count()).toBe(0);
+    await 三.page.close();
+  }, 60_000);
+
   it("部分失败：留窗、写哪项错、已填的不丢、只重试失败项，存齐才推进", async () => {
     const { page } = await 开({ 还差: ["金额", "预算能力"] });
     await page.evaluate(() => { const w = window as unknown as Record<string, unknown>; w.__错 = { amount: "金额超过上限了" }; w.__刷新后还差 = ["金额"]; });

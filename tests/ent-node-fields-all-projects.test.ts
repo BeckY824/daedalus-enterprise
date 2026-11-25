@@ -125,6 +125,8 @@ describe("备货状态、物流状态、物流单号 + 节点推进管全部项�
       expect(await 改字典项(老板, 运输.id, { name: "在途" })).toMatchObject({ ok: true });
       invalidateSettingsCache();
       const p = await 老项目({ name: "二号" });
+      // 项目页交付卡 / 完成节点框拿到的「运输中」名们：新名、改名前的默认名都在（就地改提前带到单号格，审查 11-25）
+      expect((await 详(p.id)).备货物流?.运输中).toEqual(["在途", "运输中"]);
       expect(await 改项目(乙, p.id, { logisticsStatus: "在途" })).toEqual({ ok: false, error: "物流状态是「在途」时物流单号必填，填上单号再存" });
       expect(await 改项目(乙, 旧.id, { trackingNo: null })).toEqual({ ok: false, error: 话 });
       expect(await 加字典项(老板, "projLogistics", "运输中")).toMatchObject({ ok: true });
@@ -136,7 +138,7 @@ describe("备货状态、物流状态、物流单号 + 节点推进管全部项�
   it("物流状态字典可改：默认三项；改名、加项后项目页下拉跟着变；停用的不能再选，已存着的照显示", async () => {
     expect((await 企业字典("projLogistics")).map((x) => x.name)).toEqual(["待发货", "运输中", "已签收"]);
     const p = await 老项目({ logisticsStatus: "运输中" });
-    expect((await 详(p.id)).备货物流).toEqual({ 备货状态: null, 物流状态: { 值: "运输中", 选项: ["待发货", "运输中", "已签收"] }, 物流单号: null, 已签收: { 名们: ["已签收"], 现名: "已签收", 能选: true } });
+    expect((await 详(p.id)).备货物流).toEqual({ 备货状态: null, 物流状态: { 值: "运输中", 选项: ["待发货", "运输中", "已签收"] }, 物流单号: null, 已签收: { 名们: ["已签收"], 现名: "已签收", 能选: true }, 运输中: ["运输中"] });
     const 项们 = await 企业字典("projLogistics");
     const 签收 = 项们.find((x) => x.name === "已签收")!;
     const 运输 = 项们.find((x) => x.name === "运输中")!;
