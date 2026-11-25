@@ -173,6 +173,8 @@ export type 项目详情 = {
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
   /** 售后回访（11-25，E-283）：交付结清的项目、我能在上面记售后回访（项目负责人 / 已进组组员 / 客户负责人，客户不在公海）——交付卡和沟通卡头给「记售后回访」 */
   能记售后回访?: boolean;
+  /** 下次回访（E-283）：记售后回访时能顺手排一条「售后回访 · 项目名」的计划（客户事项挡过得了：客户负责人、这位客户下项目的负责人；组员不给） */
+  能排下次回访?: boolean;
   /** 能记沟通的是项目组员、不是能改项目的人（11-19 客户答复）：记沟通框不摆下一步，服务端也不写项目的下一步 */
   组员记沟通?: boolean;
   /** 企业版指定回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null；不是企业版不传 */
@@ -580,6 +582,13 @@ export type 嵌在客户页 = {
    * 回客户页会 404，改去这里（客户列表）并提示一句
    */
   走后去?: { 到: string; 说法: string } | null;
+  /** 客户页「记售后回访」（E-283 第 2 条，见 项目区槽.记售后回访）：沟通卡头摆一颗，开客户页记沟通框的售后模式 */
+  记售后回访?: (() => void) | null;
+  /**
+   * 这一页签自己就是售后回访（售后钮）时，名下还有我能记、却没有页签的交付结清项目（项目是同事的、我只是客户负责人）：
+   * 卡头另摆一颗小的，开客户页记沟通框的售后模式、只列那几个（E-283 审查：不然那几个没入口）
+   */
+  页签外售后回访?: (() => void) | null;
 };
 
 export default function ProjectDetail({
@@ -1909,6 +1918,10 @@ export default function ProjectDetail({
       <button type="button" className={看全部沟通 ? "on" : undefined} aria-pressed={看全部沟通} onClick={() => { set看全部沟通(true); set搜(""); }}>这位客户全部</button>
     </span>
   );
+  const 沟通主钮 = p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new", 主快捷: true } : 售后钮;
+  const 客户页售后 = 嵌入?.记售后回访 && !售后钮 ? { 字: "记售后回访", onClick: 嵌入.记售后回访, disabled: 忙, testid: "cust-after-sale-visit" }
+    // 售后钮已占主按钮、字也是「记售后回访」：另一颗写清是别的项目，免得两颗同名
+    : 售后钮 && 嵌入?.页签外售后回访 ? { 字: "其他项目售后回访", onClick: 嵌入.页签外售后回访, disabled: 忙, testid: "cust-after-sale-visit-other" } : null;
   const 沟通卡 = 嵌入 ? (
     <Card
       className="cd-comm"
@@ -1918,7 +1931,10 @@ export default function ProjectDetail({
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
           {/* 11-12：「AI 录入」不再单摆，进「新建沟通」弹窗顶上切「手动录入 | AI 录入」。连体按钮：左半新建沟通（⌘N 落这颗）、右半收起 / 展开这块；不能记沟通只剩右半。
               原来这里的「发起主题」挪到客户页右上角「发起点评 ▾」（教练点评改版 PR1，11-21），卡头只剩「隐藏接手前」和「新建沟通」 */}
-          <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new", 主快捷: true } : 售后钮} />
+          {/* 客户页「记售后回访」（E-283）：这一页签没有主按钮就占主按钮；主按钮是「新建沟通」时另摆一颗小的；这一页签自己就是售后回访（售后钮）时，
+              只在还有没页签的交付结清项目时另摆「其他项目售后回访」（只列那几个） */}
+          {客户页售后 && 沟通主钮 && <Button size="small" disabled={忙} onClick={客户页售后.onClick} data-testid={客户页售后.testid}>{客户页售后.字}</Button>}
+          <FoldSplit 色={模块钮色.沟通} 主={沟通主钮 ?? 客户页售后} />
         </Space>
       )}
     >
@@ -2639,7 +2655,7 @@ function RecordFollowModal({ p, 售后 = false, 外贸, 卡点默认, 卡点原�
   p: 项目详情;
   /**
    * 售后回访（11-25，E-283）：交付结清的项目上记——锁着「售后回访」标、不摆卡点和下一步，保存带 售后回访: true（不带阶段）。
-   * 下次回访要排计划去客户页记（记项目沟通Action 不建计划）
+   * 能排的（p.能排下次回访）多一格「下次回访（选填）」：选了同一个事务排一条「售后回访 · 项目名」的计划（记项目沟通，E-283 第 1 条）
    */
   售后?: boolean;
   外贸: boolean;
@@ -2690,6 +2706,9 @@ function RecordFollowModal({ p, 售后 = false, 外贸, 卡点默认, 卡点原�
   const [下一步文字, set下一步文字] = useState("");
   // P-界面-34（原型 dt.follow）：下一步时间默认 3 天后，可改可清；和客户页记沟通、建档向导同一个默认
   const [下一步时间, set下一步时间] = useState<string | null>(() => dayjs().add(3, "day").format("YYYY-MM-DD"));
+  /** 下次回访（E-283）：售后态、能排的人才摆；默认空 = 不排 */
+  const [下次回访, set下次回访] = useState<string | null>(null);
+  const 摆下次回访 = 售后 && !!p.能排下次回访;
   const [交中, set交中] = useState(false);
   /** 没记上的原因：写在「记下」上面、框不关 */
   const [交错, set交错] = useState<string | null>(null);
@@ -2759,7 +2778,7 @@ function RecordFollowModal({ p, 售后 = false, 外贸, 卡点默认, 卡点原�
   */
   const 稿 = useFormDraft({
     键: `项目沟通:${p.id}`,
-    值: { type, method, 发起: 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点原因, 原话 },
+    值: { type, method, 发起: 选的发起, occurredAt, content, 下一步文字, 下一步时间, 下次回访, 卡点类型, 卡点影响, 卡点原因, 原话 },
     附件数: 附件们.length,
     // 只认打的字：沟通方式的默认值是晚一步才到的（字典读回来才设），光它变了不算填过
     算填过: (改) => 有字([改.content, 改.下一步文字, 改.卡点类型 === "暂无卡点" ? [] : 改.卡点原因, 改.原话]),
@@ -2771,13 +2790,15 @@ function RecordFollowModal({ p, 售后 = false, 外贸, 卡点默认, 卡点原�
       if (typeof v.content === "string") setContent(v.content);
       if (typeof v.下一步文字 === "string") set下一步文字(v.下一步文字);
       if (v.下一步时间 !== undefined) set下一步时间(v.下一步时间 ?? null);
+      // 草稿里过了期的下次回访不带回（日历本来就不许选今天以前）
+      if (typeof v.下次回访 === "string" && !dayjs(v.下次回访).isBefore(dayjs(), "day")) set下次回访(v.下次回访);
       if (typeof v.卡点类型 === "string") set卡点类型(v.卡点类型);
       if (v.卡点影响 !== undefined) set卡点影响(v.卡点影响 ?? null);
       if (Array.isArray(v.卡点原因)) set卡点原因(清原因们(v.卡点原因));
       if (typeof v.原话 === "string") set原话(v.原话);
     },
   });
-  useAnyEditClears([type, method, 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点原因, 附件们.length], () => set交错((e) => (改格不收(e) ? e : null)));
+  useAnyEditClears([type, method, 选的发起, occurredAt, content, 下一步文字, 下一步时间, 下次回访, 卡点类型, 卡点影响, 卡点原因, 附件们.length], () => set交错((e) => (改格不收(e) ? e : null)));
   /*
     设计语言 D4 · M7-b（D03）：「保存」一直能点；点了还缺的在各自格子下面报红、焦点跳到第一处（原来「记下」灰着、原因是右下一行小灰字）。
     顺序 = 框里从上到下；填上了红字当场消失
@@ -2811,7 +2832,7 @@ function RecordFollowModal({ p, 售后 = false, 外贸, 卡点默认, 卡点原�
     // 发版后老页面交的（lib/stale-deploy.ts）：填的字一直在存草稿，刷新后点开接着填；截图录音存不进来，说一句
     const 报错 = (话: string | null) => set交错(话 === 刷新再提交话 ? `${话}（${附件们.length ? "填的字刷新后还在，截图 / 录音要重新选" : "填的内容刷新后还在"}）` : 话);
     const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, 售后
-      ? { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 售后回访: true }
+      ? { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 售后回访: true, ...(摆下次回访 && 下次回访 ? { 下次回访 } : {}) }
       : { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, ...(p.组员记沟通 ? {} : { 下一步: 下一步文字, 下一步时间 }), ...(p.企业版 ? { 阶段: p.phase } : {}) }, 售后 ? undefined : 卡点)), undefined, { 报错 });
     const r = 回.r;
     if (ok && r?.ok) {
@@ -2823,6 +2844,10 @@ function RecordFollowModal({ p, 售后 = false, 外贸, 卡点默认, 卡点原�
       let 调: "success" | "warning" | "error" = 短 ? "warning" : "success";
       if ("卡点" in r && r.卡点) 话们.push(`已生成卡点 ${r.卡点}`);
       if ("卡点没发" in r && r.卡点没发) { 话们.push(`卡点没生成：${r.卡点没发}`); 调 = "warning"; }
+      // 下次回访（E-283）：排上了说排在哪天；带了但服务端说排不了（期间权限变了）照记回访、说一句
+      if ("下次回访" in r && r.下次回访) 话们.push(`下次回访排在 ${dayjs(r.下次回访).format("M 月 D 日")}`);
+      if ("下次没排" in r && r.下次没排) { 话们.push(`下次回访没排上：${r.下次没排}`); 调 = "warning"; }
+      if ("下次计划id" in r && r.下次计划id) void window.desktopReminders?.刷新();
       if (附件们.length && r.followUpId) {
         const 错 = await 传沟通附件(r.followUpId, 附件们);
         if (错.length) { 话们.push(...错); 调 = "error"; }
@@ -2942,6 +2967,20 @@ function RecordFollowModal({ p, 售后 = false, 外贸, 卡点默认, 卡点原�
             <AfterSaleLockTag />
             <span className="fm-help as-note">交付结清的项目只能记售后回访，项目和客户状态都不变</span>
           </Space>
+        )}
+        {/* 下次回访（E-283）：照客户页记售后回访的那一格（FollowUpForm 下次回访），选了排一条跟进计划；组员不摆（P-沟通-04 组员不能建计划） */}
+        {摆下次回访 && (
+          <div data-fk="下次回访">
+            <格标签 名="下次回访（选填）" />
+            <DatePicker
+              aria-label="下次回访"
+              className="fu-as-date"
+              value={下次回访 ? dayjs(下次回访) : null}
+              disabledDate={(x) => x.isBefore(dayjs(), "day")}
+              onChange={(v) => set下次回访(v ? v.format("YYYY-MM-DD") : null)}
+            />
+            <div className="fm-help">选了会排一条跟进计划，到时候在计划里点完成</div>
+          </div>
         )}
         <div data-fk="沟通内容">
           <格标签 名="沟通内容" 必填 />

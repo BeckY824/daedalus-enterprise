@@ -1143,6 +1143,8 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
         // 这条写了项目上的下一步：打标记（30 分钟内改这条时下一步才跟着改，follow-edited.ts 写过下一步）
         ...(r.写了下一步 ? { detail: 写了下一步标记 } : {}),
       });
+      // 下次回访（E-283）：和回访同一个事务排上的计划，另记一条（同客户页 saveFollowUp 顺手排计划）
+      if (r.下次计划id) await recordAudit({ user: me, action: "create", entity: "FollowPlan", entityId: r.下次计划id, summary: `在交付结清的项目「${p?.name ?? ""}」上排了下次回访（${r.下次回访 ?? ""} ${r.下次计划主题 ?? ""}）` });
       await 记这个项目的自动推进(me, projectId, r.自动推到);
       // 客户三态：记了一条沟通（可能还推了节点），马上重算这位的钟（关着不查库，出错不影响保存）
       await 存沟通后重算三态(p?.customerId);
@@ -1152,7 +1154,8 @@ export async function 记项目沟通Action(projectId: string, input: 向导跟�
     // 不然按客户三态（C12，三态关着不查库）。两句只出一句，超时那句为准
     const 超时短沟通 = r.ok ? await 超时短沟通提示(r.followUpId) : null;
     const 短沟通 = r.ok && !超时短沟通 ? await 短沟通提示(r.followUpId).catch(() => null) : null;
-    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...(r.推前 ? { 推前: r.推前 } : {}), ...卡点结果, ...(超时短沟通 ? { 超时短沟通 } : {}), ...(短沟通 ? { 短沟通 } : {}) } : r;
+    return r.ok ? { ok: true as const, followUpId: r.followUpId, ...(r.自动推到 ? { 自动推到: r.自动推到 } : {}), ...(r.推前 ? { 推前: r.推前 } : {}), ...卡点结果, ...(超时短沟通 ? { 超时短沟通 } : {}), ...(短沟通 ? { 短沟通 } : {}),
+      ...(r.下次计划id ? { 下次计划id: r.下次计划id, 下次回访: r.下次回访 } : {}), ...(r.下次没排 ? { 下次没排: r.下次没排 } : {}) } : r;
   } catch (e) { return 不在了(e); }
 }
 

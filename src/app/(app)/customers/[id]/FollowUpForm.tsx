@@ -144,6 +144,7 @@ export default function FollowUpForm({
   opportunities: 给定商机,
   projects = null,
   售后项目 = null,
+  只记售后 = false,
   新建项目,
   没项目说法 = 沟通没项目话,
   aiEnabled,
@@ -174,6 +175,8 @@ export default function FollowUpForm({
    * 选了它：锁着「售后回访」标、不摆卡点和下一步，换成「下次回访（选填）」，保存走 saveFollowUp（带 售后回访、下次回访排成计划）
    */
   售后项目?: { id: string; name: string }[] | null;
+  /** 客户页「记售后回访」打开的（E-283 第 2 条）：标题写「记售后回访」，售后项目只有一个就默认选它（调用方 projects 给空，只列交付结清那组） */
+  只记售后?: boolean;
   /**
    * 企业版沟通必须挂项目（11-17）：一个能记的在推项目都没有时，弹框里「新建项目」按钮开客户页那张新建项目表（框不关、写好的内容留着）；
    * null = 我不能新建项目，改说「请联系负责人先建项目」；不给（undefined）= 不摆这一块（别的版本）
@@ -314,7 +317,7 @@ export default function FollowUpForm({
   const opportunities = 给定商机 ?? 近况?.opportunities ?? [];
   // 外贸「关联商机 / 订单」里订单那一组（跟进挂订单）2026-10-29 随订单表一起删了，只挂商机
   /** 新建默认挂的项目：只有一个能记的在推项目才自动挂它；几个要人选，不猜（11-17 沟通必须挂项目） */
-  const 默认项目 = projects?.length === 1 ? projects[0].id : undefined;
+  const 默认项目 = 只记售后 ? (售后项目?.length === 1 ? 售后项目[0].id : undefined) : projects?.length === 1 ? projects[0].id : undefined;
   /** 企业版：一个能记的在推项目都没有，沟通（待办、提醒除外）记不了，先建项目 */
   const 没项目 = !!projects && projects.length === 0 && !售后项目?.length && !record?.id;
   /** 关联项目下拉：有售后回访那组就分两组（在推 / 已交付结清 · 售后回访），没有照旧平铺 */
@@ -912,7 +915,7 @@ export default function FollowUpForm({
       // 存上了（对勾还在放 / 停下来让人看没成的那块）：Esc / X / 取消 也当「知道了」，照样交给页面刷新
       onCancel={关或收尾}
       open={open}
-      title={record?.id ? "编辑沟通记录" : "新建沟通"}
+      title={record?.id ? "编辑沟通记录" : 只记售后 ? "记售后回访" : "新建沟通"}
       footer={停下看 ? [
         <Button key="知道了" type="primary" onClick={做收尾}>知道了</Button>,
       ] : [

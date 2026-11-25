@@ -19,8 +19,8 @@ import type { 组织 } from "../enterprise/org-core";
 import { 能编辑项目, 只读角色, 没设业务角色, 只看的人, 只看某人话, type 谁 } from "../enterprise/permissions";
 import { 是交付 } from "./stage-dict";
 
-export { 售后回访名, 交付结清要售后回访话, 请选在推或售后话, 售后只在交付结清话, 售后不能记话, 售后回访主题 } from "./follow-needs-project-text";
-import { 交付结清要售后回访话, 请选在推或售后话, 售后只在交付结清话, 售后不能记话, 沟通客户在公海话 } from "./follow-needs-project-text";
+export { 售后回访名, 交付结清要售后回访话, 请选在推或售后话, 售后只在交付结清话, 售后不能记话, 售后客户在公海话, 下次回访日期不对话, 下次回访早于今天话, 售后回访主题 } from "./follow-needs-project-text";
+import { 交付结清要售后回访话, 请选在推或售后话, 售后只在交付结清话, 售后不能记话, 售后客户在公海话 } from "./follow-needs-project-text";
 export { 沟通没项目话, 沟通没在推项目话, 沟通项目已结束话, 沟通项目在公海话, 沟通项目不在话, 沟通要选项目话, 沟通不是组员话, 沟通都不能记话, 沟通客户在公海话, 请负责人建项目话, 待办改沟通话, 要挂项目的类型 } from "./follow-needs-project-text";
 import { 沟通没项目话, 沟通没在推项目话, 沟通项目已结束话, 沟通项目在公海话, 沟通项目不在话, 沟通要选项目话, 沟通不是组员话, 沟通都不能记话 } from "./follow-needs-project-text";
 
@@ -122,7 +122,7 @@ export async function 核售后回访(
   组员状态: string | null | undefined = p.members?.[0]?.inviteStatus,
 ): Promise<string | null> {
   const 客 = await 售后客户(p.customerId);
-  if (客.客户在公海) return 沟通客户在公海话;
+  if (客.客户在公海) return 售后客户在公海话;
   const org = await 权限组织();
   if (只看的人(org, me.id)) return 只看某人话;
   if (!能记售后回访(me, { ...p, ...客 }, org, 组员状态)) return 售后不能记话;

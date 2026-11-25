@@ -3,6 +3,9 @@
  * 这里不管登录、不管开关，只管「谁能改」和「改了留什么痕」，方便单测直接调。
  */
 import { 能往项目记沟通, 核售后回访, 沟通项目在公海话, 沟通项目已结束话, 沟通不是组员话, 售后只在交付结清话 } from "./follow-needs-project";
+import { 售后回访主题, 下次回访日期不对话, 下次回访早于今天话 } from "./follow-needs-project-text";
+import { 客户事项挡 } from "@/lib/enterprise/follow-perm";
+import { parseScheduleDate, calendarDay, type ScheduleDate } from "@/lib/schedule-date";
 import { 项目退回前查联系方式, 退回号码种类表 } from "@/lib/enterprise/return-contact-check";
 import { Prisma, type Project } from "@/generated/prisma";
 import { prisma, defaultClient } from "../prisma";
@@ -39,7 +42,7 @@ import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
 import { dayjs } from "../utils";
 import { 看全部, 只读身份中, 系统写 } from "../team-scope";
-import { FOLLOW_RECORD_STATUSES } from "../constants";
+import { FOLLOW_RECORD_STATUSES, FOLLOW_TYPE_MAP } from "../constants";
 import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
 import { 节点变了的提成 } from "./commission-db";
@@ -1565,11 +1568,23 @@ export async function 记项目沟通(
   me: 谁, projectId: string, input: 向导跟进, now: Date = new Date(),
   /** 无意义：调用方判好的无意义沟通那句（F-052，meaningless-follow.ts 沟通无意义挡）；核完项目、权限后才拦（那几句更准） */
   opt: { 要下一步文字?: boolean; 无意义?: string | null } = {},
-): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 推前?: 推前; 写了下一步?: boolean; 无意义?: true; 售后回访?: true }> {
+): Promise<结果 & { followUpId?: string; 自动推到?: string[]; 推前?: 推前; 写了下一步?: boolean; 无意义?: true; 售后回访?: true } & 下次回访结果> {
   if (!input || typeof input !== "object") return { ok: false, error: "要记什么？" };
   const 认 = await 认跟进方式(input);
   if ("error" in 认) return { ok: false, error: 认.error };
   input = 认;
+  /*
+    下次回访（E-283 第 1 条）：售后回访顺手排一条客户跟进计划。谁能排同客户页的待办 / 计划（客户事项挡：客户负责人、这位客户下项目的负责人；
+    组员、上级只看的、公海里的不给，P-沟通-04 组员不能建计划）。挡在事务里核（审查：事务外核过、进事务前客户被转走，组员身份照样建出计划），
+    用 tx 读这一刻的客户负责人、项目负责人；排不了的不拦这条回访，回 下次没排 一句；排得了才认日期（日历日、不早于今天），日期不对整条不记。
+    日期在这里先解析好，事务里只按挡的结果取用
+  */
+  const 带了下次 = 企业版() && input.售后回访 === true && typeof input.下次回访 === "string" && !!input.下次回访.trim();
+  let 下次日期: ScheduleDate | { error: string } | null = null;
+  if (带了下次) {
+    const t = parseScheduleDate(input.下次回访!.trim(), undefined, false);
+    下次日期 = !t?.on || !t.at ? { error: 下次回访日期不对话 } : t.on < calendarDay(now) ? { error: 下次回访早于今天话 } : t;
+  }
   const 规则 = await 生效组织规则();
   const 状态开 = await 客户状态自动();
   const org = await 权限组织();
@@ -1584,10 +1599,16 @@ export async function 记项目沟通(
     if (p.pooledAt) return { ok: false as const, error: 企业版() ? 沟通项目在公海话 : "这个项目在公海里，先领取再记" };
     // 售后回访（11-25）：交付结清的项目只认标了售后回访的，谁能记按客户判公海（交付结清项目的 pooledAt 永远空）
     const 售后 = 企业版() && 是交付(p.result);
+    /** 下次回访排不了的那句（事务里按这一刻的负责人核，见上） */
+    let 下次挡: string | null = null;
     if (售后) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
       const 错 = await 核售后回访(me, p, input.售后回访 === true, 组员?.inviteStatus);
       if (错) return { ok: false as const, error: 错 };
+      if (带了下次) {
+        下次挡 = await 客户事项挡(me, p.customerId, { tx, org });
+        if (!下次挡 && 下次日期 && "error" in 下次日期) return { ok: false as const, error: 下次日期.error };
+      }
     }
     // 沟通必须挂在推项目（11-17 客户定）：已结束的项目不再记沟通
     if (企业版() && p.result && !售后) return { ok: false as const, error: 沟通项目已结束话 };
@@ -1643,11 +1664,20 @@ export async function 记项目沟通(
       const 推 = 不写项目 ? { 到: [] as string[] } : await 按必填推进详(tx, 规则, me, p.id, { 留下一步: 写了下一步 });
       if (推.到.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
       if (!售后) await 勾掉将回收提醒(tx, 规则, p, now);
+      // 下次回访（E-283）：和这条回访同一个事务；客户负责人不一定看得到这个项目、项目负责人不一定是客户负责人——上面 客户事项挡 核过人，按全部写
+      const 下次时间 = 下次日期 && !("error" in 下次日期) ? 下次日期 : null;
+      const 下次: 下次回访结果 = !售后 ? {} : 下次挡 ? { 下次没排: 下次挡 } : 下次时间 ? await 看全部(async () => {
+        const 计划 = await tx.followPlan.create({ data: { subject: 售后回访主题(p.name), plannedAt: 下次时间!.at!, plannedOn: 下次时间!.on, plannedHasTime: false, method: 好.method ?? FOLLOW_TYPE_MAP[好.type]?.label ?? "电话沟通", customerId: p.customerId, ownerId: me.id, afterSaleProjectId: p.id } });
+        return { 下次计划id: 计划.id, 下次回访: 下次时间!.on!, 下次计划主题: 计划.subject };
+      }) : {};
       // 写了项目上的下一步（文字或时间）：调用方在「记了一条沟通」日志里打标记，30 分钟内改这条时下一步才跟着改（follow-perm 下一步跟着改of）
-      return { ok: true as const, followUpId: 跟进.id, 写了下一步, ...带推进(推.到), ...(推.推前 ? { 推前: 推.推前 } : {}), ...(售后 ? { 售后回访: true as const } : {}) };
+      return { ok: true as const, followUpId: 跟进.id, 写了下一步, ...带推进(推.到), ...(推.推前 ? { 推前: 推.推前 } : {}), ...(售后 ? { 售后回访: true as const } : {}), ...下次 };
     });
   });
 }
+
+/** 记项目沟通 顺手排的下次回访（E-283）：排上了回 id 和日子（YYYY-MM-DD）；带了但这个人排不了回原因（这条回访照记） */
+export type 下次回访结果 = { 下次计划id?: string; 下次回访?: string; 下次计划主题?: string; 下次没排?: string };
 
 /**
  * 记项目沟通带的额外格子（客户页选了关联项目，10-31）：标题、联系人、状态、时长、参与人。

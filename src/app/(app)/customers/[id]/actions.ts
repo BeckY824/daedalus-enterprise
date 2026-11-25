@@ -27,7 +27,7 @@ import { 能改这条沟通, 能删沟通, 不能删沟通话, 本人限时改�
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 卡点脱离沟通 } from "@/lib/project/blocker";
 import { 在推项目条件 } from "@/lib/project/active";
-import { 能记售后回访, 售后不能记话, 售后回访主题, 定沟通挂哪个项目, 可记沟通项目们, 要挂项目的类型, 免挂项目中, 能往项目记沟通, 沟通客户在公海话, 沟通项目不在话, 待办改沟通话, 沟通不是组员话, 沟通都不能记话, type 可记项目 } from "@/lib/project/follow-needs-project";
+import { 能记售后回访, 售后不能记话, 售后回访主题, 定沟通挂哪个项目, 可记沟通项目们, 要挂项目的类型, 免挂项目中, 能往项目记沟通, 沟通客户在公海话, 售后客户在公海话, 沟通项目不在话, 待办改沟通话, 沟通不是组员话, 沟通都不能记话, type 可记项目 } from "@/lib/project/follow-needs-project";
 import { 记沟通标记 } from "@/lib/project/stage-gates";
 import { 版本冲突, 版本条件, 推进版本 } from "@/lib/edit-version";
 import { dayjs } from "@/lib/utils";
@@ -170,7 +170,7 @@ async function 挂项目(me: { id: string; role: string }, followUpId: string, c
   if (!p) return 沟通项目不在话;
   if (售后回访) {
     const c = await 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
-    if (c?.pool) return 沟通客户在公海话;
+    if (c?.pool) return 售后客户在公海话;
     if (!能记售后回访(me, { ...p, 客户负责人: c?.salesOwnerId, 客户在公海: false }, org, p.members[0]?.inviteStatus)) return 售后不能记话;
   } else if (!能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)) return 沟通不是组员话;
   // 库里存着旧节点名的按企业版的新名记（10-31 改名，写入一律新名）
@@ -294,8 +294,11 @@ export async function saveFollowUp(input: FollowUpInput) {
       企业版（审核 11-18 权限 P1-4）：顺手建待办 / 计划、带提醒时间的待办 / 提醒，同 saveTask / savePlan 过 客户事项挡（负责人本人）；
       顺手完成计划同 勾完成 走 本人勾完成挡。公海客户新记 = 先领再记（下面），领了就是自己的，不在这里挡
     */
+    /** 事务里要复核 客户事项挡（审查 E-283：这里核过、进事务前客户被转走，事务里照旧建出待办 / 计划）：组织表在这里读好 */
+    let 事项复核组织: Awaited<ReturnType<typeof 权限组织>> | undefined;
     if (企业版() && 目标 && !目标.pool) {
       const 建事项 = !!(extra?.tasks?.length || extra?.plan) || (!input.id && (input.type === "TASK" || input.type === "REMIND") && !!input.dueAt && input.status !== "已完成");
+      if (建事项) 事项复核组织 = await 权限组织();
       const 挡 = 建事项 ? await 客户事项挡(user, input.customerId) : null;
       if (挡) return { ok: false as const, error: 挡 };
       if (extra?.完成计划) {
@@ -376,7 +379,7 @@ export async function saveFollowUp(input: FollowUpInput) {
       // 确实没有我能记的在推项目才换成无效那句；「请选一个关联项目」、带了项目但这个项目不行的照原话说
       if (!定.ok && 无效要拦 && !给的项目 && (定.没项目 || 定.error === 沟通都不能记话)) return { ok: false as const, error: 无效客户不能记沟通话 };
       // 公海客户没选项目说「先领取再选」；标了无效的领不了，不叫他去领，照原话（如「请选一个关联项目」）
-      if (!定.ok) return { ok: false as const, error: 在公海 && !给的项目 && !无效公海 ? 沟通客户在公海话 : 定.error, ...(定.没项目 ? { 没项目: true as const } : {}), ...(定.售后?.length ? { 售后: 定.售后 } : {}) };
+      if (!定.ok) return { ok: false as const, error: 在公海 && !给的项目 && !无效公海 ? (要售后 ? 售后客户在公海话 : 沟通客户在公海话) : 定.error, ...(定.没项目 ? { 没项目: true as const } : {}), ...(定.售后?.length ? { 售后: 定.售后 } : {}) };
       挂到 = 定.projectId;
       售后 = 定.售后回访;
     }
@@ -399,6 +402,11 @@ export async function saveFollowUp(input: FollowUpInput) {
       const customer = await tx.customer.findUnique({ where: { id: input.customerId }, select: 显名列 });
       // 客户在、只是看不到（比如项目组员）：说没权限，不说「不在了」（11-03 B5-6）
       if (!customer) return { ok: false as const, error: (await 看全部(() => tx.customer.findUnique({ where: { id: input.customerId }, select: { id: true } }))) ? "你没有权限给这个客户记沟通，请找负责人" : "这个客户已经不在了，请刷新重试" };
+      // 顺手建待办 / 计划：按这一刻的客户负责人、项目负责人再核一遍（还没写任何东西，拦下整条不存）
+      if (事项复核组织 !== undefined) {
+        const 挡 = await 客户事项挡(user, input.customerId, { tx, org: 事项复核组织 });
+        if (挡) return { ok: false as const, error: 挡 };
+      }
       const plan = extra?.完成计划 ? await tx.followPlan.findFirst({ where: { id: extra.完成计划, customerId: input.customerId } }) : null;
       if (extra?.完成计划 && !plan) return { ok: false as const, error: "要完成的计划已不存在或不属于这位客户，请重新选择" };
       const audits: Parameters<typeof recordAudit>[0][] = [];

@@ -13,6 +13,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 名下事项够不着 } from "@/lib/enterprise/follow-perm";
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 import { 项目链接们 } from "@/lib/project/customer-detail-direct";
+import { 带回访去处 } from "@/lib/project/after-sale-plan-link";
 
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 export const dynamic = "force-dynamic";
@@ -74,6 +75,8 @@ export default async function PlansPage({
 
   // 轻列表按列压紧再给页面（lib/plans-light.ts）：企业版 1.5 万条时页面小一半；压不了的照原样给
   const 紧 = 轻 && 负责人 ? 压轻(轻, 负责人) : null;
+  // 回访计划（E-283 第 3 条）：核得过的带 回访去，行上的客户名点了去那个交付结清项目（lib/project/after-sale-plan-link.ts）
+  const 计划们 = await 带回访去处(me, plans);
 
   return (
     <PlansView
@@ -81,7 +84,7 @@ export default async function PlansPage({
       预选客户={预选客户}
       直接新建={sp.new === "1"}
       全员={sp.scope === "all"}
-      plans={plans}
+      plans={计划们}
       tasks={tasks}
       项目下一步={项目下一步}
       进不了的客户={够不着.进不了}

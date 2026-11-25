@@ -42,6 +42,8 @@ type Plan = {
   有WhatsApp?: boolean;
   ownerId: string;
   ownerName: string;
+  /** 回访计划（E-283）核得过时：客户名点了去它的交付结清项目（服务端 带回访去处） */
+  回访去?: string;
 };
 
 type Task = {
@@ -87,6 +89,7 @@ type 事项 = {
   有WhatsApp?: boolean;
   ownerId: string;
   ownerName: string;
+  回访去?: string;
 };
 
 /** 企业版：项目上填的下一步时间（page.tsx 只读取来），和计划按同一套时间分组，只能点进项目去改 */
@@ -98,6 +101,7 @@ type 轻事项 = { key: string; 时间: string | null; ownerId: string };
 const 计划成事项 = (p: Plan): 事项 => ({
   key: `plan:${p.id}`, kind: "plan", id: p.id, 标题: p.subject, 时间: p.plannedAt, 明确钟点: p.plannedHasTime, 方式: p.method, 版本: p.updatedAt,
   customerId: p.customerId, customerName: p.customerName, 有WhatsApp: p.有WhatsApp, ownerId: p.ownerId, ownerName: p.ownerName,
+  ...(p.回访去 ? { 回访去: p.回访去 } : {}),
 });
 const 待办成事项 = (t: Task): 事项 => ({
   key: `task:${t.id}`, kind: "task", id: t.id, 标题: t.title, 时间: t.dueAt, 明确钟点: t.dueHasTime, 版本: t.updatedAt,
@@ -563,7 +567,9 @@ function 组块({
               <span className="plan-row-m">
                 <span className="plan-row-t">{x.标题}</span>
                 <span className="plan-row-s">
-                  {进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <RowLink href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</RowLink>}
+                  {/* 回访计划（E-283）：去它的交付结清项目（客户页项目页签），那里有「记售后回访」 */}
+                  {x.回访去 ? <RowLink href={x.回访去} style={客户名样式}>{x.customerName}</RowLink>
+                    : 进不了.has(x.customerId) ? <span style={客户名样式}>{x.customerName}</span> : <RowLink href={`/customers/${x.customerId}`} style={客户名样式}>{x.customerName}</RowLink>}
                   {x.方式 && <Tag style={{ margin: 0 }}>{x.方式}</Tag>}
                   <Tag style={{ margin: 0 }}>{x.kind === "plan" ? "跟进计划" : "待办"}</Tag>
                 </span>

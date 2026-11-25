@@ -17,7 +17,7 @@ import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选, 是系统管理员, 只读角色, 只看的人, type 权限项目 } from "@/lib/enterprise/permissions";
 import { 项目来历 } from "@/lib/enterprise/customer-merge";
-import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
+import { 客户事项挡, 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
 import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
 import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import { 沟通附件们 } from "@/lib/attachments";
@@ -299,6 +299,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   const 能记沟通 = 企业 && !公海 && !p.result && 能往项目记沟通(me, p, org, 已加入.includes(me.id) ? "JOINED" : null);
   // 售后回访（11-25，E-283）：交付结清的项目，客户不在公海（按客户 CustomerPool 判，交付结清的项目本身不进公海），项目负责人 / 已进组组员 / 客户负责人能记——「记售后回访」按钮
   const 能记售后回访 = 企业 && 是交付(p.result) && 能记售后回访of(me, { ownerId: p.ownerId, result: p.result, 客户负责人: p.customer.salesOwnerId, 客户在公海: !!p.customer.pool }, org, 已加入.includes(me.id) ? "JOINED" : null);
+  // 下次回访（E-283）：记售后回访时能不能顺手排，同服务端 记项目沟通（客户事项挡：客户负责人、这位客户下项目的负责人；组员不给）
+  const 能排下次回访 = 能记售后回访 && !(await 客户事项挡(me, p.customerId));
   // 沟通的「…」菜单（改 / 删，10-29）：不在公海、客户看得到，且不是同事 / 虚线下属的客户（和客户页不摆编辑删除同一条，服务端 改项目沟通 / 删项目沟通 再挡一遍）。
   // M-权限-09（11-09 原口径）：管理（销售管理 / 市场管理 / 总管理）以下的人，负责人本人也算，不能改、不能删。
   // 改 = 身为负责人（项目或客户的）的管理，删 = 系统管理员或身为负责人的管理（V3.5.1），两样分开给，和服务端同一套（lib/enterprise/follow-perm.ts）
@@ -479,7 +481,7 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
     // 指定分配时间（PR3）：还没到点的定时，详情上写时间和分给谁；录入人、能分配的人能改 / 取消 / 改成现在分配
     ...(企业 && p.scheduledAssignAt && p.awaitAssignAt && !p.pooledAt ? { 定时分配: {
       时间: 时刻转北京墙钟(p.scheduledAssignAt)!, 给谁: p.scheduledAssignTo ? 叫(p.scheduledAssignTo) ?? "已不在的成员" : null, 能动: !!org && 能动定时(me, p, org),
-    } } : {}), 要下一步, 能记沟通, ...(能记售后回访 ? { 能记售后回访: true } : {}), 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, ...(本人候选.size ? { 服务器现在: 现在.toISOString() } : {}), 必填, 不给推, 不给推谁能推, 交付只在尾款, 能改节点: 节点能改, 能转让: 能转,
+    } } : {}), 要下一步, 能记沟通, ...(能记售后回访 ? { 能记售后回访: true } : {}), ...(能排下次回访 ? { 能排下次回访: true } : {}), 组员记沟通: 能记沟通 && !能改, 可改沟通, 可删沟通, ...(本人候选.size ? { 服务器现在: 现在.toISOString() } : {}), 必填, 不给推, 不给推谁能推, 交付只在尾款, 能改节点: 节点能改, 能转让: 能转,
     // 转给谁以后自己还看得到（11-03 A5-3）：总管理、上级转给下属照样能看，提示不说「看不到」，转完也不跳回列表。
     // 按转完的样子算：转让走 换负责人，同时清待分配（owner-write.ts）——不清的话本线管理靠「待分配放开」看得到，会误算成转给圈外的人也还能看（#392 审查）
     ...(企业版() && 能转 ? { 转后还能看: 候选.filter((c) => 能看项目(me, { ...p, ...换负责人(c.id), 已加入 }, org)).map((c) => c.id) } : {}),
