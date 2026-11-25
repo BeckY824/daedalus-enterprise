@@ -834,6 +834,7 @@ export default function ProjectsView({
                           onMouseLeave={能进 ? 预取.出 : undefined}
                           onFocus={能进 ? () => 预取.进(项目地址(r)) : undefined}
                           onBlur={能进 ? 预取.出 : undefined}
+                          onTouchStart={能进 ? (e) => 预取.触(项目地址(r), e) : undefined}
                           onKeyDown={(e) => {
                             if (卡拖?.键(e)) return;
                             if (能进 && (e.key === "Enter" || e.key === " ")) {

@@ -211,9 +211,11 @@ it("dt.field：Enter 存，存的时候就摆新值、刷新回来前不闪回�
     // 服务端还在存（桩里慢 300ms），格子上已经是新值、不回旧值
     await 格.getByText("新公司").waitFor();
     expect(await 格.innerText()).not.toContain("旧公司");
-    await expect.poll(() => 窗(page, "__刷")).toBe(1);
+    await expect.poll(() => 窗(page, "__改")).toEqual([["school", "新公司"]]);
+    // 存成了不再 router.refresh（跳转优化 PR-B 11-25）：动作里 revalidatePath 了，新页跟着动作回包回来；等桩里那 300ms 过去再看
+    await page.waitForTimeout(600);
+    expect(await 窗(page, "__刷") ?? 0, "存成了还在 router.refresh").toBe(0);
     expect(await 格.innerText()).not.toContain("旧公司");
-    expect(await 窗(page, "__改")).toEqual([["school", "新公司"]]);
     // 刷新带回新值
     await page.evaluate(() => (window as unknown as { __设值: (v: string) => void }).__设值("新公司"));
     // Esc 放弃：回原值，不交

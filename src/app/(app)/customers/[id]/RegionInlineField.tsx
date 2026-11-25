@@ -1,7 +1,6 @@
 "use client";
 
 import { useContext, useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { EditOutlined } from "@ant-design/icons";
 import AddressInput from "@/components/AddressInput";
 import { 拼地址, type 客户地址 } from "@/lib/enterprise/customer-v2";
@@ -18,7 +17,6 @@ const 同 = (a: 客户地址, b: 客户地址) => 拼地址(a) === 拼地址(b) 
  * 点到这一格外面（下拉浮层不算）或回车就存，Esc 放弃。
  */
 export default function RegionInlineField({ customerId, value, 空时横线 = false }: { customerId: string; value: 客户地址; 空时横线?: boolean }) {
-  const router = useRouter();
   /** 没存上的原因：就地写在这一格下面（role=alert），不弹顶部提示（原型 g.notice）；过几秒收 */
   const [错, set错] = useState<string | null>(null);
   useEffect(() => {
@@ -65,7 +63,7 @@ export default function RegionInlineField({ customerId, value, 空时横线 = fa
       setDraft(value);
       return;
     }
-    router.refresh();
+    // 已 revalidatePath 的保存不再 router.refresh（跳转优化 PR-B 11-25）：动作里 revalidatePath 了，Next 在同一个回包里就把这页重新渲染好带回来；再 refresh 是让服务器把整页再算一遍，还会把预取缓存再清一次（patchCustomerRegion）
   }
 
   // 点到这一格外面就存；国家下拉的浮层挂在 body 上，点它不算「外面」
