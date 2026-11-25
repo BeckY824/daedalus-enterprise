@@ -21,7 +21,7 @@ import { 看已删 } from "./soft-delete-core";
 import { 企业版 } from "./switch";
 import { 权限组织, type 组织 } from "./org";
 import { 能删除, 是系统管理员, 只读角色, 只看的人 } from "./permissions";
-import { 交接中的客户 } from "./handover-db";
+import { 交接中的客户, 离职交接中的项目 } from "./handover-db";
 import { 跟着项目重算, 客户状态自动 } from "./cust-status-auto-db";
 import { 存沟通后重算三态 } from "./tri-state-db";
 import { notify } from "./notify";
@@ -29,7 +29,6 @@ import { 通知里的客户名 } from "./notice-mask";
 import { 客户编号文字 } from "@/lib/customer-no";
 import { 忘掉企业版范围 } from "./visibility";
 import { 读客户, 重算最近跟进, 拦下, 合并事务选项, 并发失败话, 挂靠说明, type 客户行, type 合并人 } from "./customer-merge";
-import { 待确认, 离职盖住的客户, 离职盖住的项目 } from "./handover-db";
 
 type 库 = PrismaClient;
 type Tx = Prisma.TransactionClient;
@@ -63,22 +62,9 @@ async function 拦的原因(db: Tx | 库, p: 项目行 | null, 原: 客户行 | 
   for (const c of [原, 目标]) if (交接.has(c.id)) 因.push(`「${名(c)}」正在转让交接中，等接手人确认或撤回交接后再换`);
   for (const c of [原, 目标]) if (c.poolInvalidAt) 因.push(`「${名(c)}」标了无效客户，先由系统管理员恢复再换`);
   if (有值(原.bizLine) && 有值(目标.bizLine) && 原.bizLine !== 目标.bizLine) 因.push(`两位客户业务线不同（${原.bizLine} / ${目标.bizLine}），不能换`);
-  if (await 项目交接中(db, p)) 因.push("这个项目正在离职交接中，等接手人确认或撤回交接后再换");
+  // 项目在离职交接里等接手人确认：确认时要按当时的客户和负责人分拣，换了客户会对不上（handover-db 离职交接中的项目）
+  if ((await 离职交接中的项目([p], db as Tx)).has(p.id)) 因.push("这个项目正在离职交接中，等接手人确认或撤回交接后再换");
   return 因;
-}
-
-/**
- * 项目在离职交接里等接手人确认（交项目那几个、一键全部交给、交客户时跟着客户走的）：确认时要按当时的客户和负责人分拣，换了客户会对不上。
- * 转让客户的交接看客户（交接中的客户），这里只看离职交接；验证中的项目不算
- */
-async function 项目交接中(db: Tx | 库, p: 项目行): Promise<boolean> {
-  if (!p.ownerId) return false;
-  const 们 = await 看全部(() => db.entHandover.findMany({ where: { kind: "离职", fromUserId: p.ownerId, status: 待确认 }, select: { way: true, customerIds: true, projectIds: true } }));
-  return 们.some((h) => {
-    const 项目 = 离职盖住的项目(h);
-    const 客户 = 离职盖住的客户(h);
-    return 项目 === null || 项目.has(p.id) || 客户 === null || 客户.has(p.customerId);
-  });
 }
 
 export type 换客户预览结果 = {

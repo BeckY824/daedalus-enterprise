@@ -22,7 +22,7 @@ import { 权限组织 } from "./org";
 import { 能删除, 是系统管理员, 只读角色, 只看的人 } from "./permissions";
 import type { 组织 } from "./org";
 import { 在推项目条件 } from "@/lib/project/active";
-import { 交接中的客户 } from "./handover-db";
+import { 交接中的客户, 离职交接中的客户, 离职交接中的项目 } from "./handover-db";
 import { 跟着项目重算, 客户状态自动 } from "./cust-status-auto-db";
 import { 存沟通后重算三态 } from "./tri-state-db";
 import { 不是同号留痕 } from "./same-number-mark";
@@ -94,6 +94,25 @@ async function 同事在推个数(db: Pick<Tx, "project">, customerId: string, �
   return 们.filter((p) => p.ownerId && p.ownerId !== 我).length;
 }
 
+/**
+ * 离职交接待确认（拦法同 project-move-customer）：两家本身被负责人的离职交接盖住（交这位客户、一键全部交给），
+ * 或两家名下没删的项目在离职交接里，都拦。接手人确认时按当时的客户和负责人分拣：B 并掉 / 拆回以后对不上，
+ * 挪过去的项目会留在离职的人名下。合并、撤回合并用同一套
+ */
+async function 离职交接拦(db: Pick<Tx, "entHandover" | "project">, 两家: Pick<客户行, "id" | "name" | "shortName" | "customerNo" | "salesOwnerId">[], 再: string): Promise<string[]> {
+  const [客, 项目们] = await Promise.all([
+    离职交接中的客户(两家, db),
+    看全部(() => db.project.findMany({ where: { customerId: { in: 两家.map((c) => c.id) }, deletedAt: null }, select: { id: true, ownerId: true, customerId: true } })),
+  ]);
+  const 项 = await 离职交接中的项目(项目们, db);
+  const 因: string[] = [];
+  for (const c of 两家) {
+    if (客.has(c.id)) 因.push(`「${名(c)}」正在离职交接中，等接手人确认或撤回交接后再${再}`);
+    else if (项目们.some((p) => p.customerId === c.id && 项.has(p.id))) 因.push(`「${名(c)}」名下有项目正在离职交接中，等接手人确认或撤回交接后再${再}`);
+  }
+  return 因;
+}
+
 /** 不能并的原因（空 = 能并）。A = 留下，B = 并掉 */
 async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null): Promise<string[]> {
   if (!企业版()) return ["只有企业版能合并客户"];
@@ -116,6 +135,7 @@ async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | nu
   }
   const 交接 = await 交接中的客户([A.id, B.id], db as Tx);
   for (const c of [A, B]) if (交接.has(c.id)) 因.push(`「${名(c)}」正在转让交接中，等接手人确认或撤回交接后再并`);
+  因.push(...(await 离职交接拦(db as Tx, [A, B], "并")));
   for (const c of [A, B]) if (c.poolInvalidAt) 因.push(`「${名(c)}」标了无效客户，先由系统管理员恢复再并`);
   if (有值(A.bizLine) && 有值(B.bizLine) && A.bizLine !== B.bizLine) 因.push(`两家业务线不同（${A.bizLine} / ${B.bizLine}），不能合并`);
   return 因;
@@ -536,6 +556,48 @@ async function 带回新挂的(tx: Tx, A: string, B: string, 项目们: string[]
   for (const 段 of 分段(人们)) await tx.contactMethod.updateMany({ where: { contactId: { in: 段 }, customerId: A }, data: { customerId: B } });
 }
 
+/**
+ * 撤回合并「只改一格」时随整组留下的联系人 / 项目留在原处的行（id → 原因）：
+ *   - 号码、联系人挂靠：contactId 是留下的联系人
+ *   - 沟通：经 FollowUpProject 挂在留下的项目上
+ *   - 卡点：projectId 是留下的项目
+ */
+async function 随留下的(tx: Tx, t: 改指表名, ids: string[], 留人: ReadonlySet<string>, 留项目: ReadonlySet<string>): Promise<Map<string, string>> {
+  const 随 = new Map<string, string>();
+  if (!ids.length) return 随;
+  const 人们 = [...留人];
+  const 项目们 = [...留项目];
+  for (const 段 of 分段(ids)) {
+    if ((t === "contactMethod" || t === "contactCustomer") && 人们.length) {
+      const 行 = t === "contactMethod"
+        ? await tx.contactMethod.findMany({ where: { id: { in: 段 }, contactId: { in: 人们 } }, select: { id: true } })
+        : await tx.contactCustomer.findMany({ where: { id: { in: 段 }, contactId: { in: 人们 } }, select: { id: true } });
+      for (const r of 行) 随.set(r.id, "随联系人留在原处");
+    }
+    if (t === "followUp" && 项目们.length)
+      for (const r of await tx.followUpProject.findMany({ where: { followUpId: { in: 段 }, projectId: { in: 项目们 } }, select: { followUpId: true } })) 随.set(r.followUpId, "随项目留在原处");
+    if (t === "entBlocker" && 项目们.length)
+      for (const r of await tx.entBlocker.findMany({ where: { id: { in: 段 }, projectId: { in: 项目们 } }, select: { id: true } })) 随.set(r.id, "随项目留在原处");
+  }
+  return 随;
+}
+
+/**
+ * 撤回合并后人回了 B、项目留在 A（合并后在 A 上新建的、或被改过整组留下的），项目的主联系人 / 项目联系人是回了 B 的人：
+ * 照 带回新挂的 反着做，给这几位挂靠到 A（已挂着的跳过）
+ */
+async function 留下项目挂回来的人(tx: Tx, A: string, 回了人: string[]): Promise<void> {
+  for (const 段 of 分段(回了人)) {
+    const 主们 = (await tx.project.findMany({ where: { customerId: A, contactId: { in: 段 } }, select: { contactId: true } })).map((x) => x.contactId!);
+    const 联们 = (await tx.projectContact.findMany({ where: { contactId: { in: 段 }, project: { customerId: A } }, select: { contactId: true } })).map((x) => x.contactId);
+    const 候选 = [...new Set([...主们, ...联们])];
+    if (!候选.length) continue;
+    const 已挂 = new Set((await tx.contactCustomer.findMany({ where: { customerId: A, contactId: { in: 候选 } }, select: { contactId: true } })).map((x) => x.contactId));
+    const 要挂 = 候选.filter((id) => !已挂.has(id));
+    if (要挂.length) await tx.contactCustomer.createMany({ data: 要挂.map((contactId) => ({ contactId, customerId: A, note: 挂靠说明 })) });
+  }
+}
+
 /** 最近跟进按没删的沟通重算（同 soft-delete.ts 重算最近跟进）；同号留痕不算 */
 export async function 重算最近跟进(tx: Tx, customerId: string) {
   const latest = await tx.followUp.findFirst({ where: { customerId, deletedAt: null, occurredAt: { lte: new Date() }, ...不是同号留痕 }, orderBy: { occurredAt: "desc" }, select: { occurredAt: true } });
@@ -724,7 +786,7 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
           if (现在.getTime() - m.at.getTime() > 撤回期限天数 * 86_400_000) throw new 拦下(`合并已超过 ${撤回期限天数} 天，不能整单撤回`);
           const [A, B] = await Promise.all([
             tx.customer.findUnique({ where: { id: m.intoId }, select: { id: true, name: true, shortName: true, customerNo: true, deletedAt: true, poolReturns: true, salesOwnerId: true, pool: { select: { customerId: true } } } }),
-            tx.customer.findUnique({ where: { id: m.fromId }, select: { id: true, name: true, shortName: true, customerNo: true, deletedAt: true } }),
+            tx.customer.findUnique({ where: { id: m.fromId }, select: { id: true, name: true, shortName: true, customerNo: true, deletedAt: true, salesOwnerId: true } }),
           ]);
           if (!B) throw new 拦下("被并的客户已清出回收站，不能撤回");
           if (!A) throw new 拦下("留下的客户已彻底删除，不能撤回");
@@ -736,6 +798,8 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
           if (!是系统管理员(me, org) && (A.pool || A.salesOwnerId !== me.id)) throw new 拦下(`「${名(A)}」现在不归你负责，请找系统管理员撤回`);
           const 交接 = await 交接中的客户([A.id, B.id], tx);
           for (const c of [A, B]) if (交接.has(c.id)) throw new 拦下(`「${名(c)}」正在转让交接中，等接手人确认或撤回交接后再撤回合并`);
+          const 离职 = await 离职交接拦(tx, [A, B], "撤回合并");
+          if (离职.length) throw new 拦下(离职.join("；"));
           // 合并之后单独合成过挪过来的联系人：先拆开（新的先拆），号码、沟通回到原来那位，下面再随联系人一起挪回 B（M3）
           const 人们 = (JSON.parse(m.detail) as 合并明细).联系人.map((c) => c.id);
           const 单独们 = new Map<string, Awaited<ReturnType<typeof tx.entCustomerMerge.findMany>>[number]>();
@@ -865,10 +929,13 @@ async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: num
 
   // 联系人一组：主客户还是 A、去掉的关键标还空着
   const 回了人: string[] = [];
+  // 整组留在原处的联系人 / 项目：名下的号码、挂靠、沟通、卡点下面「只改一格」时不单独改回 B（不然号码和人分属两家）
+  const 留人 = new Set<string>();
+  const 留项目 = new Set<string>();
   for (const c of 明.联系人) {
     const 现 = await tx.contact.findUnique({ where: { id: c.id }, select: { customerId: true, isPrimary: true } });
     if (!现) { 留下("联系人", [c.id], "已彻底删除"); continue; }
-    if (现.customerId !== A || (c.去关键 && 现.isPrimary)) { 留下("联系人", [c.id], 改过话); continue; }
+    if (现.customerId !== A || (c.去关键 && 现.isPrimary)) { 留下("联系人", [c.id], 改过话); 留人.add(c.id); continue; }
     await tx.contact.update({ where: { id: c.id }, data: { customerId: B, ...(c.去关键 ? { isPrimary: true } : {}) } });
     回了人.push(c.id);
   }
@@ -878,7 +945,7 @@ async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: num
     const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { customerId: true, channelId: true, repeatOfCustomerId: true, repeatSeq: true } });
     if (!现) { 留下("项目", [p.id], "已彻底删除"); continue; }
     const 对 = (!p.挪客户 || 现.customerId === A) && (!p.补来源 || 现.channelId === p.补来源) && (!p.重复 || (现.repeatOfCustomerId === A && 现.repeatSeq === p.重复.新序));
-    if (!对) { 留下("项目", [p.id], 改过话); continue; }
+    if (!对) { 留下("项目", [p.id], 改过话); 留项目.add(p.id); continue; }
     if (p.挪客户) 回了项目.push(p.id);
     // undefined = 这一格不动；负责人不在里面（撤回不动负责人）
     await tx.project.update({
@@ -895,7 +962,11 @@ async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: num
   for (const [键, 全] of Object.entries(明.改指)) {
     const [t, 列] = 键.split(".") as [改指表名, string];
     // 号码、沟通跟着联系人走：拆开合成时没回到原来那位的（已记没还原）不动
-    const ids = t === "contactMethod" || t === "followUp" ? 全.filter((id) => !拆没回.has(id)) : 全;
+    const 拆后 = t === "contactMethod" || t === "followUp" ? 全.filter((id) => !拆没回.has(id)) : 全;
+    // 随整组留下的联系人 / 项目留在原处的（同 拆没回）：不改，记没还原
+    const 随 = await 随留下的(tx, t, 拆后, 留人, 留项目);
+    for (const [id, 原因] of 随) 留.push({ 类: 类叫(键), id, 原因 });
+    const ids = 拆后.filter((id) => !随.has(id));
     for (const 段 of 分段(ids)) {
       await 表(tx, t).updateMany({ where: { id: { in: 段 }, [列]: A }, data: { [列]: B } });
       const 没回 = (await 表(tx, t).findMany({ where: { id: { in: 段 }, NOT: { [列]: B } }, select: { id: true } })).map((r) => r.id as string);
@@ -905,6 +976,7 @@ async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: num
     }
   }
   await 带回新挂的(tx, A, B, 回了项目, 回了人);
+  await 留下项目挂回来的人(tx, A, 回了人);
   if (明.A自指.referrer) await tx.customer.updateMany({ where: { id: A, referrerCustomerId: null }, data: { referrerCustomerId: B } });
   if (明.A自指.attribution) await tx.customer.updateMany({ where: { id: A, attributionCustomerId: null }, data: { attributionCustomerId: B } });
   for (const 段 of 分段(明.对照)) await tx.entExternalRef.updateMany({ where: { id: { in: 段 }, targetId: A }, data: { targetId: B } });
