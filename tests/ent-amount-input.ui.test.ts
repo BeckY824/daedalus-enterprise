@@ -63,11 +63,13 @@ beforeAll(async () => {
     // 项目卡就地改的金额格：和 ProjectDetail 同一套（ProjectInlineField + 钱编辑器 + 钱格存法），存项目项 换成记下交了什么
     window.__就地交=[];
     const 存=钱格存法(async(patch)=>{window.__就地交.push(patch);return null;});
-    function 就地({起}){
+    // 格 = 哪一格（金额 / 定金金额 / 合同金额）；显示照 ProjectDetail：金额 0 也算空，定金、合同 null 才空
+    function 就地({起,格='金额'}){
       const [值,set值]=useState(起);
+      const 空=(x)=>格==='金额'?!x.数:x.数===null;
       return <div style={{padding:16}}><div style={{display:'flex',gap:12,alignItems:'center',width:280,minWidth:0}}>
-        <span style={{flex:'0 0 4.3em'}}>金额</span>
-        <ProjectInlineField 名='金额' 值={值} 能改 回车存 显示={(x)=>x.数?显金额(x.数,x.币):'待填写'} 存={async(x)=>{const r=await 存('金额',x);if(!r)set值(x);return r;}} 编辑器={钱编辑器('金额')}/>
+        <span style={{flex:'0 0 4.3em'}}>{格}</span>
+        <ProjectInlineField 名={格} 值={值} 能改 回车存 显示={(x)=>空(x)?'待填写':显金额(x.数,x.币)} 存={async(x)=>{const r=await 存(格,x);if(!r)set值(x);return r;}} 编辑器={钱编辑器(格)}/>
       </div><button id='别处'>别处</button></div>;
     }
     const root=createRoot(document.getElementById('root'));
@@ -78,7 +80,7 @@ beforeAll(async () => {
     window.__币表单=()=>root.render(包(<币表单/>));
     // 重挂 = 刷新页面：组件状态全丢，localStorage 里的草稿还在
     let 第几回=0;
-    window.__就地=(起)=>root.render(包(<草稿范围 value='项目:t1'><就地 key={++第几回} 起={起}/></草稿范围>));
+    window.__就地=(起)=>root.render(包(<草稿范围 value='项目:t1'><就地 key={++第几回} 起={起&&起.格?起.值:起} 格={起&&起.格}/></草稿范围>));
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
@@ -364,3 +366,21 @@ it.each([375, 1366])("K7 %ipx：就地改金额敲「约5万」回车没存上�
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it.each(["合同金额", "定金金额"])("就地改%s：清空回车 / 清空点别处都交 null，格子显示待填写", async (格) => {
+  for (const 怎么存 of ["回车", "点别处"] as const) {
+    const { page, errors } = await open("__就地", { 格, 值: { 数: 5000, 币: "USD" } }, 1280);
+    try {
+      await page.getByRole("button", { name: `改${格}` }).click();
+      await 框(page, 格).waitFor();
+      await 框(page, 格).fill("");
+      if (怎么存 === "回车") await 框(page, 格).press("Enter");
+      else await page.locator("#别处").click();
+      await expect.poll(() => 交了(page)).toEqual([格 === "合同金额" ? { contractAmount: null, contractCurrency: "USD" } : { depositAmount: null, depositCurrency: "USD" }]);
+      await expect.poll(() => page.locator(".proj-inline-money").count()).toBe(0);
+      expect(await page.locator(".proj-inline-val").innerText()).toBe("待填写");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+

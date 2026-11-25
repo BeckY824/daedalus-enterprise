@@ -82,6 +82,13 @@ describe("编辑项目：只交一格", () => {
     expect(后.amount).toBe(100);
   });
 
+  it("合同金额：填了再清空 = 库里 null（币种跟着清），定金不动", async () => {
+    expect((await 编辑项目(项目, 钱格改动("合同金额", { 数: 5000, 币: "USD" }))).ok).toBe(true);
+    expect(await 读()).toMatchObject({ contractAmount: 5000, contractCurrency: "USD" });
+    expect((await 编辑项目(项目, 钱格改动("合同金额", { 数: null, 币: "USD" }))).ok).toBe(true);
+    expect(await 读()).toMatchObject({ contractAmount: null, contractCurrency: null, depositAmount: 10, depositCurrency: "USD" });
+  });
+
   it("金额：改数和币种；清掉存 0；负数报错且不动", async () => {
     expect((await 编辑项目(项目, 钱格改动("金额", { 数: 250.5, 币: "CNY" }))).ok).toBe(true);
     expect(await 读()).toMatchObject({ amount: 250.5, currency: "CNY" });
