@@ -3,7 +3,7 @@
  * 总览（SwitchesTab）和原卡片上新补的后果框（ProjectSettingsTab 节点推进 / 阶段规则，N6）共用这一份。
  *
  * 纯数据（照 rules-table.ts 的写法）：别在这里 import 任何服务端模块，动态 import 也不行，会被打进浏览器包。
- * 只列正式服务器上用得到的 18 项（17 个开关 + 往前推权限二选一）；每项都走现有的设置键和 action（11-25 F-052 加「无意义沟通不能保存」，走组织规则 设规则）。
+ * 只列正式服务器上用得到的 20 项（19 个开关 + 往前推权限二选一；11-25 F-052 加「无意义沟通不能保存」，走组织规则 设规则；X-147 加「仅记录用」两项）；不新增后端开关，每项都走现有的设置键和 action。
  * 称呼定一种（OrgTab「只有总管理能改」、IdentityTabs「总管理（系统管理员）」）：见 改的人 / 只有总管理能改
  */
 
@@ -14,8 +14,8 @@ export const 只有总管理能改 = "只有总管理能改";
 
 export type 开关键 =
   | "org_scope" | "field_perm" | "lead_assign" | "no_quota" | "reply_overdue" | "lead_giveup" | "market_review" | "block_meaningless"
-  | "node_advance" | "first_two" | "fill_period" | "push_perm"
-  | "hold_cap" | "node_timeout" | "tri_state"
+  | "node_advance" | "first_two" | "fill_period" | "push_perm" | "record_only"
+  | "hold_cap" | "node_timeout" | "record_only_recall" | "tri_state"
   | "feishu_push" | "sync_feishu" | "coach_rec";
 
 export type 开关组 = "see" | "lead" | "flow" | "pool" | "link";
@@ -114,6 +114,10 @@ export const 开关表: readonly 开关定义[] = [
     what: "开着：线索、商机前两个进程各记过至少一条沟通，才能推到下一个进程（自动推进也一样）。",
     影响: "全员（{全员} 人）的项目", when: "之后往后推时", 默认: false,
     off: "关掉以后前两个进程不记沟通也能往后推" },
+  { k: "record_only", g: "flow", 名: "「仅记录用」项目", tab: "project", 找: "阶段规则", 位: "项目模式 → 阶段规则", alias: "仅记录用 记沟通 新建项目 统计 潜客培育",
+    what: "开着：客户没有能记的在推项目、记沟通时点「新建项目」建的项目默认标「仅记录用」，停在潜客培育，不算在推、不进新建数和转化率、不占持有数；推进出潜客培育后照常统计。",
+    影响: "全员（{全员} 人）记沟通时新建的项目", when: "之后新建时；已经建好的项目不改", 默认: false,
+    off: "关掉以后记沟通时新建的项目都是普通项目；已经标了「仅记录用」的照旧不算统计" },
   { k: "fill_period", g: "flow", 名: "需求状态补全期", tab: "project", 找: "阶段规则", 位: "项目模式 → 阶段规则", alias: "补全 导入 老数据",
     what: "开着：只有销售管理、总管理能往前推进程，负责人只补字段、记沟通；填齐必填也不自动推。补完记得关。",
     影响: "负责人、销售管理", when: "立即", 默认: false,
@@ -132,6 +136,10 @@ export const 开关表: readonly 开关定义[] = [
     影响: "全员（{全员} 人）的线索、商机项目", when: "打开当下就扫一遍，可能当场回收一批；之后从计时起算日起按天数算", 默认: false,
     危: "打开当下就扫一遍：已经超时没跟进的项目马上回线索公海（打开前先数给你看）",
     off: "关掉以后不再自动回收，项目沟通也不强制填下一步时间；填好的天数留着" },
+  { k: "record_only_recall", g: "pool", 名: "「仅记录用」项目也超时回收", tab: "project", 找: "超时回收", 位: "项目模式 → 超时回收", alias: "仅记录用 回收 公海 超时",
+    what: "开着：「仅记录用」项目（还停在潜客培育的）和普通项目一样按进程时长超时回收；关着不回收、不发「明天收回」提醒。",
+    影响: "「仅记录用」的项目", when: "超时回收开着时，下一次扫的时候", 默认: false, parent: "node_timeout",
+    off: "关掉以后「仅记录用」项目不再超时回收" },
   { k: "tri_state", g: "pool", 名: "客户回收（沉睡 → 即将回收 → 进公海）", tab: "recycle", 找: "客户回收", 位: "客户回收", alias: "三态 沉睡 即将回收 公海 回收",
     what: "开着：很久没有有效沟通的客户进沉睡待定、即将回收，满期自动进客户公海；每天 08:00 给负责人和上级发提醒。",
     影响: "全员的客户（市场成员名下的不计时）", when: "打开当下就计时，几分钟内建好状态，当天就发提醒", 默认: false,

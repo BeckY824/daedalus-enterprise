@@ -73,8 +73,44 @@ export const 重复咨询来源 = "repeat-inquiry";
 export function 是重复咨询(p: { source?: string | null }): boolean {
   return p.source === 重复咨询来源;
 }
+/**
+ * 三、仅记录用（X-147，客户 11-17 提、11-18 第二轮选 A）：Project.source = 仅记录用来源——为了记一条沟通而新建的项目
+ * （客户没有能记的在推项目，记沟通弹框 / 首页 AI 记沟通卡点「新建项目 / 去建项目」进来、勾着「仅记录用」建的），停在线索阶段「潜客培育」。
+ * 客户原话「不算在推、不进任何转化率的分母」：只要还停在 线索 · 潜客培育，就和历史分析一样**所有**统计都不算（新建、现在、一段、漏斗、线索瀑布、
+ * 首页卡、渠道看板、持有数、AI 统计），且没有「被领走还在推照算」那条例外（它本来就在人手上，照算就是「算在推」）；
+ * 超时回收默认不收它（组织规则 超时回收.仅记录用也回收，默认关，timeout.ts 超时回收日）。
+ * 推进出潜客培育（或转了商机）= 真成了在跟的线索，从那一刻起照常算，不用回写来源（任何一条推进路都不用改）；详情照旧标「仅记录用」。
+ * 建它要组织规则 阶段.仅记录用 开着（默认关，关着时这两处建的照旧是普通项目，c2 行为不变）
+ */
+export const 仅记录用来源 = "record-only";
+/** 仅记录用项目停的那一格（客户原话「一律停在潜客培育」）；推进出去就不再算仅记录用 */
+export const 仅记录用阶段 = "线索";
+export const 仅记录用节点 = "潜客培育";
+/** 这个项目现在算仅记录用吗（来源 + 还停在 线索 · 潜客培育） */
+export function 是仅记录用(p: { source?: string | null; phase?: string | null; node?: string | null }): boolean {
+  return p.source === 仅记录用来源 && p.phase === 仅记录用阶段 && p.node === 仅记录用节点;
+}
+/** 「现在算仅记录用的」条件，放进 NOT 里也安全（source 写成 not null + equals，空的算出 FALSE 而不是 NULL，同 历史分析的） */
+export const 仅记录用的 = {
+  source: { not: null, equals: 仅记录用来源 }, phase: 仅记录用阶段, node: 仅记录用节点,
+} satisfies Prisma.ProjectWhereInput;
+
+/**
+ * 962 条一次性咨询补建那批（scripts/ent-x147-record-only-backfill.ts）的批次号前缀：Project.importBatch = x147-<14 位时间>-<6 位>。
+ * 补建项目的 createdAt 是几年前最早那条沟通的时间，不是「那年那月新建了一条线索」：以后有人把它推进出潜客培育，别的统计照仅记录用的规则走
+ * （推进后照常算），只有「新建」类（数据页新建 / 一段漏斗、首页本月新增、渠道分档、AI 按创建时间数、报表新建）永远不算它——
+ * 同 11-17 补建批次（补建的 / 不算补建 / 是补建）一个机制，不然推进那一刻几年前那个月的新建和漏斗会凭空多 1。
+ * 规则说明（X-147 口径，不另写逻辑）：推进出去后又被改回潜客培育，照样算仅记录用（判定只看来源 + 现在停在哪）；
+ * 市场成员勾着仅记录用、指定给销售建项目时，照现行规则走「市场转客户」（市场分配进线索验证 对它跳过，停在潜客培育）。
+ */
+export const 仅记录用补建批次前缀 = "x147-";
+/** 这个项目是 962 条补建那批建的吗（取回来在内存里分时用，查的时候带上 importBatch） */
+export function 是仅记录用补建(p: { importBatch?: string | null }): boolean {
+  return !!p.importBatch && p.importBatch.startsWith(仅记录用补建批次前缀);
+}
+
 /** 界面上的来源标签（项目详情「数据来源」一行）；以后有项目导出时来源列也用它 */
-export const 来源名: Record<string, string> = { [历史分析来源]: "历史分析", [重复咨询来源]: "老客户重复咨询" };
+export const 来源名: Record<string, string> = { [历史分析来源]: "历史分析", [重复咨询来源]: "老客户重复咨询", [仅记录用来源]: "仅记录用" };
 /** 来源写成人话：空 = 系统里建的，显示「—」；不认识的值照原样 */
 export function 来源字(source: string | null | undefined): string {
   return source ? 来源名[source] ?? source : "—";
@@ -89,12 +125,23 @@ export const 不算历史分析 = {
 } satisfies Prisma.ProjectWhereInput;
 
 /**
+ * 统计口径（X-147）：历史分析回填的、现在算仅记录用的都排掉。凡是「所有统计都不算」的地方用它（数据页现在 / 一段、渠道看板、AI 统计、
+ * 数据页点进项目列表那几种筛法）。同 不算历史分析 收在一个 AND 里，展开进别的 where 不撞键
+ */
+export const 不进统计 = {
+  AND: [...不算历史分析.AND, { NOT: 仅记录用的 }],
+} satisfies Prisma.ProjectWhereInput;
+
+/**
  * 「是历史分析的」条件，放进 NOT 里也安全：带上 source IS NOT NULL，source 空的那几行算出 FALSE 而不是 NULL
  * （NOT (source = 'x' AND …) 遇到 NULL 会整行丢掉）
  */
 export const 历史分析的 = { source: { not: null, equals: 历史分析来源 } } satisfies Prisma.ProjectWhereInput;
 
-/** 节点变更（ProjectNodeLog）的统计用：留痕人不是 历史分析留痕人、项目也不是历史分析的 */
+/**
+ * 节点变更（ProjectNodeLog）的统计用：留痕人不是 历史分析留痕人、项目也不是历史分析的。
+ * 仅记录用的（X-147）现在还停在潜客培育就没有转商机 / 转订单的留痕；推出去了照常算，这里不另排
+ */
 export const 留痕不算历史分析 = {
   userId: { not: 历史分析留痕人 },
   project: 不算历史分析,
@@ -106,12 +153,19 @@ export const 留痕不算历史分析 = {
  */
 export const 不算补建 = {
   creatorId: { not: 补建创建人 },
-  AND: [...不算历史分析.AND, { OR: [{ importBatch: null }, { importBatch: { not: 补建批次 } }] }],
+  // 仅记录用的（X-147）也不是「新建了一个在推项目」，一并排掉（不进统计 = 不算历史分析 + 不算仅记录用）
+  // 962 条补建那批（importBatch 以 x147- 开头）推进出去以后也永远不算新建（仅记录用补建批次前缀）；NOT startsWith 对空值会算出 NULL，所以同样写成「空 或 不是」
+  AND: [
+    ...不进统计.AND,
+    { OR: [{ importBatch: null }, { importBatch: { not: 补建批次 } }] },
+    { OR: [{ importBatch: null }, { NOT: { importBatch: { startsWith: 仅记录用补建批次前缀 } } }] },
+  ],
 } satisfies Prisma.ProjectWhereInput;
 
-/** 这个项目是补建的吗（取回来在内存里分时用，查的时候带上 creatorId、importBatch）。历史分析的在查库时就排掉了，不靠这里 */
+/** 这个项目是补建的吗（含 962 条补建那批；取回来在内存里分时用，查的时候带上 creatorId、importBatch）。历史分析的在查库时就排掉了，不靠这里 */
 export function 是补建(p: { creatorId?: string | null; importBatch?: string | null }): boolean {
-  return p.creatorId === 补建创建人 || p.importBatch === 补建批次;
+  // 962 条补建那批（X-147）也认：渠道分档的「新建」同 不算补建 一样永远不算它
+  return p.creatorId === 补建创建人 || p.importBatch === 补建批次 || 是仅记录用补建(p);
 }
 
 /** 这个项目是历史分析回填的吗 */

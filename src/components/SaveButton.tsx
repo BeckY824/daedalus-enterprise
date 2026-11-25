@@ -31,6 +31,7 @@ export default function SaveButton({
   已保存 = "已保存",
   没保存 = "没保存上",
   成了,
+  收错,
   type = "primary",
   disabled,
   className,
@@ -46,6 +47,11 @@ export default function SaveButton({
   没保存?: string;
   /** 「已保存」放完之后（比如关弹框）。对勾放完才调，人先看见成了 */
   成了?: () => void;
+  /**
+   * 交一个 ref 进来，这里把「收掉没保存上」挂在 .current 上：原因挂着时调一下，原因收掉、按钮回原样（没挂着时调了不动）。
+   * 11-26：记沟通被拦「太短」后改成能存的内容，旧原因还挂着像是新内容也不行——表单那格一改就调它
+   */
+  收错?: React.MutableRefObject<(() => void) | null>;
   type?: ButtonProps["type"];
 }) {
   const [态, set态] = useState<态>("闲");
@@ -146,6 +152,26 @@ export default function SaveButton({
     el.addEventListener("transitionend", 放开);
     setTimeout(放开, 放开兜底);
   }
+
+  /** 收错：只在「没成」时动；读的是最新的态（ref），表单改动的回调里随时调 */
+  const 态r = useRef(态);
+  useEffect(() => {
+    态r.current = 态;
+  });
+  function 收起原因() {
+    if (态r.current !== "没成") return;
+    if (计时.current) clearTimeout(计时.current);
+    态r.current = "闲";
+    set因("");
+    回去();
+  }
+  useEffect(() => {
+    if (!收错) return;
+    收错.current = 收起原因;
+    return () => {
+      收错.current = null;
+    };
+  });
 
   const 读屏 = 态 === "存着" ? "正在保存" : 态 === "成了" ? 已保存 : 态 === "没成" ? `${没保存}：${因}` : "";
 

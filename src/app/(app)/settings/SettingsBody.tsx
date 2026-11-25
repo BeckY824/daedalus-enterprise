@@ -5,7 +5,7 @@ import SettingsView from "./SettingsView";
 import { 我的机器 } from "./actions";
 import { describeLlmConfig } from "@/lib/llm";
 import { getBusiness } from "@/lib/business";
-import { 角色字典, 异常类别字典, 能进公海的阶段 } from "@/lib/project/db";
+import { 角色字典, 异常类别字典, 算持有 } from "@/lib/project/db";
 import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 读卡点默认, 读卡点角色开关, 原因字典, 卡点权限 } from "@/lib/project/blocker";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -107,8 +107,8 @@ export default async function SettingsBody() {
         企业版() ? 原因字典() : null,
         企业版() ? 读卡点角色开关() : null,
         企业版() ? 卡点权限(me).then((x) => x.能管) : false,
-        // 每人手上的线索 / 商机项目数，和 lib/project/db.ts 持有数 同一个口径
-        !企业版() ? [] : prisma.project.groupBy({ by: ["ownerId"], where: { pooledAt: null, result: null, phase: { in: [...能进公海的阶段] } }, _count: { _all: true } }),
+        // 每人手上的线索 / 商机项目数，直接用 lib/project/db.ts 持有数 那份条件（算持有：排待分配、仅记录用的）
+        !企业版() ? [] : prisma.project.groupBy({ by: ["ownerId"], where: 算持有, _count: { _all: true } }),
         // 提成比例 A / B 只企业版有：别的版本不读、卡片不出
         企业版() ? 读提成比例() : null,
       ]).then(([角色, 用量, 类别, 类别用量, 组织规则, 卡点默认, 卡点原因, 卡点开关, 能改卡点, 持有, 提成比例]) => {

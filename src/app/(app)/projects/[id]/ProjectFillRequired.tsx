@@ -20,7 +20,7 @@ import { 成交需求上限 } from "@/lib/project/profile-rules";
 import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限 } from "@/lib/project/proj-fields";
 import type { 钱格值 } from "@/lib/project/inline-edit";
 import {
-  归类, 客户格, 初始草稿, 草稿问题, 草稿是空的, 现值不算的话, 这项的改动, 算窗口状态, 依次保存, 存完怎么走, 按目录排,
+  归类, 客户格, 初始草稿, 草稿问题, 草稿是空的, 现值不算的话, 这项的改动, 算窗口状态, 依次保存, 存完怎么走, 按目录排, 要带出单号,
   type 地址草稿, 草稿值, 草稿们, 窗外去处, 窗里环境, 想怎么走, 填法,
 } from "@/lib/project/required-fill";
 import { 编辑项目, 改项目画像Action, 勾项目交付 } from "../actions";
@@ -154,7 +154,10 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
     }),
   });
   // 存上的那几行留着打「已存上」，不然部分失败时人看不出哪些成了
-  const 行们 = 按目录排([...缺, ...已存]);
+  const 配的行 = 按目录排([...缺, ...已存]);
+  // 节点只配了物流状态、没配物流单号：选了「运输中」而项目上单号空着，服务端会拒存——把单号格带出来一起填（审查 11-25）
+  const 带出单号 = 要带出单号(配的行, 环, 值, p, 已存);
+  const 行们 = 带出单号 ? 按目录排([...配的行, "物流单号"]) : 配的行;
   const 态 = 算窗口状态(行们, 环, 值, 已存, 能推进);
   const 占着 = 忙 || 存着 || 刷新中;
   const 有格子 = 态.待存.length + 态.没填好.length > 0;
@@ -329,6 +332,7 @@ export function ProjectFillRequired({ p, 联系人们, 能就地改, 改不了�
                   {存上了 && <Tag color="success" style={{ marginInlineStart: 8 }}>已存上</Tag>}
                 </div>
                 {!存上了 && (类.类 === "填" ? 控件(项, 类.法) : 窗外行(项, 类.去, 类.原因))}
+                {带出单号 && k === "物流单号" && !存上了 && <div style={灰字} data-brought-out="">物流状态选了「运输中」，物流单号要一起填上才存得了</div>}
                 {现值话 && <div style={灰字}>{现值话}</div>}
                 {问题 && <div style={灰字}>{问题}</div>}
                 {失败[k] && <div className="proj-inline-err" role="alert">{失败[k]}</div>}

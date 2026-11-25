@@ -87,6 +87,24 @@ describe("notify 写库", () => {
     expect(await 未读通知数(乙)).toBe(1);
   });
 
+  it("同一 key 连发两次（含同时发）：不抛、只一行、第二次算 0；不撞唯一约束，日志里不出 prisma:error（11-26）", async () => {
+    const 打出的: string[] = [];
+    const 记 = (...a: unknown[]) => { 打出的.push(a.map(String).join(" ")); };
+    const spies = (["log", "error", "warn"] as const).map((m) => vi.spyOn(console, m).mockImplementation(记));
+    try {
+      const 一条 = { kind: "快轮到", title: "自动分配快轮到你了", link: "/dashboard", key: "assign-eta:2026-11:3" };
+      expect(await notify([甲], 一条)).toBe(1);
+      expect(await notify([甲], 一条)).toBe(0);
+      expect(await Promise.all([notify([甲, 乙], 一条), notify([甲, 乙], 一条)])).toEqual(expect.arrayContaining([0]));
+      expect(await prisma.entNotice.count({ where: { userId: 甲, dedupeKey: 一条.key } })).toBe(1);
+      expect(await prisma.entNotice.count({ where: { userId: 乙, dedupeKey: 一条.key } })).toBe(1);
+      await 等通知推完();
+    } finally {
+      for (const s of spies) s.mockRestore();
+    }
+    expect(打出的.filter((x) => /prisma:error|Unique constraint|没记上/.test(x))).toEqual([]);
+  });
+
   it("不是企业版：一行不写", async () => {
     mocks.企业版 = false;
     expect(await notify([甲], { kind: "分配", title: "t" })).toBe(0);

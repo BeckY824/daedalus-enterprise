@@ -22,17 +22,18 @@ import { 落到渠道 } from "@/lib/enterprise/channel-main";
 import { 是主渠道入口, 渠道启用 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
-import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读话of, 有业务角色, 是系统管理员 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读话of, 有业务角色, 是系统管理员, 只看的人, 只看某人话 } from "@/lib/enterprise/permissions";
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
 import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 挡改设置 } from "@/lib/enterprise/edit-perm";
-import { 选的原因, 认跟进方式, 已签收物流状态, type 已签收认法结果 } from "@/lib/enterprise/dict";
+import { 选的原因, 认跟进方式, 已签收物流状态, 运输中物流状态, type 已签收认法结果 } from "@/lib/enterprise/dict";
 import { 去不填 } from "@/lib/enterprise/dict-kinds";
 import { 生效组织规则 } from "./org-rules-store";
-import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕 } from "./timeout";
+import { 仅记录用的, 是仅记录用 } from "./system-created";
+import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕, 记沟通要下一步时间 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
 import { 读团队 } from "../sync/client";
@@ -47,8 +48,9 @@ import { 单项目客户跟进公海, 单项目客户跟着领, 领项目连带�
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
-import { 项目新字段改成, 备货单号改成, type 项目新字段, type 备货单号 } from "./proj-fields";
-import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
+import { 项目新字段改成, 备货单号改成, 运输中要单号, type 项目新字段, type 备货单号 } from "./proj-fields";
+import { 客户状态自动, 跟着项目重算, 项目变了重算, 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
+import { 读客户状态, 项目的客户们, 原状态记到出公海痕 } from "@/lib/enterprise/cust-status-undo";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
@@ -93,7 +95,7 @@ export function 能改组员(me: 谁, p: { ownerId: string; pooledAt?: Date | nu
  */
 export function 能加组员(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null, 我在组里: boolean): boolean {
   if (能改组员(me, p, org)) return true;
-  return 企业版() && !!org && 我在组里 && !p.pooledAt && 有业务角色(me, org, "project_ops") && !只读角色(me, org);
+  return 企业版() && !!org && 我在组里 && !p.pooledAt && 有业务角色(me, org, "project_ops") && !只读角色(me, org) && !只看的人(org, me.id);
 }
 /** 节点这一块和别的内容一个口径（11-01 起直属上级、总管理不再代推，C2） */
 export const 能改节点 = 能管项目;
@@ -128,7 +130,7 @@ export function 往前推不给(me: 谁, ownerId: string, org: 组织 | null, �
 
 /** 企业版「仅上级推」：没在公海、我是负责人的直属上级 → 这一步能往前推（只往前推，改节点里另拦往后退、点结局） */
 export function 上级只推(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, 推的组织: 组织 | null, 规则: 组织规则): boolean {
-  return 企业版() && !!推的组织 && !负责人可推(规则) && !p.pooledAt && 直属上级of(推的组织, p.ownerId) === me.id;
+  return 企业版() && !!推的组织 && !负责人可推(规则) && !p.pooledAt && 直属上级of(推的组织, p.ownerId) === me.id && !只看的人(推的组织, me.id);
 }
 
 /**
@@ -703,6 +705,16 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     // 企业版字段权限：动了「只能看」的金额（含合同金额、定金金额、成交需求）/ 负责人 / 预计成交日期 / 痛点标注 / 合同状态就拒（名称、备注、联系人不在表里，照旧能改）
     const 挡 = 改不了的话(级别, 变了.flatMap((k) => (项目列字段[k] ? [项目列字段[k]] : [])));
     if (挡) return { ok: false as const, error: 挡 };
+    // 物流状态「运输中」时物流单号必填（客户原话「当物流状态变为运输中时必填」）：这次动了物流状态或单号才判，
+    // 改完是运输中（按默认项 dict-projLogistics-1 认，改了名也认）且单号空就拒；就地改、编辑框、完成节点框、ProjectTeam 都走这里
+    if (企业版() && (变了.includes("logisticsStatus") || 变了.includes("trackingNo"))) {
+      const 状态 = 物流?.ok ? 物流.值 : p.logisticsStatus;
+      const 单号 = 备货?.ok ? 备货.值.trackingNo : p.trackingNo;
+      if (状态 && !单号) {
+        const 运输 = await 运输中物流状态(tx);
+        if (运输.名们.includes(状态)) return { ok: false as const, error: 运输中要单号(状态) };
+      }
+    }
     const 换人 = 新.ownerId !== p.ownerId;
     if (换人) {
       // 客户在客户公海里的，项目随整包，不能转出去（M-公海-06、X-13）；放在事务里，弹框开着时客户刚进公海也拦。线索公海（客户不在公海）照转。
@@ -737,7 +749,8 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: 新.ownerId }, new Date());
     }
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
-    if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
+    // 公海里的项目改负责人 = 分出公海、又在推（换人 && p.pooledAt 上面清了 pooledAt）：同推进一样重算客户状态
+    if (推进.length || (换人 && p.pooledAt)) await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, 变了, ...带推进(推进) };
   });
 }
@@ -802,7 +815,9 @@ export const 能进公海的阶段 = ["线索", "商机"] as const;
  * 不管怎么到手的——自己建的、领的、被指派的、自动分配的——都算；待分配（awaitAssignAt 有值，建的人只是占着负责人那一格）的不算
  */
 /** 算持有的项目（同 超上限 的口径）：还在跟、不在公海、不是待分配、线索 / 商机阶段 */
-const 算持有 = { pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] } };
+// 仅记录用的（X-147，还停在潜客培育）不算在推，不占持有数。
+// 导出共用：设置「持有上限」卡的「手上 N 个」/ 到上限人数、开关总览「到上限人数」都按 ownerId groupBy 这一份，不再各写一份条件
+export const 算持有 = { pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] }, NOT: 仅记录用的 };
 
 export async function 持有数(db: Pick<Prisma.TransactionClient, "project">, userId: string): Promise<number> {
   // 数的是 userId 手上真有几个，不按谁在看限定（11-03 A3-1：市场管理分配时看不到别人名下的，少数了、突破上限）
@@ -829,15 +844,26 @@ export async function 超上限(
   db: Pick<Prisma.TransactionClient, "project" | "user">,
   规则: 组织规则,
   userId: string,
-  p: { phase: string; result: string | null },
+  p: 持有判定项目,
 ): Promise<string | null> {
   if (!企业版()) return null;
-  if (p.result || !(能进公海的阶段 as readonly string[]).includes(p.phase)) return null;
+  if (!算一个持有(p)) return null;
   return 超上限n(db, 规则, userId, 1);
 }
 
+/** 算不算持有要的几样（source / node 不给 = 不是仅记录用） */
+export type 持有判定项目 = { phase: string; result: string | null; node?: string | null; source?: string | null };
+/**
+ * 这一个项目进手算不算持有（同 算持有 / 算持有的项目 的口径，在内存里判）：线索 / 商机阶段、没结局、不是仅记录用（X-147 待定 5：
+ * 持有数排掉了仅记录用的，单个指派 / 领取核上限时它也不 +1，两边一致）
+ */
+export function 算一个持有(p: 持有判定项目): boolean {
+  if (p.result || !(能进公海的阶段 as readonly string[]).includes(p.phase)) return false;
+  return !是仅记录用({ source: p.source ?? null, phase: p.phase, node: p.node ?? null });
+}
+
 /** 算持有的项目条件（同 持有数 去掉 ownerId / awaitAssignAt）：线索 / 商机阶段、没结局 */
-export const 算持有的项目 = { result: null, phase: { in: [...能进公海的阶段] as string[] } };
+export const 算持有的项目 = { result: null, phase: { in: [...能进公海的阶段] as string[] }, NOT: 仅记录用的 };
 
 /**
  * 一次再给 userId 进 进 个算持有的项目，会不会超持有上限（同 超上限 的算法，进 = 1 时报错一字不差）。
@@ -982,6 +1008,8 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     // 企业版项目退回只进线索公海，客户不动（M-公海-02；开关 单项目客户跟着进公海 关着，pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
     if (await 单项目客户跟进公海(tx, p, me.id, 现在, reason)) 客户也进了 = p.customerId;
     await 进公海关待办(tx, p, p.ownerId, 现在);
+    // 进了公海不再算在推：客户状态按剩下的项目重算（cust-status-auto-db.ts 进出公海重算）
+    await 进出公海重算(tx, [p.customerId]);
     // 企业版统一公海（P7，迁移 080）：客户累计主动退回 +1（超时回收、离职交接不走这里，不算）。裸 SQL 不顶 updatedAt
     if (企业版()) await tx.$executeRaw(Prisma.sql`UPDATE "Customer" SET "poolReturns" = "poolReturns" + 1 WHERE "id" = ${p.customerId}`);
     return { ok: true as const };
@@ -1002,7 +1030,18 @@ const 领走了 = { ok: false as const, error: "这个项目已经被人领走�
 export async function 领取公海项目(me: 谁, projectId: string, 带待办?: boolean): Promise<结果> {
   const 备 = await 领公海项目准备(me, [projectId], 带待办);
   if (!备.ok) return 备;
-  const r = await 查完再写((tx) => 领一个公海项目(tx, me, String(projectId ?? ""), 备.上下文, true));
+  const r = await 查完再写(async (tx) => {
+    // 动手前记下客户存的状态，末尾记到这一下的 pool-claim 上，撤销公海项目 原样还回（同 在事务里领公海项目们，cust-status-undo.ts）
+    const 动手时 = new Date();
+    const 原状态 = await 读客户状态(tx, await 项目的客户们(tx, [String(projectId ?? "")]));
+    const x = await 领一个公海项目(tx, me, String(projectId ?? ""), 备.上下文, true);
+    if (x.ok) {
+      // 领出公海 = 又在推：客户状态按在推项目优先重算（cust-status-auto-db.ts 进出公海重算）
+      await 进出公海重算(tx, [x.customerId]);
+      await 原状态记到出公海痕(tx, 原状态, 动手时);
+    }
+    return x;
+  });
   if (!r.ok) return r;
   if (r.同事待分配.length) await (await import("@/lib/enterprise/notice-sources")).同事待分配随客户通知(me.id, me.id, r.同事待分配);
   return { ok: true };
@@ -1028,20 +1067,30 @@ export async function 领取公海项目们(me: 谁, projectIds: string[], 带�
   return { ok: true, 领到: r.值.领到, 没领到: r.值.没领到 };
 }
 
-/** 同一个事务里逐个领（不核上限，调用方整批核） */
+/**
+ * 同一个事务里逐个领（不核上限，调用方整批核）。
+ * 领到的项目各自客户动手前存的客户状态（领完会重算）记到这一下的 pool-claim 上，撤销公海项目 原样还回（cust-status-undo.ts）
+ */
 export async function 在事务里领公海项目们(
   tx: Prisma.TransactionClient, me: 谁, ids: string[], 上下文: 领项目上下文,
 ): Promise<{ 领到: string[]; 没领到: { id: string; 原因: string }[]; 同事待分配: 同事待分配们 }> {
   const 领到: string[] = [];
   const 没领到: { id: string; 原因: string }[] = [];
   const 同事待分配: 同事待分配们 = [];
+  const 出了的客户 = new Set<string>();
+  const 动手时 = new Date();
+  const 原状态 = await 读客户状态(tx, await 项目的客户们(tx, ids));
   for (const id of ids) {
     const x = await 领一个公海项目(tx, me, id, 上下文, false);
     if (x.ok) {
       领到.push(id);
       同事待分配.push(...x.同事待分配);
+      出了的客户.add(x.customerId);
     } else 没领到.push({ id, 原因: x.error });
   }
+  // 整批领完攒齐客户一次重算客户状态（同 领取公海项目），不逐个项目算
+  await 进出公海重算(tx, 出了的客户);
+  await 原状态记到出公海痕(tx, 原状态, 动手时);
   return { 领到, 没领到, 同事待分配 };
 }
 
@@ -1088,7 +1137,7 @@ export async function 领公海项目准备(me: 谁, projectIds: string[], 带�
  */
 export async function 领一个公海项目(
   tx: Prisma.TransactionClient, me: 谁, id: string, 上下文: 领项目上下文, 查上限: boolean,
-): Promise<{ ok: true; 同事待分配: 同事待分配们 } | { ok: false; error: string }> {
+): Promise<{ ok: true; 同事待分配: 同事待分配们; customerId: string } | { ok: false; error: string }> {
   const { 规则, 市场, org, way, 带待办 } = 上下文;
   const p = await tx.project.findUnique({ where: { id } });
   // 两人同时领：先进来的领走了，项目就落到后进来那位的范围外（业务员只看自己的 + 公海），带限定查是空的；
@@ -1134,7 +1183,7 @@ export async function 领一个公海项目(
   // 例外：客户创建人、负责人都是市场 → 客户整体给领的销售，记「分配」不算转客户（P-公海-11、X-60）
   // 推节点 false：销售自己领，不是市场分配，带过来的不推进线索验证（审核 11-18）
   const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way, false))).同事待分配 : [];
-  return { ok: true as const, 同事待分配 };
+  return { ok: true as const, 同事待分配, customerId: p.customerId };
 }
 
 /** 本机记的「今天按这份规则扫过了」：值 = 日期 + 规则，老板改了时长当天再扫一遍 */
@@ -1143,6 +1192,8 @@ const 超时扫过键 = "projectTimeoutSweptOn";
 /** 算回收日要的项目列。最近一条留痕不在这里取：用 补回收起点留痕 另取（见下） */
 export const 算超时要的 = {
   id: true, name: true, phase: true, node: true, result: true, pooledAt: true, nextStepAt: true, ownerId: true, customerId: true, createdAt: true, bizLine: true,
+  // 来源：仅记录用的默认不收（X-147，timeout.ts 超时回收日）
+  source: true,
   customer: { select: { lastFollowAt: true, pool: { select: { customerId: true } } } },
 } satisfies Prisma.ProjectSelect;
 /** 算回收起点认的最近一条留痕（最近一条在前，只要时间；没有 = 空） */
@@ -1342,6 +1393,8 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       if (await 单项目客户跟进公海(tx, p, null, 今)) 客户也进了.add(p.customerId);
       // 先关他手上这个项目的待办，再给他发收回提醒（提醒留着不关）
       await 进公海关待办(tx, p, p.ownerId, 今);
+      // 同 放回公海：超时回到公海的不再算在推，客户状态重算
+      await 进出公海重算(tx, [p.customerId]);
       await tx.task.create({
         data: {
           title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`,
@@ -1454,6 +1507,8 @@ export async function 记项目沟通(
     if (!能管) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
       // 企业版（11-17 客户定，改 11-01 规则 6）：已进组的项目组员也能把沟通记到别人名下的项目上，记录上是谁记的就是谁，负责人不变
+      // 设了「只看某人」的进了组也只能看（P-看-19 只放开看），说只读那句
+      if (企业版() && 只看的人(org, me.id)) return { ok: false as const, error: 只看某人话 };
       if (企业版() && !能往项目记沟通(me, p, org, 组员?.inviteStatus)) return { ok: false as const, error: 沟通不是组员话 };
       if (组员?.inviteStatus !== "JOINED") return { ok: false as const, error: "只有项目负责人、项目组成员、老板或主管能记沟通" };
     }
@@ -1470,7 +1525,8 @@ export async function 记项目沟通(
         不写项目的下一步文字 / 时间，也不跑按必填推进
       */
       const 组员记 = 企业版() && !能管;
-      const 要下一步 = !组员记 && 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+      // 仅记录用的不回收时不强制（X-147 待定 6，timeout.ts 记沟通要下一步时间）
+      const 要下一步 = !组员记 && 记沟通要下一步时间(规则, p);
       const 好 = 规整沟通(组员记 ? { ...input, 下一步: null, 下一步时间: null } : input, { 要下一步, now, 要下一步文字: !组员记 && opt.要下一步文字 });
       if ("error" in 好) return { ok: false as const, error: 好.error };
       const 阶段问题 = 记沟通阶段问题(input, p);
@@ -1814,6 +1870,9 @@ export async function 自动推得到(tx: Prisma.TransactionClient, 规则: 组�
   if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return null;
   // 节点推进不管的项目不自动推（项目按必填走：默认全部都管；设置成只管新建的时看 createdAt）；已结束、在公海的不推
   if (p.pooledAt || p.result || !项目按必填走(规则, p)) return null;
+  // 仅记录用的（X-147，来源仅记录用、还停在潜客培育）不自动推：口径「一律停在潜客培育」，记沟通、存字段把潜客培育必填填齐了也不推出去，
+  // 要真跟由负责人自己点「完成节点」往前推（推出去以后就是普通线索，照常自动推）。记项目沟通、客户页连带推、项目页「存一下会自动推」提示都经这里
+  if (是仅记录用(p)) return null;
   // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
   if (待分配占位(me, p)) return null;
   const 下 = 下一步(p, 字典of(企业版()));

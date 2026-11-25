@@ -35,6 +35,7 @@ import { getBusiness } from "@/lib/business";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import type { 组织规则 } from "@/lib/project/org-rules";
 import { 算三态, 解除后几天收, 计时起算日, 三态扫过键, type 三态事实, type 三态结果, type 三态项目 } from "./tri-state";
+import { 去掉合并挪来的 } from "./merge-moved-logs";
 import { 换负责人们of, 撤销计次方式, 并上撤销计次, 换人方式, type 换人行 } from "./tri-state-transfer";
 export { 换负责人们of } from "./tri-state-transfer";
 import { 待交接理由, 有内容的沟通, 沟通生效时刻, 沟通生效时刻SQL, 生效时刻余量, 额度沟通日of, type 额度候选沟通, type 动静事件, 暂缓回收次数, 默认占位词, 占位词键, 规整占位词, 留痕转推后, 最近暂缓回收日, 留痕方式, 自动收回次数, type 留痕行 } from "./tri-state-quota";
@@ -56,6 +57,7 @@ import { recordAudit } from "@/lib/audit";
 import { getSetting, setSetting } from "@/lib/settings";
 import { 不是同号留痕SQL } from "./same-number-mark";
 import { beijingDay } from "@/lib/business-clock";
+import { 是仅记录用 } from "@/lib/project/system-created";
 
 type 库 = Prisma.TransactionClient | typeof prisma;
 type 号码种类表 = Awaited<ReturnType<typeof 退回号码种类表>>;
@@ -160,7 +162,7 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
     // 在推的、退回了项目公海的、软删了的一句读回来，下面分开。软删的只给额度重置当动静用（M-公海-54：删了项目额度不往回翻，同钟的 progressDay 兜底）
     const 连删的 = await 看已删(() => db.project.findMany({
       where: { customerId: { in: 批 } },
-      select: { id: true, customerId: true, ownerId: true, phase: true, result: true, bizLine: true, createdAt: true, updatedAt: true, pooledAt: true, deletedAt: true },
+      select: { id: true, customerId: true, ownerId: true, phase: true, node: true, source: true, result: true, bizLine: true, createdAt: true, updatedAt: true, pooledAt: true, deletedAt: true },
     }));
     const 全部项目 = 连删的.filter((p) => p.deletedAt === null);
     const 删了的 = 连删的.filter((p) => p.deletedAt !== null);
@@ -184,7 +186,8 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
     const 沟通日 = await 最近沟通日们(db, 批, 现在, 预读.占位词);
     const 导入 = await 导入完成日们(db, 批);
     const 预读换人 = 预读.换人 && 预读客户 && 预读客户.length === 批.length ? 预读.换人.filter((x) => 这批.has(x.customerId)) : null;
-    const 换人 = 预读换人 ?? await db.customerOwnerLog.findMany({ where: { customerId: { in: 批 } }, select: { id: true, customerId: true, at: true, kind: true, clockReset: true }, orderBy: [{ at: "asc" }, { id: "asc" }] });
+    // 合并客户挪来的（B 的）换人记录不拨 A 的钟：合并本身不拨钟、留下那家自己的历史优先（merge-moved-logs.ts）
+    const 换人 = await 去掉合并挪来的(db, 预读换人 ?? await db.customerOwnerLog.findMany({ where: { customerId: { in: 批 } }, select: { id: true, customerId: true, at: true, kind: true, clockReset: true }, orderBy: [{ at: "asc" }, { id: "asc" }] }));
     const 痕: 痕原行[] = await db.entCustomerStateLog.findMany({
       where: { customerId: { in: 批 } },
       select: { id: true, customerId: true, at: true, userId: true, fromState: true, toState: true, via: true, reason: true, holdDays: true, fromOwnerId: true },
@@ -209,7 +212,8 @@ export async function 收三态客户(db: 库, ids: readonly string[], 规则: �
         const 推 = beijingDay(推进.get(p.id) ?? p.createdAt);
         最近推进 = 较晚日(最近推进, 推);
         const 同事负责 = !!p.ownerId && p.ownerId !== c.salesOwnerId;
-        const 基 = { 阶段: p.phase as 三态项目["阶段"], 业务线: 项目业务线(p, 成员线), 同事负责, 最近推进日: 推 };
+        // 仅记录用（X-147）只给成交条件用（不算还在推）；同事负责挡进公海照旧（同事的项目不跟客户进公海，见 pool-link.ts）
+        const 基 = { 阶段: p.phase as 三态项目["阶段"], 业务线: 项目业务线(p, 成员线), 同事负责, 最近推进日: 推, ...(是仅记录用(p) ? { 仅记录用: true } : {}) };
         return p.result ? { ...基, 结束: true as const, 结束日: beijingDay(结局.get(p.id) ?? p.updatedAt) } : { ...基, 结束: false as const };
       });
       for (const p of 退回of.get(c.id) ?? []) {

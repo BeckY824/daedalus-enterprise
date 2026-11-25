@@ -166,7 +166,7 @@ describe("发布卡点", () => {
   it("通知出错不连累发布：记通知、读组织出错都照样发成", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     当(甲);
-    const 写 = vi.spyOn(prisma.entNotice, "create").mockRejectedValue(new Error("库忙"));
+    const 写 = vi.spyOn(prisma.entNotice, "upsert").mockRejectedValue(new Error("库忙"));
     const r = await 发布卡点Action(await 记一条(), 卡);
     写.mockRestore();
     expect(r).toMatchObject({ ok: true, code: expect.any(String) });
@@ -262,7 +262,7 @@ describe("公海分配", () => {
   it("通知出错不连累分配", async () => {
     const a = await 公海项目("公海一期");
     vi.spyOn(console, "warn").mockImplementation(() => {});
-    vi.spyOn(prisma.entNotice, "create").mockRejectedValue(new Error("库忙"));
+    vi.spyOn(prisma.entNotice, "upsert").mockRejectedValue(new Error("库忙"));
     当(组长);
     expect(await 分配公海项目([a], 乙)).toMatchObject({ ok: true, 分到: [a] });
     expect((await prisma.project.findUniqueOrThrow({ where: { id: a } })).ownerId).toBe(乙);

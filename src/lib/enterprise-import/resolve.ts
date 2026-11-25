@@ -56,6 +56,17 @@ function 过时了(c: { localDeleted: boolean; targetId: string }, ref: { finger
 }
 
 /**
+ * 记下冲突的那位客户之后被合并进了别的客户（合并客户把对照行改指留下那家，冲突还指着被并那家）：不改冲突，换一句说明。
+ * 照旧标已过时，下次同步按对照行现在指的（留下那家）重新比对；还没点过的冲突在撤回合并后对照行指回来，照常能定（服务端审查第二单 b 建议 4）
+ */
+export const 已并入话 = "记下之后这位客户已并入另一位客户，下次同步会按并入后的客户重新比对";
+/** 同 customer-merge.ts 的 客户单（不引那个文件：它引着项目 / 三态一大串） */
+const 客户合并单 = "客户";
+async function 已并入(tx: Pick<typeof prisma, "entCustomerMerge">, customerId: string): Promise<boolean> {
+  return !!(await tx.entCustomerMerge.findFirst({ where: { kind: 客户合并单, fromId: customerId, status: "已合并" }, select: { id: true } }));
+}
+
+/**
  * 定一组冲突（同一来源，一次最多 一次最多 笔），一个事务写完。
  * 已经定过的、找不到的、写不进的（所属客户不在了）不定，原因记在 没定 里
  */
@@ -107,7 +118,8 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
         }
         const ref = await tx.entExternalRef.findUnique({ where: 引用键(源, e, c.externalId) });
         const 现值 = await 读现值(tx, e, c.targetId);
-        const 过时 = 过时了(c, ref, w, !!现值);
+        let 过时 = 过时了(c, ref, w, !!现值);
+        if (过时 && ref && ref.targetId !== c.targetId && e === "customer" && (await 已并入(tx, c.targetId))) 过时 = 已并入话;
         if (过时 || !ref) {
           await tx.entConflict.updateMany({ where: { id, status: "待定" }, data: { status: "已过时" } });
           结果.过时++;

@@ -23,7 +23,7 @@ const plugin: Plugin = { name: "followup-project-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
-  stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x,卡点)=>{window.__项目存={id,...x};window.__卡点=卡点;return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
+  stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x,卡点)=>{window.__项目存={id,...x};window.__卡点=卡点;if(window.__项目抛)throw new TypeError('Failed to fetch');return window.__项目存回??{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
   stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__存=x;return{ok:true,id:'f1',...(window.__存回??{})}},completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no'});");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
@@ -240,6 +240,33 @@ it("项目能记：不再问客户明确回复了吗，下一步计划必填，�
     expect(await page.evaluate(() => Reflect.get(window, "__存"))).toBeUndefined();
     // 卡点没动：类型「暂无卡点」，照样交给服务端判（不生成）；11-19 起不再带标题、描述
     expect(await page.evaluate(() => Reflect.get(window, "__卡点"))).toEqual({ type: "暂无卡点", impact: null, reasons: [] });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("项目模式被拦以后改任何一格就收掉保存键上的旧原因（11-26）：断网后逐字改下一步计划收、服务端拦后点下一步时间收，不等 4 秒", async () => {
+  const { page, errors } = await open({ 项目: "有", 须知: 须知({ 起点日: 今天(), 天数: 7 }) });
+  try {
+    const 因 = page.locator(".save-why");
+    await page.locator("#content").click();
+    await page.keyboard.type("聊了报价细节", { delay: 20 });
+    await 格(page, "下一步计划").locator("input").fill("周五前发报价单");
+    // 断网（网络错）：原因浮在保存键上
+    await page.evaluate(() => Reflect.set(window, "__项目抛", true));
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await 因.waitFor();
+    // 不是沟通内容那格：逐字改下一步计划，一敲就收
+    await 格(page, "下一步计划").locator("input").click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("和样品", { delay: 20 });
+    await expect.poll(() => 因.count(), { timeout: 1000 }).toBe(0);
+    // 服务端拦：点下一步时间的快捷键也收
+    await page.evaluate(() => { Reflect.deleteProperty(window, "__项目抛"); Reflect.set(window, "__项目存回", { ok: false, error: "这个项目刚被别人结束了，请刷新" }); });
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(() => 因.innerText()).toBe("这个项目刚被别人结束了，请刷新");
+    await 格(page, "下一步时间").getByRole("button", { name: /明\s*天/ }).click();
+    await expect.poll(() => 因.count(), { timeout: 1000 }).toBe(0);
+    expect(await page.locator("#content").inputValue()).toBe("聊了报价细节");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

@@ -25,6 +25,7 @@ import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
 import { 企业版 } from "./switch";
+import { 去掉合并挪来的 } from "./merge-moved-logs";
 import { 是市场成员of, type 组织 } from "./org-core";
 import { 自动分配池, 读线部门, 读挑人底子, 补记销售管理起算 } from "./assign-eta";
 import { 两条线 } from "./assign-line";
@@ -78,11 +79,12 @@ export async function 公海客户的原负责人(db: 库, customerId: string): 
     const c = await db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, salesOwner: { select: { email: true } } } });
     if (!c) return null;
     if (c.salesOwner?.email !== 无负责人占位邮箱) return c.salesOwnerId || null;
-    const r = await db.customerOwnerLog.findFirst({
+    // 合并客户挪来的不认（同 公海客户原负责人是，merge-moved-logs.ts）
+    const [r] = await 去掉合并挪来的(db, await db.customerOwnerLog.findMany({
       where: { customerId, toOwnerId: c.salesOwnerId },
       orderBy: [{ at: "desc" }, { id: "desc" }],
-      select: { fromOwnerId: true },
-    });
+      select: { id: true, customerId: true, fromOwnerId: true },
+    }));
     return r?.fromOwnerId ?? null;
   });
 }

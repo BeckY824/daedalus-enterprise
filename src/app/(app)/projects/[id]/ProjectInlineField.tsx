@@ -24,6 +24,9 @@ export type 编辑器参数<T> = { 草稿: T; set草稿: (v: T) => void; 提交:
  * - 存成功先显示新值，旁边一个 ✓ 停一下淡掉；等 router.refresh 带回新 props 就听服务端的（值变了清掉乐观值，渲染时比，不用 effect）
  * - 失焦存的不把焦点抢回笔上（人已经点到别处了）；回车 / ⌘↵ / Esc 收起时焦点回到笔上
  * - 钱格敲了认不出的字（AmountInput 交 NaN）：「改没改」用 串 比（NaN ≠ 空），照样交给 存 说为什么；草稿里 NaN 换回原值（11-20 审查）
+ * - 转交（11-25 审查）：这次的值这一格自己存不了、要先填另一格（物流状态选「运输中」而单号空着）——不发请求，这一格回到原值收起，
+ *   外面去开那一格；打开 = 外面让这一格打开的信号（每加一次开一次，输入框自己 autoFocus）；附言 = 编辑态多写的一行（为什么被带过来）
+ * - 败后还原（下拉格用）：服务端拒了，格子回到原值、原因照样写在下面，不留着一个存不上的选项
  *
  * 客户页的 InlineField 绑死了 patchCustomer，不能复用，这里只借它的按键习惯
  */
@@ -59,7 +62,7 @@ function 钱格样(v: unknown): v is { 数: unknown; 币: unknown } {
   return !!v && typeof v === "object" && "数" in v && "币" in v;
 }
 
-export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存, 能改, 多行 = false, 一行显示 = false, 回车存 = false, 规整 }: {
+export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存, 能改, 多行 = false, 一行显示 = false, 回车存 = false, 规整, 转交, 打开, 附言, 收起时, 败后还原 = false }: {
   名: string;
   值: T;
   显示: (v: T) => ReactNode;
@@ -73,6 +76,16 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
   回车存?: boolean;
   /** 存之前规整（文字去首尾空白）：只多打了空格不发请求，乐观显示和服务端存的一样；草稿不动，存失败时输入原样留着 */
   规整?: (v: T) => T;
+  /** 返回 true = 这个值交给外面处理（不发请求）：这一格回到原值收起，焦点不抢回笔上（外面会开另一格） */
+  转交?: (v: T) => boolean;
+  /** 外面让这一格打开：数变了（且 > 0）就打开 */
+  打开?: number;
+  /** 编辑态多写的一行 */
+  附言?: ReactNode;
+  /** 收起了（存上、Esc、没改失焦、转交）都调 */
+  收起时?: () => void;
+  /** 存失败时草稿回到原值（下拉格：不留一个存不上的选项），原因照样写 */
+  败后还原?: boolean;
 }) {
   const 视图中 = useViewAs();
   const [开着, set开着] = useState(false);
@@ -147,6 +160,20 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
     return () => clearTimeout(t);
   }, [刚存]);
 
+  // 外面让这一格打开（转交过来的）：同 开，只认数变了的那一次；收着才开，已经开着的不动草稿
+  const 开过 = useRef(打开 ?? 0);
+  useEffect(() => {
+    if (!打开 || 打开 === 开过.current) return;
+    开过.current = 打开;
+    if (!收起了.current) return;
+    set草稿(现);
+    set错(null);
+    失败的.current = null;
+    收起了.current = false;
+    set开着(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只跟信号走，现值在开的那一刻取
+  }, [打开]);
+
   if (!能改 || 视图中) return <>{显示(现)}</>;
 
   const 开 = () => {
@@ -162,6 +189,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
     回焦.current = 回笔;
     set开着(false);
     set错(null);
+    收起时?.();
   };
 
   async function 提交(传的?: T, 失焦 = false) {
@@ -172,6 +200,10 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
     // 用 串 比：认不出的金额（NaN）不能和「空着」算一样，要交给 存 说为什么
     if (串(v) === 串(现)) return 关(!失焦);
     if (失焦 && 失败的.current === 串(输入)) return;
+    if (转交?.(v)) {
+      稿.丢掉();
+      return 关(false);
+    }
     在存.current = true;
     set忙(true);
     set错(null);
@@ -179,6 +211,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
       const 话 = await 存(v);
       if (话) {
         失败的.current = 串(输入);
+        if (败后还原) set草稿(现);
         if (!失焦) set错后回焦((n) => n + 1);
         return set错(话);
       }
@@ -188,6 +221,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
       关(!失焦);
     } catch (e) {
       失败的.current = 串(输入);
+      if (败后还原) set草稿(现);
       if (!失焦) set错后回焦((n) => n + 1);
       set错(动作出错话(e, "没存上，请稍后再试"));
     } finally {
@@ -261,6 +295,7 @@ export default function ProjectInlineField<T>({ 名, 值, 显示, 编辑器, 存
       }}
     >
       <编辑区 编辑器={编辑器} 草稿={草稿} set草稿={set草稿} 提交={(v) => void 提交(v)} 忙={忙} />
+      {附言 && <div className="proj-inline-hint" role="status">{附言}</div>}
       {错 && <div className="proj-inline-err" role="alert">{错}</div>}
       {稿.提示}
       <div className="proj-inline-acts" ref={按钮排}>

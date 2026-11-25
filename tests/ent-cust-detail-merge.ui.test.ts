@@ -57,7 +57,9 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import CustomerDetail from '@/app/(app)/customers/[id]/CustomerDetail';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';import RestrictedCustomerDetail from '@/app/(app)/customers/[id]/RestrictedCustomerDetail';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
+    import CustomerDetail from '@/app/(app)/customers/[id]/CustomerDetail';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';import RestrictedCustomerDetail from '@/app/(app)/customers/[id]/RestrictedCustomerDetail';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {合并桥} from '@/app/(app)/customers/[id]/merge-bridge';
+    // 合并客户第一批（11-25）：合并口 由客户页画好递进来，这里放个探针，把 RecordView 经 merge-bridge 递来的请求写出来
+    function 合并探针(){const {请求,收}=React.useContext(合并桥);return 请求?<div data-testid='merge-probe'>{JSON.stringify({...请求,次:undefined})}<button type='button' onClick={收}>收</button></div>:null}
     const root=createRoot(document.getElementById('root'));
     const 人=(id,name,isPrimary)=>({id,name,position:'采购',phone:'1381200000'+id.slice(1),email:null,wechat:null,isPrimary,remark:null,updatedAt:'2026-01-01T00:00:00.000Z'});
     const contacts=[人('c1','王总',true),人('c2','李工',false),人('c3','陈经理',false)];
@@ -107,7 +109,7 @@ beforeAll(async () => {
           users={[{id:'qa',name:'QA',email:'qa@x'},{id:'u2',name:'同事乙',email:'b@x'}]} channels={[]} aiEnabled={false} followUps={客户沟通} followUpsHasMore={false}
           项目们={签.map(t=>({id:t.id,name:t.name,phase:'商机',node:t.节点,result:null,pooledAt:null,amount:0,currency:'CNY'}))} 参与项目们={[]} 关联们={[]} 旺旺们={[]}
           跟进去处={[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null,下一步文字:null}]} 待办计划={[]} 能放公海 新建项目={{节点们:['线索验证'],要下一步:false}}
-          只读={o.只读?'全':false} {...(o.不能转?{能转让客户:false}:{})} {...(o.不能放?{能放公海:false}:{})}
+          只读={o.只读?'全':false} {...(o.合并?{合并口:<合并探针/>,能合并:o.合并,并入话:o.并入话??null}:{})} {...(o.不能转?{能转让客户:false}:{})} {...(o.不能放?{能放公海:false}:{})}
           三态条={o.提醒?{状态:'沉睡',文字:'满 90 天没有有效沟通，也可以用右上角「客户操作」转让或退回公海',悬停:'满 90 天没有有效沟通',旁注:null,按钮们:[{动作:'继续持有',字:'我还在跟',说明:'顺延 30 天',要理由:false,主:true}]}:null}
           项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}
           {...(o.号码?{号码种类:[{名:'手机',kind:'phone',active:true},{名:'座机',kind:'landline',active:true},{名:'WhatsApp',kind:'whatsapp',active:true}]}:{})}/>
@@ -130,7 +132,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 组员?: boolean | "只看"; 名片?: boolean; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
+type 参 = { 合并?: { 客户: boolean; 联系人: boolean }; 并入话?: string; 组员?: boolean | "只看"; 名片?: boolean; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -1411,6 +1413,80 @@ it("项目组卡改不了的人：不摆角色下拉（没有空框）、没有�
     expect(await page.locator(".pd-team-row .ant-select").count()).toBe(0);
     expect(await page.locator(".pd-team-row .pd-team-role-t").allInnerTexts()).toEqual(["技术支持工程师"]);
     expect(await page.locator(".pd-team-row").getByRole("button", { name: "移出" }).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("[合并客户第一批 11-25] 「更多操作 ▾」客户组有「合并客户」、项目组有「换客户」（服务端说能才摆），点了经 merge-bridge 交给客户页的框；没给 合并口 的不摆", async () => {
+  const { page, errors } = await 开(1280, { 合并: { 客户: true, 联系人: true }, 项目改: { 能换客户: true } });
+  try {
+    const 项们 = await 菜单项们(await 开菜单(page, "更多操作"));
+    expect(项们.map((x) => x.split(" ")[0])).toEqual(expect.arrayContaining(["换客户", "合并客户"]));
+    // 换客户在项目组、删除项目前；合并客户在客户组最后
+    expect(项们.indexOf("#客户")).toBeLessThan(项们.findIndex((x) => x.startsWith("合并客户")));
+    expect(项们.findIndex((x) => x.startsWith("换客户"))).toBeLessThan(项们.indexOf("#客户"));
+    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) li.ant-dropdown-menu-item").filter({ hasText: "合并客户" }).click();
+    expect(JSON.parse(await page.getByTestId("merge-probe").innerText().then((t) => t.replace(/收$/, "")))).toEqual({ 种: "客户" });
+    await page.getByTestId("merge-probe").getByRole("button").click();
+    await 开菜单(page, "更多操作");
+    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) li.ant-dropdown-menu-item").filter({ hasText: "换客户" }).click();
+    const 项目请求 = JSON.parse(await page.getByTestId("merge-probe").innerText().then((t) => t.replace(/收$/, "")));
+    expect(项目请求.种).toBe("项目");
+    expect(项目请求.projectId).toBe("p1");
+    expect(项目请求.名).toMatch(/^项目一/);
+    // 服务端说不能（不是负责人本人）：两项都不摆
+    await 画(page, { 合并: { 客户: false, 联系人: false }, 项目改: { 能换客户: false } });
+    const 不能 = await 菜单项们(await 开菜单(page, "更多操作"));
+    expect(不能.some((x) => /^(合并客户|换客户)/.test(x))).toBe(false);
+    await page.keyboard.press("Escape");
+    // 没给 合并口（只读、不是企业版）：服务端说能也不摆
+    await 画(page, { 项目改: { 能换客户: true } });
+    expect((await 菜单项们(await 开菜单(page, "更多操作"))).some((x) => /^(合并客户|换客户)/.test(x))).toBe(false);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("[合并客户第一批 11-25] ?merged= 旧链接进来：「已并入」那句摆在「← 回到客户列表」一行右端，一行省略、不推版面（那一行还是 24 高、页头不下移），能关、关了地址去掉 merged", async () => {
+  const 话 = "NO.00012「" + "超长的被并客户名称".repeat(5) + "」已并入这位客户，原来的链接都会跳到这里";
+  for (const 宽 of [390, 1024, 1280]) {
+    const { page, errors } = await 开(宽, { 合并: { 客户: true, 联系人: true }, 地址: "merged=b" });
+    try {
+      const 头前 = (await page.locator(".rec-head").boundingBox())!.y;
+      const 行高前 = (await page.locator(".back-to-list-row").boundingBox())!.height;
+      await page.evaluate(() => history.replaceState(null, "", "/customers/a?project=p1&merged=b"));
+      await 画(page, { 合并: { 客户: true, 联系人: true }, 并入话: 话 });
+      const 条 = page.getByTestId("merged-note");
+      await 条.waitFor();
+      expect((await page.locator(".rec-head").boundingBox())!.y).toBe(头前);
+      expect((await page.locator(".back-to-list-row").boundingBox())!.height).toBe(行高前);
+      const 字 = 条.locator(".mrg-landed-t");
+      expect(await 字.evaluate((e) => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth, e.getAttribute("title")])).toEqual(["ellipsis", true, 话]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+      // 「回到客户列表」还看得见
+      expect((await page.getByTestId("back-to-list").boundingBox())!.width).toBeGreaterThan(20);
+      await 条.getByRole("button", { name: "关掉这条提示" }).click();
+      expect(await 条.count()).toBe(0);
+      expect(await page.evaluate(() => location.search)).toBe("?project=p1");
+      expect((await page.locator(".rec-head").boundingBox())!.y).toBe(头前);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("[合并客户第一批 11-25] 项目资料卡：从另一位客户挪过来的项目写「并入」一行（从 NO.xxxxx「B」并入（合并客户）），一行省略、悬停看全；没有的不摆", async () => {
+  const 话 = "从 NO.00012「" + "超长的被并客户名称".repeat(5) + "」并入";
+  const { page, errors } = await 开(1280, { 项目改: { 并入自: { 话, 怎么来: "合并客户", at: "2026-11-25T02:00:00.000Z" } } });
+  try {
+    const 行 = page.getByTestId("project-merged-from-row");
+    await 行.waitFor();
+    expect(await 行.innerText()).toContain("并入");
+    const 值 = 行.locator(".proj-one");
+    expect(await 值.innerText()).toContain("（合并客户）");
+    expect(await 值.getAttribute("title")).toMatch(/^从 NO\.00012「.+」并入（合并客户，/);
+    expect(await 值.evaluate((e) => [getComputedStyle(e).textOverflow, getComputedStyle(e).whiteSpace])).toEqual(["ellipsis", "nowrap"]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+    await 画(page, {});
+    expect(await page.getByTestId("project-merged-from-row").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

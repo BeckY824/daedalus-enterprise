@@ -173,7 +173,7 @@ export type RecordProps = {
   /** 企业版客户属性的可选项（字典 custAttr 启用中的，A-17） */
   客户属性选项?: string[];
   /** 企业版项目模式客户页「新建项目」（待定 16）：线索阶段的节点、要不要必填下一步时间。不给 = 不摆这个按钮 */
-  新建项目?: { 节点们: string[]; 要下一步: boolean } | null;
+  新建项目?: { 节点们: string[]; 要下一步: boolean; /** 组织规则 阶段.仅记录用 开着（X-147）：为记沟通打开的新建项目多一格「仅记录用」 */ 仅记录用?: boolean; /** 超时回收.仅记录用也回收（X-147 待定 6）：关着时勾仅记录用不强制下一步 */ 仅记录用也回收?: boolean } | null;
   /** 我能不能新建项目（企业版：有业务角色、不是只读，同建档向导的拦）。不能时记沟通弹框里没项目说「请联系负责人先建项目」，不摆「新建项目」 */
   能新建项目?: boolean;
   /** 企业版客户状态的可选项（字典 custStatus 启用中的，10-28 去遗留 A1）；不给 = 别的版本，标签行照旧 */
@@ -196,7 +196,7 @@ export type RecordProps = {
    * 右上角「更多操作 ▾」里项目那一组对当前项目生效的那几项（11-12 用户，CustomerDetail 按当前项目算好给）：名字 + 各项给不给、灰着的原因。
    * 点了经 项目动作口 交给嵌入版 ProjectDetail 开框；没有当前项目 = null（菜单里只剩「新建项目」）
    */
-  当前项目菜单?: { 名: string; 节点?: string | null; 项们: import("../../projects/[id]/project-menu").项目菜单项[] } | null;
+  当前项目菜单?: { id?: string; 名: string; 节点?: string | null; 项们: import("../../projects/[id]/project-menu").项目菜单项[] } | null;
   项目动作口?: { current: ((key: import("../../projects/[id]/project-menu").项目动作键) => void) | null } | null;
   /**
    * 右上角「发起点评 ▾」（教练点评改版 PR1，11-21，原沟通卡头「发起主题」）：CustomerDetail 按当前页签的项目画好整颗按钮递进来，
@@ -204,6 +204,15 @@ export type RecordProps = {
    * 递画好的按钮、不在 RecordView 里引 CoachTopics：那边连着教练主题的服务端动作，只画客户层的 RecordView（各用例单独打包它）不该带上
    */
   发起点评钮?: ReactNode | null;
+  /**
+   * 合并客户第一批（11-25）：三只框（合并客户、和另一位合成、项目换客户）由客户页画好递进来（MergeHost），RecordView 只经 merge-bridge 说开哪只；
+   * 不在 RecordView 里引框：框里调 merge-actions，同 发起点评钮。不给 = 菜单里不摆这几项
+   */
+  合并口?: ReactNode | null;
+  /** 摆不摆「合并客户」「和另一位合成」（page.tsx 按服务端同一把尺算：负责人本人能删客户的角色或系统管理员；公海里的合成要先领） */
+  能合并?: { 客户: boolean; 联系人: boolean } | null;
+  /** 打开的是已并入的 B 的旧链接（?merged=B）：顶上那句「NO.xxxxx「B」已并入这位客户」（customer-merge.ts 并入提示）；对不上 = null */
+  并入话?: string | null;
   /** 项目区正在提交：「更多操作 ▾」里对当前项目的几项灰着、写「正在处理」 */
   项目忙?: boolean;
   /**

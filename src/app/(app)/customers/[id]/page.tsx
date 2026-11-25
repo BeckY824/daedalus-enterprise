@@ -1,6 +1,7 @@
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
 import { 负责人显示名 } from "@/lib/pool";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { 并入去向, 并入后去处, 并入提示 } from "@/lib/enterprise/customer-merge";
 import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 历史负责人of, 我放出去的公海客户 } from "@/lib/owner-log-db";
@@ -15,6 +16,7 @@ import { 读受限客户详情 } from "./restricted";
 import { 读项目区, 客户页项目列表 } from "./project-zone";
 import { 历史变更摘要 } from "./history-data";
 import HistoryChanges from "./HistoryChanges";
+import MergeHost from "./MergeHost";
 import { 客户编号文字 } from "@/lib/customer-no";
 import { 项目详情字典们 } from "../../projects/[id]/load";
 import SameNumberBanner from "../../projects/[id]/SameNumberBanner";
@@ -32,7 +34,7 @@ import { 只读原因of, 只读横幅 } from "@/lib/enterprise/readonly-reason";
 import { getBusiness } from "@/lib/business";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 字段权限of, 客户列字段 } from "@/lib/enterprise/field-perm";
-import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请, 能恢复, 能领公海, 能删除 } from "@/lib/enterprise/permissions";
+import { 能管公海, 能转出自己的, 能放回客户公海, 只读角色, 能新建和领取, 转自己客户要申请, 能恢复, 能领公海, 能删除, 是系统管理员, 只看的人 } from "@/lib/enterprise/permissions";
 import { 公海别线的 } from "@/lib/enterprise/pool-line-guard";
 import { 恢复有效客户 } from "../../pool/actions";
 import { 客户在市场手里 } from "@/lib/enterprise/market-transfer";
@@ -65,7 +67,7 @@ export default async function CustomerDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ focus?: string; project?: string }>;
+  searchParams: Promise<{ focus?: string; project?: string; merged?: string }>;
 }) {
   // 企业版只用项目（P14）：时间线走下面的「沟通记录」，老时间线那 51 条不取。和登录态一起读（互不依赖）
   const [me, { id }, sp, 只项目] = await Promise.all([requireUser(), params, searchParams, 企业版只用项目()]);
@@ -104,6 +106,10 @@ export default async function CustomerDetailPage({
   });
 
   if (!customer) {
+    // 合并客户（customer-merge.ts，E-277）：旧通知、提醒、待办、书签里的 /customers/B 跳到留下的 A，带上 ?merged=B 给 A 页提示「已并入」；
+    // 别的参数（focus=plan:…、project=…）照带，计划、项目都已挪到 A
+    const 去 = 企业版() ? await 并入去向(prisma, id) : null;
+    if (去) redirect(并入后去处(去.intoId, id, sp));
     // 只负责项目的人（用户 11-12 定）：客户看不到、名下有自己负责的项目 = 受限详情（只读卡 + 只有自己的项目）；别的照旧 404
     const 受限 = 只项目 ? await 读受限客户详情(me, id, sp.project ?? null) : null;
     if (!受限) notFound();
@@ -264,6 +270,17 @@ export default async function CustomerDetailPage({
       三态条={三态?.条 ?? null}
       // 同号再次录入的醒目条：项目详情顶上那条，客户详情也摆（11-03 B6-9）；只看这页列出来的项目（已滤掉我回避的公海项目）
       醒目条={只项目 && 项目们?.length ? <SameNumberBanner projectId={项目们.map((p) => p.id)} /> : null}
+      // 合并客户第一批（11-25）：三只框（合并客户、和另一位合成、项目换客户）画好递进去；谁能做服务端再判一遍
+      合并口={企 && !只读 ? <MergeHost customerId={customer.id} 客户名={customer.name.trim() || customer.shortName || 客户编号文字(customer.customerNo) || ""} /> : null}
+      能合并={企 && !只读 ? await (async () => {
+        const org = await 权限组织();
+        if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return null;
+        const 管 = 是系统管理员(me, org);
+        const 本人 = !customer.pool && 能删除(me, org, customer.salesOwnerId);
+        // 同服务端（customer-merge.ts 合成联系人）：系统管理员在公海里也能合成；负责人本人要先领出来
+        return { 客户: 管 || 本人, 联系人: 管 || 本人 };
+      })() : null}
+      并入话={企 && typeof sp.merged === "string" ? await 并入提示(prisma, customer.id, sp.merged) : null}
       历史变更={历史摘要 ? <HistoryChanges customerId={customer.id} 摘要={历史摘要} 当前项目={项目区?.当前?.p.id ?? null} 客户名={[customer.name.trim() || customer.shortName, 客户编号文字(customer.customerNo)].filter(Boolean).join(" · ")} /> : null}
       sourceLead={sourceLead}
       users={users}
@@ -333,7 +350,7 @@ export default async function CustomerDetailPage({
       // 下拉里客户状态、客户类型每项的灰字释义（10-30）；字典上面已读过，走请求内缓存
       字典释义={字典释义}
       // 客户页「新建项目」（待定 16）：线索阶段的节点、开了超时回收要不要填下一步时间（同建档向导 projects/new/wizard-data.ts）
-      新建项目={企 && 规则 ? { 节点们: [...企业版字典.节点们.线索], 要下一步: 规则.超时回收.开 } : null}
+      新建项目={企 && 规则 ? { 节点们: [...企业版字典.节点们.线索], 要下一步: 规则.超时回收.开, 仅记录用: 规则.阶段.仅记录用 === true, 仅记录用也回收: 规则.超时回收.仅记录用也回收 === true } : null}
       联系人附件数={联系人附件数}
       customer={{
         id: customer.id,

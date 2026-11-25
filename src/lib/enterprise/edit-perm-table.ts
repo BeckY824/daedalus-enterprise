@@ -106,11 +106,13 @@ const 天数值 = (v: unknown): string | null => (v === null || v === undefined 
  */
 export function 挡时限改动(
   范围: 时限范围,
-  现在: { 开: boolean; 节点天数: Record<string, number>; 外贸节点天数?: Record<string, number>; 起算日?: string | null },
-  改: { 开?: unknown; 节点天数?: Record<string, unknown> | null; 外贸节点天数?: Record<string, unknown> | null; 起算日?: unknown } | null | undefined,
+  现在: { 开: boolean; 节点天数: Record<string, number>; 外贸节点天数?: Record<string, number>; 起算日?: string | null; 仅记录用也回收?: boolean },
+  改: { 开?: unknown; 节点天数?: Record<string, unknown> | null; 外贸节点天数?: Record<string, unknown> | null; 起算日?: unknown; 仅记录用也回收?: unknown } | null | undefined,
 ): string | null {
   if (范围 === "全部" || !改 || typeof 改 !== "object") return null;
   if (改.开 !== undefined && 改.开 !== 现在.开) return "超时回收的开关只有总管理员能动";
+  // 「仅记录用也回收」（X-147）同总开关：一拨就改一批项目收不收，只给全权的人
+  if (改.仅记录用也回收 !== undefined && 改.仅记录用也回收 !== (现在.仅记录用也回收 ?? false)) return "「仅记录用也回收」的开关只有总管理员能动";
   // 起算日（10-31）：和开关一样只给全权的人；"" 和 null 都算「不设」
   if (改.起算日 !== undefined && (改.起算日 || null) !== (现在.起算日 ?? null)) return "超时回收的起算日只有总管理员能动";
   // 内贸、外贸两套（C7）按节点拆的范围一样：能改哪几个节点，两套里都只能改这几个

@@ -29,7 +29,7 @@
 import { 是只读角色们, type 业务角色, type 业务线 } from "@/lib/sync/dept-policy";
 import { 项目业务线 } from "./assign-line";
 import { 本线放开看得到 } from "./await-assign-open";
-import { 按线的线, 按线范围of, 条线范围of } from "./line-viewer";
+import { 按线的线, 按线范围of, 条线范围of, 本线的项目 } from "./line-viewer";
 import { 实线下属, 虚线下属, 是系统管理员of, type 组织 } from "./org-core";
 import { 企业版 } from "./switch";
 import { 找条线总管理 } from "./tri-state-people";
@@ -198,16 +198,17 @@ export function 能看项目(me: 谁, p: 权限项目, org: 组织 | null): bool
   if (老()) return 老管(me) || me.id === p.ownerId || !!p.pooledAt;
   // 没设角色：只看公海（V3.5.1）
   if (!org || 没设业务角色(org, me.id)) return !老() && !!org && !!p.pooledAt;
-  // 只看某人：那个人（和自己）是负责人或创建人的，加上公海
+  // 只看某人：那个人（和自己）是负责人或创建人的，加上公海；自己进了组的也看得到（P-看-19，照 P-看-08；被盯的人进组、自己没进的不算）
   const 目标 = 只看的人(org, me.id);
-  if (目标) return !!p.pooledAt || [目标, me.id].some((x) => x === p.ownerId || x === p.creatorId);
+  if (目标) return !!p.pooledAt || [目标, me.id].some((x) => x === p.ownerId || x === p.creatorId) || !!p.已加入?.includes(me.id);
   if (能看全部(me, org)) return true;
   // 项目公海：谁都看得到才能领（历史负责人不能领、不能看另由公海那条规则管）
   if (p.pooledAt) return true;
   if (p.ownerId === me.id) return true;
   if (p.已加入?.includes(me.id)) return true;
+  // 条线总管理：负责人或创建人在本线（P-看-18：列表数据层按同一个 本线的项目 / 本线建的项目条件 认，line-viewer.ts）
   const 条线 = 条线范围of(org, me.id);
-  if (条线 && (条线.人们.includes(p.ownerId) || (!!p.creatorId && 条线.人们.includes(p.creatorId)))) return true;
+  if (条线 && 本线的项目(条线, p)) return true;
   const 按线 = 按线范围of(org, me.id);
   if (按线) return 按线.人们.includes(p.ownerId) || (!!p.creatorId && 按线.人们.includes(p.creatorId)) || 项目业务线(p, org.成员) === 按线.线;
   if (p.creatorId === me.id && 有(org, me.id, 市场角色)) return true;

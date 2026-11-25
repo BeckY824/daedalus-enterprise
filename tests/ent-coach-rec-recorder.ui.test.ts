@@ -607,6 +607,12 @@ it("草稿条：录着页面关了留下的「上传中」录音写已传多少�
 
 it("手机 390：选择板「录音点评」能点；面板从底部升起，按钮 ≥88 高、点得中、不横向撑出", async () => {
   const { page, errors } = await open("form", { 草稿们: [] }, { width: 390 });
+  // 手机上一下都不该挂出电脑那种弹框（头一次渲染断点还没读到时也不行）
+  await page.evaluate(() => {
+    const w = window as unknown as { __见过弹框: boolean };
+    w.__见过弹框 = false;
+    new MutationObserver(() => { if (document.querySelector(".ptt-modal")) w.__见过弹框 = true; }).observe(document.body, { childList: true, subtree: true });
+  });
   await page.getByTestId("coach-topic-new").click();
   await page.getByTestId("coach-review-sheet").waitFor();
   const 录 = page.getByTestId("coach-review-sheet").getByTestId("coach-review-voice");
@@ -619,6 +625,17 @@ it("手机 390：选择板「录音点评」能点；面板从底部升起，按
   // 底部升起有动画：等它停稳再量
   await expect.poll(() => page.evaluate(() => { const b = document.querySelector(".ptt-btn")!.getBoundingClientRect(); return b.bottom <= window.innerHeight; }), { timeout: 3000 }).toBe(true);
   await page.waitForTimeout(400);
+  // 通栏贴底、左右贴边、上边两角圆（同名单抽屉）；标题、内容左右留一样的边（11-26，3704 实操 390 宽看着不居中）
+  const 形 = await page.evaluate(() => {
+    const w = document.querySelector(".ptt-sheet .ant-drawer-content-wrapper")!.getBoundingClientRect();
+    const p = document.querySelector(".ptt-panel")!.getBoundingClientRect();
+    const t = document.querySelector(".ptt-sheet .ant-drawer-header-title")!.getBoundingClientRect();
+    const 角 = getComputedStyle(document.querySelector(".ptt-sheet .ant-drawer-content-wrapper")!);
+    return { 左: Math.round(w.left), 右: Math.round(window.innerWidth - w.right), 底: Math.round(window.innerHeight - w.bottom),
+      内左: Math.round(p.left - w.left), 内右: Math.round(w.right - p.right), 题左: Math.round(t.left - w.left),
+      上角: 角.borderTopLeftRadius, 下角: 角.borderBottomLeftRadius, 弹框: (window as unknown as { __见过弹框: boolean }).__见过弹框 };
+  });
+  expect(形).toEqual({ 左: 0, 右: 0, 底: 0, 内左: 16, 内右: 16, 题左: 16, 上角: "14px", 下角: "0px", 弹框: false });
   const 坏 = await page.evaluate(() => {
     const x: string[] = [];
     if (document.documentElement.scrollWidth > window.innerWidth) x.push("页面横向撑出");

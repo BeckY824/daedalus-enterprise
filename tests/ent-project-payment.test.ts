@@ -9,7 +9,7 @@
  *   - 节点必填配了「回款」：记了第一笔就自动推；删了不往回退
  *   - 节点必填配了「合同附件」：传了合同才推，传别的附件不推
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterAll, describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ 金额锁了: false }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
@@ -128,3 +128,6 @@ describe("节点必填", () => {
     expect(await 节点()).not.toBe(起);
   });
 });
+
+// 跑完清库（同 beforeEach 那套 resetDb）：附件不挂外键，留在共享 test.db 会绊倒后面从它拷库、自带清库清单的用例
+afterAll(async () => { await resetDb(); });

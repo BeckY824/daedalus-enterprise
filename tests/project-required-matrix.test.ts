@@ -8,7 +8,7 @@
  *   - 没开节点推进的组织（老组织）：一样不拦、不自动推
  *   - 矩阵里的结局原因（线索流失 / 商机丢单原因、异常类别、尾款结算两勾）：服务端 改节点问题 已经管，这里钉住
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterAll, describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
@@ -253,3 +253,6 @@ describe("矩阵里的结局原因：服务端 改节点问题 校验（企业�
     expect(问({ phase: "订单", node: "尾款结算", result: "交付结清" }, 项("订单", "尾款结算", { balanceSettled: true, acceptancePassed: true }))).toBeNull();
   });
 });
+
+// 跑完清库（同 beforeEach 那套 resetDb）：附件不挂外键，留在共享 test.db 会绊倒后面从它拷库、自带清库清单的用例
+afterAll(async () => { await resetDb(); });

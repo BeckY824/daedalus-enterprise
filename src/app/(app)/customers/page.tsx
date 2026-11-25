@@ -48,7 +48,7 @@ import { 客户页看板条件 } from "./board-query";
 import { 仅项目安全条件, 仅项目筛选口径 } from "@/lib/enterprise/project-only-customers";
 import { 仅项目列表行们 } from "@/lib/enterprise/project-only-list-rows";
 import { 阶段筛选太多 } from "@/lib/project/customer-list-projects";
-import { 读市场身份 } from "@/lib/enterprise/market-view-db";
+import { 读市场身份, 是部门市场无市场角色 } from "@/lib/enterprise/market-view-db";
 import type { SessionUser } from "@/lib/auth";
 import { 三态标们 } from "@/lib/enterprise/tri-state-list";
 import { 批量可自动分配 } from "@/lib/enterprise/cust-auto-assign";
@@ -175,7 +175,10 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     同一个 项目页 画法，地址落在 /customers。新建客户、导入、子集这几个客户页自己的入口照旧画客户页
   */
   const 市场角色 = 企业版() && b.projectMode && !!(await 读市场身份(me.id));
-  if (市场角色 && !sp.new && !sp.import && !在看子集(sp)) {
+  // 按部门认的市场成员、没有市场角色（P-看-17，用户 11-24；X-165 扩到不论兼什么业务角色）：市场视角不认他，客户页照他业务角色那套；只有被挡在项目详情外转来的（带 hl，
+  // projects/[id]/load.ts 市场去向）给同一套项目页，搜上项目名、高亮那一行，不落在不认 q / hl 的客户列表上
+  const 被挡转来 = 企业版() && b.projectMode && !市场角色 && !!sp.hl && (await 是部门市场无市场角色(me.id));
+  if ((市场角色 || 被挡转来) && !sp.new && !sp.import && !在看子集(sp)) {
     // 两个视图（用户 11-12「按第 1 种做」）：列表 = 原来的客户列表；看板 = 我分出去的。记了哪个进哪个，没记过进我分出去的；带 hl（被挡转来的）一律进我分出去的。
     // 地址上写明了「范围」（客户详情左侧名单「我负责的 N 位在表格里 ›」= ?scope=mine，P-界面-51）：要的是客户列表的那一项，记着看板也进列表——
     // 我分出去的那套不认 scope，原来落过去列的是全部成员的、一搜 scope 也丢了（3703 实操 11-21）。从列表切回「我分出去的」时 scope 去掉（CustomersView）

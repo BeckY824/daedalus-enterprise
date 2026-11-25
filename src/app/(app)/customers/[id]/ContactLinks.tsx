@@ -28,7 +28,11 @@ const 客户链接 = (x: { id: string; name: string; 看得到: boolean }) =>
  * 收进一颗常显的「⋯」交给 头 摆在组头右端，不再在卡上摆一排蓝链接；children 是组里那几行，挂靠的行、就地填的格子接在它们后面。
  * 「改到这位名下」「解除挂靠」点了照旧就地问一句再做（不弹框）
  */
-export default function ContactLinks({ customerId, c, 只读, 头, children }: { customerId: string; c: ContactRow; 只读: boolean; 头?: (更多: ReactNode) => ReactNode; children?: ReactNode }) {
+export default function ContactLinks({ customerId, c, 只读, 头, children, 合成 }: {
+  customerId: string; c: ContactRow; 只读: boolean; 头?: (更多: ReactNode) => ReactNode; children?: ReactNode;
+  /** 「和另一位合成」（合并客户第一批，11-25）：给了才摆，点了交给客户页开框（MergeHost）；挂靠过来的不给 */
+  合成?: () => void;
+}) {
   /** 做没做成就地写一行（原型 g.notice，不弹顶部提示）：错的 role=alert 留 6 秒，成了 role=status 留 3 秒 */
   const [话, set话] = useState<{ 话: string; 错?: boolean } | null>(null);
   useEffect(() => {
@@ -98,9 +102,10 @@ export default function ContactLinks({ customerId, c, 只读, 头, children }: {
       : [
           { key: "挂", label: "挂到别的客户" },
           { key: "换", label: "换主客户" },
+          ...(合成 ? [{ type: "divider" as const, key: "d2" }, { key: "合成", label: "和另一位合成" }] : []),
         ];
   const 更多 = 头 && 菜单项.length > 0 && (
-    <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 菜单项, onClick: ({ key }) => 开(key as "挂" | "换" | "说明" | "改到" | "解除") }}>
+    <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 菜单项, onClick: ({ key }) => (key === "合成" ? 合成?.() : 开(key as "挂" | "换" | "说明" | "改到" | "解除")) }}>
       <Button type="text" size="small" className="rec-contact-menu" icon={<MoreOutlined />} aria-label={`联系人 ${c.name || "—"} 的更多操作`} />
     </Dropdown>
   );

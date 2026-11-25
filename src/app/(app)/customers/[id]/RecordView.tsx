@@ -28,6 +28,7 @@ import {
   LockOutlined,
   UnlockOutlined,
   CloseOutlined,
+  InfoCircleOutlined,
   ThunderboltOutlined as AiOutlined,
 } from "@ant-design/icons";
 import { motion, AnimatePresence } from "motion/react";
@@ -54,6 +55,7 @@ import ContactForm from "./ContactForm";
 import ContactAttachments from "./ContactAttachments";
 import FollowAttachments from "@/components/FollowAttachments";
 import ContactLinks from "./ContactLinks";
+import { 合并桥, type 合并请求, type 合成候选人 } from "./merge-bridge";
 import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
@@ -232,6 +234,9 @@ export default function RecordView({
   发起点评钮 = null,
   项目动作口 = null,
   项目忙 = false,
+  合并口 = null,
+  能合并 = null,
+  并入话 = null,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档 || 管理员只读;
@@ -248,6 +253,12 @@ export default function RecordView({
   const { 问放回公海 } = usePoolReturnConfirm();
   /** 后果框（PR5a）：企业版客户退回公海（dt.pool：后果分条、原因点选、其他原地写） */
   const [问后果, 后果框] = useConsequence();
+  /** 合并客户第一批：点了哪个入口（合并客户 / 和另一位合成 / 换客户），框在 合并口（MergeHost）里按这个开 */
+  const [合并请, set合并请] = useState<(合并请求 & { 次: number }) | null>(null);
+  const 开合并 = useCallback((r: 合并请求) => set合并请({ ...r, 次: Date.now() }), []);
+  const 合并桥值 = useMemo(() => ({ 请求: 合并请, 收: () => set合并请(null) }), [合并请]);
+  /** 顶上「已并入」那句：关了就不再摆，地址里的 ?merged= 一起去掉（刷新不再冒出来） */
+  const [并入话关了, set并入话关了] = useState(false);
   const revertChoice = useRef<string>(REVERT_CHOICES[0].value);
   /*
     企业版项目模式（10-27 会议：前台冗余优化，先做一版、对方终稿到了再调）：
@@ -261,6 +272,8 @@ export default function RecordView({
   /** 客户页留哪几块（定稿 P5 待定 14）：企业版项目模式下记录输入、待办移到项目，转让、背调、下次跟进不放，旧字段不摆 */
   const 摆法 = 客户页摆法(企业);
   const [建项目开着, set建项目开着] = useState(false);
+  /** 这次新建项目是不是为记沟通开的（X-147：记沟通弹框「新建项目」、首页 AI 卡「去建项目」）；是 + 组织规则开着 = 表里多一格「仅记录用」 */
+  const [建项目为记沟通, set建项目为记沟通] = useState(false);
   /** 「新增项目」那张表要的数据第一次打开时才取：取着的时候「开项目」键转圈 */
   const [取建档中, set取建档中] = useState(false);
   /** 企业版页头具名按钮开的框（10-31 改版 R6） */
@@ -675,7 +688,15 @@ export default function RecordView({
   const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读 && 能新建项目);
   /** 公海里的客户先领取再建项目（11-05）：按钮照摆，点了说先领取，服务端也拦；标了无效的领不了，说先恢复 */
   function 开建项目() {
+    开建项目从(false);
+  }
+  /** 记沟通没项目时点「新建项目」（X-147 仅记录用） */
+  function 为记沟通开建项目() {
+    开建项目从(true);
+  }
+  function 开建项目从(为记沟通: boolean) {
     if (customer.pool) return void 说就地(customer.pool.无效 ? 无效客户不能领短话 : 公海客户先领取话);
+    set建项目为记沟通(为记沟通);
     set建项目开着(true);
   }
   /**
@@ -690,7 +711,8 @@ export default function RecordView({
     const t = window.setTimeout(() => {
       q.delete("建项目");
       window.history.replaceState(window.history.state, "", `${window.location.pathname}${q.size ? `?${q}` : ""}${window.location.hash}`);
-      if (能建项目) 开建项目();
+      // 首页 AI 记沟通卡「去建项目」进来的，就是为记这条沟通建（X-147 仅记录用）
+      if (能建项目) 为记沟通开建项目();
     }, 0);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在进页面时看一次
@@ -802,6 +824,8 @@ export default function RecordView({
   const 客户操作项: NonNullable<MenuProps["items"]> = [
     ...(能转让 ? [{ key: "cust-transfer", label: 两行("客户转让", "客户换负责人，名下项目一起走"), onClick: 开客户转让 }] : []),
     ...(能退回公海 ? [{ key: "cust-pool", label: <span title="客户和你自己的项目一起进公海">客户退回公海</span>, onClick: () => void 公海动作("放进") }] : []),
+    // 合并客户第一批（11-25）：把另一家并进这位；能不能并（同事的项目、交接中、业务线不同……）在预览里说
+    ...(合并口 && 能合并?.客户 ? [{ key: "cust-merge", label: 两行("合并客户", "把另一家重复的客户并进这位"), onClick: () => 开合并({ 种: "客户" }) }] : []),
   ];
   /**
    * 「更多操作 ▾」里项目那一组（原「项目操作 ▾」，11-12 用户）：只在项目区（客户详情合并）里有。小标题「项目 · 名字（节点）」（D2 · M1-b），再是新建项目、当前项目的几项；
@@ -810,8 +834,16 @@ export default function RecordView({
   /* 客户三态状态条（C10）：只在沉睡 / 待回收 / 暂缓回收中时服务端才给；三态关着、活跃时什么都不摆。
      有项目区时交给项目区摆（中栏宽、进程卡正上方），没有就照旧在客户名下面通栏 */
   const 提醒条 = 三态条 ? <TriStateBar 条={三态条} customerId={customer.id} 开客户转让={能转让 ? 开客户转让 : null} /> : null;
-  const 项目菜单项们 = 项目区 ? 当前项目菜单?.项们 ?? [] : [];
-  const 点项目项 = (key: (typeof 项目菜单项们)[number]["key"]) => 项目动作口?.current?.(key);
+  // 「换客户」的框在 合并口 里：没递 合并口（只读等）就不摆
+  const 项目菜单项们 = (项目区 ? 当前项目菜单?.项们 ?? [] : []).filter((x) => x.key !== "move" || !!合并口);
+  const 点项目项 = (key: (typeof 项目菜单项们)[number]["key"]) => {
+    // 「换客户」的框在 合并口 里（同合并客户），不经嵌入版 ProjectDetail
+    if (key === "move") {
+      if (合并口 && 当前项目菜单?.id) 开合并({ 种: "项目", projectId: 当前项目菜单.id, 名: 当前项目菜单.名 });
+      return;
+    }
+    项目动作口?.current?.(key);
+  };
   const 更多操作项 = 更多操作菜单({
     项目: !项目区 ? null : {
       当前名: 当前项目菜单 && 项目菜单项们.length > 0 ? 当前项目菜单.名 : null,
@@ -994,6 +1026,10 @@ export default function RecordView({
     顺序和分组不变：关键 → 本项目 → 这位客户的其他联系人（P-界面-16）；刚新建的那位排在其余里最前（看得见）。
     「挂到别的客户 / 换主客户」收进「⋯」（M4-c），挂靠那几行、就地填的格子由 ContactLinks 接在组里
   */
+  /** 和另一位合成（合并客户第一批）：同一位客户名下、不是挂靠过来的才行；只有一位时不摆 */
+  const 合成人 = (c: ContactRow): 合成候选人 => ({ id: c.id, name: c.name, 职务: c.position, 关键: c.isPrimary, 号: c.号码们?.[0]?.value ?? c.phone ?? null });
+  const 可合成的人 = contacts.filter((c) => !c.挂靠).map(合成人);
+  const 能合成联系人 = !!合并口 && !!能合并?.联系人 && !联系人只读 && 可合成的人.length > 1;
   const 首位联系人 = 排好的联系人[0];
   const 企业联系人序 = 首位联系人 ? [首位联系人, ...刚加的排前(排好的联系人.slice(1), 刚加的联系人)] : [];
   const 先露几位 = 3;
@@ -1002,7 +1038,7 @@ export default function RecordView({
     <Fragment key={c.id}>
       {c.id === 其他起点 && <div className="rec-contact-sub">这位客户的其他联系人</div>}
       <div className={`rec-contact rec-cg${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`} data-contact={c.id}>
-        <ContactLinks customerId={customer.id} c={c} 只读={联系人只读} 头={(更多) => 联系人头(c, 更多)}>
+        <ContactLinks customerId={customer.id} c={c} 只读={联系人只读} 头={(更多) => 联系人头(c, 更多)} 合成={能合成联系人 && !c.挂靠 ? () => 开合并({ 种: "联系人", 留: 合成人(c), 们: 可合成的人 }) : undefined}>
           {联系人身(c)}
         </ContactLinks>
       </div>
@@ -1202,13 +1238,33 @@ export default function RecordView({
     /* ui-v2：16a 客户详情的排版（左栏加宽、联系人两行、备注折叠、筛选一行），样式在 globals.css 末尾 16a 那块 */
     <div className="rec-page ui-v2">
       {后果框}
+      {合并口 && <合并桥.Provider value={合并桥值}>{合并口}</合并桥.Provider>}
       {醒目条}
       {/*
         「← 回到客户列表（第 N 页）」（员工反馈 1A，11-16）：原来按设计稿 12/PAGE「切人不再返回列表」不摆，靠窄名单换人；
         员工是按列表一页一页盘点的，窄名单（最近跟进 50 位）不是那一页。回的是进来前那张列表的原地址（筛选、页码、页签），
         滚动位置由外壳滚回去（components/ListReturn.tsx）。单占一行在页头上面，不和名字、右上角按钮抢宽度
       */}
-      <div className="back-to-list-row"><BackToList /></div>
+      <div className="back-to-list-row">
+        <BackToList />
+        {/* 打开的是已并入那家的旧链接（?merged=B）：一句淡字摆在这一行右端，不另占一行、不推版面；能关 */}
+        {并入话 && !并入话关了 && (
+          <span className="mrg-landed" role="status" data-testid="merged-note">
+            <InfoCircleOutlined className="mrg-landed-i" aria-hidden />
+            <span className="mrg-landed-t" title={并入话}>{并入话}</span>
+            <button type="button" className="mrg-landed-x" aria-label="关掉这条提示" onClick={() => {
+              set并入话关了(true);
+              try {
+                const u = new URL(window.location.href);
+                u.searchParams.delete("merged");
+                window.history.replaceState(window.history.state, "", u.toString());
+              } catch { /* 改不了地址不要紧 */ }
+            }}>
+              <CloseOutlined aria-hidden />
+            </button>
+          </span>
+        )}
+      </div>
       <div className="rec-head">
         {/* 名单不在时（窗口太窄收成抽屉，或者人自己点了收起），最左边补一颗侧栏图标把它叫回来（components/PaneToggle.tsx） */}
         <PaneToggle 栏="roster" 位置="主区" />
@@ -1800,7 +1856,7 @@ export default function RecordView({
         contacts={contacts}
         opportunities={[]}
         projects={记沟通项目}
-        新建项目={去项目跟进 ? (能建项目 ? 开建项目 : null) : undefined}
+        新建项目={去项目跟进 ? (能建项目 ? 为记沟通开建项目 : null) : undefined}
         没项目说法={去项目跟进 && (跟进去处 ?? []).some((p) => p.主 && !p.结束) ? 沟通都不能记话 : undefined}
         aiEnabled={aiEnabled}
         只读={只读}
@@ -1930,6 +1986,8 @@ export default function RecordView({
           on取中={set取建档中}
           customer={{ id: customer.id, name: customer.name, shortName: customer.shortName, customerNo: customer.customerNo, salesOwnerId: customer.salesOwnerId }}
           联系人们={contacts.filter((c) => !c.挂靠).map((c) => ({ id: c.id, name: c.name, isPrimary: c.isPrimary }))}
+          仅记录用={建项目为记沟通 && 新建项目.仅记录用 === true}
+          仅记录用也回收={新建项目.仅记录用也回收 === true}
         />
       )}
     </div>

@@ -1215,6 +1215,26 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 .back-to-list:hover, .back-to-list:focus-visible { color: var(--ink); background: var(--row-hover); }
 .back-to-list > .anticon { flex: none; }
 .back-to-list-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 客户页顶上「NO.xxxxx「B」已并入这位客户」：放在「← 回到客户列表」那一行右端，不占新行、不推版面 */
+.mrg-landed { display: inline-flex; align-items: center; gap: var(--s1); flex: 0 1 auto; min-width: 0; margin-left: auto; padding-left: var(--s3);
+  color: var(--text-muted); font-size: var(--fs-note); line-height: 24px; }
+.mrg-landed-i { flex: none; color: var(--brand); }
+.mrg-landed-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrg-landed-x { flex: none; display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--r-ctl); background: none;
+  color: var(--text-muted); cursor: pointer; transition: background-color var(--t-press) var(--ease), color var(--t-press) var(--ease); }
+.mrg-landed-x:hover { background: var(--row-hover); color: var(--ink); }
+.mrg-landed-x:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+@media (max-width: 767px) {
+  /* 关掉的 ✕ 点击区放大到 36，用负外边距吃回去，那一行还是 24 高 */
+  .mrg-landed-x { width: 36px; height: 36px; margin: -6px -6px -6px 0; }
+}
+/* 回收站「已并入 → A」：恢复、彻底删除灰着，悬停说明 */
+.mrg-trash-into { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--brand); font-size: var(--fs-min); }
+.mrg-trash-acts { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
+.mrg-trash-off { cursor: not-allowed; }
+.mrg-trash-off > .ant-btn { pointer-events: none; }
+.mrg-trash-off .mrg-trash-x { padding-inline: 0; }
+.mrg-trash-off:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: var(--r-ctl); }
 .rec-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; row-gap: 8px; }
 /* 记录页页头左边那一块：名字 + 一行「年级 · 专业 · 负责人」。至少留八个字宽，再长的名字折行显示完整（10-30，原来省略） */
 .rec-head-id { min-width: 8em; flex: 0 1 auto; }
@@ -1508,12 +1528,14 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
    走过的：次要字 + 绿勾一笔描出来；当前：正文色加粗 + 橙点慢呼吸（只变透明度）；没到：最浅字。
    一排放不下就横向滚（触控板 / 滚轮 / 两头小箭头），每格有最小宽度、名字一行省略号、悬停看全名（title）。
    出口（已转商机 / 商机赢单 / 交付结清）不是流程里的一步：槽外右边单独一颗描边胶囊，浮片不会落到它上面 */
-.proj-stage-strip { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* 11-26 小修：390 宽客户详情页被阶段条撑出横滚（实操量到 scrollWidth 442–452）。这一排自己横滚，但它的内容宽（每格 136 × 节点数）
+   还会算进外层的最小内容宽，哪层祖先按内容定宽就被撑开——contain: inline-size 让这排对外不报内容宽，只占父层给的宽，多的在排里滚 */
+.proj-stage-strip { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .proj-stage-strip > .proj-stage-nodes { flex: 1 1 auto; }
 .proj-stage-nodes {
   --stage-node-w: 136px;
   list-style: none; margin: 0; padding: 3px; display: flex; flex-wrap: nowrap; gap: 0; position: relative;
-  min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
+  min-width: 0; contain: inline-size; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
   background: var(--hover); border-radius: var(--r-card);
 }
 .proj-stage-thumb {
@@ -3298,6 +3320,8 @@ button.ais-hd-b { cursor: pointer; }
 .org-rule-name { min-width: 0; overflow-wrap: anywhere; }
 .org-rule-say { grid-column: 2; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .org-rule-sub { grid-column: 2; margin-top: 8px; }
+/* 项目模式卡里单摆的一条开关（「仅记录用」两条，X-147）：和上下几行一样隔 16px */
+.org-rule-gap { margin-bottom: 16px; }
 @media (max-width: 767px) {
   /* 手机上说明从开关底下起、占满整行 */
   .org-rule-say, .org-rule-sub { grid-column: 1 / -1; }
@@ -5361,6 +5385,12 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 @keyframes ptt-blink { to { visibility: hidden; } }
 @media (prefers-reduced-motion: reduce) { .ptt-dot { animation: none; } .ptt-level > span { transition: none; } }
 .ptt-sheet .ant-drawer-body { padding-bottom: calc(var(--s4, 16px) + env(safe-area-inset-bottom)); }
+/* 手机底部升起的录音面板（11-26，3704 实操 390 宽看着不居中）：通栏贴底、左右贴边，上边两角圆、外观同名单抽屉（.pane-sheet）；
+   标题行和内容左右都留 --s4，一样宽；内容只竖着走，长句折行，不横滚 */
+:root:root .ptt-sheet .ant-drawer-content-wrapper { left: 0; right: 0; width: 100%; max-width: 100vw; margin: 0; border-radius: var(--r-pop) var(--r-pop) 0 0; overflow: hidden; background: var(--panel); }
+:root:root .ptt-sheet :is(.ant-drawer-header, .ant-drawer-body) { padding-inline: var(--s4); }
+:root:root .ptt-sheet .ant-drawer-body { overflow-x: hidden; overflow-wrap: anywhere; }
+:root:root .ptt-sheet .ptt-panel { width: 100%; }
 /* 录音点评 PR5：确认框里 AI 起草的两格虚线框；转写全文（收起、只读、等宽换行）；沟通卡上「录音点评」标签（话筒、虚线框）和下面的播放 / 转写 */
 :root:root .crec-ai.ant-input, :root:root .crec-ai.ant-input-affix-wrapper, :root:root .crec-ai .ant-input { border-style: dashed; }
 :root:root .crec-confirm-audio { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }

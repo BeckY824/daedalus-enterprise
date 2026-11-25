@@ -28,7 +28,7 @@ import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 读组织, 直属上级of, 实线下属, 虚线下属, 拆角色, type 组织 } from "@/lib/enterprise/org";
 import type { 业务角色 } from "@/lib/sync/dept-policy";
 import { 原负责人回避, 历史负责人, 我回避的公海项目 } from "./pool-owner";
-import { 能编辑项目, 业务线放行, 只读按线, 是系统管理员 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 业务线放行, 只读按线, 是系统管理员, 只看的人, 只看某人话 } from "@/lib/enterprise/permissions";
 import { 按线范围of, 按线项目 } from "@/lib/enterprise/line-viewer";
 import {
   规整卡点默认, 合上卡点默认, 规整发布, 规整文字, 拼卡点编号, 卡点编号头, 下一个卡点流水, 写库时限天数, 会签进度,
@@ -48,6 +48,8 @@ const 不在了 = { ok: false as const, error: "这个卡点已经不在了，�
 const 没权 = { ok: false as const, error: "你的业务角色没开卡点，找总管理员在「设置 → 项目模式 → 卡点」里打开" };
 const 只总管 = { ok: false as const, error: "只有系统管理员能改" };
 const 只读 = { ok: false as const, error: "管理员只能看卡点，不能发、认领、完成、改、删" };
+/** 能写 是 false 时那一句：设了「只看某人」的说只看某人那句，别的照旧管理员只读那句 */
+const 只读of = (org: 组织 | null, me: 谁) => (只看的人(org, me.id) ? { ok: false as const, error: 只看某人话 } : 只读);
 export const 卡点默认键 = "entBlockerDefaults";
 const 原因种子键 = "entBlockerReasonSeeded";
 
@@ -78,13 +80,14 @@ export async function 卡点权限(me: 谁): Promise<我的卡点权限> {
   const 权 = 卡点权限of(角色们, await 读卡点角色开关());
   // 管理员设了业务线（11-02）：不算「全部」，下面按这条线算
   const 全部 = 权.全部 && !(卡点只读(角色们) && 只读按线(me, await 读组织()));
-  return { ...权, 全部, 能写: 权.开 && !卡点只读(角色们), 能管: 能管卡点(角色们) && (await 系统管理员(me)) };
+  // 设了「只看某人」的只能看（P-看-09；P-看-19 进了组看得到卡点也不能认领、点完成）
+  return { ...权, 全部, 能写: 权.开 && !卡点只读(角色们) && !只看的人(await 读组织(), me.id), 能管: 能管卡点(角色们) && (await 系统管理员(me)) };
 }
-/** 只问能不能写卡点（开着且不是只读角色，同 卡点权限 的 能写）：首页 AI 决定要不要把原因字典写进系统提示用，不查组织 */
+/** 只问能不能写卡点（开着、不是只读角色、没设只看某人，同 卡点权限 的 能写）：首页 AI 决定要不要把原因字典写进系统提示用 */
 export async function 能写卡点(userId: string): Promise<boolean> {
   if (!企业版()) return false;
   const 角色们 = await 角色们of(userId);
-  return 卡点权限of(角色们, await 读卡点角色开关()).开 && !卡点只读(角色们);
+  return 卡点权限of(角色们, await 读卡点角色开关()).开 && !卡点只读(角色们) && !只看的人(await 读组织(), userId);
 }
 
 /** 改卡点默认（默认类型 / 影响）：系统管理员 */
@@ -346,7 +349,7 @@ export async function 发卡点预检(me: 谁, projectId: string, 原因名们: 
   if (!企业版()) return 没开.error;
   const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
   if (!权.开) return 没权.error;
-  if (!权.能写) return 只读.error;
+  if (!权.能写) return 只读of(org, me).error;
   return 看全部(async () => {
     const p = await prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: 项目字段 });
     if (!p) return "这个项目已经不在了，刷新看看";
@@ -372,7 +375,7 @@ export async function 发布卡点(
   if (!企业版()) return 没开;
   const [默认, 权, org] = await Promise.all([读卡点默认(), 卡点权限(me), 组织of()]);
   if (!权.开) return 没权;
-  if (!权.能写) return 只读;
+  if (!权.能写) return 只读of(org, me);
   await 备好原因();
   return 查完再写((tx) => 看全部(async () => {
     const fp = await tx.followUpProject.findUnique({ where: { followUpId: String(followUpId ?? "") }, include: { project: { select: 项目字段 } } });
@@ -407,7 +410,7 @@ export async function 认领卡点(me: 谁, blockerId: string): Promise<卡点�
   if (!企业版()) return 没开;
   const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
   if (!权.开) return 没权;
-  if (!权.能写) return 只读;
+  if (!权.能写) return 只读of(org, me);
   return 查完再写((tx) => 看全部(async () => {
     const b = await 拿卡点(tx, blockerId);
     if (!b || !看得到卡点(me.id, 权, await 相关人(tx, b), 我的下属们(org, me.id))) return 不在了;
@@ -431,7 +434,7 @@ export async function 完成卡点(
   if (!企业版()) return 没开;
   const [权, org] = await Promise.all([卡点权限(me), 组织of()]);
   if (!权.开) return 没权;
-  if (!权.能写) return 只读;
+  if (!权.能写) return 只读of(org, me);
   return 查完再写((tx) => 看全部(async () => {
     const b = await 拿卡点(tx, blockerId);
     if (!b || !看得到卡点(me.id, 权, await 相关人(tx, b), 我的下属们(org, me.id))) return 不在了;

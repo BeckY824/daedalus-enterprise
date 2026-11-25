@@ -94,6 +94,25 @@ it("服务端拦下：原因浮在保存键上，框不关、内容留着、不�
   } finally { await page.close(); }
 });
 
+// 11-26 小修：被拦出红字后改成能存的内容，底部旧原因不再挂着（原来要等 4 秒或再点保存才消）
+it("服务端拦下后改内容：保存键上的旧原因立刻收掉、键回「保存」；不改内容原因照旧挂着", async () => {
+  const 话 = "这样写会被判为无意义，不能保存：不足 4 个字，还差 2 个字。请写清沟通内容";
+  const { page, errors } = await open({ 判定: { 拦: true, 占位词: [] }, 回: { ok: false, error: 话, 无意义: true } });
+  try {
+    await page.locator("#content").fill("开店");
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(() => page.locator(".save-why").count()).toBe(1);
+    await page.waitForTimeout(800);
+    // 没改内容：原因还在（停 4 秒那套不变）
+    expect(await page.locator(".save-why").count()).toBe(1);
+    await page.locator("#content").fill("开店的事，客户下月开业");
+    await expect.poll(() => page.locator(".save-why").count(), { timeout: 1500 }).toBe(0);
+    await expect.poll(() => page.locator(".save-btn").getAttribute("data-state"), { timeout: 1500 }).toBe("闲");
+    expect(await page.locator(".save-btn").innerText()).toMatch(/保\s*存/);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it("手机 390 宽：那一行一条，放不下省略号，不出横向滚动", async () => {
   const { page } = await open({ 判定: { 拦: true, 占位词: [] }, 宽: 390 });
   try {

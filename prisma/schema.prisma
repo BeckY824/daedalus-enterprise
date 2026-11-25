@@ -551,6 +551,9 @@ model CustomerPool {
   at         DateTime @default(now())
   /// 号码不全（迁移 130，企业版三态 T10）：到期自动进公海时按退回公海那一套查号码，空的 / 不对的记 true，公海列表能按它筛；别的入池为空
   phoneIncomplete Boolean?
+  /// 放进公海前客户存的状态（迁移 168，11-25 复审）：企业版手动放进公海时写，撤销放进时原样还回（cust-status-undo.ts）。
+  /// NULL = 没记（别的入池、老行），撤销照旧重算；"" = 放进前是空；其余 = 原值
+  prevCustStatus String?
 
   /// 公海按入池时间倒序翻页（迁移 137），同一刻入池的按客户 id 正序（和页面排序一致）
   @@index([at(sort: Desc), customerId])
@@ -589,6 +592,9 @@ model CustomerClaim {
   /// 谁领的。不建外键，同 CustomerPool
   userId     String?
   at         DateTime @default(now())
+  /// 出客户公海前客户存的状态（迁移 169，11-25 复审）：企业版领取 / 分配客户公海、整包出公海时写，撤销时原样还回（cust-status-undo.ts）。
+  /// NULL = 没记，撤销照旧重算；"" = 出公海前是空；其余 = 原值。再领覆盖
+  prevCustStatus String?
 }
 
 /// 合并重复客户留下的记号（2026-10-20，迁移 039）：被合并掉的那位（id = 它原来的客户编号）并进了哪位。
@@ -1187,6 +1193,9 @@ model ProjectNodeLog {
   kind        String   @default("node")
   fromOwnerId String?
   toOwnerId   String?
+  /// pool-claim 那一行：出线索公海前客户存的状态（迁移 170，11-25 复审）。企业版领取 / 分配公海项目、领客户带出、批量改负责人带出时写，
+  /// 撤销时原样还回（cust-status-undo.ts）。NULL = 没记（别的行、老行），撤销照旧重算；"" = 出公海前是空；其余 = 原值
+  prevCustStatus String?
 
   @@index([projectId, at])
   // 回避名单 / 统一公海 / 渠道看板按 kind = pool-release（+ 原负责人）查；projectId 垫在最后免回表（migrations/119）
@@ -2212,4 +2221,46 @@ model EntRequiredBlock {
 
   @@index([at])
   @@index([projectId, at])
+}
+
+/// 企业版合并客户的合并单（迁移 171，2026-11-25，客户 E-277 / E-280 第一批）：一次合并一行，B（fromId）并进 A（intoId）。
+/// 挪动明细存 detail（JSON），够 30 天内照原样整单撤回（lib/enterprise/customer-merge.ts）。被并的 B 只软删、不连带。
+/// 给第二批留的口子：kind = 项目（「并进另一个项目」，fromId / intoId 存项目 id，parentId 挂在客户合并单下）；
+/// status 加 待同意 / 已拒绝 / 已作废、approvals 记要同意的人（合并申请）。指向人和客户的列都不建外键（B 清掉以后合并单照留）
+model EntCustomerMerge {
+  id             String    @id @default(cuid())
+  /// 客户 / 项目（第二批）
+  kind           String    @default("客户")
+  /// 被并掉的（B）
+  fromId         String
+  /// 留下的（A）
+  intoId         String
+  /// 第二批：项目合并挂在哪张客户合并单下，整单撤回时一起撤
+  parentId       String?
+  /// 已合并 / 已撤回；第二批加 待同意 / 已拒绝 / 已作废
+  status         String    @default("已合并")
+  /// 谁并的
+  byUserId       String
+  /// 第二批合并申请：要同意的人和各自结论（JSON）；这一批不写
+  approvals      String?
+  /// B 当时的样子：名字、编号、负责人、创建人、主渠道、渠道触点（B 清掉以后照样看得到）
+  fromName       String
+  fromNo         Int?
+  fromOwnerId    String?
+  fromCreatorId  String?
+  fromChannelId  String?
+  fromTouchpoint String?
+  /// 各类挪了几条（JSON）
+  counts         String    @default("{}")
+  /// 挪动明细（JSON）：每类挪了哪些行、原值是什么、去重删掉的整行
+  detail         String
+  at             DateTime  @default(now())
+  undoneAt       DateTime?
+  undoneById     String?
+  /// 撤回时没还原的那几条和原因（JSON）
+  undoLeft       String?
+
+  @@index([fromId, status])
+  @@index([intoId, status])
+  @@index([status, at])
 }

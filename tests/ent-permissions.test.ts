@@ -386,6 +386,8 @@ describe("只看某人（V3.5.1 特例）", () => {
     const p: 权限项目 = { ownerId: "t", creatorId: "s" };
     const 自建: 权限项目 = { ownerId: "s", creatorId: "w" };
     expect([能看项目({ id: "w" }, p, o), 能看项目({ id: "w" }, 自建, o), 能看项目({ id: "w" }, { ownerId: "s", creatorId: "s" }, o), 能看项目({ id: "w" }, 公海项目, o)]).toEqual([true, true, false, true]);
+    // 自己进组的看得到（P-看-19，照 P-看-08）；被盯的人进组、自己没进的不算
+    expect([能看项目({ id: "w" }, { ownerId: "s", creatorId: "s", 已加入: ["w"] }, o), 能看项目({ id: "w" }, { ownerId: "s", creatorId: "s", 已加入: ["t"] }, o)]).toEqual([true, false]);
     expect([能编辑项目({ id: "w" }, { ownerId: "w" }, o), 能转让项目({ id: "w" }, { ownerId: "w" }, o), 能删除({ id: "w" }, o, "w"), 能删一些({ id: "w" }, o), 能领公海({ id: "w" }, o)]).toEqual([false, false, false, false, false]);
     expect([能改客户({ id: "w" }, { salesOwnerId: "w", 在公海: false }, o), 能转让客户({ id: "w" }, { salesOwnerId: "w", 在公海: false }, o)]).toEqual([false, false]);
   });

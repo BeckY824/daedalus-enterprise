@@ -11,6 +11,7 @@
 import type { 推后记录 } from "./tri-state";
 import { beijingDay } from "@/lib/business-clock";
 import { 是同号留痕 } from "./same-number-mark";
+import { hasVisibleText } from "@/lib/form-validation";
 
 /**
  * 沟通生效日（M-公海-54，客户 11-12 定）：一条沟通算哪天的动静，取「沟通日期」（occurredAt）和「记录写入时间」（createdAt）里较早的那个；
@@ -193,7 +194,8 @@ const 太短半句 = (内容: string | null | undefined, 判: 沟通意义判定
  * 拦 = 组织开关「无意义沟通不能保存」开着：无意义的说「不能保存」；关着照旧只说不算有效沟通
  */
 export function 沟通意义提示(内容: string | null | undefined, 类型: string | null | undefined, 选: 意义判定选项 & { 拦: boolean }): string | null {
-  if (!(内容 ?? "").trim()) return null;
+  // 空内容不说：只有空白 / 零宽字符（\u200b、\ufeff 这类，trim 去不掉）的同空，和框上「请填写沟通内容」同一条 hasVisibleText（11-26）
+  if (!hasVisibleText(内容)) return null;
   const 判 = 判沟通无意义(内容, 类型, 选);
   if (!判.种) return null;
   const 原因 = 判.种 === "太短" ? 太短半句(内容, 判) : 无效原因话[判.种];

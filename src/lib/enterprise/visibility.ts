@@ -26,9 +26,9 @@ import { 全进程上下文 } from "@/lib/process-als";
 import { jwtVerify } from "jose";
 import type { PrismaClient } from "@/generated/prisma";
 import { readSecret } from "@/lib/secret";
-import { 看得到, type 限定, type 公海回避 } from "@/lib/team-scope";
+import { 看得到, type 限定, type 公海回避, type 条线建的读 } from "@/lib/team-scope";
 import { 回收站副手键, 只看某人键, 系统管理员标记键, 填组织设置, 建组织, 实线下属, 虚线下属, 管理员类别们of, type 组织 } from "./org-core";
-import { 按线范围of, 按线项目, 按线客户, 条线范围of } from "./line-viewer";
+import { 按线范围of, 按线项目, 按线客户, 条线范围of, 本线建的项目条件, 本线建的客户条件, type 按线范围 } from "./line-viewer";
 import { 规则, 开关值开着 } from "./rules";
 import { 市场部门key, 市场成员key, 市场成员们, 市场相关客户, 市场只读话, 规整市场部门 } from "./market";
 import { 视图票, 验视图票, 会话时刻, 切换视图开着 } from "./view-as";
@@ -44,6 +44,13 @@ export const 虚线只读话 = "这是虚线下属的客户：只能看，不能
 /** 只因为进了项目组看得到的客户（V3.5.1；11-17 客户定组员能在本项目记沟通） */
 export const 组员只读话 = "这是你加入的项目挂着的客户：只能看，不能改；沟通只能记在你已加入的在推项目上；被指定为负责人才能改";
 export const 虚线或市场只读话 = "这是虚线下属或市场成员相关的客户：只能看，不能改、不能转";
+/**
+ * 条线总管理（P-角色-01、P-看-18）：只读的是本线同事负责的、本线同事建的项目挂着的客户（负责人可以不在本线），不是虚线下属。
+ * 自己还有虚线下属的、兼市场管理的各说一句，不说死是哪一样
+ */
+export const 条线只读话 = "这是本线同事负责的客户，或本线同事建的项目挂着的客户：只能看，不能改、不能转";
+export const 虚线或条线只读话 = "这是虚线下属、本线同事负责的客户，或本线同事建的项目挂着的客户：只能看，不能改、不能转";
+export const 条线或市场只读话 = "这是本线或市场成员相关的客户：只能看，不能改、不能转";
 /** 没认出人：只看公海（谁的 id 都不会是这个） */
 const 只看公海: 限定 = { 我: ["__无"], 互看: false, 别人的: new Set() };
 
@@ -220,21 +227,25 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     const 线 = 按线范围of(org, id);
     const 话 = 只读话of({ id }, org);
     if (!线) return { 我: null, 互看: false, 别人的: new Set(), 只读: 话 };
-    // 设了业务线：按人的那一半走 读 + 市场（看得到客户、raw SQL 回退 Prisma），按标签的那一半走 按线
+    // 设了业务线：按人的那一半走 读 + 市场（看得到客户、raw SQL 回退 Prisma），按标签的那一半走 按线。
+    // 组员的客户只认本人进的组（11-24 ②，同 按线 项目那一支只认 按线.本人；原来按整条线的人认，线上同事进组的客户也露）
     return {
-      我: [id], 读: 线.人们, 市场: 线.人们, 组员客户: await 组员客户of(db, 线.人们), 按线: { 本人: id, 项目: 按线项目(线), 客户: 按线客户(线) },
+      我: [id], 本人: id, 读: 线.人们, 市场: 线.人们, 组员客户: await 组员客户of(db, [id]), 按线: { 本人: id, 项目: 按线项目(线), 客户: 按线客户(线) },
       互看: false, 别人的: new Set(), 全拦: true, 话, 只读: 话,
     };
   }
   // 只看某人（V3.5.1 市管特例，规则开不开都算）：业务数据只看 那个人（和自己）是负责人、或是创建人且不在公海的，公海照常；
-  // 按人的走 读（负责人）+ 市场（11-04：负责的 + 建的且不在公海），都只读。自己没东西能写（permissions.ts 一律拒），写范围只留自己
+  // 按人的走 读（负责人）+ 市场（11-04：负责的 + 建的且不在公海），都只读。自己没东西能写（permissions.ts 一律拒），写范围只留自己。
+  // 组员只认本人（P-看-19，用户 11-24，照 P-看-08）：自己进了组的项目和挂着的客户看得到（只读，全拦），同详情 能看项目 只看某人那一支认 p.已加入.includes(me.id)；
+  // 被盯的那个人进了组、自己没进的照旧不露（组员条件认本人，不认 目标）
   const 目标 = 只看的人(org, id);
   if (目标) {
     const 人们 = [id, 目标];
-    const 回避 = await 公海回避of(db, id);
+    const [回避, 组员客户] = await Promise.all([公海回避of(db, id), 组员客户of(db, [id])]);
     const 那些 = await db.customer.findMany({ where: 市场相关客户(人们), select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } } } });
     const 别人的 = new Set(那些.filter((c) => !看得到(c, [id])).map((c) => c.id));
-    return { 我: [id], 读: 人们, 市场: 人们, 组员客户: await 组员客户of(db, 人们), 互看: false, 别人的, 全拦: true, 话: 只看某人话, ...(回避 ? { 公海回避: 回避 } : {}) };
+    for (const c of 组员客户 ?? []) 别人的.add(c);
+    return { 我: [id], 本人: id, 读: 人们, 市场: 人们, 组员客户, 互看: false, 别人的, 全拦: true, 话: 只看某人话, ...(回避 ? { 公海回避: 回避 } : {}) };
   }
   // 规则关着：原来一律不限定；11-01 起没设业务角色的照样没权限（只看公海）；
   // 原负责人回避（11-03）规则开不开都算，能看全部的（总管理等）不回避
@@ -261,10 +272,11 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
   // 市场管理（11-05 客户定）：本人 + 直属下级建的项目（线索）不管什么状态都看得到，只读；直属下级不论是不是市场成员
   const 带市场全看 = 类别.has("市场管理") ? { 市场全看: [id, ...实线下属(org, id, 1)] } : {};
   // 项目组员（V3.5.1）：加入的项目挂的客户级联看得到、只能看（不改；11-17 起沟通能记在自己已进组的在推项目上，见 lib/project/follow-needs-project.ts）。自己（含实线下属）负责的、公海的不降；
-  // 自己负责的项目挂着的也不算只读（被指定为负责人才能编辑，在项目下记沟通）
+  // 自己负责的项目挂着的也不算只读（被指定为负责人才能编辑，在项目下记沟通）。
+  // 只认本人进的组（11-24 ②，P-看-08）：下属、虚线下属、条线成员、停用的下属进组的客户不跟着露，同详情 能看项目 只认 p.已加入.includes(me.id)
   const 写 = 范围.写;
   const 组员只读 = new Set<string>();
-  const 组员编号 = await 组员客户编号(db, [...(范围.读 ?? 写)]);
+  const 组员编号 = await 组员客户编号(db, [id]);
   const 组员的 = 组员编号.length
     ? await db.customer.findMany({
         where: { id: { in: 组员编号 } },
@@ -275,10 +287,26 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
     if (!看得到(c, 写) && !c.projects.some((p) => 写.includes(p.ownerId))) 组员只读.add(c.id);
   }
   const 带组员 = 组员的.length ? { 组员客户: 组员的.length > 组员名单上限 ? null : 组员的.map((c) => c.id) } : {};
-  if (!范围.读 && !市场.length && !组员只读.size) return { 我: 写, 互看: false, 别人的: new Set(), ...线索, ...带市场全看, ...带回避, ...带组员, ...带待分配放开 };
+  // 条线总管理补「创建人在本线」（P-看-18，用户 11-24）：详情 能看项目 认负责人或创建人在本线（line-viewer.ts 本线的项目），
+  // 列表原来只按负责人（读）带。项目补本线建的；客户补名下有本线建的项目的，只读（自己负责的项目挂着的不降，同市场那条）。
+  // 名单 = 本线建的客户条件（过上限退回的那句）减掉按负责人（读）、公海早看得到的那几位（现库几十位；名下有本线建的项目的客户大多负责人就在本线），
+  // 两路挑出来的客户同一批（审查 11-24）：都从 本线建的客户条件 出发，名单不再另带「不进回收站」（回收站里的照退回那句算，列表那边扩展另会滤掉）。
+  // 名单不过上限，裸 SQL 快路照走（过上限 有市场只读 让快路走 Prisma，客户条件 那句是全集，OR 起来一样）
+  const 条线 = 条线范围of(org, id);
+  const 线建只读 = new Set<string>();
+  let 带条线: { 条线建的?: 条线建的读 } = {};
+  if (条线) {
+    const 那些 = await db.customer.findMany({
+      where: 本线建的名单条件(条线, 范围.读 ?? 写),
+      select: { id: true, salesOwnerId: true, channelOwnerId: true, pool: { select: { customerId: true } }, projects: { where: { deletedAt: null }, select: { ownerId: true } } },
+    });
+    for (const c of 那些) if (!看得到(c, 写) && !c.projects.some((p) => 写.includes(p.ownerId))) 线建只读.add(c.id);
+    带条线 = { 条线建的: { 项目: 本线建的项目条件(条线), 客户: 那些.length > 组员名单上限 ? null : 那些.map((c) => c.id), 客户条件: 本线建的客户条件(条线) } };
+  }
+  if (!范围.读 && !市场.length && !组员只读.size && !线建只读.size) return { 我: 写, 本人: id, 互看: false, 别人的: new Set(), ...线索, ...带市场全看, ...带回避, ...带组员, ...带待分配放开, ...带条线 };
 
   // 只能看的那些客户的编号：新建前、改客户前按这份判（钩子里不能现查）
-  const 别人的 = new Set<string>(组员只读);
+  const 别人的 = new Set<string>([...组员只读, ...线建只读]);
   const 读 = 范围.读;
   if (读) {
     const 那些 = await db.customer.findMany({
@@ -304,16 +332,28 @@ async function 算(db: PrismaClient, id: string | null): Promise<限定 | null> 
       别人的.add(c.id);
     }
   }
-  const 话 = 读 && 市场.length ? 虚线或市场只读话 : 读 ? 虚线只读话 : 市场.length ? 市场只读话 : 组员只读话;
+  // 条线总管理的 读 是本线成员（虚线下属另算），加上本线建的那批：不说「虚线下属」（审查 11-24）
+  const 线话 = 条线 ? (市场.length ? 条线或市场只读话 : 虚线下属(org, id).size ? 虚线或条线只读话 : 条线只读话) : null;
+  const 话 = 线话 ?? (读 && 市场.length ? 虚线或市场只读话 : 读 ? 虚线只读话 : 市场.length ? 市场只读话 : 组员只读话);
   return {
-    我: 范围.写, 互看: false, 别人的, 全拦: true, 话, ...线索,
+    我: 范围.写, 本人: id, 互看: false, 别人的, 全拦: true, 话, ...线索,
     ...(读 ? { 读 } : {}),
     ...(市场.length ? { 市场 } : {}),
     ...带市场全看,
     ...带回避,
     ...带组员,
     ...带待分配放开,
+    ...带条线,
   };
+}
+
+/**
+ * 条线总管理「创建人在本线」那份客户名单挑哪些（P-看-18）：本线建的客户条件（名单过上限退回的那句）里，去掉按负责人（读）、公海早就看得到的。
+ * 去掉的那几位 可见客户 那句本来就带，OR 起来和退回那句一样。salesOwnerId 在库里是 NOT NULL（prisma/schema.prisma Customer），
+ * notIn 不会因为 NULL NOT IN 算不出真漏掉人；哪天改成可空，这里要补 { salesOwnerId: null } 一支（tests/ent-list-detail-scope.test.ts 两路对拍口径）
+ */
+export function 本线建的名单条件(条线: Pick<按线范围, "人们">, 读: string[]): Record<string, unknown> {
+  return { AND: [本线建的客户条件(条线), { pool: null }, { salesOwnerId: { notIn: 读 } }] };
 }
 
 /** 组员客户名单的上限：再多 IN 又长、也怕碰 SQLite 参数上限，退回按关联写的子查询 */

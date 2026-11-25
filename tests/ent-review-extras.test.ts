@@ -27,6 +27,7 @@ import { 将回公海of, 缺沟通of, 卡点分布of, 复盘概况of } from "@/l
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 存组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典 } from "@/lib/project/stage-dict";
+import { 仅记录用来源, 历史分析来源 } from "@/lib/project/system-created";
 
 const 开超时 = { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 线索验证: 15 } } };
 
@@ -275,6 +276,19 @@ describe("库里取数和范围", () => {
     const 开 = await 以谁的身份(经理, () => 复盘概况of(经.只看 ?? 经.谁, { id: 经理, role: "SALES" }, "CNY"));
     expect(开.概况.将回公海).toBe(2);
     expect(开.预警).toHaveLength(2);
+  });
+
+  it("复盘概况 在跟：仅记录用的（X-147，停在潜客培育）不数；推进出去的、历史分析回填的照数", async () => {
+    const 建 = (o: { source?: string; node?: string }) =>
+      prisma.project.create({ data: { name: "x", customerId: 客户[外人], ownerId: 外人, creatorId: 外人, phase: "线索", node: "潜客培育", ...o } });
+    const 外 = await 看板的人({ id: 外人, role: "SALES" });
+    const 数 = async () => (await 以谁的身份(外人, () => 复盘概况of(外.只看 ?? 外.谁, { id: 外人, role: "SALES" }, "CNY"))).概况.在跟;
+    expect(await 数()).toBe(1);
+    await 建({ source: 仅记录用来源 });
+    expect(await 数()).toBe(1);
+    await 建({ source: 仅记录用来源, node: "线索验证" });
+    await 建({ source: 历史分析来源 });
+    expect(await 数()).toBe(3);
   });
 
   it("范围同项目列表：最下级只数自己；没设业务角色 = 谁都不数（各块都是 0）；公海里的项目不算", async () => {

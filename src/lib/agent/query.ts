@@ -35,7 +35,7 @@ import {
 import { 同名们 } from "../project/stage-dict";
 import { 企业版 } from "../enterprise/switch";
 import { 项目画像项, 字典定义 } from "../enterprise/dict-kinds";
-import { 不算补建, 不算历史分析, 历史分析留痕人 } from "../project/system-created";
+import { 不算补建, 不进统计, 历史分析留痕人 } from "../project/system-created";
 
 /* ---------- 字段白名单 ---------- */
 
@@ -923,11 +923,11 @@ function 排历史回填(表: 表名): boolean {
 
 export function 编译(s: 查询规格, b?: BusinessConfig, 映射?: 名映射): { where: Record<string, unknown>; orderBy?: Record<string, "asc" | "desc">; take: number } {
   const and: Record<string, unknown>[] = s.条件.map((c) => 条件成where(s.表, c, b, 映射));
-  // 不算补建 已含 不算历史分析
+  // 不算补建 已含 不进统计（历史分析回填的 + 仅记录用的，X-147 同数据页）
   if (按新建数项目(s, b)) and.push(不算补建);
-  else if (s.表 === "项目") and.push(不算历史分析);
+  else if (s.表 === "项目") and.push(不进统计);
   else if (排历史回填(s.表)) {
-    and.push({ project: { is: 不算历史分析 } });
+    and.push({ project: { is: 不进统计 } });
     if (s.表 === "节点记录") and.push({ userId: { not: 历史分析留痕人 } });
   }
   if (s.关联) {

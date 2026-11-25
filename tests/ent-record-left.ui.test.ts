@@ -24,6 +24,8 @@ const plugin: Plugin = { name: "record-left-boundaries", setup(b) {
   stub(/^\.\.\/actions$/, "export const 转走项目预览of=async()=>(window.__预览??{项目数:0,项目:[]});export const patchCustomer=async(...a)=>{(window.__改??=[]).push(a);return{ok:true}};export const deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=async()=>({ok:true});");
   // 历史变更入口（11-24）：真 HistoryChanges 挂在标签行末尾，动作只在点开时才调，这里空跑
   stub(/^\.\/history-actions$/, 补全动作桩("src/app/(app)/customers/[id]/history-actions.ts", "", "async()=>({ok:false,error:''})"));
+  // 历史变更里的合并单（合并客户第一批 11-25）：点开才取，这里给空
+  stub(/(^|\/)merge-actions$/, 补全动作桩("src/app/(app)/customers/merge-actions.ts", "export const 并进来的合并单=async()=>[],搜合并候选=async()=>[];"));
   stub(/^\.\/useCustomerResearch$/, "export function CustomerResearchCard(){return null} export function CustomerResearchTag(){return null}");
   stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
   stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));

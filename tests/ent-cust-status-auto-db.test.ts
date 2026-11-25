@@ -6,6 +6,7 @@
  *   - 开关：项目模式关着、不是企业版，一格不改
  *   - 客户表单：开着时新建不给状态、整表保存不碰、行内改直接拒
  *   - 重复咨询第一步（11-23）：在推项目优先；判无效终判「重复线索」（改过名也认）的那条不参与；结局改回进行中重新参与
+ *   - 仅记录用（X-147）：不参与、不算在推；只剩它不清库里已有的值；推进出潜客培育照常算
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -32,6 +33,7 @@ import { 恢复 } from "@/lib/enterprise/soft-delete";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { saveCustomer, patchCustomer } from "@/app/(app)/customers/actions";
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
+import { 仅记录用来源 } from "@/lib/project/system-created";
 
 const 老板 = { id: "tester-id", role: "ADMIN" };
 const 总管 = { id: "director-id", role: "SALES" };
@@ -172,6 +174,51 @@ describe("重复咨询第一步：在推项目优先、重复线索不算", () =
     expect(await 状态(甲)).toBe(null);
     await prisma.project.update({ where: { id: p }, data: { result: null } });
     await 重算客户状态(prisma, [甲]);
+    expect(await 状态(甲)).toBe("潜在");
+  });
+});
+
+describe("仅记录用（X-147）：不算在推", () => {
+  const 记录用 = async (customerId: string) => {
+    const id = await 项目(customerId, "线索", "潜客培育");
+    await prisma.project.update({ where: { id }, data: { source: 仅记录用来源 } });
+    return id;
+  };
+
+  it("流失线索加一个仅记录用项目：仍是流失（不按在推线索算成潜在）", async () => {
+    const 甲 = await 客户();
+    await 项目(甲, "线索", "线索验证", "线索流失");
+    await 重算客户状态(prisma, [甲]);
+    expect(await 状态(甲)).toBe("流失");
+    await 记录用(甲);
+    expect(await 重算客户状态(prisma, [甲])).toBe(0);
+    expect(await 状态(甲)).toBe("流失");
+    expect(await 显示用客户状态(甲, null)).toBe("流失");
+  });
+
+  it("只剩仅记录用项目：当没有项目，但不清库里已有的值；库里没值的照旧空着、详情章是「暂无项目」", async () => {
+    const 甲 = await 客户("意向");
+    await 记录用(甲);
+    const 乙 = await 客户();
+    await 记录用(乙);
+    const 前 = (await prisma.customer.findUniqueOrThrow({ where: { id: 甲 } })).updatedAt;
+    await new Promise((r) => setTimeout(r, 5));
+    expect(await 重算客户状态(prisma, [甲, 乙])).toBe(0);
+    expect([await 状态(甲), await 状态(乙)]).toEqual(["意向", null]);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: 甲 } })).updatedAt).toEqual(前);
+    expect(await 显示用客户状态(乙, null)).toBe(null);
+    // 全量重算同一条
+    expect(await 全量重算客户状态()).toBe(0);
+    expect([await 状态(甲), await 状态(乙)]).toEqual(["意向", null]);
+  });
+
+  it("仅记录用项目推进出潜客培育后：照常算在推（改节点那条写入口跟着算）", async () => {
+    const 甲 = await 客户();
+    await 项目(甲, "线索", "线索验证", "线索流失");
+    const p = await 记录用(甲);
+    await 重算客户状态(prisma, [甲]);
+    expect(await 状态(甲)).toBe("流失");
+    expect(await 改节点(老板, p, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true });
     expect(await 状态(甲)).toBe("潜在");
   });
 });

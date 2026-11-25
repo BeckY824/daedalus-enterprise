@@ -10,11 +10,12 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
-import { 来源字, 人名显示, 是重复咨询 } from "@/lib/project/system-created";
+import { 来源字, 人名显示, 是重复咨询, 是仅记录用, 仅记录用来源 } from "@/lib/project/system-created";
 import { 客户其他在推项目, 重复咨询原始客户 } from "@/lib/enterprise/repeat-inquiry";
-import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, type 字典种类 } from "@/lib/enterprise/dict";
+import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, 运输中认法, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
-import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选 } from "@/lib/enterprise/permissions";
+import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选, 是系统管理员, 只读角色, 只看的人, type 权限项目 } from "@/lib/enterprise/permissions";
+import { 项目来历 } from "@/lib/enterprise/customer-merge";
 import { 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
 import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
 import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -24,7 +25,7 @@ import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 负责人可推 } from "@/lib/project/org-rules";
 import { 读项目提成 } from "@/lib/project/commission-db";
 import { 读项目主题 } from "@/lib/enterprise/coach-topic-db";
-import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点, 是超时自动转痕, 系统, 超时自动转理由, 放弃转理由 } from "@/lib/project/timeout";
+import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点, 是超时自动转痕, 系统, 超时自动转理由, 放弃转理由, 记沟通要下一步时间 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
 import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
@@ -36,6 +37,8 @@ import { 有效线索节点, 要沟通的节点 } from "@/lib/project/stage-gate
 import { 待分配占位 } from "@/lib/enterprise/await-assign";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 市场进不了详情, 读市场身份 } from "@/lib/enterprise/market-view-db";
+import { 读市场成员们 } from "@/lib/enterprise/market-db";
+import { 部门市场无市场角色该转向 } from "@/lib/enterprise/market-view";
 import { 只读卡放行 } from "@/lib/enterprise/customer-readonly-card";
 import { 仅项目可见 } from "@/lib/enterprise/project-only-customers";
 import { dayjs } from "@/lib/utils";
@@ -102,12 +105,27 @@ function 时限标签(nextAt: Date) {
   return 过 === 0 ? { 级别: "拿捏" as const, 文字: `下一步是今天（${日}）` } : { 级别: "稳" as const, 文字: `下一步 ${日}` };
 }
 
-/** 市场角色已分出去的那条（11-04 P-看-06）：列表里真有这一行的转回客户页（11-12 X-107，原来是项目页）高亮，别的 404；不是这种情况给 null。读项目详情 和 项目页去向 共用 */
-async function 市场去向(me: SessionUser, p: { id: string; name: string; ownerId: string; creatorId: string; pooledAt: Date | null }, 已加入: string[]): Promise<{ 种: "无" } | { 种: "转向"; 到: string } | null> {
-  if (!企业版() || !(await 市场进不了详情(me.id, p.id, { ownerId: p.ownerId, pooledAt: p.pooledAt, 已加入 }))) return null;
+/** 被挡在详情外、转去客户页那一行（P-界面-11）：搜项目名、高亮 */
+const 市场转向地址 = (p: { id: string; name: string }) => `/customers?q=${encodeURIComponent(p.name)}&hl=${encodeURIComponent(p.id)}`;
+
+/**
+ * 市场角色已分出去的那条（11-04 P-看-06）：列表里真有这一行的转回客户页（11-12 X-107，原来是项目页）高亮，别的 404；不是这种情况给 null。读项目详情 和 项目页去向 共用。
+ * 按部门认的市场成员、没有市场角色的（P-看-17，用户 11-24；X-165 扩到兼销售 / 销管 / 项目组员等）：市场视角不认他，列表照 P-看-05 有自己建的、已分给别人的那几行，
+ * 详情 能看项目 只认业务角色、不过的——同样转到这一行，不落 404（兼销管按下属口径能进的照常进）（客户页带 hl 时给他画同一套项目页，customers/page.tsx）
+ */
+async function 市场去向(me: SessionUser, p: 权限项目 & { id: string; name: string; ownerId: string; creatorId: string; pooledAt: Date | null }, 已加入: string[]): Promise<{ 种: "无" } | { 种: "转向"; 到: string } | null> {
+  if (!企业版()) return null;
+  if (!(await 市场进不了详情(me.id, p.id, { ownerId: p.ownerId, pooledAt: p.pooledAt, 已加入 }))) {
+    // 先按项目本身筛（自己建的、分给别人、没进组、不在公海，同 部门市场无市场角色该转向 前半），绝大多数打开不多读市场成员设置
+    if (p.creatorId === me.id && p.ownerId && p.ownerId !== me.id && !p.pooledAt && !已加入.includes(me.id)) {
+      const org = await 权限组织();
+      if (org && 部门市场无市场角色该转向(org, me.id, await 读市场成员们(org), { ...p, 已加入 }) && !能看项目(me, { ...p, 已加入 }, org)) return { 种: "转向", 到: 市场转向地址(p) };
+    }
+    return null;
+  }
   const 圈 = (await 读市场身份(me.id))?.圈 ?? [];
   // P-界面-11：落点从项目页换到客户页（X-107：市场角色左栏只有「客户」，客户页就是他们原来的项目页），同样搜项目名、高亮那一行
-  if (p.ownerId && 圈.includes(p.creatorId)) return { 种: "转向", 到: `/customers?q=${encodeURIComponent(p.name)}&hl=${encodeURIComponent(p.id)}` };
+  if (p.ownerId && 圈.includes(p.creatorId)) return { 种: "转向", 到: 市场转向地址(p) };
   return { 种: "无" };
 }
 
@@ -158,6 +176,8 @@ async function 备货物流格(p: { stockStatus: string | null; logisticsStatus:
   return {
     备货状态: 备货状态显示(p.stockStatus), 物流状态, 物流单号: p.trackingNo,
     已签收: { 名们: 签收.名们, 现名: 签收.现名, 能选: 物流状态.选项.some((x) => 签收.名们.includes(x)) },
+    // 算「运输中」的名字（db.ts 改项目：运输中时物流单号必填）：交付卡就地改、完成节点框提前知道要单号，不先发一次被拒
+    运输中: 运输中认法(行们).名们,
   };
 }
 
@@ -263,7 +283,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   const 原负责人领不回 = 公海 && me.id === 上一任 && 拦原负责人();
 
   // 企业版超时回收：线索 / 商机阶段记沟通要填下一步时间；算出哪天会自动回公海（和 lib/project/db.ts 公海超时收回 同一个起点）
-  const 要下一步 = 规则.超时回收.开 && !p.result && (能进公海的阶段 as readonly string[]).includes(p.phase);
+  // 仅记录用的不回收时不强制（X-147 待定 6）
+  const 要下一步 = 记沟通要下一步时间(规则, p);
   const 字典 = 字典of(企业, 企业 ? 规则.阶段.出口叫法 : null);
   // 最近一条留痕，超时自动转那行不算（同 lib/project/db.ts 补回收起点留痕，客户 11-19 第 14 题 B）
   const 回收起点 = 超时起点(p.createdAt, 概况 ? 概况.回收起点留痕 : p.logs.find((l) => !是超时自动转痕(l))?.at, p.customer.lastFollowAt);
@@ -337,11 +358,17 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
       : { name: 看得到客户.has(p.customerId) ? p.customer.channel?.name ?? "" : "", 跟客户: true },
     channelId: p.channelId,
     // 数据来源（迁移 151）：历史沟通分析回填的项目写「历史分析」；系统里正常建的不给（界面不摆那一行）
-    ...(p.source ? { 数据来源: 来源字(p.source) } : {}),
+    // 仅记录用（X-147）推进出潜客培育后照常统计：标签照留、后面说一句
+    ...(p.source ? { 数据来源: p.source === 仅记录用来源 && !是仅记录用(p) ? `${来源字(p.source)}（已推进，照常统计）` : 来源字(p.source) } : {}),
     // 老客户重复咨询（重复咨询第一步）：现算这位客户别的在推项目，给负责人判是不是同一需求；验证框里提示选「重复线索」
     ...(是重复咨询(p) ? { 重复咨询: await 其他在推带去处(me, p.id, p.customerId) } : {}),
     // 只读来源字段（迁移 163，客户 E-218）：原始客户编号 + 第几次；没有编辑入口，改项目的动作都不写这两列
     ...(是重复咨询(p) && p.repeatOfCustomerId ? { 重复咨询来自: await 重复咨询原始客户(p) } : {}),
+    // 合并客户第一批（11-25）：从另一位客户挪过来的（合并客户 / 项目换客户）写「从 NO.xxxxx「B」并入」；原客户名字只给看得到它的人
+    并入自: await 项目来历(prisma, p.id, p.customerId, async (id) => (await 页面看得到的客户([id])).has(id)),
+    // 「换客户」：看得到客户、客户负责人本人（能删客户的角色）或系统管理员才摆；同事负责没结束的、交接中、业务线不同……在预览里说（同 project-move-customer.ts 拦的原因）
+    能换客户: 看得到客户.has(p.customerId) && !!org && !只读角色(me, org) && !只看的人(org, me.id)
+      && (是系统管理员(me, org) || (!p.customer.pool && 能删除(me, org, p.customer.salesOwnerId) && (!!p.result || 公海 || !p.ownerId || p.ownerId === me.id))),
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
     aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,

@@ -18,6 +18,7 @@ import { 能改后台设置, 是市场角色, 是销售角色, 能管公海 } fr
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterprise/dict";
 import { 能自动分配客户, 不是市场话, 市场分配限指定 } from "@/lib/enterprise/cust-auto-assign";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
@@ -29,7 +30,7 @@ import { 验证中不能改派, 客户有验证中线索 } from "@/lib/project/l
 import { 分配通知, 分配后估算推送, 同事待分配随客户通知, type 分配条, type 留下的活, type 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
-import { 超上限n, 记转让, 将回收提醒跟着换人, 勾掉将回收提醒 } from "@/lib/project/db";
+import { 超上限n, 算一个持有, 记转让, 将回收提醒跟着换人, 勾掉将回收提醒 } from "@/lib/project/db";
 import { 单项目客户跟着领, 领项目连带超上限, 客户整包出公海 } from "@/lib/enterprise/pool-link";
 import { 拦客户公海里的项目, 客户在公海项目不单领提示, 客户在公海找销管提示 } from "@/lib/enterprise/pool-rules";
 import { 钉住老签约 } from "@/lib/contract-owner";
@@ -330,9 +331,10 @@ async function 分项目给(
     const 市场转客户 = !重复咨询不转客户(p) && 算市场转客户(org, 客户, input.toUserId);
     if (!input.自动) {
       // 市场转客户时客户上同事待分配的项目随客户一起进手（市场转一位），照接待分配一起数（M-公海-18）；
-      // 在公海里的、开关开着时还连带客户名下别的公海项目（领项目连带超上限）；这里只分线索阶段没结局的，手上这个一定算 1 个
+      // 在公海里的、开关开着时还连带客户名下别的公海项目（领项目连带超上限）；这里只分线索阶段没结局的，手上这个算 1 个——
+      // 仅记录用的（X-147 待定 5，停在潜客培育）不占持有数，不 +1
       const 另进 = 市场转客户 ? await 数进手的持有项目([p.customerId], input.toUserId, { 同事待分配: true, 除了: [p.id] }, tx) : 0;
-      const 超 = p.pooledAt || 整包 ? await 领项目连带超上限(tx, 规则, input.toUserId, p, 另进, 整包) : await 超上限n(tx, 规则, input.toUserId, 1 + 另进);
+      const 超 = p.pooledAt || 整包 ? await 领项目连带超上限(tx, 规则, input.toUserId, p, 另进, 整包) : await 超上限n(tx, 规则, input.toUserId, (算一个持有(p) ? 1 : 0) + 另进);
       if (超) return { ok: false, 满: true, error: 超 };
     }
     // 分之前的负责人：在公海里的取历史负责人（企业版进公海清了负责人，lib/project/pool-owner.ts）
@@ -346,6 +348,8 @@ async function 分项目给(
       data: { ...换负责人(input.toUserId), pooledAt: null, ...(改方式 ? { assignMode: input.way } : {}) },
     });
     if (改.count !== 1) return 已被分配;
+    // 从线索公海里分出来 = 又在推：客户状态按在推项目优先重算（cust-status-auto-db.ts 进出公海重算）；不在公海的分配不动阶段 / 结局，不用算
+    if (p.pooledAt) await 进出公海重算(tx, [p.customerId]);
     // 市场转客户要在动待办之前判（上面判好了）：这条路径上传来的勾不算数
     const 带待办 = 市场转客户 ? undefined : input.带待办;
     await 将回收提醒跟着换人(tx, p, 原, input.toUserId);

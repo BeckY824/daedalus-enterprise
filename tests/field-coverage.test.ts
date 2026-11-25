@@ -250,11 +250,13 @@ const 派生: Record<string, Record<string, string>> = {
     reason: "手动 / N 天没跟进自动放进，系统打上",
     at: "放进去的那一刻，系统打上",
     phoneIncomplete: "企业版三态到期自动进公海时系统查号码，空的 / 不对的打上「号码不全」（迁移 130），公海按它筛",
+    prevCustStatus: "放进公海前客户存的状态，企业版手动放进公海时系统记，撤销放进时原样还回（迁移 168，cust-status-undo.ts）",
   },
   CustomerClaim: {
     customerId: "哪位客户，领取时建 / 覆盖",
     userId: "谁领的，领取时打上",
     at: "领走的那一刻，自动掉公海从它算起",
+    prevCustStatus: "出客户公海前客户存的状态，企业版领取 / 分配时系统记，撤销时原样还回（迁移 169，cust-status-undo.ts）",
   },
   // 合并重复（2026-10-20）：两张都是一个动作的结果，没有单改某一格的入口
   CustomerMerge: {
@@ -503,6 +505,7 @@ const 派生: Record<string, Record<string, string>> = {
     kind: "这一行是改节点、转让负责人、放回公海还是领取，系统写",
     fromOwnerId: "转让 / 放回公海 / 领取前的负责人，那一刻系统写；改节点的行留空",
     toOwnerId: "转让 / 领取后的负责人，那一刻系统写；放回公海和改节点的行留空",
+    prevCustStatus: "pool-claim 行：出线索公海前客户存的状态，领 / 分那一下系统记，撤销时原样还回（迁移 170，cust-status-undo.ts）；别的行留空",
   },
   FollowUpProject: {
     followUpId: "哪条沟通记录，记的时候定", projectId: "挂在哪个项目，记的时候定", node: "记这条时项目在哪个节点，系统打上",
@@ -619,6 +622,14 @@ const 派生: Record<string, Record<string, string>> = {
     toPhase: "想推到的阶段，系统按入口写；不知道的留空", toNode: "想推到的节点，同上",
     kind: "节点必填 / 线索验证 / 本节点沟通，按哪道关拦下系统写", missing: "缺哪几项（显示名），系统按那一刻的必填算",
     entry: "从哪儿推的（完成节点 / 看板拖动 / 首页AI 等），系统写", onBehalf: "直属上级代推被拦，系统按「仅上级推」判",
+  },
+  EntCustomerMerge: {
+    kind: "客户 / 项目（第二批），合并时系统写（lib/enterprise/customer-merge.ts，迁移 171）", fromId: "被并掉的那位，合并时系统写", intoId: "留下的那位，合并时系统写",
+    parentId: "第二批项目合并挂在哪张客户合并单下，系统写；这一批不写", status: "已合并 / 已撤回，合并、撤回时系统写", byUserId: "谁并的，当前登录账号",
+    approvals: "第二批合并申请要同意的人和结论，系统写；这一批不写", fromName: "被并那位当时的名字，系统照抄", fromNo: "被并那位的客户编号，系统照抄",
+    fromOwnerId: "被并那位当时的负责人，系统照抄", fromCreatorId: "被并那位的创建人，系统照抄（E-280 创建人记在合并单里可查）", fromChannelId: "被并那位的主渠道，系统照抄",
+    fromTouchpoint: "被并那位的渠道触点，系统照抄", counts: "各类挪了几条，合并时系统数", detail: "挪动明细（撤回用），合并时系统写",
+    at: "合并的那一刻，系统写", undoneAt: "撤回的那一刻，系统写", undoneById: "谁撤回的，当前登录账号", undoLeft: "撤回时没还原的那几条和原因，系统写",
   },
   EntReplyOverdue: {
     projectId: "哪个项目，超时未跟进那条链起头时系统建（迁移 150）", anchorAt: "起链时的超时基准，系统按指定回复时间写", holderId: "链上眼下这一位，系统写",

@@ -34,7 +34,7 @@ import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
 import { 节点超时天数, 算回收起点的留痕 } from "./timeout";
 import { 同名们, type 阶段字典 } from "./stage-dict";
-import { 不算补建, 补建的, 历史分析的 } from "./system-created";
+import { 不算补建, 补建的, 历史分析的, 仅记录用的 } from "./system-created";
 
 const 有过沟通 = { followUps: { some: { deletedAt: null } } } satisfies Prisma.CustomerWhereInput;
 
@@ -214,11 +214,12 @@ export function 首页卡条件(键: 项目卡键, 规则: 组织规则, 字典:
       return { createdAt: { gte: 起, lt: 止 }, ...不算补建 };
     }
     case "key":
-      return { ...在推, level: { in: [...重点级别] } };
+      // 仅记录用的（X-147，还停在潜客培育）不算在推：重点、暂未跟进都不数它；本月新增走 不算补建（已含）、3 天内回公海按 超时回收日（默认不收它）
+      return { ...在推, level: { in: [...重点级别] }, NOT: 仅记录用的 };
     case "no-follow":
       // 补建的、历史分析回填的（客户身上就是那批旧沟通）：客户有过沟通就不算没跟进。分两条 NOT 写，历史分析的 用 null 安全的写法
       if (!负责人们) throw new Error("暂未跟进要传这一圈负责人（首页卡条件 第 5 个参数）");
-      return { ...在推, AND: [现负责人没记过沟通(负责人们)], NOT: [{ ...补建的, customer: 有过沟通 }, { ...历史分析的, customer: 有过沟通 }] };
+      return { ...在推, AND: [现负责人没记过沟通(负责人们)], NOT: [{ ...补建的, customer: 有过沟通 }, { ...历史分析的, customer: 有过沟通 }, 仅记录用的] };
     case "due-soon":
       return 即将逾期粗筛(规则, 字典, 今) ?? { id: { in: [] } };
     case "month-won": {

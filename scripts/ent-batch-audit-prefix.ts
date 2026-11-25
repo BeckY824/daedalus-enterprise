@@ -16,14 +16,17 @@
 import type { DatabaseSync } from "node:sqlite";
 
 export const 执行 = "Becky（服务商）";
-/** E-编号：E-232，可多个，用 / 、 , ， 隔开（统一成「/」） */
-const 依据式 = /^E-\d{3,}(?:\s*[/、,，]\s*E-\d{3,})*$/;
+/**
+ * E-编号：E-232，可多个，用 / 、 , ， 隔开（统一成「/」）。第一个必须是 E-编号（原件编号），后面可以跟口径编号 X-（如 --basis E-132/X-147：
+ * 依据是 E-132 那份答复、主题是 X-147），单写 X- 不行
+ */
+const 依据式 = /^E-\d{3,}(?:\s*[/、,，]\s*[EX]-\d{3,})*$/;
 
 export function 取依据(argv: readonly string[]): string {
   const i = argv.indexOf("--basis");
   const v = i >= 0 ? argv[i + 1] : undefined;
   if (v == null || v.startsWith("--") || !依据式.test(v.trim())) {
-    console.error(`缺 --basis 或格式不对（${v == null ? "没传" : `「${v}」`}）：要写成 --basis E-232 或 --basis E-232/E-233（客户 E-244：每条操作日志带依据编号），不传不跑`);
+    console.error(`缺 --basis 或格式不对（${v == null ? "没传" : `「${v}」`}）：要写成 --basis E-232、--basis E-232/E-233 或 --basis E-132/X-147（客户 E-244：每条操作日志带依据编号），不传不跑`);
     process.exit(2);
   }
   return v.trim().split(/\s*[/、,，]\s*/).join("/");

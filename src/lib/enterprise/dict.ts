@@ -20,7 +20,7 @@ import { 没设业务角色, 没业务角色不能新建话 } from "./permission
 import { 规则开着 } from "./rules";
 import { 规则 } from "./rules-table";
 import { 方式对类型, 补的方式 } from "@/lib/follow-method";
-import { 默认已签收 } from "@/lib/project/proj-fields";
+import { 默认已签收, 默认运输中 } from "@/lib/project/proj-fields";
 
 export * from "./dict-kinds";
 export * from "./assign-use";
@@ -425,15 +425,36 @@ export type 已签收认法结果 = { 名们: string[]; 现名: string; 停用: 
  *   - 停用了也照认（已经选上的不作废）；停用后下拉里选不到，项目页、完成节点框提示管理员去设置里启用
  */
 export function 已签收认法(行们: readonly { id: string; name: string; active: boolean }[]): 已签收认法结果 {
-  const 那项 = 行们.find((x) => x.id === 已签收id);
-  if (!那项) return { 名们: [默认已签收], 现名: 默认已签收, 停用: false };
-  const 默认名被占 = 行们.some((x) => x.id !== 那项.id && x.name === 默认已签收);
-  return { 名们: [...new Set([那项.name, ...(默认名被占 ? [] : [默认已签收])])], 现名: 那项.name, 停用: !那项.active };
+  return 默认项认法(行们, 已签收id, 默认已签收);
+}
+
+/** 按默认项 id 认字典里的某一项（已签收 / 运输中共用）：规矩见 已签收认法 */
+function 默认项认法(行们: readonly { id: string; name: string; active: boolean }[], id: string, 默认名: string): 已签收认法结果 {
+  const 那项 = 行们.find((x) => x.id === id);
+  if (!那项) return { 名们: [默认名], 现名: 默认名, 停用: false };
+  const 默认名被占 = 行们.some((x) => x.id !== 那项.id && x.name === 默认名);
+  return { 名们: [...new Set([那项.name, ...(默认名被占 ? [] : [默认名])])], 现名: 那项.name, 停用: !那项.active };
 }
 
 /** 读库版：只读、不建默认项，事务里也能调（传 tx） */
 export async function 已签收物流状态(db: Pick<Prisma.TransactionClient, "entDictItem"> = prisma): Promise<已签收认法结果> {
   return 已签收认法(await db.entDictItem.findMany({ where: { kind: "projLogistics" }, select: { id: true, name: true, active: true } }));
+}
+
+/** 物流状态默认项里「运输中」那一项的 id（dict-projLogistics-1）：改名不变 */
+const 运输中id = 默认id("projLogistics", 字典定义.projLogistics.默认.indexOf(默认运输中));
+
+/**
+ * 物流状态里算「运输中」的名字（客户原话：「当物流状态变为运输中时必填」物流单号）。纯函数，同 已签收认法：
+ * 按默认项 id 认（管理员改了名新名照认，改名前存的「运输中」也认）；改名后又新加一项叫「运输中」的那是另一项、不认；停用了照认
+ */
+export function 运输中认法(行们: readonly { id: string; name: string; active: boolean }[]): 已签收认法结果 {
+  return 默认项认法(行们, 运输中id, 默认运输中);
+}
+
+/** 读库版：只读、不建默认项，事务里也能调（传 tx） */
+export async function 运输中物流状态(db: Pick<Prisma.TransactionClient, "entDictItem"> = prisma): Promise<已签收认法结果> {
+  return 运输中认法(await db.entDictItem.findMany({ where: { kind: "projLogistics" }, select: { id: true, name: true, active: true } }));
 }
 
 /** 分配方式谁能用（assign-use.ts）：没存 = 默认；不是企业版 = 空 */
