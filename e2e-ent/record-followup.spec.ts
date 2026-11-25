@@ -23,7 +23,7 @@ test.beforeAll(async () => {
   种 = 读种子();
   db = new PrismaClient({ datasources: { db: { url: `file:${ENT_DB}` } } });
   const 销售甲 = await db.user.findFirstOrThrow({ where: { email: 账号.销售1 } });
-  客户 = (await db.customer.create({ data: { name: `记沟通客户${后缀}`, phone: `136${String(Date.now() % 100000000).padStart(8, "0")}`, salesOwnerId: 销售甲.id } })).id;
+  客户 = (await db.customer.create({ data: { name: `记沟通客户${后缀}`, phone: "", contacts: { create: { name: "", phone: `136${String(Date.now() % 100000000).padStart(8, "0")}`, isPrimary: true } }, salesOwnerId: 销售甲.id } })).id;
   项目 = (await db.project.create({ data: { name: `记沟通项目${后缀}`, customerId: 客户, ownerId: 销售甲.id, creatorId: 销售甲.id, bizLine: "内贸", phase: "商机" } })).id;
 });
 test.afterAll(async () => {

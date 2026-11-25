@@ -28,6 +28,7 @@ import { 认首页卡, 首页卡口径 } from "@/lib/project/home-cards";
 import { 企业级别, 企业级别说明, 级别选项 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 级别星 } from "@/lib/enterprise/level-stars";
+import { 重复咨询来源, 来源字 } from "@/lib/project/system-created";
 import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import { 卡片小字, 未填标签, type 项目行, type 看板一列, type 看板卡片 } from "@/lib/project/board";
@@ -57,6 +58,9 @@ import { 看板工具位 } from "../customers/board-slot";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import BatchFilterTag from "@/components/BatchFilterTag";
 
+
+/** 老客户重复咨询（重复咨询第一步）的小标签：列表项目名前、看板卡片第二行，紫色（globals.css .proj-repeat-tag） */
+const 重复咨询标 = <Tag bordered={false} className="proj-repeat-tag" title="老客户重复咨询：市场成员查号码撞上已有客户另建的线索">重复咨询</Tag>;
 
 /** 看板列的颜色：三个阶段沿用商机管道的蓝绿黄（企业版进程列跟所在阶段），成功交付（企业版叫 交付结清）粉、没成（流失 / 丢单）灰 */
 const 列色: Record<看板列, string> = {
@@ -114,7 +118,7 @@ export default function ProjectsView({
   排序?: string;
   users: 可选成员[];
   /** f：企业版首页指标卡点进来的筛选（lib/project/home-cards.ts），或首页待办「待分配新线索」点进来的 await-assign，页头标出来、能清掉 */
-  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; projTag?: string; createdFrom?: string; createdTo?: string; phone?: string;
+  filters: { keyword: string; ownerId: string; pool: string; recycled: string; f: string; phase: string; node: string; creator?: string; channelId?: string; level?: string; projTag?: string; source?: string; createdFrom?: string; createdTo?: string; phone?: string;
     /** 导入批次（11-19，lib/project/import-batch.ts）：数据页卡片点进来带的，页头挂一枚能关掉的标签，不进筛选栏 */
     batch?: string };
   /** 摆不摆「手机号」筛选（电话藏着的人不摆）；不给 = 不摆 */
@@ -449,7 +453,10 @@ export default function ProjectsView({
   const 普通列表: 列<项目行>[] = [
     // 常驻：第一列是「这一行是谁」，钉左边、表格按列宽排；不钉的话长客户名、长负责人名把它和「进程」挤成两个字一行
     // 项目名整段显示、放不下折行（10-30 用户：「要显示完整」，原来两行截断）；企业版每格一行、放不下省略号悬停看全（11-01 会议 §11，DataList 单行）
-    { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string) => <span className="fulltext" title={v}>{v}</span> },
+    // 老客户重复咨询（重复咨询第一步）：项目名前一枚小标签「重复咨询」，悬停说清来历；名字照旧放不下省略号
+    { title: "项目", dataIndex: "name", width: 170, 常驻: true, render: (v: string, r: 项目行) => (r.重复咨询
+      ? <span className="proj-name-tagged">{重复咨询标}<span className="fulltext" title={v}>{v}</span></span>
+      : <span className="fulltext" title={v}>{v}</span>) },
     { title: b.customer, key: "customer", width: 160, render: (_, r) => (r.customerName == null ? <span style={{ color: "var(--text-muted)" }}>{领了再看(r)}</span> : <CustomerLink id={r.进不了客户详情 ? null : r.customerId} name={r.customerName} />) },
     // P11：阶段、进程分两列；新线索页全是线索阶段，不摆阶段列
     ...(新线索 ? [] : [{ title: "阶段", key: "phase", width: 72, ...收起, render: (_: unknown, r: 项目行) => 阶段与进程(r, 字典).阶段 }]),
@@ -605,6 +612,14 @@ export default function ProjectsView({
                 <Select style={style} aria-label="项目标签" placeholder="全部标签" allowClear value={f.projTag || undefined} onChange={(v?: string) => apply({ projTag: v ?? "" })}
                   loading={标签取中} onOpenChange={(开) => { if (开) 取标签项(); }}
                   options={[...(标签项 ?? (f.projTag && f.projTag !== 未填标签 ? [f.projTag] : [])).map((x) => ({ value: x, label: x })), { value: 未填标签, label: "未填" }]} popupMatchSelectWidth={false} />
+              ),
+            },
+            {
+              // 数据来源（客户 E-218「检索、统计、复盘都读字段」）：只看「老客户重复咨询」的线索，读 Project.source，不认项目名
+              键: "source", 名: "数据来源", 宽: 150, 默认外露: false, 有值: !!f.source,
+              渲染: (style: CSSProperties) => (
+                <Select style={style} aria-label="数据来源" placeholder="全部来源" allowClear value={f.source || undefined} onChange={(v?: string) => apply({ source: v ?? "" })}
+                  options={[{ value: 重复咨询来源, label: 来源字(重复咨询来源) }]} popupMatchSelectWidth={false} />
               ),
             },
           ]
@@ -844,9 +859,11 @@ export default function ProjectsView({
                               );
                             })()}
                             {/* L-新12：项目名和客户名一字不差时第二行不再写一遍（两行的摆法 P-界面-43 不变，只是不重复） */}
-                            {!(r.customerName != null && r.customerName.trim() === r.name.trim()) && (
+                            {/* 「重复咨询」标签（重复咨询第一步）：同列表，项目名前一枚；名字和客户名一样不重写时也留这一行放标签 */}
+                            {(r.重复咨询 || !(r.customerName != null && r.customerName.trim() === r.name.trim())) && (
                               <div className="pipe-card-m">
-                                <span className="pipe-card-o pipe-card-full">{r.name}</span>
+                                {r.重复咨询 && 重复咨询标}
+                                {!(r.customerName != null && r.customerName.trim() === r.name.trim()) && <span className="pipe-card-o pipe-card-full">{r.name}</span>}
                               </div>
                             )}
                           </>) : (<>

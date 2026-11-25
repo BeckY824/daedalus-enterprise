@@ -10,16 +10,19 @@ import { dayjs } from "@/lib/utils";
 import type { 待审批挂靠, 我的挂靠 } from "@/lib/enterprise/attach-approval";
 import type { 客户只读卡 } from "@/lib/enterprise/customer-readonly-card";
 import { 卡内容 } from "../[id]/CustomerReadonlyCard";
+import type { 待补建栏 } from "@/lib/enterprise/repeat-unbuilt";
 import { 批准挂靠, 拒绝挂靠, 打开挂靠只读卡 } from "./actions";
+import UnbuiltCard from "./UnbuiltCard";
 
 const 时刻 = (d: Date | string | null) => (d ? dayjs(d).format("YYYY-MM-DD HH:mm") : "");
 const 省略 = { ellipsis: true } as const;
 
 /**
  * 挂靠申请（P-挂靠-02）：等我审批的一张表（批准 / 拒绝），我申请过的一张表（批准了点开只读卡）。
- * 客户名、人名可能很长：表格固定列宽、单元格省略号，窄屏不横向溢出
+ * 客户名、人名可能很长：表格固定列宽、单元格省略号，窄屏不横向溢出。
+ * 下面接「重复咨询待补建」（UnbuiltCard，P-公海-15 后半）：不给看的人（销售等）整栏不出现
  */
-export default function AttachView({ 待批, 我的 }: { 待批: 待审批挂靠[]; 我的: 我的挂靠[] }) {
+export default function AttachView({ 待批, 我的, 待补建 = { 管: null, 我交的: [] } }: { 待批: 待审批挂靠[]; 我的: 我的挂靠[]; 待补建?: 待补建栏 }) {
   const router = useRouter();
   const [忙, set忙] = useState<string | null>(null);
   /** 没办成的原因：就地写在那一行的操作格里（g.save：不弹顶部提示）；办成了这一行刷新后自己走 */
@@ -85,6 +88,7 @@ export default function AttachView({ 待批, 我的 }: { 待批: 待审批挂靠
         <Card title="我的申请" size="small">
           {我的.length ? <Table rowKey="id" size="small" columns={我的列} dataSource={我的} pagination={false} tableLayout="fixed" scroll={{ x: 710 }} /> : <Empty description="还没申请过挂靠" />}
         </Card>
+        <UnbuiltCard 栏={待补建} />
       </Space>
       <Modal open={卡.开着} title="客户资料（只读）" footer={<Button onClick={() => set卡((x) => ({ ...x, 开着: false }))}>关闭</Button>} onCancel={() => set卡((x) => ({ ...x, 开着: false }))} destroyOnHidden>
         {卡.错 ? <Alert type="warning" showIcon title={卡.错} /> : 卡.卡 ? <卡内容 卡={卡.卡} 没给的说法="不在你自己的项目上，联系方式不显示" /> : <Skeleton active paragraph={{ rows: 4 }} />}

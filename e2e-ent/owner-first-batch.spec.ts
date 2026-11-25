@@ -32,7 +32,7 @@ let 号序 = 0;
 const 新号 = () => `137${String(Date.now() % 100000).padStart(5, "0")}${String(++号序).padStart(3, "0")}`;
 
 async function 造客户(名: string, ownerId: string, 公司: string | null = null) {
-  return (await db.customer.create({ data: { name: 名, school: 公司, phone: 新号(), salesOwnerId: ownerId } })).id;
+  return (await db.customer.create({ data: { name: 名, school: 公司, phone: "", salesOwnerId: ownerId } })).id; // 企业版客户没有电话（E-260），这里也用不到号
 }
 async function 造项目(名: string, customerId: string, ownerId: string, extra: Record<string, unknown> = {}) {
   return (await db.project.create({ data: { name: 名, customerId, ownerId, creatorId: ownerId, bizLine: "内贸", ...extra } })).id;

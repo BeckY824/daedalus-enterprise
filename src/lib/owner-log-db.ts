@@ -6,6 +6,7 @@ import type { 换负责人记录 } from "@/lib/owner-log";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 系统 } from "@/lib/project/timeout";
 import { 当下归零, 记撤销转让 } from "@/lib/enterprise/tri-state-transfer";
+import { 待补建进公海关 } from "@/lib/enterprise/unbuilt-record";
 
 /**
  * 客户换负责人的记录（企业版 D-36，2026-10-24）：谁转的、从谁到谁、什么时候；from = 「历史负责人」。
@@ -46,7 +47,11 @@ export async function 记换负责人(
     data: 真换了.map((x) => ({ customerId: x.customerId, userId: 操作人, fromOwnerId: x.from, toOwnerId: x.to, kind, clockReset: 归零.get(x.customerId) ?? null })),
   });
   // 进公海：公海客户没有负责人、也不是挂靠对象（P-挂靠-01），审批人不跟到占位账号上，待处理的直接关
-  if (kind === "pool-release") await 挂靠申请进公海关(tx, 真换了.map((x) => x.customerId));
+  // 出口 C「重复咨询待补建」记录同样自动关（客户 E-227 三处默认 ③：客户中途进了公海，改走公海领取）
+  if (kind === "pool-release") {
+    await 挂靠申请进公海关(tx, 真换了.map((x) => x.customerId));
+    await 待补建进公海关(tx, 真换了.map((x) => x.customerId));
+  }
   else await 挂靠审批跟着换(tx, 真换了);
 }
 
