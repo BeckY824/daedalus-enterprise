@@ -1,8 +1,9 @@
 /**
- * 按部门认的市场成员、只挂销售（P-看-17，用户 11-24；现库 0 人）：
+ * 按部门认的市场成员、没有市场角色（P-看-17，用户 11-24；X-165 11-25 扩到不论兼什么业务角色：兼销管、兼项目组员的一样；现库 0 人）：
  *   - 点进自己建的、已分给同事的项目详情：不落 404，跳市场视角页（P-界面-11，同市场成员那条：/customers?q=项目名&hl=id）
  *   - 客户页带 hl 转来：给他画同一套项目页（搜上项目名、高亮那一行）；不带 hl 的客户页照销售那套
  *   - 不相干的照旧 404；有市场角色的兼任（渠运兼销售）照旧进详情；不在市场部的销售照旧 404
+ *   - 兼销管的：按销管口径本来能进的（负责人是他的下属）照常进，不跳；只有 能看项目 不过的才跳
  * 列表口径不变（照 P-看-05 放开，见 ent-list-detail-scope ①）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -43,11 +44,11 @@ import ProjectPage from "@/app/(app)/projects/[id]/page";
 import CustomersPage from "@/app/(app)/customers/page";
 import { 读项目列表 } from "@/lib/project/list";
 
-let 市场部销售: string, 渠运兼销售: string, 普通销售: string, 同事: string;
+let 市场部销售: string, 渠运兼销售: string, 普通销售: string, 同事: string, 市场部销管: string, 市场部销管组员: string, 下属: string, 组员下属: string;
 let 序 = 0;
-async function 人(name: string, bizRole: string, deptId: string | null = null) {
+async function 人(name: string, bizRole: string, deptId: string | null = null, managerId: string | null = null) {
   const id = (await prisma.user.create({ data: { email: `${name}@t`, name, title: "", role: "SALES", password: "x" } })).id;
-  await prisma.entMember.create({ data: { userId: id, bizRole, deptId } });
+  await prisma.entMember.create({ data: { userId: id, bizRole, deptId, managerId } });
   return id;
 }
 /** 客户建档人 = 项目建的人（市场相关客户按客户建档人认） */
@@ -86,6 +87,11 @@ beforeEach(async () => {
   渠运兼销售 = await 人("chansales", "channel_ops,sales", 市场部);
   普通销售 = await 人("plain", "sales");
   同事 = await 人("peer", "sales");
+  // X-165：兼销售 + 销管、兼项目组员（销管 + 项目组员）的，各带一个实线下属
+  市场部销管 = await 人("mktmgr2", "sales,sales_mgr", 市场部);
+  下属 = await 人("sub", "sales", null, 市场部销管);
+  市场部销管组员 = await 人("mktpo", "sales_mgr,project_ops", 市场部);
+  组员下属 = await 人("posub", "sales", null, 市场部销管组员);
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await setSetting(规则.按组织看客户.key, true);
   忘掉企业版范围();
@@ -147,5 +153,42 @@ describe("部门认的市场成员只挂销售：点进已分给同事的项目�
     const 普 = await 项目("普通销售建的", 同事, 普通销售);
     expect(await 打开(普通销售, 普)).toBe("NOT_FOUND");
     expect((await 客户页(普通销售, { q: "普通销售建的", hl: 普 })).高亮).toBeUndefined();
+  });
+});
+
+describe("X-165：部门认的市场成员兼销管、兼项目组员（没有市场角色），同样跳转", () => {
+  const 只看进度of = async (谁: string, id: string) => {
+    当(谁);
+    const 行 = (await 以谁的身份(谁, () => 读项目列表(mocks.user, { pageSize: "100" }))).行.find((r) => r.id === id);
+    expect(行).toBeDefined();
+    return !!行?.只看进度;
+  };
+  for (const [叫法, 谁of, 下属of] of [["兼销售 + 销管", () => 市场部销管, () => 下属], ["兼项目组员（销管 + 项目组员）", () => 市场部销管组员, () => 组员下属]] as const) {
+    it(`${叫法}：自己建的、分给同事的跳市场视角页、那一行标只看进度；分给自己下属的照销管口径进详情、不跳`, async () => {
+      const 谁 = 谁of();
+      const 名 = `${叫法}建的 A&B/二期`;
+      const 转 = await 项目(名, 同事, 谁);
+      expect(await 打开(谁, 转)).toBe(`REDIRECT:/customers?q=${encodeURIComponent(名)}&hl=${encodeURIComponent(转)}`);
+      expect(await 只看进度of(谁, 转)).toBe(true);
+      const 落 = await 客户页(谁, { q: 名, hl: 转 });
+      expect(落.高亮).toBe(转);
+      expect((落.行 ?? []).map((r) => [r.id, !!r.只看进度])).toEqual([[转, true]]);
+
+      const 下 = await 项目(`${叫法}分给下属的`, 下属of(), 谁);
+      const c = (await prisma.project.findUniqueOrThrow({ where: { id: 下 } })).customerId;
+      expect(await 打开(谁, 下)).toBe(`REDIRECT:/customers/${c}?project=${下}`);
+      expect(await 只看进度of(谁, 下)).toBe(false);
+      // 不相干的照旧 404
+      expect(await 打开(谁, await 项目(`${叫法}看不到的`, 同事, 同事))).toBe("NOT_FOUND");
+    });
+  }
+
+  it("有市场角色的兼任、普通销售行为不变（扩了以后回归）", async () => {
+    const 渠 = await 项目("渠运兼销售建的", 同事, 渠运兼销售);
+    const c = (await prisma.project.findUniqueOrThrow({ where: { id: 渠 } })).customerId;
+    expect(await 打开(渠运兼销售, 渠)).toBe(`REDIRECT:/customers/${c}?project=${渠}`);
+    expect(await 只看进度of(渠运兼销售, 渠)).toBe(false);
+    const 普 = await 项目("普通销售建的", 同事, 普通销售);
+    expect(await 打开(普通销售, 普)).toBe("NOT_FOUND");
   });
 });

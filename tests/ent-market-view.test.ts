@@ -8,7 +8,7 @@
  */
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { 组织, 组织成员 } from "@/lib/enterprise/org-core";
-import { 市场视角of, 市场圈, 市场项目条件, 只看进度, 市场挡详情, 部门市场销售, 部门市场销售该转向 } from "@/lib/enterprise/market-view";
+import { 市场视角of, 市场圈, 市场项目条件, 只看进度, 市场挡详情, 部门市场无市场角色, 部门市场无市场角色该转向 } from "@/lib/enterprise/market-view";
 
 const 人 = (userId: string, 角色们: string[], o: Partial<组织成员> = {}): [string, 组织成员] => [
   userId,
@@ -54,19 +54,23 @@ describe("市场视角", () => {
     expect(市场视角of(org, "adm", 市场成员集)).toBeNull();
   });
 
-  it("部门认的市场成员只挂销售（P-看-17）：名单里、有销售、没市场角色 / 管理角色；该转向只认自己建的、分给别人、没进组、不在公海", () => {
-    const o: 组织 = { ...org, 成员: new Map([...org.成员, 人("ms", ["sales"]), 人("mo", ["channel_ops", "sales"]), 人("mm", ["sales", "sales_mgr"])]) };
-    const 集 = new Set([...市场成员集, "ms", "mo", "mm", "s"]);
-    expect(["ms", "mo", "mm", "a", "c", "s"].map((x) => 部门市场销售(o, x, 集))).toEqual([true, false, false, false, false, true]);
-    expect(部门市场销售(o, "s", 市场成员集)).toBe(false);
-    expect(部门市场销售(null, "ms", 集)).toBe(false);
+  it("部门认的市场成员、没有市场角色（P-看-17 / X-165）：名单里、没市场角色、市场视角不认（不论兼什么业务角色）；该转向只认自己建的、分给别人、没进组、不在公海", () => {
+    const o: 组织 = {
+      ...org,
+      成员: new Map([...org.成员, 人("ms", ["sales"]), 人("mo", ["channel_ops", "sales"]), 人("mm", ["sales", "sales_mgr"]), 人("mp", ["sales_mgr", "project_ops"]), 人("po", ["project_ops"]), 人("mk", ["marketing_mgr", "sales"])]),
+    };
+    const 集 = new Set([...市场成员集, "ms", "mo", "mm", "mp", "po", "mk", "s", "w"]);
+    // 兼销管（mm、mp）、教练（c，看全部，能看项目 过、不会真跳）都算；有市场角色（mo、mk）、市场视角认的（a、纯项目组员 po）、只看某人（w）不算
+    expect(["ms", "mo", "mm", "mp", "po", "mk", "a", "c", "s", "w"].map((x) => 部门市场无市场角色(o, x, 集))).toEqual([true, false, true, true, false, false, false, true, true, false]);
+    expect(部门市场无市场角色(o, "s", 市场成员集)).toBe(false);
+    expect(部门市场无市场角色(null, "ms", 集)).toBe(false);
     expect([
-      部门市场销售该转向(o, "ms", 集, { ownerId: "x", creatorId: "ms" }),
-      部门市场销售该转向(o, "ms", 集, { ownerId: "ms", creatorId: "ms" }),
-      部门市场销售该转向(o, "ms", 集, { ownerId: "x", creatorId: "y" }),
-      部门市场销售该转向(o, "ms", 集, { ownerId: "x", creatorId: "ms", 已加入: ["ms"] }),
-      部门市场销售该转向(o, "ms", 集, { ownerId: "x", creatorId: "ms", pooledAt: new Date() }),
-      部门市场销售该转向(o, "ms", 集, { ownerId: "", creatorId: "ms" }),
+      部门市场无市场角色该转向(o, "ms", 集, { ownerId: "x", creatorId: "ms" }),
+      部门市场无市场角色该转向(o, "ms", 集, { ownerId: "ms", creatorId: "ms" }),
+      部门市场无市场角色该转向(o, "ms", 集, { ownerId: "x", creatorId: "y" }),
+      部门市场无市场角色该转向(o, "ms", 集, { ownerId: "x", creatorId: "ms", 已加入: ["ms"] }),
+      部门市场无市场角色该转向(o, "ms", 集, { ownerId: "x", creatorId: "ms", pooledAt: new Date() }),
+      部门市场无市场角色该转向(o, "ms", 集, { ownerId: "", creatorId: "ms" }),
     ]).toEqual([true, false, false, false, false, false]);
   });
 

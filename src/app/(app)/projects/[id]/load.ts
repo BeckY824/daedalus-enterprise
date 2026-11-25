@@ -36,7 +36,7 @@ import { 待分配占位 } from "@/lib/enterprise/await-assign";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 市场进不了详情, 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
-import { 部门市场销售该转向 } from "@/lib/enterprise/market-view";
+import { 部门市场无市场角色该转向 } from "@/lib/enterprise/market-view";
 import { 只读卡放行 } from "@/lib/enterprise/customer-readonly-card";
 import { 仅项目可见 } from "@/lib/enterprise/project-only-customers";
 import { dayjs } from "@/lib/utils";
@@ -98,16 +98,16 @@ const 市场转向地址 = (p: { id: string; name: string }) => `/customers?q=${
 
 /**
  * 市场角色已分出去的那条（11-04 P-看-06）：列表里真有这一行的转回客户页（11-12 X-107，原来是项目页）高亮，别的 404；不是这种情况给 null。读项目详情 和 项目页去向 共用。
- * 按部门认的市场成员、只挂销售的（P-看-17，用户 11-24）：市场视角不认他（兼着销售），列表照 P-看-05 有自己建的、已分给别人的那几行，
- * 详情 能看项目 只认业务角色进不去——同样转到这一行，不落 404（客户页带 hl 时给他画同一套项目页，customers/page.tsx）
+ * 按部门认的市场成员、没有市场角色的（P-看-17，用户 11-24；X-165 扩到兼销售 / 销管 / 项目组员等）：市场视角不认他，列表照 P-看-05 有自己建的、已分给别人的那几行，
+ * 详情 能看项目 只认业务角色、不过的——同样转到这一行，不落 404（兼销管按下属口径能进的照常进）（客户页带 hl 时给他画同一套项目页，customers/page.tsx）
  */
 async function 市场去向(me: SessionUser, p: 权限项目 & { id: string; name: string; ownerId: string; creatorId: string; pooledAt: Date | null }, 已加入: string[]): Promise<{ 种: "无" } | { 种: "转向"; 到: string } | null> {
   if (!企业版()) return null;
   if (!(await 市场进不了详情(me.id, p.id, { ownerId: p.ownerId, pooledAt: p.pooledAt, 已加入 }))) {
-    // 先按项目本身筛（自己建的、分给别人、没进组、不在公海，同 部门市场销售该转向 前半），绝大多数打开不多读市场成员设置
+    // 先按项目本身筛（自己建的、分给别人、没进组、不在公海，同 部门市场无市场角色该转向 前半），绝大多数打开不多读市场成员设置
     if (p.creatorId === me.id && p.ownerId && p.ownerId !== me.id && !p.pooledAt && !已加入.includes(me.id)) {
       const org = await 权限组织();
-      if (org && 部门市场销售该转向(org, me.id, await 读市场成员们(org), { ...p, 已加入 }) && !能看项目(me, { ...p, 已加入 }, org)) return { 种: "转向", 到: 市场转向地址(p) };
+      if (org && 部门市场无市场角色该转向(org, me.id, await 读市场成员们(org), { ...p, 已加入 }) && !能看项目(me, { ...p, 已加入 }, org)) return { 种: "转向", 到: 市场转向地址(p) };
     }
     return null;
   }
