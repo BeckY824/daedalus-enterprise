@@ -10,7 +10,6 @@ import { SettingOutlined } from "@ant-design/icons";
 import type { ColumnType, TableProps } from "antd/es/table";
 import type { SortOrder } from "antd/es/table/interface";
 import EmptyState from "@/components/EmptyState";
-import CountUp from "@/components/CountUp";
 import Skeleton from "@/components/Skeleton";
 import { useLocalPref } from "@/lib/local-pref";
 import { 只留当前行, 露出这一列, 算可见列, 切换后存 } from "@/lib/list-select";
@@ -200,11 +199,12 @@ export default function DataList<T extends { id: string }>({
   /** 真的只取了一部分：库里的总数比取回来的多（本地筛掉的不算，见 截断.取回） */
   const 取回 = 截断?.取回 ?? 行.length;
   const 真截断 = !!截断 && 截断.总数 > 取回;
-  const 总数 = (t: number) => (
-    <span className="list-total-n">
-      <CountUp 值={t} 记号={`list-total:${页}`} 只滚变化 />
-    </span>
-  );
+  /*
+    11-26：总数不再从旧数滚到新数。滚的那 0.4 秒里一路闪过 1512、1449、902……这些数哪个筛选都对不上（实操：选「客户来源 → 未填」
+    从 1956 滚到 235），用户看到的就是「先闪一个不相干的数再变对」。筛选换了、新数还没回来时照旧留着旧数（rows / total 都是上一份），
+    新数到了直接换上；等宽照旧（.list-total-n tabular-nums），换数时宽度不跳
+  */
+  const 总数 = (t: number) => <span className="list-total-n">{t}</span>;
   const [选中, set选中] = useState<string[]>([]);
   /*
     行一换就把看不见的勾选清掉。在渲染里比上一次的行来改（React 文档「props 变了调整 state」的写法），
@@ -632,7 +632,7 @@ export default function DataList<T extends { id: string }>({
         }
         pagination={
           加载中 && 行.length === 0 ? false :
-          /* 总数换了（筛选、翻页签）从旧数滚到新数（原型 cu.filter「总数滚到新值」）；第一次进来直接是数，等宽不跳 */
+          /* 总数换了（筛选、翻页签）：新数回来前留旧数，回来直接换（11-26，不滚，见上面 总数） */
           分页 === false
             ? false
             : 分页

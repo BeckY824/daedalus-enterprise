@@ -262,7 +262,8 @@ it("G3 / G-新4：1024 不摆「当前进程」，两列时间并成一列两行
   } finally { await page.close(); }
 });
 
-for (const w of [1024, 1366, 390]) {
+// 29K（11-26）：375 / 768 / 1280 一起钉（r7 实操 375 / 390 后果字被钉住的操作列盖）；后果每一行都在条里、露得出来
+for (const w of [1024, 1366, 390, 375, 768, 1280]) {
   it(`G4 / K4：「领取」是文字钮；点了确认条在这一行下面整行宽，后果写全、两颗键点得中（不被钉住的操作列盖）；取消不领、确认才领（${w} 宽）`, async () => {
     const { page, errors } = await 开(w);
     try {
@@ -284,6 +285,15 @@ for (const w of [1024, 1366, 390]) {
       expect(宽.条).toBeGreaterThan(宽.表 * 0.8);
       expect(宽.右).toBe(true);
       expect((await 点得中(page, ".pool-ask .inlc-yes, .pool-ask .inlc-no")).every((x) => x.中 && x.在屏)).toBe(true);
+      // 每一行后果字的右端（字最容易被钉住的操作列盖的那头）露得出来、在屏里
+      const 后果行 = await 条.locator(".pool-why > div").evaluateAll((es) => es.map((e) => {
+        const g = document.createRange(); g.selectNodeContents(e); const r = g.getBoundingClientRect();
+        const 中 = document.elementFromPoint(r.right - 2, r.top + r.height / 2);
+        return { 盖: !(中 && e.contains(中)), 出屏: r.left < 0 || r.right > document.documentElement.clientWidth + 1 };
+      }));
+      expect(后果行.length).toBeGreaterThan(1);
+      expect(后果行.filter((x) => x.盖 || x.出屏), `${w} 宽后果字被盖 / 出屏`).toEqual([]);
+      expect(await 条.locator(".pool-why > div").evaluateAll((es) => es.filter((e) => e.scrollWidth > e.clientWidth + 1).length), `${w} 宽后果字被裁`).toBe(0);
       await 条.getByRole("button", { name: "取消" }).click();
       await expect.poll(() => page.locator(".pool-ask").count()).toBe(0);
       // 取消不领：领取一次都没调

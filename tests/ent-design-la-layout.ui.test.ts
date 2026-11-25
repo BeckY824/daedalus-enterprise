@@ -375,3 +375,37 @@ it("D37：市场管理客户页筛选行「全部成员 / 全部创建人 / 全�
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+/* 11-26：1024 宽「更多筛选」弹层右边超出屏幕 9px（实操量到）。按钮靠右、弹层 bottomLeft 往右开，antd 只肯往回挪一个箭头的量，
+   挪不够就伸出视口。弹层（含「自定义筛选项」清单那一屏）要整个在视口里、两边各留 ≥8px；筛了几项、市场管理的客户页同理 */
+const 弹层边 = (page: Page) => page.evaluate(() => {
+  const p = [...document.querySelectorAll<HTMLElement>(".ant-popover")].find((e) => !e.classList.contains("ant-popover-hidden") && e.getBoundingClientRect().width > 0)!;
+  const r = p.getBoundingClientRect(), vw = document.documentElement.clientWidth;
+  return { 左: Math.round(r.left), 右余: Math.round(vw - r.right), 宽: Math.round(r.width) };
+});
+for (const w of [375, 390, 768, 1024, 1199, 1200, 1240, 1280, 1440, 1536]) {
+  it(`「更多筛选」弹层贴在视口里、两边各留 ≥8px，点开清单那一屏也是（${w} 宽）`, async () => {
+    for (const [名, 开法] of [["客户列表", () => 开(w)], ["客户列表筛了两项", () => 开(w, { 筛: { custStatus: "潜在", stage: "线索" } })], ["市场管理客户页", () => 开市场(w)],
+      // Windows / Linux 竖滚动条占宽（15px）：antd 按 innerWidth 算会少扣这一条
+      ["客户列表带竖滚动条", async () => { const x = await 开(w); await x.page.addStyleTag({ content: "html{overflow-y:scroll}::-webkit-scrollbar{width:15px}" }); return x; }]] as const) {
+      const { page, errors } = await 开法();
+      try {
+        await page.getByRole("button", { name: /^更多筛选/ }).click();
+        await expect.poll(() => page.locator(".ant-popover:visible").count()).toBeGreaterThan(0);
+        await page.waitForTimeout(350);
+        const a = await 弹层边(page);
+        expect(a.左, `${名} ${w} 宽弹层左边`).toBeGreaterThanOrEqual(8);
+        expect(a.右余, `${名} ${w} 宽弹层右边`).toBeGreaterThanOrEqual(8);
+        const 清单 = page.locator(".ant-popover:visible").getByRole("button", { name: "自定义筛选项" });
+        if (await 清单.count()) {
+          await 清单.click(); await page.waitForTimeout(350);
+          const b = await 弹层边(page);
+          expect(b.左, `${名} ${w} 宽清单左边`).toBeGreaterThanOrEqual(8);
+          expect(b.右余, `${名} ${w} 宽清单右边`).toBeGreaterThanOrEqual(8);
+        }
+        expect(await 页横滚(page)).toBe(false);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    }
+  });
+}
