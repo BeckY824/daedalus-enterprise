@@ -17,7 +17,7 @@ const 运维号 = "admin";
  *   客户的销售教练不在飞书组织里，由系统管理员在 设置 → 团队成员 新增、设初始密码。绑了飞书的教练照旧只能用飞书登；
  *   兼了别的业务角色的不放（兼总管理的按上面系统管理员的规矩判）。
  */
-export async function 能用密码登录(user: { id: string; email: string; role: string; feishuOpenId?: string | null }): Promise<boolean> {
+export async function 能用密码登录(user: { id: string; email: string; role: string; feishuOpenId: string | null }): Promise<boolean> {
   if ((await 飞书登录凭据()) === null) return true;
   if (user.email === 运维号 && user.role === "ADMIN") return true;
   const org = await 读组织();

@@ -87,7 +87,9 @@ describe("接了飞书：账号密码只给系统管理员和没接入飞书的�
     const 销售 = await 建号("销售甲", "pass-1234", { bizRole: "sales" });
     const 教练兼管理员 = await 建号("教练丙", "pass-1234", { role: "ADMIN", bizRole: "coach,admin" });
     const 教练兼销售 = await 建号("教练丁", "pass-1234", { bizRole: "coach,sales" });
-    for (const u of [飞书教练, 销售, 教练兼管理员, 教练兼销售]) expect(await login(u.email, "pass-1234")).toEqual({ ok: false, error: 密码登录拒绝话 });
+    const 停用教练 = await 建号("教练戊", "pass-1234", { bizRole: "coach" });
+    await prisma.user.update({ where: { id: 停用教练.id }, data: { active: false } });
+    for (const u of [飞书教练, 销售, 教练兼管理员, 教练兼销售, 停用教练]) expect(await login(u.email, "pass-1234")).toEqual({ ok: false, error: 密码登录拒绝话 });
     expect(jar.size).toBe(0);
   });
 
