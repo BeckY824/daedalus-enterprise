@@ -10,7 +10,8 @@
  *   - 项目 = Project.customerId 指着它、没软删的；pooledAt 带上（在线索公海的不算在推）
  *   - 不算 = 结局线索流失 + 线索验证终判「无效线索」+ 无效原因是重复线索（字典 dict-invalid-5 现名 + 原名「重复线索」，同 重复线索名们 / 重复线索不算）
  *   - 序号 → 字典 custStatus 这一项现在的名字（dict-custStatus-<序号>，表里没有用 字典定义 默认名，同 客户状态名们）
- *   - 写 custStatus + updatedAt（Prisma updateMany 带 @updatedAt，同 重算客户状态）
+ *   - 只写 custStatus 一列，不动 updatedAt（同 ent-e220-status-backfill.ts，理由见那份头注：updatedAt 被编辑乐观锁、导入撤销、导出截止、
+ *     按最近动过排序当「有人动过」用；和 重算客户状态 走 Prisma @updatedAt 会顶不同）。AuditLog 里记改前的 updatedAt 备查
  * 留痕：照 11-20 起批量写正式库的规矩（客户 11-19「凡批量写正式库，逐批留操作记录」），每改一格写一条 AuditLog
  *   （userId/userName = --操作人 指定的账号，必填；entity Customer、entityId 客户 id；detail 带 脚本 / 批次 / 编号 / 旧 / 新 / 依据原话），
  *   格式同 草稿-写入-20261121 的 112 家、79119 两个脚本。重算客户状态 本身不写 AuditLog，这里多记这一条是数据脚本的规矩。
@@ -35,7 +36,7 @@
  * 输出逐行日志（北京时间、客户编号、字段、改前、改后、原因），不含客户名。
  * 撤回（--undo <批次号>，照 ent-e220-status-backfill.ts 的撤回）：按该批次 AuditLog 记下的改前值（detail.旧.custStatus，空就写回 NULL）逐行恢复，
  *   同一个 BEGIN IMMEDIATE 事务里先逐行核：现在的值仍等于该批次写入的新值（detail.新.custStatus）——有一行不等（写后被系统 / 人改过）就整批不写、
- *   报出是哪一行、退出码 1（空跑同样报出、退出码 1）。updatedAt 顶成撤回这一刻（同写入，Prisma @updatedAt 的口径；改前改后都记在日志里）。
+ *   报出是哪一行、退出码 1（空跑同样报出、退出码 1）。撤回同样只写 custStatus、不动 updatedAt（现在的 updatedAt 记在日志里）。
  *   撤回另起批次「原批次-undo-xxxx」，每改一格记一条 AuditLog（类 = 撤回、撤的批次），正文同样带「[批次 … · 执行：Becky（服务商）· 依据 <E-编号>]」前缀、
  *   detail 带 批次 / 执行 / 依据 / 对应行；事务里回读值、日志条数、逐条核前缀和四个键，不对整批回滚。已撤回过的批次不再撤（退出码 0）。
  *   兜底：按写前备份恢复。
@@ -188,17 +189,17 @@ function 撤(批次号: string): number {
       throw new Error(`${不对.length} 行现在的值不是本批写入的新值（${不对.map((x) => `NO.${x.w.客户编号}`).join("、")}），整批不撤`);
     }
     const T = Date.now();
-    const 改 = db.prepare("UPDATE Customer SET custStatus = ?, updatedAt = ? WHERE id = ? AND custStatus IS ? AND deletedAt IS NULL");
+    const 改 = db.prepare("UPDATE Customer SET custStatus = ? WHERE id = ? AND custStatus IS ? AND deletedAt IS NULL");
     const 写日志 = db.prepare("INSERT INTO AuditLog (id, at, userId, userName, action, entity, entityId, summary, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
     let 撤了 = 0;
     for (const { w, 现, updatedAt } of 现们) {
       if (要写) {
-        if (Number((改.run(w.旧, T, w.客户id, w.新) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${w.客户编号} 撤回改动不是 1 行`);
+        if (Number((改.run(w.旧, w.客户id, w.新) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${w.客户编号} 撤回改动不是 1 行`);
         写日志.run(新日志id(T), T, OP!.id, OP!.name, "update", "Customer", w.客户id,
           前缀件.加前缀(撤号, 依据号, `[${件名} 撤回 ${批次号} NO.${w.客户编号}] 客户状态：custStatus ${w.新} → ${显(w.旧)}`),
           JSON.stringify(前缀件.加键({ 脚本, 类: "撤回", 批次: 撤号, 撤的批次: 批次号, 撤的日志: w.日志id, 编号: `NO.${w.客户编号}`, 客户编号: w.客户编号, 表: "Customer", 键列: "id",
-            格: "客户状态（撤回在推优先重算）", 操作: "update", 列: ["custStatus", "updatedAt"],
-            旧: { custStatus: 现, updatedAt }, 新: { custStatus: w.旧, updatedAt: T }, 原因: `整批撤回 ${批次号}，改回写入前的值`, 依据 }, 撤号, 依据号, { Customer: w.客户id })));
+            格: "客户状态（撤回在推优先重算）", 操作: "update", 列: ["custStatus"],
+            旧: { custStatus: 现, updatedAt }, 新: { custStatus: w.旧 }, 原因: `整批撤回 ${批次号}，改回写入前的值`, 依据 }, 撤号, 依据号, { Customer: w.客户id })));
       }
       撤了 += 1;
       记(`${北京(T)}\tNO.${w.客户编号}\tcustStatus（客户状态）\t${w.新}\t${显(w.旧)}\t${要写 ? "已撤" : "将撤（空跑）"}`);
@@ -252,19 +253,19 @@ if (!要写) {
   try {
     const P = 计划();
     const T = Date.now();
-    const 写客户 = db.prepare("UPDATE Customer SET custStatus = ?, updatedAt = ? WHERE id = ? AND custStatus IS ?");
+    const 写客户 = db.prepare("UPDATE Customer SET custStatus = ? WHERE id = ? AND custStatus IS ?");
     const 写日志 = db.prepare("INSERT INTO AuditLog (id, at, userId, userName, action, entity, entityId, summary, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
     for (const r of P) {
       if (r.已完成) {
         记(`${北京(T)}\tNO.${r.t.客户编号}\tcustStatus（客户状态）\t${显(r.改前)}\t${r.改后}\t已完成（已是目标值，不写）`);
         continue;
       }
-      if (Number((写客户.run(r.改后, T, r.id, r.改前) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${r.t.客户编号} 改动不是 1 行`);
+      if (Number((写客户.run(r.改后, r.id, r.改前) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${r.t.客户编号} 改动不是 1 行`);
       const 日志id = "c" + (T.toString(36) + randomBytes(10).toString("hex")).slice(0, 24);
       写日志.run(日志id, T, OP!.id, OP!.name, "update", "Customer", r.id,
         前缀件.加前缀(批次, 依据号, `[${件名} NO.${r.t.客户编号}] 客户状态（按在推优先重算）：custStatus ${显(r.改前)} → ${r.改后}`),
         JSON.stringify(前缀件.加键({ 脚本, 批次, 编号: `NO.${r.t.客户编号}`, 客户编号: r.t.客户编号, 表: "Customer", 键列: "id", 格: "客户状态（按在推优先重算）", 操作: "update",
-          列: ["custStatus", "updatedAt"], 旧: { custStatus: r.改前, updatedAt: r.updatedAt }, 新: { custStatus: r.改后, updatedAt: T }, 原因: r.t.原因, 依据 }, 批次, 依据号, { Customer: r.id })));
+          列: ["custStatus"], 旧: { custStatus: r.改前, updatedAt: r.updatedAt }, 新: { custStatus: r.改后 }, 原因: r.t.原因, 依据 }, 批次, 依据号, { Customer: r.id })));
       写了 += 1;
       记(`${北京(T)}\tNO.${r.t.客户编号}\tcustStatus（客户状态）\t${显(r.改前)}\t${r.改后}\t${r.t.原因}`);
     }

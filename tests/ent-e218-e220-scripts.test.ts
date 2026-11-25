@@ -217,4 +217,24 @@ describe("E-275 选 a：17535 只在在推线索进了公海时才写「流失�
     expect(再.code, 再.out).toBe(0);
     expect(再.out).toContain("空跑结束，一行没写");
   });
+
+  it("只写 custStatus 一列：写入、撤回都不动 updatedAt（同 e220），日志 列 只有 custStatus、旧里记 updatedAt", () => {
+    const 时间 = () => Object.fromEntries(读库<{ customerNo: number; updatedAt: number }>("SELECT customerNo, updatedAt FROM Customer").map((r) => [r.customerNo, r.updatedAt]));
+    const 批 = 写一批();
+    expect(状态()).toEqual({ 83028: "成交", 17535: "流失" });
+    expect(时间()).toEqual({ 83028: 1000, 17535: 2000 });
+    for (const x of 日志()) {
+      expect(x.d.列).toEqual(["custStatus"]);
+      expect((x.d.旧 as { updatedAt: unknown }).updatedAt).toBe(x.entityId === "c83028" ? 1000 : 2000);
+      expect(x.d.新).not.toHaveProperty("updatedAt");
+    }
+    const r = 跑(e218, [库, "--undo", 批, "--write", ...必带], true);
+    expect(r.code, r.out).toBe(0);
+    expect(状态()).toEqual({ 83028: "流失", 17535: null });
+    expect(时间()).toEqual({ 83028: 1000, 17535: 2000 });
+    for (const x of 日志().filter((y) => y.d.类 === "撤回")) {
+      expect(x.d.列).toEqual(["custStatus"]);
+      expect(x.d.新).not.toHaveProperty("updatedAt");
+    }
+  });
 });
