@@ -996,9 +996,10 @@ export default function CustomersView({
     {
       title: "客户来源", key: "channelName", width: 120, 默认: false,
       // 主渠道空、只挂触点（P-渠道-08 公司资源 / 客户介绍）：写「公司资源（触点）」，和「客户来源」筛选下拉一个写法（F-049）
-      render: (_: unknown, r) => (有值(r.channelName)
-        ? <span className="clamp-1" style={{ display: "block" }} title={渠道显示名(r.channelName)}>{主渠道显示名(r.channelName)}</span>
-        : 有值(r.touchpoint) ? <span className="clamp-1" style={{ display: "block" }} title={触点显示名(r.touchpoint)}>{触点显示名(r.touchpoint)}</span> : 空),
+      render: (_: unknown, r) => {
+        const [字, 全] = 有值(r.channelName) ? [主渠道显示名(r.channelName), 渠道显示名(r.channelName)] : 有值(r.touchpoint) ? [触点显示名(r.touchpoint), 触点显示名(r.touchpoint)] : [];
+        return 字 ? <span className="clamp-1" style={{ display: "block" }} title={全}>{字}</span> : 空;
+      },
     },
   ];
 
