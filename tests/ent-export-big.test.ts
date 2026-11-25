@@ -59,18 +59,18 @@ beforeEach(async () => {
 async function 导出全部() {
   const start = await 开始完整导出({});
   const fingerprints: { 类别: "客户" | "跟进"; 指纹: string }[] = [];
-  const 客户: Awaited<ReturnType<typeof 读取完整导出批次>>["rows"] = [];
-  const 跟进: typeof 客户 = [];
+  const 客户: Record<string, unknown>[] = [];
+  const 跟进: Record<string, unknown>[] = [];
   for (const kind of ["客户", "跟进"] as const) {
     let cursor: string | undefined;
     do {
       const r = await 读取完整导出批次({}, start.截止, kind, cursor);
-      (kind === "客户" ? 客户 : 跟进).push(...r.rows);
+      (kind === "客户" ? 客户 : 跟进).push(...(r.rows as Record<string, unknown>[]));
       fingerprints.push({ 类别: kind, 指纹: r.指纹 });
       cursor = r.游标 ?? undefined;
     } while (cursor);
   }
-  return { start, fingerprints, 客户: 客户 as Record<string, unknown>[], 跟进: 跟进 as Record<string, unknown>[] };
+  return { start, fingerprints, 客户, 跟进 };
 }
 
 it("过 999 线的客户批、跟进批照样导完，复核通过，主联系人电话一位不差", async () => {
