@@ -1508,12 +1508,14 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
    走过的：次要字 + 绿勾一笔描出来；当前：正文色加粗 + 橙点慢呼吸（只变透明度）；没到：最浅字。
    一排放不下就横向滚（触控板 / 滚轮 / 两头小箭头），每格有最小宽度、名字一行省略号、悬停看全名（title）。
    出口（已转商机 / 商机赢单 / 交付结清）不是流程里的一步：槽外右边单独一颗描边胶囊，浮片不会落到它上面 */
-.proj-stage-strip { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* 11-26 小修：390 宽客户详情页被阶段条撑出横滚（实操量到 scrollWidth 442–452）。这一排自己横滚，但它的内容宽（每格 136 × 节点数）
+   还会算进外层的最小内容宽，哪层祖先按内容定宽就被撑开——contain: inline-size 让这排对外不报内容宽，只占父层给的宽，多的在排里滚 */
+.proj-stage-strip { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
 .proj-stage-strip > .proj-stage-nodes { flex: 1 1 auto; }
 .proj-stage-nodes {
   --stage-node-w: 136px;
   list-style: none; margin: 0; padding: 3px; display: flex; flex-wrap: nowrap; gap: 0; position: relative;
-  min-width: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
+  min-width: 0; contain: inline-size; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; scrollbar-width: none;
   background: var(--hover); border-radius: var(--r-card);
 }
 .proj-stage-thumb {

@@ -94,8 +94,10 @@ describe("记沟通卡确认前那一行：对齐 F-052，按开关两态（E-25
   it("ProposalCard：只走 F-052 那一行（FollowMeaningLine），开关开着判为无意义的不能确认；不再有第三套灰字", () => {
     const s = readFileSync("src/components/ProposalCard.tsx", "utf8");
     expect(s).toContain("<FollowMeaningLine 内容={draft.content} 类型={draft.type} />");
-    expect(s).toMatch(/const 跟进无意义 = draft\.kind === "add_followup" && 判定\.拦 && 判沟通无意义\(draft\.content, draft\.type, \{ 占位词: 判定\.占位词 \}\)\.无意义;/);
-    expect(s).toContain('if (跟进无意义 && !missing.includes("沟通内容")) missing.unshift("沟通内容");');
+    // 11-26：记沟通卡（add_followup）、AI 项目沟通卡（project_followup）都按开关拦；写了但无意义的确认键旁写「还差有效的沟通内容」
+    expect(s).toMatch(/const 跟进无意义 = 判定\.拦 && \(draft\.kind === "add_followup" \? 判沟通无意义\(draft\.content, draft\.type, \{ 占位词: 判定\.占位词 \}\)\.无意义/);
+    expect(s).toMatch(/draft\.kind === "project_followup" && 判沟通无意义\(并进描述\(draft\.content, draft\.卡点描述\), draft\.type, \{ 占位词: 判定\.占位词 \}\)\.无意义\);/);
+    expect(s).toContain('if (跟进无意义 && !missing.includes("沟通内容")) missing.unshift("有效的沟通内容");');
     expect(s).not.toMatch(/沟通卡灰字|prop-short-follow-hint/);
   });
 });

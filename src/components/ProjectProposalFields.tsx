@@ -10,7 +10,7 @@ import { 币种符号 } from "@/lib/currency";
 import { dayjs } from "@/lib/utils";
 import { 卡点类型们, 影响等级们, 原因最多, 清原因们 } from "@/lib/project/blocker-rules";
 import { 性别们 } from "@/lib/enterprise/customer-v2";
-import { 每步能判, 联系人可改, 跨阶段提醒, type 项目卡 } from "@/lib/agent/project-proposals";
+import { 每步能判, 联系人可改, 跨阶段提醒, 并进描述, type 项目卡 } from "@/lib/agent/project-proposals";
 
 /**
  * 全页面 AI 的项目类建议卡（project-proposals.ts）在卡片上的那几格。
@@ -88,7 +88,8 @@ export default function ProjectProposalFields({ draft, setDraft }: { draft: 项�
             {/* 无意义沟通（F-052）：内容下面边改边说一行（判定这张卡自己取、一页共用一份，没取到按默认），判为无意义的服务端不存 */}
             <div className="prop-f-stack">
               <Input.TextArea size="small" autoSize={{ minRows: 2, maxRows: 8 }} value={draft.content} onChange={(e) => 设({ content: e.target.value })} />
-              <FollowMeaningLine 内容={draft.content} 类型={draft.type} 判定={判定} />
+              {/* 量的和卡上拦截、服务端同一段：旧卡的卡点描述并进内容后再判（11-26 审查建议） */}
+              <FollowMeaningLine 内容={并进描述(draft.content, draft.卡点描述)} 类型={draft.type} 判定={判定} />
             </div>
           </F>
           {/* 组员记（11-19 客户答复）：下一步归负责人，组员的卡不摆这两格 */}

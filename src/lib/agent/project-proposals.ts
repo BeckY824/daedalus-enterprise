@@ -12,6 +12,7 @@ import { FOLLOW_TYPES, FOLLOW_TYPE_MAP } from "../constants";
 import { 是币种 } from "../currency";
 import { 认金额, 金额字带币, 币种对不上话 } from "../money-input";
 import { parseDateInput } from "@/lib/date-input";
+import { hasVisibleText } from "@/lib/form-validation";
 import { 阶段们, 是阶段, 本套名, 结局叫法, 字典of, 终止结局, 下一步, 要写原因, 原因上限, type 位置, type 阶段字典 } from "../project/nodes";
 import { 卡点类型们, 影响等级们, 描述上限, 原因最多, 清原因们 } from "../project/blocker-rules";
 import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
@@ -284,7 +285,8 @@ export function 项目卡缺(p: 项目卡): string[] {
     if (p.到?.result === "异常状态" && !p.异常类别) miss.push("异常类别");
   }
   if (p.kind === "project_followup") {
-    if (!并进描述(p.content, p.卡点描述).trim()) miss.push("沟通内容");
+    // 只有空白 / 零宽字符的同空（同 记沟通卡 add_followup、框上「请填写沟通内容」的 hasVisibleText，11-26）
+    if (!hasVisibleText(并进描述(p.content, p.卡点描述))) miss.push("沟通内容");
     if (!p.组员记 && !p.下一步.trim()) miss.push("下一步计划");
     if (!p.组员记 && p.要时间 && !p.下一步时间) miss.push("下一步时间");
     if (p.要卡点 && (!p.卡点类型 || p.卡点类型 === "暂无卡点")) miss.push("卡点类型");

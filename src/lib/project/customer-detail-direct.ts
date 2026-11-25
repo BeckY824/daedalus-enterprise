@@ -5,7 +5,7 @@ import { 能看项目, 权限项目选, 带已加入, type 谁 } from "@/lib/ent
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
 import { 原负责人回避, 回避豁免 } from "./pool-owner";
 import { 看得到的客户 } from "./db";
-import { 客户页项目地址 } from "./customer-detail-href";
+import { 客户页项目地址, 录音确认参数, 带录音确认参数 } from "./customer-detail-href";
 import { 仅项目客户们 } from "@/lib/enterprise/project-only-customers";
 import { 有放弃参数, 带放弃参数 } from "@/lib/enterprise/lead-giveup-core";
 
@@ -75,7 +75,7 @@ const 项目页链接 = /^\/projects\/([^/?#]+)(?:\?([^#]*))?$/;
 
 /**
  * 存好的链接（通知等）里指向项目页的，换成项目页会跳去的最终地址；别的原样。
- * 同 projects/[id]/page.tsx 那条跳转：只把 ?giveup=1 带过去，别的参数跳的时候本来就丢
+ * 同 projects/[id]/page.tsx 那条跳转：只把 ?giveup=1、录音通知的 crec=<编号> 带过去，别的参数跳的时候本来就丢
  */
 export async function 改直达链接们<T extends string | null>(me: 谁, 链接们: readonly T[]): Promise<(T | string)[]> {
   const 项目of = (l: string | null): string | null => {
@@ -90,6 +90,7 @@ export async function 改直达链接们<T extends string | null>(me: 谁, 链�
     const id = ids[i];
     const 到 = id ? 链.get(id) : undefined;
     if (!l || !id || !到 || 到 === 项目页地址(id)) return l;
-    return 有放弃参数(l) ? 带放弃参数(到) : 到;
+    const 录音号 = new URLSearchParams(项目页链接.exec(l)?.[2] ?? "").get(录音确认参数);
+    return 带录音确认参数(有放弃参数(l) ? 带放弃参数(到) : 到, 录音号);
   });
 }
