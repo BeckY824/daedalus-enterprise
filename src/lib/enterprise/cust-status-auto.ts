@@ -9,6 +9,11 @@
  *      > 意向（进了商机、还没结局）> 潜在（有项目，都还在线索阶段）
  *   3. 一个项目都没有：null（不写状态）
  *
+ * 两处改动（重复咨询第一步，客户 11-22 / 11-23 定稿）：
+ *   - 在推项目优先：名下有在推项目（没结局、不在公海）时，已结束的丢单、流失不再压过它，按在推项目定（成交 / 意向 / 潜在）。
+ *     交付个数、异常照旧排在最前（只放开丢单、流失两档）。在推项目全在公海的不算在推，照旧
+ *   - 「终判无效 · 重复线索」的线索不参与计算（不算 = true，判定在 cust-status-auto-db.ts 重复线索不算）。排掉以后一个项目都不剩 = null
+ *
  * 模型里怎么对：
  *   - 交付结清 = result「交付结清」（库里存着旧名「成功交付」的也算，企业版 10-31 改名）；异常 = result「异常状态」；丢单 = result「丢单」；流失 = result「线索流失」（结局只认 result，不看阶段）
  *   - 「已转商机」「商机赢单」不是结局，是进了下一阶段第一个节点：已转商机 = phase 商机，赢单 = phase 订单
@@ -23,8 +28,15 @@ import { 企业版字典, 本套名, 是交付 } from "@/lib/project/stage-dict"
 export const 客户状态序号 = { 潜在: 0, 意向: 1, 成交: 2, 交付: 3, 复购: 4, 忠诚: 5, 丢单: 6, 流失: 7, 异常: 8 } as const;
 export type 客户状态序号 = (typeof 客户状态序号)[keyof typeof 客户状态序号];
 
-/** 算状态要的项目几列 */
-export type 算状态的项目 = { phase: string; node: string; result: string | null; deletedAt?: Date | null };
+/**
+ * 算状态要的项目几列。pooledAt：在线索公海里的不算在推（不给 = 不在公海）；不算：终判无效、原因是重复线索的（不给 = 算）
+ */
+export type 算状态的项目 = { phase: string; node: string; result: string | null; deletedAt?: Date | null; pooledAt?: Date | null; 不算?: boolean };
+
+/** 在推：没结局、不在公海（在推项目优先那一条认它） */
+export function 在推(p: 算状态的项目): boolean {
+  return p.result == null && !p.pooledAt;
+}
 
 /** 付了首款：没结局，进了订单，或停在商机最后一个节点首款到账（库里旧名也认） */
 function 付了首款(p: 算状态的项目): boolean {
@@ -38,15 +50,18 @@ function 在商机(p: 算状态的项目): boolean {
 
 /** 一个客户名下的项目 → 客户状态序号；没有项目（软删的不算）= null */
 export function 算客户状态(项目们: readonly 算状态的项目[]): 客户状态序号 | null {
-  const 在的 = 项目们.filter((p) => !p.deletedAt);
+  const 在的 = 项目们.filter((p) => !p.deletedAt && !p.不算);
   if (!在的.length) return null;
   const 交付数 = 在的.filter((p) => 是交付(p.result)).length;
   if (交付数 >= 3) return 客户状态序号.忠诚;
   if (交付数 === 2) return 客户状态序号.复购;
   if (交付数 === 1) return 客户状态序号.交付;
   if (在的.some((p) => p.result === "异常状态")) return 客户状态序号.异常;
-  if (在的.some((p) => p.result === "丢单")) return 客户状态序号.丢单;
-  if (在的.some((p) => p.result === "线索流失")) return 客户状态序号.流失;
+  // 在推项目优先：有在推的，已结束的丢单、流失不压它
+  if (!在的.some(在推)) {
+    if (在的.some((p) => p.result === "丢单")) return 客户状态序号.丢单;
+    if (在的.some((p) => p.result === "线索流失")) return 客户状态序号.流失;
+  }
   if (在的.some(付了首款)) return 客户状态序号.成交;
   if (在的.some(在商机)) return 客户状态序号.意向;
   return 客户状态序号.潜在;

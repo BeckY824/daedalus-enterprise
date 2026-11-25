@@ -23,6 +23,7 @@ import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 看全部 } from "@/lib/team-scope";
+import { 看已删 } from "./soft-delete-core";
 import { 企业版 } from "./switch";
 import { 是市场成员of, type 组织 } from "./org-core";
 import { 自动分配池, 读线部门, 读挑人底子, 补记销售管理起算 } from "./assign-eta";
@@ -31,6 +32,7 @@ import { 计不计数, 月份, type 线 } from "./lead-assign";
 import { 方向分配理由, type 分配方向 } from "./customer-region";
 import { 客户默认分配方向 } from "./assign-direction-db";
 import { 本套名, 字典of, 第一个节点 } from "@/lib/project/nodes";
+import { 重复咨询来源 } from "@/lib/project/system-created";
 import { 记沟通编号 } from "@/lib/project/followup-meta";
 import { 记沟通标记 } from "@/lib/project/stage-gates";
 import { 项目名上限, type 规整好的沟通 } from "@/lib/project/wizard";
@@ -164,6 +166,18 @@ export async function 查重领取候选们(org: 组织, 发起人: string, cust
 export const 查重领取理由 = (c: 查重领取候选, 原因: string) => `${原因}；${方向分配理由(c.向)}`;
 
 /**
+ * 挑接手人 挑不到人时为什么（查重领取、出口 C 交销售同一句）：没人在这条线上 / 都暂停或禁止 / 都满额 / 都没填配额。
+ * 底 = 这一刻的挑人底子（重挑后重读过的就传重读的）；只说原因，不带别人的数
+ */
+export function 候选挑不到为什么(c: Pick<查重领取候选, "人们" | "向">, 底: 查重领取候选["底"]): string {
+  const 参与的 = 底.排位().filter((x) => !底.不参与.includes(x.userId));
+  return !c.人们.length ? `${c.向.线 ?? "两条线"}上没有能接的销售（或业务线对不上）`
+    : !参与的.length ? "能接的销售都暂停或禁止了自动分配"
+    : !底.不限额 && 参与的.some((x) => x.配额 !== null) ? "能接的销售本月都已满额"
+    : "能接的销售都没填配额，不参与自动分配";
+}
+
+/**
  * 挑不到人时那一句（照 P-转-38 定时分配分不出去的说法：说清原因，不领、不动）
  */
 export function 挑不到话(为什么: string): string {
@@ -194,7 +208,8 @@ export async function 查重领取记沟通(tx: Prisma.TransactionClient, 记的
 
 /**
  * 号码撞上的那位联系人（新建线索项目的对接人默认是他）：联系人自己的电话 / 邮箱 / 微信对得上的，或号码子表里挂在联系人身上的；
- * 撞的是客户本身的号（客户电话、没挂联系人的号码行）= 主要联系人；都没有 = null。回收站里的联系人不算
+ * 撞的不是联系人身上的号（客户档案的邮箱 / 微信、没挂联系人的号码行）= 主要联系人；都没有 = null。回收站里的联系人不算。
+ * 客户电话格不再比（E-260 客户没有电话，号在主联系人身上，按上面联系人那几路就认得到）
  */
 export async function 撞上的联系人(db: 库, customerId: string, 号: 验好的号): Promise<string | null> {
   return 看全部(async () => {
@@ -251,7 +266,8 @@ export async function 认对接人(db: 库, customerId: string, 录: unknown): P
  */
 export async function 落对接人(tx: Prisma.TransactionClient, customerId: string, 认: 认好的对接人, 建的人: string): Promise<string> {
   if ("挂" in 认) {
-    const 在 = await tx.contact.findFirst({ where: { id: 认.挂, customerId, deletedAt: null }, select: { id: true } });
+    // 看全部：出口 C 挂的是同事客户名下的联系人，发起人的限定读看不到（3703 实操：报「刚被删了」）
+    const 在 = await 看全部(() => tx.contact.findFirst({ where: { id: 认.挂, customerId, deletedAt: null }, select: { id: true } }));
     if (!在) throw new 查重领取作废("选的对接人刚被删了或不在这位客户名下了，这次没领；关掉重新打开");
     return 在.id;
   }
@@ -264,21 +280,44 @@ export async function 落对接人(tx: Prisma.TransactionClient, customerId: str
  * 新建线索项目那条路（查重领取口径.新建线索项目）：事务里给这位刚出公海的客户另建一条线索项目，直接建在接手人名下。
  * 起点节点（同新建线索，第一个节点）、项目来源 = 这次选的渠道（客户来源不动，P-删-03 项目来源各记各的）、对接人 = 选的客户联系人（不新建、不改联系人）、
  * 创建人 = 市场成员、分配方式 = 自动分配；业务线 = 这次的分配方向，判不出按接手人的线、再没有内贸（同 补潜客培育，X-86 A1）。记第一行节点变更。
- * 「市场分给销售进线索验证」由调用方接着推（同新线索自动分配）
+ * 项目来源标记（Project.source）= 老客户重复咨询（重复咨询第一步：撞上公海客户另建的这条同样打标，客户 11-22）。
+ * 「市场分给销售进线索验证」由调用方接着推（同新线索自动分配）。
+ * 出口 C（repeat-inquiry.ts）也用它建：接手人 = 客户负责人（交销售那条路 = 系统挑中的销售，同一个事务里直接建在他名下，不经过市场成员名下）、分配方式 = 指定分配 / 自动分配、
+ * 线 = 调用方算好传进来；项目名由调用方给：查重领取 = 客户全称（市场成员领了能看这位客户）；出口 C = 「重复咨询-客户编号[-序号]」（同事的客户，名称不露给市场成员）。
+ * 只读来源字段（迁移 163，客户 E-218）：repeatOfCustomerId = 这位客户（两条路都写，留来源标记）；repeatSeq = 他的第几次重复咨询（重复咨询下一序号），
+ * 序号只给出口 C 记（项目名按序号起 = 传函数的那条路）：查重领取（项目名 = 客户全称）写空、不占号，客户先被查重领取过、出口 C 第一次照样是「重复咨询-NO.x」不带序。
+ * 建时写、之后没有入口改
  */
 export async function 查重领取建线索项目(
   tx: Prisma.TransactionClient,
-  a: { customerId: string; 客户名: string; 接手人: string; 创建人: string; 渠道: string; 对接人: string | null; 线: "内贸" | "外贸" | null; 分配方式: string },
+  a: { customerId: string; 项目名: string | ((序: number) => string); 接手人: string; 创建人: string; 渠道: string; 对接人: string | null; 线: "内贸" | "外贸" | null; 分配方式: string },
 ): Promise<string> {
   const 接手人线 = a.线 ?? (await tx.entMember.findUnique({ where: { userId: a.接手人 }, select: { line: true } }))?.line ?? null;
+  // 只有出口 C（项目名按序号起）取号；查重领取 repeatSeq 写空（唯一索引里空值互不相撞，同一位客户领几次都不撞）
+  let 序: number | null = null;
+  let 名: string;
+  if (typeof a.项目名 === "function") { 序 = await 重复咨询下一序号(tx, a.customerId); 名 = a.项目名(序); } else 名 = a.项目名;
   const p = await tx.project.create({
     data: {
-      name: a.客户名.trim().slice(0, 项目名上限) || "新线索", customerId: a.customerId, contactId: a.对接人,
+      name: 名.trim().slice(0, 项目名上限) || "新线索", customerId: a.customerId, contactId: a.对接人,
       ownerId: a.接手人, creatorId: a.创建人, amount: 0, currency: 默认币种, bizLine: 接手人线 === "外贸" ? "外贸" : "内贸",
       phase: 第一个节点.phase, node: 第一个节点.node,
       ...新项目默认值(true, { 分配方式: a.分配方式, 项目来源: a.渠道 }),
+      source: 重复咨询来源, repeatOfCustomerId: a.customerId, repeatSeq: 序,
     },
   });
   await tx.projectNodeLog.create({ data: { projectId: p.id, userId: a.创建人, toPhase: 第一个节点.phase, toNode: 第一个节点.node } });
   return p.id;
+}
+
+/**
+ * 这位客户下一次重复咨询是第几次（迁移 163，客户 E-218）：已有的带这位原始客户的线索里非空 repeatSeq 最大的 + 1，第一次 = 1。
+ * 只出口 C 取号；查重领取建的 repeatSeq 是空（_max 不算空值），不占号。
+ * 读字段、不解析项目名（负责人改了名照样对）；回收站里的、已结束的都算进去（看已删 + 看全部：同事名下的、删了的都要数到），保证不重号。
+ * 同一位客户下 (repeatOfCustomerId, repeatSeq) 有唯一索引兜底：两边同时交撞了号，后到的那笔抛唯一约束整笔回滚，调用方重来一次（出口C建线索）。
+ * 已知边界：回收站 30 天到期真删掉的那条不在库里了，它要是最大的那个号，下一次会再用一次这个号（那条线索已经不存在）
+ */
+export async function 重复咨询下一序号(tx: Prisma.TransactionClient, customerId: string): Promise<number> {
+  const r = await 看全部(() => 看已删(() => tx.project.aggregate({ where: { repeatOfCustomerId: customerId }, _max: { repeatSeq: true } })));
+  return (r._max.repeatSeq ?? 0) + 1;
 }

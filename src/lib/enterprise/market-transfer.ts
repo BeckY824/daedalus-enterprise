@@ -9,6 +9,7 @@ import { 企业版 } from "./switch";
 import { 补客户分配, 还补的客户分配 } from "./customer-assign-way";
 import { 客户分配序号, 分配方式叫法 } from "./dict";
 import { 市场分配进线索验证, 推回潜客培育 } from "./market-assign-node";
+import { 是重复咨询 } from "@/lib/project/system-created";
 
 /**
  * 市场首次分给销售 = 转客户（X-18）。分配线索、自动分配、客户页新建项目、新客户向导、首页 AI 录入（走向导）都走这一份：
@@ -44,6 +45,16 @@ export function 客户在市场手里(org: 组织, 客户: { salesOwnerId: strin
   return !!客户 && !客户.pool && 是市场角色(org, 客户.salesOwnerId) && !是销售角色(org, 客户.salesOwnerId);
 }
 
+/**
+ * 老客户重复咨询的线索（Project.source = 重复咨询来源）分给销售时客户不动（客户 E-204 B 路「交销售、客户不动」、E-213 第一节 2 问）：
+ * 出口 C 交销售那条路，客户在市场成员手里（渠运 / 市场管理名下）、线索按区域自动分给销售——这一下和之后每一次分配、超时转、主动放弃转出、
+ * 待分配补分、批量分配、从线索公海分配或领取，都不算「市场第一次分给销售」，客户和原负责人名下的项目一律不动（P-转-03、P-公海-11 的例外）。
+ * 分项目给（assign-actions.ts）、公海项目市场转（这里）、分配弹窗的两处预看都按它
+ */
+export function 重复咨询不转客户(p: { source?: string | null } | null | undefined): boolean {
+  return !!p && 是重复咨询(p);
+}
+
 /** 这位客户分给这个接手人，算不算转客户：客户在市场手里、接手的是另一位销售 */
 export function 算市场转客户(org: 组织, 客户: { salesOwnerId: string; pool: { customerId: string } | null } | null, 接手人: string): boolean {
   return 客户在市场手里(org, 客户) && 客户?.salesOwnerId !== 接手人 && 是销售角色(org, 接手人);
@@ -77,6 +88,8 @@ export async function 公海项目市场转(
   自己领: boolean,
 ): Promise<{ 原: string; 另进: number } | null> {
   if (!企业版()) return null;
+  // 老客户重复咨询的线索：客户不动（重复咨询不转客户）
+  if (重复咨询不转客户(await 看全部(() => db.project.findUnique({ where: { id: p.id }, select: { source: true } })))) return null;
   const 客户 = await 看全部(() => db.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } }, creator: { select: { userId: true } } } }));
   if (!客户 || !公海项目算市场转(org, 客户, 接手人, 自己领)) return null;
   return { 原: 客户.salesOwnerId, 另进: await 数进手的持有项目([p.customerId], 接手人, { 同事待分配: true, 除了: [p.id] }, db) };

@@ -5,6 +5,7 @@
  *   - 全量重算：分页、返回改了几个
  *   - 开关：项目模式关着、不是企业版，一格不改
  *   - 客户表单：开着时新建不给状态、整表保存不碰、行内改直接拒
+ *   - 重复咨询第一步（11-23）：在推项目优先；判无效终判「重复线索」（改过名也认）的那条不参与；结局改回进行中重新参与
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
@@ -24,7 +25,7 @@ vi.mock("@/lib/business", async (orig) => {
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 重算客户状态, 全量重算客户状态, 项目变了重算, 客户状态名们, 客户状态自动, 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
+import { 重算客户状态, 全量重算客户状态, 项目变了重算, 客户状态名们, 客户状态自动, 显示用客户状态, 重复线索名们, 重复线索id } from "@/lib/enterprise/cust-status-auto-db";
 import { 客户状态id } from "@/lib/enterprise/cust-status-auto";
 import { 改节点, 删项目 } from "@/lib/project/db";
 import { 恢复 } from "@/lib/enterprise/soft-delete";
@@ -103,6 +104,75 @@ describe("显示用客户状态（11-03 C1-4）", () => {
     expect(await 显示用客户状态(甲, "潜在")).toBe("潜在");
     const 乙 = await 客户();
     expect(await 显示用客户状态(乙, null)).toBe(null);
+  });
+});
+
+describe("重复咨询第一步：在推项目优先、重复线索不算", () => {
+  const 判无效 = (projectId: string, invalidReason: string, finalResult: string | null = "无效线索") =>
+    prisma.entLeadVerify.create({ data: { projectId, verdict: finalResult ?? "初验无效", invalidReason, finalResult } });
+
+  it("名下有在推项目：已结束的流失 / 丢单不压过它", async () => {
+    const 甲 = await 客户();
+    await 项目(甲, "线索", "线索验证", "线索流失");
+    await 项目(甲, "商机", "签约审批", "丢单");
+    await 重算客户状态(prisma, [甲]);
+    expect(await 状态(甲)).toBe("丢单");
+    await 项目(甲, "商机", "明确需求");
+    await 重算客户状态(prisma, [甲]);
+    expect(await 状态(甲)).toBe("意向");
+  });
+
+  it("在推的项目在线索公海里不算在推：流失照旧", async () => {
+    const 甲 = await 客户();
+    await 项目(甲, "线索", "线索验证", "线索流失");
+    const 公海 = await 项目(甲, "线索", "潜客培育");
+    await prisma.project.update({ where: { id: 公海 }, data: { pooledAt: new Date() } });
+    await 重算客户状态(prisma, [甲]);
+    expect(await 状态(甲)).toBe("流失");
+  });
+
+  it("终判无效、原因重复线索的那条不参与：只剩它 = null，旁边有结束的丢单就按丢单", async () => {
+    const 甲 = await 客户("潜在");
+    const 重复 = await 项目(甲, "线索", "线索验证", "线索流失");
+    await 判无效(重复, "重复线索");
+    await 重算客户状态(prisma, [甲]);
+    expect(await 状态(甲)).toBe(null);
+    expect(await 显示用客户状态(甲, null)).toBe(null);
+    await 项目(甲, "商机", "签约审批", "丢单");
+    await 重算客户状态(prisma, [甲]);
+    expect(await 状态(甲)).toBe("丢单");
+  });
+
+  it("别的无效原因、还没终判的照旧算流失", async () => {
+    const 甲 = await 客户();
+    await 判无效(await 项目(甲, "线索", "线索验证", "线索流失"), "需求不存在");
+    const 乙 = await 客户();
+    await 判无效(await 项目(乙, "线索", "线索验证", "线索流失"), "重复线索", null);
+    await 重算客户状态(prisma, [甲, 乙]);
+    expect([await 状态(甲), await 状态(乙)]).toEqual(["流失", "流失"]);
+  });
+
+  it("字典里改了名：新名、原名都认", async () => {
+    expect(await 重复线索名们()).toEqual(["重复线索"]);
+    await prisma.entDictItem.create({ data: { id: 重复线索id, kind: "invalid", name: "老客户重复咨询", sort: 5 } });
+    expect(await 重复线索名们()).toEqual(["重复线索", "老客户重复咨询"]);
+    const 甲 = await 客户();
+    await 判无效(await 项目(甲, "线索", "线索验证", "线索流失"), "老客户重复咨询");
+    const 乙 = await 客户();
+    await 判无效(await 项目(乙, "线索", "线索验证", "线索流失"), "重复线索");
+    await 重算客户状态(prisma, [甲, 乙]);
+    expect([await 状态(甲), await 状态(乙)]).toEqual([null, null]);
+  });
+
+  it("结局改回进行中：重新参与", async () => {
+    const 甲 = await 客户();
+    const p = await 项目(甲, "线索", "线索验证", "线索流失");
+    await 判无效(p, "重复线索");
+    await 重算客户状态(prisma, [甲]);
+    expect(await 状态(甲)).toBe(null);
+    await prisma.project.update({ where: { id: p }, data: { result: null } });
+    await 重算客户状态(prisma, [甲]);
+    expect(await 状态(甲)).toBe("潜在");
   });
 });
 

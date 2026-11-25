@@ -141,7 +141,7 @@ describe("建项目带出的首条沟通补录早日期：每个入口都回满�
       if ("error" in 好) throw new Error(好.error);
       // 两种各用一位客户（同一位客户上先建的那条项目是「别的项目」，会挡后一条）
       const 建 = (cid: string, 带出: boolean) => prisma.$transaction(async (tx) => {
-        const id = await 查重领取建线索项目(tx, { customerId: cid, 客户名: "客户", 接手人: 乙, 创建人: 乙, 渠道, 对接人: null, 线: "内贸", 分配方式: "自动分配" });
+        const id = await 查重领取建线索项目(tx, { customerId: cid, 项目名: "客户", 接手人: 乙, 创建人: 乙, 渠道, 对接人: null, 线: "内贸", 分配方式: "自动分配" });
         await 查重领取记沟通(tx, 乙, id, 好, new Date(), 带出);
       });
       const 客户乙 = (await prisma.customer.create({ data: { name: "客户乙", phone: "13800000002", salesOwnerId: 乙, createdAt: 那天(400) } })).id;
