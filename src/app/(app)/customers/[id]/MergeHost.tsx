@@ -6,7 +6,7 @@
  *     → 后果框（订单阶段项目、回款几笔……）→ 合并；成了走底部撤销条，写明 30 天内可在「历史变更」里整单撤回
  *   - 联系人「和另一位合成」：同一位客户名下另挑一位、定留谁 → 合成；成了走撤销条（撤回 = 撤回合并单）
  *   - 项目「换客户」：搜目标客户 → 预览（订单阶段、回款几笔、几条沟通、几位项目联系人挂靠过去）→ 后果框 → 换；
- *     不单独撤回，撤销条上的「撤销」就是换回去（总控 11-25：换错了再换回去）
+ *     不单独撤回（总控 11-25：换错了再换回去）；换完 8 秒撤销条上的「撤销」是真的反向操作（撤销换客户：挂靠、项目关联客户的身份、序号都回原样）
  * 谁能并、能换、能合成都在服务端判，这里只摆服务端说的原因。手机（< 768）两家并排改成上下两段（merge.css）
  */
 import "../merge.css";
@@ -18,7 +18,7 @@ import { showUndo } from "@/components/UndoBar";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { useShellNavGo } from "@/lib/nav-pending";
 import {
-  搜合并候选, 预览合并, 合并客户, 撤回合并单, 合成两位联系人, 预览项目换客户, 给项目换客户, type 合并候选,
+  搜合并候选, 预览合并, 合并客户, 撤回合并单, 合成两位联系人, 预览项目换客户, 给项目换客户, 撤销换客户, type 合并候选,
 } from "../merge-actions";
 import { 合并桥, type 合成候选人 } from "./merge-bridge";
 
@@ -395,18 +395,21 @@ function ProjectMoveDialog({ customerId, 客户名, projectId, 项目名, 关 }:
   async function 换() {
     if (!目标 || !预?.能换) return;
     const 去 = 目标;
+    // 换成了的那条日志：撤销条拿它调 撤销换客户（只认这一次）
+    const 这次 = { logId: "" };
     const 成 = await 问后果({
       题: `把项目「${项目名}」换到「${到}」？`,
       宽: 480,
       危: false,
       是: "换客户",
-      后果: [...清单.map((x) => ({ ...x, 级: x.标 === "不变" ? "常" as const : "警" as const })), { 标: "撤回", 话: "不单独撤回，换错了再换回来" }],
+      后果: [...清单.map((x) => ({ ...x, 级: x.标 === "不变" ? "常" as const : "警" as const })), { 标: "撤回", 话: "换完 8 秒内可撤销；过后不单独撤回，换错了再换回来" }],
       做: async () => {
         const r = await 给项目换客户(projectId, 去.id);
+        if (r.ok) 这次.logId = r.logId;
         return r;
       },
     });
-    if (!成) return;
+    if (!成 || !这次.logId) return;
     关();
     router.refresh();
     showUndo({
@@ -414,7 +417,7 @@ function ProjectMoveDialog({ customerId, 客户名, projectId, 项目名, 关 }:
       毫秒: 8000,
       另一个动作: { 话: "去看看", 做: () => 去页.push(`/customers/${去.id}?project=${projectId}`) },
       撤销: async () => {
-        const u = await 给项目换客户(projectId, customerId);
+        const u = await 撤销换客户(这次.logId);
         router.refresh();
         return u;
       },

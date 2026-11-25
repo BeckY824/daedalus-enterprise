@@ -30,7 +30,7 @@ const ACTION_LABEL: Record<string, string> = {
   // 出口 C 没建、待补建记录没写成（11-23，P-公海-15：整份记录在明细里，补建照它）
   unbuilt_failed: "待补建没写成",
   // 合并客户第一批（11-25）：合并客户 / 合成联系人记 merge，撤回记 merge-undo；项目换客户在项目、两位客户上各一条
-  "merge-undo": "撤回合并", "project-move-customer": "项目换客户",
+  "merge-undo": "撤回合并", "project-move-customer": "项目换客户", "project-move-customer-undo": "撤销换客户",
 };
 const ENTITY_LABEL: Record<string, string> = {
   EntRequiredBlock: "必填拦截记录",
@@ -60,7 +60,7 @@ const ACTION_COLOR: Record<string, string> = {
   create: "success", update: "processing", delete: "error",
   assign: "cyan", convert: "gold", deactivate: "warning", reactivate: "default", password: "default", ai_use: "purple", ai_apply: "green", ai_undo: "default",
   pool: "default", claim: "cyan", merge: "geekblue", restore: "green", purge: "error", export: "magenta",
-  "merge-undo": "default", "project-move-customer": "geekblue",
+  "merge-undo": "default", "project-move-customer": "geekblue", "project-move-customer-undo": "default",
 };
 
 /** 导出 = 设置 →「导出记录」：同一张表只放导出那几条，抬头换成导出的说法（11-03） */

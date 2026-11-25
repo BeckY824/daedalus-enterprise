@@ -149,7 +149,7 @@ describe("项目换客户", () => {
     const pre = await 项目换客户预览(prisma, p, 目标, 乙);
     expect(pre).toMatchObject({ 能换: true, 条数: { 沟通: 1, 订单: true, 联系人: 1, 回款: 0 } });
     const r = await 项目换客户(prisma, p, 目标, 乙);
-    expect(r).toEqual({ ok: true, 沟通: 1, 挂靠: 1 });
+    expect(r).toMatchObject({ ok: true, 沟通: 1, 挂靠: 1 });
     expect(await raw.project.findUniqueOrThrow({ where: { id: p } })).toMatchObject({ customerId: 目标, ownerId: 乙.id, contactId: 人 });
     expect((await raw.project.findUniqueOrThrow({ where: { id: 另一个 } })).customerId).toBe(原);
     expect((await raw.followUp.findUniqueOrThrow({ where: { id: f.id } })).customerId).toBe(目标);

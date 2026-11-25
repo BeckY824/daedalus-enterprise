@@ -277,7 +277,8 @@ export default async function CustomerDetailPage({
         if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return null;
         const 管 = 是系统管理员(me, org);
         const 本人 = !customer.pool && 能删除(me, org, customer.salesOwnerId);
-        return { 客户: 管 || 本人, 联系人: !customer.pool && (管 || 本人) };
+        // 同服务端（customer-merge.ts 合成联系人）：系统管理员在公海里也能合成；负责人本人要先领出来
+        return { 客户: 管 || 本人, 联系人: 管 || 本人 };
       })() : null}
       并入话={企 && typeof sp.merged === "string" ? await 并入提示(prisma, customer.id, sp.merged) : null}
       历史变更={历史摘要 ? <HistoryChanges customerId={customer.id} 摘要={历史摘要} 当前项目={项目区?.当前?.p.id ?? null} 客户名={[customer.name.trim() || customer.shortName, 客户编号文字(customer.customerNo)].filter(Boolean).join(" · ")} /> : null}

@@ -6,7 +6,7 @@
  * 界面（第三阶段）只调这里。前端传来的只认 id（和两个勾选），谁能并、能撤、能换、能合成全在数据层按登录的人重新判：
  *   - 合并预览 / 执行合并 / 撤回合并：lib/enterprise/customer-merge.ts
  *   - 合成联系人（同一位客户下两位是同一个人）：同上，合成单 kind = 联系人
- *   - 项目换客户：lib/enterprise/project-move-customer.ts
+ *   - 项目换客户：lib/enterprise/project-move-customer.ts；换完 8 秒撤销条上的「撤销」= 撤销换客户（按那次日志反着做，只认自己刚换的那一次）
  *   - 搜要并的那家：只搜自己能并的（负责人是自己、不在公海），系统管理员不限（E-277 f2：免得变成全公司查号）
  * 首页 AI 不给这些动作（合并是结构性改动，要人在预览里核对、勾选）：lib/ai 不引这个文件。
  */
@@ -24,7 +24,7 @@ import {
   合并预览, 执行合并, 撤回合并, 合成联系人, 撤回期限天数, 客户单, 联系人单,
   type 合并预览结果, type 合并完, type 没还原, type 同一个人,
 } from "@/lib/enterprise/customer-merge";
-import { 项目换客户预览, 项目换客户, type 换客户预览结果 } from "@/lib/enterprise/project-move-customer";
+import { 项目换客户预览, 项目换客户, 撤销换客户 as 撤销换客户库, type 换客户预览结果, type 换完 } from "@/lib/enterprise/project-move-customer";
 
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -130,7 +130,7 @@ export async function 预览项目换客户(projectId: string, 目标id: string)
   return { ok: true, 预览: await 项目换客户预览(prisma, projectId, 目标id, me) };
 }
 
-export async function 给项目换客户(projectId: string, 目标id: string): Promise<结果<{ 沟通: number; 挂靠: number }>> {
+export async function 给项目换客户(projectId: string, 目标id: string): Promise<结果<换完>> {
   const me = await 我();
   if (!是id(projectId) || !是id(目标id)) return 坏参数;
   const 原 = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { customerId: true } }));
@@ -138,6 +138,22 @@ export async function 给项目换客户(projectId: string, 目标id: string): P
   if (r.ok) {
     刷新(原?.customerId, 目标id);
     revalidatePath(`/projects/${projectId}`);
+  }
+  return r;
+}
+
+/** 撤销刚做的项目换客户（撤销条上的「撤销」）：logId = 给项目换客户 返回的那条日志；谁能撤、还能不能撤数据层判 */
+export async function 撤销换客户(logId: string): Promise<结果> {
+  const me = await 我();
+  if (!是id(logId)) return 坏参数;
+  const 日志 = await prisma.auditLog.findUnique({ where: { id: logId }, select: { entityId: true, detail: true } });
+  const r = await 撤销换客户库(prisma, logId, me);
+  if (r.ok && 日志?.entityId) {
+    try {
+      const d = JSON.parse(日志.detail ?? "{}") as { 从?: string; 到?: string };
+      刷新(d.从, d.到);
+    } catch { 刷新(); }
+    revalidatePath(`/projects/${日志.entityId}`);
   }
   return r;
 }

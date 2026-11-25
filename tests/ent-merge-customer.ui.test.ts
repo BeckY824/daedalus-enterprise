@@ -6,7 +6,7 @@ import { 补全动作桩 } from "./helpers/action-stubs";
 /* 合并客户第一批 · 界面（11-25，customers/[id]/MergeHost.tsx）：真组件 + globals.css + merge.css，只桩掉 merge-actions。钉的是：
    搜候选 → 并排预览：来源 / 创建人不同的格标红，要勾「已核对」才能点合并，两家一样时不出勾选；同名联系人先配上、不替人勾「是同一个人」；
    后果框列明订单阶段项目、回款笔数；成了撤销条写明 30 天内可整单撤回；拦下的只摆原因、合并点不了；
-   合成联系人、项目换客户（预览列明订单阶段、回款、沟通、项目联系人；后果框；撤销 = 换回去）；
+   合成联系人、项目换客户（预览列明订单阶段、回款、沟通、项目联系人；后果框；撤销 = 撤销换客户）；
    768 / 1024 / 1199 / 1280 / 1440 / 390 不横滚，手机两家改成上下两段，40 个汉字的客户名一行省略；暗色标红跟 token */
 let browser: Browser, bundle: string;
 const 长名 = "超长的测试客户名称用来看会不会撑破".repeat(2) + "出来的测试四"; // 40 个汉字
@@ -18,7 +18,8 @@ const 动作 = `
   export const 撤回合并单=async(id)=>{记('撤回',id);return {ok:true,没还原:[]}};
   export const 合成两位联系人=async(留,并)=>{记('合成',留,并);return {ok:true,mergeId:'m2'}};
   export const 预览项目换客户=async(p,t)=>{记('换预览',p,t);return {ok:true,预览:window.__换预览}};
-  export const 给项目换客户=async(p,t)=>{记('换',p,t);return {ok:true,沟通:4,挂靠:2}};`;
+  export const 给项目换客户=async(p,t)=>{记('换',p,t);return {ok:true,沟通:4,挂靠:2,logId:'L1'}};
+  export const 撤销换客户=async(id)=>{记('撤销换',id);return {ok:true}};`;
 const plugin: Plugin = { name: "merge-customer", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/(^|\/)merge-actions$/, 补全动作桩("src/app/(app)/customers/merge-actions.ts", 动作));
@@ -215,7 +216,7 @@ it("和另一位合成：挑另一位、定留谁 → 合成两位联系人(留,
   } finally { await page.close(); }
 }, 60_000);
 
-it("项目换客户：搜目标 → 预览列明订单阶段、回款几笔、几条沟通、几位项目联系人挂靠过去 → 后果框 → 换；撤销 = 换回原客户", async () => {
+it("项目换客户：搜目标 → 预览列明订单阶段、回款几笔、几条沟通、几位项目联系人挂靠过去 → 后果框 → 换；撤销 = 撤销换客户（按这次日志反着做，不是再换一次）", async () => {
   const { page, 错 } = await open(1280, { 种: "项目", projectId: "p1", 名: "超长的项目名称".repeat(6) }, { __换预览: { 能换: true, 原因: [], 条数: { 沟通: 4, 回款: 3, 订单: true, 联系人: 2 } } });
   try {
     await page.getByLabel("搜客户").fill("测试");
@@ -231,13 +232,14 @@ it("项目换客户：搜目标 → 预览列明订单阶段、回款几笔、�
     await page.getByTestId("move-go").click();
     const 框 = page.locator(".csq");
     await 框.waitFor();
-    expect(await 框.innerText()).toContain("不单独撤回，换错了再换回来");
+    expect(await 框.innerText()).toContain("换完 8 秒内可撤销；过后不单独撤回，换错了再换回来");
     await 框.getByRole("button", { name: "换客户" }).click();
     await page.locator(".undo-bar").waitFor();
     expect((await 调(page)).find((x) => x[0] === "换")).toEqual(["换", "p1", "b"]);
     await page.locator(".undo-btn").last().click();
-    await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).filter((x) => x[0] === "换").length === 2);
-    expect((await 调(page)).filter((x) => x[0] === "换")[1]).toEqual(["换", "p1", "a"]);
+    await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "撤销换"));
+    expect((await 调(page)).find((x) => x[0] === "撤销换")).toEqual(["撤销换", "L1"]);
+    expect((await 调(page)).filter((x) => x[0] === "换")).toHaveLength(1);
     expect(错).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
