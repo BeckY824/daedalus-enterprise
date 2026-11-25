@@ -126,6 +126,12 @@ const 等于 = (w: 谁) => (typeof w === "string" ? w : { in: [...w] });
  */
 export type 按线读 = { 本人: string; 项目: Record<string, unknown>; 客户: Record<string, unknown> };
 /**
+ * 条线总管理补「创建人在本线」（P-看-18，用户 11-24）：详情 能看项目 认负责人或创建人在本线，列表原来只按负责人（读）带。
+ * 范围里算好带下来（visibility.ts，判定同 line-viewer.ts 本线的项目）：项目 = 本线建的项目 where；客户 = 名下有本线建的项目的客户编号，
+ * 过上限是 null，退回 客户条件（按关联写的子查询），裸 SQL 快路回 null 走 Prisma（有市场只读）。只读：只在读里并进去，写照旧只按 我；这些客户在 别人的 里
+ */
+export type 条线建的读 = { 项目: Record<string, unknown>; 客户: string[] | null; 客户条件: Record<string, unknown> };
+/**
  * 原负责人回避（11-03 用户定：原负责人退到公海，他就看不到客户和项目）。范围里算好带下来，钩子里不现查（enterprise/visibility.ts 公海回避of）：
  * 本人 = 这个人；客户 = 负责人不是他、但他退过项目的公海客户；项目 = 他退的公海项目 + 他负责的公海客户下面的项目。
  * 名单过上限是 null：退回按关联写的条件（关联写不出「最后一次」，会多挡），裸 SQL 快路走回 Prisma。没东西要回避的人没有这一项，查询不多任何条件。
@@ -137,6 +143,8 @@ export type 限定 = {
   我: 谁 | null; 互看: boolean; 别人的: ReadonlySet<string>; 读?: 谁; 全拦?: boolean; 话?: string; 线索全看?: boolean; 线索圈?: readonly string[]; 市场?: readonly string[]; 按线?: 按线读; 市场全看?: readonly string[];
   /** 企业版管理员（业务角色 admin，11-01）：看全部、写一律拒，这一句就是拒的时候给人看的话（加上限定 统一拦） */
   只读?: string;
+  /** 条线总管理的「创建人在本线」（P-看-18），见 条线建的读 */
+  条线建的?: 条线建的读;
   公海回避?: 公海回避;
   /**
    * 项目组员（V3.5.1）级联看得到的客户编号，范围里算好带下来（enterprise/visibility.ts 组员客户of）：读时并进「看得到」那一句。
@@ -144,6 +152,12 @@ export type 限定 = {
    * 名单过上限是 null：退回按关联写的子查询
    */
   组员客户?: string[] | null;
+  /**
+   * 组员条件认的人（可见范围修复单 11-24 ②）：项目「点了同意的组员」、组员的客户（名单过上限退回的子查询）、卡点、裸 SQL 快路都只认这一位，
+   * 同详情 permissions.ts 能看项目 只认 p.已加入.includes(me.id)——管理者不按下属、虚线下属、条线成员进组认（P-看-01、P-看-08）。
+   * 企业版有 我 的分支都带；只看某人带本人 id（P-看-19：自己进组的项目和挂着的客户列表、详情都认，被盯的人进组的不认）。没带的（团队版、只看公海）按 我 认
+   */
+  本人?: string;
   /**
    * 待分配对本线管理放开（P-转-42，用户 11-21 定）：销售管理、条线总管理读项目时多放这一段——还在待分配、本线（含暂不分配）的新线索
    * （enterprise/await-assign-open.ts 本线放开条件）。只放读，写照旧只按 我；客户不跟着放开。「线索分配」关着、不是这两类的人没有这一项
@@ -246,9 +260,9 @@ export async function 虚线只读线索(db: PrismaClient, l: { ownerId: string 
  * 有 我 时改 / 删按哪个范围（加上限定 里写的那一支）：线索全看（市场管理开着线索分配）时线索按 线索圈（没分的 + 圈里的人负责的，读写同一句），
  * 别的照只按 我（不带读放开的虚线、市场、组员）
  */
-function 写范围条件(model: string, x: Pick<限定, "我" | "线索全看" | "线索圈" | "公海回避"> & { 我: 谁 }): Record<string, unknown> | null {
+function 写范围条件(model: string, x: Pick<限定, "我" | "线索全看" | "线索圈" | "公海回避" | "本人"> & { 我: 谁 }): Record<string, unknown> | null {
   if (x.线索全看 && model === "Lead") return x.线索圈 ? { OR: [{ ownerId: null }, { ownerId: { in: [...x.线索圈] } }] } : null;
-  return 限定条件(model, x.我, false, undefined, undefined, x.公海回避);
+  return 限定条件(model, x.我, false, undefined, undefined, x.公海回避, undefined, undefined, false, undefined, x.本人);
 }
 
 /**
@@ -268,7 +282,8 @@ export async function 虚线只读挡(db: PrismaClient, ids: string[]): Promise<
   const 中 = await 虚线只读的(db, ids);
   if (!中.length) return null;
   const x = await 现在的限定(db);
-  const 是 = x.读 && x.市场 ? "虚线下属或市场成员相关的客户" : x.市场 ? "市场成员相关的客户" : "虚线下属的客户";
+  // 多选那句跟单选那句（话）说同一个原因（条线总管理说本线、组员说加入的项目……）；话 不是「这是…：只能看」那样的照原来
+  const 是 = x.话?.match(/^这是(.+?)：只能看/)?.[1] ?? (x.读 && x.市场 ? "虚线下属或市场成员相关的客户" : x.市场 ? "市场成员相关的客户" : "虚线下属的客户");
   return ids.length === 1 ? x.话 ?? "" : `选中的有 ${中.length} 位是${是}：只能看，不能改、不能转、不能删。去掉${中.length > 1 ? "这几位" : "这位"}再试`;
 }
 
@@ -278,12 +293,24 @@ export async function 虚线只读挡(db: PrismaClient, ids: string[]): Promise<
  */
 export async function 有市场只读(db: PrismaClient): Promise<boolean> {
   const x = await 现在的限定(db);
-  return !!x.市场?.length || !!x.市场全看?.length;
+  // 条线建的客户名单过上限（null）：裸 SQL 不另写关联子查询，同样走 Prisma
+  return !!x.市场?.length || !!x.市场全看?.length || x.条线建的?.客户 === null;
+}
+
+/** 这个请求条线总管理按「创建人在本线」多看得到的客户编号（P-看-18；裸 SQL 快路自己拼上，见 限定.条线建的）。没有回 undefined；过上限 null（有市场只读 已让快路回 null） */
+export async function 现在的条线建的客户(db: PrismaClient): Promise<string[] | null | undefined> {
+  return (await 现在的限定(db)).条线建的?.客户;
 }
 
 /** 这个请求项目组员级联看得到哪些客户（裸 SQL 快路自己拼上；见 限定.组员客户） */
 export async function 现在的组员客户(db: PrismaClient): Promise<string[] | null | undefined> {
   return (await 现在的限定(db)).组员客户;
+}
+
+/** 这个请求组员条件认谁（裸 SQL 快路组员名单过上限退回子查询时用；见 限定.本人）：没带 本人 的按 我 认 */
+export async function 现在的组员本人(db: PrismaClient): Promise<谁 | null> {
+  const x = await 现在的限定(db);
+  return x.本人 ?? x.我;
 }
 
 /** 这个请求要回避哪些公海客户和项目（裸 SQL 快路自己拼上；见 公海回避） */
@@ -297,9 +324,9 @@ export async function 现在的公海回避(db: PrismaClient): Promise<公海回
  * 项目列表按客户名 / 号码 / 客户来源筛时，客户不露的不算中（lib/project/list.ts 露客户条件），总数和分页才能在库里算
  */
 export async function 客户读条件(db: PrismaClient): Promise<Record<string, unknown> | null> {
-  const { 我, 读, 互看, 市场, 按线, 公海回避, 组员客户, 市场全看 } = await 现在的限定(db);
+  const { 我, 读, 互看, 市场, 按线, 公海回避, 组员客户, 市场全看, 本人, 条线建的 } = await 现在的限定(db);
   if (!我) return 公海回避 ? 只回避条件("Customer", 公海回避) : null;
-  return 限定条件("Customer", 读 ?? 我, !读 && 互看, 市场, 按线, 公海回避, 组员客户, 市场全看);
+  return 限定条件("Customer", 读 ?? 我, !读 && 互看, 市场, 按线, 公海回避, 组员客户, 市场全看, false, undefined, 本人, 条线建的);
 }
 
 /**
@@ -409,10 +436,13 @@ export function 看得到(c: { salesOwnerId: string | null; channelOwnerId?: str
 
 /**
  * 每个要限定的模型加的那一句 where。互看读 = 开了互看时的读（查、数、汇总）：客户这条线不再限定，
- * 计划 / 待办都挂在客户上、全放开；线索只放开挂了客户的；未归属联系人、操作日志照旧只看自己的
+ * 计划 / 待办都挂在客户上、全放开；线索只放开挂了客户的；未归属联系人、操作日志照旧只看自己的。
+ * 本人 = 组员条件认的那一位（见 限定.本人）；不传按 谁们 认。条线建的 = 条线总管理补「创建人在本线」（P-看-18），只在读时传
  */
-export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市场?: readonly string[], 按线?: 按线读, 回避?: 公海回避, 组员?: string[] | null, 市场全看?: readonly string[], 不在公海 = false, 待分配放开?: Record<string, unknown>): Record<string, unknown> | null {
+export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市场?: readonly string[], 按线?: 按线读, 回避?: 公海回避, 组员?: string[] | null, 市场全看?: readonly string[], 不在公海 = false, 待分配放开?: Record<string, unknown>, 本人?: string, 条线建的?: 条线建的读): Record<string, unknown> | null {
   const 我 = 等于(谁们);
+  // 组员条件只认本人（11-24 ②）：项目、组员的客户、卡点里「点了同意的组员」那一支
+  const 组员人 = 本人 ?? 我;
   if (互看读) {
     switch (model) {
       case "Lead":
@@ -423,11 +453,11 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
         return { ownerId: 我 };
       // 卡点不跟互看放开：同事的客户看得到，卡点还是只给项目上的人（E11）
       case "EntBlocker":
-        return 看得到的卡点(我, 可见客户(谁们));
+        return 看得到的卡点(我, 可见客户(谁们), undefined, undefined, 组员人);
       case "EntBlockerLog":
       case "EntBlockerClaim":
       case "EntBlockerReasonLink":
-        return { blocker: 看得到的卡点(我, 可见客户(谁们)) };
+        return { blocker: 看得到的卡点(我, 可见客户(谁们), undefined, undefined, 组员人) };
       default:
         return null;
     }
@@ -438,8 +468,13 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
   const 按人: Record<string, unknown>[] = 市场?.length ? [可见客户(谁们, 去公海), 市场相关客户(市场)] : [可见客户(谁们, 去公海)];
   // 企业版项目组员（V3.5.1）：加入的项目级联——读时项目挂的客户（和下面的联系人、沟通……）跟着看得到；写照旧只按 我（不传 组员）。
   // 名单是算好的编号；过上限（null）退回子查询；空名单不加
-  if (企业版() && 组员 === null) 按人.push(组员的客户(我));
+  if (企业版() && 组员 === null) 按人.push(组员的客户(组员人));
   else if (企业版() && 组员?.length) 按人.push({ id: { in: 组员 } });
+  // 条线总管理（P-看-18）：名下有本线建的项目的客户，只读；名单过上限退回关联子查询
+  if (企业版() && 条线建的) {
+    if (条线建的.客户 === null) 按人.push(条线建的.客户条件);
+    else if (条线建的.客户.length) 按人.push({ id: { in: 条线建的.客户 } });
+  }
   const 原客户 = 按线 ? { OR: [...按人, 按线.客户] } : 按人.length > 1 ? { OR: 按人 } : 按人[0];
   // 原负责人回避（11-03）：客户这条线全跟着收窄，项目、卡点另外按项目名单收窄
   const 避客 = 回避 ? (去公海 ? 非公海的回避条件(回避) : 回避客户条件(回避)) : null;
@@ -466,17 +501,17 @@ export function 限定条件(model: string, 谁们: 谁, 互看读 = false, 市�
     // 项目模式 1a（2026-10-23）：项目跟客户走；负责人不是这位客户的销售时，自己负责的项目也看得到；
     // 放在项目公海里的谁都看得到（才能领）。企业版（10-26）：点了同意的组员也看得到，只是邀请着的不算
     case "Project":
-      return 看得到的项目(我, 客户, 市场, 按线, 避项, 市场全看, 待分配放开);
+      return 看得到的项目(我, 客户, 市场, 按线, 避项, 市场全看, 待分配放开, 组员人, 条线建的);
     // 企业版卡点（10-26，11-01 改）：项目负责人、点了同意的组员、看得到这位客户的、认领了的、发布的；
     // 项目放在公海里时卡点不跟着公开（E11：无关的人直连接口也拿不到）
     case "EntBlocker":
-      return 看得到的卡点(我, 客户, 按线, 避项);
+      return 看得到的卡点(我, 客户, 按线, 避项, 组员人);
     case "EntBlockerLog":
     case "EntBlockerClaim":
     case "EntBlockerReasonLink":
-      return { blocker: 看得到的卡点(我, 客户, 按线, 避项) };
+      return { blocker: 看得到的卡点(我, 客户, 按线, 避项, 组员人) };
     default:
-      return 跟客户走(model, 客户) ?? (跟项目的表.has(model) ? { project: 看得到的项目(我, 客户, 市场, 按线, 避项, 市场全看, 待分配放开) } : null);
+      return 跟客户走(model, 客户) ?? (跟项目的表.has(model) ? { project: 看得到的项目(我, 客户, 市场, 按线, 避项, 市场全看, 待分配放开, 组员人, 条线建的) } : null);
   }
 }
 
@@ -584,29 +619,31 @@ export function 只回避条件(model: string, 避: 公海回避, 不在公海 =
   }
 }
 
-function 看得到的项目(我: string | { in: string[] }, 客户: Record<string, unknown>, 市场?: readonly string[], 按线?: 按线读, 避项?: Record<string, unknown> | null, 市场全看?: readonly string[], 待分配放开?: Record<string, unknown>) {
+function 看得到的项目(我: string | { in: string[] }, 客户: Record<string, unknown>, 市场?: readonly string[], 按线?: 按线读, 避项?: Record<string, unknown> | null, 市场全看?: readonly string[], 待分配放开?: Record<string, unknown>, 组员人: string | { in: string[] } = 我, 条线建的?: 条线建的读) {
   if (按线) return { OR: [{ pooledAt: { not: null } }, { members: { some: { userId: 按线.本人, inviteStatus: "JOINED" } } }, 按线.项目] };
   if (企业版()) {
     // 11-01 只认业务角色（lib/enterprise/permissions.ts 能看项目）：企业版项目不再跟客户走——
-    // 负责人是自己（或实线 / 虚线下属，范围已按业务线筛过）、在公海、点了同意的组员；市场成员看自己负责的、
+    // 负责人是自己（或实线 / 虚线下属，范围已按业务线筛过）、在公海、自己点了同意进的组（只认本人，11-24 ②：下属进组的同 详情不露）；市场成员看自己负责的、
     // 自己建的且负责人不为空（不在公海）的项目（只读，11-04 用户定：市场成员 = 自身为创建人且负责人不为空的数据）。
     // 同一位客户下同事负责的项目看不到
-    const 或: Record<string, unknown>[] = [{ ownerId: 我 }, { pooledAt: { not: null } }, { members: { some: { userId: 我, inviteStatus: "JOINED" } } }];
+    const 或: Record<string, unknown>[] = [{ ownerId: 我 }, { pooledAt: { not: null } }, { members: { some: { userId: 组员人, inviteStatus: "JOINED" } } }];
     if (市场?.length) 或.push({ ownerId: { in: [...市场] } }, { creatorId: { in: [...市场] }, pooledAt: null, ownerId: { not: "" } });
     // 市场管理（11-05 客户定）：本人 + 直属下级建的，不管在公海、已转给销售还是判了无效
     if (市场全看?.length) 或.push({ creatorId: { in: [...市场全看] } });
     // 待分配对本线管理放开（P-转-42）：只在读里有（写走 限定条件 不带这一项）
     if (待分配放开) 或.push(待分配放开);
+    // 条线总管理（P-看-18）：创建人在本线的，同详情 能看项目 的 本线的项目；只在读里有
+    if (条线建的) 或.push(条线建的.项目);
     // 原负责人回避（11-03）：挡在整段外面，他自己是组员、下属负责的也不例外——不在公海了才从名单里出来
     return 避项 ? { AND: [{ OR: 或 }, 避项] } : { OR: 或 };
   }
   return { OR: [{ ownerId: 我 }, { customer: 客户 }, { pooledAt: { not: null } }] };
 }
 
-function 看得到的卡点(我: string | { in: string[] }, 客户: Record<string, unknown>, 按线?: 按线读, 避项?: Record<string, unknown> | null) {
+function 看得到的卡点(我: string | { in: string[] }, 客户: Record<string, unknown>, 按线?: 按线读, 避项?: Record<string, unknown> | null, 组员人: string | { in: string[] } = 我) {
   const 项目 = 按线
     ? { OR: [{ AND: [{ pooledAt: null }, 按线.项目] }, { members: { some: { userId: 按线.本人, inviteStatus: "JOINED" } } }] }
-    : { OR: [{ ownerId: 我 }, { customer: 客户 }, { members: { some: { userId: 我, inviteStatus: "JOINED" } } }] };
+    : { OR: [{ ownerId: 我 }, { customer: 客户 }, { members: { some: { userId: 组员人, inviteStatus: "JOINED" } } }] };
   // 11-01 起没有处理人，认领人一人一行（claims）；角色「可看全部」、直属上级在 lib/project/blocker.ts 里另算（那边绕开这层）
   const 卡点 = { OR: [{ claims: { some: { userId: 我 } } }, { creatorId: 我 }, { project: 项目 }] };
   return 避项 ? { AND: [卡点, { project: 避项 }] } : 卡点;
@@ -764,7 +801,7 @@ export function 加上限定(db: PrismaClient): PrismaClient {
           if (写操作.has(operation)) 记一次写库();
           // 企业版软删（P9）：回收站里的统一滤掉，比业务员范围先算（老板也看不到删了的，除非在 看已删() 里）
           const args = (企业版() && !在看已删() ? 去掉已删(model, operation, 原参数) : 原参数) as typeof 原参数;
-          const { 我, 互看, 别人的, 读, 全拦, 话, 线索全看, 线索圈, 市场, 按线, 公海回避, 组员客户, 市场全看, 待分配放开 } = await 现在的限定(db);
+          const { 我, 互看, 别人的, 读, 全拦, 话, 线索全看, 线索圈, 市场, 按线, 公海回避, 组员客户, 市场全看, 待分配放开, 本人, 条线建的 } = await 现在的限定(db);
           if (!我) {
             if (!公海回避) return 写操作.has(operation) ? query(args).finally(记一次写库) : query(args);
             // 规则关着（别人都不限定）：只加原负责人回避这一段，读写都挡
@@ -776,7 +813,7 @@ export function 加上限定(db: PrismaClient): PrismaClient {
           }
           // 有只读的客户：团队版互看、企业版虚线下属、市场成员相关（10-31）、待分配对本线管理放开的新线索（P-转-42，读得到改不到）。
           // 读谁 / 读互看 = 查、数、带出来的关联按哪个范围放开
-          const 有只读 = 互看 || !!读 || !!市场 || !!市场全看 || !!待分配放开 || 别人的.size > 0;
+          const 有只读 = 互看 || !!读 || !!市场 || !!市场全看 || !!待分配放开 || !!条线建的 || 别人的.size > 0;
           const 读谁 = 读 ?? 我;
           const 读互看 = !读 && 互看;
           if (有只读 && 新建操作.has(operation)) 拦同事客户下新建(model, operation, (args ?? {}) as 查询参数, 别人的, 全拦, 话);
@@ -786,9 +823,9 @@ export function 加上限定(db: PrismaClient): PrismaClient {
             if (typeof id === "string" && 别人的.has(id)) throw new 只读错误(话);
           }
           // 带出来的关联都是读：市场那段跟着放开。写（改、删）照旧只按 我，市场相关的改不到
-          const a = 限定关联(model, (args ?? {}) as 查询参数, (m) => 限定条件(m, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, false, 待分配放开));
+          const a = 限定关联(model, (args ?? {}) as 查询参数, (m) => 限定条件(m, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, false, 待分配放开, 本人, 条线建的));
           const 线索放 = 线索全看 && model === "Lead";
-          const 条件 = !限定的操作.has(operation) ? null : 线索放 || 写操作.has(operation) ? 写范围条件(model, { 我, 线索全看, 线索圈, 公海回避 }) : 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, model === "Customer" && 限在非公海(a.where), 待分配放开);
+          const 条件 = !限定的操作.has(operation) ? null : 线索放 || 写操作.has(operation) ? 写范围条件(model, { 我, 线索全看, 线索圈, 公海回避, 本人 }) : 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, model === "Customer" && 限在非公海(a.where), 待分配放开, 本人, 条线建的);
           // 原来的 where 原样摊开、条件并进 AND：findUnique / update / delete 要求唯一键留在最外层
           const q0 = query((条件 ? { ...a, where: 并限定(a.where, 条件) } : a) as typeof args);
           const q = 写操作.has(operation) ? q0.finally(记一次写库) : q0;
@@ -799,12 +836,12 @@ export function 加上限定(db: PrismaClient): PrismaClient {
             // 读得到、改不到：多半是只读客户下面的那一条（也可能真在别处删了）
             if ((e as { code?: string } | null)?.code === "P2025") {
               // 只因待分配放开才算「有只读」的（销售管理、条线总管理没别的只读范围）：只读的只有那几条项目和挂在项目上的，别的表照旧原样抛
-              const 只因待分配 = !!待分配放开 && !互看 && !读 && !市场 && !市场全看 && 别人的.size === 0;
+              const 只因待分配 = !!待分配放开 && !互看 && !读 && !市场 && !市场全看 && !条线建的 && 别人的.size === 0;
               if (只因待分配 && model !== "Project" && !跟项目的表.has(model)) throw e;
               // 要说「待分配的只能看和分配」之前，先按读范围数一下这一条（#392 审查）：数不到 = 真不在了、或本来就看不到（不是放开的那条），原样抛，
               // 免得没有可分配的也提示「只能分配」。交互式事务里不数（SQLite 只开一条连接，事务外再查要等到事务超时），照旧直接提示
               if (!市场 && !读 && !话 && 待分配放开 && !事务里.getStore()) {
-                const 读条件 = 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, false, 待分配放开);
+                const 读条件 = 限定条件(model, 读谁, 读互看, 市场, 按线, 公海回避, 组员客户, 市场全看, false, 待分配放开, 本人, 条线建的);
                 const 表 = (db as unknown as Record<string, { count?: (x: unknown) => Promise<number> }>)[model[0].toLowerCase() + model.slice(1)];
                 const 有 = 表?.count ? await 表.count({ where: 读条件 ? 并限定(a.where, 读条件) : a.where }).catch(() => 1) : 1;
                 if (!有) throw e;

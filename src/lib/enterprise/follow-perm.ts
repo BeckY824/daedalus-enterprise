@@ -13,7 +13,7 @@
 import { cache } from "react";
 import { 企业版 } from "./switch";
 import { 权限组织, type 组织 } from "./org";
-import { 能删除, 有业务角色, 只读角色, 只读话of, 没设业务角色, 能改客户 } from "./permissions";
+import { 能删除, 有业务角色, 只读角色, 只读话of, 没设业务角色, 能改客户, 只看的人, 只看某人话 } from "./permissions";
 import { defaultClient, prisma } from "@/lib/prisma";
 import { 限定的我, 看全部 } from "@/lib/team-scope";
 import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
@@ -142,6 +142,8 @@ export async function 本人限时改挡(me: 谁, f: { id: string; ownerId: stri
   const org = await 权限组织();
   if (!org || 没设业务角色(org, me.id)) return 没业务角色话;
   if (只读角色(me, org)) return 只读话of(me, org);
+  // 设了「只看某人」的是只读身份（P-看-19 只放开看）：进了组也不能改
+  if (只看的人(org, me.id)) return 只看某人话;
   // 组员看客户是连带只读，项目按 id 取全（同 定沟通挂哪个项目），能不能记下面判
   const 挂 = await 看全部(() => defaultClient.followUpProject.findUnique({
     where: { followUpId: f.id },

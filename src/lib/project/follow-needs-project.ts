@@ -14,7 +14,7 @@ import { 全进程上下文 } from "../process-als";
 import { 企业版 } from "../enterprise/switch";
 import { 权限组织 } from "../enterprise/org";
 import type { 组织 } from "../enterprise/org-core";
-import { 能编辑项目, 只读角色, 没设业务角色, type 谁 } from "../enterprise/permissions";
+import { 能编辑项目, 只读角色, 没设业务角色, 只看的人, 只看某人话, type 谁 } from "../enterprise/permissions";
 
 export { 沟通没项目话, 沟通没在推项目话, 沟通项目已结束话, 沟通项目在公海话, 沟通项目不在话, 沟通要选项目话, 沟通不是组员话, 沟通都不能记话, 沟通客户在公海话, 请负责人建项目话, 待办改沟通话, 要挂项目的类型 } from "./follow-needs-project-text";
 import { 沟通没项目话, 沟通没在推项目话, 沟通项目已结束话, 沟通项目在公海话, 沟通项目不在话, 沟通要选项目话, 沟通不是组员话, 沟通都不能记话 } from "./follow-needs-project-text";
@@ -33,11 +33,12 @@ export function 免挂项目中(): boolean {
 
 /**
  * 能不能往这个项目记沟通：能管项目（负责人本人、系统管理员）；企业版再加上已进组（JOINED）的项目组员——
- * 公海里的、只读角色（管理员只读、教练）、没设业务角色的组员不行
+ * 公海里的、只读角色（管理员只读、教练）、没设业务角色、设了「只看某人」的组员不行
+ * （P-看-19 只放开看：只看某人进了组也是只读身份，同 能编辑项目 一律拒）
  */
 export function 能往项目记沟通(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null, 组员状态: string | null | undefined): boolean {
   if (能编辑项目(me, p, org)) return true;
-  return 企业版() && !!org && !p.pooledAt && 组员状态 === "JOINED" && !只读角色(me, org) && !没设业务角色(org, me.id);
+  return 企业版() && !!org && !p.pooledAt && 组员状态 === "JOINED" && !只读角色(me, org) && !没设业务角色(org, me.id) && !只看的人(org, me.id);
 }
 
 export type 可记项目 = { id: string; name: string };
@@ -69,7 +70,10 @@ export async function 核沟通项目(me: 谁, customerId: string, projectId: st
   if (!p || p.customerId !== customerId) return 沟通项目不在话;
   if (p.pooledAt) return 沟通项目在公海话;
   if (p.result) return 沟通项目已结束话;
-  if (!能往项目记沟通(me, p, await 权限组织(), p.members[0]?.inviteStatus)) return 沟通不是组员话;
+  const org = await 权限组织();
+  // 设了「只看某人」的进了组也只能看（P-看-19）：说只读那句，不说「只有组员能记」
+  if (企业版() && 只看的人(org, me.id)) return 只看某人话;
+  if (!能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)) return 沟通不是组员话;
   return null;
 }
 

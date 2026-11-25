@@ -13,7 +13,7 @@
  * 例外：等「市场复核」、我能拍板的那条（复核要进详情看来龙去脉），照旧能进。
  */
 import { 实线下属, type 组织 } from "./org-core";
-import { 只看的人, 业务线放行 } from "./permissions";
+import { 只看的人, 业务线放行, 是市场角色, 能看全部, 只读角色 } from "./permissions";
 
 export type 市场视角 = "市场成员" | "市场管理";
 
@@ -70,4 +70,30 @@ export function 市场挡详情(
   const 视角 = 市场视角of(org, 我, 市场成员集);
   if (!视角 || !org || p.pooledAt) return false;
   return 只看进度(市场圈(org, 我, 视角), 我, p, 等我复核);
+}
+
+/**
+ * 按部门认的市场成员、没有市场角色（P-看-17，用户 11-24；X-165 11-25 扩到不论兼什么业务角色）：在市场成员名单里（M-角色-02 按部门认，或逐人设的），
+ * 没有市场角色（市场管理、渠运），市场视角of 也不认他（兼着销售 / 销管 / 总管理 / 教练 / 只读管理员，或设了只看某人）。
+ * 口径同列表放开的条件（visibility.ts 市场的人：名单里的给 [id]，P-看-05）：项目页按他业务角色那套画、列表不收窄，
+ * 详情 能看项目 只认业务角色，自己建的、已分给别人的可能进不去（兼销管的按下属口径能进的照常进，调用方另判 能看项目）。
+ * 设了「只看某人」的不算：列表走只看某人那条（visibility.ts），不按 市场的人 放开
+ */
+export function 部门市场无市场角色(org: 组织 | null, id: string, 市场成员集: ReadonlySet<string>): boolean {
+  if (!org || 只看的人(org, id) || !市场成员集.has(id)) return false;
+  // 系统管理员、只读管理员、教练详情本来都进得去，不会被挡；排除掉，免得手动带 hl 打开客户页落到市场那套项目页
+  if (能看全部({ id }, org) || 只读角色({ id }, org)) return false;
+  return !是市场角色(org, id) && 市场视角of(org, id, 市场成员集) === null;
+}
+
+/**
+ * 这条是不是「部门市场无市场角色」的人点进来、该跳市场视角页（P-界面-11）而不是 404 的那种：自己建的、已分给别人（有负责人、不在公海）、自己也没进组。
+ * 只认列表里真有这一行的（同 市场项目条件 的「建的人在圈里、已有负责人」），调用方另判 能看项目 不过才跳
+ */
+export function 部门市场无市场角色该转向(
+  org: 组织 | null, 我: string, 市场成员集: ReadonlySet<string>,
+  p: { ownerId: string; creatorId?: string | null; pooledAt?: Date | null; 已加入?: readonly string[] },
+): boolean {
+  if (p.pooledAt || !p.ownerId || p.ownerId === 我 || p.creatorId !== 我 || p.已加入?.includes(我)) return false;
+  return 部门市场无市场角色(org, 我, 市场成员集);
 }

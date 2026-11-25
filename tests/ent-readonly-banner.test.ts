@@ -8,6 +8,7 @@ import { 建组织, type 组织 } from "@/lib/enterprise/org-core";
 import { 只读原因of, 只读横幅 } from "@/lib/enterprise/readonly-reason";
 import { 虚线只读话, 组员只读话, 虚线或市场只读话 } from "@/lib/enterprise/visibility";
 import { 市场只读话 } from "@/lib/enterprise/market";
+import { 只看某人话 } from "@/lib/enterprise/permissions";
 
 type 行 = { id: string; bizRole: string; line?: string | null; managerId?: string | null; dottedManagerId?: string | null };
 const 组织of = (们: 行[]): 组织 =>
@@ -76,5 +77,11 @@ describe("横幅文案", () => {
     const 记录 = readFileSync("src/app/(app)/customers/[id]/RecordView.tsx", "utf8");
     expect(记录).toContain("只读横幅?.标题 ??");
     expect(记录).toContain("只读横幅?.说明 ??");
+  });
+  it("只看某人进了组（P-看-19）：组员横幅不说「沟通能记」，照用只看某人那句", () => {
+    const x = 只读横幅("组员", "甲", "客户", 只看某人话);
+    expect(x.说明).toContain(只看某人话);
+    expect(x.说明).not.toContain("沟通只能记");
+    expect(只读横幅("组员", "甲", "客户", 组员只读话).说明).toContain("沟通只能记");
   });
 });

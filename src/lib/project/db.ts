@@ -22,7 +22,7 @@ import { 落到渠道 } from "@/lib/enterprise/channel-main";
 import { 是主渠道入口, 渠道启用 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
-import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读话of, 有业务角色, 是系统管理员 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读话of, 有业务角色, 是系统管理员, 只看的人, 只看某人话 } from "@/lib/enterprise/permissions";
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
@@ -93,7 +93,7 @@ export function 能改组员(me: 谁, p: { ownerId: string; pooledAt?: Date | nu
  */
 export function 能加组员(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null, 我在组里: boolean): boolean {
   if (能改组员(me, p, org)) return true;
-  return 企业版() && !!org && 我在组里 && !p.pooledAt && 有业务角色(me, org, "project_ops") && !只读角色(me, org);
+  return 企业版() && !!org && 我在组里 && !p.pooledAt && 有业务角色(me, org, "project_ops") && !只读角色(me, org) && !只看的人(org, me.id);
 }
 /** 节点这一块和别的内容一个口径（11-01 起直属上级、总管理不再代推，C2） */
 export const 能改节点 = 能管项目;
@@ -128,7 +128,7 @@ export function 往前推不给(me: 谁, ownerId: string, org: 组织 | null, �
 
 /** 企业版「仅上级推」：没在公海、我是负责人的直属上级 → 这一步能往前推（只往前推，改节点里另拦往后退、点结局） */
 export function 上级只推(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, 推的组织: 组织 | null, 规则: 组织规则): boolean {
-  return 企业版() && !!推的组织 && !负责人可推(规则) && !p.pooledAt && 直属上级of(推的组织, p.ownerId) === me.id;
+  return 企业版() && !!推的组织 && !负责人可推(规则) && !p.pooledAt && 直属上级of(推的组织, p.ownerId) === me.id && !只看的人(推的组织, me.id);
 }
 
 /**
@@ -1454,6 +1454,8 @@ export async function 记项目沟通(
     if (!能管) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
       // 企业版（11-17 客户定，改 11-01 规则 6）：已进组的项目组员也能把沟通记到别人名下的项目上，记录上是谁记的就是谁，负责人不变
+      // 设了「只看某人」的进了组也只能看（P-看-19 只放开看），说只读那句
+      if (企业版() && 只看的人(org, me.id)) return { ok: false as const, error: 只看某人话 };
       if (企业版() && !能往项目记沟通(me, p, org, 组员?.inviteStatus)) return { ok: false as const, error: 沟通不是组员话 };
       if (组员?.inviteStatus !== "JOINED") return { ok: false as const, error: "只有项目负责人、项目组成员、老板或主管能记沟通" };
     }

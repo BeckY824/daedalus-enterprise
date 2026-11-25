@@ -300,3 +300,79 @@ describe("关键词分页 = 老路", () => {
     }
   });
 });
+
+/**
+ * 组员的客户（可见范围修复单 11-24 审查）：快路「客户」页签原来只按负责人算，本人以组员身份进了别人负责的项目，
+ * 那位客户不带关键词看得到（Prisma 限定层带组员那支）、带关键词搜不出。组员只认本人（11-24 ②）：下属进组上级不跟着看。
+ * 名单（≤300 位）和过上限退回子查询两种写法都对拍老路。放在最后：前面几组的数按没有项目算
+ */
+describe("关键词分页 = 老路（项目组员的客户）", () => {
+  const 项目们: string[] = [];
+  const 多的: string[] = [];
+  let 那位: { id: string; name: string };
+  beforeAll(async () => {
+    // 外人负责、不在公海的一位：小王（经理的实线下属）以组员身份进了它的项目
+    那位 = (await raw.customer.findFirst({ where: { salesOwnerId: 外人, pool: null }, orderBy: { name: "asc" }, select: { id: true, name: true } }))!;
+    const 在公海的 = (await raw.customer.findFirst({ where: { salesOwnerId: 外人, pool: { isNot: null } }, select: { id: true } }))!;
+    const 别的 = (await raw.customer.findFirst({ where: { salesOwnerId: 外人, pool: null, id: { not: 那位.id } }, select: { id: true } }))!;
+    const 建 = async (customerId: string, 组员: [string, string][]) => {
+      const p = await raw.project.create({ data: { name: `组员项目${项目们.length}`, customerId, ownerId: 外人, creatorId: 外人 } });
+      项目们.push(p.id);
+      for (const [userId, inviteStatus] of 组员) await raw.projectMember.create({ data: { projectId: p.id, userId, inviteStatus } });
+    };
+    await 建(那位.id, [[小王, "JOINED"], [小张, "INVITED"]]);
+    await 建(在公海的.id, [[小王, "JOINED"]]);
+    // 经理自己进的组：他看得到；小张只是邀请着，不算
+    await 建(别的.id, [[经理, "JOINED"], [小张, "DECLINED"]]);
+    // 小赵进了 310 位客户的组：过上限（300）退回子查询那一路
+    const 基 = Date.UTC(2026, 5, 1);
+    for (let i = 0; i < 310; i++) 多的.push(`kwm_${String(i).padStart(3, "0")}`);
+    await raw.customer.createMany({ data: 多的.map((id, i) => ({ id, name: `丁组员${i}`, phone: `1770000${String(i).padStart(4, "0")}`, salesOwnerId: 外人, createdAt: new Date(基 + i * 1000) })) });
+    await raw.project.createMany({ data: 多的.map((customerId, i) => ({ id: `kwmp_${i}`, name: `丁项目${i}`, customerId, ownerId: 外人, creatorId: 外人 })) });
+    await raw.projectMember.createMany({ data: 多的.map((_, i) => ({ projectId: `kwmp_${i}`, userId: 小赵, inviteStatus: "JOINED" })) });
+    // 其中一个项目删了（进回收站）：挂着的客户不算
+    await raw.project.update({ where: { id: "kwmp_0" }, data: { deletedAt: new Date() } });
+  });
+  afterAll(async () => {
+    await raw.project.deleteMany({ where: { OR: [{ id: { in: 项目们 } }, { id: { startsWith: "kwmp_" } }] } });
+    await raw.customer.deleteMany({ where: { id: { in: 多的 } } });
+  });
+
+  it("同一个销售：不带关键词看得到的组员客户，带关键词（命中客户名）也搜得到", async () => {
+    await 以谁的身份(小王, async () => {
+      const 不带 = await db.customer.findMany({ where: await 客户筛选条件({}), select: { id: true } });
+      expect(不带.map((c) => c.id)).toContain(那位.id);
+      const 带 = await 关键词分页({ keyword: 那位.name }, 1, 20);
+      expect(带).not.toBeNull();
+      expect(带!.ids).toContain(那位.id);
+      expect(带).toEqual(await 老路({ keyword: 那位.name }, 1, 20));
+    });
+    // 下属进组上级不跟着看（只认本人）
+    await 以谁的身份(经理, async () => {
+      expect((await 关键词分页({ keyword: 那位.name }, 1, 20))!.ids).not.toContain(那位.id);
+      expect((await db.customer.findMany({ where: await 客户筛选条件({}), select: { id: true } })).map((c) => c.id)).not.toContain(那位.id);
+    });
+    // 过上限那一路：309 位（删了一个项目）都搜得到
+    const 小赵的 = (await 以谁的身份(小赵, () => 关键词分页({ keyword: "丁组员" }, 1, 500)))!;
+    expect(小赵的.total).toBe(309);
+    expect(小赵的.ids).not.toContain("kwm_000");
+  });
+
+  it("逐身份 × 两个页签 × 关键词 × 等值筛选 × 页码", async () => {
+    let 比过 = 0;
+    for (const 谁 of 谁们)
+      await 以谁的身份(谁, async () => {
+        for (const keyword of [那位.name, "客户", "丁组员", "丁组员30", "甲"])
+          for (const pool of [undefined, "1"])
+            for (const f of [{}, { salesOwnerId: 外人 }, { grade: "高一" }] as 客户条件[])
+              for (const 页 of [1, 2, 99999]) {
+                const sp = { keyword, pool, ...f };
+                const 新 = await 关键词分页(sp, 页, 20);
+                expect(新).not.toBeNull();
+                expect({ 谁, sp, 页, ...新 }).toEqual({ 谁, sp, 页, ...(await 老路(sp, 页, 20)) });
+                比过++;
+              }
+      });
+    expect(比过).toBe(谁们.length * 5 * 2 * 3 * 3);
+  }, 120_000);
+});
