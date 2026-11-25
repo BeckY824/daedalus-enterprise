@@ -15,7 +15,7 @@ import type { 建档数据 } from "../../projects/new/ProjectWizard";
 const 建档弹窗 = dynamic(() => import("../../projects/new/ProjectWizard").then((m) => m.建档弹窗), { ssr: false });
 
 export default function NewProjectEntry({
-  open, onClose, onError, on取中, customer, 联系人们,
+  open, onClose, onError, on取中, customer, 联系人们, 仅记录用 = false,
 }: {
   open: boolean;
   onClose: () => void;
@@ -25,6 +25,8 @@ export default function NewProjectEntry({
   on取中?: (中: boolean) => void;
   customer: { id: string; name: string; shortName?: string | null; customerNo?: number | null; salesOwnerId: string | null };
   联系人们: { id: string; name: string; isPrimary: boolean }[];
+  /** 为记沟通打开、组织规则「仅记录用」开着（X-147）：表里多一格「仅记录用」默认勾着 */
+  仅记录用?: boolean;
 }) {
   const [数据, set数据] = useState<建档数据 | null>(null);
   const 取着 = useRef(false);
@@ -54,7 +56,7 @@ export default function NewProjectEntry({
       onClose={onClose}
       // 全称选填（11-19）：没全称的客户叫显名（简称 → 客户编号），项目名默认同一个，不留空白
       老客户={{ id: customer.id, name: 客户显名(customer), 附注: null }}
-      预选={{ 项目名: 客户显名(customer), 默认负责人: customer.salesOwnerId, 联系人们 }}
+      预选={{ 项目名: 客户显名(customer), 默认负责人: customer.salesOwnerId, 联系人们, ...(仅记录用 ? { 仅记录用: true } : {}) }}
     />
   );
 }

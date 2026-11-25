@@ -14,6 +14,7 @@
  * 业务线（A1，11-01 16:1x）：内贸 / 外贸 / 暂不分配三选一，带了分配方式（企业版新弹窗）就必填；没传分配方式的老调用不要求
  * 项目所在地（11-02）：选填，四格 + 详细地址，规整同编辑项目；弹窗按所在地给业务线建议，人确认（提交即确认），服务端不按地址改线
  */
+import { 仅记录用来源, 仅记录用节点 } from "@/lib/project/system-created";
 import { 签首条附件票 } from "@/lib/enterprise/first-follow-ticket";
 import { revalidatePath } from "next/cache";
 import { prisma, defaultClient } from "@/lib/prisma";
@@ -66,6 +67,11 @@ export type 给客户建项目输入 = {
   联系人Id?: string | null;
   /** 弹窗里给首条沟通挑了截图 / 附件（11-18）：交了 true 才回附件票，同 建档向导 */
   要传附件?: boolean;
+  /**
+   * 仅记录用（X-147）：记沟通没项目时点「新建项目 / 去建项目」进来、勾着「仅记录用」建的。组织规则 阶段.仅记录用 开着才认（关着当没交，照旧建普通项目）；
+   * 认了就记 source = 仅记录用来源，进程只能是潜客培育（交了别的进程拦下说清楚，不悄悄改）
+   */
+  仅记录用?: boolean;
 };
 
 type 结果 = { ok: true; projectId: string; 提示?: string; 转走?: boolean; 看不到客户了?: boolean; 附件票?: { followUpId: string; 票: string } } | { ok: false; error: string };
@@ -219,6 +225,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
     if ("error" in 跟进) return { ok: false, error: 跟进.error };
     const 落 = 认节点和回复(输入.跟进);
     if ("error" in 落) return { ok: false, error: 落.error };
+    const 记录用 = 输入.仅记录用 === true && 规则.阶段.仅记录用 === true;
+    if (记录用 && 落.节点 !== 仅记录用节点) return { ok: false, error: `「仅记录用」的项目停在「${仅记录用节点}」，要建在别的进程请取消勾选「仅记录用」` };
 
     const 负责人 = await prisma.user.findUnique({ where: { id: 项目.ownerId }, select: { name: true, active: true } });
     if (!负责人?.active) return { ok: false, error: "项目负责人不存在或已停用，请选一位在职成员" };
@@ -266,6 +274,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
           nextStepAt: 跟进.nextStepAt, nextStepText: 跟进.nextStepText,
           // 分配方式：选了的那一项；没选、指定给别人的记「指定分配」。项目来源：另选的，没选带客户来源（P-删-03 建时可选，审核 11-18 P1-1）
           ...新项目默认值(true, { 分配方式: 分配?.名 ?? 指定分配名, 项目来源 }),
+          // 仅记录用（X-147）：不算在推、不进统计，见 system-created.ts
+          ...(记录用 ? { source: 仅记录用来源 } : {}),
         },
       });
       await tx.projectNodeLog.create({ data: { projectId: p.id, userId: me.id, toPhase: "线索", toNode: 落.节点 } });
@@ -296,8 +306,8 @@ export async function 给客户建项目(输入: 给客户建项目输入): Prom
 
     await recordAudit({
       user: me, action: "create", entity: "Project", entityId: projectId,
-      summary: `客户页新建项目「${项目.name}」（客户${客户引(客户)}，负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}），连同首条沟通`,
-      detail: { 项目: 项目.name, 客户: 全称或显名(客户), 负责人: 负责人.name, 金额: 项目.amount, 币种: 项目.currency, 节点: 落.节点, ...(分配 ? { 分配方式: 分配.名 } : {}), ...(留下 ? { 客户转给: 负责人.name } : {}) },
+      summary: `客户页新建项目「${项目.name}」（客户${客户引(客户)}，负责人 ${负责人.name}${分配 ? `，分配方式「${分配.名}」` : ""}${记录用 ? "，仅记录用" : ""}），连同首条沟通`,
+      detail: { 项目: 项目.name, 客户: 全称或显名(客户), 负责人: 负责人.name, 金额: 项目.amount, 币种: 项目.currency, 节点: 落.节点, ...(分配 ? { 分配方式: 分配.名 } : {}), ...(记录用 ? { 数据来源: "仅记录用" } : {}), ...(留下 ? { 客户转给: 负责人.name } : {}) },
     });
     // 转走了：这位客户我可能已经看不到了，放开范围，不然推进被拦、静默跳过（同 建档向导）
     if (留下) await 看全部(() => 客户存了推项目(me, customerId, { 新建的: projectId }));

@@ -27,7 +27,7 @@ const 关的调用 = (cs: [string, unknown[]][]) => cs.filter(([n, a]) => n === 
 it("⑤ 超时回收关开关：先弹后果框；取消不存、开关还开；确认了才关", async () => {
   const { page, errors } = await 开页(browser, 卡包, true);
   try {
-    const 开关 = page.getByRole("switch", { name: "超时回收" });
+    const 开关 = page.getByRole("switch", { name: "超时回收", exact: true });
     await 开关.click();
     const 框 = page.getByRole("dialog", { name: "关掉超时回收？" });
     await 框.waitFor();

@@ -32,6 +32,7 @@ import { 挡改设置 } from "@/lib/enterprise/edit-perm";
 import { 选的原因, 认跟进方式, 已签收物流状态, type 已签收认法结果 } from "@/lib/enterprise/dict";
 import { 去不填 } from "@/lib/enterprise/dict-kinds";
 import { 生效组织规则 } from "./org-rules-store";
+import { 仅记录用的 } from "./system-created";
 import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
@@ -802,7 +803,8 @@ export const 能进公海的阶段 = ["线索", "商机"] as const;
  * 不管怎么到手的——自己建的、领的、被指派的、自动分配的——都算；待分配（awaitAssignAt 有值，建的人只是占着负责人那一格）的不算
  */
 /** 算持有的项目（同 超上限 的口径）：还在跟、不在公海、不是待分配、线索 / 商机阶段 */
-const 算持有 = { pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] } };
+// 仅记录用的（X-147，还停在潜客培育）不算在推，不占持有数
+const 算持有 = { pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] }, NOT: 仅记录用的 };
 
 export async function 持有数(db: Pick<Prisma.TransactionClient, "project">, userId: string): Promise<number> {
   // 数的是 userId 手上真有几个，不按谁在看限定（11-03 A3-1：市场管理分配时看不到别人名下的，少数了、突破上限）
@@ -837,7 +839,7 @@ export async function 超上限(
 }
 
 /** 算持有的项目条件（同 持有数 去掉 ownerId / awaitAssignAt）：线索 / 商机阶段、没结局 */
-export const 算持有的项目 = { result: null, phase: { in: [...能进公海的阶段] as string[] } };
+export const 算持有的项目 = { result: null, phase: { in: [...能进公海的阶段] as string[] }, NOT: 仅记录用的 };
 
 /**
  * 一次再给 userId 进 进 个算持有的项目，会不会超持有上限（同 超上限 的算法，进 = 1 时报错一字不差）。
@@ -1143,6 +1145,8 @@ const 超时扫过键 = "projectTimeoutSweptOn";
 /** 算回收日要的项目列。最近一条留痕不在这里取：用 补回收起点留痕 另取（见下） */
 export const 算超时要的 = {
   id: true, name: true, phase: true, node: true, result: true, pooledAt: true, nextStepAt: true, ownerId: true, customerId: true, createdAt: true, bizLine: true,
+  // 来源：仅记录用的默认不收（X-147，timeout.ts 超时回收日）
+  source: true,
   customer: { select: { lastFollowAt: true, pool: { select: { customerId: true } } } },
 } satisfies Prisma.ProjectSelect;
 /** 算回收起点认的最近一条留痕（最近一条在前，只要时间；没有 = 空） */

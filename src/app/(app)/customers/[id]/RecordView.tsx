@@ -259,6 +259,8 @@ export default function RecordView({
   /** 客户页留哪几块（定稿 P5 待定 14）：企业版项目模式下记录输入、待办移到项目，转让、背调、下次跟进不放，旧字段不摆 */
   const 摆法 = 客户页摆法(企业);
   const [建项目开着, set建项目开着] = useState(false);
+  /** 这次新建项目是不是为记沟通开的（X-147：记沟通弹框「新建项目」、首页 AI 卡「去建项目」）；是 + 组织规则开着 = 表里多一格「仅记录用」 */
+  const [建项目为记沟通, set建项目为记沟通] = useState(false);
   /** 「新增项目」那张表要的数据第一次打开时才取：取着的时候「开项目」键转圈 */
   const [取建档中, set取建档中] = useState(false);
   /** 企业版页头具名按钮开的框（10-31 改版 R6） */
@@ -668,7 +670,15 @@ export default function RecordView({
   const 能建项目 = !!(摆法.新建项目 && 新建项目 && !只读 && 能新建项目);
   /** 公海里的客户先领取再建项目（11-05）：按钮照摆，点了说先领取，服务端也拦；标了无效的领不了，说先恢复 */
   function 开建项目() {
+    开建项目从(false);
+  }
+  /** 记沟通没项目时点「新建项目」（X-147 仅记录用） */
+  function 为记沟通开建项目() {
+    开建项目从(true);
+  }
+  function 开建项目从(为记沟通: boolean) {
     if (customer.pool) return void 说就地(customer.pool.无效 ? 无效客户不能领短话 : 公海客户先领取话);
+    set建项目为记沟通(为记沟通);
     set建项目开着(true);
   }
   /**
@@ -683,7 +693,8 @@ export default function RecordView({
     const t = window.setTimeout(() => {
       q.delete("建项目");
       window.history.replaceState(window.history.state, "", `${window.location.pathname}${q.size ? `?${q}` : ""}${window.location.hash}`);
-      if (能建项目) 开建项目();
+      // 首页 AI 记沟通卡「去建项目」进来的，就是为记这条沟通建（X-147 仅记录用）
+      if (能建项目) 为记沟通开建项目();
     }, 0);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在进页面时看一次
@@ -1792,7 +1803,7 @@ export default function RecordView({
         contacts={contacts}
         opportunities={[]}
         projects={记沟通项目}
-        新建项目={去项目跟进 ? (能建项目 ? 开建项目 : null) : undefined}
+        新建项目={去项目跟进 ? (能建项目 ? 为记沟通开建项目 : null) : undefined}
         没项目说法={去项目跟进 && (跟进去处 ?? []).some((p) => p.主 && !p.结束) ? 沟通都不能记话 : undefined}
         aiEnabled={aiEnabled}
         只读={只读}
@@ -1922,6 +1933,7 @@ export default function RecordView({
           on取中={set取建档中}
           customer={{ id: customer.id, name: customer.name, shortName: customer.shortName, customerNo: customer.customerNo, salesOwnerId: customer.salesOwnerId }}
           联系人们={contacts.filter((c) => !c.挂靠).map((c) => ({ id: c.id, name: c.name, isPrimary: c.isPrimary }))}
+          仅记录用={建项目为记沟通 && 新建项目.仅记录用 === true}
         />
       )}
     </div>

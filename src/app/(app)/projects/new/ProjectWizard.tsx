@@ -21,6 +21,7 @@ import { 金额格式 } from "@/lib/money-input";
 import { 成员选项, 独自一人, dayjs, type 可选成员 } from "@/lib/utils";
 import { 外贸精简 } from "@/lib/business-config";
 import { 项目名上限, 备注上限, 占位名提示 } from "@/lib/project/wizard";
+import { 仅记录用节点 } from "@/lib/project/system-created";
 import { 是占位值 } from "@/lib/project/required";
 import { 有效线索节点, 建档不能过线索验证 } from "@/lib/project/stage-gates";
 import { 下一步文字上限 } from "@/lib/project/project-fields";
@@ -139,7 +140,11 @@ type 弹窗模式 = { 关: () => void } | null;
  * 客户页「新增项目」（原型 cr.old，11-15 起和「新增项目」同一张表）：客户已经定了是这一位——客户段收成一行、不能换，
  * 项目名默认带客户名，负责人默认客户负责人（在候选里才带），首条沟通挂哪位联系人可选；建好落回这位客户页、停在新项目（landed 亮一下）
  */
-export type 预选客户 = { 联系人们?: { id: string; name: string; isPrimary: boolean }[]; 项目名?: string; 默认负责人?: string | null };
+export type 预选客户 = {
+  联系人们?: { id: string; name: string; isPrimary: boolean }[]; 项目名?: string; 默认负责人?: string | null;
+  /** 记沟通没项目、点「新建项目 / 去建项目」进来的（X-147，组织规则 阶段.仅记录用 开着才给）：多一格「仅记录用」默认勾着，勾着时进程定在潜客培育 */
+  仅记录用?: boolean;
+};
 
 /** 项目开关（P-界面-36）：客户页「新建客户」默认关；「新增项目」默认开；新线索、团队版「新建项目」开着并锁住（原整页 11-15 删了，现在都是弹窗） */
 export type 项目开关 = "关" | "开" | "锁开";
@@ -381,6 +386,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const [候选, set候选] = useState<可挑客户[]>([]);
   /** 客户页「新增项目」：客户定死（不摆「换」）；首条沟通挂哪位联系人（默认主要联系人） */
   const 锁客户 = !!预选 && !!老客户 && 老客户.id === 老起手?.id;
+  /** 仅记录用（X-147）：只有客户页为记沟通打开、锁着这位客户时才有这一格；默认勾着，建的人可以取消（取消 = 普通项目，进程照常选） */
+  const 记录用可选 = 企业版 && 锁客户 && 预选?.仅记录用 === true;
+  const [仅记录用勾, set仅记录用勾] = useState(true);
+  const 记录用中 = 记录用可选 && 仅记录用勾;
   const 联系人们 = 锁客户 ? 预选?.联系人们 ?? [] : [];
   const [联系人Id, set联系人Id] = useState<string | undefined>(() => (联系人们.find((c) => c.isPrimary) ?? 联系人们[0])?.id);
   // P-转-07：这次走 X-18、客户名下有同事的项目，会一起转走的先列出来（同分配弹窗、原客户页「新增项目」）
@@ -594,7 +603,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           指定回复开始: d.项目.指定回复开始 ?? null, 指定回复结束: d.项目.指定回复结束 ?? null,
           ...(定时 ? { 定时分配: 定时 } : {}),
         },
-        跟进: { ...d.跟进, method: 对得上的方式(d.跟进.type, d.跟进.method) },
+        跟进: { ...d.跟进, ...(记录用中 ? { 节点: 仅记录用节点 } : {}), method: 对得上的方式(d.跟进.type, d.跟进.method) },
+        ...(记录用中 ? { 仅记录用: true } : {}),
         ...(附件们.length ? { 要传附件: true } : {}),
       });
       if (!r.ok) return void set交错(r.error);
@@ -1193,8 +1203,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           ), true)}
           {一格("内容", "沟通内容", <Input.TextArea aria-label="沟通内容" status={红("内容")} rows={3} placeholder="这次聊了什么" value={d.跟进.content} onChange={(e) => 改("跟进", { content: e.target.value })} />, true, true)}
           {企业 && 带项目 && 一格("节点", "当前进程", (
-            <Select className="cr-full" aria-label="当前进程" status={红("节点")} value={d.跟进.节点} options={企业.节点们.slice(0, 企业.节点们.indexOf(有效线索节点) + 1 || undefined).map((n) => ({ value: n, label: n }))} onChange={(v) => 改("跟进", { 节点: v })} />
-          ), true, false, `项目建在这一步，最多到「${有效线索节点}」`)}
+            <Select className="cr-full" aria-label="当前进程" status={红("节点")} disabled={记录用中} value={记录用中 ? 仅记录用节点 : d.跟进.节点} options={企业.节点们.slice(0, 企业.节点们.indexOf(有效线索节点) + 1 || undefined).map((n) => ({ value: n, label: n }))} onChange={(v) => 改("跟进", { 节点: v })} />
+          ), true, false, 记录用中 ? `仅记录用的项目停在「${仅记录用节点}」` : `项目建在这一步，最多到「${有效线索节点}」`)}
+          {记录用可选 && 一格(null, "仅记录用", (
+            <Switch size="small" aria-label="仅记录用" checked={仅记录用勾} onChange={set仅记录用勾} />
+          ), false, false, 仅记录用勾 ? "为记这条沟通建的：停在潜客培育，不算在推、不进新建数和转化率；以后推进出潜客培育就照常算" : "不勾 = 普通项目，照常统计")}
           {能填下一步 && 一格("下一步时间", "下一步时间", (
             <>
               <DatePicker

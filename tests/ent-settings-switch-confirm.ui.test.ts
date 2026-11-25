@@ -77,14 +77,14 @@ it("节点推进：开、关都先弹后果框；改回全部项目弹框，改�
 it("超时回收打开：先数 0 个不弹框直接存；有 3 个框里写明个数（原卡和总览共用一个钩子）", async () => {
   const a = await 开({ 预览: 0 });
   try {
-    await a.page.getByRole("switch", { name: "超时回收" }).click();
+    await a.page.getByRole("switch", { name: "超时回收", exact: true }).click();
     await expect.poll(() => 改了(a.page)).toEqual([{ 超时回收: { 开: true } }]);
     expect(await a.page.getByRole("dialog").count()).toBe(0);
   } finally { await a.page.close(); }
 
   const b = await 开({ 预览: 3 });
   try {
-    await b.page.getByRole("switch", { name: "超时回收" }).click();
+    await b.page.getByRole("switch", { name: "超时回收", exact: true }).click();
     const 框 = b.page.getByRole("dialog", { name: "按新设置，现在会有 3 个项目回到线索公海" });
     await 框.getByRole("button", { name: "确认打开" }).click();
     await expect.poll(() => 改了(b.page)).toEqual([{ 超时回收: { 开: true } }]);

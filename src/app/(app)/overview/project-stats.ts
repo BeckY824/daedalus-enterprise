@@ -6,7 +6,7 @@ import { 公海里历史负责人是 } from "@/lib/project/pool-owner";
 import type { Prisma } from "@/generated/prisma";
 import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
-import { 不算补建, 不算历史分析, 历史分析来源, 留痕不算历史分析, 并条件 } from "@/lib/project/system-created";
+import { 不算补建, 不算历史分析, 不进统计, 仅记录用的, 历史分析来源, 留痕不算历史分析, 并条件 } from "@/lib/project/system-created";
 import { 批次条件, 读批次, 批次参数, 批次下拉项, type 批次筛 } from "@/lib/project/import-batch";
 
 /**
@@ -88,6 +88,7 @@ type 现在组 = { phase: string; node: string; result: string | null; currency:
  * 进行中 = 还没有结局。
  * 只看（P15 复盘页按成员看）：只数这个人负责的；公海里的不算在谁头上，按人看时一并不数（同下面「按人」的口径）
  * 历史分析回填的项目（system-created.ts）一个都不算：它们是旧沟通还原出来的往事，算进来公海数、结局、漏斗都失真。
+ * 仅记录用的（X-147，还停在潜客培育的）同样一个都不算，也没有「领走在推照算」的例外：客户原话「不算在推、不进任何转化率的分母」
  * 库里分组数（11-18）：不再把看得到的全部项目逐个读进内存（回填后公海里多出约 6 万个），按 阶段 / 节点 / 结局 / 币种 / 负责人 × 在不在公海 分组，
  * 判无效另数一组；本套位置（旧名对新名）对分组的键做，口径和逐个数一样
  */
@@ -96,10 +97,10 @@ export async function 项目现在(本位币: string, 只看?: 只看谁, 批次
   const 谁的 = 只看 === undefined ? undefined : await 这些人的(只看);
   // 导入批次（11-19，import-batch.ts）：只看 / 排掉某一批，所有项目的数都套上；不给 = 全部，和原来一样
   const 批 = 批次条件(批次);
-  const 范围 = 并条件(谁的, 不算历史分析, 批);
+  const 范围 = 并条件(谁的, 不进统计, 批);
   // 历史分析的项目被人领走、还在推的（领客户时一起带走的进行中项目）：是这个人手上真在跟的，只进阶段 / 节点 / 按人 / 外币（同 持有数、复盘「在跟」），
   // 结局、公海、漏斗、线索瀑布、线索转商机照样不算
-  const 在跟条件 = 并条件(谁的, 批, { result: null, pooledAt: null });
+  const 在跟条件 = 并条件(谁的, 批, { result: null, pooledAt: null, NOT: 仅记录用的 });
   const 键 = ["phase", "node", "result", "currency", "ownerId"] as const;
   const [不在公海, 在公海, 判无效组, 没判无效组, 外币, 领走的历史] = await Promise.all([
     prisma.project.groupBy({ by: [...键], where: 并条件(范围, { pooledAt: null }), _count: { _all: true }, _sum: { amount: true } }),
@@ -182,7 +183,7 @@ export type 项目一段 = {
 /**
  * 一段时间里发生了什么。
  *   新建：项目建在这一段（createdAt）；补建的（老客户补的潜客培育，system-created.ts）不算，漏斗、线索瀑布、线索转商机这批也不带它
- *   历史分析回填的（system-created.ts）新建、转商机 / 转订单、结局都不算
+ *   历史分析回填的（system-created.ts）新建、转商机 / 转订单、结局都不算；仅记录用的（还停在潜客培育）新建、结局也不算（X-147）
  *   转商机 / 转订单：这一段里有一次从线索进商机 / 从商机进订单的节点变更（一个项目只数一次，来回改不重复算）
  *   成功交付 / 线索流失 / 丢单 / 异常状态：现在是这个结局、结束在这一段（closedAt）——后来又恢复了的不算
  *     「成功交付」这一格 = 订单走成的（企业版叫 交付结清，库里旧名也认，见 是交付），键名不改
@@ -212,7 +213,7 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
       orderBy: { at: "asc" },
     }),
     // 结局按 closedAt 落段：历史分析回填的 closedAt 是当年的时间，不算（不然 2022–25 年各月凭空多出流失、丢单）
-    prisma.project.findMany({ where: 并条件({ result: { not: null }, closedAt: 段, ...谁, ...不算历史分析 }, 批), select: { id: true, ownerId: true, result: true, closedAt: true, amount: true, currency: true } }),
+    prisma.project.findMany({ where: 并条件({ result: { not: null }, closedAt: 段, ...谁, ...不进统计 }, 批), select: { id: true, ownerId: true, result: true, closedAt: true, amount: true, currency: true } }),
   ]);
   const 新 = 只看 === undefined ? 新全 : 新全.filter((p) => !p.pooledAt);
 

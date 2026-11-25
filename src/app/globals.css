@@ -3296,6 +3296,8 @@ button.ais-hd-b { cursor: pointer; }
 .org-rule-name { min-width: 0; overflow-wrap: anywhere; }
 .org-rule-say { grid-column: 2; margin: 0; min-width: 0; overflow-wrap: anywhere; }
 .org-rule-sub { grid-column: 2; margin-top: 8px; }
+/* 项目模式卡里单摆的一条开关（「仅记录用」两条，X-147）：和上下几行一样隔 16px */
+.org-rule-gap { margin-bottom: 16px; }
 @media (max-width: 767px) {
   /* 手机上说明从开关底下起、占满整行 */
   .org-rule-say, .org-rule-sub { grid-column: 1 / -1; }

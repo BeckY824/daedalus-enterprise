@@ -487,6 +487,18 @@ function TimeoutCard({
         />
         <span style={{ color: "var(--text-muted)" }}>所有项目从这天起才开始计超时，之前的日子不算；默认 {默认起算日}。清空 = 不设，照原来的起点算。</span>
       </div>
+      {/* 「仅记录用」项目也超时回收（X-147，默认关）：超时回收开着才拨得开（开关总览里它是 node_timeout 的子开关）；打开同样先数会收几个 */}
+      <div className="org-rule org-rule-gap">
+        <Switch
+          aria-label="「仅记录用」项目也超时回收"
+          size="small"
+          checked={规则.仅记录用也回收 === true}
+          disabled={!!挡 || !全能 || 忙 || (!规则.开 && 规则.仅记录用也回收 !== true)}
+          onChange={(v) => void (v ? 确认后存({ 超时回收: { 仅记录用也回收: true } }, "已打开「仅记录用」项目也超时回收") : 跑(() => 改组织规则({ 超时回收: { 仅记录用也回收: false } }), "已关掉「仅记录用」项目也超时回收"))}
+        />
+        <span className="org-rule-name">「仅记录用」项目也超时回收</span>
+        <p className="muted org-rule-say">开了：为记沟通建的「仅记录用」项目（还停在潜客培育的）和普通项目一样按时长回收。关着不回收、不发「明天收回」提醒。默认关{规则.开 ? "" : "；先打开超时回收才能打开"}</p>
+      </div>
       {!挡 && !全能 && (
         <div style={{ color: "var(--text-muted)", marginBottom: 12 }}>
           {范围.length ? `你能改${范围.map((n) => `「${n}」`).join("")}的时限；其他进程、开关和起算日由总管理员改。` : "进程时限、开关和起算日由总管理员改。"}
@@ -1063,7 +1075,7 @@ function StageRuleCard({
   const 出口名 = 字典of(true, 规则.出口叫法).出口们;
   // 往前推权限、前两个进程要沟通、需求补全期一点就改全员能不能推（设置开关 N6）：先弹后果框，和开关总览同一份文案
   const [问后果, 后果框] = useConsequence();
-  const 确认改 = (键: "push_perm" | "first_two" | "fill_period", 值: boolean | string, 改: 规则改动["阶段"]) => void 问后果({
+  const 确认改 = (键: "push_perm" | "first_two" | "fill_period" | "record_only", 值: boolean | string, 改: 规则改动["阶段"]) => void 问后果({
     ...开关后果of(键, 值),
     做: async () => ({ ok: await 跑(() => 改组织规则({ 阶段: 改 }), "已保存") }),
   });
@@ -1106,6 +1118,18 @@ function StageRuleCard({
           <div>线索、商机前两个进程各要一条沟通才能往后推</div>
           <div style={{ color: "var(--text-muted)" }}>开了：{要沟通的节点().join("、")} 这几个进程上，各记过至少一条沟通才能推到下一个进程（必填齐了的自动推进也一样）。默认关</div>
         </div>
+      </div>
+      {/* 「仅记录用」（X-147，默认关）：记沟通没项目时点「新建项目」建的项目默认勾「仅记录用」，停在潜客培育、不进统计（system-created.ts） */}
+      <div className="org-rule org-rule-gap">
+        <Switch
+          aria-label="「仅记录用」项目"
+          size="small"
+          disabled={!!挡 || 忙}
+          checked={规则.仅记录用 === true}
+          onChange={(v) => 确认改("record_only", v, { 仅记录用: v })}
+        />
+        <span className="org-rule-name">「仅记录用」项目</span>
+        <p className="muted org-rule-say">开了：客户没有能记的在推项目、记沟通时点「新建项目」建的项目默认标「仅记录用」（建的人可以取消勾选），停在潜客培育，不算在推、不进新建数和转化率、不占持有数；推进出潜客培育后照常统计。默认关</p>
       </div>
       {/* 需求状态补全期（M-权限-07）：导入的项目需求状态大多空着，给负责人一段时间补；这期间只有经理、总管理员能往前推 */}
       <div style={{ display: "flex", gap: 8, alignItems: "flex-start", marginBottom: 16, minWidth: 0 }}>

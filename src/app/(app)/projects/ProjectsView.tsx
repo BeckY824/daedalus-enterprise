@@ -28,7 +28,7 @@ import { 认首页卡, 首页卡口径 } from "@/lib/project/home-cards";
 import { 企业级别, 企业级别说明, 级别选项 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 级别星 } from "@/lib/enterprise/level-stars";
-import { 重复咨询来源, 来源字 } from "@/lib/project/system-created";
+import { 重复咨询来源, 仅记录用来源, 来源字 } from "@/lib/project/system-created";
 import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
 import { 卡片小字, 未填标签, type 项目行, type 看板一列, type 看板卡片 } from "@/lib/project/board";
@@ -619,7 +619,7 @@ export default function ProjectsView({
               键: "source", 名: "数据来源", 宽: 150, 默认外露: false, 有值: !!f.source,
               渲染: (style: CSSProperties) => (
                 <Select style={style} aria-label="数据来源" placeholder="全部来源" allowClear value={f.source || undefined} onChange={(v?: string) => apply({ source: v ?? "" })}
-                  options={[{ value: 重复咨询来源, label: 来源字(重复咨询来源) }]} popupMatchSelectWidth={false} />
+                  options={[重复咨询来源, 仅记录用来源].map((v) => ({ value: v, label: 来源字(v) }))} popupMatchSelectWidth={false} />
               ),
             },
           ]

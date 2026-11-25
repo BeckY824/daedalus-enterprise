@@ -26,7 +26,7 @@ import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 企业级别 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
 import { 创建时间段, 是日期 } from "@/lib/custom-date-range";
-import { 不算补建, 不算历史分析, 是重复咨询, 重复咨询来源 } from "./system-created";
+import { 不算补建, 不进统计, 是重复咨询, 重复咨询来源, 仅记录用来源 } from "./system-created";
 import { 看成客户编号严 } from "@/lib/customer-no";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 读批次, 批次参数, 批次条件 } from "./import-batch";
@@ -82,7 +82,7 @@ export async function 读验证痕们(projectIds: string[]): Promise<Map<string,
 export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; recycled?: string; f?: string; phase?: string; node?: string; creator?: string; channelId?: string; level?: string;
   /** 项目标签（F-项目-14）：字典项名原样比；「未填标签」= 没填的 */
   projTag?: string;
-  /** 数据来源（企业版）：只认「老客户重复咨询」（重复咨询来源）= 只看带这个标记的线索，读 Project.source 不读项目名（客户 E-218）；别的值当没筛 */
+  /** 数据来源（企业版）：只认「老客户重复咨询」（重复咨询来源）、「仅记录用」（X-147）= 只看带这个标记的项目，读 Project.source 不读项目名（客户 E-218）；别的值当没筛 */
   source?: string;
   /** 创建时间（11-11，渠道页点数字进来要按时间分）：两个日历日，两头都算，北京日界线（custom-date-range.ts 创建时间段） */
   createdFrom?: string; createdTo?: string;
@@ -217,7 +217,8 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 来源 = 企 && typeof sp.channelId === "string" ? sp.channelId : "";
   const 级别筛 = !企 ? "" : sp.level === 未分级 ? 未分级 : (企业级别(sp.level) ?? "");
   const 标签筛 = 企 && typeof sp.projTag === "string" ? sp.projTag.trim().slice(0, 40) : "";
-  const 来源筛 = 企 && sp.source === 重复咨询来源 ? 重复咨询来源 : "";
+  // 仅记录用（X-147）也能筛：标了这个来源的都列（含已推进出潜客培育、照常统计的），读 Project.source
+  const 来源筛 = 企 && (sp.source === 重复咨询来源 || sp.source === 仅记录用来源) ? sp.source : "";
   // 搜原始客户编号（客户 E-218「检索、统计、复盘都读字段」）：关键词里像客户编号的（NO.29792、29792）换成那位客户，
   // 命中 repeatOfCustomerId 是他的重复咨询线索——负责人改了项目名照样搜得到。只多一支 OR，看不看得到这条线索照旧由列表范围管
   const 编号客户 = 企 ? await 编号对客户(拆搜索词(词)) : new Map<string, string>();
@@ -784,14 +785,14 @@ export function 公海名单候选(f: 公海名单筛): Prisma.ProjectWhereInput
   const 建于 = 创建时间段(f.createdFrom, f.createdTo);
   const 批 = 读批次(f.batch);
   const 并: Prisma.ProjectWhereInput[] = [
-    // 渠道名单不列历史分析回填的（渠道页数的 渠道项目条件 不算它们，点进来条数要对得上）
-    ...(f.channelId ? [{ OR: [{ channelId: f.channelId }, { channelId: null, customer: { channelId: f.channelId } }], ...不算历史分析 }] : []),
+    // 渠道名单不列历史分析回填的、仅记录用的（渠道页数的 渠道项目条件 不算它们，点进来条数要对得上；X-147 不进统计）
+    ...(f.channelId ? [{ OR: [{ channelId: f.channelId }, { channelId: null, customer: { channelId: f.channelId } }], ...不进统计 }] : []),
     ...(建于 ? [{ createdAt: 建于, ...(f.onlyNew === "1" ? 不算补建 : {}) }] : []),
     // 导入批次：数据页的线索池数不算历史分析回填的，点进来同样排掉，条数对得上
-    ...(批 ? [批次条件(批)!, 不算历史分析] : []),
+    ...(批 ? [批次条件(批)!, 不进统计] : []),
     // 只带 open=1（数据页没选导入批次时「公海里还有 N 个 ›」点进来，3703 实操）：公海里没结局的项目一个一行，
     // 同 项目现在 的「公海」那个数——不算历史分析回填的，条数对得上；open 跟着渠道 / 时间段 / 批次来的照旧只是附加条件
-    ...(f.open === "1" && !f.channelId && !建于 && !批 ? [不算历史分析] : []),
+    ...(f.open === "1" && !f.channelId && !建于 && !批 ? [不进统计] : []),
   ];
   if (!并.length) return null;
   return { AND: [...并, ...(f.phase || f.open ? 阶段进程条件({ phase: f.phase, open: f.open }, 字典of(企业版())).where : [])] };

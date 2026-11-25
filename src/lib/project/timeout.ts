@@ -17,6 +17,8 @@ import type { Prisma } from "@/generated/prisma";
 import { dayjs } from "@/lib/utils";
 import type { 组织规则 } from "./org-rules";
 import { 团队版字典, 同名们, type 阶段字典 } from "./stage-dict";
+// system-created.ts 也引这里的 系统（只在函数里用），两边都不在模块顶层用对方的值，互引安全
+import { 是仅记录用 } from "./system-created";
 
 export const 超时理由 = "超过进程处理时长没跟进，自动回到项目公海";
 /** 企业版手动放回公海时选的「回收原因」（字典）记成「回收原因：X」（10-27） */
@@ -67,6 +69,8 @@ export type 超时项目 = {
   result?: string | null;
   pooledAt?: Date | string | null;
   nextStepAt?: Date | string | null;
+  /** 项目来源（Project.source）：仅记录用的（X-147）默认不收，见 超时回收日；不给 = 不是 */
+  source?: string | null;
 };
 
 /** 起点：这几个时间里最晚的那个（建项目、最后一行节点变更 / 转让 / 领取、客户上最后一次跟进），空的跳过 */
@@ -103,6 +107,9 @@ export function 超时回收日(规则: 组织规则, p: 超时项目, 起点: D
   if (!规则.超时回收.开) return null;
   if (p.phase !== "线索" && p.phase !== "商机") return null;
   if (p.result || p.pooledAt) return null;
+  // 仅记录用的（X-147，还停在潜客培育）：客户「不算在推」，默认不收（也就不发「明天收回」、不进 3 天内回公海、记沟通不预演）；
+  // 组织规则 超时回收.仅记录用也回收 打开才照普通项目收
+  if (是仅记录用(p) && !规则.超时回收.仅记录用也回收) return null;
   const 天数 = 节点超时天数(规则, p.node, 字典, 线);
   if (!天数) return null;
   // 下一步时间（p.nextStepAt）不参与：只提醒、不收回（11-18）

@@ -10,7 +10,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
-import { 来源字, 人名显示, 是重复咨询 } from "@/lib/project/system-created";
+import { 来源字, 人名显示, 是重复咨询, 是仅记录用, 仅记录用来源 } from "@/lib/project/system-created";
 import { 客户其他在推项目, 重复咨询原始客户 } from "@/lib/enterprise/repeat-inquiry";
 import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
@@ -337,7 +337,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
       : { name: 看得到客户.has(p.customerId) ? p.customer.channel?.name ?? "" : "", 跟客户: true },
     channelId: p.channelId,
     // 数据来源（迁移 151）：历史沟通分析回填的项目写「历史分析」；系统里正常建的不给（界面不摆那一行）
-    ...(p.source ? { 数据来源: 来源字(p.source) } : {}),
+    // 仅记录用（X-147）推进出潜客培育后照常统计：标签照留、后面说一句
+    ...(p.source ? { 数据来源: p.source === 仅记录用来源 && !是仅记录用(p) ? `${来源字(p.source)}（已推进，照常统计）` : 来源字(p.source) } : {}),
     // 老客户重复咨询（重复咨询第一步）：现算这位客户别的在推项目，给负责人判是不是同一需求；验证框里提示选「重复线索」
     ...(是重复咨询(p) ? { 重复咨询: await 其他在推带去处(me, p.id, p.customerId) } : {}),
     // 只读来源字段（迁移 163，客户 E-218）：原始客户编号 + 第几次；没有编辑入口，改项目的动作都不写这两列

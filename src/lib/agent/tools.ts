@@ -22,7 +22,7 @@ import { 合计文字 } from "../currency";
 import { 客户来源线索 } from "../customer-lead-origin";
 import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, 字典of } from "../project/nodes";
 import { 看得到的客户, 露客户 } from "../project/db";
-import { 不算历史分析, 历史分析的, 是历史分析, 来源字, 并条件, 人名显示 } from "../project/system-created";
+import { 不进统计, 历史分析的, 仅记录用的, 是历史分析, 是仅记录用, 来源字, 并条件, 人名显示 } from "../project/system-created";
 import { 企业版 } from "../enterprise/switch";
 import { 主联系人号码选, 主联系人电话, 客户电话 } from "../enterprise/primary-contact-phone";
 import { 启用渠道条件 } from "../enterprise/channel-main";
@@ -455,6 +455,8 @@ export const TOOLS: Tool[] = [
         负责人: p.pooledAt ? "在公海" : (项目负责人.get(p.ownerId) ?? "已不在的成员"),
         // 历史分析回填的照列、标来源，不计入个数（system-created.ts，25E）
         ...(是历史分析(p) ? { 数据来源: `${来源字(p.source)}（旧沟通还原的，不计入个数和统计）` } : {}),
+        // 仅记录用的（X-147）：为记一条沟通建的，标来源、说不算在推
+        ...(是仅记录用(p) ? { 数据来源: `${来源字(p.source)}（为记一条沟通建的，不算在推、不计入统计）` } : {}),
       }));
       const 回填个 = 项目行.slice(0, 项目最多).filter(是历史分析).length;
       const data = {
@@ -792,11 +794,12 @@ export const TOOLS: Tool[] = [
         历史沟通分析回填的项目（system-created.ts「所有统计都不算」，25E）：总数、各阶段个数不算它；
         明细照旧列出（同项目列表 / 公海页），行上标「数据来源」、写明不计入，另报有几个
       */
-      const 计数where = 并条件(where, 不算历史分析);
+      // 仅记录用的（X-147，还停在潜客培育）同样照列、不计入（不进统计 = 历史分析 + 仅记录用）
+      const 计数where = 并条件(where, 不进统计);
       const [total, 各阶段, 回填数, rows] = await Promise.all([
         prisma.project.count({ where: 计数where }),
         prisma.project.groupBy({ by: ["phase"], where: 计数where, _count: { _all: true } }),
-        prisma.project.count({ where: 并条件(where, 历史分析的) }),
+        prisma.project.count({ where: 并条件(where, { OR: [历史分析的, 仅记录用的] }) }),
         prisma.project.findMany({
           where, orderBy: { updatedAt: "desc" }, take: 30,
           select: {
@@ -815,12 +818,12 @@ export const TOOLS: Tool[] = [
       const 字典 = 字典of(企业版());
       const 列 = rows.filter((p) => !词 || p.name.includes(词) || 露客户(me, p, 可见)).map((p) => 本套位置(p, 字典));
       // 带关键词时总数也按剔过的算（最多 30 个），不然「1 个项目、列出 0 个」一样露了底；历史回填的照样不算
-      const 计入 = 列.filter((p) => !是历史分析(p));
+      const 计入 = 列.filter((p) => !是历史分析(p) && !是仅记录用(p));
       const 数 = 词 ? 计入.length : total;
       const 个数 = (ph: string) => (词 ? 计入.filter((p) => p.phase === ph).length : (各阶段.find((g) => g.phase === ph)?._count._all ?? 0));
       const 回填 = 词 ? 列.length - 计入.length : 回填数;
       return {
-        summary: `${数} 个项目（${阶段们.map((ph) => `${ph} ${个数(ph)}`).join("、")}）${数 + 回填 > 列.length ? `，列出最近改过的 ${列.length} 个` : ""}${回填 ? `；另有 ${回填} 个历史分析回填的项目（旧沟通还原的，照列、不计入个数）` : ""}`,
+        summary: `${数} 个项目（${阶段们.map((ph) => `${ph} ${个数(ph)}`).join("、")}）${数 + 回填 > 列.length ? `，列出最近改过的 ${列.length} 个` : ""}${回填 ? `；另有 ${回填} 个历史分析回填 / 仅记录用的项目（照列、不计入个数）` : ""}`,
         data: {
           总数: 数,
           各阶段: Object.fromEntries(阶段们.map((ph) => [ph, 个数(ph)])),
@@ -839,6 +842,7 @@ export const TOOLS: Tool[] = [
             下一步: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
             多久没动: `${dayjs().diff(p.updatedAt, "day")} 天`,
             ...(是历史分析(p) ? { 数据来源: `${来源字(p.source)}（旧沟通还原的，不计入个数和统计）` } : {}),
+            ...(是仅记录用(p) ? { 数据来源: `${来源字(p.source)}（为记一条沟通建的，不算在推、不计入个数和统计）` } : {}),
           })),
         },
       };

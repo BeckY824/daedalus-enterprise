@@ -1148,7 +1148,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
   try {
     const me = await requireUser();
     if (!(await 开着()) || !企业版() || typeof projectId !== "string" || !projectId) return { ok: true, 能记: false };
-    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true } });
+    const p = await prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true, source: true } });
     // 已结束 / 在公海的不走项目那条（11-17 沟通必须挂在推项目：落到 saveFollowUp 也会拦下、说清楚）
     if (!p || p.pooledAt || p.result) return { ok: true, 能记: false };
     // 11-17：负责人或已进组的组员能记（和 lib/project/db.ts 记项目沟通 同一个判断）
