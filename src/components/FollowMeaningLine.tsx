@@ -47,12 +47,11 @@ type 行参数 = {
   内容: string | null | undefined;
   类型: string | null | undefined;
   标题?: string | null;
-  AI生成?: boolean;
 };
 
 /** 那一行的字（空内容、算有效、不是沟通 = null）：要放进 antd Form.Item extra 的先算字，null 就不给 extra（不留空行） */
 export function 意义话of(p: 行参数, 判定: 判定须知): string | null {
-  return 沟通意义提示(p.内容, p.类型, { 标题: p.标题, AI生成: p.AI生成, 占位词: 判定.占位词, 拦: 判定.拦 });
+  return 沟通意义提示(p.内容, p.类型, { 标题: p.标题, 占位词: 判定.占位词, 拦: 判定.拦 });
 }
 
 export function MeaningNote({ 话 }: { 话: string }) {

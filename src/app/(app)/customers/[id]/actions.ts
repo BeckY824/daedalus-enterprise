@@ -44,6 +44,7 @@ import { 企业版字典, 本套名 } from "@/lib/project/stage-dict";
 import { 短沟通提示 } from "@/lib/enterprise/tri-state-detail";
 import { 超时短沟通提示 } from "@/lib/enterprise/reply-overdue";
 import { 沟通无意义挡, 读沟通判定须知, type 沟通判定须知 } from "@/lib/enterprise/meaningless-follow";
+import { 不算沟通的类型 } from "@/lib/enterprise/tri-state-quota";
 import { 存沟通后重算三态, 记首次有效 } from "@/lib/enterprise/tri-state-db";
 
 import { 客户显名, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
@@ -317,9 +318,9 @@ export async function saveFollowUp(input: FollowUpInput) {
     if (!发起.ok) return 发起;
     /*
       无意义沟通不能保存（F-052，开关默认开）：新记的判为无意义整条不存（下面挂项目、只读、公海那几道之后、领取公海之前：那几句更准，拦下的不顺手领走）；
-      改已有的只在内容改了时判（事务里和改前比），原样带回来的老记录照存。带速记原文的以 AI 生成结果判
+      改已有的只在内容改了时判（事务里和改前比），原样带回来的老记录照存。AI 解析出来的同样只量最后存进去的内容（判为无意义都不能提交）
     */
-    const 无意义 = (内容: string) => 沟通无意义挡(内容, 方式.type, { 标题: input.title ?? 原标题, AI生成: !input.id && !!input.sourceText?.trim() });
+    const 无意义 = (内容: string) => 沟通无意义挡(内容, 方式.type, { 标题: input.title ?? 原标题 });
     const data = {
       type: 方式.type, ...(方式.method !== undefined ? { method: 方式.method } : {}), ...(发起.initiator !== undefined ? { initiator: 发起.initiator } : {}), title: input.title?.trim() ?? "", content: input.content.trim(), status: input.status,
       duration: input.durationMinutes ? Math.round(input.durationMinutes * 60) : null,
@@ -393,7 +394,9 @@ export async function saveFollowUp(input: FollowUpInput) {
       if (input.id) {
         const 改前 = await tx.followUp.findUnique({ where: { id: input.id }, select: { type: true, method: true, initiator: true, title: true, content: true, status: true, duration: true, occurredAt: true, dueAt: true, dueOn: true, dueHasTime: true, contactId: true, opportunityId: true, participants: true } });
         if (!改前) return { ok: false as const, error: "这条跟进已经不在了（可能在别处删了），刷新看看" };
-        if (改前.content !== data.content && 改无意义) return { ok: false as const, error: 改无意义, 无意义: true as const };
+        // 内容改没改按去掉首尾空白比（老记录末尾带空白、只改日期的照存）；任务 / 提醒改成沟通 = 新记了一条沟通，内容没动也判
+        const 内容动了 = 改前.content.trim() !== data.content || (不算沟通的类型.includes(改前.type) && !不算沟通的类型.includes(data.type));
+        if (内容动了 && 改无意义) return { ok: false as const, error: 改无意义, 无意义: true as const };
         const 时间 = parseScheduleDate(input.dueAt, { at: 改前.dueAt, on: 改前.dueOn, hasTime: 改前.dueHasTime }, input.dueHasTime)!;
         Object.assign(data, { dueAt: 时间.at, dueOn: 时间.on, dueHasTime: 时间.hasTime });
         // 沟通时间按分钟比（低-2）：弹窗只到分钟，带秒的老记录原样交回来不算改、不被截掉秒

@@ -173,12 +173,15 @@ export type 沟通意义判定 = {
  *     只有占位词、只有链接的照存（不拦），只说一句不算有效沟通
  *   - **判据第二期换成按意义判**（AI，中转站 DeepSeek V4 Flash）：只换这个函数里面，入口不动
  *   - 跟进任务 / 提醒、同号再次录入的系统留痕不判（返回不是无意义）；导入、飞书 / 钉钉同步不走记沟通的入口，不拦
+ *   - AI 解析出来的同样只量内容本身（不认 AI生成；拨钟那边 有内容的沟通 的 AI生成 有字即有效不动）
  */
-export function 判沟通无意义(内容: string | null | undefined, 类型: string | null | undefined, 选: 沟通判定选项 & { 标题?: string | null } = {}): 沟通意义判定 {
+export type 意义判定选项 = { 占位词?: readonly string[]; 标题?: string | null };
+export function 判沟通无意义(内容: string | null | undefined, 类型: string | null | undefined, 选: 意义判定选项 = {}): 沟通意义判定 {
   const 不判: 沟通意义判定 = { 无意义: false, 种: null, 还差: 0 };
   if (类型 && 不算沟通的类型.includes(类型)) return 不判;
   if (是同号留痕(选.标题)) return 不判;
-  const 种 = 无效沟通原因of(内容, 选);
+  // 只量内容本身：不认 AI生成（AI 解析出来的照最后存进去的内容判，F-052 审查）
+  const 种 = 无效沟通原因of(内容, { 占位词: 选.占位词 });
   if (!种) return 不判;
   return { 无意义: 一期拦的.includes(种), 种, 还差: 种 === "太短" ? Math.max(1, 有效沟通最少字数 - 中文字数((内容 ?? "").trim())) : 0 };
 }
@@ -189,7 +192,7 @@ const 太短半句 = (内容: string | null | undefined, 判: 沟通意义判定
  * 填写时内容框下面那一行（F-052）：空内容、算有效、不是沟通的回 null。
  * 拦 = 组织开关「无意义沟通不能保存」开着：无意义的说「不能保存」；关着照旧只说不算有效沟通
  */
-export function 沟通意义提示(内容: string | null | undefined, 类型: string | null | undefined, 选: 沟通判定选项 & { 标题?: string | null; 拦: boolean }): string | null {
+export function 沟通意义提示(内容: string | null | undefined, 类型: string | null | undefined, 选: 意义判定选项 & { 拦: boolean }): string | null {
   if (!(内容 ?? "").trim()) return null;
   const 判 = 判沟通无意义(内容, 类型, 选);
   if (!判.种) return null;

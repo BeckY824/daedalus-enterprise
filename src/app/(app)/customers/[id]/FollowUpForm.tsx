@@ -689,10 +689,10 @@ export default function FollowUpForm({
 
   /*
     内容框下面那一行（F-052）：改已有的、内容没动的不说（服务端只在内容改了时拦）；
-    走客户那条、经 AI 解析过（带速记原文）的以生成结果判，同服务端
+    AI 解析过的同样只量框里最后的内容，同服务端
   */
   const 意义话 = record?.id && (内容 ?? "").trim() === (record.content ?? "").trim() ? null
-    : 意义话of({ 内容, 类型: type, 标题: record?.title, AI生成: !record?.id && !!extras && !(项目模式 && !!projectId) }, 判定);
+    : 意义话of({ 内容, 类型: type, 标题: record?.title }, 判定);
   const 内容提示 = 意义话 ? <MeaningNote 话={意义话} /> : undefined;
   const showDuration = type === "PHONE" || type === "MEETING";
   const showDue = type === "TASK" || type === "REMIND";

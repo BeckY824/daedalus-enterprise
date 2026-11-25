@@ -21,9 +21,9 @@ export async function 读沟通判定须知(): Promise<沟通判定须知> {
 
 /**
  * 判一下这条拦不拦：拦就回那句话（不存），不拦回 null。开关关着、不是企业版（规则开着 回 false）都不查词表。
- * AI生成 = 这条带速记原文（FollowUpSource）：以生成结果判，有字就不拦（同 有内容的沟通）
+ * 只量最后存进去的内容：AI 解析出来的也一样（判为无意义都不能提交；三态拨钟那边 AI 有字即有效另算，不在这里）
  */
-export async function 沟通无意义挡(内容: string | null | undefined, 类型: string | null | undefined, 选: { 标题?: string | null; AI生成?: boolean } = {}): Promise<string | null> {
+export async function 沟通无意义挡(内容: string | null | undefined, 类型: string | null | undefined, 选: { 标题?: string | null } = {}): Promise<string | null> {
   if (!(await 规则开着("无意义沟通拦"))) return null;
   // 先不带词表判：够字数的（绝大多数）到这里就放行，不多查一次库；太短的再按后台词表判（只有占位词的不拦）
   if (!判沟通无意义(内容, 类型, { ...选, 占位词: [] }).无意义) return null;

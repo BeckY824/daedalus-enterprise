@@ -2,7 +2,7 @@
  * F-052 无意义沟通不能保存（11-25 客户定「判为无意义就不能提交」，一期落「不足 4 个字不能提交」）：
  *   - 判沟通无意义：一期判据沿用 无效沟通原因of，只有「空」「太短」算无意义；占位词、只有链接照存只提示；任务 / 提醒、同号留痕不判
  *   - 沟通意义提示（填写时那一行）：空不出；开关开着说不能保存、还差几个字；关着说不算有效沟通
- *   - 服务端：saveFollowUp、记项目沟通Action 开关开着（默认）拦下不存；关着照存；改已有的只在内容改了时拦；带速记原文的按 AI 生成判
+ *   - 服务端：saveFollowUp、记项目沟通Action 开关开着（默认）拦下不存；关着照存；改已有的只在内容改了时拦；带速记原文（AI 解析）的同样照最后存进去的内容判
  *   - 开关表：组织规则「无意义沟通拦」默认开，总览有这一项
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -40,11 +40,10 @@ describe("判沟通无意义（一期判据：不足 4 个字）", () => {
     expect(判沟通无意义("开店开店", "PHONE", { 占位词: ["开店"] })).toMatchObject({ 无意义: false, 种: "占位词" });
   });
 
-  it("跟进任务 / 提醒、同号再次录入留痕不判；AI 生成的有字就不算无意义", () => {
+  it("跟进任务 / 提醒、同号再次录入留痕不判", () => {
     expect(判沟通无意义("开店", "TASK")).toEqual({ 无意义: false, 种: null, 还差: 0 });
     expect(判沟通无意义("开店", "REMIND").无意义).toBe(false);
     expect(判沟通无意义("开店", "PHONE", { 标题: "同号再次录入（来源不同）" }).无意义).toBe(false);
-    expect(判沟通无意义("好的", "PHONE", { AI生成: true }).无意义).toBe(false);
   });
 });
 
@@ -71,8 +70,8 @@ describe("沟通意义提示（填写时那一行）", () => {
     expect(规整判定({ 拦: false, 占位词: ["跟进", 3] })).toEqual({ 拦: false, 占位词: ["跟进"] });
   });
 
-  it("超时提醒那半句：开着说存不进去，关着说字数和占位词", () => {
-    expect(有效沟通标准话(true)).toBe("（写清沟通内容；判为无意义的记录存不进去）");
+  it("超时提醒那半句：开着说太短的存不进去、占位词能存但不算，关着说字数和占位词", () => {
+    expect(有效沟通标准话(true)).toBe("（写清沟通内容：太短的存不进去；只写「跟进」「已联系」这类的能存但不算）");
     expect(有效沟通标准话(false)).toBe("（写清沟通内容，中文至少 4 个字；「跟进」「已联系」这类不算）");
   });
 });
@@ -168,9 +167,41 @@ describe("服务端拦（企业版）", () => {
     expect((await prisma.followUp.findUniqueOrThrow({ where: { id: 存.id } })).content).toBe("开店，客户说下月开业");
   });
 
-  it("带速记原文（AI 解析）的以生成结果判：「好的」不拦；占位词表读后台改过的", async () => {
+  it("改已有的：老记录末尾带空白、只改日期照存（内容按去掉首尾空白比）", async () => {
+    await setSetting(规则.无意义沟通拦.key, false);
+    invalidateSettingsCache();
     const a = await 线索();
-    expect((await 记客户(a, "好的", { sourceText: "客户说好的，下周来店里看样品" })).ok).toBe(true);
+    const 存 = await 记客户(a, "开店");
+    if (!存.ok) throw new Error(存.error);
+    await setSetting(规则.无意义沟通拦.key, true);
+    invalidateSettingsCache();
+    // 老数据：库里内容末尾带空白（以前的入口没去空白）
+    const 原 = await prisma.followUp.update({ where: { id: 存.id }, data: { content: "开店 \n" } });
+    const 前一天 = new Date(原.occurredAt.getTime() - 86_400_000).toISOString();
+    const r = await saveFollowUp({ id: 存.id, 版本: 原.updatedAt.toISOString(), customerId: a.customerId, type: "PHONE", title: "", content: "开店 \n", status: "已完成", occurredAt: 前一天 });
+    expect(r.ok, JSON.stringify(r)).toBe(true);
+  });
+
+  it("改已有的：跟进任务改成电话、内容太短（没动）照样拦下，库里还是任务（负责人是销售管理）", async () => {
+    const a = await 线索();
+    const 存 = await saveFollowUp({ customerId: a.customerId, projectId: a.id, type: "TASK", title: "回电", content: "回电", status: "已完成", occurredAt: 现在() });
+    if (!存.ok) throw new Error(存.error);
+    const 原 = await prisma.followUp.findUniqueOrThrow({ where: { id: 存.id } });
+    // 本人限时改不能改类型：甲换成销售管理（负责人且是管理才能改沟通）
+    await prisma.entMember.update({ where: { userId: 甲.id }, data: { bizRole: "sales_mgr" } });
+    忘掉企业版范围();
+    const r = await saveFollowUp({ id: 存.id, 版本: 原.updatedAt.toISOString(), customerId: a.customerId, type: "PHONE", title: "回电", content: "回电", status: "已完成", occurredAt: 原.occurredAt.toISOString() });
+    expect(r, JSON.stringify(r)).toMatchObject({ ok: false, 无意义: true });
+    const 后 = await prisma.followUp.findUniqueOrThrow({ where: { id: 存.id } });
+    expect(后.type).toBe("TASK");
+    expect(后.updatedAt.getTime()).toBe(原.updatedAt.getTime());
+  });
+
+  it("带速记原文（AI 解析）的照最后存进去的内容判：「好的」拦下不存；占位词表读后台改过的", async () => {
+    const a = await 线索();
+    expect(await 记客户(a, "好的", { sourceText: "客户说好的，下周来店里看样品" })).toMatchObject({ ok: false, 无意义: true });
+    expect(await 条数(a.customerId)).toBe(0);
+    expect((await 记客户(a, "客户说下周来店里看样品", { sourceText: "客户说好的，下周来店里看样品" })).ok).toBe(true);
     await setSetting(占位词键, ["开店"]);
     invalidateSettingsCache();
     expect(await 沟通判定须知()).toEqual({ 拦: true, 占位词: ["开店"] });

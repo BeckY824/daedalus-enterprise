@@ -1683,7 +1683,7 @@ describe("11-20 审查修正（B1 按时也只计新分配、B2 导入不算自�
     expect(提).toHaveLength(1);
     expect(提[0].link).toBe(`/projects/${id}`);
     // F-052：紧跟一句什么算有效沟通；「无意义沟通不能保存」默认开着，说存不进去。去重键不变
-    expect(提[0].body).toContain(`${本人记话}（写清沟通内容；判为无意义的记录存不进去），`);
+    expect(提[0].body).toContain(`${本人记话}（写清沟通内容：太短的存不进去；只写「跟进」「已联系」这类的能存但不算），`);
     expect(提[0].body).toContain("16:30 前还没记");
     expect(提[0].dedupeKey).toMatch(new RegExp(`^reply-overdue:${id}:${甲.id}:\\d{4}-\\d\\d-\\d\\dT[\\d:.]+Z$`));
     // 开关关着：照存 + 提示，正文改说字数和占位词
