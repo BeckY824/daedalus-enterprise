@@ -64,6 +64,7 @@ import { 同号节点, 同号标题不许用话, 同号留痕标题不能改话,
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 读冷项目 } from "@/lib/enterprise/tri-state-detail";
+import { 执行合并, 撤回合并 } from "@/lib/enterprise/customer-merge";
 
 /*
   保存动作用真实的现在（写入时间是数据库引擎记的，假不了 Date），所以按今天往回数：系统起算日设成 起算前 天前，
@@ -570,6 +571,36 @@ describe("额度与暂缓次数重置只认真推进了钟的沟通", () => {
   });
 });
 
+/**
+ * 合并客户（customer-merge.ts，11-25）：B 的沟通挪到留下的 A 上，事务提交后按挪来的沟通重算 A 的三态；
+ * 撤回合并沟通挪回 B，两家都重算
+ */
+describe("合并客户后按挪来的沟通重算三态", () => {
+  it("沉睡的 A 并进一家今天有有效沟通的 B：A 立刻变活跃；撤回合并后 A 回沉睡", async () => {
+    await 开三态(95);
+    // B 也是 400 天前建的、项目也旧：A 变活跃只能是挪来的那条沟通
+    const B = (await prisma.customer.create({ data: { name: "客户乙", phone: "", salesOwnerId: 乙, createdAt: 那天(400), contacts: { create: { name: "乙联系人", phone: "13800000002", isPrimary: true, createdAt: 那天(400) } } } })).id;
+    const B项目 = (await prisma.project.create({ data: { name: "乙项目", customerId: B, ownerId: 乙, creatorId: 乙, phase: "商机", node: "明确需求", createdAt: 那天(400), updatedAt: 那天(400) } })).id;
+    const f = await prisma.followUp.create({ data: { customerId: B, ownerId: 乙, type: "PHONE", title: "", content: "电话聊了预算和交付时间", status: "已完成", occurredAt: new Date() } });
+    await prisma.followUpProject.create({ data: { followUpId: f.id, projectId: B项目, node: "明确需求" } });
+    await 三态夜扫();
+    expect(await 钟()).toBe("沉睡");
+    const 我 = { id: 乙, name: "乙", role: "SALES" };
+    忘掉企业版范围();
+    const r = await 执行合并(prisma, 客户, B, 我);
+    expect(r).toMatchObject({ ok: true });
+    expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).customerId).toBe(客户);
+    expect(await 钟()).toBe("活跃");
+    expect((await 读一位三态(客户))!.归零日).toBe(今天);
+    const 痕 = await prisma.entCustomerStateLog.findMany({ where: { customerId: 客户 }, orderBy: [{ at: "desc" }, { id: "desc" }], take: 1 });
+    expect(痕[0]).toMatchObject({ fromState: "沉睡", toState: "活跃", via: "自动" });
+    忘掉企业版范围();
+    expect(await 撤回合并(prisma, (r as { mergeId: string }).mergeId, 我)).toMatchObject({ ok: true });
+    expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).customerId).toBe(B);
+    expect(await 钟()).toBe("沉睡");
+  });
+});
+
 /*
   静态守卫（第三轮第 4 条，第四轮改成按调用点）：每个写 / 改 / 删 / 恢复沟通（FollowUp）的调用点，所在的那个函数里要调 存沟通后重算三态；
   写沟通那段跑在调用方事务里的，列出调用方函数（它们里面要调）；别的逐点豁免、写明为什么。新加一个写 FollowUp 的调用点没接，这条会红。
@@ -600,6 +631,10 @@ describe("写沟通的调用点都接了存沟通后重算三态", () => {
     "lib/project/from-lead.ts#线索建项目": ["app/(app)/leads/actions.ts#转项目之后"],
     "lib/enterprise/soft-delete.ts#表": ["lib/enterprise/soft-delete.ts#恢复一条"],
     "lib/enterprise/dedupe-claim.ts#查重领取记沟通": ["app/(app)/customers/pool-actions.ts#查重领取"],
+    // 合并客户（11-25）：沟通在事务里挪，事务提交后外层重算——撤回合并重算两家；项目换客户、撤销换客户重算原客户和目标客户
+    "lib/enterprise/customer-merge.ts#带回新挂的": ["lib/enterprise/customer-merge.ts#撤回合并"],
+    "lib/enterprise/project-move-customer.ts#挪项目": ["lib/enterprise/project-move-customer.ts#项目换客户"],
+    "lib/enterprise/project-move-customer.ts#反着挪": ["lib/enterprise/project-move-customer.ts#撤销换客户"],
   };
   const 写沟通 = /\.followUp\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\b|(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+"FollowUp"|FollowUp:\s*tx\.followUp/;
   const 声明 = /^(export\s+)?(default\s+)?(async\s+)?function\s*\*?\s*([^\s(<]+)|^(export\s+)?const\s+([^\s:=]+)\s*(:[^=]+)?=\s*(cache\()?(async\s*)?(\(|function|[A-Za-z_一-鿿]+\s*=>)/;
