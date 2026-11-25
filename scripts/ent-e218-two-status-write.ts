@@ -1,7 +1,7 @@
 /**
  * E-218（客户 11-23）：客户状态「在推项目优先」上线后，只写两家客户的客户状态（custStatus），一次性数据脚本。
  *   NO.83028：流失 → 成交（名下有已流失线索，另有在推的订单阶段项目）
- *   NO.17535：页面「流失」→ 潜在（库里没存，详情章按旧公式现算「流失」；名下另有在推线索）
+ *   NO.17535：库里空 → 流失（E-275 选 a：11-24 负责人放回客户公海，原在推线索随之进线索公海、不算在推，新规则算出「流失」，存上和页面一致）
  * 依据：E-218（11-23）「空跑通过，只写 2 家」「就写这两家，走老规矩：备份 → 空跑 → 报时间 → 写入 → 抽查，附逐行日志」。
  * 1,350 家历史不一致不在本脚本范围（E-218：不做全量重算）。
  *
@@ -10,7 +10,8 @@
  *   - 项目 = Project.customerId 指着它、没软删的；pooledAt 带上（在线索公海的不算在推）
  *   - 不算 = 结局线索流失 + 线索验证终判「无效线索」+ 无效原因是重复线索（字典 dict-invalid-5 现名 + 原名「重复线索」，同 重复线索名们 / 重复线索不算）
  *   - 序号 → 字典 custStatus 这一项现在的名字（dict-custStatus-<序号>，表里没有用 字典定义 默认名，同 客户状态名们）
- *   - 写 custStatus + updatedAt（Prisma updateMany 带 @updatedAt，同 重算客户状态）
+ *   - 只写 custStatus 一列，不动 updatedAt（同 ent-e220-status-backfill.ts，理由见那份头注：updatedAt 被编辑乐观锁、导入撤销、导出截止、
+ *     按最近动过排序当「有人动过」用；和 重算客户状态 走 Prisma @updatedAt 会顶不同）。AuditLog 里记改前的 updatedAt 备查
  * 留痕：照 11-20 起批量写正式库的规矩（客户 11-19「凡批量写正式库，逐批留操作记录」），每改一格写一条 AuditLog
  *   （userId/userName = --操作人 指定的账号，必填；entity Customer、entityId 客户 id；detail 带 脚本 / 批次 / 编号 / 旧 / 新 / 依据原话），
  *   格式同 草稿-写入-20261121 的 112 家、79119 两个脚本。重算客户状态 本身不写 AuditLog，这里多记这一条是数据脚本的规矩。
@@ -29,13 +30,13 @@
  * 写之前（同一个 BEGIN IMMEDIATE 事务里）逐家断言，任一家不过整批不写、退出码 1：
  *   - 客户编号唯一、没软删
  *   - 库里现存值是预期的改前值（两家都是：空，或已被存成「流失」——这两种页面上都显示「流失」；库里没存时详情按旧公式现算）
- *   - 按新规则算出来的值 = 预期（83028 成交、17535 潜在）
+ *   - 按新规则算出来的值 = 预期（83028 成交、17535 流失）
  * 已经是目标值的那家计「已完成」、不写；两家都已完成 = 0 行、退出码 0（可重复跑）。
  *
  * 输出逐行日志（北京时间、客户编号、字段、改前、改后、原因），不含客户名。
  * 撤回（--undo <批次号>，照 ent-e220-status-backfill.ts 的撤回）：按该批次 AuditLog 记下的改前值（detail.旧.custStatus，空就写回 NULL）逐行恢复，
  *   同一个 BEGIN IMMEDIATE 事务里先逐行核：现在的值仍等于该批次写入的新值（detail.新.custStatus）——有一行不等（写后被系统 / 人改过）就整批不写、
- *   报出是哪一行、退出码 1（空跑同样报出、退出码 1）。updatedAt 顶成撤回这一刻（同写入，Prisma @updatedAt 的口径；改前改后都记在日志里）。
+ *   报出是哪一行、退出码 1（空跑同样报出、退出码 1）。撤回同样只写 custStatus、不动 updatedAt（现在的 updatedAt 记在日志里）。
  *   撤回另起批次「原批次-undo-xxxx」，每改一格记一条 AuditLog（类 = 撤回、撤的批次），正文同样带「[批次 … · 执行：Becky（服务商）· 依据 <E-编号>]」前缀、
  *   detail 带 批次 / 执行 / 依据 / 对应行；事务里回读值、日志条数、逐条核前缀和四个键，不对整批回滚。已撤回过的批次不再撤（退出码 0）。
  *   兜底：按写前备份恢复。
@@ -58,7 +59,7 @@ const 重复线索原名 = "重复线索";
 type 目标 = { 客户编号: number; 允许改前: readonly (string | null)[]; 预期: string; 原因: string };
 const 两家: readonly 目标[] = [
   { 客户编号: 83028, 允许改前: [null, "流失"], 预期: "成交", 原因: "在推优先：名下有已流失线索，另有在推的订单阶段项目，已结束的流失不再压过在推项目" },
-  { 客户编号: 17535, 允许改前: [null, "流失"], 预期: "潜在", 原因: "在推优先：名下有流失线索，另有在推线索，已结束的流失不再压过在推项目（库里原没存，详情按旧公式现算显示流失）" },
+  { 客户编号: 17535, 允许改前: [null, "流失"], 预期: "流失", 原因: "E-275 选 a：照新规则存上「流失」（客户已放回公海，原在推线索进了线索公海、不算在推；库里原没存，页面现算也是流失）" },
 ];
 
 /** 本脚本的 AuditLog 都在这之后（北京 2026-11-23 00:00，同 e220 留痕起点），按 AuditLog_at_idx 找，不扫全表 */
@@ -160,7 +161,7 @@ const 新日志id = (T: number) => "c" + (T.toString(36) + randomBytes(10).toStr
 function 撤(批次号: string): number {
   记(`# ${件名} · 撤回 ${批次号} · ${要写 ? "写" : "空跑（只读）"} · 北京 ${北京(现在)} · 库 ${库} · 操作人 ${OP!.name}（执行：${前缀件.执行}）· 依据 ${依据号}`);
   const 本脚本的 = (批: string, 键: "批次" | "撤的批次") => 全(
-    `SELECT id, entityId, detail FROM AuditLog WHERE at >= ? AND entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.脚本') = ? AND json_extract(detail, '$.${键}') = ?`,
+    `SELECT id, entityId, detail FROM AuditLog WHERE at >= ? AND +entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.脚本') = ? AND json_extract(detail, '$.${键}') = ?`,
     留痕起点, 脚本, 批,
   );
   const 跑 = (): number => {
@@ -188,17 +189,17 @@ function 撤(批次号: string): number {
       throw new Error(`${不对.length} 行现在的值不是本批写入的新值（${不对.map((x) => `NO.${x.w.客户编号}`).join("、")}），整批不撤`);
     }
     const T = Date.now();
-    const 改 = db.prepare("UPDATE Customer SET custStatus = ?, updatedAt = ? WHERE id = ? AND custStatus IS ? AND deletedAt IS NULL");
+    const 改 = db.prepare("UPDATE Customer SET custStatus = ? WHERE id = ? AND custStatus IS ? AND deletedAt IS NULL");
     const 写日志 = db.prepare("INSERT INTO AuditLog (id, at, userId, userName, action, entity, entityId, summary, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
     let 撤了 = 0;
     for (const { w, 现, updatedAt } of 现们) {
       if (要写) {
-        if (Number((改.run(w.旧, T, w.客户id, w.新) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${w.客户编号} 撤回改动不是 1 行`);
+        if (Number((改.run(w.旧, w.客户id, w.新) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${w.客户编号} 撤回改动不是 1 行`);
         写日志.run(新日志id(T), T, OP!.id, OP!.name, "update", "Customer", w.客户id,
           前缀件.加前缀(撤号, 依据号, `[${件名} 撤回 ${批次号} NO.${w.客户编号}] 客户状态：custStatus ${w.新} → ${显(w.旧)}`),
           JSON.stringify(前缀件.加键({ 脚本, 类: "撤回", 批次: 撤号, 撤的批次: 批次号, 撤的日志: w.日志id, 编号: `NO.${w.客户编号}`, 客户编号: w.客户编号, 表: "Customer", 键列: "id",
-            格: "客户状态（撤回在推优先重算）", 操作: "update", 列: ["custStatus", "updatedAt"],
-            旧: { custStatus: 现, updatedAt }, 新: { custStatus: w.旧, updatedAt: T }, 原因: `整批撤回 ${批次号}，改回写入前的值`, 依据 }, 撤号, 依据号, { Customer: w.客户id })));
+            格: "客户状态（撤回在推优先重算）", 操作: "update", 列: ["custStatus"],
+            旧: { custStatus: 现, updatedAt }, 新: { custStatus: w.旧 }, 原因: `整批撤回 ${批次号}，改回写入前的值`, 依据 }, 撤号, 依据号, { Customer: w.客户id })));
       }
       撤了 += 1;
       记(`${北京(T)}\tNO.${w.客户编号}\tcustStatus（客户状态）\t${w.新}\t${显(w.旧)}\t${要写 ? "已撤" : "将撤（空跑）"}`);
@@ -252,19 +253,19 @@ if (!要写) {
   try {
     const P = 计划();
     const T = Date.now();
-    const 写客户 = db.prepare("UPDATE Customer SET custStatus = ?, updatedAt = ? WHERE id = ? AND custStatus IS ?");
+    const 写客户 = db.prepare("UPDATE Customer SET custStatus = ? WHERE id = ? AND custStatus IS ?");
     const 写日志 = db.prepare("INSERT INTO AuditLog (id, at, userId, userName, action, entity, entityId, summary, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
     for (const r of P) {
       if (r.已完成) {
         记(`${北京(T)}\tNO.${r.t.客户编号}\tcustStatus（客户状态）\t${显(r.改前)}\t${r.改后}\t已完成（已是目标值，不写）`);
         continue;
       }
-      if (Number((写客户.run(r.改后, T, r.id, r.改前) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${r.t.客户编号} 改动不是 1 行`);
+      if (Number((写客户.run(r.改后, r.id, r.改前) as { changes: number | bigint }).changes) !== 1) throw new Error(`NO.${r.t.客户编号} 改动不是 1 行`);
       const 日志id = "c" + (T.toString(36) + randomBytes(10).toString("hex")).slice(0, 24);
       写日志.run(日志id, T, OP!.id, OP!.name, "update", "Customer", r.id,
         前缀件.加前缀(批次, 依据号, `[${件名} NO.${r.t.客户编号}] 客户状态（按在推优先重算）：custStatus ${显(r.改前)} → ${r.改后}`),
         JSON.stringify(前缀件.加键({ 脚本, 批次, 编号: `NO.${r.t.客户编号}`, 客户编号: r.t.客户编号, 表: "Customer", 键列: "id", 格: "客户状态（按在推优先重算）", 操作: "update",
-          列: ["custStatus", "updatedAt"], 旧: { custStatus: r.改前, updatedAt: r.updatedAt }, 新: { custStatus: r.改后, updatedAt: T }, 原因: r.t.原因, 依据 }, 批次, 依据号, { Customer: r.id })));
+          列: ["custStatus"], 旧: { custStatus: r.改前, updatedAt: r.updatedAt }, 新: { custStatus: r.改后 }, 原因: r.t.原因, 依据 }, 批次, 依据号, { Customer: r.id })));
       写了 += 1;
       记(`${北京(T)}\tNO.${r.t.客户编号}\tcustStatus（客户状态）\t${显(r.改前)}\t${r.改后}\t${r.t.原因}`);
     }
@@ -273,7 +274,9 @@ if (!要写) {
       const x = 一("SELECT custStatus FROM Customer WHERE id = ?", r.id);
       if (x?.custStatus !== r.改后) throw new Error(`回读 NO.${r.t.客户编号} 是「${显((x?.custStatus as string | null) ?? null)}」，应为「${r.改后}」`);
     }
-    const 日志数 = Number(一("SELECT count(*) n FROM AuditLog WHERE entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.批次') = ?", 批次)?.n);
+    // at >= T 走 AuditLog_at_idx（本批日志都记在 T）；+entity 不让查询规划挑 entity 索引——挑了要逐条 json_extract 全部 Customer 日志
+    // （3703 副本 25 万条，写锁里 2–5 s）。撤回那条同理
+    const 日志数 = Number(一("SELECT count(*) n FROM AuditLog WHERE at >= ? AND +entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.批次') = ?", T, 批次)?.n);
     if (日志数 !== 写了) throw new Error(`操作日志 ${日志数} 条 ≠ 改动 ${写了} 行`);
     // 客户 E-244：本批每条日志正文带前缀、detail 带 批次 / 执行 / 依据，逐条核，不对整批回滚
     const 核 = 前缀件.核本批(db, 批次, 依据号, T);

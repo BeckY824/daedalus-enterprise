@@ -34,7 +34,7 @@ beforeAll(async () => {
 });
 afterAll(() => { if (目录) rmSync(目录, { recursive: true, force: true }); });
 
-/** 两家：83028（流失线索 + 在推订单 → 成交）、17535（流失线索 + 在推线索 → 潜在），改前一个「流失」一个空 */
+/** 两家：83028（流失线索 + 在推订单 → 成交）、17535（流失线索 + 进了线索公海的线索 → 流失，E-275 选 a），改前一个「流失」一个空 */
 beforeEach(() => {
   库 = path.join(目录, `t-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
   const db = new DatabaseSync(库);
@@ -49,7 +49,7 @@ beforeEach(() => {
     INSERT INTO Customer VALUES ('c83028', 83028, '流失', 1000, NULL), ('c17535', 17535, NULL, 2000, NULL);
     INSERT INTO Project VALUES
       ('p1', 'c83028', '线索', '线索验证', '线索流失', NULL, NULL), ('p2', 'c83028', '订单', '生产备货', NULL, NULL, NULL),
-      ('p3', 'c17535', '线索', '潜客培育', '线索流失', NULL, NULL), ('p4', 'c17535', '线索', '潜客培育', NULL, NULL, NULL);
+      ('p3', 'c17535', '线索', '潜客培育', '线索流失', NULL, NULL), ('p4', 'c17535', '线索', '潜客培育', NULL, 3000, NULL);
   `);
   db.close();
 });
@@ -124,13 +124,13 @@ describe("不认识的参数：退出码 2、什么都不写", () => {
 describe("e218 --undo：按该批日志的改前值整批改回", () => {
   it("空跑只报、不写；写入改回改前值（空写回 NULL），另起 -undo- 批次、每行一条带前缀和四个键的日志；再撤一次不再撤", () => {
     const 批 = 写一批();
-    expect(状态()).toEqual({ 83028: "成交", 17535: "潜在" });
+    expect(状态()).toEqual({ 83028: "成交", 17535: "流失" });
     expect(日志()).toHaveLength(2);
 
     const 空 = 跑(e218, [库, "--undo", 批, "--dry-run", ...必带]);
     expect(空.code, 空.out).toBe(0);
     expect(空.out).toContain("空跑：将撤 2 行，一行没写");
-    expect(状态()).toEqual({ 83028: "成交", 17535: "潜在" });
+    expect(状态()).toEqual({ 83028: "成交", 17535: "流失" });
     expect(日志()).toHaveLength(2);
 
     const 写 = 跑(e218, [库, "--undo", 批, "--write", ...必带], true);
@@ -147,7 +147,7 @@ describe("e218 --undo：按该批日志的改前值整批改回", () => {
       expect([x.userId, x.userName]).toEqual([操作人, "管理员"]);
     }
     expect(Object.fromEntries(撤.map((x) => [x.entityId, [(x.d.旧 as { custStatus: unknown }).custStatus, (x.d.新 as { custStatus: unknown }).custStatus]])))
-      .toEqual({ c83028: ["成交", "流失"], c17535: ["潜在", null] });
+      .toEqual({ c83028: ["成交", "流失"], c17535: ["流失", null] });
 
     // 再撤一次：已撤回过，不写、退出码 0
     const 再 = 跑(e218, [库, "--undo", 批, "--write", ...必带], true);
@@ -156,7 +156,7 @@ describe("e218 --undo：按该批日志的改前值整批改回", () => {
     expect(日志()).toHaveLength(4);
     // 撤完照常能重写（重写是新批次）
     写一批();
-    expect(状态()).toEqual({ 83028: "成交", 17535: "潜在" });
+    expect(状态()).toEqual({ 83028: "成交", 17535: "流失" });
   });
 
   it("核值不对：有一行写后被改过 → 空跑、写入都整批不撤、报出哪一行、退出码 1，库和日志都不动", () => {
@@ -190,6 +190,51 @@ describe("e218 --undo：按该批日志的改前值整批改回", () => {
     expect(跑(e218, [库, "--undo", 批, "--write", ...必带]).code).toBe(2);
     expect(跑(e218, [库, "--undo", 批, "--write", "--操作人", 操作人], true).code).toBe(2);
     expect(跑(e218, [库, "--undo", 批, "--write", "--basis", "E-218"], true).code).toBe(2);
-    expect(状态()).toEqual({ 83028: "成交", 17535: "潜在" });
+    expect(状态()).toEqual({ 83028: "成交", 17535: "流失" });
+  });
+});
+
+describe("E-275 选 a：17535 只在在推线索进了公海时才写「流失」", () => {
+  const 改库 = (sql: string) => { const db = new DatabaseSync(库); try { db.exec(sql); } finally { db.close(); } };
+
+  it("在推线索不在公海（新规则算出潜在）：空跑、写入都退出码 1，一行不写、不留日志", () => {
+    改库("UPDATE Project SET pooledAt = NULL WHERE id = 'p4'");
+    for (const 写 of [false, true]) {
+      const r = 跑(e218, [库, 写 ? "--write" : "--dry-run", ...必带], 写);
+      expect(r.code, r.out).toBe(1);
+      expect(r.out).toContain("按新规则算出「潜在」，预期「流失」");
+    }
+    expect(状态()).toEqual({ 83028: "流失", 17535: null });
+    expect(日志()).toEqual([]);
+  });
+
+  it("照正式库摆（83028 已是成交、名下项目都在推）：只写 17535 一行，83028 计已完成；再空跑 0 行", () => {
+    改库("UPDATE Customer SET custStatus = '成交' WHERE id = 'c83028'; UPDATE Project SET phase = '线索', node = '线索验证', result = NULL WHERE id = 'p1'");
+    写一批();
+    expect(状态()).toEqual({ 83028: "成交", 17535: "流失" });
+    expect(日志()).toHaveLength(1);
+    const 再 = 跑(e218, [库, "--dry-run", ...必带]);
+    expect(再.code, 再.out).toBe(0);
+    expect(再.out).toContain("空跑结束，一行没写");
+  });
+
+  it("只写 custStatus 一列：写入、撤回都不动 updatedAt（同 e220），日志 列 只有 custStatus、旧里记 updatedAt", () => {
+    const 时间 = () => Object.fromEntries(读库<{ customerNo: number; updatedAt: number }>("SELECT customerNo, updatedAt FROM Customer").map((r) => [r.customerNo, r.updatedAt]));
+    const 批 = 写一批();
+    expect(状态()).toEqual({ 83028: "成交", 17535: "流失" });
+    expect(时间()).toEqual({ 83028: 1000, 17535: 2000 });
+    for (const x of 日志()) {
+      expect(x.d.列).toEqual(["custStatus"]);
+      expect((x.d.旧 as { updatedAt: unknown }).updatedAt).toBe(x.entityId === "c83028" ? 1000 : 2000);
+      expect(x.d.新).not.toHaveProperty("updatedAt");
+    }
+    const r = 跑(e218, [库, "--undo", 批, "--write", ...必带], true);
+    expect(r.code, r.out).toBe(0);
+    expect(状态()).toEqual({ 83028: "流失", 17535: null });
+    expect(时间()).toEqual({ 83028: 1000, 17535: 2000 });
+    for (const x of 日志().filter((y) => y.d.类 === "撤回")) {
+      expect(x.d.列).toEqual(["custStatus"]);
+      expect(x.d.新).not.toHaveProperty("updatedAt");
+    }
   });
 });
