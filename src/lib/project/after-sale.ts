@@ -98,11 +98,13 @@ export async function 后售项目们<P extends 判后售的项目 & { id: strin
 }
 
 /**
- * 「名下有交付结清、按判定式算后售」的项目 where 片段（不含 停在潜客培育）。
- * 老项目算：一句关系条件。不算：先平铺取全部交付结清（客户 → 最早结清），拼成「这位客户且建得比结清晚」的 OR
+ * 「名下有交付结清、按判定式算后售」的项目 where 片段（不含 停在潜客培育）：后售条件 / 潜客不含后售条件 用它，
+ * 统计自己配「这一格」时也直接拿它（project-stats.ts 后售那片，不拆 后售条件 的 AND）。
+ * 老项目算：一句关系条件。不算：先平铺取全部交付结清（客户 → 最早结清），拼成「这位客户且建得比结清晚」的 OR（老项目算 只给测试换另一支用，调用方别传）
  */
-async function 后售客户片段(db: 读库, 老项目算: boolean): Promise<Prisma.ProjectWhereInput> {
+export async function 后售客户片段(db: 读库 = prisma, 老项目算: boolean = 老项目算后售): Promise<Prisma.ProjectWhereInput> {
   if (老项目算) return { customer: 有交付结清的客户 };
+  // ⚠️ 改成 false 前先分批：下面每位有交付结清的客户拼一段 OR（customerId + createdAt 两个参数）、没时间的拼进一个 in，客户一多就过 SQLite 999 / 32766 参数上限
   const 表 = await 全部交付结清(db);
   const 没时间 = [...表].filter(([, t]) => t === null).map(([c]) => c);
   const 有时间 = [...表].filter((e): e is [string, Date] => e[1] !== null);

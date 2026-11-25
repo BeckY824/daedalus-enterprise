@@ -131,11 +131,13 @@ export async function 阶段进程条件(sp: { phase?: string; node?: string; op
   const 是结局 = (结局们of(字典) as readonly string[]).includes(名);
   const 是节点 = 阶段们.some((s) => 字典.节点们[s].includes(名));
   // 后售培育（P-界面-63，after-sale.ts）：不是节点、是潜客培育的显示名，筛它 = 停在潜客培育且判成后售；
-  // 筛潜客培育就排掉后售的（两份加起来 = 停在潜客培育，不重不漏）。这套没有潜客培育这一格的当没筛
-  const 是后售 = 名 === 后售培育名 && 字典.节点们.线索.includes("潜客培育");
+  // 筛潜客培育就排掉后售的（两份加起来 = 停在潜客培育，不重不漏）。这套没有潜客培育这一格的当没筛；
+  // 只在企业版拆（同 拼项目行 只在企业版判 后售）：别的版本后售培育当没筛、潜客培育照旧整格
+  const 企 = 企业版();
+  const 是后售 = 企 && 名 === 后售培育名 && 字典.节点们.线索.includes("潜客培育");
   const 进程 = 是结局 || 是节点 || 是后售 ? 名 : "";
   if (是后售) where.push(await 后售条件());
-  else if (进程 === "潜客培育" && !是结局) where.push(await 潜客不含后售条件());
+  else if (企 && 进程 === "潜客培育" && !是结局) where.push(await 潜客不含后售条件());
   else if (进程) where.push(是结局 ? { result: { in: 同名们(进程) } } : { node: { in: 同名们(进程) }, result: null });
   return { 阶段, 进程, where };
 }

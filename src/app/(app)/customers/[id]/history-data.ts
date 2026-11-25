@@ -27,7 +27,8 @@ import { 无负责人占位名 } from "@/lib/pool";
 import { 人名显示, 历史分析来源, 补建创建人, 补建批次, 来源字 } from "@/lib/project/system-created";
 import { 超时理由 } from "@/lib/project/timeout";
 import { 位置文字, 换人文字 } from "@/lib/project/node-log-text";
-import { 字典of } from "@/lib/project/stage-dict";
+import { 字典of, 显示节点名 } from "@/lib/project/stage-dict";
+import { 后售项目们 } from "@/lib/project/after-sale";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 企业版字典, 本套位置 } from "@/lib/project/nodes";
 import { 节点字 } from "@/lib/project/customer-list-projects";
@@ -327,18 +328,20 @@ export async function 客户页可看项目(me: SessionUser, customerId: string)
 export async function 历史项目们(me: SessionUser, customerId: string, 号: 号码器): Promise<{ 项目们: 项目概要[]; 看不到: number }> {
   const 可看 = await 客户页可看项目(me, customerId);
   const ids = 可看.map((p) => p.id);
-  const [节点, 验证, 卡点, 共] = await 看全部(() => Promise.all([
+  const [节点, 验证, 卡点, 共, 后售们] = await 看全部(() => Promise.all([
     ids.length ? prisma.projectNodeLog.groupBy({ by: ["projectId"], where: { projectId: { in: ids } }, _count: { _all: true } }) : [],
     ids.length ? prisma.entLeadVerifyLog.groupBy({ by: ["projectId"], where: { projectId: { in: ids } }, _count: { _all: true } }) : [],
     ids.length ? prisma.entBlocker.findMany({ where: { projectId: { in: ids } }, select: { projectId: true, _count: { select: { logs: true } } } }) : [],
     看不到的在推数(customerId, ids),
+    // 后售培育（P-界面-63）：一次判完这几节（同客户详情项目页签 project-zone.ts；没有停在潜客培育的不查库）
+    后售项目们(可看.map((p) => ({ ...p, customerId }))),
   ]));
   const 数 = new Map<string, number>();
   for (const r of 节点) 数.set(r.projectId, (数.get(r.projectId) ?? 0) + r._count._all);
   for (const r of 验证) 数.set(r.projectId, (数.get(r.projectId) ?? 0) + r._count._all);
   for (const r of 卡点) 数.set(r.projectId, (数.get(r.projectId) ?? 0) + r._count.logs);
   return {
-    项目们: 可看.map((p) => ({ id: p.id, 名: 文字打码(p.name, 号), 阶段: `${p.phase} · ${节点字(p)}`, 条数: 数.get(p.id) ?? 0 })),
+    项目们: 可看.map((p) => ({ id: p.id, 名: 文字打码(p.name, 号), 阶段: `${p.phase} · ${节点字({ ...p, node: 显示节点名(p.node, 后售们.has(p.id), 企业版字典) })}`, 条数: 数.get(p.id) ?? 0 })),
     看不到: 共,
   };
 }

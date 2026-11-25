@@ -231,8 +231,9 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   const 字典 = 字典of(true, 规则.阶段.出口叫法);
   // 不再截（11-14）：框 = 公海全部
   const 框客户 = { customer: { pool: { isNot: null } } } satisfies Prisma.ProjectWhereInput;
-  const [客户的项目们, 定属性的项目们, 留痕们, 可见] = await Promise.all([
-    全取.客户的项目 && 客户们.length ? 查客户的项目(框客户) : null,
+  const 客户的项目P = 全取.客户的项目 && 客户们.length ? 查客户的项目(框客户) : null;
+  const [客户的项目们, 定属性的项目们, 留痕们, 可见, 后售们] = await Promise.all([
+    客户的项目P,
     客户们.length ? 定属性的项目(框客户) : [],
     项目们.length
       ? prisma.projectNodeLog.findMany({
@@ -242,6 +243,8 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
       })
       : [],
     全取.客户可见 ? 看得到的客户(项目们.map((p) => p.customerId)) : null,
+    // 后售培育：骨架里要写进程的项目（客户行名下的、项目行）一次判完；接在 客户的项目 那句后面，和别的几句并着跑
+    Promise.resolve(客户的项目P).then((cs) => 后售项目们([...(cs ?? []), ...项目们])),
   ]);
   const 项目of客户 = 客户的项目们 ? 按客户分(客户的项目们) : null;
   const 全部项目of客户 = 按客户分(定属性的项目们);
@@ -255,8 +258,6 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   // 历史负责人看不到公海里的这个项目（总管理 / 管理员不算）
   const 回避 = 原负责人回避() && !(await 回避豁免(me));
 
-  // 后售培育：骨架里要写进程的项目（客户行名下的、项目行）一次判完
-  const 后售们 = await 后售项目们([...(客户的项目们 ?? []), ...项目们]);
   const 客户行: 公海行[] = 客户们.map((c) => 拼客户行(me, c, c.pool, 项目of客户?.get(c.id) ?? [], 字典, 没项目客户.has(c.id), 全部项目of客户.get(c.id) ?? [], 拦, 后售们));
   const 留下的项目 = 项目们.filter((p) => !(回避 && 最近放回.get(p.id)?.fromOwnerId === me.id));
   const 项目行: 公海行[] = 留下的项目.map((p) => {

@@ -387,6 +387,18 @@ describe("客户列表「仅项目」一小块（收尾 7）", () => {
     for (const keyword of [行.phone!, "13744445555", "块特征备注"]) expect(块ids(await 页(乙, { keyword })), keyword).toEqual([]);
   });
 
+  it("后售培育（E-290）：乙的项目停在潜客培育、客户名下有甲负责的交付结清（乙看不到）→ 块里当前节点、抬头节点都写后售培育", async () => {
+    const { c, p } = await 搭();
+    await 项目(c, 甲.id, { phase: "订单", node: "尾款结算", result: "交付结清", closedAt: new Date("2026-06-01T00:00:00Z") });
+    // 交付结清的那个比乙的旧：块里选的还是乙自己最近有动静的那个
+    await prisma.project.update({ where: { id: p }, data: { name: "乙的培育项目" } });
+    忘掉企业版范围();
+    const 块 = (await 页(乙)).仅项目行!.find((r) => r.id === c)!;
+    expect(块).toMatchObject({ 当前节点: "后售培育", 当前阶段: "线索", 项目数: 1, 抬头格: { 节点: "后售培育", 项目名: "乙的培育项目" } });
+    // 库里仍是潜客培育
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).node).toBe("潜客培育");
+  });
+
   it("客户负责人、实线上级、总管理、组员、同事：没有这一块", async () => {
     const { p } = await 搭();
     await prisma.projectMember.create({ data: { projectId: p, userId: 丙.id, inviteStatus: "JOINED" } });

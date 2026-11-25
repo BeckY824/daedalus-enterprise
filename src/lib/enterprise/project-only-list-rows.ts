@@ -10,7 +10,8 @@ import { 看全部 } from "@/lib/team-scope";
 import { 拼地址 } from "./customer-v2";
 import { 仅项目客户们 } from "./project-only-customers";
 import { 本套位置 } from "@/lib/project/nodes";
-import { 企业版字典 } from "@/lib/project/stage-dict";
+import { 企业版字典, 显示节点名 } from "@/lib/project/stage-dict";
+import { 后售项目们 } from "@/lib/project/after-sale";
 import { 最近有动静的, 节点字 } from "@/lib/project/customer-list-projects";
 import type { 抬头节点格 } from "./customer-title";
 
@@ -58,11 +59,15 @@ export async function 仅项目列表行们(me: { id: string; role?: string | nu
   }));
   const 按客户 = new Map<string, typeof 项目们>();
   for (const p of 项目们) 按客户.set(p.customerId, [...(按客户.get(p.customerId) ?? []), p]);
+  const 选中 = new Map(客户们.flatMap((c) => { const d = 最近有动静的(按客户.get(c.id) ?? []); return d ? [[c.id, d] as const] : []; }));
+  // 后售培育（P-界面-63）：选中的项目一页一次判（后售项目们，看客户名下全部项目，同客户表格「当前节点」客户项目概况们）
+  const 后售们 = await 后售项目们([...选中.values()]);
   const 行们 = 客户们.flatMap((c) => {
     const ps = 按客户.get(c.id) ?? [];
-    if (!ps.length) return [];
-    const d = 最近有动静的(ps)!;
-    const 位 = 本套位置({ phase: d.phase, node: d.node, result: d.result }, 企业版字典);
+    const d = 选中.get(c.id);
+    if (!ps.length || !d) return [];
+    const 本 = 本套位置({ phase: d.phase, node: d.node, result: d.result }, 企业版字典);
+    const 位 = 本 ? { ...本, node: 显示节点名(本.node, 后售们.has(d.id), 企业版字典) } : null;
     const 行: 仅项目列表行 = {
       id: c.id, name: c.name, shortName: c.shortName, school: c.school, customerNo: c.customerNo, customerType: c.customerType, customerAttr: c.customerAttr,
       addrCountry: c.addrCountry, addrProvince: c.addrProvince, addrCity: c.addrCity, addrDistrict: c.addrDistrict,

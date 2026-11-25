@@ -8,7 +8,7 @@ import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
 import { 不算补建, 不进统计, 仅记录用的, 历史分析来源, 留痕不算历史分析, 并条件 } from "@/lib/project/system-created";
 import { 批次条件, 读批次, 批次参数, 批次下拉项, type 批次筛 } from "@/lib/project/import-batch";
-import { 后售条件 } from "@/lib/project/after-sale";
+import { 后售客户片段 } from "@/lib/project/after-sale";
 import { 后售培育名, 同名们 } from "@/lib/project/stage-dict";
 
 /**
@@ -77,13 +77,11 @@ const 拆后的节点 = <T extends { phase: string; node: string; 后售?: boole
 
 /**
  * 「这一格是后售」的项目 where 片段（项目现在 按它多取一句、分好组从原组里减掉；项目一段 按它取 id；都不按行查）：线索 · 潜客培育（新旧名都认、有没有结局都算），
- * 且客户那一片和 after-sale.ts 后售条件 同一句（老项目算不算跟着那边）
+ * 且客户那一片和 after-sale.ts 后售条件 同一句（后售客户片段；老项目算不算跟着那边）
  */
 async function 后售那片(): Promise<Prisma.ProjectWhereInput> {
-  const { AND } = await 后售条件();
-  // 后售条件 = { AND: [停在潜客培育, 客户那一片] }：取客户那一片，自己配「这一格」（不限还没结局）
-  if (!Array.isArray(AND) || AND.length !== 2) throw new Error("after-sale.ts 后售条件 的形状变了，project-stats.ts 后售那片 跟着改");
-  return { AND: [{ phase: "线索", node: { in: 同名们("潜客培育") } }, AND[1]] };
+  // 「这一格」自己配（不限还没结局），客户那一片直接用 后售客户片段
+  return { AND: [{ phase: "线索", node: { in: 同名们("潜客培育") } }, await 后售客户片段()] };
 }
 
 export function 线索节点of(rows: readonly 线索行[], 字典: 阶段字典 = 字典of(false)): 线索节点格[] {

@@ -36,7 +36,9 @@ import { invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 读项目列表, 读名单项目 } from "@/lib/project/list";
 import { 卡片小字, 看板分列 } from "@/lib/project/board";
-import { 企业版字典 } from "@/lib/project/stage-dict";
+import { 企业版字典, 团队版字典 } from "@/lib/project/stage-dict";
+import { 阶段进程条件 } from "@/lib/project/list";
+import { 认目标 } from "@/lib/agent/project-proposals";
 import { 后售项目们 } from "@/lib/project/after-sale";
 import { 项目阶段客户条件, 客户项目概况们 } from "@/lib/project/customer-list-projects";
 import { 抬头节点们 } from "@/lib/enterprise/customer-title";
@@ -235,5 +237,20 @@ describe("首页 AI 问数", () => {
     const r = (await 跑("get_customer", { id: 甲 })).data as { 项目: { 名称: string; 节点: string }[] };
     expect(r.项目.find((p) => p.名称 === "甲培育")?.节点).toBe("后售培育");
     expect(r.项目.find((p) => p.名称 === "甲验证")?.节点).toBe("线索验证");
+  });
+});
+
+describe("审查补（E-290）", () => {
+  it("AI 推进：「退回后售培育」认成潜客培育（后售培育只是显示名）", () => {
+    expect(认目标("后售培育", { phase: "线索", node: "线索验证", result: null }, 企业版字典)).toEqual({ ok: true, 到: { phase: "线索", node: "潜客培育" } });
+  });
+
+  it("阶段进程条件：非企业版不拆——筛潜客培育就是整格，后售培育当没筛", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", "0");
+    const 潜 = await 阶段进程条件({ node: "潜客培育" }, 团队版字典);
+    expect(潜).toEqual({ 阶段: "", 进程: "潜客培育", where: [{ node: { in: ["潜客培育"] }, result: null }] });
+    expect((await 阶段进程条件({ node: "后售培育" }, 团队版字典)).where).toEqual([]);
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    expect(JSON.stringify((await 阶段进程条件({ node: "潜客培育" }, 企业版字典)).where)).toContain("NOT");
   });
 });
