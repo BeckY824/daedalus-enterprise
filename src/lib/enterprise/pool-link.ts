@@ -195,7 +195,8 @@ export async function 客户整包出公海(
     if (!c) return null;
     // 顺序同客户公海领取：先改负责人、最后删公海那一行
     if (c.salesOwnerId !== 新) await tx.customer.update({ where: { id: customerId }, data: { salesOwnerId: 新 } });
-    await tx.customerClaim.upsert({ where: { customerId }, update: { userId: 新, at: new Date() }, create: { customerId, userId: 新 } });
+    // 客户状态原值（prevCustStatus）由入口事务末尾记（cust-status-undo.ts 原状态记到出公海痕），这里先清掉上一次领取留下的
+    await tx.customerClaim.upsert({ where: { customerId }, update: { userId: 新, at: new Date(), prevCustStatus: null }, create: { customerId, userId: 新 } });
     await tx.customerPool.deleteMany({ where: { customerId } });
     // 出客户公海归销售：客户分配记「公海领取」（customer-assign-way.ts），撤销整包退回时按 分 还
     const 分 = await 写公海领取(tx, customerId);

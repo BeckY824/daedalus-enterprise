@@ -11,7 +11,8 @@ import type { 带走的 } from "@/lib/carry-over-db";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 验证中不能改派 } from "@/lib/project/lead-verify-guard";
 import type { 出公海原值 } from "@/lib/enterprise/customer-assign-way";
-import { 进出公海重算, type 客户原状态 } from "@/lib/enterprise/cust-status-auto-db";
+import { 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
+import { 读客户状态, 项目的客户们, 原状态记到出公海痕 } from "@/lib/enterprise/cust-status-undo";
 
 /**
  * 分配时客户在客户公海里、整包出公海的那几位（P-公海-10）：撤销条原样带回 撤销公海项目，整包退回。
@@ -31,8 +32,6 @@ export type 分项目们结果 = {
   整包: 整包撤销;
   /** 随客户换了负责人的同事待分配项目：事务提交后再发通知（P-转-19） */
   随客户: 同事待分配条[];
-  /** 分到的项目各自客户动手前存的客户状态（分完会重算）：撤销条带回去，撤销公海项目 还原（cust-status-auto-db.ts 还原客户状态） */
-  原状态: 客户原状态[];
 };
 
 /**
@@ -47,10 +46,11 @@ export async function 在事务里分公海项目们(
   tx: Prisma.TransactionClient, 操作人: string, 给: string, ids: string[], 上下文: 分项目上下文,
 ): Promise<分项目们结果> {
   const { org, way, 带 } = 上下文;
-  const 出: 分项目们结果 = { 分到: [], 没分到: [], 跟来: 0, 连客户: 0, 整包: { 原: [], 带过来: { 计划: [], 待办: [], 商机: [], 项目: [] }, 公海项目: [] }, 随客户: [], 原状态: [] };
+  const 出: 分项目们结果 = { 分到: [], 没分到: [], 跟来: 0, 连客户: 0, 整包: { 原: [], 带过来: { 计划: [], 待办: [], 商机: [], 项目: [] }, 公海项目: [] }, 随客户: [] };
   const 出了的客户 = new Set<string>();
-  /** 客户 id → 这一批第一次动它之前存的客户状态（同一位客户的第二个项目分的时候已经重算过了，只记第一次的） */
-  const 原状 = new Map<string, string | null>();
+  // 动手前记下这几位客户存的客户状态，分完记到这一下的 pool-claim / 整包出公海的领取行上，撤销时原样还回（cust-status-undo.ts）
+  const 动手时 = new Date();
+  const 原状态 = await 读客户状态(tx, await 项目的客户们(tx, ids));
   for (const id of ids) {
     let 包: 整包出公海 | null = null;
     let 同事待分配: 同事待分配条[] = [];
@@ -63,9 +63,8 @@ export async function 在事务里分公海项目们(
       // 验证中不能改派（X-77）：进公海时验证已清（老数据可能还挂着），挂着的先撤回验证
       const 验 = await 验证中不能改派(tx, id);
       if (验) return 验;
-      const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, custStatus: true, pool: { select: { customerId: true } } } });
+      const c = await tx.customer.findUnique({ where: { id: p.customerId }, select: { poolInvalidAt: true, pool: { select: { customerId: true } } } });
       if (c?.pool && c.poolInvalidAt) return "客户标了无效，要系统管理员先恢复";
-      if (c && !原状.has(p.customerId)) 原状.set(p.customerId, c.custStatus);
       const 出整包 = 企业版() && !!c?.pool;
       // 客户还在市场手里、分给销售 = 市场第一次分给销售，客户整体给他，记「分配」（P-公海-11；不看客户创建人），同事待分配的随客户进手
       const 转 = 出整包 || !org ? null : await 公海项目市场转(tx, org, p, 给, false);
@@ -94,13 +93,13 @@ export async function 在事务里分公海项目们(
     if (带来) {
       出.连客户 += 1;
       出.跟来 += 带来.公海项目.length;
-      出.整包.原.push({ id: 带来.customerId, 值: 带来.旧, ...(带来.分 !== undefined ? { 分: 带来.分 } : {}), ...(原状.has(带来.customerId) ? { 状: 原状.get(带来.customerId)! } : {}) });
+      出.整包.原.push({ id: 带来.customerId, 值: 带来.旧, ...(带来.分 !== undefined ? { 分: 带来.分 } : {}) });
       出.整包.公海项目.push(...带来.公海项目);
       for (const k of ["计划", "待办", "商机", "项目"] as const) 出.整包.带过来[k]!.push(...(带来.带过来[k] ?? []));
     }
   }
   // 分出了公海 = 又在推：整批分完攒齐客户一次重算（cust-status-auto-db.ts 进出公海重算），不逐个项目算
   await 进出公海重算(tx, 出了的客户);
-  出.原状态 = [...出了的客户].filter((c) => 原状.has(c)).map((c) => ({ id: c, 状: 原状.get(c)! }));
+  await 原状态记到出公海痕(tx, 原状态, 动手时);
   return 出;
 }

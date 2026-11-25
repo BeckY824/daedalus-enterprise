@@ -325,7 +325,7 @@ describe("虚线上级批量改负责人", () => {
     ];
     expect(await 归谁(虚)).toEqual([小张, 小张, 小张]);
     expect(await 归谁(实)).toEqual([外人, 外人, 外人]);
-    expect(r.ok && r.原值).toEqual([{ id: 实.c, 值: 小王, 状: null }]);
+    expect(r.ok && r.原值).toEqual([{ id: 实.c, 值: 小王 }]);
   });
 });
 

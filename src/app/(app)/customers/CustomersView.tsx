@@ -479,8 +479,7 @@ export default function CustomersView({
       res.验证中 && `${res.验证中} 位名下有线索在验证中（等复核或等确认），没放（处理完再放）`,
     ].filter(Boolean);
     const 文案 = 动作 === "分配" ? `已把 ${res.updated} 位${名}${另.length ? `；${另.join("，")}` : ""}${带走说法(res.带走)}` : `已${名} ${res.updated} 位${另.length ? `；${另.join("，")}` : ""}${带走说法(res.带走)}`;
-    // 放进：企业版回的 原负责人 带着进公海前存的客户状态（状），撤销时还原；没回的（别的版本）照旧只带 id
-    const 原 = 动作 === "放进" ? ids.map((id) => res.原负责人?.find((x) => x.id === id) ?? { id, 值: "" }) : (res.原负责人 ?? []);
+    const 原 = 动作 === "放进" ? ids.map((id) => ({ id, 值: "" })) : (res.原负责人 ?? []);
     // 底部撤销条跟着走（换页也在，原型 cu.return「撤销条跟着」）：已经做了，撤销 = 撤销公海 反着做
     showUndo({
       话: 文案,

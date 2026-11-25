@@ -759,8 +759,7 @@ describe("默认：线索公海的项目能单独领，客户不动（11-09，M-
     if (!r.ok) throw new Error("没分到");
     expect(await 负责人(c)).toBe(丙.id);
     // 分 = 出公海前的客户分配（空），出公海时记成公海领取，撤销按它还（11-17）
-    // 状 = 出公海前存的客户状态，撤销按它还（审查 11-25）
-    expect(r.整包?.原).toEqual([{ id: c, 值: 前.负责人, 分: null, 状: "潜在" }]);
+    expect(r.整包?.原).toEqual([{ id: c, 值: 前.负责人, 分: null }]);
     expect(r.整包?.公海项目).toEqual([p2]);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).assignWay).toBe("公海领取");
 
