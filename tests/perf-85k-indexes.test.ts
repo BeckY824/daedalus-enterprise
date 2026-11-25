@@ -239,6 +239,7 @@ describe("查询计划：Prisma 实际发出的语句", () => {
 
   it("超时回收认的客户最近跟进（lib/project/db.ts 回收认的最近跟进们，E-318 复审 M1）：一批一句裸 SQL 只按 customerId IN 走 (customerId, …)，deletedAt、occurredAt 加一元加号；原来那句 groupBy 被 (deletedAt, occurredAt) 抢走", async () => {
     const 客户们 = await 备名下客户();
+    expect(客户们.length).toBeGreaterThanOrEqual(3);
     const sql = 回收认跟进SQL(客户们.length);
     expect(sql).toContain('+f."deletedAt" IS NULL');
     expect(sql).toContain('+f."occurredAt" <= ?');
@@ -249,7 +250,7 @@ describe("查询计划：Prisma 实际发出的语句", () => {
     // 改前那种写法（groupBy 带 deletedAt: null、occurredAt lte）确实走 (deletedAt, occurredAt)：这条红了说明 SQLite 选法变了，可以重看
     const 旧 = await 真计划(总管理, "FollowUp", () => 限.followUp.groupBy({ by: ["customerId"], where: { customerId: { in: 客户们 }, afterSale: true, deletedAt: null, occurredAt: { lte: new Date() } }, _max: { occurredAt: true } }));
     expect(旧.计划).toContain("FollowUp_deletedAt_occurredAt_idx");
-    // 真代码跑得通（时间参数按毫秒数比）：这几位都没有售后回访，一位都不换
+    // 真代码跑得通：这几位都没有售后回访，一位都不换（时间参数按毫秒比较对不对，由 ent-after-sale-visit「未来普通」那条守）
     const 客们 = await prisma.customer.findMany({ where: { id: { in: 客户们 } }, select: { id: true, lastFollowAt: true } });
     expect((await 回收认的最近跟进们(客们.map((c) => ({ customerId: c.id, lastFollowAt: c.lastFollowAt ?? new Date() })))).size).toBe(0);
   });
