@@ -389,7 +389,7 @@ async function 后筛候选(c: 列表条件包, 排: 项目排序, 超时线们:
     where: c.where,
     orderBy: 排序of(按负责人 ? "" : 排),
     select: { ...算超时要的, amount: true, currency: true },
-  }));
+  }), prisma, c.今);
   const 收回 = c.收回筛 ? await 数收回次数(候选.map((r) => r.id), prisma) : null;
   let 剩 = 候选.filter((p) => 合收回次数(收回?.get(p.id) ?? 0, c.收回筛) && (c.卡 !== "due-soon" || (!!c.规则 && 即将逾期(项目回收日(c.规则, p, 超时线们), c.今))));
   if (按负责人) {

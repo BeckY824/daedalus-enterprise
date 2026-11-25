@@ -22,6 +22,7 @@ import { 规则 } from "@/lib/enterprise/rules";
 import { 客户筛选条件 } from "@/app/(app)/customers/query";
 import { 等日志齐 } from "./query-log";
 import { 最近一句取法 } from "@/lib/enterprise/customer-follow-feed";
+import { 回收认跟进SQL, 回收认的最近跟进们 } from "@/lib/project/db";
 
 const 迁移 = fs.readFileSync(new URL("../migrations/137-perf-85k-indexes.sql", import.meta.url), "utf8");
 const 迁移138 = fs.readFileSync(new URL("../migrations/138-perf-85k-indexes-2.sql", import.meta.url), "utf8");
@@ -234,6 +235,23 @@ describe("查询计划：Prisma 实际发出的语句", () => {
     const 全 = await prisma.followUp.findMany({ where: { customerId: { in: 客户们 } }, select: { customerId: true, content: true, occurredAt: true } });
     for (const id of 客户们) expect(首条.get(id)).toBe(全.filter((f) => f.customerId === id).sort((a, b) => +b.occurredAt - +a.occurredAt)[0].content);
     expect(最近一句取法([{ id: "x", lastFollowAt: null }])).toBeNull();
+  });
+
+  it("超时回收认的客户最近跟进（lib/project/db.ts 回收认的最近跟进们，E-318 复审 M1）：一批一句裸 SQL 只按 customerId IN 走 (customerId, …)，deletedAt、occurredAt 加一元加号；原来那句 groupBy 被 (deletedAt, occurredAt) 抢走", async () => {
+    const 客户们 = await 备名下客户();
+    const sql = 回收认跟进SQL(客户们.length);
+    expect(sql).toContain('+f."deletedAt" IS NULL');
+    expect(sql).toContain('+f."occurredAt" <= ?');
+    const 新 = await 计划(sql, ...客户们, Date.now());
+    expect(新).toMatch(/FollowUp_customerId_/);
+    expect(新).not.toContain("FollowUp_deletedAt_occurredAt_idx");
+    expect(新).not.toContain("SCAN f");
+    // 改前那种写法（groupBy 带 deletedAt: null、occurredAt lte）确实走 (deletedAt, occurredAt)：这条红了说明 SQLite 选法变了，可以重看
+    const 旧 = await 真计划(总管理, "FollowUp", () => 限.followUp.groupBy({ by: ["customerId"], where: { customerId: { in: 客户们 }, afterSale: true, deletedAt: null, occurredAt: { lte: new Date() } }, _max: { occurredAt: true } }));
+    expect(旧.计划).toContain("FollowUp_deletedAt_occurredAt_idx");
+    // 真代码跑得通（时间参数按毫秒数比）：这几位都没有售后回访，一位都不换
+    const 客们 = await prisma.customer.findMany({ where: { id: { in: 客户们 } }, select: { id: true, lastFollowAt: true } });
+    expect((await 回收认的最近跟进们(客们.map((c) => ({ customerId: c.id, lastFollowAt: c.lastFollowAt ?? new Date() })))).size).toBe(0);
   });
 
   it("客户详情「他推荐来的人」（迁移 138）：referrerCustomerId IN (?) ORDER BY createdAt 走 (referrerCustomerId, deletedAt, createdAt)，不顺 (deletedAt, createdAt, id) 扫；客户列表翻页、按负责人筛照旧", async () => {

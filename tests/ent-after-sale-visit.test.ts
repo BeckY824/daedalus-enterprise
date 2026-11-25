@@ -18,12 +18,12 @@ vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => true }));
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
-import { prisma } from "@/lib/prisma";
+import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { dayjs } from "@/lib/utils";
 import { saveFollowUp, 沟通可选项目, type FollowUpInput } from "@/app/(app)/customers/[id]/actions";
-import { 记项目沟通, 项目回收日, 算超时要的, 补回收起点留痕, 回收认的最近跟进 } from "@/lib/project/db";
+import { 记项目沟通, 项目回收日, 算超时要的, 补回收起点留痕, 回收认的最近跟进, 回收认的最近跟进们, 公海超时收回明细 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 将回收提醒 } from "@/lib/project/timeout";
 import { 规则 } from "@/lib/enterprise/rules";
@@ -486,4 +486,86 @@ describe("[E-318] 售后回访不进项目超时回收（客户 11-25：「售�
     expect(await 回收日()).toBe(续后);
     expect((await 回收认的最近跟进(客户, await 最近跟进()))?.getTime()).toBe(早.startOf("minute").toDate().getTime());
   });
+
+  it("三态关着时夜扫（公海超时收回明细）：只有售后回访撑着的在推项目照常收回；回收起点还没过的不收（复审 S1）", async () => {
+    await setSetting(规则.无意义沟通拦.key, false);
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { ...默认组织规则.超时回收, 开: true, 起算日: 加天(今天, -95), 节点天数: { 潜客培育: 30 } }, 三态: { ...默认三态规则, 开: false } });
+    invalidateSettingsCache();
+    const A = await 交付项目();
+    const 过了 = await 项目({ phase: "线索", node: "潜客培育", createdAt: 那天(31) });
+    const 没过 = await 项目({ phase: "线索", node: "潜客培育", createdAt: 那天(20) });
+    expect(await 记({ projectId: A.id, 售后回访: true })).toMatchObject({ ok: true });
+    // 客户最近跟进是今天这条售后回访：按它算两个都没超时；回收起点不认它，过了 30 天的照收
+    expect(beijingDay((await 最近跟进())!)).toBe(今天);
+    const r = await 公海超时收回明细({ id: 我, name: "小王" });
+    expect(r.收回).toBe(1);
+    const 池 = async (id: string) => (await raw.project.findUniqueOrThrow({ where: { id } })).pooledAt;
+    expect(await 池(过了.id)).not.toBeNull();
+    expect(await 池(没过.id)).toBeNull();
+    // 交付结清的 A 有结局，从来不收
+    expect(await 池(A.id)).toBeNull();
+  });
+
+  it("回收认的最近跟进们 边界：删了的、同号留痕、晚于「今」的都不算（售后回访和普通沟通两边都是）；传进来的「今」照用（复审 S1、S3）", async () => {
+    const 时 = (几小时前: number) => new Date(Date.now() - 几小时前 * 3_600_000);
+    const 客们: { customerId: string; lastFollowAt: Date }[] = [];
+    const 一位 = async (名: string, 跟进们: { 前: number; 售后?: boolean; 删?: boolean; 同号?: boolean }[], lastFollowAt: Date) => {
+      const c = await raw.customer.create({ data: { name: 名, phone: `1370000${String(客们.length).padStart(4, "0")}`, salesOwnerId: 我 } });
+      for (const f of 跟进们) {
+        await raw.followUp.create({ data: {
+          customerId: c.id, ownerId: 我, type: "PHONE", content: "聊了聊近况", occurredAt: 时(f.前), afterSale: !!f.售后,
+          title: f.同号 ? `${同号标题}：QA` : "跟进", deletedAt: f.删 ? new Date() : null,
+        } });
+      }
+      客们.push({ customerId: c.id, lastFollowAt });
+      return c.id;
+    };
+    // 售后回访最晚，普通沟通里有一条同号留痕更晚：换成更早那条普通的
+    const 同号 = await 一位("同号", [{ 前: 1, 售后: true }, { 前: 2, 同号: true }, { 前: 3 }], 时(1));
+    // 售后回访最晚，删了的普通沟通更晚：不算删了的
+    const 删普通 = await 一位("删普通", [{ 前: 1, 售后: true }, { 前: 2, 删: true }, { 前: 6 }], 时(1));
+    // 售后回访最晚，晚于现在的普通沟通（填了明天）不算
+    const 未来普通 = await 一位("未来普通", [{ 前: 1, 售后: true }, { 前: -24 }, { 前: 5 }], 时(1));
+    // 只有售后回访：换成 null
+    const 只售后 = await 一位("只售后", [{ 前: 1, 售后: true }], 时(1));
+    // 删了的售后回访不算：最近跟进照 lastFollowAt，不换
+    const 删售后 = await 一位("删售后", [{ 前: 1, 售后: true, 删: true }, { 前: 4 }], 时(4));
+    // 晚于现在的售后回访不算：不换
+    const 未来售后 = await 一位("未来售后", [{ 前: -24, 售后: true }, { 前: 4 }], 时(4));
+    // 售后回访早于最近一条普通沟通：不换
+    const 普通更晚 = await 一位("普通更晚", [{ 前: 5, 售后: true }, { 前: 2 }], 时(2));
+    const 换 = await 回收认的最近跟进们(客们);
+    const 点 = (id: string) => (换.has(id) ? 换.get(id)?.getTime() ?? null : "不换");
+    const 对 = (几小时前: number) => 时(几小时前).getTime();
+    expect(Math.abs((点(同号) as number) - 对(3))).toBeLessThan(5_000);
+    expect(Math.abs((点(删普通) as number) - 对(6))).toBeLessThan(5_000);
+    expect(Math.abs((点(未来普通) as number) - 对(5))).toBeLessThan(5_000);
+    expect(点(只售后)).toBeNull();
+    expect(点(删售后)).toBe("不换");
+    expect(点(未来售后)).toBe("不换");
+    expect(点(普通更晚)).toBe("不换");
+    // 「今」拨到 1.5 小时前：1 小时前那几条售后回访还没发生，都不换
+    const 早 = await 回收认的最近跟进们(客们, raw, 时(1.5));
+    expect(早.size).toBe(0);
+  });
+
+  it("补回收起点留痕：带 customerId + customer.lastFollowAt 的行（算超时要的）一定给 回收跟进；只给 id 的不给（复审 S2，类型上同样卡住）", async () => {
+    const A = await 交付项目();
+    const B = await 项目({ phase: "线索", node: "潜客培育", createdAt: 那天(29) });
+    expect(await 记({ projectId: A.id, 售后回访: true })).toMatchObject({ ok: true });
+    const [全] = await 补回收起点留痕([await prisma.project.findUniqueOrThrow({ where: { id: B.id }, select: 算超时要的 })]);
+    expect("回收跟进" in 全).toBe(true);
+    expect(全.回收跟进).toBeNull();
+    // 没售后回访的客户：回收跟进 = lastFollowAt（照抄，不是没给）
+    const 别 = (await raw.customer.create({ data: { name: "别的客户", phone: "13800000077", salesOwnerId: 我, lastFollowAt: 那天(3) } })).id;
+    const C = await prisma.project.create({ data: { name: "别的项目", customerId: 别, ownerId: 我, creatorId: 我, phase: "线索", node: "潜客培育" } });
+    const [别行] = await 补回收起点留痕([await prisma.project.findUniqueOrThrow({ where: { id: C.id }, select: 算超时要的 })]);
+    expect(别行.回收跟进?.getTime()).toBe(那天(3).getTime());
+    // 只给 id（记沟通前预演那种）：只回 logs，不给 回收跟进，也进不了 项目回收日
+    const [只id] = await 补回收起点留痕([{ id: B.id }]);
+    expect(只id).toEqual({ id: B.id, logs: [] });
+    // @ts-expect-error 没带客户最近跟进的行拿不到 回收跟进，项目回收日 不收
+    expect(() => 项目回收日(默认组织规则, 只id)).toThrow();
+  });
+
 });

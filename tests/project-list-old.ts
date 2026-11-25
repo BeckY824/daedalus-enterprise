@@ -73,7 +73,7 @@ export async function 旧读项目列表(me: Parameters<typeof 公海超时收�
   ];
   // 企业版 C-01：公海里我是历史负责人的项目我看不到（总管理 / 管理员不算，lib/project/pool-owner.ts 回避豁免）
   const 回避 = (await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id);
-  const rows = await prisma.project.findMany({
+  const rows = (await prisma.project.findMany({
     where: {
       ...(只看阶段 ? { phase: 只看阶段 } : {}),
       ...(回避.length ? { id: { notIn: 回避 } } : {}),
@@ -98,7 +98,8 @@ export async function 旧读项目列表(me: Parameters<typeof 公海超时收�
         members: { where: { userId: me.id, inviteStatus: "JOINED" }, select: { userId: true } },
       } : {}),
     },
-  });
+  // 那时还没有售后回访（E-318 之前）：回收起点认的客户最近跟进就是 lastFollowAt（项目回收日 现在要求带 回收跟进）
+  })).map((r) => ({ ...r, 回收跟进: r.customer.lastFollowAt }));
   // 超时按项目业务线分内外贸天数（C7）：老项目没填业务线按负责人的线
   const 超时线们 = 规则 ? await 超时成员线(规则) : null;
   // 企业版「收回次数」：从留痕里数；按次数筛只在企业版的项目公海里生效
