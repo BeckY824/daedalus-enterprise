@@ -43,6 +43,7 @@ import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型, 售后回访主题 } from "@/lib/project/follow-needs-project-text";
 import AfterSaleLockTag from "@/components/AfterSaleLockTag";
 import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
+import { 改格不收 } from "@/lib/enterprise/follow-edit-text";
 
 /**
  * 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则）。
@@ -253,6 +254,9 @@ export default function FollowUpForm({
   const 内容 = Form.useWatch("content", form) as string | undefined;
   /** 保存键上「没保存上」的原因（服务端拦「太短」、网络错……）：改了任何一格（含卡点、截图录音、方式）就收掉，不留着像是新内容也不行（11-26） */
   const 收错 = useRef<(() => void) | null>(null);
+  /** 上一次没保存上的原因：本人限时改被拒的那几句（过了 30 分钟、客户进了公海、挂的项目记不了沟通）改哪格都改不好，改格不收（11-26 审查） */
+  const 上次没成 = useRef<string | null>(null);
+  const 改了收错 = () => { if (!改格不收(上次没成.current)) 收错.current?.(); };
   const 判定 = useFollowJudge(open);
   /*
     F-跟进-06：项目模式下主区只留沟通内容、卡点、下一步、下一步时间、截图录音，别的收进默认折叠的「更多」。
@@ -549,8 +553,11 @@ export default function FollowUpForm({
   async function 保存(): Promise<{ ok: boolean; error?: string }> {
     if (存着) return { ok: false, error: "正在保存，请稍等" };
     set存着(true);
+    上次没成.current = null;
     try {
-      return await onOk();
+      const r = await onOk();
+      if (!r.ok) 上次没成.current = r.error ?? null;
+      return r;
     } catch (error) {
       if (!error || typeof error !== "object" || !("errorFields" in error)) return { ok: false, error: 动作出错话(error, "保存失败，请刷新确认结果后重试") };
       // 收起来的「更多」里有格子没过（比如发生时间）：展开让人看到
@@ -812,7 +819,7 @@ export default function FollowUpForm({
           type={type ?? "PHONE"}
           method={method}
           类型们={跟进类型们(外贸精简(b)).filter((t) => !只读 || (t.value !== "TASK" && t.value !== "REMIND"))}
-          onChange={(v) => { form.setFieldsValue(v); 人改过类型.current = true; 收错.current?.(); 守.改了(); }}
+          onChange={(v) => { form.setFieldsValue(v); 人改过类型.current = true; 改了收错(); 守.改了(); }}
         />
       </Form.Item>
     </>
@@ -880,7 +887,7 @@ export default function FollowUpForm({
     >
       {/* AI 速记块放在 Form 里面（它不是字段）：挑人那一格是 Form.Item，得在它上面、仍是第一格 */}
       {守.提示}
-      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("type" in changed) 人改过类型.current = true; 收错.current?.(); 守.改了(); }}>
+      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("type" in changed) 人改过类型.current = true; 改了收错(); 守.改了(); }}>
         {挑人 && <CustomerPick 预选={预选客户} 近况={近况} on近况={换人} 不提计划={Boolean(收口计划)} />}
         {!收起 && AI块}
         {收起 ? (
@@ -927,7 +934,7 @@ export default function FollowUpForm({
             </Col>
             {须知?.卡点默认 && !售后模式 && (
               <Col span={24}>
-                <卡点格 默认={须知.卡点默认} 原因们={须知.卡点原因们 ?? []} 值={卡点} on改={(x) => { set卡点(x); 收错.current?.(); 守.改了(); }} />
+                <卡点格 默认={须知.卡点默认} 原因们={须知.卡点原因们 ?? []} 值={卡点} on改={(x) => { set卡点(x); 改了收错(); 守.改了(); }} />
               </Col>
             )}
             {/* 组员记（11-19 客户答复，原审核 11-18 权限 P1-11）：下一步是负责人的格，不摆下一步计划、下一步时间 */}
@@ -969,7 +976,7 @@ export default function FollowUpForm({
                         onClick={() => {
                           form.setFieldsValue({ 下一步时间: 日 });
                           void form.validateFields(["下一步时间"]).catch(() => {});
-                          收错.current?.();
+                          改了收错();
                           守.改了();
                         }}
                       >
@@ -983,7 +990,7 @@ export default function FollowUpForm({
             </>)}
             <Col span={24}>
               <Form.Item label="截图 / 录音" extra="可不传，保存后挂在这条沟通上；也可以直接粘贴截图">
-                <选沟通附件 文件们={附件们} on改={(x) => { set附件们(x); 收错.current?.(); 守.改了(); }} />
+                <选沟通附件 文件们={附件们} on改={(x) => { set附件们(x); 改了收错(); 守.改了(); }} />
               </Form.Item>
             </Col>
             <Col span={24} style={{ marginBottom: 12 }}>

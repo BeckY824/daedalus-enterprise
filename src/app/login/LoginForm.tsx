@@ -155,7 +155,7 @@ export default function LoginForm({
           </div>
           <div className="auth-step">
             <h1>{居中 && 产品名 ? <span className="auth-solo-name">{产品名}</span> : "登录"}</h1>
-            {管理员登录 && <p className="auth-hint">系统管理员用账号密码登录。</p>}
+            {管理员登录 && <p className="auth-hint">系统管理员和没接入飞书的销售教练用账号密码登录。</p>}
             {居中 && 飞书登录 ? null : <p className="auth-hint">
               {用邮箱 ? (
                 <>

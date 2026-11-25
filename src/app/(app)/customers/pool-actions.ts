@@ -675,6 +675,9 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
     })).catch((e) => {
       if (e instanceof Error && e.message === 负责人被改过) return false;
       if (e instanceof Error && e.message === 培育项目动过) return (培育拦++, false);
+      // 同一位并发撤两次（双击、两个请求同时到）：都过了上面「还归我」，后到的在 customerPool.create 撞主键（P2002）。
+      // 先到的那次已经撤成，这一位算这次没撤成、不抛，免得界面报异常（11-26 审查）
+      if ((e as { code?: unknown })?.code === "P2002") return false;
       throw e;
     });
     if (成) 撤成.push(x);
