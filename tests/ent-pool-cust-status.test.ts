@@ -506,4 +506,23 @@ describe("撤销公海领取：领的销售自己退过公海（有原负责人�
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
     expect(await prisma.auditLog.count({ where: { userId: 丙.id, summary: { contains: "撤销了刚才的公海领取" } } })).toBe(1);
   });
+
+  it("同一位并发撤两次（双击 / 两个请求同时到）：先到的撤成，后到的撞公海主键（P2002）算没撤成，不抛", async () => {
+    const c = await 客户(甲.id, "意向");
+    await 项目(c, 甲.id);
+    expect(await 以(甲, () => 放进公海([c], "客户主动终止"))).toMatchObject({ ok: true, updated: 1 });
+    忘掉企业版范围();
+    const r = await 以(丙, () => 领取([c]));
+    if (!r.ok) throw new Error(r.error);
+    // 第一次撤销认完「还归我」、进事务前，第二次撤销整个跑完（钉住老签约 挂一下只挂第一次）
+    let 先到: Awaited<ReturnType<typeof 撤销公海>> | undefined;
+    mocks.钉住时 = async () => { 先到 = await 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目); };
+    const 后到 = await 以(丙, () => 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目));
+    expect(mocks.钉住时).toBeNull();
+    expect(先到).toMatchObject({ ok: true, updated: 1 });
+    expect(后到).toMatchObject({ ok: false });
+    expect(await prisma.customerPool.count({ where: { customerId: c } })).toBe(1);
+    expect(await prisma.customerClaim.count({ where: { customerId: c } })).toBe(0);
+    expect(await prisma.auditLog.count({ where: { userId: 丙.id, summary: { contains: "撤销了刚才的公海领取" } } })).toBe(1);
+  });
 });
