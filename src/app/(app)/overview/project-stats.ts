@@ -6,7 +6,7 @@ import { 公海里历史负责人是 } from "@/lib/project/pool-owner";
 import type { Prisma } from "@/generated/prisma";
 import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
-import { 不算补建, 不算历史分析, 不进统计, 仅记录用的, 历史分析来源, 留痕不算历史分析, 并条件 } from "@/lib/project/system-created";
+import { 不算补建, 不进统计, 仅记录用的, 历史分析来源, 留痕不算历史分析, 并条件 } from "@/lib/project/system-created";
 import { 批次条件, 读批次, 批次参数, 批次下拉项, type 批次筛 } from "@/lib/project/import-batch";
 
 /**
@@ -282,10 +282,11 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
 
 /**
  * 数据页「导入批次」下拉的候选（11-19）：库里有项目的那些批次号，新的在前（批次号带日期，按字串倒排）。
- * 历史分析回填的那批不列：它们哪个数都不算（system-created.ts），选了全是 0
+ * 历史分析回填的、还算仅记录用的（X-147）不列：它们哪个数都不算（system-created.ts 不进统计），选了全是 0。
+ * 962 条补建那批（x147-）推进出去的项目照列（推进后照常算，只是不算新建）
  */
 export async function 导入批次们(): Promise<string[]> {
-  const gs = await prisma.project.groupBy({ by: ["importBatch"], where: 并条件({ importBatch: { not: null } }, 不算历史分析) });
+  const gs = await prisma.project.groupBy({ by: ["importBatch"], where: 并条件({ importBatch: { not: null } }, 不进统计) });
   return gs.map((g) => g.importBatch).filter((b): b is string => !!b).sort((a, b) => (a < b ? 1 : a > b ? -1 : 0));
 }
 

@@ -16,7 +16,9 @@
  *   - 沟通：只挂「现在没挂项目（FollowUpProject 没行，沟通编号 / 阶段标记也没有）、没删、不是待办 / 提醒、在这位客户名下」的，
  *     FollowUpProject 一行（node 潜客培育，withProjectCreate false：不是建项目那一次带出的首条）。沟通编号 / 阶段标记（EntFollowUpMeta / Mark）
  *     不补（同 112家与改挂：老沟通原来就没有，没有就不建）。对不上的跳过，逐行日志写原因。
- *   - 已经有在推项目的客户照样建（Even 原话「也建项目」）。
+ *   - 已经有在推项目的客户照样建（客户原话「也建项目」）；汇总里单独报「其中原来就有在推项目 N 位」（在推 = 没结局、不在公海、没删、不是仅记录用，
+ *     同 cust-status-auto.ts 在推）。
+ *   - 客户负责人是停用账号的照建（项目挂在客户负责人名下，同客户），逐行日志标「负责人已停用」，汇总里单独列「负责人已停用 N 位」。
  *   - 不改客户（状态、三态、负责人、最后更新时间都不碰：Customer 一格不写）。
  * 可以重复跑：这位客户已有本脚本建的项目（source 仅记录用、importBatch 是本脚本批次号、没删）就不再建，已挂上的计「已完成」，
  *   还没挂上的（新冒出来的）挂到那个项目上（记在新批次）。
@@ -24,10 +26,13 @@
  * 留痕：每写一行一条 AuditLog（userId / userName = --操作人；detail 带 脚本 / 批次 / 表 / 操作 / 新 / 客户编号；
  *   正文前缀「[批次 <批次号> · 执行：Becky（服务商）· 依据 <E-编号>]」和 批次 / 执行 / 依据 / 对应行 四个键，ent-batch-audit-prefix.ts）。
  *
+ * 依据：11-18 第二轮答复（E-132，主题 X-147），--basis 写 E-132/X-147（E-147 是 11-19 的另一份文件，不是这件的依据）。
  * 用法（本机，代码副本根目录）：
- *   npx tsx scripts/ent-x147-record-only-backfill.ts <crm.db> --csv <机读.csv> --dry-run --basis <E-编号> --操作人 <userId> [--log <文件>]
- *   CONFIRM=yes npx tsx scripts/ent-x147-record-only-backfill.ts <crm.db> --csv <机读.csv> --write --basis <E-编号> --操作人 <userId> [--log <文件>]
- *   npx tsx scripts/ent-x147-record-only-backfill.ts <crm.db> --undo <批次号> --dry-run | --write（写要带 CONFIRM=yes）--basis <E-编号> --操作人 <userId> [--log <文件>]
+ *   npx tsx scripts/ent-x147-record-only-backfill.ts <crm.db> --csv <机读.csv> --dry-run --basis E-132/X-147 --操作人 <userId> [--expect <项目数>/<沟通数>] [--log <文件>]
+ *   CONFIRM=yes npx tsx scripts/ent-x147-record-only-backfill.ts <crm.db> --csv <机读.csv> --write --expect <项目数>/<沟通数> --basis E-132/X-147 --操作人 <userId> [--log <文件>]
+ *   npx tsx scripts/ent-x147-record-only-backfill.ts <crm.db> --undo <批次号> --dry-run | --write（写要带 CONFIRM=yes）--basis E-132/X-147 --操作人 <userId> [--log <文件>]
+ * --expect（写时必带）：空跑汇总里「将建项目 X 个」「将挂沟通 Y 条」照抄成 X/Y；写的那笔事务里重算出来和它不一致（空跑之后库又变了）就整批不写、退出码 1。
+ *   空跑带了也核，不一致同样退出码 1。撤回不带它。
  * 不认识的参数（拼错的、脚本没有的模式、多出来的路径、缺值、给两遍）一律报错、退出码 2，库都不打开。
  * 服务器上（没有 tsx）：本机先打成一个 cjs，连同 CSV scp 过去用服务器自带 node 跑（只依赖 node:sqlite，Node ≥ 22.13）：
  *   npx esbuild scripts/ent-x147-record-only-backfill.ts --bundle --platform=node --format=cjs --target=node22 --outfile=<目录>/x147-backfill.cjs
@@ -38,8 +43,9 @@
  * 撤回（--undo <批次号>）：按该批 AuditLog 记下的插入逐行删（硬删，同 112家与改挂 撤回「建的删」）：先删挂上的 FollowUpProject（沟通还原成没挂项目），
  *   再删节点变更、项目。同一事务里先逐行核：项目还是写进去的样子（节点、结局、负责人、公海、更新时间、没删）、项目上没有本批以外的东西
  *   （别的沟通、节点变更、组员、卡点……凡是带 projectId 的表）、挂上的沟通还挂在原项目上——有一行不对就整批不撤、全部报出来、退出码 1。
+ *   多出来的是后面又跑的一批（重复跑补挂的沟通）挂上的：提示里写明是哪一批，「先撤后面那批」再撤这批。
  *   撤回另起批次「原批次-undo-xxxx」，每删一行一条 AuditLog（类 = 撤回、撤的批次、旧 = 删前整行）。已撤回过的批次不再撤（退出码 0）。
- * 逐行日志只写北京时间、客户编号、沟通 id，不写客户名、号码。
+ * 逐行日志、出错提示只写北京时间、客户编号、项目 / 沟通 id、字段名，不写客户名、项目名、号码。
  */
 import { DatabaseSync } from "node:sqlite";
 import { randomBytes } from "node:crypto";
@@ -52,7 +58,7 @@ import * as 前缀件 from "./ent-batch-audit-prefix";
 
 const 脚本 = "ent-x147-record-only-backfill.ts";
 const 件名 = "X-147 仅记录用补建";
-const 依据 = "客户 11-18 第二轮「四件事 A/A/A/A」第 2 件：962 条一次性咨询也建项目，同样停潜客培育、标仅记录用";
+const 依据 = "客户 11-18 第二轮答复（E-132，主题 X-147）「四件事 A/A/A/A」第 2 件：962 条一次性咨询也建项目，同样停潜客培育、标仅记录用";
 /** 本脚本写入的批次号：x147-<北京年月日时分秒>-<6 位 hex>（撤回只认这种；撤回批次「…-undo-xxxx」不能再撤） */
 const 批次式 = /^x147-\d{14}-[0-9a-f]{6}$/;
 /** 本脚本的 AuditLog 都在这之后（北京 2026-11-25 00:00），按 AuditLog_at_idx 找，不扫全表 */
@@ -64,7 +70,7 @@ const 不挂的类型 = new Set(["TASK", "REMIND"]);
 
 /* ---------- 参数 ---------- */
 const argv = process.argv.slice(2);
-const 带值 = new Set(["--csv", "--log", "--操作人", "--basis", "--undo"]);
+const 带值 = new Set(["--csv", "--log", "--操作人", "--basis", "--undo", "--expect"]);
 // 最先核：不认识的参数直接退出码 2，库都不打开
 前缀件.核参数(argv, ["--dry-run", "--write"], [...带值]);
 const 取 = (k: string) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : undefined; };
@@ -74,6 +80,7 @@ const 要写 = argv.includes("--write");
 const 日志文件 = 取("--log");
 const 撤参 = 取("--undo");
 const CSV = 取("--csv");
+const 期望参 = 取("--expect");
 if (!库 || 空跑 === 要写) {
   console.error("用法：<crm.db> (--csv <机读.csv> | --undo <批次号>) --dry-run | --write（写要带 CONFIRM=yes） --basis <E-编号> --操作人 <userId> [--log <文件>]");
   process.exit(2);
@@ -81,7 +88,11 @@ if (!库 || 空跑 === 要写) {
 if (撤参 != null && !批次式.test(撤参)) { console.error(`--undo 要填本脚本写入的批次号（x147-<14 位时间>-<6 位>，写入输出和日志里有），「${撤参}」不是`); process.exit(2); }
 if (撤参 == null && !CSV) { console.error("缺 --csv <机读-多项目沟通归属.csv>（认哪些沟通），不跑"); process.exit(2); }
 if (撤参 != null && CSV) { console.error("--undo 按批次撤，不要再带 --csv"); process.exit(2); }
+if (撤参 != null && 期望参 != null) { console.error("--undo 按批次撤，不带 --expect"); process.exit(2); }
+if (期望参 != null && !/^\d+\/\d+$/.test(期望参)) { console.error(`--expect 要写成 <项目数>/<沟通数>（空跑汇总里的「将建项目」「将挂沟通」），「${期望参}」不是`); process.exit(2); }
+if (撤参 == null && 要写 && 期望参 == null) { console.error("写库要带 --expect <项目数>/<沟通数>（先空跑，照抄汇总里的「将建项目」「将挂沟通」）"); process.exit(2); }
 if (要写 && process.env.CONFIRM !== "yes") { console.error("写库要带 CONFIRM=yes"); process.exit(2); }
+const 期望 = 期望参 == null ? null : { 项目: Number(期望参.split("/")[0]), 沟通: Number(期望参.split("/")[1]) };
 const 依据号 = 前缀件.取依据(argv);
 const 操作人id = 前缀件.取操作人(argv);
 
@@ -154,6 +165,10 @@ type 跳过 = { 客户编号: number | null; followUpId: string; 原因: string 
 type 一位 = {
   c: 客户行; 已有: string | null; 待挂: { id: string; occurredAt: number }[]; 已完成: number;
   公海: { at: number; reason: string } | null; 建于: number;
+  /** 客户负责人是停用账号（不在公海的才看；照建，日志、汇总单独列） */
+  负责人停用: boolean;
+  /** 这位客户原来就有几个在推项目（没结局、不在公海、没删、不是仅记录用；同 cust-status-auto.ts 在推） */
+  在推: number;
 };
 type 计划果 = { 们: 一位[]; 跳: 跳过[]; 认: number };
 
@@ -194,7 +209,13 @@ function 计划(认们: 认行[]): 计划果 {
     }
     if (!已有 && !待挂.length) continue;
     const 最早 = Math.min(...待挂.map((x) => x.occurredAt), 最早已挂 ?? Infinity);
-    们.push({ c, 已有, 待挂, 已完成, 公海: 公海行 ? { at: Number(公海行.at), reason: String(公海行.reason ?? "") } : null, 建于: 最早 });
+    const 负责人 = 公海行 ? undefined : 一("SELECT active FROM User WHERE id = ?", c.salesOwnerId);
+    const 在推 = Number(一(`SELECT count(*) n FROM Project WHERE customerId = ? AND deletedAt IS NULL AND result IS NULL AND pooledAt IS NULL
+        AND NOT (source IS NOT NULL AND source = ? AND phase = ? AND node = ?)`, cid, 仅记录用来源, 仅记录用阶段, 仅记录用节点)?.n ?? 0);
+    们.push({
+      c, 已有, 待挂, 已完成, 公海: 公海行 ? { at: Number(公海行.at), reason: String(公海行.reason ?? "") } : null, 建于: 最早,
+      负责人停用: !!负责人 && Number(负责人.active) === 0, 在推,
+    });
   }
   们.sort((a, b) => (a.c.customerNo ?? 0) - (b.c.customerNo ?? 0));
   跳.sort((a, b) => (a.客户编号 ?? 0) - (b.客户编号 ?? 0) || a.followUpId.localeCompare(b.followUpId));
@@ -207,15 +228,32 @@ function 核项目列(o: Record<string, 值>) {
   if (缺.length) throw new Error(`Project 有非空列没给值：${缺.map((r) => r.name).join("、")}`);
 }
 
+/** 这次要建几个项目、挂几条沟通（--expect 核的就是这两个数） */
+function 数(P: 计划果): { 项目: number; 沟通: number } {
+  return { 项目: P.们.filter((x) => !x.已有).length, 沟通: P.们.reduce((s, x) => s + x.待挂.length, 0) };
+}
+/** --expect 和算出来的不一致：返回一句话；一致 / 没带 = null */
+function 核期望(P: 计划果): string | null {
+  if (!期望) return null;
+  const n = 数(P);
+  return n.项目 === 期望.项目 && n.沟通 === 期望.沟通 ? null
+    : `--expect ${期望参} 和算出来的不一致：项目 ${n.项目} 个、沟通 ${n.沟通} 条（应为 ${期望.项目} / ${期望.沟通}），整批不写`;
+}
+
 function 汇总(P: 计划果, 写: boolean) {
   const 新建 = P.们.filter((x) => !x.已有);
   const 挂 = P.们.reduce((s, x) => s + x.待挂.length, 0);
+  const 停用们 = 新建.filter((x) => x.负责人停用);
+  const 有在推 = P.们.filter((x) => x.在推 > 0);
   const 已完成沟通 = P.们.reduce((s, x) => s + x.已完成, 0);
   const 原因们 = new Map<string, number>();
   for (const s of P.跳) 原因们.set(s.原因, (原因们.get(s.原因) ?? 0) + 1);
   记(`认 keep ${P.认} 条（${new Set(P.们.map((x) => x.c.id)).size} 位客户有活）；${写 ? "" : "将"}建项目 ${新建.length} 个（其中客户在公海、项目进线索公海 ${新建.filter((x) => x.公海).length} 个），` +
     `${写 ? "" : "将"}挂沟通 ${挂} 条；已完成：项目 ${P.们.length - 新建.length} 个、沟通 ${已完成沟通} 条；跳过 ${P.跳.length} 条` +
     (原因们.size ? `（${[...原因们].map(([k, v]) => `${k} ${v}`).join("；")}）` : ""));
+  记(`${P.们.length} 位客户里原来就有在推项目 ${有在推.length} 位（照样建，在推 = 没结局、不在公海、不是仅记录用）`);
+  记(`负责人已停用 ${停用们.length} 位${停用们.length ? `（照建，项目挂在停用账号名下：${停用们.map((x) => 编号(x.c.customerNo)).join("、")}）` : ""}`);
+  if (!写) 记(`写入时带：--expect ${新建.length}/${挂}`);
 }
 
 /* ---------- 写 ---------- */
@@ -251,7 +289,7 @@ function 写入(P: 计划果, T: number): 写果 {
         }, T, 批次, `${编号(号)} 客户在公海：项目随客户进线索公海`, { 客户编号: 号, 类: "进公海" });
         行 += 1;
       }
-      记(`${北京(T)}\t${编号(号)}\t建项目\t${x.公海 ? `公海（项目进线索公海，pooledAt 北京 ${北京(进海!)}${进海 === T ? "，客户进公海早于项目建立时间，用写入时刻" : ""}）` : "客户负责人名下"}\t建于 北京 ${北京(x.建于)}\t挂 ${x.待挂.length} 条`);
+      记(`${北京(T)}\t${编号(号)}\t建项目\t${x.公海 ? `公海（项目进线索公海，pooledAt 北京 ${北京(进海!)}${进海 === T ? "，客户进公海早于项目建立时间，用写入时刻" : ""}）` : `客户负责人名下${x.负责人停用 ? "（负责人已停用）" : ""}`}\t建于 北京 ${北京(x.建于)}\t挂 ${x.待挂.length} 条`);
     } else {
       记(`${北京(T)}\t${编号(号)}\t已有本脚本建的项目\t已挂 ${x.已完成} 条（已完成）\t补挂 ${x.待挂.length} 条`);
     }
@@ -266,7 +304,8 @@ function 写入(P: 计划果, T: number): 写果 {
   for (const [pid, p] of 期望.项目) {
     const r = 一("SELECT * FROM Project WHERE id = ?", pid);
     if (!r) throw new Error(`回读：项目 ${pid} 不在`);
-    for (const [k, v] of Object.entries(p)) if (String(r[k] ?? "∅") !== String(v ?? "∅")) throw new Error(`回读：项目 ${pid} 的 ${k} 是「${r[k]}」，应为「${v}」`);
+    // 只报字段名，不带值（name 是客户显名，出错提示不带客户名 / 项目名）
+    for (const [k, v] of Object.entries(p)) if (String(r[k] ?? "∅") !== String(v ?? "∅")) throw new Error(`回读：项目 ${pid} 的字段 ${k} 和写入的值不一致`);
   }
   for (const [fid, pid] of 期望.挂) {
     const r = 一("SELECT fp.projectId, fp.node, f.customerId fc, p.customerId pc FROM FollowUpProject fp JOIN FollowUp f ON f.id = fp.followUpId JOIN Project p ON p.id = fp.projectId WHERE fp.followUpId = ?", fid);
@@ -315,6 +354,7 @@ function 撤(批次号: string): number {
     const 本批键 = new Set(这批.map((x) => x.键));
     // 先逐行核：写后被改过的、项目上多了本批以外的东西的，整批不撤，全部报出来
     const 不对: string[] = [];
+    const 后面的批 = new Set<string>();
     const 带项目的表 = 全("SELECT m.name t FROM sqlite_master m WHERE m.type = 'table' AND EXISTS (SELECT 1 FROM pragma_table_info(m.name) WHERE name = 'projectId')").map((r) => String(r.t));
     for (const x of 项目们) {
       const r = 一("SELECT * FROM Project WHERE id = ?", x.键);
@@ -326,7 +366,16 @@ function 撤(批次号: string): number {
         const 键列 = t === "FollowUpProject" || t === "EntFollowUpMeta" || t === "EntFollowUpMark" ? "followUpId" : "id";
         const 有键 = 全(`SELECT name FROM pragma_table_info('${t}') WHERE name = ?`, 键列).length > 0;
         const 别的 = 全(`SELECT ${有键 ? `"${键列}"` : "rowid"} k FROM "${t}" WHERE projectId = ?`, x.键).filter((y) => !(有键 && 本批键.has(String(y.k))));
-        if (别的.length) 不对.push(`${编号(x.客户编号)} 项目 ${x.键} 上多了本批以外的 ${t} ${别的.length} 行（写后有人在上面记了东西）`);
+        if (!别的.length) continue;
+        // 多出来的沟通是不是本脚本后面又跑的一批挂上的（重复跑补挂）：是就写明哪一批，要先撤那批
+        const 后批们 = t !== "FollowUpProject" ? [] : [...new Set(全(
+          `SELECT json_extract(detail, '$.批次') b FROM AuditLog WHERE at >= ? AND entity = 'FollowUpProject' AND entityId IN (${别的.map(() => "?").join(",")})
+             AND json_valid(detail) AND json_extract(detail, '$.脚本') = ? AND json_extract(detail, '$.操作') = 'insert' AND json_extract(detail, '$.批次') <> ?`,
+          留痕起点, ...别的.map((y) => String(y.k)), 脚本, 批次号,
+        ).map((r) => String(r.b)))];
+        后批们.forEach((b) => 后面的批.add(b));
+        不对.push(`${编号(x.客户编号)} 项目 ${x.键} 上多了本批以外的 ${t} ${别的.length} 行` +
+          (后批们.length ? `（是后面又跑的批次 ${后批们.join("、")} 挂上的，先撤后面那批）` : "（写后有人在上面记了东西）"));
       }
     }
     for (const x of 挂们) {
@@ -337,7 +386,8 @@ function 撤(批次号: string): number {
     for (const x of 痕们) if (!一("SELECT id FROM ProjectNodeLog WHERE id = ?", x.键)) 不对.push(`${编号(x.客户编号)} 节点变更 ${x.键} 不在了`);
     if (不对.length) {
       for (const s of 不对) 记(`${北京(Date.now())}\t不对：${s}`);
-      throw new Error(`${不对.length} 处写后被改过，整批不撤`);
+      throw new Error(`${不对.length} 处写后被改过，整批不撤` +
+        (后面的批.size ? `；先撤后面那批（${[...后面的批].map((b) => `--undo ${b}`).join("、")}）再撤这批` : ""));
     }
     const T = Date.now();
     let 撤了 = 0;
@@ -396,12 +446,15 @@ if (!要写) {
   P = 计划(认们);
   for (const x of P.们) {
     if (x.已有) 记(`${北京(现在)}\t${编号(x.c.customerNo)}\t已有本脚本建的项目\t已挂 ${x.已完成} 条（已完成）\t将补挂 ${x.待挂.length} 条`);
-    else 记(`${北京(现在)}\t${编号(x.c.customerNo)}\t将建项目\t${x.公海 ? "公海（项目进线索公海）" : "客户负责人名下"}\t建于 北京 ${北京(x.建于)}\t将挂 ${x.待挂.length} 条`);
+    else 记(`${北京(现在)}\t${编号(x.c.customerNo)}\t将建项目\t${x.公海 ? "公海（项目进线索公海）" : `客户负责人名下${x.负责人停用 ? "（负责人已停用）" : ""}`}\t建于 北京 ${北京(x.建于)}\t将挂 ${x.待挂.length} 条`);
   }
 } else {
   db.exec("BEGIN IMMEDIATE");
   try {
     P = 计划(认们);
+    // 写前核 --expect：事务里重算的和空跑时抄下来的不一致（中间库变了）就一行不写
+    const 不符 = 核期望(P);
+    if (不符) throw new Error(不符);
     果 = 写入(P, Date.now());
     db.exec("COMMIT");
   } catch (e) {
@@ -412,6 +465,8 @@ if (!要写) {
 }
 for (const s of P!.跳) 记(`${北京(现在)}\t${编号(s.客户编号)}\t跳过\t${s.followUpId}\t${s.原因}`);
 汇总(P!, 要写);
+// 空跑带了 --expect 也核：不一致退出码 1（同写时）
+if (!要写) { const 不符 = 核期望(P!); if (不符) 停(不符.replace("整批不写", "写的时候会整批不写")); }
 const 耗时 = Math.round(performance.now() - 开始);
 记(要写 ? `已写：${果!.行} 行（项目 ${果!.项目} 个、挂沟通 ${果!.挂} 条，余为节点变更），操作日志（AuditLog，批次 ${批次}）${果!.行} 条；耗时 ${耗时} ms${果!.行 ? `。撤回：--undo ${批次}` : ""}` : `空跑结束，一行没写；耗时 ${耗时} ms`);
 落盘();

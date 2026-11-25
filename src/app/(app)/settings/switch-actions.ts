@@ -6,7 +6,6 @@
  * **服务端各自先判「能进设置」**（P-全局-02：只有系统管理员；勾了「不管设置」的不算）：别的身份直接调也拿不到，回 403。
  * 拨开关不在这里：总览调的是原卡片用的那几个 action（设规则、设不设配额、改组织规则、设飞书推送、设通讯录同步、设录音点评开关）
  */
-import { 仅记录用的 } from "@/lib/project/system-created";
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -20,7 +19,7 @@ import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 规整组织规则, 到上限的人数, type 组织规则 } from "@/lib/project/org-rules";
 import { 组织规则改动 } from "@/lib/project/org-rules-diff";
 import { 字典of } from "@/lib/project/stage-dict";
-import { 能进公海的阶段 } from "@/lib/project/db";
+import { 算持有 } from "@/lib/project/db";
 import { getSetting } from "@/lib/settings";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 飞书推送开关键 } from "@/lib/enterprise/feishu-push";
@@ -76,8 +75,8 @@ export async function 开关现状(): Promise<开关现状 | 拒> {
     读飞书推送(),
     通讯录概况(),
     读转写设置(人.me),
-    // 同 持有数：仅记录用的（X-147）不算
-    prisma.project.groupBy({ by: ["ownerId"], where: { pooledAt: null, result: null, phase: { in: [...能进公海的阶段] }, NOT: 仅记录用的 }, _count: { _all: true } }),
+    // 同 持有数（db.ts 算持有：排待分配、仅记录用的）
+    prisma.project.groupBy({ by: ["ownerId"], where: 算持有, _count: { _all: true } }),
   ]);
   const 飞书源 = 通讯录.ok ? 通讯录.来源们.find((s) => s.源 === "feishu") : undefined;
   const 录音概况 = 录音 && "密钥" in 录音 ? 录音 : null;

@@ -19,6 +19,8 @@ import { 开关现状, 读开关改动 } from "@/app/(app)/settings/switch-actio
 import { 改组织规则 } from "@/app/(app)/projects/actions";
 import { 设规则 } from "@/app/(app)/settings/org-actions";
 import { 默认组织规则 } from "@/lib/project/org-rules";
+import { 仅记录用来源 } from "@/lib/project/system-created";
+import { 持有数 } from "@/lib/project/db";
 
 let 系统: string, 不管设置: string;
 const 别人们: string[] = [];
@@ -69,6 +71,25 @@ describe("系统管理员", () => {
     expect(r.字段权限表改过).toBe(false);
     expect(r.全员).toBe(7);
     expect(r.持有上限).toEqual({ 默认上限: 30, 单设人数: 0, 到上限: 0 });
+  });
+
+  it("持有上限到上限人数：同 持有数（db.ts 算持有）——仅记录用的、待分配的不算，普通的、推进出去的算（X-147）", async () => {
+    expect(await 改组织规则({ 公海: { 默认上限: 1 } })).toMatchObject({ ok: true });
+    const 客户 = (await prisma.customer.create({ data: { name: "客户甲", phone: "", salesOwnerId: 系统 } })).id;
+    const 建 = (ownerId: string, o: { source?: string; node?: string; awaitAssignAt?: Date } = {}) =>
+      prisma.project.create({ data: { name: "p", customerId: 客户, ownerId, creatorId: ownerId, phase: "线索", node: "潜客培育", ...o } });
+    const [销售, 市场] = [别人们[4], 别人们[3]];
+    await 建(销售, { source: 仅记录用来源 });
+    await 建(市场, { awaitAssignAt: new Date() });
+    let r = await 开关现状();
+    if (!r.ok) throw new Error(r.error);
+    expect(r.持有上限.到上限).toBe(0);
+    for (const id of [销售, 市场]) expect(await 持有数(prisma, id)).toBe(0);
+    await 建(销售, { source: 仅记录用来源, node: "线索验证" });
+    await 建(系统);
+    r = await 开关现状();
+    if (!r.ok) throw new Error(r.error);
+    expect(r.持有上限.到上限).toBe(2);
   });
 
   it("读开关改动：单键开关认打开 / 关掉；组织规则相邻两行比出是哪个开关变了；最早那行比不出只写「比不出」", async () => {

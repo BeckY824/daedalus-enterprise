@@ -803,8 +803,9 @@ export const 能进公海的阶段 = ["线索", "商机"] as const;
  * 不管怎么到手的——自己建的、领的、被指派的、自动分配的——都算；待分配（awaitAssignAt 有值，建的人只是占着负责人那一格）的不算
  */
 /** 算持有的项目（同 超上限 的口径）：还在跟、不在公海、不是待分配、线索 / 商机阶段 */
-// 仅记录用的（X-147，还停在潜客培育）不算在推，不占持有数
-const 算持有 = { pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] }, NOT: 仅记录用的 };
+// 仅记录用的（X-147，还停在潜客培育）不算在推，不占持有数。
+// 导出共用：设置「持有上限」卡的「手上 N 个」/ 到上限人数、开关总览「到上限人数」都按 ownerId groupBy 这一份，不再各写一份条件
+export const 算持有 = { pooledAt: null, result: null, awaitAssignAt: null, phase: { in: [...能进公海的阶段] }, NOT: 仅记录用的 };
 
 export async function 持有数(db: Pick<Prisma.TransactionClient, "project">, userId: string): Promise<number> {
   // 数的是 userId 手上真有几个，不按谁在看限定（11-03 A3-1：市场管理分配时看不到别人名下的，少数了、突破上限）
@@ -1825,6 +1826,9 @@ export async function 自动推得到(tx: Prisma.TransactionClient, 规则: 组�
   if (!节点推进生效(规则) || (企业版() && 规则.阶段.需求补全期)) return null;
   // 节点推进不管的项目不自动推（项目按必填走：默认全部都管；设置成只管新建的时看 createdAt）；已结束、在公海的不推
   if (p.pooledAt || p.result || !项目按必填走(规则, p)) return null;
+  // 仅记录用的（X-147，来源仅记录用、还停在潜客培育）不自动推：口径「一律停在潜客培育」，记沟通、存字段把潜客培育必填填齐了也不推出去，
+  // 要真跟由负责人自己点「完成节点」往前推（推出去以后就是普通线索，照常自动推）。记项目沟通、客户页连带推、项目页「存一下会自动推」提示都经这里
+  if (是仅记录用(p)) return null;
   // 待分配期间占位的建的人改字段：字段照存，不跟着自动推进（P-转-21、X-68 建的人不能推进）
   if (待分配占位(me, p)) return null;
   const 下 = 下一步(p, 字典of(企业版()));

@@ -26,11 +26,11 @@ vi.mock("@/lib/business", async (原) => {
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
-import { 项目现在, 项目一段 } from "../src/app/(app)/overview/project-stats";
+import { 项目现在, 项目一段, 导入批次们 } from "../src/app/(app)/overview/project-stats";
 import {
-  仅记录用来源, 仅记录用的, 是仅记录用, 不进统计, 不算补建, 来源字, 历史分析来源,
+  仅记录用来源, 仅记录用的, 是仅记录用, 不进统计, 不算补建, 来源字, 历史分析来源, 是补建, 是仅记录用补建,
 } from "@/lib/project/system-created";
-import { 持有数, 算一个持有, 超上限, 记项目沟通 } from "@/lib/project/db";
+import { 持有数, 算一个持有, 超上限, 记项目沟通, 客户项目按必填推进 } from "@/lib/project/db";
 import { 首页卡条件 } from "@/lib/project/home-cards";
 import { 渠道项目条件 } from "@/lib/enterprise/channel-stats-db";
 import { 超时回收日, 记沟通要下一步时间 } from "@/lib/project/timeout";
@@ -42,7 +42,7 @@ import { 看不到的在推数 } from "@/app/(app)/customers/[id]/project-zone";
 
 let 王: string, 客户: string, 渠道: string;
 
-type 建参 = { name: string; phase?: string; node?: string; result?: string | null; source?: string | null; createdAt?: Date; closedAt?: Date; level?: string; channelId?: string };
+type 建参 = { name: string; importBatch?: string; phase?: string; node?: string; result?: string | null; source?: string | null; createdAt?: Date; closedAt?: Date; level?: string; channelId?: string };
 const 建 = (o: 建参) => prisma.project.create({ data: { customerId: 客户, ownerId: 王, creatorId: 王, phase: "线索", node: "潜客培育", ...o } });
 /** 为记沟通建的：仅记录用来源、潜客培育 */
 const 记录用 = (o: Partial<建参> = {}) => 建({ name: "记录用", source: 仅记录用来源, ...o });
@@ -104,6 +104,45 @@ describe("数据页", () => {
     expect(改后.合计).toEqual(改前.合计);
     expect(改后.漏斗).toEqual(改前.漏斗);
     expect(改前.合计.新建).toBe(1);
+  });
+});
+
+describe("962 条补建那批（importBatch x147-）：推进出去也永远不算新建", () => {
+  const 批 = "x147-20261125120000-abcdef";
+  const 几年前 = new Date("2022-03-15T02:00:00Z");
+
+  it("是补建 / 是仅记录用补建 认 x147- 前缀；别的批次、空的不认", () => {
+    expect(是仅记录用补建({ importBatch: 批 })).toBe(true);
+    expect(是补建({ importBatch: 批, creatorId: 王 })).toBe(true);
+    expect(是仅记录用补建({ importBatch: "imp-20261119" })).toBe(false);
+    expect(是仅记录用补建({ importBatch: null })).toBe(false);
+  });
+
+  it("推进出潜客培育后：新建、一段漏斗不多 1（那年那月）；现在那排照常算；普通仅记录用推进出去的照算新建", async () => {
+    const from = new Date("2022-03-01T00:00:00Z"), to = new Date("2022-04-01T00:00:00Z");
+    const 补 = await 记录用({ importBatch: 批, createdAt: 几年前 });
+    const 改前 = await 项目一段(from, to, "day", "CNY");
+    expect(改前.合计.新建).toBe(0);
+    const 现前 = await 项目现在("CNY");
+    await prisma.project.update({ where: { id: 补.id }, data: { node: "线索验证" } });
+    const 改后 = await 项目一段(from, to, "day", "CNY");
+    expect(改后.合计).toEqual(改前.合计);
+    expect(改后.漏斗).toEqual(改前.漏斗);
+    expect(await prisma.project.count({ where: { ...不算补建 } })).toBe(0);
+    // 别的统计照仅记录用的规则走：推进出去就照常算
+    expect((await 项目现在("CNY")).漏斗[0].count).toBe(现前.漏斗[0].count + 1);
+    // 不是补建批次的仅记录用，推进出去照算新建（只有补建那批永远不算）
+    await 记录用({ node: "线索验证", createdAt: new Date("2022-03-20T02:00:00Z") });
+    expect((await 项目一段(from, to, "day", "CNY")).合计.新建).toBe(1);
+  });
+
+  it("数据页「导入批次」下拉：还算仅记录用的那批不列（选了全是 0）；推进出去一个就列", async () => {
+    const 补 = await 记录用({ importBatch: 批 });
+    await 建({ name: "历史", source: 历史分析来源, importBatch: "hist-1" });
+    await 建({ name: "导入", importBatch: "imp-1" });
+    expect(await 导入批次们()).toEqual(["imp-1"]);
+    await prisma.project.update({ where: { id: 补.id }, data: { node: "线索验证" } });
+    expect(await 导入批次们()).toEqual([批, "imp-1"]);
   });
 });
 
@@ -256,5 +295,36 @@ describe("待定 6：仅记录用的不回收时记沟通不强制下一步时�
     });
     expect(await 建项目(true)).toMatchObject({ ok: true });
     expect(await 建项目(false)).toMatchObject({ ok: false, error: expect.stringContaining("下一步") });
+  });
+});
+
+describe("仅记录用的不自动推出潜客培育（口径「一律停在潜客培育」）", () => {
+  const 推进开: 组织规则 = { ...默认组织规则, 节点推进: { ...默认组织规则.节点推进, 开: true, 必填: { 潜客培育: ["本节点沟通", "下一步时间"] }, 范围: "全部" } };
+  const 沟通 = () => ({ type: "PHONE", content: "又问了一次价格", occurredAt: "2026-11-20 10:00", 下一步时间: "2026-11-27", 阶段: "线索", 明确回复: false });
+  const 在哪 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).node;
+
+  it("记项目沟通把潜客培育必填填齐了：仅记录用的不推、留在潜客培育；普通的照推到线索验证", async () => {
+    await setSetting("orgRules", 推进开);
+    const 记 = await 记录用();
+    const r = await 记项目沟通({ id: 王, role: "SALES" }, 记.id, 沟通() as never);
+    expect(r).toMatchObject({ ok: true });
+    expect(r).not.toHaveProperty("自动推到");
+    expect(await 在哪(记.id)).toBe("潜客培育");
+    expect(await prisma.projectNodeLog.count({ where: { projectId: 记.id } })).toBe(0);
+    const 普 = await 建({ name: "普通" });
+    expect(await 记项目沟通({ id: 王, role: "SALES" }, 普.id, 沟通() as never)).toMatchObject({ ok: true, 自动推到: ["线索验证"] });
+  });
+
+  it("客户这边存了东西连带推（客户项目按必填推进）：仅记录用的也不推", async () => {
+    await setSetting("orgRules", 推进开);
+    const 记 = await 记录用();
+    expect(await 记项目沟通({ id: 王, role: "SALES" }, 记.id, 沟通() as never)).toMatchObject({ ok: true });
+    expect(await 客户项目按必填推进({ id: 王, role: "SALES" }, 客户)).toEqual([]);
+    expect(await 在哪(记.id)).toBe("潜客培育");
+  });
+
+  it("规则说明：推进出去后又被改回潜客培育，照样算仅记录用（判定只看来源 + 现在停在哪）", () => {
+    expect(是仅记录用({ source: 仅记录用来源, phase: "线索", node: "线索验证" })).toBe(false);
+    expect(是仅记录用({ source: 仅记录用来源, phase: "线索", node: "潜客培育" })).toBe(true);
   });
 });
