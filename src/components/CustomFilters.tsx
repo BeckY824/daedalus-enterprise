@@ -1,6 +1,6 @@
 "use client";
 
-import { cloneElement, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
+import { cloneElement, useId, useLayoutEffect, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from "react";
 import { Button, Checkbox, Popover, Select, Space, type SelectProps } from "antd";
 import { FilterOutlined, LeftOutlined, SettingOutlined } from "@ant-design/icons";
 import { useLocalPref } from "@/lib/local-pref";
@@ -13,6 +13,9 @@ export type 筛选项 = 筛选项元 & {
   宽: number;
   渲染: (style: CSSProperties) => ReactElement;
 };
+
+/** 「更多筛选」弹层的宽：内容 220 + 弹层左右内边距各 12；离视口两边至少留 8 */
+const 弹层宽 = 244, 视口边距 = 8;
 
 function MoreFiltersButton({
   收着,
@@ -37,12 +40,21 @@ function MoreFiltersButton({
   const [看清单, 设看清单] = useState(false);
   // 全摆出去了就没有第一屏，直接给清单：不然这个按钮点开是空的
   const 显示清单 = 看清单 || 收着.length === 0;
+  /* 11-26：按钮靠右时 bottomLeft 往右开会伸出视口（1024 宽量到右边出屏 9px）：antd 往回挪最多一个箭头的量，
+     而且按 innerWidth 算、不扣竖滚动条。点开那一刻按视口（clientWidth，扣掉滚动条）量：左对齐右边留不出 8px 就改右对齐 */
+  const 钮 = useId();
+  const [朝, 设朝] = useState<"bottomLeft" | "bottomRight">("bottomLeft");
+  const 开关 = (o: boolean) => {
+    const r = document.querySelector(`[data-cf-more="${CSS.escape(钮)}"]`)?.getBoundingClientRect();
+    if (o && r) 设朝(r.left + 弹层宽 + 视口边距 > document.documentElement.clientWidth && r.right - 弹层宽 >= 视口边距 ? "bottomRight" : "bottomLeft");
+    设开着(o);
+  };
   return (
     <Popover
       trigger="click"
-      placement="bottomLeft"
+      placement={朝}
       open={开着}
-      onOpenChange={设开着}
+      onOpenChange={开关}
       afterOpenChange={(o) => {
         if (!o) 设看清单(false);
       }}
@@ -83,7 +95,7 @@ function MoreFiltersButton({
       }
     >
       {/* 窄窗口只留图标和数字（globals.css .cf-more-t），文字藏了靠 aria-label / title 说清 */}
-      <Button icon={<FilterOutlined />} aria-label={名字} title={名字}>
+      <Button icon={<FilterOutlined />} aria-label={名字} title={名字} data-cf-more={钮}>
         {筛了几个 > 0 ? (
           <span>
             <span className="cf-more-t">更多筛选（</span>
