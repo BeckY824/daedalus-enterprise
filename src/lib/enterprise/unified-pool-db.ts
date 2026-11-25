@@ -38,6 +38,7 @@ import {
 } from "./unified-pool";
 
 import { 客户显名 } from "./customer-title";
+import { 后售项目们 } from "@/lib/project/after-sale";
 /**
  * 改前（11-14 以前）客户公海、项目公海各最多取这么多（按入池时间新的在前），更早入池的搜不到、也不进各池的数。
  * 现在不再截：客户行在库里筛、数、分页（unified-pool-sql.ts），项目行、渠道名单的行量小，全取。只留给 tests/helpers 里改前的写法对拍用
@@ -47,9 +48,12 @@ export const 公海取上限 = 2000;
 type 项目片 = { id: string; createdAt: Date; name: string; phase: string; node: string; result: string | null };
 type 字典 = ReturnType<typeof 字典of>;
 
-/** 一个项目的 阶段 / 节点 / 结局（老节点名、老结局名换成本套叫法；有结局的阶段按结局归） */
-function 位置(p: 项目片, 字典: 字典) {
-  const x = 阶段与进程(本套位置(p, 字典), 字典);
+/** 后售培育（P-界面-63）：判成后售的项目 id（after-sale.ts 后售项目们，一批一次判，不逐行查） */
+type 后售集 = ReadonlySet<string>;
+
+/** 一个项目的 阶段 / 节点 / 结局（老节点名、老结局名换成本套叫法；有结局的阶段按结局归；判成后售的潜客培育写后售培育） */
+function 位置(p: 项目片, 字典: 字典, 后售们: 后售集) {
+  const x = 阶段与进程(本套位置(p, 字典), 字典, 后售们.has(p.id));
   return { 阶段: x.阶段, 节点: x.进程, 结局: x.结局 };
 }
 
@@ -58,12 +62,12 @@ function 位置(p: 项目片, 字典: 字典) {
  * 「阶段-节点」（11-01 用户：「应该是阶段+进程名。例如线索-潜客培育」），有结局再带结局；名下不止一个项目时明细列出每个项目。
  * 范围照旧（11-02）：传进来的是各人看得到的项目，进程格按看得到的里最新的那个；属性另按全部项目算（归池）
  */
-function 进程们(projects: readonly 项目片[], 字典: 字典) {
+function 进程们(projects: readonly 项目片[], 字典: 字典, 后售们: 后售集) {
   const 定 = 客户定状态(projects);
   const 显示 = 进程显示项目(projects);
-  const 进程 = 显示 ? 进程格(定.属性, 位置(显示, 字典)) : null;
+  const 进程 = 显示 ? 进程格(定.属性, 位置(显示, 字典, 后售们)) : null;
   const 进程明细 = projects.length > 1
-    ? projects.map((p) => { const x = 位置(p, 字典); return `${p.name}：${进程格(定.属性, x)}`; }).join("；")
+    ? projects.map((p) => { const x = 位置(p, 字典, 后售们); return `${p.name}：${进程格(定.属性, x)}`; }).join("；")
     : null;
   return { 属性: 定.属性, 进程, 进程明细 };
 }
@@ -92,8 +96,8 @@ function 按客户分<P extends { customerId: string }>(们: readonly P[]): Map<
 const 池要的 = { customerId: true, userId: true, reason: true, at: true, phoneIncomplete: true } satisfies Prisma.CustomerPoolSelect;
 
 /** 客户行里要「各人看得到的项目」才拼得出的四格。没项目 = 名下一个项目都没有（按全部项目认，不按看得到的）：进程写 线索-潜客培育（11-11） */
-function 客户项目格(名下: readonly 客户的项目[], 字典: 字典, 没项目: boolean) {
-  const 进 = 进程们(名下, 字典);
+function 客户项目格(名下: readonly 客户的项目[], 字典: 字典, 没项目: boolean, 后售们: 后售集) {
+  const 进 = 进程们(名下, 字典, 后售们);
   return {
     projectId: 名下.length === 1 ? 名下[0].id : null,
     项目名: 名下.length ? 名下.map((p) => p.name).join("、") : null,
@@ -165,7 +169,7 @@ async function 公海客户属性名单(): Promise<{ 商机: string[]; 订单: s
 }
 
 /** 一行客户行（骨架、库里分页两条路同一个拼法）。没全取的项目格先按「一个项目都看不到」摆，补这一页 再填 */
-function 拼客户行(me: { id: string }, c: 客户片, pool: 池片, 看得到的项目: readonly 客户的项目[], 字典: 字典, 没项目: boolean, 全部项目: readonly { phase: string; result: string | null }[], 拦: boolean): 公海行 {
+function 拼客户行(me: { id: string }, c: 客户片, pool: 池片, 看得到的项目: readonly 客户的项目[], 字典: 字典, 没项目: boolean, 全部项目: readonly { phase: string; result: string | null }[], 拦: boolean, 后售们: 后售集): 公海行 {
   const 原类 = 客户入池类(pool);
   const 类: 入池类 = c.poolInvalidAt ? "无效" : 原类;
   return {
@@ -173,7 +177,7 @@ function 拼客户行(me: { id: string }, c: 客户片, pool: 池片, 看得到�
     客户名: 客户显名(c),
     ...(c.shortName ? { 客户简称: c.shortName } : {}),
     ...(c.customerNo ? { 客户编号: c.customerNo } : {}),
-    ...客户项目格(看得到的项目, 字典, 没项目),
+    ...客户项目格(看得到的项目, 字典, 没项目, 后售们),
     属性: 客户公海属性(全部项目),
     最后跟进: c.lastFollowAt?.toISOString() ?? null,
     入池时间: pool.at.toISOString(),
@@ -227,8 +231,9 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   const 字典 = 字典of(true, 规则.阶段.出口叫法);
   // 不再截（11-14）：框 = 公海全部
   const 框客户 = { customer: { pool: { isNot: null } } } satisfies Prisma.ProjectWhereInput;
-  const [客户的项目们, 定属性的项目们, 留痕们, 可见] = await Promise.all([
-    全取.客户的项目 && 客户们.length ? 查客户的项目(框客户) : null,
+  const 客户的项目P = 全取.客户的项目 && 客户们.length ? 查客户的项目(框客户) : null;
+  const [客户的项目们, 定属性的项目们, 留痕们, 可见, 后售们] = await Promise.all([
+    客户的项目P,
     客户们.length ? 定属性的项目(框客户) : [],
     项目们.length
       ? prisma.projectNodeLog.findMany({
@@ -238,6 +243,8 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
       })
       : [],
     全取.客户可见 ? 看得到的客户(项目们.map((p) => p.customerId)) : null,
+    // 后售培育：骨架里要写进程的项目（客户行名下的、项目行）一次判完；接在 客户的项目 那句后面，和别的几句并着跑
+    Promise.resolve(客户的项目P).then((cs) => 后售项目们([...(cs ?? []), ...项目们])),
   ]);
   const 项目of客户 = 客户的项目们 ? 按客户分(客户的项目们) : null;
   const 全部项目of客户 = 按客户分(定属性的项目们);
@@ -251,13 +258,13 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   // 历史负责人看不到公海里的这个项目（总管理 / 管理员不算）
   const 回避 = 原负责人回避() && !(await 回避豁免(me));
 
-  const 客户行: 公海行[] = 客户们.map((c) => 拼客户行(me, c, c.pool, 项目of客户?.get(c.id) ?? [], 字典, 没项目客户.has(c.id), 全部项目of客户.get(c.id) ?? [], 拦));
+  const 客户行: 公海行[] = 客户们.map((c) => 拼客户行(me, c, c.pool, 项目of客户?.get(c.id) ?? [], 字典, 没项目客户.has(c.id), 全部项目of客户.get(c.id) ?? [], 拦, 后售们));
   const 留下的项目 = 项目们.filter((p) => !(回避 && 最近放回.get(p.id)?.fromOwnerId === me.id));
   const 项目行: 公海行[] = 留下的项目.map((p) => {
     const 留痕 = 最近放回.get(p.id) ?? null;
     const 类 = 项目入池类(留痕);
     const 累计 = p.customer.poolReturns;
-    const 进 = 进程们([p], 字典);
+    const 进 = 进程们([p], 字典, 后售们);
     return {
       id: `p:${p.id}`, 种: "项目", customerId: p.customerId, projectId: p.id,
       // 没全取可见的先按「客户不露」摆，补这一页 再填
@@ -301,6 +308,8 @@ async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof �
     骨.拦 && 客户ids.length ? 看全部(() => 公海客户原负责人是(prisma, [me.id], 客户ids)) : new Map<string, string>(),
     骨.有客户可见 || !页里的项目.length ? null : 看得到的客户(页里的项目.map((p) => p.customerId)),
   ]);
+  // 后售培育：这一页客户名下的项目一次判完
+  const 后售们 = 名下们 ? await 后售项目们([...名下们.values()].flat()) : new Set<string>();
   const 补项目 = (r: 公海行): 公海行 => {
     const p = 可见 && r.projectId ? 骨.公海项目.get(r.projectId) : undefined;
     return p ? { ...r, ...项目客户格(露客户(me, p, 可见!), p) } : r;
@@ -309,7 +318,7 @@ async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof �
     if (r.种 === "客户") {
       return {
         ...r,
-        ...(名下们 ? 客户项目格(名下们.get(r.customerId) ?? [], 骨.字典, 骨.没项目客户.has(r.customerId)) : {}),
+        ...(名下们 ? 客户项目格(名下们.get(r.customerId) ?? [], 骨.字典, 骨.没项目客户.has(r.customerId), 后售们) : {}),
         原负责人是我: r.原负责人是我 || 我放走的.has(r.customerId),
       };
     }
@@ -500,7 +509,7 @@ async function 读公海页_库里分页(me: { id: string; name: string; role?: 
     if (x.项目) return [x.项目];
     const c = 客户of.get(x.客户!);
     const pool = 池of.get(x.客户!);
-    return c && pool ? [拼客户行(me, c, pool, [], 骨.字典, 骨这页.没项目客户.has(c.id), 定属性.get(c.id) ?? [], 拦)] : [];
+    return c && pool ? [拼客户行(me, c, pool, [], 骨.字典, 骨这页.没项目客户.has(c.id), 定属性.get(c.id) ?? [], 拦, new Set())] : [];
   });
   const 这页 = await 补这一页(me, 骨这页, 页行);
   const 号码不全数 = !选.数号码不全 ? undefined : sp.号码不全 === "1" ? 总数
@@ -530,12 +539,13 @@ async function 按名单展开(骨: Awaited<ReturnType<typeof 读公海骨架>>,
   const 们 = await prisma.project.findMany({ where: 名单条件, orderBy: [{ pooledAt: "desc" }, { id: "asc" }], select: { id: true, customerId: true, name: true, phase: true, node: true, result: true, createdAt: true } });
   const 项目行of = new Map(骨.行.flatMap((r) => (r.种 === "项目" && r.projectId ? [[r.projectId, r] as const] : [])));
   const 客户行of = new Map(骨.行.flatMap((r) => (r.种 === "客户" ? [[r.customerId, r] as const] : [])));
+  const 后售们 = await 后售项目们(们);
   return 们.flatMap((p): 公海行[] => {
     const 项 = 项目行of.get(p.id);
     if (项) return [项];
     const 客 = 客户行of.get(p.customerId);
     if (!客) return [];
-    const x = 进程们([p], 骨.字典);
+    const x = 进程们([p], 骨.字典, 后售们);
     return [{ ...客, id: `c:${p.customerId}:${p.id}`, projectId: p.id, 项目名: p.name, 进程: x.进程, 进程明细: null }];
   });
 }

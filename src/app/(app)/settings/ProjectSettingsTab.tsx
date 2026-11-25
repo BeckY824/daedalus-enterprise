@@ -1,7 +1,7 @@
 "use client";
 
 import { useSettingsNote } from "./InlineNote";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Checkbox, Input, InputNumber, Radio, Segmented, Select, Space, Switch, Tag } from "antd";
 import { 加组员角色, 改组员角色, 加项目异常类别, 改项目异常类别, 改组织规则 } from "@/app/(app)/projects/actions";
@@ -85,6 +85,13 @@ export type 项目设置 = {
    */
   按人提成?: { 人们: { id: string; name: string; 范围: 提成范围 }[]; 比例: 按人提成比例 } | null;
 };
+
+/**
+ * 后售培育（P-界面-63、M-节点-10）：不是单独的节点，是潜客培育的显示名，超时天数、必填都用潜客培育这一格。
+ * 阶段标题后面说一句（节点那格只有 96px，写在格里会被省略号吃掉），管理员找得到后售培育的配置在哪
+ */
+const 含后售注样: CSSProperties = { fontWeight: 400, marginInlineStart: 8 };
+const 含后售注 = <span className="muted" style={含后售注样} title="客户名下已有交付结清的项目时，潜客培育显示成后售培育，配置同这一格">· 潜客培育含后售培育</span>;
 
 /**
  * 设置里的「项目模式」一栏（开关开着才有）：项目组员的角色字典、异常类别字典，企业版再加组织规则；谁能改看 value.挡，别人只看。
@@ -508,7 +515,7 @@ function TimeoutCard({
         <>
           {(["线索", "商机"] as const).map((阶段) => (
             <div key={阶段} style={{ marginBottom: 8 }}>
-              <div style={{ fontWeight: 500, marginBottom: 8 }}>{阶段}阶段</div>
+              <div style={{ fontWeight: 500, marginBottom: 8 }}>{阶段}阶段{阶段 === "线索" && 含后售注}</div>
               {节点们[阶段].map((n) => (
                 <div key={n} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0 }}>
                   <span style={{ flex: "1 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={n}>{n}</span>
@@ -623,7 +630,7 @@ function AdvanceCard({
           </div>
           {阶段们.map(({ 阶段, 节点 }) => (
             <div key={阶段} style={{ marginBottom: 8 }}>
-              <div style={{ fontWeight: 500, marginBottom: 8 }}>{阶段}阶段</div>
+              <div style={{ fontWeight: 500, marginBottom: 8 }}>{阶段}阶段{节点.includes("潜客培育") && 含后售注}</div>
               {节点.map((n) => (
                 <div key={n} style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8, minWidth: 0, flexWrap: "wrap" }}>
                   <span style={{ flex: "0 0 96px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={n}>{n}</span>

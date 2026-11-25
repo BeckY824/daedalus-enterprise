@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { 后售项目们 } from "@/lib/project/after-sale";
 import { 我放出去的公海客户 } from "@/lib/owner-log-db";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
@@ -344,7 +345,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       只有简称、全称、类型都空的客户要当前节点，这一页一句取回（一位都没有就不查），含公海项目、不按看的人算（U9）；
       项目名（F-040）只给我看得见的项目：限定层主键查多一句，看不见的回到「编号|节点」（P-看-12）。看板卡片用的也是这一份
     */
-    企 && !看板视图 ? 行P.then((rs) => 抬头节点们(prisma, rs)).then((m) => 只留看得见的项目名(m, (ids) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } }))) : undefined,
+    企 && !看板视图 ? 行P.then((rs) => 抬头节点们(prisma, rs, 后售项目们)).then((m) => 只留看得见的项目名(m, (ids) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } }))) : undefined,
   ]);
   const 三态开 = !!组织规则?.三态.开;
   /*

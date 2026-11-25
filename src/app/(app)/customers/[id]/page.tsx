@@ -1,4 +1,5 @@
 import { scheduleValue, scheduleOrder, earliestScheduled } from "@/lib/schedule-date";
+import { 后售项目们 } from "@/lib/project/after-sale";
 import { 负责人显示名 } from "@/lib/pool";
 import { notFound, redirect } from "next/navigation";
 import { 并入去向, 并入后去处, 并入提示 } from "@/lib/enterprise/customer-merge";
@@ -219,7 +220,7 @@ export default async function CustomerDetailPage({
       : null,
     // 页头抬头（11-17 客户抬头 PR-5，出口 2）：简称、全称、类型都空才要当前节点，一句（含公海项目、不按看的人算，U9）；别的不查。
     // 项目名（F-040）只给我看得见的项目：走限定层主键查一句，看不见的回到「编号|节点」（P-看-12）
-    企 ? 抬头节点们(prisma, [customer]).then((m) => 只留看得见的项目名(m, (ids) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } }))).then((m) => m[customer.id] ?? null) : null,
+    企 ? 抬头节点们(prisma, [customer], 后售项目们).then((m) => 只留看得见的项目名(m, (ids) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } }))).then((m) => m[customer.id] ?? null) : null,
     // 11-22 页面切换提速 C3：记沟通表单的两样下拉、上一次背调跟页面一起带下去（原来进页后客户端再调 3 次 server action，
     // server action 一次只走一个，排着队等）。下拉口径同 follow-method-actions.ts（启用项，空的给 null）；背调只在 AI 开着时有人要
     企 ? 页面可选项("followMethod").then((们) => (们.length ? 们 : null)) : undefined,

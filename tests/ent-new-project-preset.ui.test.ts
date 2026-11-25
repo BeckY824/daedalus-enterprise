@@ -27,7 +27,7 @@ const plugin: Plugin = { name: "new-project-preset", setup(b) {
   stub(/customers\/RepeatInquiryKey$/, "export default function R(){return null}");
   stub(/customers\/DedupeClaimKey$/, "export default function D(){return null}");
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async(w)=>{(window.__调||=[]).push(['搜客户',w]);return []};");
-  stub(/customers\/\[id\]\/project-actions$/, "export const 给客户建项目=async(x)=>{window.__建={...x};return window.__回??{ok:true,projectId:'np1'}};export const 新项目分配数据=async()=>({分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:false,客户业务线:'内贸'});export const 建项目带走的项目=async(...a)=>{(window.__预览=window.__预览??[]).push(a);if(window.__预览失败)throw new Error('断网');return window.__带走??{项目数:0,项目:[]}};");
+  stub(/customers\/\[id\]\/project-actions$/, "export const 给客户建项目=async(x)=>{window.__建={...x};return window.__回??{ok:true,projectId:'np1'}};export const 新项目分配数据=async()=>({分配方式们:[{i:0,名:'指定分配'},{i:1,名:'自动分配'}],默认分配方式:0,是销售:false,客户业务线:'内贸',...(window.__后售?{客户有交付结清:true}:{})});export const 建项目带走的项目=async(...a)=>{(window.__预览=window.__预览??[]).push(a);if(window.__预览失败)throw new Error('断网');return window.__带走??{项目数:0,项目:[]}};");
   stub(/same-number-actions$/, "export const 同号协同录入=async()=>({ok:true});");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -201,5 +201,33 @@ it("P-转-07：取预览失败不拦着建（断网时服务端照常查）", as
     await 建好键(page).click();
     await page.getByRole("button", { name: "已保存" }).waitFor();
     expect(await page.getByRole("dialog").filter({ hasText: "会一起转走" }).count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+/* 后售培育（P-界面-63，E-290「新起项目」那一刻）：选的客户名下有交付结清的，「当前进程」的潜客培育那一项显示后售培育，value 照旧，存进去的是潜客培育 */
+for (const w of [1280, 390]) {
+  it(`后售培育：客户有交付结清 → 当前进程显示后售培育，存的是潜客培育；没有照旧（${w}）`, async () => {
+    const page = await 开({ __后售: true }, w);
+    try {
+      const 框 = page.getByRole("dialog");
+      const 选 = 框.locator(".ant-select:has([aria-label='当前进程'])");
+      await expect.poll(() => 选.locator(".ant-select-content, .ant-select-selection-item").first().innerText()).toBe("后售培育");
+      await 选.click();
+      await expect.poll(() => page.locator(".ant-select-dropdown:visible .ant-select-item-option").allInnerTexts()).toEqual(["后售培育", "线索验证"]);
+      await page.keyboard.press("Escape");
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      await 填沟通(page);
+      await 框.getByLabel("下一步计划").fill("回访");
+      await 建好键(page).click();
+      await expect.poll(async () => (await 窗of(page)).建).not.toBeNull();
+      expect((await 窗of(page)).建).toMatchObject({ 跟进: { 节点: "潜客培育" } });
+    } finally { await page.close(); }
+  });
+}
+it("后售培育：客户没有交付结清 → 当前进程照旧潜客培育", async () => {
+  const page = await 开();
+  try {
+    const 选 = page.getByRole("dialog").locator(".ant-select:has([aria-label='当前进程'])");
+    await expect.poll(() => 选.locator(".ant-select-content, .ant-select-selection-item").first().innerText()).toBe("潜客培育");
   } finally { await page.close(); }
 });

@@ -3108,3 +3108,28 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
     } finally { await page.close(); }
   });
 });
+
+/* 后售培育（P-界面-63，E-290）：停在潜客培育、客户名下有交付结清的（load.ts 带 后售），进程条第一格写「后售培育」，当前格照亮（ProjectStages 按存的节点找当前格）；
+   不后售照旧写潜客培育。1280 / 390 都一行、不横滚 */
+describe("后售培育：进程条第一格", () => {
+  type 窗 = { __线索: (x: object) => void };
+  for (const width of [1280, 390]) {
+    it(`后售 → 第一格写后售培育、是当前格；不后售照旧（${width}）`, async () => {
+      const { page, errors } = await open(true, width);
+      try {
+        await page.evaluate(() => (window as unknown as 窗).__线索({ phase: "线索", node: "潜客培育", 后售: true }));
+        await page.waitForFunction(() => document.querySelector(".proj-stage-node.is-cur .proj-stage-name")?.textContent === "后售培育");
+        expect(await 节点们(page)).toEqual(["cur:后售培育", "todo:线索验证", "todo:线索推进"]);
+        expect(await page.locator(".proj-stage-node.is-cur .proj-stage-name").getAttribute("title")).toBe("后售培育");
+        // 一行：名字不折行，页面不横滚
+        const 名 = page.locator(".proj-stage-node.is-cur .proj-stage-name");
+        expect(await 名.evaluate((e) => getComputedStyle(e).whiteSpace)).toBe("nowrap");
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+        await page.evaluate(() => (window as unknown as 窗).__线索({ phase: "线索", node: "潜客培育", 后售: undefined }));
+        await page.waitForFunction(() => document.querySelector(".proj-stage-node.is-cur .proj-stage-name")?.textContent === "潜客培育");
+        expect(await 节点们(page)).toEqual(["cur:潜客培育", "todo:线索验证", "todo:线索推进"]);
+        expect(errors).toEqual([]);
+      } finally { await page.close(); }
+    });
+  }
+});

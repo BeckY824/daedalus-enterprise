@@ -15,6 +15,7 @@ import { 认首页卡, 首页卡条件, 即将逾期, 即将逾期紧筛 } from 
 import { 首页卡的人, 暂未跟进负责人们 } from "./home-cards-db";
 import { 字典of, 阶段与进程, 阶段们, 结局们of, 同名们, 本套名, 归阶段的结局, type 阶段字典 } from "./stage-dict";
 import { 本套位置 } from "./nodes";
+import { 后售培育名, 后售条件, 潜客不含后售条件, 后售项目们 } from "./after-sale";
 import type { Prisma } from "@/generated/prisma";
 import { 待我复核的, 验证结果叫法, 实际待, 无效交给 } from "./lead-verify";
 import { 看全部, 照限定, 客户读条件 } from "../team-scope";
@@ -123,22 +124,35 @@ export type 项目筛选 = { keyword?: string; ownerId?: string; pool?: string; 
  * 有结局的按结局认阶段（线索流失归线索、丢单归商机…），进程选结局 = 筛这个结局，选节点 = 停在这个节点、还没结局的。
  * 认不出的值当没筛。库里存着旧节点名 / 旧结局的（企业版 10-31 改名）新旧名一起筛（同名们）。
  */
-export function 阶段进程条件(sp: { phase?: string; node?: string; open?: string }, 字典: 阶段字典): { 阶段: 阶段 | ""; 进程: string; where: Prisma.ProjectWhereInput[] } {
-  const 阶段 = (阶段们 as readonly string[]).includes(sp.phase ?? "") ? (sp.phase as 阶段) : "";
+export async function 阶段进程条件(sp: { phase?: string; node?: string; open?: string }, 字典: 阶段字典): Promise<{ 阶段: 阶段 | ""; 进程: string; where: Prisma.ProjectWhereInput[] }> {
+  const { 阶段, where } = 阶段条件(sp, 字典);
   // 传旧名（老链接、老书签）先换成这套的新名再认
   const 名 = sp.node ? 本套名(sp.node, 字典) : "";
   const 是结局 = (结局们of(字典) as readonly string[]).includes(名);
   const 是节点 = 阶段们.some((s) => 字典.节点们[s].includes(名));
-  const 进程 = 是结局 || 是节点 ? 名 : "";
+  // 后售培育（P-界面-63，after-sale.ts）：不是节点、是潜客培育的显示名，筛它 = 停在潜客培育且判成后售；
+  // 筛潜客培育就排掉后售的（两份加起来 = 停在潜客培育，不重不漏）。这套没有潜客培育这一格的当没筛；
+  // 只在企业版拆（同 拼项目行 只在企业版判 后售）：别的版本后售培育当没筛、潜客培育照旧整格
+  const 企 = 企业版();
+  const 是后售 = 企 && 名 === 后售培育名 && 字典.节点们.线索.includes("潜客培育");
+  const 进程 = 是结局 || 是节点 || 是后售 ? 名 : "";
+  if (是后售) where.push(await 后售条件());
+  else if (企 && 进程 === "潜客培育" && !是结局) where.push(await 潜客不含后售条件());
+  else if (进程) where.push(是结局 ? { result: { in: 同名们(进程) } } : { node: { in: 同名们(进程) }, result: null });
+  return { 阶段, 进程, where };
+}
+
+/** 只按阶段 + open=1 筛（不看进程，同步；公海名单候选用）。阶段进程条件 先走这一段 */
+function 阶段条件(sp: { phase?: string; open?: string }, 字典: 阶段字典): { 阶段: 阶段 | ""; where: Prisma.ProjectWhereInput[] } {
+  const 阶段 = (阶段们 as readonly string[]).includes(sp.phase ?? "") ? (sp.phase as 阶段) : "";
   const where: Prisma.ProjectWhereInput[] = [];
   if (阶段) {
     // 和渠道统计同一句（stage-dict.ts 项目在阶段）：没结局看 phase，有结局看结局归哪个阶段
     where.push({ OR: [{ phase: 阶段, result: null }, { result: { in: 归阶段的结局(字典, 阶段) } }] });
   }
-  if (进程) where.push(是结局 ? { result: { in: 同名们(进程) } } : { node: { in: 同名们(进程) }, result: null });
   // 渠道页「关联线索」点进来（open=1）：只看没结局的
   if (sp.open === "1") where.push({ result: null });
-  return { 阶段, 进程, where };
+  return { 阶段, where };
 }
 
 /** 项目详情页中栏名单最多列这么多个项目（按最近改过排，读名单项目）；项目列表 11-11 起服务端分页，不再受它限 */
@@ -211,7 +225,7 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
   const 待分配筛中 = 企 && sp.f === 待分配筛;
   const 待分配 = 待分配筛中 ? await 待分配范围(me) : null;
   const 字典 = 字典of(企);
-  const 阶进 = 阶段进程条件(sp, 字典);
+  const 阶进 = await 阶段进程条件(sp, 字典);
   // 企业版市场视角（11-04 P-界面-05）：市场成员 = 自己负责的 ∪ 自己建的已分出去的；市场管理 = 本人 + 实线下属，可按创建人筛；公海的都不列
   const 市场 = 企 ? await 读市场身份(me.id) : null;
   const 创建人 = 市场?.视角 === "市场管理" && typeof sp.creator === "string" && 市场.圈.includes(sp.creator) ? sp.creator : "";
@@ -547,12 +561,14 @@ async function 拼项目行(
   // 公海里的项目负责人一栏写原负责人（企业版库里已清空，从留痕取）
   const 原负责人 = await 历史负责人们(prisma, rows.filter((r) => r.pooledAt).map((r) => r.id));
   const 负责人of = (p: 行带include) => (p.pooledAt ? 原负责人.get(p.id) ?? p.ownerId : p.ownerId);
-  const [人, 可见, 收回, 待复核] = await Promise.all([
+  const [人, 可见, 收回, 待复核, 后售们] = await Promise.all([
     // 定时分配的接手人（PR3）一并取名字
     prisma.user.findMany({ where: { id: { in: [...new Set([...rows.map(负责人of), ...rows.flatMap((r) => (r.scheduledAssignTo ? [r.scheduledAssignTo] : []))])] } }, select: { id: true, name: true } }),
     看得到的客户(rows.map((r) => r.customerId)),
     企 ? 数收回次数(rows.map((r) => r.id), prisma) : Promise.resolve(null),
     c.待复核 ? Promise.resolve(c.待复核) : 企 ? 待我复核的(me) : Promise.resolve([]),
+    // 后售培育（P-界面-63）：这一页一次判完（后售项目们，一句查交付结清），不逐行查
+    企 ? 后售项目们(rows) : Promise.resolve(new Set<string>()),
   ]);
   const 名字 = new Map(人.map((u) => [u.id, u.name]));
   // 市场视角：等我拍板的市场复核那几条照旧能进详情（复核要看来龙去脉）；验证结果的「待」按规则实际交给谁算（同详情页）
@@ -580,7 +596,7 @@ async function 拼项目行(
     id: p.id, name: p.name, customerId: p.customerId, customerName: 露(p) ? 客户显名({ id: p.customerId, ...p.customer }) : null, ...(企 && !可见.has(p.customerId) && !仅项目.has(p.id) ? { 进不了客户详情: true } : {}),
     ownerId: p.ownerId, ownerName: 名字.get(负责人of(p)) ?? (负责人of(p) ? "已不在的成员" : "没人"),
     // 库里存着旧节点名 / 旧结局的按这套的新名给界面（企业版 10-31 改名）
-    ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典of(企)), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
+    ...本套位置({ phase: p.phase, node: p.node, result: p.result }, 字典of(企)), ...(后售们.has(p.id) ? { 后售: true as const } : {}), exceptionCategory: p.exceptionCategory?.name ?? null, exceptionReason: p.exceptionReason,
     pooled: !!p.pooledAt,
     ...(企 && p.customer.pool ? { 客户在公海: true } : {}),
     ...(企 && p.awaitAssignAt && !p.pooledAt ? { 待分配: true } : {}),
@@ -822,7 +838,7 @@ export function 公海名单候选(f: 公海名单筛): Prisma.ProjectWhereInput
     ...(f.open === "1" && !f.channelId && !建于 && !批 ? [不进统计] : []),
   ];
   if (!并.length) return null;
-  return { AND: [...并, ...(f.phase || f.open ? 阶段进程条件({ phase: f.phase, open: f.open }, 字典of(企业版())).where : [])] };
+  return { AND: [...并, ...(f.phase || f.open ? 阶段条件({ phase: f.phase, open: f.open }, 字典of(企业版())).where : [])] };
 }
 
 /**
@@ -888,7 +904,8 @@ export async function 读名单项目(me: { id: string; role?: string }, 字典:
     if (!后面还有) break;
   }
   const 列 = 进得去.slice(0, 项目上限);
-  const 可见 = await 看得到的客户(列.map((r) => r.customerId));
+  // 后售培育（P-界面-63）：名单这一批一次判完（后售项目们），进程那格写后售培育
+  const [可见, 后售们] = await Promise.all([看得到的客户(列.map((r) => r.customerId)), org ? 后售项目们(列) : Promise.resolve(new Set<string>())]);
   return {
     // 筛后超了上限被截掉，或封顶时后面还没取完：提示「这里只有最近改过的 N 个」（N = 筛后列出的条数）
     取到上限: 进得去.length > 项目上限 || 后面还有,
@@ -896,7 +913,7 @@ export async function 读名单项目(me: { id: string; role?: string }, 字典:
       const 露 = 露客户(me, r, 可见);
       const f = 露 ? r.followUps[0]?.followUp : undefined;
       return {
-        id: r.id, name: r.name, ...阶段与进程(r, 字典), pooled: !!r.pooledAt,
+        id: r.id, name: r.name, ...阶段与进程(r, 字典, 后售们.has(r.id)), pooled: !!r.pooledAt,
         // 全称选填（11-19）：没全称的叫显名（简称 → 客户编号）
         customerName: 露 ? 客户显名({ id: r.customerId, ...r.customer }) : null,
         lastType: f?.type ?? null,

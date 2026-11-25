@@ -133,7 +133,9 @@ describe("按阶段、进程筛", () => {
     expect(await 名们({ phase: "订单" })).toEqual(["交付", "备货"].sort());
   });
   it("进程：节点只算没结局的，结局单独筛", async () => {
-    expect(await 名们({ node: "潜客培育" })).toEqual(["培育"]);
+    // 同一位客户名下有成功交付（= 交付结清）的项目：停在潜客培育的那个判成后售培育（P-界面-63），筛潜客培育排掉它
+    expect(await 名们({ node: "潜客培育" })).toEqual([]);
+    expect(await 名们({ node: "后售培育" })).toEqual(["培育"]);
     expect(await 名们({ node: "线索流失" })).toEqual(["流失"]);
     expect(await 名们({ phase: "商机", node: "丢单" })).toEqual(["丢"]);
     expect(await 名们({ phase: "订单", node: "成功交付" })).toEqual(["交付"]);

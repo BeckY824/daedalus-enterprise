@@ -1,4 +1,5 @@
 import { prisma, defaultClient } from "@/lib/prisma";
+import { 后售项目们 } from "@/lib/project/after-sale";
 import { 能往项目记沟通, 能记售后回访 as 能记售后回访of } from "@/lib/project/follow-needs-project";
 import { 只读客户 } from "@/lib/team-scope";
 import type { SessionUser } from "@/lib/auth";
@@ -370,6 +371,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
     // 只读来源字段（迁移 163，客户 E-218）：原始客户编号 + 第几次；没有编辑入口，改项目的动作都不写这两列
     ...(是重复咨询(p) && p.repeatOfCustomerId ? { 重复咨询来自: await 重复咨询原始客户(p) } : {}),
     // 合并客户第一批（11-25）：从另一位客户挪过来的（合并客户 / 项目换客户）写「从 NO.xxxxx「B」并入」；原客户名字只给看得到它的人
+    // 后售培育（P-界面-63）：停在潜客培育、客户名下有交付结清的，进程条第一格和「现在在」写后售培育；存的仍是潜客培育。不停在潜客培育的不查库
+    ...(企业 && (await 后售项目们([p])).has(p.id) ? { 后售: true as const } : {}),
     并入自: await 项目来历(prisma, p.id, p.customerId, async (id) => (await 页面看得到的客户([id])).has(id)),
     // 「换客户」：看得到客户、客户负责人本人（能删客户的角色）或系统管理员才摆；同事负责没结束的、交接中、业务线不同……在预览里说（同 project-move-customer.ts 拦的原因）
     能换客户: 看得到客户.has(p.customerId) && !!org && !只读角色(me, org) && !只看的人(org, me.id)

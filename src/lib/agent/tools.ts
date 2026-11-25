@@ -6,6 +6,7 @@
  *   data：   喂回模型的结构化内容（截断过，控制上下文）
  *   records：这次读到的跟进记录（带编号），最终回答里的 [n] 引用它们
  */
+import { 后售条件, 后售项目们 } from "@/lib/project/after-sale";
 import type { Dayjs } from "dayjs";
 import { 负责人显示名 } from "@/lib/pool";
 import type { Prisma } from "@/generated/prisma";
@@ -21,6 +22,7 @@ import { 带币种, 签约币种, 签约金额, 签约合计 } from "../money-db
 import { 合计文字 } from "../currency";
 import { 客户来源线索 } from "../customer-lead-origin";
 import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, 字典of } from "../project/nodes";
+import { 后售培育名, 显示节点名 } from "../project/stage-dict";
 import { 看得到的客户, 露客户 } from "../project/db";
 import { 不进统计, 历史分析的, 仅记录用的, 是历史分析, 是仅记录用, 来源字, 并条件, 人名显示 } from "../project/system-created";
 import { 企业版 } from "../enterprise/switch";
@@ -44,7 +46,7 @@ import { 名字在别处, 别处说法, 别处附件, 找人详, 没找到话 } 
 import type { BusinessConfig } from "../business-config";
 import type { BriefRecord } from "../ai-draft";
 import { 扩同义词 } from "./synonyms";
-import { 校验规格, 说人话, 编译, 能查的表, 查询表, 分组上限, 关联们, 用到的名字, 认字段, 节点记录类型叫法, type 名映射, type 查询规格, type 表名 } from "./query";
+import { 校验规格, 说人话, 编译, 能查的表, 查询表, 分组上限, 关联们, 用到的名字, 用到后售培育, 认字段, 节点记录类型叫法, type 名映射, type 查询规格, type 表名 } from "./query";
 import { 限定的我 } from "../team-scope";
 import { 字段权限of } from "../enterprise/field-perm";
 import { 能看提成 } from "../project/commission-db";
@@ -456,12 +458,14 @@ export const TOOLS: Tool[] = [
       const 项目负责人 = 项目行.length
         ? new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(项目行.map((p) => p.ownerId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
         : new Map<string, string>();
+      // 后售培育（P-界面-63）：这几个项目一次判，节点按显示名报
+      const 后售们 = 项目行.length ? await 后售项目们(项目行.map((p) => ({ ...p, customerId: c.id }))) : new Set<string>();
       // 改名后（10-31）库里旧节点名按新名报（本套位置，旧名换新名）
       const 项目 = 项目行.slice(0, 项目最多).map((p) => 本套位置(p, 字典of(企业版()))).map((p) => ({
         id: p.id,
         名称: p.name,
         阶段: p.phase,
-        节点: p.node,
+        节点: 显示节点名(p.node, 后售们.has(p.id), 字典of(企业版())),
         结局: p.result ?? "进行中",
         下一步: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? dayjs(p.nextStepAt).format("YYYY-MM-DD") : null,
         负责人: p.pooledAt ? "在公海" : (项目负责人.get(p.ownerId) ?? "已不在的成员"),
@@ -783,18 +787,21 @@ export const TOOLS: Tool[] = [
 问「有哪些新线索」用 phase=线索，「手上的商机」用 phase=商机，「在交付的订单」用 phase=订单。\
 默认只列进行中的（没结局）；问「流失的 / 丢的 / 交付完的 / 异常的」用 result（${结局们.join(" / ")}，或「全部」）。\
 「多久没动的」用 idleDays，「公海里的」用 pooled（不给就不含公海里的）。按最近改过排，给总数和各阶段个数；每个项目带「归属」，回答按归属分开说。`,
-    args: `{"phase": "${阶段们.join("/")}，可空", "node": "当前进程名，可空", "result": "${结局们.join("/")}/全部，可空，默认只看进行中", "ownerName": "负责人姓名，可空", "keyword": "项目名或客户名里的关键词，可空", "idleDays": 至少几天没动，可空, "pooled": 只看公海里的，可空}`,
+    args: `{"phase": "${阶段们.join("/")}，可空", "node": "当前进程名，可空（客户名下已有交付结清项目、停在潜客培育的叫「后售培育」，问复购 / 老客户再起的线索用 node=后售培育；node=潜客培育 不含后售培育）", "result": "${结局们.join("/")}/全部，可空，默认只看进行中", "ownerName": "负责人姓名，可空", "keyword": "项目名或客户名里的关键词，可空", "idleDays": 至少几天没动，可空, "pooled": 只看公海里的，可空}`,
     async run(args, ctx) {
       const phase = 是阶段(args.phase) ? args.phase : null;
       const node = str(args.node, 20);
       const r = str(args.result, 10);
+      // 后售培育（P-界面-63）：不是库里的节点，翻成条件（after-sale.ts）；潜客培育排掉后售的，和项目列表、数据页一致
+      const 后售筛 = node === 后售培育名 ? await 后售条件() : node && 同名们("潜客培育").includes(node) ? { NOT: await 后售条件() } : null;
       const ownerName = str(args.ownerName, 20);
       const 词 = str(args.keyword, 30);
       const 天 = typeof args.idleDays === "number" && args.idleDays > 0 ? Math.floor(args.idleDays) : null;
       const where: Prisma.ProjectWhereInput = {
         ...(phase ? { phase } : {}),
         // 新旧名都认（10-31 改名）：库里可能还是旧名，按同名们一起查
-        ...(node ? { node: { in: 同名们(node) } } : {}),
+        ...(node === 后售培育名 ? {} : node ? { node: { in: 同名们(node) } } : {}),
+        ...(后售筛 ? { AND: [后售筛] } : {}),
         ...(r === "全部" ? {} : r && 是结局(r) ? { result: { in: 同名们(r) } } : { result: null }),
         ...(ownerName ? { ownerId: { in: (await prisma.user.findMany({ where: { name: { contains: ownerName } }, select: { id: true } })).map((u) => u.id) } } : {}),
         ...(词 ? { OR: [{ name: { contains: 词 } }, { customer: 客户按名条件(词) }] } : {}),
@@ -820,9 +827,11 @@ export const TOOLS: Tool[] = [
           },
         }),
       ]);
-      const [人, 可见] = await Promise.all([
+      const [人, 可见, 后售们] = await Promise.all([
         prisma.user.findMany({ where: { id: { in: [...new Set(rows.map((p) => p.ownerId))] } }, select: { id: true, name: true } }),
         看得到的客户(rows.map((p) => p.customerId)),
+        // 输出的进程按显示名写：这一批一次判
+        企业版() ? 后售项目们(rows) : Promise.resolve(new Set<string>()),
       ]);
       const 名字 = new Map(人.map((u) => [u.id, u.name]));
       const me = { id: ctx.userId };
@@ -844,7 +853,7 @@ export const TOOLS: Tool[] = [
             名称: p.name,
             ...(露客户(me, p, 可见) ? { customerId: p.customerId, 客户: 客户显名(p.customer) } : { 客户: "（公海里同事的客户，看不到名字）" }),
             阶段: p.phase,
-            节点: p.node,
+            节点: 显示节点名(p.node, 后售们.has(p.id), 字典),
             结局: p.result ?? "进行中",
             ...(p.result === "异常状态" && p.exceptionCategory ? { 异常类别: p.exceptionCategory.name } : {}),
             金额: p.amount,
@@ -1113,6 +1122,8 @@ export const TOOLS: Tool[] = [
       */
       const 名字 = 用到的名字(规格, ctx.b);
       const 映射: 名映射 = { 人: new Map(), 部门: new Map() };
+      // 「节点」比后售培育 / 潜客培育时先取好后售条件（query.ts 名映射.后售）
+      if (企业版() && 用到后售培育(规格, ctx.b)) 映射.后售 = await 后售条件();
       for (const n of 名字.人) {
         let 们 = await prisma.user.findMany({ where: { name: n }, select: { id: true } });
         if (!们.length) 们 = await prisma.user.findMany({ where: { name: { contains: n } }, select: { id: true } });
