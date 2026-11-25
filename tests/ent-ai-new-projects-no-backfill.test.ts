@@ -23,7 +23,7 @@ import { resetDb } from "./reset";
 import { TOOLS } from "@/lib/agent/tools";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
 import { 校验规格, 编译, 说人话 } from "@/lib/agent/query";
-import { 不算补建, 不算历史分析, 补建创建人, 历史分析来源, 历史分析留痕人 } from "@/lib/project/system-created";
+import { 不算补建, 不算历史分析, 不进统计, 补建创建人, 历史分析来源, 历史分析留痕人 } from "@/lib/project/system-created";
 import { dayjs } from "@/lib/utils";
 
 const 本月初 = dayjs().startOf("month").format("YYYY-MM-DD");
@@ -40,22 +40,23 @@ describe("编译：项目表按创建时间筛 = 问新建，排掉补建", () =
     expect((编译(s).where as { AND: unknown[] }).AND).toContainEqual(不算补建);
   });
 
-  it("不带创建时间（问现在有多少）补建的照算、只排历史回填；别的表按创建时间筛也不动", () => {
+  it("不带创建时间（问现在有多少）补建的照算、只排不进统计的（历史回填 + 仅记录用，X-147）；别的表按创建时间筛也不动", () => {
     const 项目 = 校验规格({ 表: "项目", 条件: [{ 字段: "阶段", 运算: "等于", 值: "线索" }] });
-    expect(编译(项目).where).toEqual({ AND: [{ phase: "线索" }, 不算历史分析] });
-    expect(编译(校验规格({ 表: "项目", 条件: [] })).where).toEqual({ AND: [不算历史分析] });
+    expect(编译(项目).where).toEqual({ AND: [{ phase: "线索" }, 不进统计] });
+    expect(编译(校验规格({ 表: "项目", 条件: [] })).where).toEqual({ AND: [不进统计] });
     const 客户 = 校验规格({ 表: "客户", 条件: [{ 字段: "创建时间", 运算: "不早于", 值: 本月初 }] });
     const 客户and = (编译(客户).where as { AND: unknown[] }).AND;
     expect(客户and).not.toContainEqual(不算补建);
     expect(客户and).not.toContainEqual(不算历史分析);
+    expect(客户and).not.toContainEqual(不进统计);
   });
 
   it("挂在项目下的表只算非回填项目的；节点记录另排回填留痕人", () => {
     for (const 表 of ["卡点", "项目成员", "项目回款", "线索验证", "提成", "提成分配"]) {
-      expect((编译(校验规格({ 表, 条件: [] })).where as { AND: unknown[] }).AND, 表).toContainEqual({ project: { is: 不算历史分析 } });
+      expect((编译(校验规格({ 表, 条件: [] })).where as { AND: unknown[] }).AND, 表).toContainEqual({ project: { is: 不进统计 } });
     }
     const 节点 = (编译(校验规格({ 表: "节点记录", 条件: [] })).where as { AND: unknown[] }).AND;
-    expect(节点).toContainEqual({ project: { is: 不算历史分析 } });
+    expect(节点).toContainEqual({ project: { is: 不进统计 } });
     expect(节点).toContainEqual({ userId: { not: 历史分析留痕人 } });
   });
 
@@ -117,7 +118,7 @@ describe("query_records 实查：本月新增多少项目", () => {
     expect(d.项目.find((p) => p.名称 === "回填")!.数据来源).toMatch(/历史分析.*不计入/);
     expect(d.项目.find((p) => p.名称 === "真线索一")!.数据来源).toBeUndefined();
     expect(r.summary).toMatch(/^3 个项目/);
-    expect(r.summary).toMatch(/另有 1 个历史分析回填的.*不计入/);
+    expect(r.summary).toMatch(/另有 1 个历史分析回填.*不计入/);
   });
 
   it("list_projects 带关键词：数也不算历史回填的", async () => {
