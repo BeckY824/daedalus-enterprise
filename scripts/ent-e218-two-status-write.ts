@@ -161,7 +161,7 @@ const 新日志id = (T: number) => "c" + (T.toString(36) + randomBytes(10).toStr
 function 撤(批次号: string): number {
   记(`# ${件名} · 撤回 ${批次号} · ${要写 ? "写" : "空跑（只读）"} · 北京 ${北京(现在)} · 库 ${库} · 操作人 ${OP!.name}（执行：${前缀件.执行}）· 依据 ${依据号}`);
   const 本脚本的 = (批: string, 键: "批次" | "撤的批次") => 全(
-    `SELECT id, entityId, detail FROM AuditLog WHERE at >= ? AND entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.脚本') = ? AND json_extract(detail, '$.${键}') = ?`,
+    `SELECT id, entityId, detail FROM AuditLog WHERE at >= ? AND +entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.脚本') = ? AND json_extract(detail, '$.${键}') = ?`,
     留痕起点, 脚本, 批,
   );
   const 跑 = (): number => {
@@ -274,8 +274,9 @@ if (!要写) {
       const x = 一("SELECT custStatus FROM Customer WHERE id = ?", r.id);
       if (x?.custStatus !== r.改后) throw new Error(`回读 NO.${r.t.客户编号} 是「${显((x?.custStatus as string | null) ?? null)}」，应为「${r.改后}」`);
     }
-    // at >= T 走 AuditLog_at_idx：本批日志都记在 T；不带它会全表 json_extract（3703 副本 25 万条约 2 s，整段在写锁里）
-    const 日志数 = Number(一("SELECT count(*) n FROM AuditLog WHERE at >= ? AND entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.批次') = ?", T, 批次)?.n);
+    // at >= T 走 AuditLog_at_idx（本批日志都记在 T）；+entity 不让查询规划挑 entity 索引——挑了要逐条 json_extract 全部 Customer 日志
+    // （3703 副本 25 万条，写锁里 2–5 s）。撤回那条同理
+    const 日志数 = Number(一("SELECT count(*) n FROM AuditLog WHERE at >= ? AND +entity = 'Customer' AND json_valid(detail) AND json_extract(detail, '$.批次') = ?", T, 批次)?.n);
     if (日志数 !== 写了) throw new Error(`操作日志 ${日志数} 条 ≠ 改动 ${写了} 行`);
     // 客户 E-244：本批每条日志正文带前缀、detail 带 批次 / 执行 / 依据，逐条核，不对整批回滚
     const 核 = 前缀件.核本批(db, 批次, 依据号, T);
