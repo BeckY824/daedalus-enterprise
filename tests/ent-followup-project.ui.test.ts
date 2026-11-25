@@ -17,15 +17,15 @@ import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
-import { 本人改公海话, 本人改沟通项目话, 本人改沟通过时话 } from "@/lib/enterprise/follow-edit-text";
+import { 本人改公海话, 本人改沟通项目话, 本人改沟通过时话, 本人改过时提示 } from "@/lib/enterprise/follow-edit-text";
 
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "followup-project-boundaries", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/follow-method-actions$/, 补全动作桩("src/app/(app)/follow-method-actions.ts", "export const 沟通方式选项=async()=>null;export const 发起主体选项=async()=>null;export const 我常用的沟通方式=async()=>window.__习惯??null;", "async()=>null"));
-  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){}});");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){window.__刷=(window.__刷||0)+1},push(){}});");
   stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x,卡点)=>{window.__项目存={id,...x};window.__卡点=卡点;if(window.__项目抛)throw new TypeError('Failed to fetch');return window.__项目存回??{ok:true,followUpId:'f1',自动推到:window.__推到}};"));
-  stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__存=x;return{ok:true,id:'f1',...(window.__存回??{})}},completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");
+  stub(/^\.\/actions$/, "export const saveFollowUp=async x=>{window.__存=x;window.__存次=(window.__存次||0)+1;return{ok:true,id:'f1',...(window.__存回??{})}},completePlan=async()=>({ok:true});export const saveTask=async()=>({ok:true,id:'t1'}),savePlan=async()=>({ok:true,id:'n1'});");
   stub(/^\.\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no'});");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
@@ -37,8 +37,8 @@ beforeAll(async () => {
     import FollowUpForm from '@/app/(app)/customers/[id]/FollowUpForm';
     const root=createRoot(document.getElementById('root'));
     const 长='某某超长贸易进出口有限公司年度框架采购项目'.repeat(5);
-    window.__render=({项目,编辑,新建})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
-      <FollowUpForm open onClose={()=>{}} onSaved={()=>{}} customerId="c1" aiEnabled={false}
+    window.__render=({项目,编辑,新建,关})=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={DEFAULT_BUSINESS}>
+      <FollowUpForm open={!关} onClose={()=>{}} onSaved={()=>{}} customerId="c1" aiEnabled={false}
         record={编辑?{id:'f9',type:'PHONE',title:'',content:'原来的',status:'已完成',occurredAt:'2026-10-20T10:00:00.000Z',updatedAt:'2026-10-20T10:00:00.000Z'}:null}
         contacts={[]} opportunities={项目==null?[{id:'o1',name:'一个商机'}]:[]}
         projects={项目==='有'?[{id:'p1',name:长}]:项目==='多'?[{id:'p1',name:长},{id:'p2',name:'二号项目'}]:项目==='空'?[]:null}
@@ -48,7 +48,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-type 参数 = { 项目?: "有" | "多" | "空" | null; 编辑?: boolean; 须知?: unknown; 新建?: "能" | "不能" };
+type 参数 = { 项目?: "有" | "多" | "空" | null; 编辑?: boolean; 须知?: unknown; 新建?: "能" | "不能"; 关?: boolean };
 async function open(p: 参数, width = 1366, height = 900) {
   const page = await browser.newPage({ viewport: { width, height } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -272,28 +272,77 @@ it("项目模式被拦以后改任何一格就收掉保存键上的旧原因（1
   } finally { await page.close(); }
 });
 
-// 11-26 审查：本人限时改被服务端拒的那几句（客户进了公海、挂的项目记不了沟通、过了 30 分钟）改哪格都改不好，
-// 改一格不收保存键上的原因；别的原因（比如撞了版本）照旧一改就收
-it("编辑沟通被拒「客户进了公海 / 挂的项目记不了沟通」：改一格不收保存键上的原因；别的原因照旧一改就收", async () => {
+// 11-26 审查：本人限时改被服务端拒的那几句（客户进了公海、挂的项目记不了沟通、过了 30 分钟）改哪格都改不好：
+// 改一格不收保存键上的原因、保存灰掉、框里留这句、页面刷一下（同项目页 EditFollowModal）；关了再开从头来。别的原因（比如撞了版本）照旧一改就收
+const 重开 = async (page: import("playwright").Page, x: 参数) => {
+  await page.evaluate((v) => (window as unknown as { __render: (x: 参数) => void }).__render({ ...v, 关: true }), x);
+  await expect.poll(() => page.locator(".ant-modal-wrap:visible").count()).toBe(0);
+  await page.evaluate((v) => (window as unknown as { __render: (x: 参数) => void }).__render(v), x);
+  await page.getByRole("button", { name: /保\s*存/ }).waitFor();
+};
+it("编辑沟通被拒「客户进了公海 / 挂的项目记不了沟通」：改一格不收、保存灰掉、框里留这句、刷新页面；关了再开从头来；别的原因照旧一改就收", async () => {
   const { page, errors } = await open({ 项目: null, 编辑: true });
   try {
     const 因 = page.locator(".save-why");
-    for (const 话 of [本人改公海话, 本人改沟通项目话, 本人改沟通过时话]) {
+    const 键 = page.getByRole("button", { name: /保\s*存/ });
+    const 框里 = page.locator(".ant-modal-body .csq-err[role=alert]");
+    for (const 话 of [本人改公海话, 本人改沟通项目话]) {
+      const 刷前 = await page.evaluate(() => (Reflect.get(window, "__刷") as number | undefined) ?? 0);
       await page.evaluate((x) => Reflect.set(window, "__存回", { ok: false, error: x }), 话);
-      await page.getByRole("button", { name: /保\s*存/ }).click();
+      await 键.click();
       await expect.poll(() => 因.innerText()).toBe(话);
+      await expect.poll(() => 键.isDisabled()).toBe(true);
+      expect(await 键.getAttribute("title")).toBe(话);
+      expect(await 框里.innerText()).toBe(话);
+      expect(await page.evaluate(() => Reflect.get(window, "__刷"))).toBe(刷前 + 1);
       await page.locator("#content").click();
       await page.keyboard.press("End");
       await page.keyboard.type("改", { delay: 20 });
       await page.waitForTimeout(300);
       expect(await 因.innerText()).toBe(话);
+      expect(await 键.isDisabled()).toBe(true);
+      // 关了再开：上一次的拒绝不带过来，保存又能点、框里那句没了
+      await 重开(page, { 项目: null, 编辑: true });
+      expect(await 键.isDisabled()).toBe(false);
+      expect(await 框里.count()).toBe(0);
     }
     await page.evaluate(() => Reflect.set(window, "__存回", { ok: false, error: "这条刚被别人改过，请刷新后再改" }));
-    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await 键.click();
     await expect.poll(() => 因.innerText()).toBe("这条刚被别人改过，请刷新后再改");
+    expect(await 键.isDisabled()).toBe(false);
+    expect(await 框里.count()).toBe(0);
     await page.locator("#content").click();
     await page.keyboard.type("再", { delay: 20 });
     await expect.poll(() => 因.count(), { timeout: 1000 }).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("编辑沟通被拒「超过 30 分钟」：同项目页——换成过时那句、保存灰掉、草稿清掉且再改也不存、刷新页面；灰着不再交", async () => {
+  const { page, errors } = await open({ 项目: null, 编辑: true });
+  try {
+    const 因 = page.locator(".save-why");
+    const 键 = page.getByRole("button", { name: /保\s*存/ });
+    const 框里 = page.locator(".ant-modal-body .csq-err[role=alert]");
+    const 稿数 = () => page.evaluate(() => Object.keys(localStorage).filter((k) => k.includes("编辑跟进:f9")).length);
+    await page.locator("#content").click();
+    await page.keyboard.press("End");
+    await page.keyboard.type("补一句", { delay: 20 });
+    await expect.poll(稿数).toBeGreaterThan(0);
+    await page.evaluate((x) => Reflect.set(window, "__存回", { ok: false, error: x }), 本人改沟通过时话);
+    await 键.click();
+    await expect.poll(() => 因.innerText()).toBe(本人改过时提示);
+    await expect.poll(() => 键.isDisabled()).toBe(true);
+    expect(await 框里.innerText()).toBe(本人改过时提示);
+    expect(await page.evaluate(() => Reflect.get(window, "__刷"))).toBe(1);
+    await expect.poll(稿数).toBe(0);
+    await page.keyboard.type("又", { delay: 20 });
+    await page.waitForTimeout(300);
+    expect(await 稿数()).toBe(0);
+    expect(await 框里.innerText()).toBe(本人改过时提示);
+    await 键.click({ force: true }).catch(() => {});
+    await page.waitForTimeout(200);
+    expect(await page.evaluate(() => Reflect.get(window, "__存次"))).toBe(1);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

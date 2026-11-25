@@ -6,7 +6,7 @@
  */
 import { 给人看的错 } from "@/lib/action-error";
 
-export type 做的结果 = void | undefined | { ok: boolean; error?: string | null };
+export type 做的结果 = void | undefined | { ok: boolean; error?: string | null; 提示?: string | null };
 
 /** 没成的话，给人看的那句原因 */
 export const 没说原因 = "没做成，请稍后再试";

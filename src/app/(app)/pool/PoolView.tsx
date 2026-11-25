@@ -360,9 +360,11 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     const 撤销 = async (): Promise<做的结果> => {
       let 撤了 = 0;
       let 错: string | null = null;
+      let 提示: string | undefined;
       if (客户res?.ok && 客户到) {
         const r = await 撤销公海(动作, 客户res.原负责人 ?? [], 客户res.带过来, 客户res.给谁?.id, 客户res.公海项目);
-        if (r.ok) 撤了 += r.updated; else 错 = r.error;
+        // 并发里先撤回去的（已撤回）也已经回了公海：算撤了，撤销条上说一句，不报错（11-26 审查）
+        if (r.ok) { 撤了 += r.updated + (r.已撤回 ?? 0); 提示 = r.提示; } else 错 = r.error;
       }
       if (项目到.length) {
         const r = await 撤销公海项目(动作, 项目到, 给谁?.id, 整包);
@@ -372,7 +374,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
       if (错) return { ok: false, error: 错 };
       if (!撤了) return { ok: false, error: "已经有人动过了" };
       if (撤了 < 到数) set结果({ 文案: `已撤销 ${撤了} 个，其余已经有人动过了`, 没领到: [] });
-      return { ok: true };
+      return { ok: true, 提示 };
     };
     // 真到手 / 分出去的那几行（客户池并成一行的：名下有一个项目到了就算），滑出、撤销后滑回用
     const 到客户 = new Set(客户res?.ok ? (客户res.原负责人 ?? []).map((x) => x.id) : []);

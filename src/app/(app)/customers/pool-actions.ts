@@ -99,6 +99,10 @@ export type 公海结果 =
       带过来?: 带走的;
       /** 老板分配：分给了谁（id、名字），撤销时按他认「还归他」 */
       给谁?: { id: string; name: string };
+      /** 撤销：并发里别的请求先撤回公海的几位（不算这次撤成，也不算失败） */
+      已撤回?: number;
+      /** 成了但有一句要说的（撤销条把它写在「已撤销」的位置，不当报错） */
+      提示?: string;
       /** 企业版：跟着客户一起领 / 分过来的项目公海里的项目，撤销时放回项目公海（交互规则 B，10-30）；
        *  放进公海时 = 跟着一起进项目公海的客户负责人自己的项目，撤销时还给他（P-公海-06，11-05） */
       公海项目?: string[];
@@ -535,6 +539,15 @@ async function 记项目分配(me: Awaited<ReturnType<typeof requireUser>>, 给:
 const 负责人被改过 = "负责人刚被别人改过，这次没有撤销";
 /** 撤销时出公海补的潜客培育项目已经动过了（记了沟通、换了节点、编辑过……）：这一位不撤，整笔回滚（P-撤销-01，nurture.ts 潜客培育动没动） */
 const 培育项目动过 = "刚补的潜客培育项目已经有人动过（记了沟通、换了节点或编辑过），这次没有撤销";
+/** 同一位并发撤了两次（双击、两个请求同时到）：先到的那次撤成了，后到的不算失败，只说一句（11-26 审查） */
+const 已撤回话 = (n: number) => (n > 1 ? `这 ${n} 位刚才已经撤回公海了` : "这位刚才已经撤回公海了");
+/** 撞的是公海那一行的主键（customerPool.customerId）：先到的那次已经放回公海。别的表的唯一约束照旧抛（同 repeat-inquiry.ts 序号撞了） */
+function 公海行撞了(e: unknown): boolean {
+  if (!e || typeof e !== "object" || (e as { code?: unknown }).code !== "P2002") return false;
+  const meta = (e as { meta?: { modelName?: unknown } }).meta;
+  if (typeof meta?.modelName === "string" && meta.modelName !== "CustomerPool") return false;
+  return JSON.stringify(meta ?? "").includes("customerId");
+}
 
 /**
  * 撤销放进公海：把这几位从公海里拿回来。企业版负责人按那条 pool-release 还回去、那条删掉（P-撤销-01）；别的版本负责人本来就没动过。
@@ -627,6 +640,7 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
   */
   const 撤成: typeof 退 = [];
   let 培育拦 = 0;
+  let 已撤回 = 0;
   for (const x of 退) {
     /*
       包 看全部（3703 11-25）：上面已认过这一位能撤（还归 现、时限内是我领 / 换的），事务里不再按人限定。
@@ -676,8 +690,8 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       if (e instanceof Error && e.message === 负责人被改过) return false;
       if (e instanceof Error && e.message === 培育项目动过) return (培育拦++, false);
       // 同一位并发撤两次（双击、两个请求同时到）：都过了上面「还归我」，后到的在 customerPool.create 撞主键（P2002）。
-      // 先到的那次已经撤成，这一位算这次没撤成、不抛，免得界面报异常（11-26 审查）
-      if ((e as { code?: unknown })?.code === "P2002") return false;
+      // 先到的那次已经撤成，这一位不算这次撤成、也不算失败，界面只说一句（11-26 审查）；只认公海那一行的主键，别的唯一约束照旧抛
+      if (公海行撞了(e)) return (已撤回++, false);
       throw e;
     });
     if (成) 撤成.push(x);
@@ -690,9 +704,12 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
     });
   }
   刷新(ids);
-  // 一位都没撤成、全是刚被别人改走的：明说，别让界面报「已撤销」
-  if (退.length && !撤成.length) return { ok: false, error: 培育拦 ? 培育项目动过 : `${负责人被改过}，刷新看看` };
-  return { ok: true, updated: 撤成.length, unchanged: ids.length - 撤成.length, 没权限: 0 };
+  // 一位都没撤成、全是刚被别人改走的：明说，别让界面报「已撤销」。有并发里先撤回去的：那几位已经回了公海，算成了、只说一句
+  if (退.length && !撤成.length && !已撤回) return { ok: false, error: 培育拦 ? 培育项目动过 : `${负责人被改过}，刷新看看` };
+  return {
+    ok: true, updated: 撤成.length, unchanged: ids.length - 撤成.length - 已撤回, 没权限: 0,
+    ...(已撤回 ? { 已撤回, 提示: 已撤回话(已撤回) } : {}),
+  };
 }
 
 /** 查重领取那条沟通（同记沟通的必填：沟通方式 / 类型、内容、时间）；下一步是接手人的格，这里不收 */

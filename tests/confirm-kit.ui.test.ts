@@ -51,8 +51,8 @@ beforeAll(async () => {
 
     W.__save = () => { W.__做 = []; W.__成了 = 0; 画(<div className="foot" style={{ paddingTop: 80 }}><Button>取消</Button><SaveButton 做={记('__做')} 成了={() => W.__成了++} /></div>); };
 
-    W.__undo = (话, p = {}) => { const id = 话; (W.__起 ||= []).push(id); return showUndo({ 话, 毫秒: p.毫秒 ?? 5000, 撤销: async () => { (W.__撤 ||= []).push(id); if (W.__慢撤) await 睡(W.__慢撤); if (W.__挡) return { ok: false, error: W.__挡 }; }, 到点: p.已做 ? undefined : async () => { (W.__交 ||= []).push(id); }, ...(p.另 ? { 另一个动作: { 话: p.另, 做: () => (W.__另 ||= []).push(id) } } : {}) }); };
-    W.__undoReset = () => { dismissUndo(); W.__起 = []; W.__撤 = []; W.__交 = []; W.__另 = []; W.__挡 = null; W.__慢撤 = 0; };
+    W.__undo = (话, p = {}) => { const id = 话; (W.__起 ||= []).push(id); return showUndo({ 话, 毫秒: p.毫秒 ?? 5000, 撤销: async () => { (W.__撤 ||= []).push(id); if (W.__慢撤) await 睡(W.__慢撤); if (W.__挡) return { ok: false, error: W.__挡 }; if (W.__提示) return { ok: true, 提示: W.__提示 }; }, 到点: p.已做 ? undefined : async () => { (W.__交 ||= []).push(id); }, ...(p.另 ? { 另一个动作: { 话: p.另, 做: () => (W.__另 ||= []).push(id) } } : {}) }); };
+    W.__undoReset = () => { dismissUndo(); W.__起 = []; W.__撤 = []; W.__交 = []; W.__另 = []; W.__挡 = null; W.__慢撤 = 0; W.__提示 = null; };
     function 发撤销的() { return <button type="button" onClick={() => W.__undo('已取消关注「Nordic Fun AB」', { 毫秒: 800 })}>取消关注</button>; }
     W.__undoCaller = () => 画(<发撤销的 />);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, logLevel: "silent" })).outputFiles[0].text;
@@ -422,6 +422,20 @@ describe("撤销条", () => {
     expect(await page.getByRole("button", { name: "撤销" }).count()).toBe(0);
     await page.getByRole("button", { name: "关闭" }).click();
     await 警.waitFor({ state: "detached" });
+    await page.close();
+  });
+
+  it("撤成了但有一句要说的（提示，如「这位刚才已经撤回公海了」）：写在「已撤销」的位置，不当报错（11-26 审查）", async () => {
+    const { page, errors } = await open();
+    await 调(page, "__undoReset");
+    await 设(page, "__提示", "这位刚才已经撤回公海了");
+    await 调(page, "__undo", "已领取「某某展具」", { 已做: true });
+    await page.getByRole("button", { name: "撤销" }).click();
+    await page.getByText("这位刚才已经撤回公海了").waitFor();
+    expect(await page.locator("#undo-host").getByRole("alert").count()).toBe(0);
+    expect(await page.getByText("已撤销").count()).toBe(0);
+    expect(await 取(page, "__撤")).toEqual(["已领取「某某展具」"]);
+    expect(errors).toEqual([]);
     await page.close();
   });
 

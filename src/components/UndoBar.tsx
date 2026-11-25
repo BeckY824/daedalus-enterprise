@@ -131,7 +131,13 @@ async function 撤(id: number) {
   清计时();
   const 撤销 = 手.撤销;
   改(id, { 态: "撤着" });
-  const 因 = await 跑出原因(撤销);
+  // 成了但有一句要说的（同一位刚才已经撤回公海了）：写在「已撤销」的位置，不当报错
+  let 提示: string | null = null;
+  const 因 = await 跑出原因(async () => {
+    const r = await 撤销();
+    if (r && typeof r === "object" && r.ok && typeof r.提示 === "string" && r.提示.trim()) 提示 = r.提示.trim();
+    return r;
+  });
   if (当前?.id !== id) {
     // 撤销在路上时被新的一条顶掉了：成了就算了，没成要让人知道
     if (因) 显示错(`撤销不了：${因}`, "挡了");
@@ -141,7 +147,7 @@ async function 撤(id: number) {
     改(id, { 态: "挡了", 话: `撤销不了：${因}` });
     if (手) 手.计时 = setTimeout(() => 收起(id), 出错留);
   } else {
-    改(id, { 态: "撤了", 话: "已撤销" });
+    改(id, { 态: "撤了", 话: 提示 ?? "已撤销" });
     if (手) 手.计时 = setTimeout(() => 收起(id), 撤了留);
   }
 }

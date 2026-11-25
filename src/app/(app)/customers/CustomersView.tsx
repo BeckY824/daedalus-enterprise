@@ -490,6 +490,7 @@ export default function CustomersView({
         const r = await 撤销公海(动作, 原, res.ok ? res.带过来 : undefined, res.ok ? res.给谁?.id : undefined, res.ok ? res.公海项目 : undefined);
         router.refresh();
         if (!r.ok) return { ok: false, error: `没能撤销：${r.error}` };
+        return { ok: true, 提示: r.提示 };
       },
     });
   }

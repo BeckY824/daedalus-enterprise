@@ -7,10 +7,21 @@ export const 本人改沟通窗口分钟 = 30;
 export const 本人改沟通过时话 = `提交超过 ${本人改沟通窗口分钟} 分钟，不能再改`;
 export const 本人改沟通项目话 = "这条沟通挂的项目你已经记不了沟通（已结束、进了公海或你已不在项目组），不能再改";
 export const 本人改公海话 = "这位客户已经进了公海，不能再改这条沟通";
+/** 改沟通框开着到点、或服务端回了 本人改沟通过时话：框里换成这句（草稿一起清掉，项目页 EditFollowModal、客户页 FollowUpForm 共用） */
+export const 本人改过时提示 = `已经超过提交后 ${本人改沟通窗口分钟} 分钟，这条不能再改了；没保存的改动已清掉`;
 
 const 改格不收的话: ReadonlySet<string> = new Set([本人改沟通过时话, 本人改沟通项目话, 本人改公海话]);
 
 /** 这句拒绝话改格子也改不好：改一格不收 */
 export function 改格不收(话: string | null | undefined): boolean {
   return !!话 && 改格不收的话.has(话);
+}
+
+/**
+ * 被拒之后这条怎么都改不成了（时限过了、客户进了公海、挂的项目记不了沟通）：保存键灰掉，框里留这句（11-26 审查）。
+ * 过时那句换成 本人改过时提示（草稿已清掉）；别的照原话。不是这几句回 null
+ */
+export function 不能再改话(话: string | null | undefined): string | null {
+  if (话 === 本人改沟通过时话) return 本人改过时提示;
+  return 改格不收(话) ? 话! : null;
 }
