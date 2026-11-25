@@ -2931,11 +2931,13 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
           const 顶 = (e: Element) => e.getBoundingClientRect().top;
           const 子顶 = [...l.children].map(顶);
           const lr = l.getBoundingClientRect(), hr = h.getBoundingClientRect();
+          // 谁 / 发起还没缩到最小宽度（还有余量可让）
+          const 有余量 = [".proj-fu-who", ".proj-fu-ini"].some((s) => { const e = l.querySelector(s) as HTMLElement | null; return !!e && e.getBoundingClientRect().width > parseFloat(getComputedStyle(e).minWidth) + 1; });
           return {
             左段高: lr.height,
             子顶差: Math.max(...子顶) - Math.min(...子顶),
-            // 售后回访、阶段两块标不缩；提醒标最后才缩（缩了有自己的悬停），都不出这一段
-            标: [...l.querySelectorAll(".ant-tag")].map((t) => ({ 字: t.textContent, 全: t.classList.contains("proj-fu-rem") ? t.getAttribute("title") === t.textContent : t.scrollWidth <= t.clientWidth + 1, 在段内: t.getBoundingClientRect().right <= lr.right + 1 })),
+            // 售后回访、阶段两块标不缩；提醒标最后才缩：谁、发起还有余量时它必须完整，到底了才「…」（缩了有自己的悬停 title），都不出这一段
+            标: [...l.querySelectorAll(".ant-tag")].map((t) => ({ 字: t.textContent, 全: t.classList.contains("proj-fu-rem") ? t.getAttribute("title") === t.textContent && (!有余量 || t.scrollWidth <= t.clientWidth) : t.scrollWidth <= t.clientWidth + 1, 在段内: t.getBoundingClientRect().right <= lr.right + 1 })),
             右: [".proj-fu-t", ".proj-fu-kb"].map((s) => { const r = h.querySelector(s)!.getBoundingClientRect(); return { 同行: Math.abs(r.top - lr.top) <= 4, 不出头: r.right <= hr.right + 1 }; }),
           };
         });

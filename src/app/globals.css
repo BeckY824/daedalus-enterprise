@@ -5721,10 +5721,12 @@ button.proj-miss-chip { cursor: pointer; }
 .proj-fu-l { display: flex; flex: 1 1 auto; flex-wrap: nowrap; align-items: center; gap: 6px; min-width: 0; overflow: hidden; white-space: nowrap; }
 .proj-fu-l > * { flex: none; }
 .proj-fu-l > :is(.proj-fu-who, .proj-fu-way, .proj-fu-ini) { min-width: 2.2em; overflow: hidden; text-overflow: ellipsis; }
-.proj-fu-l > .proj-fu-way { flex: 0 100 auto; }
-.proj-fu-l > .proj-fu-ini { flex: 0 20 auto; }
-.proj-fu-l > .proj-fu-who { flex: 0 1 auto; }
-/* 提醒标（下一步 MM-DD / 超时）最后才缩：前面三格都到底了还放不下才「…」，自己悬停看全 */
+/* 缩放系数拉开数量级（方式 1e9 → 发起 1e6 → 谁 1e3 → 提醒标 1），前一格没缩到最小宽度，后一格实际几乎不动 */
+.proj-fu-l > .proj-fu-way { flex: 0 1e9 auto; }
+.proj-fu-l > .proj-fu-ini { flex: 0 1e6 auto; }
+.proj-fu-l > .proj-fu-who { flex: 0 1e3 auto; }
+/* 提醒标（下一步 MM-DD / 超时）最后才缩：前面三格都到底了还放不下才「…」，自己悬停看全。
+   系数不能小于 1：只剩它能缩时系数太小会被直接裁掉、不出「…」 */
 .proj-fu-l > .proj-fu-rem { flex: 0 1 auto; min-width: 3.5em; overflow: hidden; text-overflow: ellipsis; }
 /* 手机：间距、分隔点、标的左右内边距各收一点，390 宽三格都缩到「一个字 + …」时阶段标也放得下（留 ≥8px 给 CI 的 Linux 字体） */
 @media (max-width: 767px) {
