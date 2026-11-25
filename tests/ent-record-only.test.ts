@@ -38,6 +38,7 @@ import { 默认组织规则, 规整组织规则, 合上改动, type 组织规则
 import { 企业版字典 } from "@/lib/project/nodes";
 import { 给客户建项目 } from "@/app/(app)/customers/[id]/project-actions";
 import { 组织规则改动 } from "@/lib/project/org-rules-diff";
+import { 看不到的在推数 } from "@/app/(app)/customers/[id]/project-zone";
 
 let 王: string, 客户: string, 渠道: string;
 
@@ -128,6 +129,16 @@ describe("持有数、首页卡、渠道", () => {
     await 建({ name: "普通" });
     await 记录用();
     expect(await prisma.project.count({ where: 渠道项目条件([渠道]) })).toBe(1);
+  });
+});
+
+describe("客户页「还有 N 个同事在推的项目你看不到」", () => {
+  it("不数仅记录用的；推进出去的照数", async () => {
+    await 建({ name: "普通" });
+    const r = await 记录用();
+    expect(await 看不到的在推数(客户, [])).toBe(1);
+    await prisma.project.update({ where: { id: r.id }, data: { node: "线索验证" } });
+    expect(await 看不到的在推数(客户, [])).toBe(2);
   });
 });
 

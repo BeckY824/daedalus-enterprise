@@ -6,17 +6,18 @@
  * - 存的是字典 custStatus 第 i 项「现在的名字」：按固定 id dict-custStatus-<i> 去字典表取，表里还没这一项（字典没初始化过）用默认名。
  *   只读字典、不补默认行（企业字典() 第一次读会写库，这里不碰）。
  * - 一个客户的项目要全看：业务员改自己的项目，同一客户下同事的项目也得算进来，所以包在 看全部() 里；软删的客户 / 项目不算。
- * - 只改变了的：算出来和库里一样的不写（不碰 updatedAt）。没有项目的算出 null，库里有值就清成 null。
+ * - 只改变了的：算出来和库里一样的不写（不碰 updatedAt）。没有项目的算出 null，库里有值就清成 null（名下只剩仅记录用的例外：不写，见下）。
  * - Prisma 6.16 嵌套 include 里带 orderBy 超过 1000 个父行会崩：这里只用平铺的 findMany（不 include），全量按 id 游标分页。
  * - 重复咨询第一步（客户 11-22 / 11-23 定稿）：「终判无效 · 重复线索」的线索不参与计算（重复线索不算），批量重算、详情现算两处都排；
  *   全量重算调的是批量重算，跟着排。在推项目优先在纯函数里（cust-status-auto.ts）
+ * - 仅记录用（X-147）：项目带上 source，纯函数里排掉；名下只剩仅记录用的（只剩仅记录用）不写，库里有值照留（不按「没有项目」清成 null）
  */
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 字典定义 } from "./dict-kinds";
 import { 企业版只用项目 } from "./project-only";
-import { 算客户状态, 客户状态id, type 算状态的项目 } from "./cust-status-auto";
+import { 算客户状态, 只剩仅记录用, 客户状态id, type 算状态的项目 } from "./cust-status-auto";
 
 type 库 = Prisma.TransactionClient;
 type 读库 = Pick<Prisma.TransactionClient, "entDictItem" | "entLeadVerify">;
@@ -88,7 +89,7 @@ export async function 重算客户状态(db: 库, customerIds: Iterable<string |
       const 这批 = ids.slice(i, i + 一批);
       // 事务里一条一条来，不并发
       const 客户们 = await db.customer.findMany({ where: { id: { in: 这批 }, deletedAt: null }, select: { id: true, custStatus: true } });
-      const 项目们 = await 标不算(db, await db.project.findMany({ where: { customerId: { in: 这批 }, deletedAt: null }, select: { id: true, customerId: true, phase: true, node: true, result: true, pooledAt: true } }), 重复名);
+      const 项目们 = await 标不算(db, await db.project.findMany({ where: { customerId: { in: 这批 }, deletedAt: null }, select: { id: true, customerId: true, phase: true, node: true, result: true, pooledAt: true, source: true } }), 重复名);
       const 按客户 = new Map<string, typeof 项目们>();
       for (const p of 项目们) {
         if (!p.customerId) continue;
@@ -99,7 +100,10 @@ export async function 重算客户状态(db: 库, customerIds: Iterable<string |
       // 算出来同一个值的并成一条 updateMany
       const 要改 = new Map<string | null, string[]>();
       for (const c of 客户们) {
-        const 序 = 算客户状态(按客户.get(c.id) ?? []);
+        const 列们 = 按客户.get(c.id) ?? [];
+        // 只剩仅记录用的：当没有项目，但不清库里已有的值（X-147）
+        if (只剩仅记录用(列们)) continue;
+        const 序 = 算客户状态(列们);
         const 值 = 序 == null ? null : 名[序];
         if (值 === c.custStatus) continue;
         const 列 = 要改.get(值);
@@ -121,7 +125,7 @@ export async function 重算客户状态(db: 库, customerIds: Iterable<string |
 export async function 显示用客户状态(customerId: string, 存的: string | null): Promise<string | null> {
   if (存的) return 存的;
   return 看全部(async () => {
-    const 项目们 = await 标不算(prisma, await prisma.project.findMany({ where: { customerId, deletedAt: null }, select: { id: true, phase: true, node: true, result: true, pooledAt: true } }));
+    const 项目们 = await 标不算(prisma, await prisma.project.findMany({ where: { customerId, deletedAt: null }, select: { id: true, phase: true, node: true, result: true, pooledAt: true, source: true } }));
     const 序 = 算客户状态(项目们);
     return 序 == null ? null : (await 客户状态名们())[序];
   });

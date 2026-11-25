@@ -2,6 +2,7 @@ import type { SessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 在推项目条件 } from "@/lib/project/active";
+import { 仅记录用的 } from "@/lib/project/system-created";
 import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
 import { 能看项目, 权限项目选, 带已加入 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
@@ -38,10 +39,11 @@ export async function 能看的项目(me: SessionUser, ids: readonly string[]): 
 
 /**
  * 看不到的同事在推项目个数（P-看-12：只给个数）：这位客户名下、在推（没结束、不在公海）、没删的，去掉我看得到的那几个。
- * 项目区的锁数、「历史变更」弹窗项目块底下那句「还有 N 个同事在推的项目你看不到」都用这一个，两处数一样
+ * 项目区的锁数、「历史变更」弹窗项目块底下那句「还有 N 个同事在推的项目你看不到」都用这一个，两处数一样。
+ * 仅记录用的（X-147，还停在潜客培育）不算在推，不数
  */
 export function 看不到的在推数(customerId: string, 可看ids: readonly string[]): Promise<number> {
-  return 看全部(() => prisma.project.count({ where: { customerId, ...在推项目条件, deletedAt: null, id: { notIn: [...可看ids] } } }));
+  return 看全部(() => prisma.project.count({ where: { customerId, ...在推项目条件, deletedAt: null, id: { notIn: [...可看ids] }, NOT: 仅记录用的 } }));
 }
 
 /**
