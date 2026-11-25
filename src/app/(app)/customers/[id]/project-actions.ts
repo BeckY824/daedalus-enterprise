@@ -14,6 +14,7 @@
  * 业务线（A1，11-01 16:1x）：内贸 / 外贸 / 暂不分配三选一，带了分配方式（企业版新弹窗）就必填；没传分配方式的老调用不要求
  * 项目所在地（11-02）：选填，四格 + 详细地址，规整同编辑项目；弹窗按所在地给业务线建议，人确认（提交即确认），服务端不按地址改线
  */
+import { 交付结清客户们 } from "@/lib/project/after-sale";
 import { 仅记录用来源, 仅记录用节点 } from "@/lib/project/system-created";
 import { 记沟通要下一步时间 } from "@/lib/project/timeout";
 import { 签首条附件票 } from "@/lib/enterprise/first-follow-ticket";
@@ -90,7 +91,9 @@ export type 新项目分配数据 = Awaited<ReturnType<typeof 新建分配方式
   /** 这位客户的号按电话认出的线（11-18 分配方向第二步）；认不出 = null */
   客户电话线: 线 | null;
   /** 客户的来源渠道：新项目的项目来源默认带它，建时可另选（P-删-03，审核 11-18 P1-1） */
-  客户渠道: string | null };
+  客户渠道: string | null;
+  /** 后售培育（P-界面-63）：这位客户名下有交付结清的项目（after-sale.ts 交付结清客户们，看全部）。向导里「潜客培育」那一项显示成后售培育，存的照旧潜客培育 */
+  客户有交付结清?: boolean };
 
 /** 客户页「新增项目」弹窗打开时取：能用的分配方式、按业务角色的默认值、是不是销售（A6 / A9），业务线默认带客户的（A1）。看不到的客户 / 没开 = null */
 export async function 新项目分配数据(customerId: string): Promise<新项目分配数据 | null> {
@@ -105,6 +108,7 @@ export async function 新项目分配数据(customerId: string): Promise<新项�
       客户区域线: 区域线, 客户有地址: !!(客户.addrCountry || 客户.addrProvince || 客户.addrCity || 客户.addrDistrict),
       客户电话线: 电话定线(await 客户号们(String(customerId)), { 国家: 客户.addrCountry }),
       客户渠道: 客户.channelId ?? null,
+      客户有交付结清: (await 交付结清客户们([String(customerId)])).has(String(customerId)),
     };
   } catch {
     return null;

@@ -36,7 +36,7 @@ import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 import type { 看板列 } from "@/lib/project/nodes";
 import { 待分配筛, 待分配筛名, 待分配筛说明, type 待分配数 } from "@/lib/enterprise/await-assign-core";
-import { 字典of, 结局叫法, 阶段与进程, 阶段们, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 字典of, 结局叫法, 阶段与进程, 阶段们, 后售培育名, type 阶段, type 阶段字典, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import InviteInbox, { type 邀请行 } from "./InviteInbox";
 import VerifyInbox, { type 待复核行 } from "./VerifyInbox";
 import { 自动分配线索, 撤销自动分配, 分配带走的项目, type 自动分配结果 } from "../leads/assign-actions";
@@ -83,7 +83,8 @@ function 节点文字(r: 项目行, 字典: 阶段字典) {
     const 字 = `异常 · ${r.exceptionCategory ?? r.node}`;
     return <Typography.Text type="danger" className="clamp" title={异常说明(r) ?? 字}>{字}</Typography.Text>;
   }
-  const 进程 = r.result ? 结局叫法(r.result, 字典) : 阶段与进程(r, 字典).进程;
+  // 后售培育（P-界面-63）：服务端一页判完带 后售，这里只换叫法
+  const 进程 = r.result ? 结局叫法(r.result, 字典) : 阶段与进程(r, 字典, !!r.后售).进程;
   return <span className="clamp" title={进程}>{进程}</span>;
 }
 
@@ -530,7 +531,8 @@ export default function ProjectsView({
   const 进程组 = (s: 阶段) => ({
     label: s,
     options: [
-      ...字典.节点们[s].map((n) => ({ value: n, label: n })),
+      // 后售培育（P-界面-63）：紧跟潜客培育多一项，值就是「后售培育」（服务端 阶段进程条件 翻成条件；选潜客培育排掉后售的）
+      ...字典.节点们[s].flatMap((n) => [{ value: n, label: n }, ...(企业版 && n === "潜客培育" ? [{ value: 后售培育名, label: 后售培育名 }] : [])]),
       ...字典.出口们[s].flatMap((o) => (o.结局 ? [{ value: o.结局, label: o.叫法 }] : [])),
     ],
   });

@@ -329,3 +329,15 @@ describe("历史变更：看不到的项目只数同事在推的（P-看-12，�
     expect(包).not.toContain("QA-丙B");
   });
 });
+
+describe("历史变更：后售培育（E-290，P-界面-63）", () => {
+  it("销售 A 的项目停在潜客培育、客户名下有 B 负责的交付结清（A 看不到）：项目节的阶段写「线索 · 后售培育」，B 的不出", async () => {
+    const 戊 = (await raw.customer.create({ data: { name: "QA-戊", phone: "13800004401", salesOwnerId: 销售A } })).id;
+    await raw.project.create({ data: { name: "QA-戊A培育", customerId: 戊, ownerId: 销售A, creatorId: 销售A } });
+    await raw.project.create({ data: { name: "QA-戊B交付", customerId: 戊, ownerId: 销售B, creatorId: 销售B, phase: "订单", node: "尾款结算", result: "交付结清", closedAt: 天(1) } });
+    忘掉企业版范围();
+    const r = await A做(() => 读项目历史们(戊, null));
+    expect(r.ok && r.项目们.map((p) => [p.名, p.阶段])).toEqual([["QA-戊A培育", "线索 · 后售培育"]]);
+    expect(JSON.stringify(r)).not.toContain("QA-戊B");
+  });
+});

@@ -91,8 +91,8 @@ describe("线索节点of（纯函数）", () => {
       { phase: "线索", node: "潜客培育", result: "丢单" },
       { phase: "商机", node: "共识方案", result: null },
     ]);
-    expect(r.map((x) => x.node)).toEqual(["潜客培育", "线索验证", "线索推进"]);
-    expect(r.map((x) => x.count)).toEqual([2, 0, 1]);
+    expect(r.map((x) => x.node)).toEqual(["潜客培育", "后售培育", "线索验证", "线索推进"]); // 后售培育那行没有也摆 0（P-界面-65）
+    expect(r.map((x) => x.count)).toEqual([2, 0, 0, 1]);
     expect(r.every((x) => x.流失 + x.判无效 + x.退回公海 === 0)).toBe(true);
   });
   it("每个节点流出去的：线索流失、判无效（拆出来，不重算进流失）、退回公海（还没结局）各数各的", () => {
@@ -103,7 +103,7 @@ describe("线索节点of（纯函数）", () => {
       { phase: "线索", node: "线索验证", result: "线索流失", pooledAt: new Date() }, // 流失后又进了公海：算流失，不重算退回
       { phase: "线索", node: "线索推进", result: null },
     ]);
-    expect(r.map((x) => [x.count, x.流失, x.判无效, x.退回公海])).toEqual([[0, 1, 0, 1], [0, 1, 1, 0], [1, 0, 0, 0]]);
+    expect(r.map((x) => [x.count, x.流失, x.判无效, x.退回公海])).toEqual([[0, 1, 0, 1], [0, 0, 0, 0], [0, 1, 1, 0], [1, 0, 0, 0]]);
   });
   it("线索转商机of：进了商机 / 订单的，有结局也算（丢单、成功交付），线索流失的不算", async () => {
     const { 线索转商机of } = await import("../src/app/(app)/overview/project-stats");
@@ -338,11 +338,11 @@ describe("库里取数和权限", () => {
     await 建(外人, "线索", "潜客培育", { result: "线索流失" });
 
     const 全 = await 项目现在("CNY");
-    expect(全.线索节点.map((x) => [x.count, x.流失, x.判无效, x.退回公海])).toEqual([[2, 1, 0, 1], [1, 0, 1, 0], [0, 0, 0, 0]]);
+    expect(全.线索节点.map((x) => [x.count, x.流失, x.判无效, x.退回公海])).toEqual([[2, 1, 0, 1], [0, 0, 0, 0], [1, 0, 1, 0], [0, 0, 0, 0]]);
     expect(全.线索转商机).toBe(2);
     const 王 = await 项目现在("CNY", 小王);
     expect(王.阶段.map((x) => [x.phase, x.count])).toEqual([["线索", 2], ["商机", 1], ["订单", 0]]);
-    expect(王.线索节点.map((x) => [x.count, x.退回公海])).toEqual([[1, 1], [1, 0], [0, 0]]);
+    expect(王.线索节点.map((x) => [x.count, x.退回公海])).toEqual([[1, 1], [0, 0], [1, 0], [0, 0]]);
     expect(王.线索转商机).toBe(1);
     // 一串人（上级的「全部」）= 这几个人的合起来
     const 两人 = await 项目现在("CNY", [小王, 外人]);
@@ -353,8 +353,8 @@ describe("库里取数和权限", () => {
     const to = dayjs().endOf("month").toDate();
     const 段王 = await 项目一段(from, to, "day", "CNY", 小王);
     const 段全 = await 项目一段(from, to, "day", "CNY");
-    expect(段王.线索节点.map((x) => x.count)).toEqual([1, 1, 0]); // 公海那个不算停在小王这里
-    expect(段王.线索节点.map((x) => x.退回公海)).toEqual([1, 0, 0]); // 算成从潜客培育退回公海
+    expect(段王.线索节点.map((x) => x.count)).toEqual([1, 0, 1, 0]); // 公海那个不算停在小王这里
+    expect(段王.线索节点.map((x) => x.退回公海)).toEqual([1, 0, 0, 0]); // 算成从潜客培育退回公海
     expect(段王.线索转商机).toBe(1);
     expect(段全.线索节点.reduce((s, x) => s + x.count, 0)).toBeGreaterThan(段王.线索节点.reduce((s, x) => s + x.count, 0));
   });

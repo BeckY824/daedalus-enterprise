@@ -5,7 +5,7 @@ import { LeftOutlined, RightOutlined } from "@ant-design/icons";
 import { Tag } from "antd";
 import { categorical, palette } from "@/lib/palette";
 import { 阶段们 } from "@/lib/project/nodes";
-import type { 阶段字典 } from "@/lib/project/stage-dict";
+import { 显示节点名, type 阶段字典 } from "@/lib/project/stage-dict";
 
 /** 三大阶段的颜色，和数据页项目统计（overview/ProjectStatsView.tsx）同一套 */
 export const 阶段色: Record<string, string> = { 线索: categorical.cyan, 商机: palette.brand, 订单: categorical.green };
@@ -29,10 +29,13 @@ const 勾 = <svg className="proj-stage-tick" viewBox="0 0 12 12" aria-hidden foc
 /** 系统开了「减弱动态」：滚动不平滑 */
 import { 少动 } from "@/lib/reduced-motion";
 
-export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结局, 结局色, 成功交付, 动作, 提示, 卡头, 不摆阶段页签 = false }: {
+export default function ProjectStages({ 字典, 所在阶段, 所在进程, 后售 = false, 结局, 结局色, 成功交付, 动作, 提示, 卡头, 不摆阶段页签 = false }: {
   字典: 阶段字典;
   所在阶段: string;
+  /** 存的节点名（本套名）：按它在节点表里找当前格。别传显示名（后售培育不在节点表里，找不到就不亮） */
   所在进程: string;
+  /** 后售培育（P-界面-63）：潜客培育那一格写后售培育，别的格照旧 */
+  后售?: boolean;
   结局: string | null;
   结局色?: string;
   成功交付: boolean;
@@ -175,7 +178,7 @@ export default function ProjectStages({ 字典, 所在阶段, 所在进程, 结�
             return (
               <li key={n} className={`proj-stage-node is-${t}`} aria-current={t === "cur" ? "step" : undefined}>
                 <span className="proj-stage-mark" aria-hidden>{t === "done" && 勾}</span>
-                <span className="proj-stage-name" title={n}>{n}</span>
+                <span className="proj-stage-name" title={显示节点名(n, 后售, 字典)}>{显示节点名(n, 后售, 字典)}</span>
                 {t === "cur" && <span className="sr-only">（当前）</span>}
                 {t === "cur" && 结局 && <Tag color={结局色} style={{ marginInlineEnd: 0 }}>{结局}</Tag>}
               </li>

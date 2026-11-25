@@ -22,6 +22,7 @@ import { 成员选项, 独自一人, dayjs, type 可选成员 } from "@/lib/util
 import { 外贸精简 } from "@/lib/business-config";
 import { 项目名上限, 备注上限, 占位名提示 } from "@/lib/project/wizard";
 import { 仅记录用节点 } from "@/lib/project/system-created";
+import { 显示节点名, 企业版字典 } from "@/lib/project/stage-dict";
 import { 是占位值 } from "@/lib/project/required";
 import { 有效线索节点, 建档不能过线索验证 } from "@/lib/project/stage-gates";
 import { 下一步文字上限 } from "@/lib/project/project-fields";
@@ -532,11 +533,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   // 业务线默认带这位客户的（A1，和客户页「新增项目」同一个取数）；看不到 / 没开 = null 不带
   // 老客户的区域（P-转-26）：市场成员选自动分配时业务线那格只读显示按区域定的线；客户没填地址 = null，看项目所在地
   // 渠道 = 这位客户的来源渠道：项目渠道默认带它，建时可另选（P-删-03，审核 11-18 P1-1）
-  const [老客户区域, set老客户区域] = useState<{ id: string; 线: 线 | null; 电话线: 线 | null; 渠道: string | null } | null>(null);
+  const [老客户区域, set老客户区域] = useState<{ id: string; 线: 线 | null; 电话线: 线 | null; 渠道: string | null; 后售?: boolean } | null>(null);
   const 带客户业务线 = (c: 可挑客户) => {
     新项目分配数据(c.id).then((r) => {
       if (r?.客户业务线 && !d.项目.业务线) 改("项目", { 业务线: r.客户业务线 });
-      set老客户区域(r ? { id: c.id, 线: r.客户有地址 ? r.客户区域线 : null, 电话线: r.客户电话线 ?? null, 渠道: r.客户渠道 ?? null } : null);
+      set老客户区域(r ? { id: c.id, 线: r.客户有地址 ? r.客户区域线 : null, 电话线: r.客户电话线 ?? null, 渠道: r.客户渠道 ?? null, ...(r.客户有交付结清 ? { 后售: true } : {}) } : null);
     }, () => {});
   };
   const 挑老 = (id: string) => {
@@ -790,6 +791,8 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   // 市场成员选自动分配（P-转-26，11-18）：业务线换成可改的「分配方向」，默认按 客户区域 → 项目所在地 → 电话 → 本人事业部；
   // 老客户的区域、电话由服务端算好（新项目分配数据），新客户按这一屏填的号现算；人改过就按改的
   const 老的 = 老客户 && 老客户区域?.id === 老客户.id ? 老客户区域 : null;
+  // 后售培育（P-界面-63）：挑的老客户名下有交付结清的，「当前进程」的潜客培育那一项写后售培育；value 照旧潜客培育（存的不变）
+  const 后售中 = !!老的?.后售;
   /** 项目渠道的默认：老客户 = 这位客户的来源渠道（服务端取），新客户 = 这一屏选的渠道 */
   const 客户渠道 = 老客户 ? (老的?.渠道 ?? null) : (d.客户.渠道 || null);
   const 方向默认 = 默认分配方向({
@@ -1192,7 +1195,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         <div className="cr-sec-head">
           <b>首条沟通</b>
           {/* 团队版（用户 11-15「没有开项目，就只能算客户沟通」）；企业版沟通必须挂项目（11-17）：记在新客户自带的潜客培育项目上（M-公海-14） */}
-          {!带项目 && <span className="cr-hint" data-testid="wizard-follow-where">{企业 ? `没开项目，记在自动建的「潜客培育」项目上` : `没开项目，记成${b.customer}沟通`}</span>}
+          {!带项目 && <span className="cr-hint" data-testid="wizard-follow-where">{企业 ? `没开项目，记在自动建的「${显示节点名("潜客培育", 后售中, 企业版字典)}」项目上` : `没开项目，记成${b.customer}沟通`}</span>}
         </div>
         <div className="cr-grid">
           {一格(null, "沟通方式", (
@@ -1212,11 +1215,11 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
           ), true)}
           {一格("内容", "沟通内容", <Input.TextArea aria-label="沟通内容" status={红("内容")} rows={3} placeholder="这次聊了什么" value={d.跟进.content} onChange={(e) => 改("跟进", { content: e.target.value })} />, true, true)}
           {企业 && 带项目 && 一格("节点", "当前进程", (
-            <Select className="cr-full" aria-label="当前进程" status={红("节点")} disabled={记录用中} value={记录用中 ? 仅记录用节点 : d.跟进.节点} options={企业.节点们.slice(0, 企业.节点们.indexOf(有效线索节点) + 1 || undefined).map((n) => ({ value: n, label: n }))} onChange={(v) => 改("跟进", { 节点: v })} />
-          ), true, false, 记录用中 ? `仅记录用的项目停在「${仅记录用节点}」` : `项目建在这一步，最多到「${有效线索节点}」`)}
+            <Select className="cr-full" aria-label="当前进程" status={红("节点")} disabled={记录用中} value={记录用中 ? 仅记录用节点 : d.跟进.节点} options={企业.节点们.slice(0, 企业.节点们.indexOf(有效线索节点) + 1 || undefined).map((n) => ({ value: n, label: 显示节点名(n, 后售中, 企业版字典) }))} onChange={(v) => 改("跟进", { 节点: v })} />
+          ), true, false, 记录用中 ? `仅记录用的项目停在「${显示节点名(仅记录用节点, 后售中, 企业版字典)}」` : `项目建在这一步，最多到「${有效线索节点}」`)}
           {记录用可选 && 一格(null, "仅记录用", (
             <Switch size="small" aria-label="仅记录用" checked={仅记录用勾} onChange={set仅记录用勾} />
-          ), false, false, 仅记录用勾 ? "为记这条沟通建的：停在潜客培育，不算在推、不进新建数和转化率；以后推进出潜客培育就照常算" : "不勾 = 普通项目，照常统计")}
+          ), false, false, 仅记录用勾 ? `为记这条沟通建的：停在${显示节点名(仅记录用节点, 后售中, 企业版字典)}，不算在推、不进新建数和转化率；以后推进出${显示节点名(仅记录用节点, 后售中, 企业版字典)}就照常算` : "不勾 = 普通项目，照常统计")}
           {能填下一步 && 一格("下一步时间", "下一步时间", (
             <>
               <DatePicker

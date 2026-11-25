@@ -52,7 +52,7 @@ export async function 旧读项目列表(me: Parameters<typeof 公海超时收�
   // 点卡进来的，和卡上的数同一圈（首页卡范围：按负责人，最下级只看自己，上级看自己 + 下属，总管理 / 管理员全看），数对得上
   const 卡的圈 = 卡 ? await 首页卡范围(me) : undefined;
   const 字典 = 字典of(企);
-  const 阶进 = 阶段进程条件(sp, 字典);
+  const 阶进 = await 阶段进程条件(sp, 字典);
   // 企业版市场视角（11-04 P-界面-05）：市场成员 = 自己负责的 ∪ 自己建的已分出去的；市场管理 = 本人 + 实线下属，可按创建人筛；公海的都不列
   const 市场 = 企 ? await 读市场身份(me.id) : null;
   const 创建人 = 市场?.视角 === "市场管理" && typeof sp.creator === "string" && 市场.圈.includes(sp.creator) ? sp.creator : "";

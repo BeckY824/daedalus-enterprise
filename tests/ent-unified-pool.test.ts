@@ -587,7 +587,8 @@ describe("按阶段分池在库里走一遍", () => {
     expect(行of(没项目)).toMatchObject({ 进程: 没项目进程, 属性: "线索池", 项目名: null });
     expect(没项目进程).toBe("线索-潜客培育");
     expect(await prisma.project.count({ where: { customerId: 没项目 } })).toBe(0); // 只是显示，不建项目
-    expect(行of(多项目).进程).toBe("线索-潜客培育");
+    // 同一位客户名下有成功交付（= 交付结清）：停在潜客培育的那个显示后售培育（P-界面-63），归池照旧线索池
+    expect(行of(多项目).进程).toBe("线索-后售培育");
     expect(行of(多项目).进程明细).toContain("；");
     expect(行of(低高).进程).toBe("线索-线索验证"); // 订单旧、线索新：线索池，进程写最新的线索那个
     expect(行of(新订单).进程).toBe("订单-生产备货"); // 线索旧、订单新：仍在线索池，进程写最新的订单那个

@@ -18,8 +18,9 @@ import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 露客户, 看得到的客户 } from "@/lib/project/db";
 import { 能往项目记沟通, 能记售后回访, 售后客户 } from "@/lib/project/follow-needs-project";
-import { 是交付, 同名们 } from "@/lib/project/stage-dict";
+import { 是交付 } from "@/lib/project/stage-dict";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 客户名下交付结清 } from "@/lib/project/after-sale";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 
@@ -127,9 +128,8 @@ async function 售后去处(me: { id: string; role?: string }, customerId: strin
 async function 补进来的售后项目(me: { id: string; role?: string }, customerId: string, 有: Set<string>, org: Awaited<ReturnType<typeof 权限组织>>, 客: 售后客户格): Promise<{ id: string; name: string }[]> {
   if (!org || 客.客户在公海 || 客.客户负责人 !== me.id) return [];
   const 谁 = { id: me.id, role: me.role ?? "" };
-  const 看不到的 = await 看全部(() => prisma.project.findMany({
-    where: { customerId, result: { in: 同名们("交付结清") } }, select: { id: true, name: true, ownerId: true, result: true }, orderBy: { updatedAt: "desc" }, take: 50,
-  }));
+  // 和判后售共用一句（after-sale.ts 客户名下交付结清，请求内只查一遍）；最近改的 50 个，同原来 take: 50
+  const 看不到的 = (await 客户名下交付结清(customerId)).slice(0, 50);
   return 看不到的.filter((p) => !有.has(p.id) && 能记售后回访(谁, { ...p, ...客 }, org, null));
 }
 

@@ -8,6 +8,8 @@ import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
 import { 不算补建, 不进统计, 仅记录用的, 历史分析来源, 留痕不算历史分析, 并条件 } from "@/lib/project/system-created";
 import { 批次条件, 读批次, 批次参数, 批次下拉项, type 批次筛 } from "@/lib/project/import-batch";
+import { 后售客户片段 } from "@/lib/project/after-sale";
+import { 后售培育名, 同名们 } from "@/lib/project/stage-dict";
 
 /**
  * 企业版只用项目时「数据」页的数（10-26 用户：「「数据」页改成按项目统计」，线索 / 商机 / 订单是项目的三大阶段）。
@@ -22,6 +24,7 @@ export type 人行现在 = { id: string; name: string; 线索: number; 商机: n
 
 export type 项目现在 = {
   阶段: { phase: 阶段; count: number; amount: number }[];
+  /** 各节点在跟的；线索阶段潜客培育后面多一行后售培育（统计节点们，P-界面-65） */
   节点: 节点格[];
   /** 已经有结局的，各几个（不限时间） */
   结局: { result: string; count: number }[];
@@ -31,7 +34,7 @@ export type 项目现在 = {
   外币: number;
   /** 全周期漏斗：看得到的全部项目（含已结束的）走到了哪一步（funnel.ts） */
   漏斗: 漏斗格[];
-  /** 线索瀑布（P15）：线索阶段各节点停着几个、流出去几个（线索节点of） */
+  /** 线索瀑布（P15）：线索阶段各节点停着几个、流出去几个（线索节点of；后售培育单独一行） */
   线索节点: 线索节点格[];
   /** 已经进了商机 / 订单的 */
   线索转商机: number;
@@ -46,12 +49,44 @@ export type 项目现在 = {
  * 另外 线索转商机of：已经进了商机或订单的（线索阶段的好出口），摆在最后一条。都只用现成的列，不加表。
  */
 export type 线索节点格 = { node: string; count: number; 流失: number; 判无效: number; 退回公海: number };
-/** n = 这一行代表几个项目（库里分组数出来的一组）；不给 = 1 个（逐个项目的行） */
-type 线索行 = { phase: string; node: string; result: string | null; pooledAt?: Date | null; 判无效?: boolean; n?: number };
+/**
+ * n = 这一行代表几个项目（库里分组数出来的一组）；不给 = 1 个（逐个项目的行）。
+ * 后售 = 这一行停（或结束）在潜客培育、客户名下有交付结清的（后售那片），数进「后售培育」那一行、不进潜客培育
+ */
+type 线索行 = { phase: string; node: string; result: string | null; pooledAt?: Date | null; 判无效?: boolean; n?: number; 后售?: boolean };
 const 个数 = (rows: readonly { n?: number }[]) => rows.reduce((s, p) => s + (p.n ?? 1), 0);
+
+/**
+ * 后售培育单独一行（11-25，客户 E-292 选 A，总表 P-界面-65；方案-售后回访与后售培育 第六节阶段 2）：
+ * 数据页「各进程的项目」和线索瀑布里，潜客培育后面多一行后售培育（没有也摆 0），潜客培育那行只数不是后售的，两行加起来 = 原来的潜客培育。
+ * 只拆这两处：阶段、按人、结局、公海、四段漏斗（线索→商机→订单→交付，按阶段数、没有潜客培育这一行）、线索转商机都不变（方案第十节第 1、5 条）；
+ * 首页卡、渠道看板、按人表不走这里，也不拆。仅记录用、历史分析回填的照旧在 范围 里排掉，两行都不算。
+ * 判后售照 after-sale.ts（唯一判定式，老项目算不算也跟着那边）；统计里按「这一格」拆：
+ * 停在潜客培育的（进行中、在公海里的）按 后售条件，结束在潜客培育的（线索流失 / 判无效）也按同一位客户那一片落到后售那行——瀑布里看得出复购那条流出去多少
+ */
+export const 后售行名 = 后售培育名;
+/** 这一阶段各节点在统计里怎么排：线索阶段潜客培育后面插一行后售培育 */
+export function 统计节点们(phase: 阶段, 字典: 阶段字典): string[] {
+  const 们 = [...字典.节点们[phase]];
+  const i = phase === "线索" ? 们.indexOf("潜客培育") : -1;
+  if (i >= 0) 们.splice(i + 1, 0, 后售行名);
+  return 们;
+}
+/** 拆过的行：后售的节点名换成后售培育（先 本套位置 再换，旧名照旧对到新名） */
+const 拆后的节点 = <T extends { phase: string; node: string; 后售?: boolean }>(p: T): T => (p.后售 && p.phase === "线索" ? { ...p, node: 后售行名 } : p);
+
+/**
+ * 「这一格是后售」的项目 where 片段（项目现在 按它多取一句、分好组从原组里减掉；项目一段 按它取 id；都不按行查）：线索 · 潜客培育（新旧名都认、有没有结局都算），
+ * 且客户那一片和 after-sale.ts 后售条件 同一句（后售客户片段；老项目算不算跟着那边）
+ */
+async function 后售那片(): Promise<Prisma.ProjectWhereInput> {
+  // 「这一格」自己配（不限还没结局），客户那一片直接用 后售客户片段
+  return { AND: [{ phase: "线索", node: { in: 同名们("潜客培育") } }, await 后售客户片段()] };
+}
+
 export function 线索节点of(rows: readonly 线索行[], 字典: 阶段字典 = 字典of(false)): 线索节点格[] {
-  const 在线索 = rows.filter((p) => p.phase === "线索").map((p) => 本套位置(p, 字典));
-  return 字典.节点们.线索.map((node) => {
+  const 在线索 = rows.filter((p) => p.phase === "线索").map((p) => 拆后的节点(本套位置(p, 字典)));
+  return 统计节点们("线索", 字典).map((node) => {
     const 这里 = 在线索.filter((p) => p.node === node);
     const 死了 = 这里.filter((p) => p.result === "线索流失");
     return {
@@ -81,8 +116,59 @@ async function 这些人的(只看: 只看谁): Promise<Prisma.ProjectWhereInput
 const 无效线索 = "无效线索";
 const 判无效了 = (v: { finalResult: string | null } | null) => v?.finalResult === 无效线索;
 
-/** 项目现在 分组数的一组：同 phase / node / result / currency / ownerId / 在不在公海 的几个项目，n 个、金额合计 amount */
-type 现在组 = { phase: string; node: string; result: string | null; currency: string; ownerId: string; pooledAt: Date | null; amount: number; n: number };
+/** 项目现在 分组数的一组：同 phase / node / result / currency / ownerId / 在不在公海 / 是不是后售 的几个项目，n 个、金额合计 amount */
+type 现在组 = { phase: string; node: string; result: string | null; currency: string; ownerId: string; pooledAt: Date | null; amount: number; n: number; 后售: boolean };
+
+/** 库里分组数的一组（键是 groupBy 的 by，键缺的当 undefined） */
+type 分组 = { phase: string; node: string; result: string | null; currency?: string; ownerId?: string; _count: { _all: number }; _sum?: { amount: number | null } };
+/**
+ * 后售拆行：全 = 原来那句分组数，后 = 落在 后售那片 的、按同一句的口径和键分好的组（后售分组）。后的每一组从全里同键那组减掉（个数、金额），自己带上 后售 另成一组。
+ * 合起来个数、金额和原来一样（不重不漏）；减成 0 的组不留
+ */
+function 拆后售<G extends 分组>(全: readonly G[], 后: readonly G[]): (G & { 后售: boolean })[] {
+  const 键of = (g: 分组) => JSON.stringify([g.phase, g.node, g.result, g.currency ?? null, g.ownerId ?? null]);
+  const 后的 = new Map(后.map((g) => [键of(g), g]));
+  const 出: (G & { 后售: boolean })[] = [];
+  for (const g of 全) {
+    const h = 后的.get(键of(g));
+    if (!h) { 出.push({ ...g, 后售: false }); continue; }
+    const n = g._count._all - h._count._all;
+    if (n > 0) 出.push({ ...g, 后售: false, _count: { _all: n }, ...(g._sum ? { _sum: { amount: (g._sum.amount ?? 0) - (h._sum?.amount ?? 0) } } : {}) });
+  }
+  for (const h of 后) 出.push({ ...h, 后售: true });
+  return 出;
+}
+
+type 后售行 = { phase: string; node: string; result: string | null; currency: string; ownerId: string; amount: number; pooledAt: Date | null; source: string | null; entLeadVerify: { finalResult: string | null } | null };
+/**
+ * 后售那片的项目（范围 ∪ 领走的历史 里的）按 项目现在 那五句分组数的口径分好组：
+ *   历史分析来源的 = 领走的历史（范围 排掉了历史分析，能进来的只有领走在推的那条路）；
+ *   别的按在不在公海分两组，有结局的另按判无效 / 没判无效分（同那两句：和公海两组是交叠的，不是互斥）
+ */
+function 后售分组(行们: readonly 后售行[], 无效: string) {
+  type 组 = 分组 & { _sum: { amount: number } };
+  const 桶 = () => new Map<string, 组>();
+  const 们 = { 不在公海: 桶(), 在公海: 桶(), 判无效: 桶(), 没判无效: 桶(), 领走的历史: 桶() };
+  const 记 = (m: Map<string, 组>, r: 后售行, 全键: boolean) => {
+    const g: 组 = 全键
+      ? { phase: r.phase, node: r.node, result: r.result, currency: r.currency, ownerId: r.ownerId, _count: { _all: 0 }, _sum: { amount: 0 } }
+      : { phase: r.phase, node: r.node, result: r.result, _count: { _all: 0 }, _sum: { amount: 0 } };
+    const k = JSON.stringify([g.phase, g.node, g.result, g.currency ?? null, g.ownerId ?? null]);
+    const 有 = m.get(k) ?? g;
+    有._count._all++;
+    有._sum.amount += r.amount;
+    m.set(k, 有);
+  };
+  for (const r of 行们) {
+    if (r.source === 历史分析来源) { 记(们.领走的历史, r, true); continue; }
+    记(r.pooledAt ? 们.在公海 : 们.不在公海, r, true);
+    if (r.result) 记(r.entLeadVerify?.finalResult === 无效 ? 们.判无效 : 们.没判无效, r, false);
+  }
+  // 键全的那三组（同 数组 那句）要 currency / ownerId；结了的两组（同 数结了）只有 phase / node / result
+  const 全 = (m: Map<string, 组>) => [...m.values()] as (分组 & { currency: string; ownerId: string; _sum: { amount: number | null } })[];
+  const 结 = (m: Map<string, 组>) => [...m.values()].map(({ phase, node, result, _count }) => ({ phase, node, result, _count }));
+  return { 不在公海: 全(们.不在公海), 在公海: 全(们.在公海), 领走的历史: 全(们.领走的历史), 判无效: 结(们.判无效), 没判无效: 结(们.没判无效) };
+}
 
 /**
  * 进行中 = 还没有结局。
@@ -102,18 +188,37 @@ export async function 项目现在(本位币: string, 只看?: 只看谁, 批次
   // 结局、公海、漏斗、线索瀑布、线索转商机照样不算
   const 在跟条件 = 并条件(谁的, 批, { result: null, pooledAt: null, NOT: 仅记录用的 });
   const 键 = ["phase", "node", "result", "currency", "ownerId"] as const;
-  const [不在公海, 在公海, 判无效组, 没判无效组, 外币, 领走的历史] = await Promise.all([
-    prisma.project.groupBy({ by: [...键], where: 并条件(范围, { pooledAt: null }), _count: { _all: true }, _sum: { amount: true } }),
-    prisma.project.groupBy({ by: [...键], where: 并条件(范围, { pooledAt: { not: null } }), _count: { _all: true }, _sum: { amount: true } }),
-    // 线索瀑布拆「判无效」：有结局的、线索验证终判无效线索的（同 判无效了）
-    prisma.project.groupBy({ by: ["phase", "node", "result"], where: 并条件(范围, { result: { not: null }, entLeadVerify: { is: { finalResult: 无效线索 } } }), _count: { _all: true } }),
-    prisma.project.groupBy({ by: ["phase", "node", "result"], where: 并条件(范围, { result: { not: null }, NOT: { entLeadVerify: { is: { finalResult: 无效线索 } } } }), _count: { _all: true } }),
+  const 数组 = (where: Prisma.ProjectWhereInput) => prisma.project.groupBy({ by: [...键], where, _count: { _all: true }, _sum: { amount: true } });
+  const 数结了 = (where: Prisma.ProjectWhereInput) => prisma.project.groupBy({ by: ["phase", "node", "result"], where, _count: { _all: true } });
+  const 不在公海条件 = 并条件(范围, { pooledAt: null });
+  const 在公海条件 = 并条件(范围, { pooledAt: { not: null } });
+  // 线索瀑布拆「判无效」：有结局的、线索验证终判无效线索的（同 判无效了）
+  const 判无效条件 = 并条件(范围, { result: { not: null }, entLeadVerify: { is: { finalResult: 无效线索 } } });
+  const 没判无效条件 = 并条件(范围, { result: { not: null }, NOT: { entLeadVerify: { is: { finalResult: 无效线索 } } } });
+  const 领走的历史条件 = 并条件(在跟条件, { source: 历史分析来源 });
+  // 后售培育拆行（后售行名）：五组要拆的（不在公海、在公海、判无效、没判无效、领走的历史）只多一句——范围 ∪ 领走的历史 里落在 后售那片 的项目，
+  // 取回来按同样的五组、同样的键在内存里分组（后售分组），拆后售 从原组里减掉。后售那片只在线索 · 潜客培育这一格、客户名下有交付结清的，条数小；
+  // 不按行查库，也不把五句分组数各套一遍（8.5 万客户量级上五句要多 40 ms，一句约 10 ms，tests/perf-85k-data-page.test.ts）
+  const 后售那些 = 后售那片().then((后) => prisma.project.findMany({
+    where: 并条件({ OR: [范围, 领走的历史条件] }, 后),
+    select: { phase: true, node: true, result: true, currency: true, ownerId: true, amount: true, pooledAt: true, source: true, entLeadVerify: { select: { finalResult: true } } },
+  }));
+  const [不在公海全, 在公海全, 判无效全, 没判无效全, 外币, 领走的历史全, 后售行们] = await Promise.all([
+    数组(不在公海条件),
+    数组(在公海条件),
+    数结了(判无效条件),
+    数结了(没判无效条件),
     // 外币：在跟的、不是本位币、金额大于 0 的个数（分组的金额是合计，看不出哪几个是 0，单数）
     prisma.project.count({ where: 并条件(在跟条件, { currency: { not: 本位币 }, amount: { gt: 0 } }) }),
-    prisma.project.groupBy({ by: [...键], where: 并条件(在跟条件, { source: 历史分析来源 }), _count: { _all: true }, _sum: { amount: true } }),
+    数组(领走的历史条件),
+    后售那些,
   ]);
+  const 后 = 后售分组(后售行们, 无效线索);
+  const [不在公海, 在公海, 判无效组, 没判无效组, 领走的历史] = [
+    拆后售(不在公海全, 后.不在公海), 拆后售(在公海全, 后.在公海), 拆后售(判无效全, 后.判无效), 拆后售(没判无效全, 后.没判无效), 拆后售(领走的历史全, 后.领走的历史),
+  ];
   const 组们 = (gs: typeof 不在公海, 公海: boolean): 现在组[] =>
-    gs.map((g) => 本套位置({ phase: g.phase, node: g.node, result: g.result, currency: g.currency, ownerId: g.ownerId, pooledAt: 公海 ? new Date(0) : null, amount: g._sum.amount ?? 0, n: g._count._all }, 字典));
+    gs.map((g) => 拆后的节点(本套位置({ phase: g.phase, node: g.node, result: g.result, currency: g.currency, ownerId: g.ownerId, pooledAt: 公海 ? new Date(0) : null, amount: g._sum.amount ?? 0, n: g._count._all, 后售: g.后售 }, 字典)));
   const 全部行 = [...组们(不在公海, false), ...组们(在公海, true)];
   // 按人看时公海里的不算在谁头上；只有线索瀑布要它们（数「退回公海」流出去几个）
   const rows = 只看 === undefined ? 全部行 : 全部行.filter((p) => !p.pooledAt);
@@ -122,8 +227,9 @@ export async function 项目现在(本位币: string, 只看?: 只看谁, 批次
   const 在跟 = [...进行中.filter((p) => !p.pooledAt), ...组们(领走的历史, false)];
   const 钱 = (p: { amount: number; currency: string }) => (p.currency === 本位币 ? p.amount : 0);
 
+  // 线索阶段潜客培育后面多一行后售培育（统计节点们）；阶段、按人照旧按 phase 数，拆不拆一样
   const 节点 = 阶段们.flatMap((phase) =>
-    字典.节点们[phase].map((node) => {
+    统计节点们(phase, 字典).map((node) => {
       const 这些 = 在跟.filter((p) => p.phase === phase && p.node === node);
       return { phase, node, count: 个数(这些), amount: 这些.reduce((s, p) => s + 钱(p), 0) };
     }),
@@ -143,7 +249,7 @@ export async function 项目现在(本位币: string, 只看?: 只看谁, 批次
     人.set(p.ownerId, r);
   }
   // 线索瀑布：没结局的照 全部行（含公海里的，数退回公海）；有结局的按判无效拆两组
-  const 结了 = (gs: typeof 判无效组, 判无效: boolean) => gs.map((g) => ({ phase: g.phase, node: g.node, result: g.result, 判无效, n: g._count._all }));
+  const 结了 = (gs: typeof 判无效组, 判无效: boolean) => gs.map((g) => ({ phase: g.phase, node: g.node, result: g.result, 判无效, n: g._count._all, 后售: g.后售 }));
 
   return {
     阶段,
@@ -189,6 +295,7 @@ export type 项目一段 = {
  *     「成功交付」这一格 = 订单走成的（企业版叫 交付结清，库里旧名也认，见 是交付），键名不改
  * 按人拆按项目现在的负责人，不是当时的。只看（P15）也按现在的负责人筛。
  * 批次（11-19，import-batch.ts）：只看 / 排掉某一批，新建、转商机 / 转订单、结局都只数这些项目；补建的照旧不进新建（选只看补建批次 = 0）
+ * 后售培育（11-25，P-界面-65）：只有线索瀑布拆一行（后售那片，同 项目现在）；新建、走势、按人、漏斗不拆
  */
 export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币: string, 只看?: 只看谁, 批次?: 批次筛 | null): Promise<项目一段> {
   const 字典 = 字典of(企业版());
@@ -197,9 +304,10 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
   // 同 项目现在：按人看时公海里的不算在谁头上（线索瀑布除外，它要数退回公海的）
   const 负责 = 只看 === undefined ? {} : await 这些人的(只看);
   const 谁 = 只看 === undefined ? {} : { ownerId: 负责人是(只看), pooledAt: null };
-  const [新全, 变, 结] = await Promise.all([
+  const 新条件 = 并条件({ createdAt: 段, ...负责, ...不算补建 }, 批);
+  const [新全, 变, 结, 后售的] = await Promise.all([
     prisma.project.findMany({
-      where: 并条件({ createdAt: 段, ...负责, ...不算补建 }, 批),
+      where: 新条件,
       select: { id: true, ownerId: true, createdAt: true, phase: true, node: true, result: true, pooledAt: true, entLeadVerify: { select: { finalResult: true } } },
     }),
     // 历史分析回填约定不写节点变更；万一写了（留痕人 = 历史分析留痕人）、或项目是历史分析的，都不算转商机 / 转订单（system-created.ts）
@@ -214,6 +322,8 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
     }),
     // 结局按 closedAt 落段：历史分析回填的 closedAt 是当年的时间，不算（不然 2022–25 年各月凭空多出流失、丢单）
     prisma.project.findMany({ where: 并条件({ result: { not: null }, closedAt: 段, ...谁, ...不进统计 }, 批), select: { id: true, ownerId: true, result: true, closedAt: true, amount: true, currency: true } }),
+    // 线索瀑布的后售培育那行（后售行名）：这一段新建的里落在 后售那片 的（线索 · 潜客培育这一格、有没有结局都算，同 项目现在），条件版一句取 id、不按行查
+    后售那片().then((后) => prisma.project.findMany({ where: 并条件(新条件, 后), select: { id: true } })).then((rs) => new Set(rs.map((r) => r.id))),
   ]);
   const 新 = 只看 === undefined ? 新全 : 新全.filter((p) => !p.pooledAt);
 
@@ -275,7 +385,7 @@ export async function 项目一段(from: Date, to: Date, 粒: 粒度, 本位币:
     按人: (await 起名(人)).sort((a, b) => b.交付金额 - a.交付金额 || b.成功交付 - a.成功交付 || b.转订单 - a.转订单 || b.转商机 - a.转商机 || b.新建 - a.新建),
     外币,
     漏斗: 项目漏斗of(新),
-    线索节点: 线索节点of(新全.map((p) => ({ ...p, 判无效: 判无效了(p.entLeadVerify) })), 字典),
+    线索节点: 线索节点of(新全.map((p) => ({ ...p, 判无效: 判无效了(p.entLeadVerify), 后售: 后售的.has(p.id) })), 字典),
     线索转商机: 线索转商机of(新),
   };
 }

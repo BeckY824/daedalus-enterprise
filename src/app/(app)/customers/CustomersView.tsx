@@ -71,7 +71,7 @@ import { useViewAs } from "@/components/ViewAsContext";
 import { 视图外部话 } from "@/lib/enterprise/view-as-words";
 import { 归档档位们 } from "@/lib/enterprise/archive-tier";
 import { 三态筛选值们, 三态标字, 三态标说明, 三态显示名, 进公海理由显示, type 三态标 } from "@/lib/enterprise/tri-state-label";
-import { 字典of, 阶段们, type 阶段, type 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 字典of, 阶段们, 后售培育名, type 阶段, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import type { 客户项目概况 } from "@/lib/project/customer-list-projects";
 import type { 仅项目列表行 } from "@/lib/enterprise/project-only-list-rows";
 import ProjectOnlyBlock from "./ProjectOnlyBlock";
@@ -678,7 +678,8 @@ export default function CustomersView({
   const 进程组 = (s: 阶段) => ({
     label: s,
     options: [
-      ...阶段字典.节点们[s].map((n) => ({ value: n, label: n })),
+      // 后售培育（P-界面-63）：紧跟潜客培育多一项，同项目页（服务端 阶段进程条件 翻成条件）
+      ...阶段字典.节点们[s].flatMap((n) => [{ value: n, label: n }, ...(企业 && n === "潜客培育" ? [{ value: 后售培育名, label: 后售培育名 }] : [])]),
       ...阶段字典.出口们[s].flatMap((o) => (o.结局 ? [{ value: o.结局, label: o.叫法 }] : [])),
     ],
   });

@@ -14,6 +14,7 @@ import { 认金额, 金额字带币, 币种对不上话 } from "../money-input";
 import { parseDateInput } from "@/lib/date-input";
 import { hasVisibleText } from "@/lib/form-validation";
 import { 阶段们, 是阶段, 本套名, 结局叫法, 字典of, 终止结局, 下一步, 要写原因, 原因上限, type 位置, type 阶段字典 } from "../project/nodes";
+import { 后售培育名 } from "../project/stage-dict";
 import { 卡点类型们, 影响等级们, 描述上限, 原因最多, 清原因们 } from "../project/blocker-rules";
 import { 性别们, 爱好上限, 联系人地址上限, 认生日 } from "../enterprise/customer-v2";
 
@@ -377,7 +378,8 @@ export function 认目标(目标: string, 当前: 位置, 字典: 阶段字典):
     if (!n) return { ok: false, error: 当前.result ? "这个项目已经有结局了，先恢复再推" : "已经是最后一个进程了，只剩定结局" };
     return { ok: true, 到: n };
   }
-  const 新 = 本套名(s, 字典);
+  // 后售培育只是潜客培育的显示名（after-sale.ts）：「退回后售培育」= 退回潜客培育
+  const 新 = 本套名(s === 后售培育名 ? "潜客培育" : s, 字典);
   for (const ph of 阶段们) {
     if (字典.节点们[ph].includes(新)) return { ok: true, 到: { phase: ph, node: 新 } };
   }
