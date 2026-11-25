@@ -30,6 +30,7 @@ import { 摊平部门 } from "@/lib/sync/dept-policy";
 import { 拦原负责人 } from "@/lib/enterprise/pool-rules";
 import { 页面可选项, 页面字典, 页面客户释义, 预读页面字典 } from "@/lib/enterprise/dict";
 import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
+import { 客户来源筛选项 } from "@/lib/enterprise/customer-source-filter";
 import { 建档向导数据 } from "../projects/new/wizard-data";
 import { 客户状态色表 } from "@/lib/enterprise/cust-status-color";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
@@ -314,8 +315,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     企 ? 页面客户释义() : undefined,
     // 离职交接入口（11-03 B7-2）：企业版都摆在客户页页头（11-12 C15：导航去掉「项目」后入口挪到这里），谁看得见、数怎么数照原来
     企 ? 离职交接入口(me) : null,
-    // 「客户来源」筛选的候选（11-06 自定义筛选）：含停用的，老客户还挂着
-    企 ? 渠道筛选选项() : [],
+    // 「客户来源」筛选的候选（11-06 自定义筛选）：含停用的，老客户还挂着；F-049（11-25）前面加「未填」和渠道触点一组
+    企 ? 渠道筛选选项().then(客户来源筛选项) : [],
     // 「当前节点」「项目数」两列（11-12 客户详情合并第 3 批）：这一页的客户一句取项目，只算我能看的（和客户详情的页签同一圈）
     按项目 && !看板视图 ? 行P.then((rs) => 客户项目概况们(me, rs.map((r) => r.id))) : undefined,
     // 进程下拉的结局叫法跟组织规则里改过的出口叫法（同项目页）

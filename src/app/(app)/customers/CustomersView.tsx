@@ -82,6 +82,7 @@ import { 看板工具位 } from "./board-slot";
 import { 客户编号显示 } from "@/lib/customer-no";
 import { 客户抬头, 客户显名, type 抬头节点格 } from "@/lib/enterprise/customer-title";
 import { 出错原话 } from "@/lib/stale-deploy";
+import type { 来源筛选组 } from "@/lib/enterprise/customer-source-filter";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -282,7 +283,8 @@ type Props = {
    */
   客户范围?: { 值: 客户范围; 默认: 客户范围; 选项: 客户范围[] };
   /** 客户来源筛选的选项（企业版）；含已停用的渠道 */
-  渠道筛选项?: { value: string; label: string }[];
+  /** 「客户来源」下拉：「未填」、渠道触点一组、渠道一组（lib/enterprise/customer-source-filter.ts 客户来源筛选项） */
+  渠道筛选项?: 来源筛选组[];
   /** 团队有两个以上一级部门时的部门下拉（带缩进）；空 = 不摆 */
   部门选项?: { value: string; label: string }[];
   /** 能删客户：企业版有能删的角色（系统管理员；销售、销管、渠运删自己负责的，V3.5.1）；别的版本 true。false 时行菜单、批量工具条都不摆删除 */
@@ -820,10 +822,11 @@ export default function CustomersView({
           ),
         }, {
           // 客户来源（11-06）：建档时选的渠道（Customer.channelId），停用的渠道也能筛，老客户还挂着
+          // F-049（11-25）：多「未填」（主渠道和渠道触点都空）、按渠道触点（公司资源、客户介绍），值还在 channelId 这一个参数里
           键: "channelId", 名: "客户来源", 宽: 150, 默认外露: false, 有值: !!f.channelId,
           渲染: (style: CSSProperties) => (
             <Select style={style} placeholder="全部客户来源" allowClear aria-label="客户来源" showSearch={{ optionFilterProp: "label" }}
-              popupMatchSelectWidth={false}
+              popupMatchSelectWidth={false} classNames={{ popup: { root: "src-filter-pop" } }}
               value={f.channelId || undefined} onChange={(v) => apply({ channelId: v ?? "" })}
               options={渠道筛选项} />
           ),

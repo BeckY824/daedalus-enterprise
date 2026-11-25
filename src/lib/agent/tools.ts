@@ -24,6 +24,7 @@ import { 阶段们, 结局们, 是阶段, 是结局, 同名们, 本套位置, �
 import { 看得到的客户, 露客户 } from "../project/db";
 import { 不算历史分析, 历史分析的, 是历史分析, 来源字, 并条件, 人名显示 } from "../project/system-created";
 import { 企业版 } from "../enterprise/switch";
+import { 认渠道触点 } from "../enterprise/touchpoint";
 import { 主联系人号码选, 主联系人电话, 客户电话 } from "../enterprise/primary-contact-phone";
 import { 启用渠道条件 } from "../enterprise/channel-main";
 import { 渠道启用 } from "../enterprise/channel-main-core";
@@ -220,7 +221,7 @@ export const TOOLS: Tool[] = [
       "「小红这个渠道里有谁」用 channelName（先用 list_channels 看渠道叫什么），「李四手上有哪些客户」用 ownerName，「这周新增了哪些」用 createdFrom/To，" +
       "「这个月预计能签哪几个」用 expectedSignFrom/To（按预计签约日从近到远）。找到某一位后用 get_customer 读记录。" +
       "默认只看我负责的；问团队 / 下属 / 同事名下的用 scope=team，问公海里的用 scope=pool。每行带「归属」（我负责的 / 同事或下属负责的 / 公海），回答按归属分开说。",
-    args: '{"query": "姓名 / 学校 / 年级 / 专业 / 备注 / WhatsApp / 邮箱里的关键词，可为空", "channelName": "渠道名称，可选", "ownerName": "销售负责人姓名，可选", "followStatus": "跟进状态，可选", "decisionStatus": "决策状态，可选", "createdFrom": "建档起始 YYYY-MM-DD，可选", "createdTo": "建档截止，可选", "expectedSignFrom": "预计签约起始，可选", "expectedSignTo": "预计签约截止，可选", "mine": true|false 可选, "scope": "mine|team|pool，可空：不给时首页默认 mine（只看我负责的），公海页默认 pool，客户页跟页面"}',
+    args: '{"query": "姓名 / 学校 / 年级 / 专业 / 备注 / WhatsApp / 邮箱里的关键词，可为空", "channelName": "渠道名称（也可写渠道触点：公司资源 / 客户介绍），可选", "ownerName": "销售负责人姓名，可选", "followStatus": "跟进状态，可选", "decisionStatus": "决策状态，可选", "createdFrom": "建档起始 YYYY-MM-DD，可选", "createdTo": "建档截止，可选", "expectedSignFrom": "预计签约起始，可选", "expectedSignTo": "预计签约截止，可选", "mine": true|false 可选, "scope": "mine|team|pool，可空：不给时首页默认 mine（只看我负责的），公海页默认 pool，客户页跟页面"}',
     async run(args, ctx) {
       const q = str(args.query, 20);
       const channel = str(args.channelName, 20);
@@ -252,7 +253,8 @@ export const TOOLS: Tool[] = [
         // 用 channelId（推荐链**最顶端**的渠道，所有后代继承），不是 attributionChannelId
         // （那个是「往上第二代」的归属口径，算提成用的）。「小红这个渠道里有谁」问的是
         // 整条链上的人，包括转介绍来的后代——所以是前者。两个口径的数字会不一样。
-        ...(channel ? { channel: { name: { contains: channel } } } : {}),
+        // 企业版「公司资源」「客户介绍」不设主渠道、由渠道触点承载（P-渠道-08）：问这两个也要找得到挂着触点的（F-049，11-25）
+        ...(channel ? (企业版() && 认渠道触点(channel) ? { OR: [{ channel: { name: { contains: channel } } }, { touchpoint: 认渠道触点(channel)! }] } : { channel: { name: { contains: channel } } }) : {}),
         ...(owner ? { salesOwner: { name: { contains: owner } } } : {}),
         ...(statusKey ? { followStatus: statusKey } : {}),
         ...(decisionKey ? { decisionStatus: decisionKey } : {}),

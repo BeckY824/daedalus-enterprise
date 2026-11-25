@@ -39,6 +39,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 规则 } from "@/lib/enterprise/rules";
 import { 只读SQL } from "@/lib/read-pool";
 import { 客户筛选条件, 关键词分页, 按序取客户行, type 客户条件 } from "@/app/(app)/customers/query";
+import { 来源未填, 触点前缀 } from "@/lib/enterprise/customer-source-filter";
 
 const 老板 = "e_boss";
 const 总管 = "e_dir";
@@ -224,6 +225,68 @@ describe("关键词分页 = 老路", () => {
       await raw.channel.delete({ where: { id: 渠道.id } });
     }
   });
+
+  it("客户来源「未填」「按触点」（F-049，11-25）：快路径和老路逐身份对拍，单独筛、和等级 / 跟进状态 / 公海页签组合都一样", async () => {
+    const 渠道 = await raw.channel.create({ data: { name: "F049 渠道", channelOwnerId: 经理 } });
+    const 甲们 = (await raw.customer.findMany({ where: { name: { startsWith: "甲" } }, select: { id: true }, orderBy: { id: "asc" } })).map((c) => c.id);
+    // 甲 25 位：前 5 位挂渠道、接着 4 位公司资源、3 位客户介绍、2 位触点是空串（算未填），1 位渠道 + 触点都有，其余两格都空
+    const 挂渠道 = 甲们.slice(0, 5), 公司资源 = 甲们.slice(5, 9), 客户介绍 = 甲们.slice(9, 12), 空串 = 甲们.slice(12, 14), 都有 = 甲们.slice(14, 15);
+    await raw.customer.updateMany({ where: { id: { in: 挂渠道 } }, data: { channelId: 渠道.id } });
+    await raw.customer.updateMany({ where: { id: { in: 公司资源 } }, data: { touchpoint: "公司资源" } });
+    await raw.customer.updateMany({ where: { id: { in: 客户介绍 } }, data: { touchpoint: "客户介绍" } });
+    await raw.customer.updateMany({ where: { id: { in: 空串 } }, data: { touchpoint: "" } });
+    await raw.customer.updateMany({ where: { id: { in: 都有 } }, data: { channelId: 渠道.id, touchpoint: "公司资源" } });
+    try {
+      const 值们 = [来源未填, `${触点前缀}公司资源`, `${触点前缀}客户介绍`, 渠道.id];
+      const 组合: 客户条件[] = [{}, { grade: "高一" }, { followStatus: "跟进中" }, { pool: "1" }, { salesOwnerId: 小王 }];
+      for (const 谁 of [老板, 经理, 小王, 外人])
+        for (const channelId of 值们)
+          for (const f of 组合)
+            for (const 页 of [1, 2]) {
+              const sp: 客户条件 = { keyword: "甲", channelId, ...f };
+              const 老 = await 以谁的身份(谁, () => 老路(sp, 页, 5));
+              const 快 = await 以谁的身份(谁, () => 关键词分页(sp, 页, 5));
+              expect(快, JSON.stringify({ 谁, sp, 页 })).toEqual(老);
+            }
+      // 老板看全：每种值筛出来的就是那几位（不分页签时两边各数一遍相加）
+      const 全部 = async (channelId: string) => {
+        const ids: string[] = [];
+        for (const pool of [undefined, "1"]) ids.push(...(await 以谁的身份(老板, () => 老路({ keyword: "甲", channelId, pool }, 1, 100))).ids);
+        return ids.sort();
+      };
+      const 未填该有 = 甲们.filter((id) => ![...挂渠道, ...公司资源, ...客户介绍, ...都有].includes(id)).sort();
+      expect(await 全部(来源未填)).toEqual(未填该有);
+      expect(未填该有).toEqual(expect.arrayContaining(空串));
+      expect(await 全部(`${触点前缀}公司资源`)).toEqual([...公司资源, ...都有].sort());
+      expect(await 全部(`${触点前缀}客户介绍`)).toEqual(客户介绍.slice().sort());
+      expect(await 全部(渠道.id)).toEqual([...挂渠道, ...都有].sort());
+      // 不带关键词（走老路）也是同一个数：未填 = 全库两格都空的
+      const 无词 = async (channelId: string) => {
+        let n = 0;
+        for (const pool of [undefined, "1"]) n += await 以谁的身份(老板, async () => db.customer.count({ where: await 客户筛选条件({ channelId, pool }) }));
+        return n;
+      };
+      expect(await 无词(来源未填)).toBe(await raw.customer.count({ where: { channelId: null, OR: [{ touchpoint: null }, { touchpoint: "" }] } }));
+      expect(await 无词(`${触点前缀}公司资源`)).toBe(公司资源.length + 都有.length);
+      // 「触点:」后面没字 = 当没筛
+      expect(await 无词(触点前缀)).toBe(await 无词(""));
+
+      // 没开企业版：三种值都当没带
+      delete process.env.CRM_ENTERPRISE;
+      忘掉企业版范围();
+      try {
+        const 全 = await raw.customer.count({ where: await 客户筛选条件({}) });
+        for (const channelId of 值们) expect(await raw.customer.count({ where: await 客户筛选条件({ channelId }) })).toBe(全);
+        expect(await 关键词分页({ keyword: "甲", channelId: 来源未填 }, 1, 10)).toEqual(await 关键词分页({ keyword: "甲" }, 1, 10));
+      } finally {
+        process.env.CRM_ENTERPRISE = "1";
+        忘掉企业版范围();
+      }
+    } finally {
+      await raw.customer.updateMany({ where: { id: { in: 甲们 } }, data: { channelId: null, touchpoint: null } });
+      await raw.channel.delete({ where: { id: 渠道.id } });
+    }
+  }, 60_000);
 
   it("开关关着（没开企业版）也和老路一样", async () => {
     delete process.env.CRM_ENTERPRISE;

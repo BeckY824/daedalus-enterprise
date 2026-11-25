@@ -20,6 +20,7 @@ import { 是三态筛选值 } from "@/lib/enterprise/tri-state-label";
 import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import { 是客户范围 } from "@/lib/enterprise/customer-scope";
 import { 组员客户编号 } from "@/lib/enterprise/visibility";
+import { 来源筛选条件, 来源筛选SQL } from "@/lib/enterprise/customer-source-filter";
 
 /**
  * 客户列表的查询条件、取哪些字段、怎么变成一行——列表页和「导出」共用这一份（2026-10-02 排查）。
@@ -54,7 +55,10 @@ export type 客户条件 = {
   level?: string;
   /** 团队版部门（1b，2026-10-23）：负责人在这个部门（连下级）里的。没有部门数据（个人版、老云端）时不筛 */
   dept?: string;
-  /** 客户来源（企业版，11-06）：建档时选的渠道 Customer.channelId。放 AND：directOf 单键也用 channelId，不能互相盖 */
+  /**
+   * 客户来源（企业版，11-06）：建档时选的渠道 Customer.channelId。放 AND：directOf 单键也用 channelId，不能互相盖。
+   * F-049（11-25）多认「未填」（主渠道和渠道触点都空）和「触点:公司资源」这类（按渠道触点），见 lib/enterprise/customer-source-filter.ts
+   */
   channelId?: string;
   /** 创建（入库）时间（11-11）：两个日历日 YYYY-MM-DD，两头都算，北京日界线（custom-date-range.ts 创建时间段）；只给一头就只限那头 */
   createdFrom?: string;
@@ -225,8 +229,10 @@ export async function 客户筛选条件(
   const 范围 = await 客户范围条件(sp.scope, userId);
   // 企业版国家走 addrCountry（上面 国家条件），外贸档案那一层只剩来源
   const 档案国家 = 国家 ? undefined : sp.country;
+  // 客户来源只有企业版认（开关关着地址栏带了也当没带）；「未填」「触点:…」和渠道 id 三种，口径同快路径（关键词分页）
+  const 来源 = 企业版() ? 来源筛选条件(sp.channelId) : null;
   return {
-    AND: [keyword, ...(范围 ? [范围] : []), ...(久未跟进 ? [久未跟进] : []), ...(国家 ? [国家] : []), ...(按项目 ? [按项目] : []), ...(三态 ? [三态] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(sp.channelId && 企业版() ? [{ channelId: sp.channelId }] : [])],
+    AND: [keyword, ...(范围 ? [范围] : []), ...(久未跟进 ? [久未跟进] : []), ...(国家 ? [国家] : []), ...(按项目 ? [按项目] : []), ...(三态 ? [三态] : []), ...(本批 ? [客户id集合(本批.map(r => r.customerId))] : []), ...(等级 ? [等级] : []), ...(部门 ? [部门] : []), ...(建于 ? [{ createdAt: 建于 }] : []), ...(号码 ? [号码] : []), ...(来源 ? [来源] : [])],
     ...(sp.grade ? { grade: sp.grade } : {}),
     ...(sp.followStatus ? { followStatus: sp.followStatus } : {}),
     ...(sp.decisionStatus ? { decisionStatus: sp.decisionStatus } : {}),
@@ -324,9 +330,10 @@ export async function 客户金额分页(where: Prisma.CustomerWhereInput, order
 }
 
 /** 快路径接得住的本表等值筛选（列名固定，值参数绑定） */
-const 等值列 = ["grade", "followStatus", "decisionStatus", "custStatus", "customerType", "archiveTier", "salesOwnerId", "channelOwnerId", "channelId"] as const;
+// 客户来源（channelId）不在这里：它还认「未填」「触点:…」，单独拼（来源筛选SQL）
+const 等值列 = ["grade", "followStatus", "decisionStatus", "custStatus", "customerType", "archiveTier", "salesOwnerId", "channelOwnerId"] as const;
 /** 等值列里只有企业版认的（开关关着地址栏带了也当没带） */
-const 企业版才筛: readonly string[] = ["custStatus", "customerType", "archiveTier", "channelId"];
+const 企业版才筛: readonly string[] = ["custStatus", "customerType", "archiveTier"];
 
 /**
  * 带关键词的列表：总数、钳过的页码和这一页的 id 用一条 SQL 出（P2，2026-10-28）。
@@ -381,6 +388,9 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
     段.push('NOT EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
   }
   for (const col of 等值列) if (sp[col] && (!企业版才筛.includes(col) || 企业版())) { 段.push(`c."${col}" = ?`); 值.push(sp[col]); }
+  // 客户来源（企业版才认，同 客户筛选条件）
+  const 来源 = 企业版() ? 来源筛选SQL(sp.channelId) : null;
+  if (来源) { 段.push(`(${来源.sql})`); 值.push(...来源.values); }
   // 「我负责的」（同 客户范围条件 的 mine）
   if (sp.scope === "mine" && 企业版()) { 段.push('c."salesOwnerId" = ?'); 值.push((await requireUser()).id); }
   // a 放每页条数和请求页，下面的 ? 按出现顺序绑定；页码钳在 SQL 里做（越界页回最后一页，0 条回第 1 页），和 page.tsx 原来的公式一样。

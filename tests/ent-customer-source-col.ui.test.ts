@@ -8,11 +8,15 @@
  *
  * 自定义筛选（11-06）：默认外露的筛选不变，「客户来源」收在「更多筛选」里；
  * 可以钉到外面，恢复默认回去。勾选列不截，框旁不出小点。
+ *
+ * F-049（11-25）：「客户来源」下拉「未填」在最前，渠道触点单列一组，渠道一组；选上触点 / 未填进地址栏 channelId；
+ * 长渠道名一行省略（悬停看全），手机宽 390 打开下拉不横向撑出页面
  */
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
+import { 客户来源筛选项, 来源未填, 触点前缀 } from "@/lib/enterprise/customer-source-filter";
 
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "import-perm-boundaries", setup(b) {
@@ -54,7 +58,7 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-type 参数 = { what: "list" | "form"; 能?: boolean; 锁?: boolean; 空?: boolean; 粘贴?: boolean; 编辑?: boolean; 企?: boolean; 来源?: string | null; 渠道?: { value: string; label: string }[] };
+type 参数 = { what: "list" | "form"; 能?: boolean; 锁?: boolean; 空?: boolean; 粘贴?: boolean; 编辑?: boolean; 企?: boolean; 来源?: string | null; 渠道?: ReturnType<typeof 客户来源筛选项> | { value: string; label: string }[] };
 async function open(p: 参数, width = 1366) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
@@ -165,4 +169,49 @@ it("1024 宽默认状态：加了「更多筛选」也不折行，按钮只留�
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+describe("客户来源下拉：未填 + 渠道触点一组（F-049）", () => {
+  const 组 = 客户来源筛选项([{ value: "ch1", label: "展会渠道" }, { value: "ch2", label: "公司资源（已停用）" }, { value: "ch3", label: 长渠道 }]);
+  async function 打开来源下拉(page: import("playwright").Page) {
+    await 更多筛选(page).click();
+    const 弹层 = page.locator(".ant-popover:visible");
+    await 弹层.getByLabel("客户来源").click();
+    const 下拉 = page.locator(".ant-select-dropdown:visible");
+    await 下拉.waitFor();
+    return 下拉;
+  }
+
+  for (const 宽 of [1280, 390]) it(`${宽} 宽：未填在最前、触点单列一组；选上进地址栏；长名一行省略、不横向撑出页面`, async () => {
+    const { page, errors } = await open({ what: "list", 企: true, 渠道: 组 }, 宽);
+    try {
+      const 下拉 = await 打开来源下拉(page);
+      const 条们 = await 下拉.locator(".ant-select-item").evaluateAll((els) => els.map((e) => `${e.classList.contains("ant-select-item-group") ? "#" : ""}${e.textContent?.trim()}`));
+      expect(条们.slice(0, 7)).toEqual(["未填", "#渠道触点", "公司资源（触点）", "客户介绍（触点）", "#渠道", "展会渠道", "公司资源（已停用）"]);
+      // 长渠道名：一行、省略号
+      const 长那条 = 下拉.locator(".ant-select-item-option-content", { hasText: "某某跨境电商" });
+      expect(await 长那条.evaluate((el) => [getComputedStyle(el).whiteSpace, getComputedStyle(el).textOverflow, el.scrollWidth > el.clientWidth])).toEqual(["nowrap", "ellipsis", true]);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      // 下拉整个在屏幕里（不按长名撑到屏幕外）；悬停长名浮出全文
+      expect(await 下拉.evaluate((d) => { const r = d.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; })).toBe(true);
+      await 长那条.hover();
+      await expect.poll(() => page.locator(".trunc-tip").textContent()).toBe(长渠道);
+      // 搜「公司资源」触点和停用的同名渠道都出来
+      await page.keyboard.type("公司资源");
+      await expect.poll(() => 下拉.locator(".ant-select-item-option").allInnerTexts()).toEqual(["公司资源（触点）", "公司资源（已停用）"]);
+      await 下拉.locator(".ant-select-item-option", { hasText: "公司资源（触点）" }).click();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "")).toContain(`channelId=${encodeURIComponent(`${触点前缀}公司资源`)}`);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+
+  it("选「未填」进地址栏 channelId=未填；框里一行写「未填」", async () => {
+    const { page, errors } = await open({ what: "list", 企: true, 渠道: 组 }, 1024);
+    try {
+      const 下拉 = await 打开来源下拉(page);
+      await 下拉.locator(".ant-select-item-option", { hasText: 来源未填 }).first().click();
+      await expect.poll(() => page.evaluate(() => (window as unknown as { __push?: string }).__push ?? "")).toContain(`channelId=${encodeURIComponent(来源未填)}`);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
 });
