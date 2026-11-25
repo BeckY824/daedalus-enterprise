@@ -19,7 +19,9 @@ import { PrefetchKind } from "next/dist/client/components/router-reducer/router-
  * 所以这个标签页里的整页预取都经过下面这道闸：
  * - 悬停 / 触摸（意图）：两次之间至少隔 意图间隔，隔不够的只留最后一个——鼠标从一串链接上滑过去，只取停下来的那个；
  * - 预热（空闲、保存后、回到页面、手机菜单打开）：排队一页一页地发，每页隔 预热间隔，刚有过意图也先让开；
- * - 当前这页、刚取过还没失效的，不再发。
+ * - 当前这页、刚取过还没失效的，不再发；
+ * - 手指按下去先等 触摸等（90ms），这期间手指挪了、页面滚了、触摸被取消就不取（滑动列表不算「要点了」，审查 11-25）；
+ * - 一批预热可以整批撤掉（手机菜单关了、点了菜单项、外壳卸载）。
  * router.prefetch 即发即走（Next 16.4 返回 undefined，取消不了、也不知道什么时候回来，见 next/dist/client/components/prefetch.js），
  * 所以「同时最多一个」只能用最小间隔来近似：c2 详情 RSC p50 不到 200ms，间隔 300ms 时大多数上一个已经回来了。
  */
@@ -33,6 +35,9 @@ export const 意图间隔 = 300;
 export const 预热间隔 = 600;
 /** 同一个地址取过、这么久之内又要取就不发（还没失效时 Next 自己也不会再去服务器，这里省掉白占的一个间隔） */
 const 刚取过窗 = 10_000;
+/** 手指按下去多久没挪才算「要点了」；这期间挪了 触摸移动 以上、滚了、取消了就不取 */
+export const 触摸等 = 90;
+const 触摸移动 = 10;
 
 /** 系统开了省流量就不预取：省下的是对方的流量，不该替人花 */
 export function 省流量() {
@@ -44,7 +49,8 @@ type 路由 = ReturnType<typeof useRouter>;
 
 /**
  * 直接整页取一个地址（不过闸）。取不到不报错：预取只是提速，失败了点下去照常走服务器；测试里假的 router 也没有 prefetch。
- * 失效 = Next 把这次取回来的清掉时叫一次（保存后清整个预取缓存、router.refresh，见 segment-cache/cache.js 的 onInvalidate）
+ * 失效 = Next 把这次取回来的清掉时叫一次（保存后清整个预取缓存、router.refresh，见 segment-cache/cache.js 的 onInvalidate）。
+ * 只给要靠它重热的那一批挂（审查 11-25）：Next 16.4.6 的 attachInvalidationListener 挂着的时候连当时整棵页面树一起留着，悬停、触摸不挂
  */
 export function 整页预取(router: 路由, href: string, 失效?: () => void) {
   if (typeof router.prefetch !== "function") return;
@@ -58,7 +64,10 @@ export function 整页预取(router: 路由, href: string, 失效?: () => void) 
 /* ---------------- 闸：整个标签页一份（模块变量，只在浏览器里用） ---------------- */
 
 let 待意图: { router: 路由; href: string } | null = null;
-let 预热队: { router: 路由; href: string; 失效?: () => void; 间隔: number }[] = [];
+/** 键 = 排进来时的地址（去重、撤用）；解析 = 发出去那一刻算真地址（电脑左栏带记住的列表参数，审查 11-25） */
+let 预热队: { router: 路由; 键: string; 解析?: (键: string) => string; 失效?: () => void; 间隔: number; 批: number }[] = [];
+let 批号 = 0;
+let 触摸: { 钟: ReturnType<typeof setTimeout>; 收: () => void } | null = null;
 let 上次意图 = -Infinity;
 let 上次发 = -Infinity;
 let 钟: ReturnType<typeof setTimeout> | undefined;
@@ -86,6 +95,7 @@ export function 重置预取闸() {
   上次意图 = -Infinity;
   上次发 = -Infinity;
   刚取过.clear();
+  撤触摸();
   听着回来 = false;
   if (听着按下 && typeof document !== "undefined") document.removeEventListener("pointerdown", 让开, { capture: true });
   听着按下 = false;
@@ -103,7 +113,12 @@ export function 常用在前(hrefs: string[]): string[] {
 
 /** 测试用：闸里现在有什么 */
 export function 预取闸状态() {
-  return { 待意图: 待意图?.href ?? null, 预热队: 预热队.map((x) => x.href) };
+  return { 待意图: 待意图?.href ?? null, 预热队: 预热队.map((x) => x.键), 触摸等着: !!触摸, 刚取过: [...刚取过.keys()] };
+}
+
+/** 预取缓存被清了（保存后、router.refresh）：「刚取过」不再算数。由挂了 失效 的那一方（外壳的预热）叫 */
+export function 清刚取过() {
+  刚取过.clear();
 }
 
 function 是当前页(href: string) {
@@ -118,12 +133,10 @@ function 不用取(href: string, 现在: number) {
 }
 
 function 发(router: 路由, href: string, 现在: number, 失效?: () => void) {
+  // 顺手扫掉过了窗口的旧记录：一直开着的标签页悬停过几百行，表不能只涨不落
+  for (const [k, t] of 刚取过) if (现在 - t >= 刚取过窗) 刚取过.delete(k);
   刚取过.set(href, 现在);
-  整页预取(router, href, () => {
-    // 缓存被清了：这几页都得重新取，「刚取过」不再算数
-    刚取过.clear();
-    失效?.();
-  });
+  整页预取(router, href, 失效);
   上次发 = 现在;
 }
 
@@ -164,8 +177,9 @@ function 泵() {
   // 跳过不用取的，发第一个要取的
   while (预热队.length) {
     const x = 预热队.shift()!;
-    if (不用取(x.href, 现在)) continue;
-    发(x.router, x.href, 现在, x.失效);
+    const href = x.解析 ? x.解析(x.键) : x.键;
+    if (!href || 不用取(href, 现在)) continue;
+    发(x.router, href, 现在, x.失效);
     break;
   }
   if (预热队.length) 定钟(预热队[0].间隔);
@@ -180,26 +194,96 @@ export function 意图预取(router: 路由, href: string) {
   泵();
 }
 
+export type 预热选项 = {
+  /** 取回来的被 Next 清掉时叫（保存后），同一批里每页都挂着，叫的人自己合并成一次 */
+  失效?: () => void;
+  /** 这一批每页之间隔多久（手机菜单打开是人马上要点，用 意图间隔） */
+  间隔?: number;
+  /** 发出去那一刻把排进来的地址算成真地址（左栏地址：在详情页时带上记住的列表参数） */
+  解析?: (键: string) => string;
+};
+
 /**
- * 预热：排进队里一页一页地取。失效 = 取回来的被 Next 清掉时叫（保存后），同一批里每页都挂着，叫的人自己合并成一次。
- * 间隔 = 这一批每页之间隔多久（手机菜单打开是人马上要点，用 意图间隔）。同一个地址已经在队里就不重复排
+ * 预热：排进队里一页一页地取。同一个地址已经在队里就不重复排。
+ * 回一个「撤掉这一批」：还没发的从队里拿掉（已经发出去的收不回来）
  */
-export function 排预热(router: 路由, hrefs: string[], 失效?: () => void, 间隔 = 预热间隔) {
-  if (省流量()) return;
+export function 排预热(router: 路由, hrefs: string[], 选项: 预热选项 = {}): () => void {
+  if (省流量()) return () => {};
   if (!听着按下 && typeof document !== "undefined") {
     听着按下 = true;
     document.addEventListener("pointerdown", 让开, { capture: true, passive: true });
   }
-  for (const href of hrefs) {
-    if (!href || 预热队.some((x) => x.href === href)) continue;
-    预热队.push({ router, href, 失效, 间隔 });
+  const 批 = ++批号;
+  for (const 键 of hrefs) {
+    if (!键 || 预热队.some((x) => x.键 === 键)) continue;
+    预热队.push({ router, 键, 解析: 选项.解析, 失效: 选项.失效, 间隔: 选项.间隔 ?? 预热间隔, 批 });
   }
   if (钟 === undefined) 泵();
+  return () => 撤预热(批);
+}
+
+function 撤预热(批: number) {
+  const 前 = 预热队.length;
+  预热队 = 预热队.filter((x) => x.批 !== 批);
+  if (预热队.length === 前) return;
+  // 队空了、也没有等着的意图：钟不用再走
+  if (!预热队.length && !待意图) {
+    clearTimeout(钟);
+    钟 = undefined;
+  }
+}
+
+function 撤触摸() {
+  if (!触摸) return;
+  clearTimeout(触摸.钟);
+  触摸.收();
+  触摸 = null;
+}
+
+/**
+ * 触摸预取：手指按下去等 触摸等，没挪、没滚、没取消才算要点（再进意图预取那道闸）；手指先抬起来（轻点）就马上取。
+ * 起点 = 按下那一点（touches[0]）；没给就是只要挪了就不取
+ */
+export function 触摸预取(router: 路由, href: string, 起点?: { x: number; y: number }) {
+  撤触摸();
+  if (!href || 省流量() || typeof document === "undefined") return;
+  const 挪 = (e: Event) => {
+    const t = (e as TouchEvent).touches?.[0];
+    if (!起点 || !t || Math.hypot(t.clientX - 起点.x, t.clientY - 起点.y) > 触摸移动) 撤触摸();
+  };
+  const 抬 = () => {
+    撤触摸();
+    意图预取(router, href);
+  };
+  const 听 = { capture: true, passive: true } as const;
+  document.addEventListener("touchmove", 挪, 听);
+  document.addEventListener("scroll", 撤触摸, 听);
+  document.addEventListener("touchcancel", 撤触摸, 听);
+  document.addEventListener("touchend", 抬, 听);
+  const 收 = () => {
+    document.removeEventListener("touchmove", 挪, 听);
+    document.removeEventListener("scroll", 撤触摸, 听);
+    document.removeEventListener("touchcancel", 撤触摸, 听);
+    document.removeEventListener("touchend", 抬, 听);
+  };
+  触摸 = {
+    收,
+    钟: setTimeout(() => {
+      撤触摸();
+      意图预取(router, href);
+    }, 触摸等),
+  };
+}
+
+/** 从 React 的 onTouchStart 事件里取按下那一点 */
+function 按下点(e?: { touches?: { length: number; [i: number]: { clientX: number; clientY: number } } }) {
+  const t = e?.touches?.length ? e.touches[0] : undefined;
+  return t ? { x: t.clientX, y: t.clientY } : undefined;
 }
 
 /**
  * 悬停 / 触摸预取：进 = onMouseEnter / onFocus（停住 120ms 才取），出 = onMouseLeave / onBlur，
- * 触 = onTouchStart（手机、平板：手指按下去就是要点了，不等；滑动列表时按下去的那一行也会取到，闸会挡住连着的）
+ * 触 = onTouchStart（手机、平板：把事件一起给，按下 90ms 没挪才取；滑动列表时按到的那一行不取，见 触摸预取）
  */
 export function useHoverPrefetch() {
   const router = useRouter();
@@ -215,9 +299,9 @@ export function useHoverPrefetch() {
   );
   const 出 = useCallback(() => clearTimeout(等.current), []);
   const 触 = useCallback(
-    (href: string | null | undefined) => {
+    (href: string | null | undefined, e?: Parameters<typeof 按下点>[0]) => {
       clearTimeout(等.current);
-      if (href) 意图预取(router, href);
+      if (href) 触摸预取(router, href, 按下点(e));
     },
     [router],
   );

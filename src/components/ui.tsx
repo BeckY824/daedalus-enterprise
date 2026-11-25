@@ -256,9 +256,9 @@ export function RowLink({ onMouseEnter, onMouseLeave, onFocus, onBlur, onTouchSt
         预取.出();
         onBlur?.(e);
       }}
-      // 手机、平板没有悬停：手指按下去就取（PR-B 11-25，经 lib/prefetch-full 的闸，滑动列表时连着按到的只取最后一个）
+      // 手机、平板没有悬停：手指按下去就取（PR-B 11-25，经 lib/prefetch-full 的闸，按下 90ms 没挪才取，滑动列表时按到的那一行不取）
       onTouchStart={(e) => {
-        预取.触(去);
+        预取.触(去, e);
         onTouchStart?.(e);
       }}
     >

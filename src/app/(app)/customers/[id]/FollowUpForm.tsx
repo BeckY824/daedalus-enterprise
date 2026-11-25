@@ -648,6 +648,12 @@ export default function FollowUpForm({
     if (附件们.length && r.followUpId) {
       const 错 = await 传沟通附件(r.followUpId, 附件们);
       if (错.length) 没存上.push(`${错.length} 个截图 / 录音（${错[0]}）`);
+      /*
+        截图录音走 /api/attachments（fetch，不会重渲染）：记项目沟通Action 回包里带回来的那一版还没有它们。
+        记录页 onSaved 不再 router.refresh（跳转优化 PR-B），没勾待办、计划时后面就没有动作再刷，新的那条显示不出截图（审查 11-25）。
+        真传上了才刷一次
+      */
+      if (错.length < 附件们.length) router.refresh();
     }
     if (!只读) {
       for (const t of extras?.tasks.filter((x) => x.checked) ?? []) {

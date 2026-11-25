@@ -39,7 +39,7 @@ import AiDock from "./AiDock";
 import AiFab from "./AiFab";
 import { 浮标显示 } from "@/lib/enterprise/ai-fab";
 import { usePageUnderOverlay } from "@/lib/page-under-overlay";
-import { 排预热, 常用在前, 意图间隔, 省流量, useHoverPrefetch } from "@/lib/prefetch-full";
+import { 排预热, 常用在前, 意图间隔, 清刚取过, 省流量, useHoverPrefetch } from "@/lib/prefetch-full";
 import { 按设置筛, type 预热设置 } from "@/lib/nav-prewarm";
 import type { ModelOption } from "@/lib/llm";
 import FeedbackButton from "./FeedbackButton";
@@ -152,6 +152,14 @@ type Props = {
 const 面板放不下 = "(max-width: 1599px)";
 /** 手机宽度：没有图标栏和中栏，左栏也不空闲预热 */
 const 手机宽 = "(max-width: 767px)";
+/*
+  预热限频（PR-B 审查 11-25）：每个标签页两次预热之间至少隔 60 秒（模块变量：外壳重挂也算同一个标签页）。
+  保存后、回到页面的重热只热「常用在前」的前 2 页（企业版默认名单 6 页整页，每存一下都全取一遍太重）；
+  c2 另把 CRM_NAV_PREWARM 配成 /customers,/pool，两样一起把重热压到每分钟最多 2 页
+*/
+let 上次预热 = -Infinity;
+const 预热最短 = 60_000;
+const 重热几页 = 2;
 
 /** 企业版六个根目录的图标（lib/enterprise/nav.ts 只管名字和去处，不碰界面） */
 const 根目录图标: Record<根目录图, React.ReactNode> = {
@@ -393,57 +401,74 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   /*
     跳转优化 PR-B（11-25）：预热不再「整页打开后一次、60 秒后全部过期就不管了」。
     - 一页一页地取（lib/prefetch-full 的闸，每页隔 600ms），不再一下子五六个挤进服务器同一个进程、把真点击压在后面；
-    - 保存后（会刷新的 server action、router.refresh 都会把整个预取缓存和前进后退缓存清空）停 2 秒再串行重热一遍：
+    - 保存后（会刷新的 server action、router.refresh 都会把整个预取缓存和前进后退缓存清空）停 2 秒再串行重热：
       Next 清缓存时叫预取时挂的 onInvalidate，连着存几下只算最后一下；
-    - 切去别的标签页 / 应用再回来，离上次预热超过 50 秒（预取 60 秒过期）就再热一遍；在后台时不取。
+    - 切去别的标签页 / 应用再回来，离上次预热超过 60 秒（预取 60 秒过期）就再热；在后台时不取；
+    - 限频（审查 11-25）：离这个标签页上次预热不到 60 秒就跳过；重热只热常用在前的前 2 页；
+    - 地址在发出去那一刻按 左栏地址 算（在详情页时带上记住的列表参数），和左栏点下去去的是同一个地址。
   */
   /** 预热时正好在眼前、没取的那几页（离开后补上） */
   const 漏 = useRef<string[]>([]);
   const 补漏 = useRef<() => void>(() => {});
+  const 左栏地址此刻 = useRef(左栏地址);
+  useEffect(() => {
+    左栏地址此刻.current = 左栏地址;
+  });
   useEffect(() => {
     if (desktop || 小屏 || 省流量()) return;
-    const 要 = 预热页.split(" ").filter(Boolean);
-    let 上次 = 0;
+    const 要 = 常用在前(预热页.split(" ").filter(Boolean));
     let 重热钟: ReturnType<typeof setTimeout> | undefined;
     let 停了 = false;
+    const 撤们: (() => void)[] = [];
+    const 解析 = (k: string) => 左栏地址此刻.current(k);
     const 失效了 = () => {
       if (停了) return;
+      // 预取缓存被清了：闸里「刚取过」也不算数了（只有这一批挂 onInvalidate，悬停、触摸不挂）
+      清刚取过();
       clearTimeout(重热钟);
-      重热钟 = setTimeout(() => 热(false), 2000);
+      重热钟 = setTimeout(热, 2000);
     };
     // 当前这页已经在眼前，不用再取（闸里按地址挡）。界面脚本照旧先下（只是静态文件，不碰服务器上的数据），设成 none 也下
-    const 热 = (第一次: boolean) => {
+    let 下过脚本 = false;
+    let 整份热过 = false;
+    const 热 = () => {
       // 小屏水合时先按服务端的「不是手机」跑一遍，这里再按真宽度挡一次
       if (停了 || window.matchMedia(手机宽).matches) return;
-      // 在后台：先不取，回到前台时按「离上次超过 50 秒」补
-      if (document.visibilityState === "hidden") return void (上次 = 0);
-      上次 = Date.now();
-      // 当前这页不取；人离开它以后补上（下面 补漏），不然 CRM_NAV_PREWARM 只配了这一页时就一直没热过
-      漏.current = 要.filter((k) => k === location.pathname);
-      排预热(router, 常用在前(要.filter((k) => k !== location.pathname)), 失效了);
-      if (第一次) {
+      if (!下过脚本) {
+        下过脚本 = true;
         void import("@/app/(app)/customers/[id]/RecordView").catch(() => {});
         if (要.includes("/projects")) void import("@/app/(app)/projects/[id]/ProjectDetail").catch(() => {});
       }
+      // 在后台：先不取，回到前台时按「离上次超过 60 秒」补
+      if (document.visibilityState === "hidden") return;
+      const 现在 = Date.now();
+      if (现在 - 上次预热 < 预热最短) return;
+      上次预热 = 现在;
+      // 整份只热一次（打开时在后台的，回到前台补的就是这一次）；之后的重热只热前 2 页
+      const 页们 = 整份热过 ? 要.slice(0, 重热几页) : 要;
+      整份热过 = true;
+      // 当前这页不取；人离开它以后补上（下面 补漏），不然 CRM_NAV_PREWARM 只配了这一页时就一直没热过
+      漏.current = 页们.filter((k) => k === location.pathname);
+      撤们.push(排预热(router, 页们.filter((k) => k !== location.pathname), { 失效: 失效了, 解析 }));
     };
     补漏.current = () => {
       if (停了 || !漏.current.length || window.matchMedia(手机宽).matches) return;
       const 补 = 漏.current.filter((k) => k !== location.pathname);
       if (!补.length) return;
       漏.current = 漏.current.filter((k) => !补.includes(k));
-      排预热(router, 补, 失效了);
+      撤们.push(排预热(router, 补, { 失效: 失效了, 解析 }));
     };
     const 回来 = () => {
-      if (document.visibilityState === "visible" && Date.now() - 上次 > 50_000) 热(false);
+      if (document.visibilityState === "visible" && Date.now() - 上次预热 >= 预热最短) 热();
     };
     document.addEventListener("visibilitychange", 回来);
     const w = window as Window & { requestIdleCallback?: (cb: () => void, o?: { timeout: number }) => number; cancelIdleCallback?: (id: number) => void };
     let 撤 = () => {};
     if (w.requestIdleCallback) {
-      const id = w.requestIdleCallback(() => 热(true), { timeout: 3000 });
+      const id = w.requestIdleCallback(热, { timeout: 3000 });
       撤 = () => w.cancelIdleCallback?.(id);
     } else {
-      const t = setTimeout(() => 热(true), 1200);
+      const t = setTimeout(热, 1200);
       撤 = () => clearTimeout(t);
     }
     return () => {
@@ -451,6 +476,8 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       补漏.current = () => {};
       撤();
       clearTimeout(重热钟);
+      // 外壳卸载：还没发的整批撤掉（审查建议 9）
+      撤们.forEach((f) => f());
       document.removeEventListener("visibilitychange", 回来);
     };
   }, [desktop, 小屏, 预热页, router]);
@@ -466,8 +493,18 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           onMouseLeave: 悬停预取.出,
           onFocus: () => 悬停预取.进(href),
           onBlur: 悬停预取.出,
-          onTouchStart: () => 悬停预取.触(href),
+          onTouchStart: (e: React.TouchEvent) => 悬停预取.触(href, e),
         };
+  /*
+    手机菜单打开时排的那一批：关菜单、点了菜单项、外壳卸载都撤掉（审查 11-25）。
+    只取菜单里真有的项（企业版手机菜单没有 /leads，预热名单里有也不白取）
+  */
+  const 菜单批 = useRef<() => void>(() => {});
+  useEffect(() => () => 菜单批.current(), []);
+  const 菜单预热页 = useMemo(() => {
+    const 有 = new Set(nav.map((n) => n.key));
+    return 常用在前(预热页.split(" ").filter((k) => k && 有.has(k)));
+  }, [nav, 预热页]);
 
   /*
     网页版的标签页标题跟着当前页走（「客户 · Daedalus CRM」）：浏览器里常开着好几个标签，只写产品名分不出哪个是哪个，
@@ -723,18 +760,22 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         <Header className="m-top" style={{ display: "flex", alignItems: "center", gap: 10, padding: "0 12px", position: "sticky", top: 0, zIndex: 10, height: 48 }}>
           <Dropdown
             trigger={["click"]}
-            /* 手机没有悬停（PR-B 11-25）：菜单一打开就把要去的那几页一页一页整页取回来，只取电脑空闲预热那份名单（预热页：
-               主组 + 线索，按 CRM_NAV_PREWARM 筛），不放开到菜单里的全部页——少即是多，省服务器；服务器吃不消时和电脑一起收。
-               客户、公海先取，每页隔 300ms；名单外的项，手指按到哪一项才取哪一项 */
+            /* 手机没有悬停（PR-B 11-25）：菜单一打开就把要去的那几页一页一页整页取回来，只取电脑空闲预热那份名单里、菜单上真有的项
+               （菜单预热页：主组按 CRM_NAV_PREWARM 筛），不放开到菜单里的全部页——少即是多，省服务器；服务器吃不消时和电脑一起收。
+               客户、公海先取，每页隔 300ms；菜单一关、点了哪项，没发的就撤掉；名单外的项，手指按到哪一项才取哪一项 */
             onOpenChange={(开) => {
-              if (开 && !desktop) 排预热(router, 常用在前(预热页.split(" ").filter(Boolean)).map((k) => 左栏地址(k)), undefined, 意图间隔);
+              菜单批.current();
+              菜单批.current = 开 && !desktop ? 排预热(router, 菜单预热页, { 间隔: 意图间隔, 解析: (k) => 左栏地址此刻.current(k) }) : () => {};
             }}
             menu={{
               /* 整行可点：label 里塞 <Link> 的话，点在图标或右边空白上只会把菜单关掉。onTouchStart 原样挂到那一行的 li 上 */
-              items: [...nav.map(({ key, icon, label }) => ({ key, icon, label, onTouchStart: desktop ? undefined : () => 悬停预取.触(左栏地址(key)) })), { key: "/settings", icon: <SettingOutlined />, label: "设置" }],
+              items: [...nav.map(({ key, icon, label }) => ({ key, icon, label, onTouchStart: desktop ? undefined : (e: React.TouchEvent) => 悬停预取.触(左栏地址(key), e) })), { key: "/settings", icon: <SettingOutlined />, label: "设置" }],
               /* 点的那一项立刻算选中（同电脑左栏的 去向）：新页慢、人再打开菜单，亮的是刚点的那项，不是还没离开的那页 */
               selectedKeys: [亮项],
               onClick: ({ key }) => {
+                // 点了就要走了：菜单那一批还没发的不再发，别和真跳转挤
+                菜单批.current();
+                菜单批.current = () => {};
                 if (key !== selectedKey) set去向(key);
                 跳.push(左栏地址(key));
               },
