@@ -662,8 +662,14 @@ export default function RecordView({
    * 只新记沟通（框里不给待办 / 提醒、不顺带待办 / 计划，只读 = true），关联项目只列这几个；改、删已有的照旧不给
    */
   const 组员可记 = 全只读 && !管理员只读 && 去项目跟进 && (跟进去处 ?? []).some((p) => (!p.结束 && p.能记 === true) || p.能记售后 === true);
-  function openFollow(record: FollowUpRow | null, aiText?: string) {
+  /** 记沟通框只记售后回访（客户页「记售后回访」打开的，E-283 第 2 条）：关联项目只列交付结清那组，只有一个就选好 */
+  const [只记售后, set只记售后] = useState(false);
+  /** 只记售后时只列这几个交付结清项目（项目页签上的「其他项目售后回访」：页签里那几个有自己的「记售后回访」，这里只列没有页签的）；null = 全列 */
+  const [售后只列, set售后只列] = useState<string[] | null>(null);
+  function openFollow(record: FollowUpRow | null, aiText?: string, 售后 = false, 只列: string[] | null = null) {
     if (全只读 && !(组员可记 && !record?.id)) return void 说就地(管理员只读 ? "管理员只能看，不能改任何数据" : 全只读话);
+    set只记售后(售后 && !record?.id);
+    set售后只列(售后 && !record?.id ? 只列 : null);
     setFollowInit({ record, aiText });
     setFollowOpen(true);
   }
@@ -729,6 +735,13 @@ export default function RecordView({
     : 在推项目;
   /** 售后回访（11-25，E-283）：我能记售后回访的交付结清项目（主客户是这位的），记沟通框「关联项目」另列一组；从不默认选中 */
   const 售后项目 = 去项目跟进 ? (跟进去处 ?? []).filter((p) => p.能记售后 === true).map((p) => ({ id: p.id, name: p.名 })) : [];
+  /**
+   * 客户页「记售后回访」（E-283 第 2 条）：项目区模式下名下有我能记售后回访的交付结清项目才给（售后项目 来自服务端 能记售后，权限已核）。
+   * 只是客户负责人、看不到那个项目的人（没有页签）就从这里记，框里自带「下次回访（选填）」
+   */
+  const 记售后回访 = 去项目跟进 && 售后项目.length > 0 && (!全只读 || 组员可记) ? () => openFollow(null, undefined, true) : null;
+  /** 只给这几个记售后回访（项目区按页签算出没有页签的那几个，见 项目区槽.记这几个售后回访） */
+  const 记这几个售后回访 = 记售后回访 ? (ids: string[]) => openFollow(null, undefined, true, ids) : null;
   const 跟进按钮字 = "记一条沟通";
   function 点跟进() {
     // 只读的客户（虚线下属、市场成员相关）：先说只能看，别说「还没有在推的项目」——项目可能有，只是他看不到（11-03 D3-3）
@@ -1698,6 +1711,9 @@ export default function RecordView({
           开建项目: 能建项目 ? 开建项目 : null,
           全只读,
           提醒: 提醒条,
+          记售后回访,
+          售后项目ids: 售后项目.map((x) => x.id),
+          记这几个售后回访,
         })}
 
         {/* ================= 中栏：时间线 ================= */}
@@ -1858,8 +1874,9 @@ export default function RecordView({
         完成了计划={(p, 已完成) => void 完成计划(p, `跟进已记录，计划「${p.subject}」一并完成`, 已完成)}
         contacts={contacts}
         opportunities={[]}
-        projects={记沟通项目}
-        售后项目={售后项目}
+        projects={只记售后 ? [] : 记沟通项目}
+        售后项目={只记售后 && 售后只列 ? 售后项目.filter((x) => 售后只列.includes(x.id)) : 售后项目}
+        只记售后={只记售后}
         新建项目={去项目跟进 ? (能建项目 ? 为记沟通开建项目 : null) : undefined}
         没项目说法={去项目跟进 && (跟进去处 ?? []).some((p) => p.主 && !p.结束) ? 沟通都不能记话 : undefined}
         aiEnabled={aiEnabled}
