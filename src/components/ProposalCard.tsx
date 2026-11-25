@@ -22,6 +22,7 @@ import { 号码上限 } from "@/lib/enterprise/customer-v2";
 import { 三种业务线, 分配说明, 建议业务线, 认分给 } from "@/lib/enterprise/assign-line";
 import { 默认分配方向, 方向来源说明 } from "@/lib/enterprise/customer-region";
 import { 认渠道 } from "@/lib/enterprise/channel-match";
+import { 查重提示 } from "@/lib/enterprise/contact-format";
 import { useBusiness } from "@/lib/business-client";
 import { 币种符号 } from "@/lib/currency";
 import { 建议结果, 记下建议结果, 清掉建议结果, 记下回执, 读回执 } from "@/lib/ai-jobs";
@@ -37,6 +38,7 @@ import { 是项目卡, 不可撤销, type 项目卡 } from "@/lib/agent/project-
 import { 落印行们 } from "@/lib/agent/seal-lines";
 import dynamic from "next/dynamic";
 import DedupeClaimKey from "@/app/(app)/customers/DedupeClaimKey";
+import RepeatInquiryKey from "@/app/(app)/customers/RepeatInquiryKey";
 import RescueKey from "@/app/(app)/customers/RescueKey";
 import { 沟通可选项目 } from "@/app/(app)/customers/[id]/actions";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -192,6 +194,10 @@ export default function ProposalCard({
   const [回收站号, set回收站号] = useState<{ 类型: string; 值: string } | null>(null);
   /** 市场成员撞上公海里的客户（F-016）：错误旁边摆「领取并记沟通」 */
   const [公海号, set公海号] = useState<{ 类型: string; 值: string } | null>(null);
+  /** 撞上同事名下的客户、我是市场成员、负责人能接指定分配（重复咨询第一步 · 出口 C）：卡上给「在 X 名下新建线索」 */
+  const [同事号, set同事号] = useState<{ 类型: string; 值: string; 负责人名: string; 交销售?: true } | null>(null);
+  /** 市场成员撞上客户：这位客户在推的项目个数（含 0，只给个数），错误下面一行；服务端不是市场成员不带 */
+  const [在推个数, set在推个数] = useState<number | null>(null);
   /**
    * 确认之后的回执：几点写入、怎么撤、建成的项目（企业版新线索卡，「查看」直接打开它）。
    * 存在任务表里（lib/ai-jobs 的 落印回执），卡片重挂也还在，刷新页面才没
@@ -259,6 +265,8 @@ export default function ProposalCard({
     setErr("");
     set回收站号(null);
     set公海号(null);
+    set同事号(null);
+    set在推个数(null);
     // 确认完这张卡就没有输入框了：焦点原来在卡里的，送回对话框，让人接着说下一句
     const 焦点在卡里 = !!根.current?.contains(document.activeElement);
     const 对话框 = 找对话框(根.current);
@@ -306,6 +314,8 @@ export default function ProposalCard({
     setErr(给人看的错(r.error, "没写进去，可以再点一次", "AI 卡"));
     set回收站号(r.回收站号 ?? null);
     set公海号(r.公海号 ?? null);
+    set同事号(r.同事号 ?? null);
+    set在推个数(r.在推个数 ?? null);
     return false;
   }
 
@@ -854,9 +864,15 @@ export default function ProposalCard({
       {err && (
         <div className="prop-err">
           {err}
+          {在推个数 != null && <div className="prop-err-act prop-err-note">{查重提示.在推个数(在推个数)}</div>}
           {公海号 && (
             <div className="prop-err-act">
               <DedupeClaimKey 类型={公海号.类型} 值={公海号.值} 渠道={{ 名: 要提交的.kind === "add_lead" ? 要提交的.source : null }} 带来的附件={要存截图 && 截图们 ? 截图们 : null} 领了={() => router.refresh()} />
+            </div>
+          )}
+          {同事号 && (
+            <div className="prop-err-act">
+              <RepeatInquiryKey 类型={同事号.类型} 值={同事号.值} 负责人名={同事号.负责人名} 交销售={!!同事号.交销售} 渠道={{ 名: 要提交的.kind === "add_lead" ? 要提交的.source : null }} 建了={() => router.refresh()} />
             </div>
           )}
           {回收站号 && (

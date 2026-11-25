@@ -6,6 +6,7 @@
  *   Windows 1024 / 1280 / 1366：超长公司名、超长渠道名不横向撑出，「确认」点得中
  *   渠道下拉：375（手机）和 1024 宽都显示全名，不省略、不出屏
  *   撞上公海转「领取并记沟通」（F-054）：勾了存截图把对话截图带进领取框，没勾不带
+ *   撞号（重复咨询方案「撞号面板只露在推项目个数」）：服务端带 在推个数（市场成员，含 0）时错误下面写「在推项目 N 个」，不带就没有
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -21,10 +22,11 @@ const plugin: Plugin = { name: "ai-lead-card-boundaries", setup(b) {
   stub(/^next\/link$/, "export default function L({children,...p}){return <a {...p}>{children}</a>}");
   stub(/^next\/dynamic$/, "export default ()=>()=>null;");
   stub(/customers\/\[id\]\/actions$/, 补全动作桩("src/app/(app)/customers/[id]/actions.ts", "export const 沟通可选项目=async()=>(window.__可选??{ok:true,项目们:null,能建项目:true});"));
-  stub(/dashboard\/apply$/, "export const applyProposal=async(p,o)=>{window.__交=p;window.__选项=o;if(window.__撞公海)return{ok:false,error:'这个号码的客户在公海',公海号:{类型:'手机号',值:'13812000000'}};return{ok:true,...(o&&o.首条附件?{首条附件票:{followUpId:'f1',票:'t1'}}:{})}};export const undoProposal=async()=>({ok:true});");
+  stub(/dashboard\/apply$/, "export const applyProposal=async(p,o)=>{window.__交=p;window.__选项=o;if(window.__回)return window.__回;if(window.__撞公海)return{ok:false,error:'这个号码的客户在公海',公海号:{类型:'手机号',值:'13812000000'}};return{ok:true,...(o&&o.首条附件?{首条附件票:{followUpId:'f1',票:'t1'}}:{})}};export const undoProposal=async()=>({ok:true});");
   stub(/card-scan\/originals$/, "export const 取走名片原图=()=>[],记下刚建的=()=>{},忘掉刚建的=()=>{};");
   stub(/attachment-upload$/, "export const 传附件=async(挂,f,类,票)=>{(window.__传??=[]).push({挂,名:f.name,票});return{ok:true}};");
   stub(/customers\/RescueKey$/, "export default function R(){return null}");
+  stub(/customers\/RepeatInquiryKey$/, "export default function R(){return null}");
   stub(/customers\/DedupeClaimKey$/, "export default function D(p){window.__领附件=p.带来的附件?p.带来的附件.map(f=>f.name):null;return <span data-testid='claim-stub'/>}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -336,4 +338,27 @@ it("职位 / 区县 / 详细地址：认出了才摆，改了交上去（1024）
     expect(await page.evaluate(() => Reflect.get(window, "__交") as Record<string, unknown>)).toMatchObject({ position: "采购经理", district: "西湖区", address: "文三路 1 号" });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+it("撞号没写进去：服务端带了在推个数（市场成员）错误下面写「在推项目 N 个」，含 0；不带没有这一句", async () => {
+  for (const [回, 该有] of [
+    [{ ok: false, error: "销售甲某已有该客户信息，请及时核对", 同事号: { 类型: "手机号", 值: "13812000000", 负责人名: "销售甲某" }, 在推个数: 0 }, "在推项目 0 个"],
+    [{ ok: false, error: "销售甲某已有该客户信息，请及时核对" }, null],
+  ] as const) {
+    const { page, errors } = await open(1280);
+    try {
+      await page.evaluate((r) => { Object.assign(window, { __回: r }); }, 回);
+      await 选(page, "分配方式", "自动分配");
+      await 格(page, "国家 / 城市填到").getByText("客户", { exact: false }).first().click();
+      if (await 格(page, "业务线").locator(".ant-select-selection-placeholder").count()) await 选(page, "业务线", "外贸");
+      await 格(page, "下一步计划").locator("input").fill("发报价单");
+      await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+      await page.locator(".prop-ok").click();
+      const 错 = page.locator(".prop-err");
+      await 错.getByText("销售甲某已有该客户信息").waitFor();
+      if (该有) expect(await 错.innerText()).toContain(该有);
+      else expect(await 错.innerText()).not.toContain("在推项目");
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });
