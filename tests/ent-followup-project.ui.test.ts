@@ -17,6 +17,7 @@ import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
+import { 本人改公海话, 本人改沟通项目话, 本人改沟通过时话 } from "@/lib/enterprise/follow-edit-text";
 
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "followup-project-boundaries", setup(b) {
@@ -267,6 +268,32 @@ it("项目模式被拦以后改任何一格就收掉保存键上的旧原因（1
     await 格(page, "下一步时间").getByRole("button", { name: /明\s*天/ }).click();
     await expect.poll(() => 因.count(), { timeout: 1000 }).toBe(0);
     expect(await page.locator("#content").inputValue()).toBe("聊了报价细节");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// 11-26 审查：本人限时改被服务端拒的那几句（客户进了公海、挂的项目记不了沟通、过了 30 分钟）改哪格都改不好，
+// 改一格不收保存键上的原因；别的原因（比如撞了版本）照旧一改就收
+it("编辑沟通被拒「客户进了公海 / 挂的项目记不了沟通」：改一格不收保存键上的原因；别的原因照旧一改就收", async () => {
+  const { page, errors } = await open({ 项目: null, 编辑: true });
+  try {
+    const 因 = page.locator(".save-why");
+    for (const 话 of [本人改公海话, 本人改沟通项目话, 本人改沟通过时话]) {
+      await page.evaluate((x) => Reflect.set(window, "__存回", { ok: false, error: x }), 话);
+      await page.getByRole("button", { name: /保\s*存/ }).click();
+      await expect.poll(() => 因.innerText()).toBe(话);
+      await page.locator("#content").click();
+      await page.keyboard.press("End");
+      await page.keyboard.type("改", { delay: 20 });
+      await page.waitForTimeout(300);
+      expect(await 因.innerText()).toBe(话);
+    }
+    await page.evaluate(() => Reflect.set(window, "__存回", { ok: false, error: "这条刚被别人改过，请刷新后再改" }));
+    await page.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(() => 因.innerText()).toBe("这条刚被别人改过，请刷新后再改");
+    await page.locator("#content").click();
+    await page.keyboard.type("再", { delay: 20 });
+    await expect.poll(() => 因.count(), { timeout: 1000 }).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

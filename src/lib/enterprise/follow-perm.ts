@@ -18,6 +18,7 @@ import { defaultClient, prisma } from "@/lib/prisma";
 import { 限定的我, 看全部 } from "@/lib/team-scope";
 import { 能往项目记沟通 } from "@/lib/project/follow-needs-project";
 import { 看得到的客户 } from "@/lib/project/db";
+import { 本人改沟通窗口分钟, 本人改沟通过时话, 本人改沟通项目话, 本人改公海话 } from "./follow-edit-text";
 import { 全进程上下文 } from "@/lib/process-als";
 import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import { 同号标题 } from "./same-number-collab";
@@ -71,11 +72,9 @@ export function 卡片刚记的能撤(me: { id: string }, f: { ownerId: string |
  * 我方加的收窄（回复客户时说明）：项目已结束 / 进了公海 / 本人已出组时，30 分钟内也不能改（本人限时改挡）；没挂项目的，客户进了公海也不能改。
  * 只认人记的沟通：待办 / 提醒不走这条路；导入建的（EntImportRow 有这条）、同号协作的系统留痕（标题「同号再次录入…」）不算本人记的
  */
-export const 本人改沟通窗口分钟 = 30;
-export const 本人改沟通过时话 = `提交超过 ${本人改沟通窗口分钟} 分钟，不能再改`;
-export const 本人改沟通项目话 = "这条沟通挂的项目你已经记不了沟通（已结束、进了公海或你已不在项目组），不能再改";
+// 窗口分钟、过时 / 项目 / 公海三句拒绝话放在 follow-edit-text.ts（不碰库，改沟通框也引）
+export { 本人改沟通窗口分钟, 本人改沟通过时话, 本人改沟通项目话, 本人改公海话 } from "./follow-edit-text";
 export const 本人改不能变待办话 = "沟通不能改成待办或提醒";
-export const 本人改公海话 = "这位客户已经进了公海，不能再改这条沟通";
 /** 改项目沟通 带了下一步但这条已经不够格跟着改（页面开着时组员新记了一条等，低-6）：沟通照存、下一步丢掉，回这句 */
 export const 下一步没同步话 = "沟通改好了；下一步没有同步到项目（项目上有了更新的沟通，或这条记的时候没写下一步），要改下一步请记一条新沟通";
 /** ③：本人限时改时标题、状态、时长、提醒时间、联系人、商机、参与人和改前不同就拒 */

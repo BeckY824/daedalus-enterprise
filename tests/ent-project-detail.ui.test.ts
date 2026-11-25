@@ -3,6 +3,7 @@ import { build, type Plugin } from "esbuild";
 import path from "node:path";
 import { chromium, type Browser } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
+import { 本人改公海话, 本人改沟通项目话, 本人改沟通过时话 } from "@/lib/enterprise/follow-edit-text";
 /* 10-27 会议：企业版项目详情两栏——左边干活的（节点、沟通、卡点），右边资料（项目、交付、项目组、提成、节点变更）；
    「记一条沟通」是主按钮；窄于 630 的容器退一栏。开关关闭时照原来一列摆、960 宽、没有提成和「记一条沟通」主按钮。
    P11 commit #3：三个竖条——应用导航 | 中栏项目名单（ProjectRoster，照客户记录页）| 项目详情，见文末「三栏」那几条 */
@@ -15,7 +16,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return window.__改节点回??{ok:true}},记完成节点被拦=async(...a)=>{(window.__被拦||=[]).push(a)},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记沟通||=[]).push(a);return window.__记沟通回??{ok:true,followUpId:'fx'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
+  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return window.__改节点回??{ok:true}},记完成节点被拦=async(...a)=>{(window.__被拦||=[]).push(a)},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记沟通||=[]).push(a);return window.__记沟通回??{ok:true,followUpId:'fx'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return window.__改沟通回??{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   // 定时分配（11-17）改 / 取消 / 现在分：服务端那串（prisma、通知）进不了浏览器包
   stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
@@ -1290,6 +1291,53 @@ it("本人限时改（低-1）：弹窗开着到点，框里说一句、草稿�
     expect(await page.evaluate(() => Object.keys(localStorage).filter(k => k.includes("改项目沟通:f1")).length)).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+/*
+  11-26 审查：服务端拒回来的话被「改一格就清」收掉，保存键又能点、点了再报一次。
+  客户进了公海、挂的项目记不了沟通：改一格不收；服务端说过了 30 分钟（本地钟还没到点）：和本地计时到点一样——换本人改过时那句、草稿清掉、保存灰掉
+*/
+it("修改这条沟通被服务端拒：公海 / 项目那两句改一格不收；「超过 30 分钟」当成到点，保存灰掉、草稿清掉", async () => {
+  const { page, errors } = await 覆盖(1280, { 可改沟通: false, 可删沟通: false, followUps: [本人行("f1", Date.now() + 10 * 60_000, { content: "原来的内容" })] });
+  try {
+    await page.waitForFunction(() => !!document.querySelector("[aria-label=这条沟通的更多操作]"));
+    await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
+    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText(/^修改（/).click();
+    const 窗 = page.getByRole("dialog").filter({ hasText: "修改这条沟通" });
+    await 窗.waitFor();
+    const 错 = 窗.locator(".pd-modal-err");
+    const 存 = 窗.getByRole("button", { name: /保\s*存/ });
+    for (const 话 of [本人改公海话, 本人改沟通项目话]) {
+      await page.evaluate((x) => Reflect.set(window, "__改沟通回", { ok: false, error: x }), 话);
+      await 存.click();
+      await expect.poll(() => 错.innerText()).toBe(话);
+      await 窗.getByLabel("沟通内容").click();
+      await page.keyboard.press("End");
+      await page.keyboard.type("改", { delay: 20 });
+      await page.waitForTimeout(300);
+      expect(await 错.innerText()).toBe(话);
+    }
+    // 别的原因照旧一改就收
+    await page.evaluate(() => Reflect.set(window, "__改沟通回", { ok: false, error: "网络连不上，请稍后再试" }));
+    await 存.click();
+    await expect.poll(() => 错.innerText()).toBe("网络连不上，请稍后再试");
+    await 窗.getByLabel("沟通内容").click();
+    await page.keyboard.type("再", { delay: 20 });
+    await expect.poll(() => 错.count(), { timeout: 1000 }).toBe(0);
+    await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter(k => k.includes("改项目沟通:f1")).length)).toBeGreaterThan(0);
+    // 服务端说过了 30 分钟：换成本人改过时那句，保存灰掉，草稿清掉；再改一格也不收
+    await page.evaluate((x) => Reflect.set(window, "__改沟通回", { ok: false, error: x }), 本人改沟通过时话);
+    await 存.click();
+    await expect.poll(() => 错.innerText()).toBe("已经超过提交后 30 分钟，这条不能再改了；没保存的改动已清掉");
+    expect(await 存.isDisabled()).toBe(true);
+    await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter(k => k.includes("改项目沟通:f1")).length)).toBe(0);
+    await 窗.getByLabel("沟通内容").click();
+    await page.keyboard.type("又", { delay: 20 });
+    await page.waitForTimeout(300);
+    expect(await 错.innerText()).toContain("已经超过提交后 30 分钟");
+    expect(await page.evaluate(() => (Reflect.get(window, "__改沟通") as unknown[]).length)).toBe(4);
+    expect(errors).toEqual([]);
+  } finally { await page.evaluate(() => Reflect.deleteProperty(window, "__改沟通回")).catch(() => {}); await page.close(); }
 });
 
 it("没有改沟通的权限：「…」里只剩新建卡点（10-30 从行上收进来，11-12 由发卡点改名）", async () => {
