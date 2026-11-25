@@ -29,6 +29,8 @@ export const 老项目算后售: boolean = true;
 
 /** 一批最多几位客户（SQLite IN 参数别太长，同 cust-status-auto-db.ts） */
 const 一批 = 500;
+/** 超过这么多位客户就不点名、改扫全部交付结清（公海全取一类整池的；一页的列表远到不了） */
+const 点名最多 = 一批 * 4;
 
 type 读库 = Pick<Prisma.TransactionClient, "project">;
 
@@ -67,6 +69,12 @@ export async function 交付结清客户们(customerIds: Iterable<string | null 
   const ids = [...new Set([...customerIds].filter((x): x is string => !!x))];
   const 表 = new Map<string, Date | null>();
   if (!ids.length) return 表;
+  // 客户多（公海全取、导出这类整池的）：点名要好多批，不如把交付结清的平铺扫一遍（交付结清的项目远少于客户），再留这几位的
+  if (ids.length > 点名最多) {
+    const 要 = new Set(ids);
+    for (const [c, t] of await 全部交付结清(db)) if (要.has(c)) 表.set(c, t);
+    return 表;
+  }
   await 看全部(async () => {
     for (let i = 0; i < ids.length; i += 一批) {
       const 行们 = await db.project.findMany({
@@ -95,19 +103,7 @@ export async function 后售项目们<P extends 判后售的项目 & { id: strin
  */
 async function 后售客户片段(db: 读库, 老项目算: boolean): Promise<Prisma.ProjectWhereInput> {
   if (老项目算) return { customer: 有交付结清的客户 };
-  const 表 = new Map<string, Date | null>();
-  let 游标: string | undefined;
-  await 看全部(async () => {
-    for (;;) {
-      const 页 = await db.project.findMany({
-        where: { ...交付结清的项目, ...(游标 ? { id: { gt: 游标 } } : {}) },
-        select: { id: true, customerId: true, closedAt: true }, orderBy: { id: "asc" }, take: 一批,
-      });
-      for (const r of 页) 记最早(表, r.customerId, r.closedAt);
-      if (页.length < 一批) break;
-      游标 = 页[页.length - 1].id;
-    }
-  });
+  const 表 = await 全部交付结清(db);
   const 没时间 = [...表].filter(([, t]) => t === null).map(([c]) => c);
   const 有时间 = [...表].filter((e): e is [string, Date] => e[1] !== null);
   const OR: Prisma.ProjectWhereInput[] = [
@@ -125,6 +121,24 @@ export async function 后售条件(db: 读库 = prisma, 老项目算: boolean = 
 /** 列表筛「潜客培育」、统计「潜客培育」那一行用：停在潜客培育、且不是后售。和 后售条件 加起来 = 停在潜客培育 */
 export async function 潜客不含后售条件(db: 读库 = prisma, 老项目算: boolean = 老项目算后售): Promise<Prisma.ProjectWhereInput> {
   return { AND: [停在潜客培育, { NOT: await 后售客户片段(db, 老项目算) }] };
+}
+
+/** 全部交付结清：客户 → 最早结清（看全部，按 id 一页 一批 平铺翻，不 include、不嵌 orderBy） */
+async function 全部交付结清(db: 读库): Promise<Map<string, Date | null>> {
+  const 表 = new Map<string, Date | null>();
+  let 游标: string | undefined;
+  await 看全部(async () => {
+    for (;;) {
+      const 页 = await db.project.findMany({
+        where: { ...交付结清的项目, ...(游标 ? { id: { gt: 游标 } } : {}) },
+        select: { id: true, customerId: true, closedAt: true }, orderBy: { id: "asc" }, take: 一批,
+      });
+      for (const r of 页) 记最早(表, r.customerId, r.closedAt);
+      if (页.length < 一批) break;
+      游标 = 页[页.length - 1].id;
+    }
+  });
+  return 表;
 }
 
 function 记最早(表: Map<string, Date | null>, customerId: string, t: Date | null) {

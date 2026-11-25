@@ -32,7 +32,7 @@ import {
   FOLLOW_METHODS,
   FOLLOW_RECORD_STATUSES,
 } from "../constants";
-import { 同名们 } from "../project/stage-dict";
+import { 同名们, 后售培育名 } from "../project/stage-dict";
 import { 企业版 } from "../enterprise/switch";
 import { 项目画像项, 字典定义 } from "../enterprise/dict-kinds";
 import { 不算补建, 不进统计, 历史分析留痕人 } from "../project/system-created";
@@ -838,7 +838,22 @@ export function 说人话(s: 查询规格, b?: BusinessConfig): string {
 /* ---------- 编译成 Prisma ---------- */
 
 /** 「人」「部门」条件里的名字 → id。调用方查库得来；一个名字可能对上几个人（重名），都算 */
-export type 名映射 = { 人: Map<string, string[]>; 部门: Map<string, string[]> };
+export type 名映射 = {
+  人: Map<string, string[]>; 部门: Map<string, string[]>;
+  /**
+   * 后售培育（P-界面-63）：「节点」认「后售培育」这个虚拟值（库里没有这个节点，存的是潜客培育）。调用方按 用到后售培育 先取好
+   * after-sale.ts 后售条件 放这里：节点 = 后售培育 → 后售条件；节点 = 潜客培育 → 潜客培育且不是后售（和数据页、项目列表一致，两边不重不漏）。
+   * 不给 = 照旧（后售培育查 0 条、潜客培育含后售）
+   */
+  后售?: Record<string, unknown>;
+};
+
+/** 规格里有没有按项目「节点」比后售培育 / 潜客培育（有才去取 后售条件） */
+export function 用到后售培育(s: 查询规格, b?: BusinessConfig): boolean {
+  const 有 = (表: 表名, cs: 条件[]) => 表 === "项目" && cs.some((c) => 认字段(表, c.字段, b).列 === "node" && c.值 != null
+    && (Array.isArray(c.值) ? c.值 : [String(c.值)]).some((v) => v === 后售培育名 || 同名们("潜客培育").includes(String(v))));
+  return 有(s.表, s.条件) || (!!s.关联 && 有(关联们[s.关联.路径].到, s.关联.条件));
+}
 
 /** 规格里用到的全部人名 / 部门名（含关联上的），调用方据此查一次库 */
 export function 用到的名字(s: 查询规格, b?: BusinessConfig): { 人: string[]; 部门: string[] } {
@@ -864,7 +879,21 @@ function 条件成where(表: 表名, c: 条件, b?: BusinessConfig, 映射?: 名
     return c.运算 === "不等于" ? { OR: [{ [列]: { notIn: ids } }, { [列]: null }] } : { [列]: { in: ids } };
   }
   if (f.同名 && (c.运算 === "等于" || c.运算 === "属于" || c.运算 === "不等于")) {
-    const 名们 = (Array.isArray(c.值) ? c.值 : [String(c.值)]).flatMap((v) => 同名们(v));
+    const 值们 = (Array.isArray(c.值) ? c.值 : [String(c.值)]).map(String);
+    // 后售培育：后售 ⊂ 节点潜客培育，拆成「后售条件」和「潜客培育且不是后售」两份，各自认、不重不漏
+    if (映射?.后售 && 表 === "项目" && 列 === "node" && 值们.some((v) => v === 后售培育名 || 同名们("潜客培育").includes(v))) {
+      const 后售 = 映射.后售;
+      const 潜客名 = 同名们("潜客培育");
+      const 普通 = 值们.filter((v) => v !== 后售培育名 && !潜客名.includes(v)).flatMap((v) => 同名们(v));
+      const 或: Record<string, unknown>[] = [
+        ...(普通.length ? [{ node: { in: 普通 } }] : []),
+        ...(值们.some((v) => 潜客名.includes(v)) ? [{ AND: [{ node: { in: 潜客名 } }, { NOT: 后售 }] }] : []),
+        ...(值们.includes(后售培育名) ? [后售] : []),
+      ];
+      const 中 = 或.length === 1 ? 或[0] : { OR: 或 };
+      return c.运算 === "不等于" ? { NOT: 中 } : 中;
+    }
+    const 名们 = 值们.flatMap((v) => 同名们(v));
     return c.运算 === "不等于" ? { [列]: { notIn: 名们 } } : { [列]: { in: 名们 } };
   }
   const 日历列 = calendarColumns[表]?.[列];

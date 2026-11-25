@@ -39,6 +39,8 @@ export type 概览项目 = {
   node: string;
   result?: string | null;
   productNeeds?: string | null;
+  /** 后售培育（P-界面-63）：服务端判成后售（after-sale.ts 后售项目们）的，当前进程写后售培育；不给 = 不后售 */
+  后售?: boolean;
 } & Partial<客户地址>;
 
 /**
@@ -48,7 +50,7 @@ export type 概览项目 = {
  * 进程以外三段全空 → 当前进程|项目ID（项目ID 用 短号）
  */
 export function 概览名称(p: 概览项目, 字典: 阶段字典 = 团队版字典): string {
-  const { 进程, 结局 } = 阶段与进程(p, 字典);
+  const { 进程, 结局 } = 阶段与进程(p, 字典, !!p.后售);
   const 当前进程 = (结局 ?? 进程 ?? "").trim();
   const 其余 = [项目区域(p), 项目显名(p), 读产品需求(p.productNeeds).join("、")].filter(Boolean);
   const 段 = 其余.length ? [当前进程, ...其余] : [当前进程, 短号(p.id)];

@@ -107,3 +107,20 @@ it("必填拦截导出：能导入导出才摆；超上限只导了最新的，�
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
+
+/* 后售培育（P-界面-63、M-节点-10）：不是单独的节点，配置同潜客培育那一格。线索阶段标题后面说一句，一行、不横滚；别的阶段不说 */
+for (const 宽 of [390, 1280]) {
+  it(`${宽}px 后售培育：线索阶段标题写「潜客培育含后售培育」，一行不横滚；商机阶段不写`, async () => {
+    const { page, errors } = await 开页(browser, bundle, { 开: true, 必填: {} }, 宽);
+    try {
+      const 卡 = page.locator(".ant-card").filter({ has: page.locator(".ant-card-head-title", { hasText: /^节点推进$/ }) });
+      await 卡.waitFor();
+      const 注 = 卡.getByText("· 潜客培育含后售培育");
+      expect(await 注.count()).toBe(1);
+      expect(await 注.evaluate((e) => e.parentElement!.textContent)).toBe("线索阶段· 潜客培育含后售培育");
+      expect(await 注.evaluate((e) => e.getClientRects().length)).toBe(1);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }, 60_000);
+}

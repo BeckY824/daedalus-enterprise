@@ -18,6 +18,7 @@
  * 选项来自企业字典 projCustRole / projContactRole / projStance（设置里改、能停用）：新选的得是启用着的，已经存着、后来停用的
  * 不动就留着（同 改项目画像）。字典校验要读库，放在事务外
  */
+import { 后售项目们 } from "./after-sale";
 import { prisma } from "../prisma";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
@@ -359,5 +360,7 @@ export async function 客户参与的项目(customerId: string, 字典: 阶段�
     take: 100,
     select: { roles: true, project: { select: { id: true, name: true, phase: true, node: true, result: true, productNeeds: true, customerId: true, addrCountry: true, addrProvince: true, addrCity: true, addrDistrict: true } } },
   });
-  return 行.map((r) => ({ projectId: r.project.id, 名: 概览名称(r.project, 字典), 身份: 读多选(r.roles), 主: r.project.customerId === customerId }));
+  // 后售培育：这一批项目一次判完
+  const 后售们 = await 后售项目们(行.map((r) => r.project));
+  return 行.map((r) => ({ projectId: r.project.id, 名: 概览名称({ ...r.project, 后售: 后售们.has(r.project.id) }, 字典), 身份: 读多选(r.roles), 主: r.project.customerId === customerId }));
 }

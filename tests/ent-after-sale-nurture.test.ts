@@ -251,4 +251,25 @@ describe("批量：几千行一次判、500 位一批", () => {
     expect(后数).toBe(600);
     expect(后数 + 潜数).toBe(全);
   });
+
+  it("超过 2000 位客户（公海全取一类）：不点名、扫一遍全部交付结清再留这几位，判得和点名一样；软删的照旧不算", async () => {
+    const 客户们 = Array.from({ length: 2100 }, (_, i) => ({ id: `q-${String(i).padStart(4, "0")}`, name: `客户${i}`, phone: "", salesOwnerId: 我 }));
+    await raw.customer.createMany({ data: 客户们 });
+    await raw.project.createMany({ data: 客户们.flatMap((c, i) => [
+      { id: `p-${c.id}`, name: `新${i}`, customerId: c.id, ownerId: 我, creatorId: 我, phase: "线索", node: "潜客培育" },
+      ...(i % 3 === 0 ? [{ id: `d-${c.id}`, name: `结${i}`, customerId: c.id, ownerId: 我, creatorId: 我, phase: "订单", node: "尾款结算", result: "交付结清", closedAt: new Date() }] : []),
+    ]) });
+    // 名单外的客户也有交付结清：扫全部时不能把它带进来
+    await 交付();
+    await raw.project.update({ where: { id: "d-q-0003" }, data: { deletedAt: new Date() } });
+    const 停的 = await raw.project.findMany({ where: { id: { startsWith: "p-q-" } }, select: { id: true, customerId: true, phase: true, node: true, result: true, createdAt: true } });
+    const 表 = await 交付结清客户们(停的.map((p) => p.customerId));
+    expect(表.size).toBe(699);
+    expect(表.has(客户)).toBe(false);
+    const 后 = await 后售项目们(停的);
+    expect(后.size).toBe(699);
+    expect(后.has("p-q-0000")).toBe(true);
+    expect(后.has("p-q-0003")).toBe(false);
+    expect(后.has("p-q-0001")).toBe(false);
+  });
 });

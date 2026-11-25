@@ -42,6 +42,10 @@ import { 项目阶段客户条件, 客户项目概况们 } from "@/lib/project/c
 import { 抬头节点们 } from "@/lib/enterprise/customer-title";
 import { 新项目分配数据 } from "@/app/(app)/customers/[id]/project-actions";
 import CustomerPage from "@/app/(app)/customers/[id]/page";
+import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
+import { 客户参与的项目 } from "@/lib/project/relate";
+import { TOOLS } from "@/lib/agent/tools";
+import { DEFAULT_BUSINESS } from "@/lib/business-config";
 import type { 项目区数据 } from "@/app/(app)/customers/[id]/ProjectZone";
 
 let 老板: { id: string; name: string; email: string; role: string; title: string; avatar: null };
@@ -174,5 +178,62 @@ describe("新建项目向导", () => {
     mocks.user = { ...老板 };
     expect((await 新项目分配数据(甲))?.客户有交付结清).toBe(true);
     expect((await 新项目分配数据(乙))?.客户有交付结清).toBe(false);
+  });
+});
+
+describe("公海「当前进程」", () => {
+  it("公海客户名下最新的项目判成后售：写「线索-后售培育」；没交付结清的照旧", async () => {
+    const 丁 = (await prisma.customer.create({ data: { name: "客户丁", phone: "13900000004", salesOwnerId: 老板.id } })).id;
+    const 戊 = (await prisma.customer.create({ data: { name: "客户戊", phone: "13900000005", salesOwnerId: 老板.id } })).id;
+    await 建("丁交付", 丁, { phase: "订单", node: "尾款结算", result: "交付结清", createdAt: new Date("2026-01-01T00:00:00Z") });
+    await 建("丁培育", 丁, { createdAt: new Date("2026-02-01T00:00:00Z") });
+    await 建("戊培育", 戊);
+    await prisma.customerPool.createMany({ data: [{ customerId: 丁, reason: "手动" }, { customerId: 戊, reason: "手动" }] });
+    忘掉企业版范围();
+    const 页 = await 以(() => 读公海页(老板, {}, 1, 20));
+    const 行 = (c: string) => 页.行.find((r) => r.种 === "客户" && r.customerId === c);
+    expect(行(丁)?.进程).toBe("线索-后售培育");
+    expect(行(丁)?.进程明细).toContain("丁培育：线索-后售培育");
+    expect(行(戊)?.进程).toBe("线索-潜客培育");
+  });
+});
+
+describe("关联客户：客户页「参与的项目」", () => {
+  it("概览名称的当前进程写后售培育", async () => {
+    await prisma.projectCustomer.create({ data: { projectId: 甲培育, customerId: 乙 } });
+    const 行 = (await 以(() => 客户参与的项目(乙, 企业版字典)))!;
+    expect(行.find((r) => r.projectId === 甲培育)?.名.startsWith("后售培育|")).toBe(true);
+  });
+});
+
+describe("首页 AI 问数", () => {
+  const 跑 = (name: string, args: Record<string, unknown>) => 以(() => TOOLS.find((t) => t.name === name)!.run(args, { userId: 老板.id, userName: 老板.name, b: { ...DEFAULT_BUSINESS, projectMode: true }, recordOffset: 0, proposals: [] } as never));
+  type 列 = { 总数: number; 项目: { 名称: string; 节点: string }[] };
+
+  it("list_projects：node=后售培育 数出 1 个（不是 0）；node=潜客培育 排掉后售；不带 node 时节点按显示名写", async () => {
+    const 后 = (await 跑("list_projects", { node: "后售培育" })).data as 列;
+    expect(后.总数).toBe(1);
+    expect(后.项目.map((p) => [p.名称, p.节点])).toEqual([["甲培育", "后售培育"]]);
+    const 潜 = (await 跑("list_projects", { node: "潜客培育" })).data as 列;
+    expect(潜.项目.map((p) => p.名称)).toEqual(["乙培育"]);
+    const 全 = (await 跑("list_projects", {})).data as 列;
+    expect(全.项目.find((p) => p.名称 === "甲培育")?.节点).toBe("后售培育");
+    expect(全.项目.find((p) => p.名称 === "乙培育")?.节点).toBe("潜客培育");
+  });
+
+  it("query_records：节点 = 后售培育 / 潜客培育 两边不重不漏，加起来 = 节点是潜客培育的；不等于 后售培育 排掉它", async () => {
+    const 数 = async (条件: unknown[]) => ((await 跑("query_records", { 表: "项目", 条件 })).data as { 总数: number }).总数;
+    expect(await 数([{ 字段: "节点", 运算: "等于", 值: "后售培育" }])).toBe(1);
+    expect(await 数([{ 字段: "节点", 运算: "等于", 值: "潜客培育" }])).toBe(1);
+    expect(await 数([{ 字段: "节点", 运算: "属于", 值: ["潜客培育", "后售培育"] }])).toBe(2);
+    expect(await 数([{ 字段: "节点", 运算: "属于", 值: ["后售培育", "线索验证"] }])).toBe(2);
+    const 全 = await 数([]);
+    expect(await 数([{ 字段: "节点", 运算: "不等于", 值: "后售培育" }])).toBe(全 - 1);
+  });
+
+  it("get_customer：名下项目的节点按显示名写", async () => {
+    const r = (await 跑("get_customer", { id: 甲 })).data as { 项目: { 名称: string; 节点: string }[] };
+    expect(r.项目.find((p) => p.名称 === "甲培育")?.节点).toBe("后售培育");
+    expect(r.项目.find((p) => p.名称 === "甲验证")?.节点).toBe("线索验证");
   });
 });
