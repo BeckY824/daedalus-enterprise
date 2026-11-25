@@ -478,3 +478,32 @@ describe("撤销还回原值（服务端留痕，复审 11-25）", () => {
     expect(await 状态(c)).toBe("潜在");
   });
 });
+
+describe("撤销公海领取：领的销售自己退过公海（有原负责人回避，3703 11-25）", () => {
+  it("领取 → 撤销：负责人回空、客户回公海、状态回原值、记了审计", async () => {
+    // 丙自己放过一位客户进公海：他身上有原负责人回避（回避客户条件 NOT「负责人是他 ∧ 在公海」）
+    const 他放的 = await 客户(丙.id, "潜在");
+    await 项目(他放的, 丙.id);
+    expect(await 以(丙, () => 放进公海([他放的], "客户主动终止"))).toMatchObject({ ok: true, updated: 1 });
+    // 甲放进公海的客户：负责人挂占位账号（M-公海-03），名下在推项目一起进线索公海
+    const c = await 客户(甲.id, "意向");
+    const p = await 项目(c, 甲.id);
+    expect(await 以(甲, () => 放进公海([c], "客户主动终止"))).toMatchObject({ ok: true, updated: 1 });
+    const 进公海后 = await prisma.customer.findUniqueOrThrow({ where: { id: c }, select: { salesOwnerId: true, custStatus: true } });
+    忘掉企业版范围();
+    const r = await 以(丙, () => 领取([c]));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.updated).toBe(1);
+    expect(r.公海项目).toEqual([p]);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(丙.id);
+    const 撤 = await 以(丙, () => 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目));
+    expect(撤).toMatchObject({ ok: true, updated: 1 });
+    const 后 = await prisma.customer.findUniqueOrThrow({ where: { id: c }, select: { salesOwnerId: true, custStatus: true, pool: { select: { userId: true } } } });
+    expect(后.salesOwnerId).toBe(进公海后.salesOwnerId);
+    expect(后.pool).not.toBeNull();
+    expect(后.custStatus).toBe(进公海后.custStatus);
+    expect(await prisma.customerClaim.count({ where: { customerId: c } })).toBe(0);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
+    expect(await prisma.auditLog.count({ where: { userId: 丙.id, summary: { contains: "撤销了刚才的公海领取" } } })).toBe(1);
+  });
+});

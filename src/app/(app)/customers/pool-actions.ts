@@ -628,7 +628,12 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
   const 撤成: typeof 退 = [];
   let 培育拦 = 0;
   for (const x of 退) {
-    const 成 = await prisma.$transaction(async (tx) => {
+    /*
+      包 看全部（3703 11-25）：上面已认过这一位能撤（还归 现、时限内是我领 / 换的），事务里不再按人限定。
+      不包的话，领的人自己退过公海（身上有原负责人回避）时，放回公海那一行写下去，这位客户就成了「负责人是他 ∧ 在公海」，
+      回避客户条件 把它挡掉：还负责人改到 0 行、整笔回滚，撤销没做成（main 起就这样，销售撤销领取都撤不动）
+    */
+    const 成 = await prisma.$transaction((tx) => 看全部(async () => {
       // 先放回公海、再把负责人还回去（团队范围同步：放回公海那一刻还归我，之后人人可写；反过来还完负责人我就写不了公海那一行）
       await tx.customerPool.create({ data: { customerId: x.id, userId: me.id, reason: "手动" } });
       // 历史负责人记在还负责人之前：业务员互看时，还完这位就是同事的客户，挂在下面新建会被挡
@@ -667,7 +672,7 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       // 领取那一刻之后建的项目（补的潜客培育前端没带回来、没删掉）还在，也算没撤完
       if (!(项目全回了 && (await 写回出公海前状态(tx, x.id, 原状态, 领?.at)))) await 进出公海重算(tx, [x.id]);
       return true;
-    }).catch((e) => {
+    })).catch((e) => {
       if (e instanceof Error && e.message === 负责人被改过) return false;
       if (e instanceof Error && e.message === 培育项目动过) return (培育拦++, false);
       throw e;
