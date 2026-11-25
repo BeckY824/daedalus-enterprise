@@ -194,3 +194,19 @@ it("AI 项目沟通卡开关关着：太短只说不算有效沟通、照样能�
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it("AI 项目沟通卡旧卡带卡点描述：提示行和拦截量同一段（内容「加微信」+ 描述「价格太高」开关开着也能确认，不出「不能保存」）", async () => {
+  const { page, errors } = await open(1280, { 判定: { 拦: true, 占位词: [] } }, 项目沟通卡({ 卡点描述: "价格太高" }));
+  try {
+    // 判定是异步取回的：先等判定生效（内容框改成太短会出提示行）再改回，量的才是取回判定之后的样子
+    const 框 = page.locator(".prop textarea").first();
+    await 框.fill("加");
+    await expect.poll(() => page.getByTestId("follow-meaning").count()).toBe(0); // 加 + 卡点：价格太高 并进后够长
+    await 框.fill("加微信");
+    await page.waitForTimeout(300);
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+    expect(await page.getByTestId("follow-meaning").count()).toBe(0);
+    expect(await page.locator(".prop-foot").innerText()).not.toContain("还差");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
