@@ -33,7 +33,7 @@ import { 超上限n, 记转让, 将回收提醒跟着换人, 勾掉将回收提�
 import { 单项目客户跟着领, 领项目连带超上限, 客户整包出公海 } from "@/lib/enterprise/pool-link";
 import { 拦客户公海里的项目, 客户在公海项目不单领提示, 客户在公海找销管提示 } from "@/lib/enterprise/pool-rules";
 import { 钉住老签约 } from "@/lib/contract-owner";
-import { 客户在市场手里, 算市场转客户, 转客户给销售, 暂不分配叫法们 } from "@/lib/enterprise/market-transfer";
+import { 客户在市场手里, 算市场转客户, 转客户给销售, 暂不分配叫法们, 重复咨询不转客户 } from "@/lib/enterprise/market-transfer";
 import { 算市场分给销售, 市场分配进线索验证 } from "@/lib/enterprise/market-assign-node";
 import { 分配带走的同事项目, 数进手的持有项目 } from "@/lib/carry-over-db";
 import type { 转走项目预览 } from "@/lib/carry-over";
@@ -326,7 +326,8 @@ async function 分项目给(
     // 唯一例外（规划第五节问题 1）：客户负责人有市场角色且没有销售角色（兼任按销售算）、接手人是销售角色 = 市场第一次分给销售，算转客户。
     // 其他项目层动作都不碰客户。下面改的只是项目，客户在这里先读，拦上限和后面转客户都用它
     const 客户 = await tx.customer.findUnique({ where: { id: p.customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
-    const 市场转客户 = 算市场转客户(org, 客户, input.toUserId);
+    // 老客户重复咨询的线索（出口 C 交销售）：客户不动，不算市场转客户（market-transfer.ts 重复咨询不转客户）
+    const 市场转客户 = !重复咨询不转客户(p) && 算市场转客户(org, 客户, input.toUserId);
     if (!input.自动) {
       // 市场转客户时客户上同事待分配的项目随客户一起进手（市场转一位），照接待分配一起数（M-公海-18）；
       // 在公海里的、开关开着时还连带客户名下别的公海项目（领项目连带超上限）；这里只分线索阶段没结局的，手上这个一定算 1 个
@@ -457,8 +458,8 @@ export async function 项目分配线(projectId: string): Promise<{ 线: 项目�
     const 看 = await 分前看({ projectId: String(projectId ?? "") }, org, 能管公海(me, org) ? "整包" : "找销管");
     if (!看.ok) return null;
     const 线 = 看.线 ?? "内贸";
-    const 项目 = await 看全部(() => prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { customer: { select: { salesOwnerId: true, pool: { select: { customerId: true } } } } } }));
-    return { 线, 可选: await 指派可选(org, 线), 市场转客户: 客户在市场手里(org, 项目?.customer ?? null) };
+    const 项目 = await 看全部(() => prisma.project.findUnique({ where: { id: String(projectId ?? "") }, select: { source: true, customer: { select: { salesOwnerId: true, pool: { select: { customerId: true } } } } } }));
+    return { 线, 可选: await 指派可选(org, 线), 市场转客户: !重复咨询不转客户(项目) && 客户在市场手里(org, 项目?.customer ?? null) };
   } catch {
     return null;
   }
@@ -486,7 +487,9 @@ export async function 分配带走的项目(projectIds: string[], 接手人?: st
       if (看.ok && (接手人 !== undefined || 按区域 || 是业务线(看.线))) 能分的.push(id);
     }
     return await 看全部(async () => {
-      const 行 = await prisma.project.findMany({ where: { id: { in: 能分的 } }, select: { customer: { select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } } } });
+      // 老客户重复咨询的线索分出去客户不动（重复咨询不转客户），不算进会一起转走的
+      const 行 = (await prisma.project.findMany({ where: { id: { in: 能分的 } }, select: { source: true, customer: { select: { id: true, salesOwnerId: true, pool: { select: { customerId: true } } } } } }))
+        .filter((p) => !重复咨询不转客户(p));
       const 客户们 = [...new Map(行.map((p) => [p.customer.id, p.customer])).values()]
         .filter((c) => (接手人 === undefined ? 客户在市场手里(org, c) : 算市场转客户(org, c, 接手人)));
       return 分配带走的同事项目(客户们, 接手人 ?? "", ids);

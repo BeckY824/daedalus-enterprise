@@ -24,15 +24,17 @@ test.beforeAll(async () => {
   种 = 读种子();
   db = new PrismaClient({ datasources: { db: { url: `file:${ENT_DB}` } } });
   const 销售甲 = await db.user.findFirstOrThrow({ where: { email: 账号.销售1 } });
+  // 企业版客户没有电话（E-260）：号记在主要联系人上，客户电话那格空串（同 global-setup.ts）
+  const 主联系人 = (phone: string) => ({ create: { name: "", phone, isPrimary: true } });
   const 号 = (i: number, 段: number) => `13${段}${String((Date.now() + i) % 100000000).padStart(8, "0")}`.slice(0, 11);
   for (let i = 1; i <= 45; i++) {
-    const c = await db.customer.create({ data: { name: `${客户前缀}-${String(i).padStart(2, "0")}`, phone: 号(i, 5), salesOwnerId: 销售甲.id } });
+    const c = await db.customer.create({ data: { name: `${客户前缀}-${String(i).padStart(2, "0")}`, phone: "", contacts: 主联系人(号(i, 5)), salesOwnerId: 销售甲.id } });
     // 前三位带项目：看板上有卡
     if (i <= 3) await db.project.create({ data: { name: `回列表项目${后缀}-${i}`, customerId: c.id, ownerId: 销售甲.id, creatorId: 销售甲.id, bizLine: "内贸" } });
   }
-  长名客户 = (await db.customer.create({ data: { name: 长名, phone: 号(99, 5), salesOwnerId: 销售甲.id } })).id;
+  长名客户 = (await db.customer.create({ data: { name: 长名, phone: "", contacts: 主联系人(号(99, 5)), salesOwnerId: 销售甲.id } })).id;
   for (let i = 1; i <= 25; i++) {
-    const c = await db.customer.create({ data: { name: `${公海前缀}-${String(i).padStart(2, "0")}`, phone: 号(100 + i, 7), salesOwnerId: 销售甲.id } });
+    const c = await db.customer.create({ data: { name: `${公海前缀}-${String(i).padStart(2, "0")}`, phone: "", contacts: 主联系人(号(100 + i, 7)), salesOwnerId: 销售甲.id } });
     await db.customerPool.create({ data: { customerId: c.id, userId: 销售甲.id } });
   }
 });

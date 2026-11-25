@@ -14,6 +14,8 @@
   --brand-deep: #0850a8;     /* 压在浅蓝上的字 */
   --brand-bg: #e8f0fb;       /* 选中行、AI 的浅蓝材质 */
   --brand-line: #b9d2f2;
+  --violet: #6d4bd1;          /* 「重复咨询」标签：紫，只这一处（标签别的色仍按 D10 归档） */
+  --violet-bg: rgb(109 75 209 / 12%); --violet-text: var(--violet); /* 标签底 = 紫 12% 透明、字 = 紫（原 color-mix 现调色；E6 · D27 不现调色、亮色颜色总数封顶 48，字不再混正文色，对比度仍 ≥4.5） */
 
   --ink: #1d1d1f;            /* 正文 */
   --ink-soft: #424245;       /* 次一级正文：长段落、时间线内容 */
@@ -2334,6 +2336,15 @@ button.ais-hd-b { cursor: pointer; }
 @media (max-width: 767px) { .cli:has(.cli-ck) { min-height: 0; } }
 /* 输入框旁「查重」点开的小框 */
 .home-dedupe { display: flex; flex-direction: column; gap: var(--s3); width: 340px; max-width: calc(100vw - 64px); }
+/* 线索验证判无效框：老客户重复咨询那条的提示（重复咨询第一步） */
+.lv-repeat-hint { margin-bottom: var(--s2); color: var(--text-muted); }
+/* 项目列表项目名前「重复咨询」小标签（重复咨询第一步）：标签不缩，名字照旧单行省略（.fulltext） */
+.proj-name-tagged { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
+.proj-name-tagged .proj-repeat-tag { margin-inline-end: 0; flex-shrink: 0; }
+/* 看板卡片第二行：标签不缩、项目名照旧省略 */
+.pipe-card-m .proj-repeat-tag { flex: none; margin-inline-end: var(--s1); }
+/* 首页查重框里「在 X 名下新建线索」（重复咨询出口 C）：另起一行，键和结果那句可折行 */
+.home-dedupe-act { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s2); }
 /* 手机宽查重小框（11-23）：放不下时整块挪进屏（DedupeKey 挪进屏 shiftX）会贴住屏边（查出结果变高时可能贴左边），外框左右各垫 12px 透明边，看得到的那块离屏边 12px */
 @media (max-width: 767px) { .ant-popover.home-dedupe-pop { padding-inline: var(--s3, 12px); } }
 /* 问答贴着输入框往上长。原来是 flex:1 顶在上边，于是只问了一句、答案还在流的时候，
@@ -4349,6 +4360,8 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 :root:root .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-red, .ant-tag-volcano, .ant-tag-error) { background: var(--danger-bg); color: var(--danger-text); }
 :root:root .ant-tag.ant-tag.ant-tag:not(.ant-tag-solid, .ant-tag-disabled):is(.ant-tag-orange, .ant-tag-warning) { background: var(--warning-bg); color: var(--warning-text); }
 :root:root .ant-tag.ant-tag.ant-tag.tag-key:not(.ant-tag-solid, .ant-tag-disabled) { background: var(--brand-bg); color: var(--brand-deep); }
+/* 「重复咨询」标签紫底紫字（重复咨询第一步，PR 定的色；压过上面「其余一律灰」，明暗都认）：底 = 紫 12% 透明，字 = 紫混正文色，暗色下自动变浅 */
+:root:root .ant-tag.ant-tag.ant-tag.proj-repeat-tag:not(.ant-tag-solid, .ant-tag-disabled) { background: var(--violet-bg); color: var(--violet-text); }
 :root:root .ant-tag.ant-tag.ant-tag.pool-tag:not(.ant-tag-solid, .ant-tag-disabled) { background: transparent; color: var(--ink-soft); }
 
 /* ---------- 列表页：表格成一张白卡（圆角 --r-mod 10、--card-line 一圈 + --shadow-card），表头白底灰字；行高、表头高不动（40 / 36） ---------- */
@@ -4941,6 +4954,28 @@ html.fbt-room .main { --detail-tail: max(64px, var(--fbt-room)); }
 .ls-row-gone { opacity: 0; max-height: 0 !important; min-height: 0 !important; padding-top: 0 !important; padding-bottom: 0 !important; margin: 0 !important; overflow: hidden; transition: opacity var(--t-fast) var(--ease), max-height var(--t) var(--ease), padding var(--t) var(--ease); }
 @media (prefers-reduced-motion: reduce) { .ls-row-gone { transition: none; } }
 .ls-row-err { min-width: 0; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--danger-text); }
+/* 挂靠申请页「重复咨询待补建」：格子一行 + 省略号（悬停 title 看全文）；弹框里的选人框占满一行；锚点跳过来时顶上留出页头 */
+.ls-ub-one { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ls-ub-full { width: 100%; }
+#repeat-unbuilt { scroll-margin-top: 64px; }
+/* 管的那张表的操作列钉在右边（1280 宽表格比卡宽，「补建 / 不补建」不能要横滑才看得到）：右边还能往右滚时（antd 挂 cell-fix-end-shadow-show）
+   操作列左边一道渐隐分隔——贴边是浅分隔线色（--line-soft，比面板深一档），看得出是一道边，再淡出到透明，滑到底下的字是淡出去的；
+   悬停的行底色深一档，贴边换主分隔线色（--line）。都是现成 token，浅深色跟着变；不现调色（color-mix 只减不增）。滚到底收起 */
+.ls-ub-tbl .ant-table-cell-fix-end::after {
+  width: var(--edge-fade); box-shadow: none; opacity: 0; transition: opacity var(--t) var(--ease);
+  background: linear-gradient(to left, var(--line-soft), transparent);
+}
+.ls-ub-tbl .ant-table-row:hover > .ant-table-cell-fix-end::after { background: linear-gradient(to left, var(--line), transparent); }
+.ls-ub-tbl .ant-table-cell-fix-end-shadow-show::after { opacity: 1; }
+@media (prefers-reduced-motion: reduce) { .ls-ub-tbl .ant-table-cell-fix-end::after { transition: none; } }
+/* 「补建」的确认浮层（UnbuiltCard 的 BuildKey）：挂在 body 上、不被表格可视区截；字长了折行，宽不超过屏宽减两边页边。
+   手机宽放不下时整块挪进屏（挪进屏 shiftX）会贴住屏边，外框左右各垫 16px 透明边（同 .home-dedupe-pop），看得到的那块离屏边 16px */
+.ant-popover.ls-ub-pop { max-width: min(400px, 100vw); }
+.ls-ub-pop .ant-popconfirm-description { overflow-wrap: anywhere; }
+@media (max-width: 767px) { .ant-popover.ls-ub-pop { padding-inline: var(--s4, 16px); } }
+/* 处理结果里补成的线索名：看的人进得了那条项目才有这个链接 */
+.ls-ub-lead { color: var(--brand); }
+.ls-ub-lead:hover, .ls-ub-lead:focus-visible { color: var(--brand-deep); text-decoration: underline; }
 .ls-ho-give { flex: 0 1 auto; min-width: 0; max-width: 60%; }
 .ls-ho-give > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ls-ho-err { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-min); color: var(--danger-text); }
@@ -5165,6 +5200,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 @media (max-width: 767px) { .dc-claim-grid { grid-template-columns: minmax(0, 1fr); } }
 .dc-claim-foot { display: flex; justify-content: flex-end; gap: var(--s2); }
 .prop-err-act { margin-top: var(--s2); }
+/* 撞号的在推个数是提示，不是错误：不跟 .prop-err 的红字 */
+.prop-err-note { color: var(--text-muted); }
 .cu-said-warn { color: var(--warning-text); }
 .cu-said-err { color: var(--danger-text); }
 span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
