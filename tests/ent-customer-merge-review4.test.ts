@@ -4,6 +4,8 @@
  *   - 建议 3：撤回合并只拆还在 A 名下的单独合成；B 来的人后来换主客户到 C、在 C 名下合成过的不拆
  *   - 建议 4：同步冲突指着被并那家（对照行已改指 A）：定冲突时说「已并入」，不说「原系统这条又变了」
  *   - 建议 5：撤销项目换客户时原序号已被原客户新建的重复咨询占了：回一句话，不报 500
+ *   - 同类：撤回合并时 B 挪到 A 的重复咨询要换回原序号，合并后 B 名下又有一条占了这个号：整单拦下回一句话，不报 500、不改号；
+ *     合并后在 A 上新登的重复咨询接在 A 的号后面，不占 B 的原序号，照常撤回
  * （建议 1 守卫认人正则在 tests/sync-tables.test.ts）
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
@@ -19,7 +21,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 执行合并, 撤回合并, 合成联系人 } from "@/lib/enterprise/customer-merge";
+import { 执行合并, 撤回合并, 合成联系人, 撤回合并序号被占话 } from "@/lib/enterprise/customer-merge";
 import { 项目换客户, 撤销换客户, 序号被占话 } from "@/lib/enterprise/project-move-customer";
 import { 并进来的合并单 } from "@/app/(app)/customers/merge-actions";
 import { 定冲突, 已并入话 } from "@/lib/enterprise-import/resolve";
@@ -167,5 +169,38 @@ describe("建议 5 撤销项目换客户撞序号", () => {
     expect(await 撤销换客户(prisma, r.logId, 乙)).toEqual({ ok: false, error: 序号被占话 });
     expect(await raw.project.findUniqueOrThrow({ where: { id: p } })).toMatchObject({ customerId: a, repeatOfCustomerId: a });
     expect(await raw.auditLog.count({ where: { action: "project-move-customer-undo" } })).toBe(0);
+  });
+});
+
+describe("撤回合并撞序号（同建议 5）", () => {
+  it("合并后在 A 上新登一条重复咨询：接在 A 的号后面，撤回照常，B 的那条回到原序号、A 新登的不动", async () => {
+    const a = await 客户(乙.id);
+    const b = await 客户(乙.id);
+    const 甲原 = await 项目(乙.id, a, { repeatOfCustomerId: a, repeatSeq: 1 });
+    const p = await 项目(乙.id, b, { repeatOfCustomerId: b, repeatSeq: 1 });
+    const m = await 并成(a, b, 乙);
+    expect(await raw.project.findUniqueOrThrow({ where: { id: p } })).toMatchObject({ repeatOfCustomerId: a, repeatSeq: 2 });
+    const 新 = await 项目(乙.id, a, { repeatOfCustomerId: a, repeatSeq: 3 });
+
+    expect(await 撤回合并(prisma, m, 乙)).toMatchObject({ ok: true });
+    expect(await raw.project.findUniqueOrThrow({ where: { id: p } })).toMatchObject({ customerId: b, repeatOfCustomerId: b, repeatSeq: 1 });
+    expect(await raw.project.findUniqueOrThrow({ where: { id: 新 } })).toMatchObject({ customerId: a, repeatOfCustomerId: a, repeatSeq: 3 });
+    expect(await raw.project.findUniqueOrThrow({ where: { id: 甲原 } })).toMatchObject({ repeatOfCustomerId: a, repeatSeq: 1 });
+  });
+
+  it("合并后 B 名下又有一条重复咨询占了原序号：整单拦下回一句话（说哪家、哪条），不报 500、一格不动", async () => {
+    const a = await 客户(乙.id);
+    const b = await 客户(乙.id);
+    const p = await 项目(乙.id, b, { repeatOfCustomerId: b, repeatSeq: 2 });
+    const m = await 并成(a, b, 乙);
+    expect(await raw.project.findUniqueOrThrow({ where: { id: p } })).toMatchObject({ repeatOfCustomerId: a, repeatSeq: 1 });
+    const 占 = await 项目(乙.id, b, { repeatOfCustomerId: b, repeatSeq: 2 });
+    const [B名, 占名] = [(await raw.customer.findUniqueOrThrow({ where: { id: b } })).name, (await raw.project.findUniqueOrThrow({ where: { id: 占 } })).name];
+
+    expect(await 撤回合并(prisma, m, 乙)).toEqual({ ok: false, error: 撤回合并序号被占话(B名, 占名) });
+    expect(await raw.project.findUniqueOrThrow({ where: { id: p } })).toMatchObject({ customerId: a, repeatOfCustomerId: a, repeatSeq: 1 });
+    expect(await raw.entCustomerMerge.findUniqueOrThrow({ where: { id: m } })).toMatchObject({ status: "已合并" });
+    expect((await raw.customer.findUniqueOrThrow({ where: { id: b } })).deletedAt).not.toBeNull();
+    expect(await raw.auditLog.count({ where: { action: "merge-undo" } })).toBe(0);
   });
 });

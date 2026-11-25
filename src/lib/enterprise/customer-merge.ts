@@ -34,6 +34,7 @@ import { 忘掉企业版范围 } from "./visibility";
 import { 合成一对, 拆开一对, 类叫 } from "./contact-merge";
 import { 号码脱敏器 } from "./phone-mask";
 import { 撞上别的写入 } from "@/lib/check-then-write";
+import { 序号撞了 } from "./repeat-inquiry";
 
 type 库 = PrismaClient;
 type Tx = Prisma.TransactionClient;
@@ -778,6 +779,7 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
   const 结: 没还原[] = [];
   let 拆开合成 = 0;
   let 两家: [string, string] | null = null;
+  let B名 = "被并的客户";
   try {
     await 看已删(() =>
       看全部(() =>
@@ -792,6 +794,7 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
             tx.customer.findUnique({ where: { id: m.fromId }, select: { id: true, name: true, shortName: true, customerNo: true, deletedAt: true, salesOwnerId: true } }),
           ]);
           if (!B) throw new 拦下("被并的客户已清出回收站，不能撤回");
+          B名 = 名(B);
           if (!A) throw new 拦下("留下的客户已彻底删除，不能撤回");
           if (A.deletedAt) {
             const 去 = await 并入去向(tx, A.id);
@@ -848,6 +851,8 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
     );
   } catch (e) {
     if (e instanceof 拦下) return { ok: false, error: e.message };
+    // 先查过还撞上 (repeatOfCustomerId, repeatSeq) 唯一索引：查完那一刻 B 名下又建了一条（并发），整笔已回滚，同撤销换客户回人话
+    if (序号撞了(e)) return { ok: false, error: 撤回合并序号被占话(B名) };
     const 话 = 并发失败话(e);
     if (话) return { ok: false, error: 话 };
     throw e;
@@ -863,6 +868,12 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
 
 export type 撤回完 = { 没还原: 没还原[]; /** 先拆开过单独合成时：「先拆开了 N 次联系人合成」 */ 提示?: string };
 const 拆开合成话 = (n: number) => `先拆开了 ${n} 次联系人合成`;
+/**
+ * 撤回合并要把 B 挪到 A 的重复咨询换回原序号，合并之后 B 名下又有一条占了这个号（同撤销换客户的 序号被占话）：整单拦下，不改成别的号。
+ * 合并后在 A 上新登的接在 A 的号后面，不占 B 的原序号；拿不到占号那条的名字（并发撞上唯一索引）时只说哪家
+ */
+export const 撤回合并序号被占话 = (B名: string, 占的?: string) =>
+  `「${B名}」合并之后又登了重复咨询${占的 ? `「${占的}」` : ""}，占了原来的序号，撤回会撞号，这次没撤；请找系统管理员处理`;
 /** 合并单 undoLeft：{ 没还原, 拆开合成? }；都没有存空 */
 const 存没还原 = (留: 没还原[], 拆开合成 = 0) => (留.length || 拆开合成 ? JSON.stringify({ 没还原: 留, ...(拆开合成 ? { 拆开合成 } : {}) }) : null);
 /** 读合并单 undoLeft（老的是数组）：给合并单列表 */
@@ -955,6 +966,14 @@ async function 挪回(tx: Tx, 原文: string, A: string, B: string, A退回: num
     if (!现) { 留下("项目", [p.id], "已彻底删除"); continue; }
     const 对 = (!p.挪客户 || 现.customerId === A) && (!p.补来源 || 现.channelId === p.补来源) && (!p.重复 || (现.repeatOfCustomerId === A && 现.repeatSeq === p.重复.新序));
     if (!对) { 留下("项目", [p.id], 改过话); 留项目.add(p.id); continue; }
+    // 换回原序号前先看 B 名下这个号有没有被占（合并后又登的；回收站里的也算，唯一索引不分删没删）：占了整单拦下，不改成别的号
+    if (p.重复?.原序 != null) {
+      const 占 = await tx.project.findFirst({ where: { repeatOfCustomerId: B, repeatSeq: p.重复.原序, NOT: { id: p.id } }, select: { name: true } });
+      if (占) {
+        const b = await tx.customer.findUnique({ where: { id: B }, select: { id: true, name: true, shortName: true, customerNo: true } });
+        throw new 拦下(撤回合并序号被占话(b ? 名(b) : "被并的客户", 占.name));
+      }
+    }
     if (p.挪客户) 回了项目.push(p.id);
     // undefined = 这一格不动；负责人不在里面（撤回不动负责人）
     await tx.project.update({
