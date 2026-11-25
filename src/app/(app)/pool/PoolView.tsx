@@ -359,20 +359,48 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     // 撤销（底部撤销条调）：没撤成的原因写在撤销条上（UndoBar「撤销不了：原因」），不另弹提示
     const 撤销 = async (): Promise<做的结果> => {
       let 撤了 = 0;
-      let 错: string | null = null;
+      // 客户、项目两部分各说各的（复审 11-26 S2）：一边撤成、另一边 ok:false 时，不让后者盖掉整条成「撤销不了」
+      let 客户撤了 = 0;
+      let 客户错: string | null = null;
+      let 客户话: string | undefined;
+      let 项目撤了 = 0;
+      let 项目错: string | null = null;
+      let 项目话: string | undefined;
+      let 有没撤成 = false;
       if (客户res?.ok && 客户到) {
         const r = await 撤销公海(动作, 客户res.原负责人 ?? [], 客户res.带过来, 客户res.给谁?.id, 客户res.公海项目);
-        if (r.ok) 撤了 += r.updated; else 错 = r.error;
+        // 并发里先撤回去的（已撤回）也已经回了公海：算撤了，撤销条上说一句，不报错（11-26 审查）。
+        // 撤成、已撤回、没撤成（负责人被改过 / 培育项目动过）混着时，服务端拼好了整句（「已撤销 N 位；…」），原样交给撤销条
+        if (r.ok) {
+          客户撤了 = r.updated + (r.已撤回 ?? 0);
+          客户话 = r.提示;
+          if (r.有没撤成) 有没撤成 = true;
+        } else 客户错 = r.error;
       }
       if (项目到.length) {
         const r = await 撤销公海项目(动作, 项目到, 给谁?.id, 整包);
-        if (r.ok) 撤了 += r.updated; else 错 = r.error;
+        // 只勾项目行的分配走整包：客户那一半的话（已撤回 / 没撤成）在 提示 里带回来（S1）
+        if (r.ok) {
+          项目撤了 = r.updated;
+          项目话 = r.提示;
+          if (r.有没撤成) 有没撤成 = true;
+        } else 项目错 = r.error;
       }
+      撤了 = 客户撤了 + 项目撤了;
       router.refresh();
-      if (错) return { ok: false, error: 错 };
-      if (!撤了) return { ok: false, error: "已经有人动过了" };
+      const 错们 = [客户错 && `客户没撤销：${客户错}`, 项目错 && `项目没撤销：${项目错}`].filter((x): x is string => !!x);
+      // 一个都没撤成：只有一边出错照旧说那一句，两边都出错各说各的
+      if (!撤了) return { ok: false, error: 错们.length > 1 ? 错们.join("；") : (客户错 ?? 项目错 ?? "已经有人动过了") };
+      if (错们.length) 有没撤成 = true;
+      // 一句话：撤成的那部分在前（客户那句只数客户，一起撤回的项目接在后面，不然像是只撤了那几位），没撤成的那部分接在后面
+      const 段 = 客户错
+        ? [`已撤销 ${项目撤了} 个项目`, 项目话, ...错们]
+        : [客户话 ?? (项目错 || (项目话 && 客户撤了) ? `已撤销 ${客户撤了} 位客户` : undefined), 项目撤了 && 客户撤了 ? `另撤销 ${项目撤了} 个项目` : undefined, 项目话, ...错们];
+      const 话们 = 段.filter((x): x is string => !!x);
+      // 只撤成了、没别的话说：照旧「已撤销」（客户那边没提示、项目这边没出错时不拼「另撤销 N 个项目」）
+      const 提示 = 客户话 || 项目话 || 错们.length ? 话们.join("；") : undefined;
       if (撤了 < 到数) set结果({ 文案: `已撤销 ${撤了} 个，其余已经有人动过了`, 没领到: [] });
-      return { ok: true };
+      return { ok: true, 提示, ...(有没撤成 ? { 有没撤成: true } : {}) };
     };
     // 真到手 / 分出去的那几行（客户池并成一行的：名下有一个项目到了就算），滑出、撤销后滑回用
     const 到客户 = new Set(客户res?.ok ? (客户res.原负责人 ?? []).map((x) => x.id) : []);

@@ -93,7 +93,7 @@ import ProjectRelate from "./ProjectRelate";
 import { useFormDraft, 草稿范围 } from "@/components/FormDraft";
 import { 有字 } from "@/lib/form-draft";
 import { 动作出错话, 出错原话, 刷新再提交话 } from "@/lib/stale-deploy";
-import { 本人改沟通过时话, 改格不收 } from "@/lib/enterprise/follow-edit-text";
+import { 本人改沟通过时话, 本人改过时提示, 改格不收, 不能再改话 } from "@/lib/enterprise/follow-edit-text";
 import type { 项目关联 } from "@/lib/project/relate";
 
 export type 项目详情 = {
@@ -2422,9 +2422,6 @@ function useOwnEditWindow(到点们: readonly (string | undefined)[], 服务器�
   return { 能改: (到) => !!到 && 量过 !== null && 量过.现在 <= Date.parse(到), 钟差: 量过?.差 ?? 0 };
 }
 
-/** 本人限时改的框开着到点（低-1） */
-const 本人改过时提示 = "已经超过提交后 30 分钟，这条不能再改了；没保存的改动已清掉";
-
 /**
  * 改项目上的一条沟通（「…」→ 修改，10-29）：沟通方式、时间、内容三格，别的（阶段、下一步）不在这里改。
  * 打开时的 updatedAt 一起交回去，别人先改了就报版本冲突，不悄悄盖掉
@@ -2466,6 +2463,9 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
   const [交错, set交错] = useState<string | null>(null);
   /** 本人限时改到点了（低-1）：框里说一句、草稿清掉、保存灰掉 */
   const [过时了, set过时了] = useState(false);
+  /** 服务端说这条改不成了（客户进了公海、挂的项目记不了沟通，11-26 审查）：同 过时了，保存灰掉、原因留在框里；改哪格都改不好，点了只会再被拒 */
+  const [不能改, set不能改] = useState<string | null>(null);
+  const 锁了 = 过时了 || !!不能改;
   // 改了没交的留草稿（components/FormDraft.tsx）：刷新、发版后重开这条接着改；只存改过的格子
   const 稿 = useFormDraft({
     键: `改项目沟通:${f.id}`,
@@ -2488,7 +2488,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     const t = setTimeout(() => { set过时了(true); set交错(本人改过时提示); 丢稿(); }, Math.max(0, Math.min(剩 + 200, 2 ** 31 - 1)));
     return () => clearTimeout(t);
   }, [限时到, 钟差, 丢稿]);
-  const 差 = 过时了 ? 本人改过时提示 : !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体"
+  const 差 = 过时了 ? 本人改过时提示 : 不能改 ? 不能改 : !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体"
     : 动了下一步 && !下一步文字.trim() ? "请写下一步计划" : 动了下一步 && 要下一步 && !下一步时间 ? "请填下一步时间" : "";
   /*
     设计语言 E1（D03，同 D4 新建沟通框）：「保存」一直能点（限时到点了除外）；点了还缺的在各自格子下面报红、焦点跳到第一处，
@@ -2504,7 +2504,8 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
   const 格错 = (格: string) => (试过 ? 错们.find(([k]) => k === 格)?.[1] ?? null : null);
   const 错行 = (格: string) => 格错(格) && <div className="fm-err" role="alert">{格错(格)}</div>;
   const 交 = async () => {
-    if (!过时了 && 错们.some(([, 话]) => 话)) {
+    if (锁了) return;
+    if (错们.some(([, 话]) => 话)) {
       set试过(true);
       const 第一处 = 错们.find(([, 话]) => 话)![0];
       window.setTimeout(() => document.querySelector<HTMLElement>(`.follow-edit-modal [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), [tabindex="0"])`)?.focus(), 0);
@@ -2514,6 +2515,9 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt: occurredAt === 原时间 ? f.occurredAt : occurredAt, 版本: f.版本, ...(动了下一步 ? { 下一步: 下一步文字, 下一步时间 } : {}) }), "已保存修改", { 报错: (话) => {
       // 服务端说过了 30 分钟（本地钟慢、计时还没到点）：和本地计时到点一样——标过时、换本人改过时那句、草稿清掉、保存灰掉
       if (话 === 本人改沟通过时话) { set过时了(true); set交错(本人改过时提示); 丢稿(); return; }
+      // 客户进了公海、挂的项目记不了沟通：这条再也改不成，保存也灰掉（草稿留着，人能把写的字抄走）
+      const 锁 = 不能再改话(话);
+      if (锁) { set不能改(锁); set交错(锁); return; }
       set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话);
     } });
     set交中(false);
@@ -2523,7 +2527,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     }
   };
   return (
-    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} className="follow-edit-modal" okButtonProps={{ disabled: 过时了, loading: 交中, title: (过时了 && 差) || undefined }} onCancel={() => { 稿.丢掉(); onClose(); }} onOk={() => void 交()}>
+    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} className="follow-edit-modal" okButtonProps={{ disabled: 锁了, loading: 交中, title: (锁了 && 差) || undefined }} onCancel={() => { 稿.丢掉(); onClose(); }} onOk={() => void 交()}>
       {稿.提示}
       <div style={{ display: "grid", gap: 12 }}>
         <div className="follow-pick-row">

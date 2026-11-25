@@ -42,7 +42,7 @@ import { 同号标题问题, 同号留痕标题不能改话, 是同号留痕 } f
 import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 沟通没项目话, 请负责人建项目话, 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 import { 动作出错话, 出错原话 } from "@/lib/stale-deploy";
-import { 改格不收 } from "@/lib/enterprise/follow-edit-text";
+import { 本人改沟通过时话, 改格不收, 不能再改话 } from "@/lib/enterprise/follow-edit-text";
 
 /**
  * 记沟通时顺手标的卡点（F-跟进-08）：类型「暂无卡点」= 不生成（11-01 答复 #5；服务端 沟通卡点 同一条规则）。
@@ -248,6 +248,25 @@ export default function FollowUpForm({
   /** 上一次没保存上的原因：本人限时改被拒的那几句（过了 30 分钟、客户进了公海、挂的项目记不了沟通）改哪格都改不好，改格不收（11-26 审查） */
   const 上次没成 = useRef<string | null>(null);
   const 改了收错 = () => { if (!改格不收(上次没成.current)) 收错.current?.(); };
+  /**
+   * 被拒之后这条再也改不成了（同项目页 EditFollowModal，11-26 审查）：过了 30 分钟（框里换成「已经超过…已清掉」、草稿清掉、之后不再存）、
+   * 客户进了公海、挂的项目记不了沟通——保存灰掉、原因留在框里，不然点了只会再被拒一次
+   */
+  const [不能改, set不能改] = useState<string | null>(null);
+  /** 锁住那句（同 不能改，保存键的回调里读最新的）：这句已经写在表单下方，不再浮在保存键上（11-26 审查：同一句显示两遍） */
+  const 锁话 = useRef<string | null>(null);
+  const 草稿停 = useRef(false);
+  // 组件不随弹框卸载（destroyOnHidden 只拆里面）：关了再开，上一次的拒绝不带过来（state 在渲染时跟着 open 收，ref 在 effect 里收）
+  const [认过的开, set认过的开] = useState(open);
+  if (认过的开 !== open) {
+    set认过的开(open);
+    set不能改(null);
+  }
+  useEffect(() => {
+    上次没成.current = null;
+    锁话.current = null;
+    草稿停.current = false;
+  }, [open]);
   const 判定 = useFollowJudge(open);
   /*
     F-跟进-06：项目模式下主区只留沟通内容、卡点、下一步、下一步时间、截图录音，别的收进默认折叠的「更多」。
@@ -367,6 +386,9 @@ export default function FollowUpForm({
       if ("type" in v || "method" in v) 人改过类型.current = true;
     },
   });
+
+  /** 人改了一格：草稿照存；过时被拒、草稿已清掉之后不再存 */
+  const 记改 = () => { if (!草稿停.current) 守.改了(); };
 
   async function onAiParse() {
     return runParse(aiText);
@@ -537,11 +559,26 @@ export default function FollowUpForm({
   /** 保存（原型 g.save）：转圈 → 对勾在保存键里；没成原因浮在键上方，框留着可以再点 */
   async function 保存(): Promise<{ ok: boolean; error?: string }> {
     if (存着) return { ok: false, error: "正在保存，请稍等" };
+    if (不能改) return { ok: false, error: 不能改 };
     set存着(true);
     上次没成.current = null;
     try {
       const r = await onOk();
-      if (!r.ok) 上次没成.current = r.error ?? null;
+      if (!r.ok) {
+        上次没成.current = r.error ?? null;
+        const 锁 = 不能再改话(r.error);
+        if (锁) {
+          锁话.current = 锁;
+          set不能改(锁);
+          // 过时：同项目页，没保存的改动清掉（锁那句已经说了「已清掉」）；页面在 onOk 里已 router.refresh
+          if (r.error === 本人改沟通过时话) {
+            守.存好了();
+            草稿停.current = true;
+          }
+          // 原因只写在表单下方（下面 csq-err），保存键上不再浮同一句（SaveButton 原因在别处）
+          return { ok: false, error: 锁 };
+        }
+      }
       return r;
     } catch (error) {
       if (!error || typeof error !== "object" || !("errorFields" in error)) return { ok: false, error: 动作出错话(error, "保存失败，请刷新确认结果后重试") };
@@ -761,7 +798,7 @@ export default function FollowUpForm({
           type={type ?? "PHONE"}
           method={method}
           类型们={跟进类型们(外贸精简(b)).filter((t) => !只读 || (t.value !== "TASK" && t.value !== "REMIND"))}
-          onChange={(v) => { form.setFieldsValue(v); 人改过类型.current = true; 改了收错(); 守.改了(); }}
+          onChange={(v) => { form.setFieldsValue(v); 人改过类型.current = true; 改了收错(); 记改(); }}
         />
       </Form.Item>
     </>
@@ -785,7 +822,7 @@ export default function FollowUpForm({
   >
     <Input.TextArea
       value={aiText}
-      onChange={(e) => { setAiText(e.target.value); 守.改了(); }}
+      onChange={(e) => { setAiText(e.target.value); 记改(); }}
       autoSize={{ minRows: 2, maxRows: 6 }}
       maxLength={5000}
       placeholder={'跟进速记：把沟通过程随手倒出来，或直接粘贴微信聊天记录，AI 帮你填表。\n如："刚和周总通了 20 分钟电话，他担心交期，想先小批量试一单，下周三再约他聊报价"'}
@@ -822,14 +859,14 @@ export default function FollowUpForm({
         <Button key="知道了" type="primary" onClick={做收尾}>知道了</Button>,
       ] : [
         <Button key="取消" onClick={关或收尾}>取消</Button>,
-        <SaveButton key="存" 做={保存} disabled={须知问着} 已保存={成了字} 成了={存成了} 收错={收错}>保存</SaveButton>,
+        <SaveButton key="存" 做={保存} disabled={须知问着 || !!不能改} title={不能改 ?? undefined} 已保存={成了字} 成了={存成了} 收错={收错} 原因在别处={(因) => 因 === 锁话.current}>保存</SaveButton>,
       ]}
       width={640}
       destroyOnHidden
     >
       {/* AI 速记块放在 Form 里面（它不是字段）：挑人那一格是 Form.Item，得在它上面、仍是第一格 */}
       {守.提示}
-      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("type" in changed) 人改过类型.current = true; 改了收错(); 守.改了(); }}>
+      <Form form={form} layout="vertical" style={{ marginTop: 8 }} onValuesChange={(changed) => { if ("type" in changed) 人改过类型.current = true; 改了收错(); 记改(); }}>
         {挑人 && <CustomerPick 预选={预选客户} 近况={近况} on近况={换人} 不提计划={Boolean(收口计划)} />}
         {!收起 && AI块}
         {收起 ? (
@@ -870,7 +907,7 @@ export default function FollowUpForm({
             </Col>
             {须知?.卡点默认 && (
               <Col span={24}>
-                <卡点格 默认={须知.卡点默认} 原因们={须知.卡点原因们 ?? []} 值={卡点} on改={(x) => { set卡点(x); 改了收错(); 守.改了(); }} />
+                <卡点格 默认={须知.卡点默认} 原因们={须知.卡点原因们 ?? []} 值={卡点} on改={(x) => { set卡点(x); 改了收错(); 记改(); }} />
               </Col>
             )}
             {/* 组员记（11-19 客户答复，原审核 11-18 权限 P1-11）：下一步是负责人的格，不摆下一步计划、下一步时间 */}
@@ -905,7 +942,7 @@ export default function FollowUpForm({
                           form.setFieldsValue({ 下一步时间: 日 });
                           void form.validateFields(["下一步时间"]).catch(() => {});
                           改了收错();
-                          守.改了();
+                          记改();
                         }}
                       >
                         {名}
@@ -918,7 +955,7 @@ export default function FollowUpForm({
             </>)}
             <Col span={24}>
               <Form.Item label="截图 / 录音" extra="可不传，保存后挂在这条沟通上；也可以直接粘贴截图">
-                <选沟通附件 文件们={附件们} on改={(x) => { set附件们(x); 改了收错(); 守.改了(); }} />
+                <选沟通附件 文件们={附件们} on改={(x) => { set附件们(x); 改了收错(); 记改(); }} />
               </Form.Item>
             </Col>
             <Col span={24} style={{ marginBottom: 12 }}>
@@ -1086,6 +1123,7 @@ export default function FollowUpForm({
           </Row>
         )}
       </Form>
+      {不能改 && <div role="alert" className="csq-err">{不能改}</div>}
 
       {!record?.id && !只读 && 收口计划 && (
         <div style={{ borderTop: "1px dashed var(--line-soft)", paddingTop: 12, marginTop: 4 }}>

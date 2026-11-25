@@ -6,7 +6,8 @@
  */
 import { 给人看的错 } from "@/lib/action-error";
 
-export type 做的结果 = void | undefined | { ok: boolean; error?: string | null };
+/** 提示：成了但有一句要说的；有没撤成：撤销成了一部分、有没撤成的（撤销条按出错样式留久一点、悬停停表，UndoBar） */
+export type 做的结果 = void | undefined | { ok: boolean; error?: string | null; 提示?: string | null; 有没撤成?: boolean | null };
 
 /** 没成的话，给人看的那句原因 */
 export const 没说原因 = "没做成，请稍后再试";

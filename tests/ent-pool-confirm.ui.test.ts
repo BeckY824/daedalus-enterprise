@@ -16,7 +16,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
 
 let browser: Browser, bundle: string;
-type W = { __调: Record<string, unknown[][]>; __挡?: boolean; __预览?: unknown; __render: (o?: { 持有?: { 有: number; 上限: number } | null; 候选信息?: unknown; 无效原因选项?: string[]; 能恢复?: boolean; 多人?: number; 转走?: boolean }) => void };
+type W = { __调: Record<string, unknown[][]>; __挡?: boolean; __预览?: unknown; __render: (o?: { 持有?: { 有: number; 上限: number } | null; 候选信息?: unknown; 无效原因选项?: string[]; 能恢复?: boolean; 多人?: number; 转走?: boolean; 项目行?: boolean }) => void; __撤客户?: unknown; __撤项目?: unknown };
 
 beforeAll(async () => {
   const plugin: Plugin = { name: "pool-confirm-boundaries", setup(b) {
@@ -26,10 +26,10 @@ beforeAll(async () => {
     const 公海成 = "{ok:true,updated:a[0].length,unchanged:0,原负责人:a[0].map(id=>({id,值:''})),项目:{领到:a[2]||[],没领到:[]},给谁:{id:'u1',name:'同事'}}";
     stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
     stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-    stub(/customers\/pool-actions$/, `export const 领取=${记("领取", 公海成, "{ok:false,error:'只有销售、销售管理、总管理能领'}")},分配公海=${记("分配公海", 公海成, "{ok:false,error:'只有总管理和销售管理能分配'}")},撤销公海=async()=>({ok:true,updated:1});`);
+    stub(/customers\/pool-actions$/, `export const 领取=${记("领取", 公海成, "{ok:false,error:'只有销售、销售管理、总管理能领'}")},分配公海=${记("分配公海", 公海成, "{ok:false,error:'只有总管理和销售管理能分配'}")},撤销公海=async()=>window.__撤客户??{ok:true,updated:1};`);
     stub(/\/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 领取项目=async()=>({ok:true,updated:0});"));
     stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
-    stub(/^\.\/actions$/, `export const 标无效客户=${记("标无效", "{ok:true,updated:1,unchanged:0}", "{ok:false,error:'只有总管理和销售管理能标无效客户'}")},恢复有效客户=${记("恢复", "{ok:true,updated:1,unchanged:0}", "{ok:false,error:'只有系统管理员或回收站副手能恢复无效客户'}")},分配公海项目=${记("分配公海项目", "{ok:true,分到:a[0],没分到:[],给谁:{id:'u1',name:'同事'}}", "{ok:false,error:'没权限'}")},撤销公海项目=async()=>({ok:true,updated:1});`);
+    stub(/^\.\/actions$/, `export const 标无效客户=${记("标无效", "{ok:true,updated:1,unchanged:0}", "{ok:false,error:'只有总管理和销售管理能标无效客户'}")},恢复有效客户=${记("恢复", "{ok:true,updated:1,unchanged:0}", "{ok:false,error:'只有系统管理员或回收站副手能恢复无效客户'}")},分配公海项目=${记("分配公海项目", "{ok:true,分到:a[0],没分到:[],给谁:{id:'u1',name:'同事'}}", "{ok:false,error:'没权限'}")},撤销公海项目=async()=>window.__撤项目??{ok:true,updated:1};`);
     b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
   } };
   bundle = (await build({ stdin: { contents: `
@@ -42,13 +42,14 @@ beforeAll(async () => {
     const 客=(id,名,o={})=>({id,种:'客户',customerId:id,projectId:null,客户名:名,项目名:null,进程:null,属性:'客户池',最后跟进:null,入池时间:时,创建时间:时,类:'主动退回',累计:1,进程明细:null,入池原因:'—',快捷:'首次退回',原负责人是我:false,...o});
     const 长='某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域销售服务中心';
     const 行=[客('c1',长),客('c2','蓝湾科技',{号码不全:true}),客('c3','Sahara Games',{类:'无效',快捷:'无效客户'})];
+    const 项行=客('p1','北辰文旅',{种:'项目',customerId:'c9',projectId:'p1',项目名:'二期扩容',属性:'线索池'});
     const users=[{id:'u1',name:'李想',email:'a'},{id:'u2',name:'周宁',email:'b'},{id:'u3',name:'一位名字特别特别长的同事欧阳某某某',email:'c'}];
     window.__调={};
     let root;
     const 多=(n)=>Array.from({length:n},(_,i)=>({id:'m'+i,name:'同事'+String(i).padStart(2,'0'),email:'m'+i}));
     window.__render=(o={})=>{ root=root||createRoot(document.getElementById('root')); root.render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
       <div style={{display:'flex'}}><nav style={{width:220,flex:'none'}}/><main style={{flex:1,minWidth:0,padding:24}}>
-        <Pool 行={行} 总数={3} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:3,线索池:0,商机池:0,订单池:0,客户池:3}} 截断={false} 库里有 filters={{keyword:'',attr:'',quick:'',sort:''}} 渠道筛选项={[]} 能标无效 能恢复={o.能恢复??true} 能分配 users={o.多人?[...users,...多(o.多人)]:users} 候选信息={o.候选信息} 无效原因选项={o.无效原因选项} 持有={o.持有??null} 三态开 转走预览={o.转走?async(ids)=>{(window.__调.转走预览??=[]).push([ids]);await new Promise(r=>setTimeout(r,80));if(window.__预览==='坏')throw new Error('x');return window.__预览??{项目数:0,项目:[]}}:undefined}/>
+        <Pool 行={o.项目行?[...行,项行]:行} 总数={o.项目行?4:3} 当前页={1} pageSize={20} 快捷数={快捷数} 属性数={{全部:3,线索池:0,商机池:0,订单池:0,客户池:3}} 截断={false} 库里有 filters={{keyword:'',attr:'',quick:'',sort:''}} 渠道筛选项={[]} 能标无效 能恢复={o.能恢复??true} 能分配 users={o.多人?[...users,...多(o.多人)]:users} 候选信息={o.候选信息} 无效原因选项={o.无效原因选项} 持有={o.持有??null} 三态开 转走预览={o.转走?async(ids)=>{(window.__调.转走预览??=[]).push([ids]);await new Promise(r=>setTimeout(r,80));if(window.__预览==='坏')throw new Error('x');return window.__预览??{项目数:0,项目:[]}}:undefined}/>
       </main></div></BusinessProvider></App>); };
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -415,6 +416,32 @@ it("分配选人框（原型 pool.assign）：默认选中的人（上次分给�
     await page.getByLabel("搜同事名字").press("ArrowDown");
     await expect.poll(() => 单.getByRole("option", { name: /同事28/ }).getAttribute("aria-selected")).toBe("true");
     expect(await 人.locator(".pool-pick-ok").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// 复审 11-26 S2：客户行、项目行一起领了，撤销时两部分各说各的——客户那句后面接「另撤销 N 个项目」；
+// 一边撤成、另一边 ok:false 不再盖掉整条成「撤销不了」，按「撤成一部分」写（出错样式、整句）
+it.each([
+  ["客户那句 + 另撤销项目", { ok: true, updated: 1, 提示: "这位刚才已经撤回公海了" }, { ok: true, updated: 1 }, "已撤销；这位刚才已经撤回公海了；另撤销 1 个项目", "撤了"],
+  ["客户撤成、项目撤不了", { ok: true, updated: 1 }, { ok: false, error: "已经有人动过了" }, "已撤销 1 位客户；项目没撤销：已经有人动过了", "半"],
+  ["客户撤不了、项目撤成", { ok: false, error: "负责人刚被别人改过，这次没有撤销，刷新看看" }, { ok: true, updated: 1 }, "已撤销 1 个项目；客户没撤销：负责人刚被别人改过，这次没有撤销，刷新看看", "半"],
+] as const)("客户 + 项目一起领后撤销：%s", async (_名, 客户回, 项目回, 应, 态) => {
+  const { page, errors } = await open();
+  try {
+    await page.evaluate(([客, 项]) => { const w = window as unknown as W; w.__撤客户 = 客; w.__撤项目 = 项; w.__render({ 项目行: true }); }, [客户回, 项目回] as const);
+    await 行(page, "p1").waitFor();
+    await 行(page, "c1").locator(".ant-checkbox-input").check();
+    await 行(page, "p1").locator(".ant-checkbox-input").check();
+    const 条 = page.locator(".list-sel");
+    await 条.getByRole("button", { name: /^领\s*取$/ }).click();
+    await 条.getByRole("button", { name: /确认领取/ }).click();
+    await expect.poll(() => 调(page, "领取")).toBe(1);
+    await expect.poll(() => 撤销条(page).count()).toBe(1);
+    await 撤销条(page).getByRole("button", { name: /撤销/ }).click();
+    await expect.poll(() => 撤销条(page).getAttribute("data-state")).toBe(态);
+    expect(await 撤销条(page).locator(".undo-t").innerText()).toBe(应);
+    expect(await 撤销条(page).innerText()).not.toContain("撤销不了");
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

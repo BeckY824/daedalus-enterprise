@@ -299,8 +299,10 @@ describe("没人负责的公海客户：领错、分错都能撤（11-02）", ()
     当(乙);
     const r = await 领取([c]);
     if (!r.ok) throw new Error(r.error);
-    expect(await 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目)).toMatchObject({ ok: true, updated: 0, unchanged: 1 });
+    // 一位都没撤成：ok:false 说清为什么，界面不报「已撤销」（复审 11-26 M1）
+    expect(await 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目)).toEqual({ ok: false, error: "这位已经不归你、原负责人已停用或过了撤销时限，这次没有撤销" });
     expect(await 负责人(c)).toBe(乙.id);
+    expect(await 在客户公海(c)).toBe(false);
   });
 });
 
@@ -791,10 +793,33 @@ describe("默认：线索公海的项目能单独领，客户不动（11-09，M-
     const r = await 分配公海项目([p], 丙.id);
     if (!r.ok || !r.整包) throw new Error("没整包");
     const 假 = { ...r.整包, 原: [...r.整包.原, { id: 丙的, 值: 乙.id }] };
-    expect(await 撤销公海项目("分配", r.分到, 丙.id, 假)).toMatchObject({ ok: true, updated: 1 });
+    // 客户那一半筛掉的那位写进提示带出来（复审 11-26 S1），不只看 ok
+    expect(await 撤销公海项目("分配", r.分到, 丙.id, 假)).toMatchObject({
+      ok: true, updated: 1, 有没撤成: true,
+      提示: "已撤销 1 位；1 位已经不归分到的人、不是你刚才分的、原负责人已停用或过了撤销时限，这次没有撤销",
+    });
     expect(await 在客户公海(c)).toBe(true);
     expect(await 在客户公海(丙的)).toBe(false);
     expect(await 负责人(丙的)).toBe(丙.id);
+  });
+
+  it("P-公海-10 撤销整包：项目撤成了、客户那一半一位都没撤成——项目照算撤了、记日志，客户那句带出来（复审 11-26 S1）", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    当(乙);
+    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true });
+    当(老板);
+    const r = await 分配公海项目([p], 丙.id);
+    if (!r.ok || !r.整包) throw new Error("没整包");
+    // 分完主管又把客户转给了经理：客户那一半不归丙了
+    await prisma.customer.update({ where: { id: c }, data: { salesOwnerId: 经理.id } });
+    expect(await 撤销公海项目("分配", r.分到, 丙.id, r.整包)).toEqual({
+      ok: true, updated: 1, unchanged: 0, 有没撤成: true,
+      提示: "客户没撤销：这位已经不归分到的人、不是你刚才分的、原负责人已停用或过了撤销时限，这次没有撤销",
+    });
+    expect(await 项目在公海(p)).toBe(true);
+    expect(await 负责人(c)).toBe(经理.id);
+    expect(await prisma.auditLog.count({ where: { summary: { contains: "撤销分配：1 个项目放回线索公海" } } })).toBe(1);
   });
 });
 

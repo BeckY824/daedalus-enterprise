@@ -1295,32 +1295,46 @@ it("本人限时改（低-1）：弹窗开着到点，框里说一句、草稿�
 
 /*
   11-26 审查：服务端拒回来的话被「改一格就清」收掉，保存键又能点、点了再报一次。
-  客户进了公海、挂的项目记不了沟通：改一格不收；服务端说过了 30 分钟（本地钟还没到点）：和本地计时到点一样——换本人改过时那句、草稿清掉、保存灰掉
+  客户进了公海、挂的项目记不了沟通：改一格不收、保存灰掉（这条再也改不成，点了只会再被拒）；
+  服务端说过了 30 分钟（本地钟还没到点）：和本地计时到点一样——换本人改过时那句、草稿清掉、保存灰掉
 */
-it("修改这条沟通被服务端拒：公海 / 项目那两句改一格不收；「超过 30 分钟」当成到点，保存灰掉、草稿清掉", async () => {
+it("修改这条沟通被服务端拒：公海 / 项目那两句改一格不收、保存灰掉；「超过 30 分钟」当成到点，保存灰掉、草稿清掉", async () => {
   const { page, errors } = await 覆盖(1280, { 可改沟通: false, 可删沟通: false, followUps: [本人行("f1", Date.now() + 10 * 60_000, { content: "原来的内容" })] });
   try {
     await page.waitForFunction(() => !!document.querySelector("[aria-label=这条沟通的更多操作]"));
-    await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
-    await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText(/^修改（/).click();
     const 窗 = page.getByRole("dialog").filter({ hasText: "修改这条沟通" });
-    await 窗.waitFor();
     const 错 = 窗.locator(".pd-modal-err");
     const 存 = 窗.getByRole("button", { name: /保\s*存/ });
+    const 开 = async () => {
+      await page.getByRole("button", { name: "这条沟通的更多操作" }).first().click();
+      await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) .ant-dropdown-menu").getByText(/^修改（/).click();
+      await 窗.waitFor();
+    };
     for (const 话 of [本人改公海话, 本人改沟通项目话]) {
+      await 开();
       await page.evaluate((x) => Reflect.set(window, "__改沟通回", { ok: false, error: x }), 话);
       await 存.click();
       await expect.poll(() => 错.innerText()).toBe(话);
+      // 这条再也改不成：保存灰掉，悬停说为什么
+      await expect.poll(() => 存.isDisabled()).toBe(true);
+      expect(await 存.getAttribute("title")).toBe(话);
       await 窗.getByLabel("沟通内容").click();
       await page.keyboard.press("End");
       await page.keyboard.type("改", { delay: 20 });
       await page.waitForTimeout(300);
       expect(await 错.innerText()).toBe(话);
+      expect(await 存.isDisabled()).toBe(true);
+      // 关了再开（新的一个框）：从头来，保存又能点
+      await 窗.getByRole("button", { name: /取\s*消/ }).click();
+      await expect.poll(() => 窗.count()).toBe(0);
     }
-    // 别的原因照旧一改就收
+    // 别的原因照旧一改就收，保存不灰
+    await 开();
+    expect(await 存.isDisabled()).toBe(false);
     await page.evaluate(() => Reflect.set(window, "__改沟通回", { ok: false, error: "网络连不上，请稍后再试" }));
     await 存.click();
     await expect.poll(() => 错.innerText()).toBe("网络连不上，请稍后再试");
+    expect(await 存.isDisabled()).toBe(false);
     await 窗.getByLabel("沟通内容").click();
     await page.keyboard.type("再", { delay: 20 });
     await expect.poll(() => 错.count(), { timeout: 1000 }).toBe(0);
@@ -1335,6 +1349,7 @@ it("修改这条沟通被服务端拒：公海 / 项目那两句改一格不收�
     await page.keyboard.type("又", { delay: 20 });
     await page.waitForTimeout(300);
     expect(await 错.innerText()).toContain("已经超过提交后 30 分钟");
+    // 灰掉以后没再交：公海、项目、网络、过时各一次
     expect(await page.evaluate(() => (Reflect.get(window, "__改沟通") as unknown[]).length)).toBe(4);
     expect(errors).toEqual([]);
   } finally { await page.evaluate(() => Reflect.deleteProperty(window, "__改沟通回")).catch(() => {}); await page.close(); }

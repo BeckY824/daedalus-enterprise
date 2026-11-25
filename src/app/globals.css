@@ -3680,9 +3680,11 @@ button.ais-hd-b { cursor: pointer; }
   font-size: var(--fs-note); color: var(--ink); animation: undo-in var(--t) var(--ease-spring) both; }
 .undo-bar[data-out] { animation: undo-out var(--t-fast) var(--ease) both; pointer-events: none; }
 .undo-ic { flex: none; display: inline-flex; color: var(--success); }
-.undo-bar[data-state="挡了"] .undo-ic, .undo-bar[data-state="没成"] .undo-ic { color: var(--danger); }
-.undo-bar[data-state="挡了"] .undo-t, .undo-bar[data-state="没成"] .undo-t { color: var(--danger-text); }
+.undo-bar[data-state="挡了"] .undo-ic, .undo-bar[data-state="没成"] .undo-ic, .undo-bar[data-state="半"] .undo-ic { color: var(--danger); }
+.undo-bar[data-state="挡了"] .undo-t, .undo-bar[data-state="没成"] .undo-t, .undo-bar[data-state="半"] .undo-t { color: var(--danger-text); }
 .undo-t { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 撤成了一部分（「已撤销 2 位；1 位负责人刚被别人改过…」）：整句就是要读的原因，折行不截（复审 11-26 M2） */
+.undo-bar[data-state="半"] .undo-t { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; padding-block: 4px; }
 .undo-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--r-tag);
   background: transparent; font: inherit; font-size: var(--fs-note); font-weight: 600; color: var(--brand); cursor: pointer;
   transition: background var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }

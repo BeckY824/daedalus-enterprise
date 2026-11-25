@@ -218,7 +218,11 @@ describe("撤销领取 / 分配：补的潜客培育没动过就删", () => {
     if (!r.ok) throw new Error(r.error);
     const a的 = (await 名下项目(a))[0].id;
     await prisma.project.update({ where: { id: a的 }, data: { remark: "改过", updatedAt: new Date(Date.now() + 10_000) } });
-    expect(await 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目)).toMatchObject({ ok: true, updated: 1 });
+    // 培育拦的那位写进撤销条那句、带 有没撤成（复审 11-26 S4）
+    expect(await 撤销公海("领取", r.原负责人!, r.带过来, undefined, r.公海项目)).toMatchObject({
+      ok: true, updated: 1, unchanged: 1, 有没撤成: true,
+      提示: "已撤销 1 位；1 位刚补的潜客培育项目已经有人动过（记了沟通、换了节点或编辑过），这次没有撤销",
+    });
     expect(await prisma.customerPool.count({ where: { customerId: a } })).toBe(0);
     expect(await prisma.project.count({ where: { customerId: a } })).toBe(1);
     expect(await prisma.customerPool.count({ where: { customerId: b } })).toBe(1);
