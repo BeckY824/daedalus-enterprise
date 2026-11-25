@@ -47,6 +47,18 @@ export function 看成客户编号(k: string): number | null {
   return n > 0 ? n : null;
 }
 
+/**
+ * 更严的判法（11-23 复审）：带「NO.」前缀的几位都认，纯数字要够 客户编号位数 才认；不像返回 null。
+ * 只给项目列表「按原始客户编号命中重复咨询线索」那一支用（project/list.ts 编号对客户）：「2024」这种短数字多半是年份、型号，
+ * 不拿来比 repeatOfCustomerId。客户列表、公海的编号搜索照旧用 看成客户编号（员工习惯输「1478」找 NO.01478）
+ */
+export function 看成客户编号严(k: string): number | null {
+  const n = 看成客户编号(k);
+  if (n === null) return null;
+  const t = k.replace(/[！-～]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xfee0)).trim();
+  return /^no/i.test(t) || t.length >= 客户编号位数 ? n : null;
+}
+
 export const 取号SQL = `UPDATE "CustomerNoSeq" SET "n" = "n" + 1 WHERE "id" = 1 RETURNING "n"`;
 /** 计数行还没有、库里一位客户都没有：建这一行，第一个号是 1。并发时只有一个建得上，另一个 ON CONFLICT 什么都不做、回头再取号 */
 const 起头SQL = `INSERT INTO "CustomerNoSeq" ("id", "n") SELECT 1, 1 WHERE NOT EXISTS (SELECT 1 FROM "Customer") ON CONFLICT ("id") DO NOTHING RETURNING "n"`;

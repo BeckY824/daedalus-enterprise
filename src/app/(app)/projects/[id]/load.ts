@@ -10,7 +10,8 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 可选渠道们 } from "@/lib/enterprise/channel-options";
 import { llmEnabled } from "@/lib/llm";
 import { 已立项天数 } from "@/lib/project/project-fields";
-import { 来源字, 人名显示 } from "@/lib/project/system-created";
+import { 来源字, 人名显示, 是重复咨询 } from "@/lib/project/system-created";
+import { 客户其他在推项目, 重复咨询原始客户 } from "@/lib/enterprise/repeat-inquiry";
 import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签收认法, type 字典种类 } from "@/lib/enterprise/dict";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选, type 权限项目 } from "@/lib/enterprise/permissions";
@@ -59,6 +60,16 @@ import { 能动定时 } from "@/lib/enterprise/scheduled-assign";
 import { 客户在谁名下 } from "@/lib/enterprise/reply-overdue";
 import { 放弃资格 } from "@/lib/enterprise/lead-giveup";
 import type { 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
+import { 补项目去 } from "@/lib/project/customer-detail-direct";
+
+/**
+ * 重复咨询「其他在推项目」那一格：看得到的那几个补上直达地址（补项目去，同 repeat-unbuilt.ts 待补建一栏），
+ * 链接不先进 /projects/<id> 再跳客户页（跳转优化 PR-A：RedirectBoundary 那段约 130ms 空白）
+ */
+async function 其他在推带去处(me: SessionUser, projectId: string, customerId: string) {
+  const r = await 客户其他在推项目(projectId, customerId);
+  return { ...r, 看得到: await 补项目去(me, r.看得到, (x) => x.id) };
+}
 
 /** 「该客户在 XXX 名下」那一格（超时未跟进自动转，11-17）：不用提示就不带这一格 */
 async function 客户名下提示(p: { id: string; ownerId: string; customer: { salesOwnerId: string; pool: unknown } }): Promise<{ 客户在谁名下?: string }> {
@@ -344,6 +355,10 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
     channelId: p.channelId,
     // 数据来源（迁移 151）：历史沟通分析回填的项目写「历史分析」；系统里正常建的不给（界面不摆那一行）
     ...(p.source ? { 数据来源: 来源字(p.source) } : {}),
+    // 老客户重复咨询（重复咨询第一步）：现算这位客户别的在推项目，给负责人判是不是同一需求；验证框里提示选「重复线索」
+    ...(是重复咨询(p) ? { 重复咨询: await 其他在推带去处(me, p.id, p.customerId) } : {}),
+    // 只读来源字段（迁移 163，客户 E-218）：原始客户编号 + 第几次；没有编辑入口，改项目的动作都不写这两列
+    ...(是重复咨询(p) && p.repeatOfCustomerId ? { 重复咨询来自: await 重复咨询原始客户(p) } : {}),
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
     aiEnabled: 能记沟通 && 露 ? await llmEnabled() : false,

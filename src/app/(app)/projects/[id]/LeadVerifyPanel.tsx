@@ -55,6 +55,7 @@ export default function LeadVerifyPanel({
   有效还差 = [],
   沟通半句 = "",
   on去填,
+  重复线索名,
   项目名,
 }: {
   projectId: string;
@@ -77,6 +78,8 @@ export default function LeadVerifyPanel({
   沟通半句?: string;
   /** 点一块：关掉这个框，去那一格填（ProjectDetail 去填） */
   on去填?: (叫: string) => void;
+  /** 带「老客户重复咨询」标记的线索（重复咨询第一步 · 出口 C）才给：字典里「重复线索」现在的叫法，判无效的框里提示同一需求选它 */
+  重复线索名?: string;
 }) {
   const [框, set框] = useState<null | "无效" | "培育" | "异议" | "复核有效" | "复核无效">(null);
   const [无效原因, set无效原因] = useState<string | null>(null);
@@ -157,6 +160,11 @@ export default function LeadVerifyPanel({
                   ? "判无效直接交管理员最终确认：确认无效才算无效线索，确认有效会回到你这里继续跟。"
                   : "判无效要过复核：复核也判无效才算无效线索，复核判有效会回到你这里。"}
             </div>
+            {重复线索名 && (
+              <div className="lv-repeat-hint" data-testid="lead-verify-repeat-hint">
+                这条是老客户重复咨询：如与这位客户原来在推的项目是同一需求，无效原因选「{重复线索名}」（不会把客户状态改成流失）。
+              </div>
+            )}
             {有字典 ? (
               <DictSelect style={{ width: "100%", marginBottom: 8 }} placeholder="无效原因（必选）" aria-label="无效原因" value={无效原因} onChange={set无效原因} options={无效原因选项} />
             ) : (
