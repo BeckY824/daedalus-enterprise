@@ -2189,8 +2189,8 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
     <motion.div id={`fu-${f.id}`} className="rec-tl-item rec-sum-item" layout initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ delay: Math.min(index, 8) * 间隔, duration: 时长.base, ease: 曲线.ease }}>
       <div className="rec-tl-body">
         <div className="rec-tl-head">
-          <span className="rec-sum-type">{跟进方式名(f)}</span>
-          {/* 售后回访（11-25，E-283）：方式后面一个浅色小标；窄了整行折，小标不缩 */}
+          <span className="rec-sum-type" title={跟进方式名(f)}>{跟进方式名(f)}</span>
+          {/* 售后回访（11-25，E-283）：方式后面一个浅色小标；这一行不折，放不下方式「…」、悬停看全，小标和时间不缩；手机（≤767）小标排到方式前面 */}
           {f.afterSale && <Tag bordered={false} color="cyan" className="as-tag" data-testid="follow-after-sale">{售后回访名}</Tag>}
           {时间}
           {f.status !== "已完成" && (

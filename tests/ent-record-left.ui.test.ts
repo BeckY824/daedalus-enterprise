@@ -272,6 +272,42 @@ it("本人售后那条：项目名不是链接、能传附件、限时内摆「�
     } finally { await page.close(); }
   }
 });
+/*
+  沟通行头一行（11-25，方案-售后回访 第五节 + 全站一行 + 省略号 + 悬停）：方式、售后回访标、时间、状态不折行；方式放不下「…」、悬停看全；
+  标和时间完整；手机（≤767）售后回访标排到方式前面。390 / 768 / 1024 / 1280 都不横滚
+*/
+it.each([390, 768, 1024, 1280])("沟通汇总行头 %ipx：长方式 + 售后回访 + 时间 + 状态只占一行，方式「…」悬停看全，标完整，不横滚", async (w) => {
+  const 长方式 = "企业微信视频会议加屏幕共享演示再加一段";
+  const 条 = (id: string, 加: Record<string, unknown>) => ({ id, type: "PHONE", method: 长方式, title: "", content: "回访", status: "待完成", duration: null, occurredAt: "2025-11-25T02:00:00.000Z", dueAt: null, participants: null, sourceText: null, ownerName: "QA", contactName: null, contactPosition: null, contactId: null, opportunityId: null, updatedAt: "2025-11-25T02:00:00.000Z", 项目: { id: "p9", 名: "交付项目甲" }, ...加 });
+  const page = await open(true, w, true, { followUps: [条("f7", { afterSale: true }), 条("f8", {})], 只读: true });
+  try {
+    for (const id of ["f7", "f8"]) {
+      const 头 = page.locator(`#fu-${id} .rec-tl-head`);
+      await 头.waitFor();
+      const 量 = await 头.evaluate((h) => {
+        const hr = h.getBoundingClientRect();
+        const 子 = [...h.children];
+        const 顶 = 子.map((e) => e.getBoundingClientRect().top);
+        return {
+          高: hr.height,
+          顶差: Math.max(...顶) - Math.min(...顶),
+          完整: 子.filter((e) => !e.classList.contains("rec-sum-type")).map((e) => ({ 字: e.textContent, 全: e.scrollWidth <= e.clientWidth + 1 && e.getBoundingClientRect().right <= hr.right + 1 })),
+        };
+      });
+      expect(量.顶差, `${id} 一行`).toBeLessThanOrEqual(4);
+      expect(量.高, `${id} 一行高`).toBeLessThanOrEqual(30);
+      for (const x of 量.完整) expect(x, `${id}「${x.字}」完整`).toEqual({ 字: x.字, 全: true });
+      expect(await 头.locator(".rec-sum-type").getAttribute("title")).toBe(长方式);
+    }
+    const 头 = page.locator("#fu-f7 .rec-tl-head");
+    const x = (sel: string) => 头.locator(sel).first().evaluate((e) => e.getBoundingClientRect().left);
+    if (w === 390) {
+      expect(await 头.locator(".rec-sum-type").evaluate((e) => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth])).toEqual(["ellipsis", true]);
+      expect(await x("[data-testid='follow-after-sale']")).toBeLessThan(await x(".rec-sum-type"));
+    } else expect(await x("[data-testid='follow-after-sale']")).toBeGreaterThan(await x(".rec-sum-type"));
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1)).toBe(true);
+  } finally { await page.close(); }
+});
 /* 10-31 改版 R6：企业版客户页头的具名按钮（照项目详情）。原来收在「跟进」旁边的下拉里 */
 const 全开 = {
   users: [{ id: "qa", name: "QA", email: "qa@x.test" }, { id: "u2", name: "同事乙", email: "b@x.test" }],

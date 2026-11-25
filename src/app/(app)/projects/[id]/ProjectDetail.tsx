@@ -1847,15 +1847,18 @@ export default function ProjectDetail({
               时间和列表同一套（今天 13:13 / 昨天 / 3 天前 / 11 月 18 日，悬停看完整时刻）
             */}
             <div className="proj-fu-m">
-              {/* 左边这一段（谁 · 方式 · 发起、阶段、提醒）窄了自己折行让位，右边时间和 ⋮ 不折（#402 实操：1024 宽时间和 ⋮ 掉到第二行） */}
-              <span className="proj-fu-l">
+              {/*
+                左边这一段（谁 · 方式 · 发起、售后回访、阶段、提醒）只占一行（全站一行 + 省略号 + 悬停）：放不下先省方式、再省发起、谁，最后省提醒标；售后回访、阶段标不缩；整段悬停看全文。
+                手机（≤767）售后回访标排到最前（方案-售后回访 第五节）。右边时间和 ⋮ 不折（#402 实操：1024 宽时间和 ⋮ 掉到第二行）
+              */}
+              <span className="proj-fu-l" title={[f.who, 跟进方式名(f, "其他方式"), ...(f.售后回访 ? [售后回访名] : []), ...(f.initiator ? [f.initiator] : []), f.node, ...(f.提醒 ? [f.提醒.文字] : [])].join(" · ")}>
                 <span className="proj-fu-i" aria-hidden>{f.type === "OTHER" ? <CommentOutlined /> : (FOLLOW_TYPE_ICON[f.type] ?? <CommentOutlined />)}</span>
                 <span className="proj-fu-who">{f.who}</span>
-                <span aria-hidden>·</span><span>{跟进方式名(f, "其他方式")}</span>
-                {f.售后回访 && <Tag bordered={false} color="cyan" data-testid="follow-after-sale">{售后回访名}</Tag>}
-                {f.initiator && <><span aria-hidden>·</span><span>{f.initiator}</span></>}
+                <span aria-hidden className="proj-fu-dot">·</span><span className="proj-fu-way">{跟进方式名(f, "其他方式")}</span>
+                {f.售后回访 && <Tag bordered={false} color="cyan" className="proj-fu-as" data-testid="follow-after-sale">{售后回访名}</Tag>}
+                {f.initiator && <><span aria-hidden className="proj-fu-dot">·</span><span className="proj-fu-ini">{f.initiator}</span></>}
                 <Tag variant="filled" className="proj-fu-stage">{f.node}</Tag>
-                {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
+                {f.提醒 && <Tag color={提醒色[f.提醒.级别]} className="proj-fu-rem" title={f.提醒.文字}>{f.提醒.文字}</Tag>}
               </span>
               <span className="proj-fu-t" title={fmtDateTime(f.occurredAt)}>{smartTime(f.occurredAt)}</span>
               {f.已修改 && <span data-testid="follow-edited" title="这条沟通提交后改过，改了什么见操作日志" className="proj-fu-edited">已修改</span>}
