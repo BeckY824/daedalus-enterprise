@@ -106,3 +106,29 @@ it("手机 390 宽：那一行一条，放不下省略号，不出横向滚动",
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   } finally { await page.close(); }
 });
+
+/*
+  首页 AI 项目沟通卡（ProjectProposalFields）：卡自己取一次开关（useFollowJudge），关着时那一行跟着说「不算有效沟通」。
+  单独打一包，只渲染这张卡的格子（审查建议 4）
+*/
+it("首页 AI 项目沟通卡：开关关着说不算有效沟通，开着说不能保存", async () => {
+  const 卡包 = (await build({ stdin: { contents: `
+    import React,{useState} from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';
+    import ProjectProposalFields from '@/components/ProjectProposalFields';
+    function 卡(){const [d,setD]=useState({kind:'project_followup',targetId:'p1',targetName:'一号项目',type:'PHONE',content:'开店',下一步:'',下一步时间:'',要时间:false});
+      return <ProjectProposalFields draft={d} setDraft={setD}/>;}
+    window.__render=()=>createRoot(document.getElementById('root')).render(<ConfigProvider><App><卡/></App></ConfigProvider>);
+  `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
+  for (const [判定, 话] of [[{ 拦: false, 占位词: [] }, "不足 4 个字，还差 2 个字，不算有效沟通"], [{ 拦: true, 占位词: [] }, "这样写会被判为无意义，不能保存：不足 4 个字，还差 2 个字"]] as const) {
+    const page = await browser.newPage({ viewport: { width: 1366, height: 900 } }); page.setDefaultTimeout(5000);
+    const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+    try {
+      await page.route("http://f052.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
+      await page.goto("http://f052.test"); await page.addScriptTag({ content: 卡包 });
+      await page.evaluate((x) => { Reflect.set(window, "__判定", x); }, 判定);
+      await page.evaluate(() => (window as unknown as { __render: () => void }).__render());
+      await expect.poll(() => 行(page).innerText()).toBe(话);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 60_000);

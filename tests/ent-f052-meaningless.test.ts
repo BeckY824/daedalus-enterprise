@@ -25,6 +25,7 @@ import { 规整判定 } from "@/components/FollowMeaningLine";
 import { saveFollowUp, 沟通可选项目 } from "@/app/(app)/customers/[id]/actions";
 import { 记项目沟通Action } from "@/app/(app)/projects/actions";
 import { 沟通判定须知 } from "@/app/(app)/follow-method-actions";
+import { 沟通项目在公海话 } from "@/lib/project/follow-needs-project-text";
 
 describe("判沟通无意义（一期判据：不足 4 个字）", () => {
   it("太短、空 = 无意义，带还差几个字；有效的、占位词、只有链接不算无意义", () => {
@@ -38,6 +39,16 @@ describe("判沟通无意义（一期判据：不足 4 个字）", () => {
     expect(判沟通无意义("https://pan.example.com/s/abc", "OTHER")).toMatchObject({ 无意义: false, 种: "只有链接" });
     // 自定义占位词表
     expect(判沟通无意义("开店开店", "PHONE", { 占位词: ["开店"] })).toMatchObject({ 无意义: false, 种: "占位词" });
+  });
+
+  it("边界：「ok」「👍👍」「123」「开店ok」拦，「ok fine」放，「11」是占位词照存", () => {
+    expect(判沟通无意义("ok", "PHONE")).toMatchObject({ 无意义: true, 种: "太短" });
+    expect(判沟通无意义("ok fine", "PHONE")).toEqual({ 无意义: false, 种: null, 还差: 0 });
+    expect(判沟通无意义("👍👍", "PHONE")).toMatchObject({ 无意义: true, 种: "太短", 还差: 4 });
+    expect(判沟通无意义("123", "PHONE")).toMatchObject({ 无意义: true, 种: "太短" });
+    expect(判沟通无意义("开店ok", "PHONE")).toMatchObject({ 无意义: true, 种: "太短", 还差: 2 });
+    expect(沟通意义提示("开店ok", "PHONE", { 拦: true })).toBe("这样写会被判为无意义，不能保存：不足 4 个字，还差 2 个字（或写满 2 个英文单词）");
+    expect(判沟通无意义("11", "PHONE")).toMatchObject({ 无意义: false, 种: "占位词" });
   });
 
   it("跟进任务 / 提醒、同号再次录入留痕不判", () => {
@@ -164,7 +175,52 @@ describe("服务端拦（企业版）", () => {
     expect((await 改("开店，客户说下月开业", 好.updatedAt)).ok).toBe(true);
     const 新 = await prisma.followUp.findUniqueOrThrow({ where: { id: 存.id } });
     expect(await 改("好", 新.updatedAt)).toMatchObject({ ok: false, 无意义: true });
-    expect((await prisma.followUp.findUniqueOrThrow({ where: { id: 存.id } })).content).toBe("开店，客户说下月开业");
+    const 拦后 = await prisma.followUp.findUniqueOrThrow({ where: { id: 存.id } });
+    expect(拦后.content).toBe("开店，客户说下月开业");
+    expect(拦后.updatedAt.getTime()).toBe(新.updatedAt.getTime());
+  });
+
+  it("拦下无副作用：公海客户拦下后仍在公海、负责人不变（写够了才领走）", async () => {
+    const a = await 线索();
+    // 退回公海时客户上留着原负责人（老板），甲名下的项目留在原处
+    await prisma.customer.update({ where: { id: a.customerId }, data: { salesOwnerId: 老板.id } });
+    await prisma.customerPool.create({ data: { customerId: a.customerId } });
+    expect(await 记客户(a, "开店")).toMatchObject({ ok: false, 无意义: true });
+    expect(await prisma.customerPool.count({ where: { customerId: a.customerId } })).toBe(1);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: a.customerId } })).salesOwnerId).toBe(老板.id);
+    expect(await 条数(a.customerId)).toBe(0);
+    // 对照：写够了照存、顺手领走（上面那条确实走到了领取前那一道）
+    const 好 = await 记客户(a, "开店的事聊了");
+    expect(好.ok, JSON.stringify(好)).toBe(true);
+    expect(await prisma.customerPool.count({ where: { customerId: a.customerId } })).toBe(0);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: a.customerId } })).salesOwnerId).toBe(甲.id);
+  });
+
+  it("拦下无副作用：完成计划拦下后计划还没完成", async () => {
+    const a = await 线索();
+    const plan = await prisma.followPlan.create({ data: { subject: "回访", plannedAt: new Date(), customerId: a.customerId, ownerId: 甲.id } });
+    expect(await 记客户(a, "开店", { 附带: { tasks: [], plan: null, 完成计划: plan.id } })).toMatchObject({ ok: false, 无意义: true });
+    expect((await prisma.followPlan.findUniqueOrThrow({ where: { id: plan.id } })).done).toBe(false);
+    expect(await 条数(a.customerId)).toBe(0);
+    const 好 = await 记客户(a, "回访了，客户下月开业", { 附带: { tasks: [], plan: null, 完成计划: plan.id } });
+    expect(好.ok, JSON.stringify(好)).toBe(true);
+    expect((await prisma.followPlan.findUniqueOrThrow({ where: { id: plan.id } })).done).toBe(true);
+  });
+
+  it("项目页带卡点记沟通：拦下不存、也没发卡点", async () => {
+    const a = await 线索();
+    const r = await 记项目沟通Action(a.id, { type: "PHONE", content: "开店", occurredAt: 现在(), 阶段: "线索", 下一步: "明天再打一次", 下一步时间: null }, { type: "中度卡点", reasons: ["价格预算分歧"] });
+    expect(r).toMatchObject({ ok: false, 无意义: true });
+    expect(await 条数(a.customerId)).toBe(0);
+    expect(await prisma.entBlocker.count({ where: { projectId: a.id } })).toBe(0);
+  });
+
+  it("项目页记沟通：项目在公海的先说在公海（那句更准），不说太短", async () => {
+    const a = await 线索();
+    await prisma.project.update({ where: { id: a.id }, data: { pooledAt: new Date() } });
+    const r = await 记项目(a, "开店");
+    expect(r).toMatchObject({ ok: false, error: 沟通项目在公海话 });
+    expect(r).not.toHaveProperty("无意义");
   });
 
   it("改已有的：老记录末尾带空白、只改日期照存（内容按去掉首尾空白比）", async () => {
