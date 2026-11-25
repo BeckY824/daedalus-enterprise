@@ -14,6 +14,8 @@
  * 重启不是攻击者能触发的动作，而为它引一张表、一个 Redis 都不划算。
  */
 
+import { beijingDay } from "@/lib/business-clock";
+
 type 记录 = { 失败次数: number; 冷却到: number; 最后失败: number };
 
 const 桶 = new Map<string, 记录>();
@@ -145,15 +147,21 @@ export const 每IP每日注册上限 = 3;
 
 const 日计数 = new Map<string, { day: string; n: number }>();
 
+/**
+ * 「今天」按北京日切（business-clock beijingDay，固定 UTC+8）：原来取 UTC 日，北京 0–8 点还算前一天，
+ * 北京早上 8 点（UTC 零点）才翻篇；宿主 TZ 是伦敦也一样按北京数
+ */
+const 今天 = (now: Date) => beijingDay(now);
+
 /** 今天这个 key 计了几次。key 自带前缀区分用途（signup: 注册、lead: 官网留资） */
 export function 今日计数(key: string, now = new Date()): number {
-  const day = now.toISOString().slice(0, 10);
+  const day = 今天(now);
   const r = 日计数.get(key);
   return r && r.day === day ? r.n : 0;
 }
 
 export function 记一次今日(key: string, now = new Date()): void {
-  const day = now.toISOString().slice(0, 10);
+  const day = 今天(now);
   const r = 日计数.get(key);
   日计数.set(key, r && r.day === day ? { day, n: r.n + 1 } : { day, n: 1 });
   // 别让它无限长：过了一万个 key 就整个丢掉，重新数

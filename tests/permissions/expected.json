@@ -130,6 +130,7 @@
     "动作 app/(app)/customers/[id]/contact-link-actions.ts#解除挂靠": {"未登录":"401","销售":"允许","市场":"允许","经理":"允许","老板":"允许"},
     "动作 app/(app)/customers/[id]/follow-history-actions.ts#loadCustomerFeed": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"403"},
     "动作 app/(app)/customers/[id]/follow-history-actions.ts#loadFollowHistory": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"403"},
+    "动作 app/(app)/customers/[id]/follow-history-actions.ts#readCustomerFeedRow": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"403"},
     "动作 app/(app)/customers/[id]/follow-history-actions.ts#readFollowHistoryRow": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"403"},
     "动作 app/(app)/customers/[id]/history-actions.ts#读客户历史": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"403"},
     "动作 app/(app)/customers/[id]/history-actions.ts#读项目历史": {"未登录":"401","销售":"403","市场":"403","经理":"403","老板":"403"},

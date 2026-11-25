@@ -690,6 +690,9 @@ model FollowUp {
   method       String?
   /// 企业版发起主体（2026-11-01，迁移 105）：存企业字典 followInitiator 的选项名，可空；任务、提醒没有
   initiator    String?
+  /// 企业版售后回访（2026-11-25，迁移 172，P-沟通-03 的例外）：挂在交付结清的项目上记的沟通，记的时候系统打上、之后不改。
+  /// 项目以后撤回交付结清了这条也还认得是售后回访（从项目状态反推不出来）。见 lib/project/follow-needs-project.ts 能记售后回访
+  afterSale    Boolean   @default(false)
 
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -777,6 +780,9 @@ model FollowPlan {
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   ownerId    String
   owner      User     @relation(fields: [ownerId], references: [id])
+  /// 售后回访排的下次回访（2026-11-25，迁移 173）：给哪个交付结清项目排的，记售后回访时顺带排计划那一刻系统写。
+  /// 不建外键：项目删了计划照留，完成计划时核不过（项目不在 / 已不是交付结清 / 客户进了公海）就当普通计划
+  afterSaleProjectId String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 

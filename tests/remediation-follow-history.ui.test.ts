@@ -25,6 +25,7 @@ const plugin: Plugin = { name: "history-server-boundaries", setup(b) {
       if(window.__delay){window.__delay=false;await new Promise(r=>window.__resolve=r)};
       const rows=window.__rows[customerId].filter(x=>!before||x.occurredAt<before.occurredAt||(x.occurredAt===before.occurredAt&&x.id<before.id));return {ok:true,rows:rows.slice(0,50),hasMore:rows.length>50};}
     export const loadCustomerFeed=loadFollowHistory;
+    export const readCustomerFeedRow=async(customerId,id)=>({ok:true,row:window.__rows[customerId].find(x=>x.id===id)??null});
     export const readFollowHistoryRow=async(customerId,id)=>({ok:true,row:window.__rows[customerId].find(x=>x.id===id)??null});
   `);
   stub(/projects\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", "export const 项目沟通须知=async()=>(window.__须知??{ok:true,能记:false}),记项目沟通Action=async(id,x)=>{window.__项目存={id,...x};return{ok:true,followUpId:'f1',自动推到:window.__推到}};"));

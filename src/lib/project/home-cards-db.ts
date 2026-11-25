@@ -45,7 +45,7 @@ export async function 暂未跟进负责人们(圈的人: readonly string[] | un
 export async function 即将逾期的项目(规则: 组织规则, 今: Date = new Date(), 圈?: Prisma.ProjectWhereInput): Promise<string[]> {
   const 粗 = 即将逾期紧筛(规则, 字典of(企业版()), 今);
   if (!粗) return [];
-  const [们, 成员] = await Promise.all([prisma.project.findMany({ where: { AND: [粗, ...(圈 ? [圈] : [])] }, select: 算超时要的 }).then((x) => 补回收起点留痕(x)), 超时成员线(规则)]);
+  const [们, 成员] = await Promise.all([prisma.project.findMany({ where: { AND: [粗, ...(圈 ? [圈] : [])] }, select: 算超时要的 }).then((x) => 补回收起点留痕(x, prisma, 今)), 超时成员线(规则)]);
   return 们.filter((p) => 即将逾期(项目回收日(规则, p, 成员), 今)).map((p) => p.id);
 }
 

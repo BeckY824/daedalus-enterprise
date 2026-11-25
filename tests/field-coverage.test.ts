@@ -699,6 +699,18 @@ const 系统事实: Record<string, Record<string, 系统事实项>> = {
       仓库外: "同 source：只有一次性回填脚本写，仓库里没有写入方",
     },
   },
+  FollowUp: {
+    afterSale: {
+      写入方: ["src/lib/project/db.ts", "src/app/(app)/customers/[id]/actions.ts"],
+      说明: "售后回访（迁移 172，客户 E-282 / E-283）：挂在交付结清的项目上记的沟通，记的那一刻系统打上（项目页 记项目沟通、客户页 saveFollowUp），之后不改、不给手改；项目撤回交付结清了也留着",
+    },
+  },
+  FollowPlan: {
+    afterSaleProjectId: {
+      写入方: ["src/app/(app)/customers/[id]/actions.ts"],
+      说明: "下次回访（迁移 173）：记售后回访时顺手排的计划，系统记下是给哪个交付结清项目排的（saveFollowUp 附带计划），完成计划时默认挂回它；不建外键，核不过当普通计划",
+    },
+  },
   EntLeadAssign: {
     way: {
       写入方: ["src/app/(app)/leads/assign-actions.ts"],

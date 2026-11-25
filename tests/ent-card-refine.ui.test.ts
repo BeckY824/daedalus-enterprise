@@ -29,7 +29,7 @@ const plugin: Plugin = { name: "card-refine", setup(b) {
   stub(/^\.\/ai$|customers\/\[id\]\/ai$/, "export const parseFollowUpDraft=async()=>({ok:false,error:'no AI'});");
   stub(/(^|\/)pool-actions$/, "export const 放进公海=async()=>({ok:false}),领取=放进公海,撤销公海=放进公海,退回原因选项=async()=>[];");
   stub(/(^|\/)tri-state-actions$/, "export const 三态继续持有=async()=>({ok:false,error:\"\"}),三态暂缓回收=三态继续持有,三态让同事结束项目=三态继续持有;");
-  stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false});");
+  stub(/^\.\/follow-history-actions$/, "export const loadFollowHistory=async()=>({ok:true,rows:[],hasMore:false}),readFollowHistoryRow=async()=>({ok:true,row:null}),loadCustomerFeed=async()=>({ok:true,rows:[],hasMore:false}),readCustomerFeedRow=async()=>({ok:true,row:null});");
   // customers/actions（RecordView 的 ../actions）和 projects/actions（ProjectDetail 的 ../actions）都是 ../actions：并成一份桩
   stub(/^\.\.\/actions$|projects\/actions$/, `const f=${空跑};
     export const patchCustomer=async()=>({ok:true});export const 转走项目预览of=async()=>({项目数:0,项目:[]}),deleteContract=async()=>({ok:false}),删签约前清点=async()=>({退回商机:[]}),assignSalesOwner=async()=>({ok:false}),撤销改负责人=async()=>({ok:false}),patchCustomerRegion=f;
@@ -355,9 +355,12 @@ it("手机 390：进程卡卡头照 M6 ⑦ 两行（项目切换占满一行、�
 
 /* 11-26 小修：3704 实操 390 宽客户详情页 scrollWidth 442–452，阶段条 .proj-stage-node 右伸到 523–659。
    阶段条自己横滚：排里放不下的在排里滚，排的右边不出卡；它的内容宽（136 × 节点数）也不往外报——外层哪一层按内容定宽都不会被它撑开 */
-it("各宽（768 / 1024 / 1199 / 1200 / 1240 / 1280 / 1440 / 1536 / 390）客户详情不横滚；阶段条放不下就在排里横滚，排不出卡、不往外撑最小内容宽", async () => {
-  for (const w of [768, 1024, 1199, 1200, 1240, 1280, 1440, 1536, 390]) for (const 单 of [true, false]) {
+it("各宽（768 / 1024 / 1199 / 1200 / 1240 / 1280 / 1440 / 1536 / 390 / 375）客户详情不横滚；阶段条放不下就在排里横滚，排不出卡、不往外撑最小内容宽", async () => {
+  // 11-26 二修：不认 contain: inline-size 的内核也不能被撑开（width:0 兜底）——「去掉 contain」那一轮照样要过
+  for (const w of [768, 1024, 1199, 1200, 1240, 1280, 1440, 1536, 390, 375]) for (const [单, 去contain] of [[true, false], [false, false], [false, true]] as const) {
+    if (去contain && w > 768 && w !== 1024) continue;
     const { page, errors, close } = await 开(w, { 单 });
+    if (去contain) { await page.addStyleTag({ content: ".proj-stage-nodes { contain: none !important; }" }); await page.waitForTimeout(100); }
     try {
       const r = await page.evaluate(() => {
         const 排 = document.querySelector<HTMLElement>(".cd-proc .proj-stage-nodes")!, 卡 = document.querySelector<HTMLElement>(".cd-proc")!;
@@ -372,11 +375,11 @@ it("各宽（768 / 1024 / 1199 / 1200 / 1240 / 1280 / 1440 / 1536 / 390）客户
           滚: getComputedStyle(排).overflowX, 最小, 格宽: 136 * 排.querySelectorAll(".proj-stage-node").length,
         };
       });
-      expect(r.页, `宽 ${w} 页面横滚`).toBeLessThanOrEqual(0);
+      expect(r.页, `宽 ${w}${去contain ? "（去掉 contain）" : ""} 页面横滚`).toBeLessThanOrEqual(0);
       expect(r.排右, `宽 ${w} 阶段条出卡`).toBeLessThanOrEqual(r.卡右);
       expect(r.滚, `宽 ${w}`).toBe("auto");
       // 阶段条整排的最小内容宽：只剩槽外那颗出口胶囊，节点那排不算进去
-      expect(r.最小, `宽 ${w} 阶段条往外报的最小内容宽`).toBeLessThan(r.格宽 / 2);
+      expect(r.最小, `宽 ${w}${去contain ? "（去掉 contain）" : ""} 阶段条往外报的最小内容宽`).toBeLessThan(r.格宽 / 2);
       if (w === 390) expect(r.排溢, "390 宽节点排放不下，在排里横滚").toBeGreaterThan(0);
       expect(errors).toEqual([]);
     } finally { await close(); }

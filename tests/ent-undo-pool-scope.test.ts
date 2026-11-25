@@ -71,13 +71,16 @@ beforeEach(async () => {
 afterEach(() => { vi.unstubAllEnvs(); });
 afterAll(async () => { await prisma.$disconnect(); });
 
+/** 一位都没撤成（不在撤销范围：不归这人了、过了时限、不是这一下领 / 换的）：ok:false 说清为什么，撤销条不报「已撤销」（复审 11-26 M1） */
+const 撤不了 = (动作: "领取" | "分配") => ({ ok: false, error: `这位${动作 === "分配" ? "已经不归分到的人、不是你刚才分的" : "已经不归你"}、原负责人已停用或过了撤销时限，这次没有撤销` });
+
 describe("公海撤销只撤自己刚才那一下", () => {
   it("业务员拿自己的客户伪造撤销领取：不还给同事、不进公海、不写撤销记录", async () => {
     const c = await 客户(小王.id);
     const t = await prisma.task.create({ data: { title: "回电", customerId: c.id, ownerId: 小王.id } });
     当(小王);
     const r = await 撤销公海("领取", [{ id: c.id, 值: 小李.id }], { 计划: [], 待办: [t.id], 商机: [], 项目: [] });
-    expect(r).toMatchObject({ ok: true, updated: 0 });
+    expect(r).toEqual(撤不了("领取"));
     expect(await 归谁(c.id)).toBe(小王.id);
     expect(await 在公海(c.id)).toBe(false);
     expect((await prisma.task.findUniqueOrThrow({ where: { id: t.id } })).ownerId).toBe(小王.id);
@@ -107,7 +110,7 @@ describe("公海撤销只撤自己刚才那一下", () => {
     const r = await 分配公海([c.id], 小王.id);
     if (!r.ok) throw new Error(r.error);
     当(老板二);
-    expect(await 撤销公海("分配", r.原负责人!, r.带过来, 小王.id)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 撤销公海("分配", r.原负责人!, r.带过来, 小王.id)).toEqual(撤不了("分配"));
     expect(await 归谁(c.id)).toBe(小王.id);
     当(老板);
     expect(await 撤销公海("分配", r.原负责人!, r.带过来, 小王.id)).toMatchObject({ ok: true, updated: 1 });
@@ -124,7 +127,7 @@ describe("公海撤销只撤自己刚才那一下", () => {
     const r = await 领取([c.id]);
     if (!r.ok) throw new Error(r.error);
     await 记录挪到(c.id, 31);
-    expect(await 撤销公海("领取", r.原负责人!, r.带过来)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 撤销公海("领取", r.原负责人!, r.带过来)).toEqual(撤不了("领取"));
     expect(await 归谁(c.id)).toBe(小王.id);
     expect(await 在公海(c.id)).toBe(false);
     expect(await 撤销记录数(c.id)).toBe(0);
@@ -138,13 +141,13 @@ describe("公海撤销只撤自己刚才那一下", () => {
     const r = await 分配公海([c.id], 小王.id);
     if (!r.ok) throw new Error(r.error);
     await 记录挪到(c.id, 31);
-    expect(await 撤销公海("分配", r.原负责人!, r.带过来, 小王.id)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 撤销公海("分配", r.原负责人!, r.带过来, 小王.id)).toEqual(撤不了("分配"));
     expect(await 归谁(c.id)).toBe(小王.id);
   });
   it("负责人没换过的：主管填 给谁 = 负责人，塞不进从没进过公海的客户", async () => {
     const c = await 客户(小李.id);
     当(组长);
-    expect(await 撤销公海("分配", [{ id: c.id, 值: 小李.id }], undefined, 小李.id)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 撤销公海("分配", [{ id: c.id, 值: 小李.id }], undefined, 小李.id)).toEqual(撤不了("分配"));
     expect(await 在公海(c.id)).toBe(false);
     expect(await 撤销记录数(c.id)).toBe(0);
   });
@@ -161,7 +164,7 @@ describe("公海撤销只撤自己刚才那一下", () => {
     const r2 = await 分配公海([c.id], 小李.id);
     if (!r2.ok) throw new Error(r2.error);
     await 记录挪到(c.id, 31);
-    expect(await 撤销公海("分配", r2.原负责人!, r2.带过来, 小李.id)).toMatchObject({ ok: true, updated: 0 });
+    expect(await 撤销公海("分配", r2.原负责人!, r2.带过来, 小李.id)).toEqual(撤不了("分配"));
     expect(await 在公海(c.id)).toBe(false);
   });
 });

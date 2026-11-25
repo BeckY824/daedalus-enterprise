@@ -1531,7 +1531,9 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 /* 11-26 小修：390 宽客户详情页被阶段条撑出横滚（实操量到 scrollWidth 442–452）。这一排自己横滚，但它的内容宽（每格 136 × 节点数）
    还会算进外层的最小内容宽，哪层祖先按内容定宽就被撑开——contain: inline-size 让这排对外不报内容宽，只占父层给的宽，多的在排里滚 */
 .proj-stage-strip { display: flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; }
-.proj-stage-strip > .proj-stage-nodes { flex: 1 1 auto; }
+/* 11-26 二修：再加 width:0 兜底——排的起步宽写死 0、靠 flex-grow 吃满剩下的宽，往外报的最小内容宽就不按 136 × 节点数算；
+   不认 contain: inline-size 的内核（较旧的飞书 / 安卓 WebView）也不被撑开。宽屏照旧吃满，外观不变 */
+.proj-stage-strip > .proj-stage-nodes { flex: 1 1 auto; width: 0; }
 .proj-stage-nodes {
   --stage-node-w: 136px;
   list-style: none; margin: 0; padding: 3px; display: flex; flex-wrap: nowrap; gap: 0; position: relative;
@@ -3680,9 +3682,11 @@ button.ais-hd-b { cursor: pointer; }
   font-size: var(--fs-note); color: var(--ink); animation: undo-in var(--t) var(--ease-spring) both; }
 .undo-bar[data-out] { animation: undo-out var(--t-fast) var(--ease) both; pointer-events: none; }
 .undo-ic { flex: none; display: inline-flex; color: var(--success); }
-.undo-bar[data-state="挡了"] .undo-ic, .undo-bar[data-state="没成"] .undo-ic { color: var(--danger); }
-.undo-bar[data-state="挡了"] .undo-t, .undo-bar[data-state="没成"] .undo-t { color: var(--danger-text); }
+.undo-bar[data-state="挡了"] .undo-ic, .undo-bar[data-state="没成"] .undo-ic, .undo-bar[data-state="半"] .undo-ic { color: var(--danger); }
+.undo-bar[data-state="挡了"] .undo-t, .undo-bar[data-state="没成"] .undo-t, .undo-bar[data-state="半"] .undo-t { color: var(--danger-text); }
 .undo-t { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 撤成了一部分（「已撤销 2 位；1 位负责人刚被别人改过…」）：整句就是要读的原因，折行不截（复审 11-26 M2） */
+.undo-bar[data-state="半"] .undo-t { white-space: normal; overflow-wrap: anywhere; line-height: 1.5; padding-block: 4px; }
 .undo-btn { flex: none; display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; border: 0; border-radius: var(--r-tag);
   background: transparent; font: inherit; font-size: var(--fs-note); font-weight: 600; color: var(--brand); cursor: pointer;
   transition: background var(--t-fast) var(--ease), scale var(--t-press) var(--ease); }
@@ -6963,3 +6967,11 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root .nav-pend { display: none; }
 :root:root .pipe-card.is-going, :root:root .pipe-card.is-going:hover { background: var(--brand-bg); border-top-color: var(--brand); border-right-color: var(--brand); border-bottom-color: var(--brand); }
 :root:root .rec-mini:has(.nav-pend) { background: var(--brand-bg); }
+
+/* 售后回访（11-25，E-283）：锁着的「售后回访」标、沟通方式后面的小标、记沟通框里标下那句说明、下次回访那格、交付卡「记售后回访」 */
+.as-tag { margin: 0; }
+.as-note { margin-top: 0; font-size: var(--dt-aux, 12px); color: var(--text-muted); }
+.fu-as-row { margin-top: -12px; margin-bottom: 16px; }
+.fu-as-date { width: 200px; }
+.done-plan-as { margin-top: 6px; }
+.pd-as-btn { margin-top: 8px; }

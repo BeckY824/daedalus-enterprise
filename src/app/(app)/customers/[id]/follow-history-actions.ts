@@ -3,7 +3,7 @@
 import { requireUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 客户沟通汇总, 客户跟进可见条件 } from "@/lib/enterprise/customer-follow-feed";
+import { 客户沟通汇总, 客户沟通汇总一条, 客户跟进可见条件 } from "@/lib/enterprise/customer-follow-feed";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "./follow-history-query";
 
 export type FollowHistoryCursor = { occurredAt: string; id: string };
@@ -54,4 +54,16 @@ export async function readFollowHistoryRow(customerId: string, id: string) {
   const 可见 = await 客户跟进可见条件(me, customerId);
   const row = await prisma.followUp.findFirst({ where: { id, customerId, ...(可见 ? { AND: [可见] } : {}) }, include: followHistoryInclude });
   return { ok: true as const, row: row ? serializeFollowHistory(row) : null };
+}
+
+/**
+ * 企业版客户页「沟通记录」改完一条后重读这一条：走汇总那条（客户沟通汇总一条），带回 项目 / 附件 / 本人售后 / 本人可改到 / 已修改，
+ * 翻页翻出来的那条改完不丢这几格（11-25 复审）。限定同 loadCustomerFeed
+ */
+export async function readCustomerFeedRow(customerId: string, id: string) {
+  const me = await requireUser();
+  if (!企业版()) return unavailable;
+  if (!validId(customerId) || !validId(id)) return unavailable;
+  if (!await prisma.customer.findUnique({ where: { id: customerId }, select: { id: true } })) return unavailable;
+  return { ok: true as const, row: await 客户沟通汇总一条(me, customerId, id) };
 }

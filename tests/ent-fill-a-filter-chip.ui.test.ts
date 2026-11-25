@@ -42,18 +42,27 @@ beforeAll(async () => {
         <DataList 页="chip-test" 列={[{title:'名称',key:'name',常驻:true,render:(_,r)=>r.name},{title:'负责人',key:'owner',render:(_,r)=>r.owner}]} 行={行} 空库={false} 空态={{title:'空'}}/>
       </div>;
     }
-    createRoot(document.getElementById('root')).render(<MotionTheme><App><页/></App></MotionTheme>);
+    // 服务端分页（客户列表那种）：换筛选先进「加载中」、行和总数还是上一份，300ms 后新的一份才回来（照 useUrlFilters + router.replace）
+    function 服务端页(){
+      const [f,setF]=useState('');const [料,set料]=useState({owner:'',行:全部});const [等,set等]=useState(false);
+      const 换=(v)=>{setF(v);set等(true);setTimeout(()=>{set料({owner:v,行:全部.filter(r=>!v||r.owner===v)});set等(false);},300);};
+      return <div style={{padding:24}}>
+        <div className="list-bar"><Select style={{width:150}} placeholder="全部负责人" allowClear aria-label="负责人" value={f||undefined} onChange={(v)=>换(v??'')} options={人们.map(x=>({value:x,label:x}))}/></div>
+        <DataList 页="chip-srv" 列={[{title:'名称',key:'name',常驻:true,render:(_,r)=>r.name}]} 行={料.行.slice(0,20)} 空库={false} 空态={{title:'空'}} 加载中={等} 分页={{当前页:1,每页:20,总数:料.行.length,翻页(){}}}/>
+      </div>;
+    }
+    createRoot(document.getElementById('root')).render(<MotionTheme><App>{location.search.includes('srv')?<服务端页/>:<页/>}</App></MotionTheme>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" });
   bundle = r.outputFiles[0].text; browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function 打开(宽 = 1280, 少动 = false): Promise<{ page: Page; errors: string[] }> {
+async function 打开(宽 = 1280, 少动 = false, 服务端 = false): Promise<{ page: Page; errors: string[] }> {
   const ctx = await browser.newContext({ viewport: { width: 宽, height: 800 }, reducedMotion: 少动 ? "reduce" : "no-preference" });
   const page = await ctx.newPage(); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://chip.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
-  await page.goto("http://chip.test/customers");
+  await page.goto(`http://chip.test/customers${服务端 ? "?srv=1" : ""}`);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addScriptTag({ content: bundle });
   await page.getByText("共 128 条").waitFor();
@@ -109,7 +118,9 @@ it("点标签照旧弹出下拉换值；多选的、收在「更多筛选」里�
   await page.context().close();
 });
 
-it("总数从旧数滚到新数（不是直接跳）；减弱动态下直接到位", async () => {
+/* 11-26：总数不滚了——滚的半路一路闪过的数哪个筛选都对不上（实操「客户来源 → 未填」1956 → 1512 → 1449 → … → 235）。
+   换筛选：新数回来前留着旧数，回来直接换上，中间不出别的数；动态开着、减弱动态都一样 */
+it("换筛选总数不闪别的数：旧数留到新数回来，直接换上（动态开着、减弱动态都是）", async () => {
   const { page, errors } = await 打开();
   // 记下这一段里出现过的数
   await page.evaluate(() => {
@@ -121,10 +132,9 @@ it("总数从旧数滚到新数（不是直接跳）；减弱动态下直接到�
   await 选(page, "负责人", "李想");
   await expect.poll(() => 总数字(page), { timeout: 4000 }).toBe("共 23 条");
   await page.waitForTimeout(100);
+  await page.waitForTimeout(500);
   const 见 = await page.evaluate(() => (window as unknown as { __见: string[] }).__见);
-  expect(见[0]).toBe("共 128 条");
-  expect(见.at(-1)).toBe("共 23 条");
-  expect(见.length, `出现过 ${见.join(" → ")}`).toBeGreaterThan(3);
+  expect(见, `出现过 ${见.join(" → ")}`).toEqual(["共 128 条", "共 23 条"]);
   expect(await page.locator(".list-total-n").evaluate((e) => getComputedStyle(e).fontVariantNumeric)).toBe("tabular-nums");
   expect(errors).toEqual([]);
   await page.context().close();
@@ -143,6 +153,27 @@ it("总数从旧数滚到新数（不是直接跳）；减弱动态下直接到�
   expect(await 少.page.locator(".ant-select.cf-chip").evaluate((e) => getComputedStyle(e).scale)).toBe("none");
   expect(少.errors).toEqual([]);
   await 少.page.context().close();
+});
+
+it("服务端分页换筛选：加载那 300ms 里留着旧总数，新数回来直接换上，中间不出别的数", async () => {
+  for (const 少动 of [false, true]) {
+    const { page, errors } = await 打开(1280, 少动, true);
+    await page.evaluate(() => {
+      const w = window as unknown as { __见: string[] };
+      w.__见 = [];
+      const 读 = () => { const t = [...document.querySelectorAll("li")].map((x) => x.textContent ?? "").find((x) => /^共 \d+ 条$/.test(x)); if (t && w.__见.at(-1) !== t) w.__见.push(t); requestAnimationFrame(读); };
+      读();
+    });
+    await 选(page, "负责人", "李想");
+    await page.waitForTimeout(150);
+    expect(await 总数字(page), "新数回来前留着旧数").toBe("共 128 条");
+    await expect.poll(() => 总数字(page), { timeout: 4000 }).toBe("共 23 条");
+    await page.waitForTimeout(500);
+    const 见 = await page.evaluate(() => (window as unknown as { __见: string[] }).__见);
+    expect(见, `出现过 ${见.join(" → ")}`).toEqual(["共 128 条", "共 23 条"]);
+    expect(errors).toEqual([]);
+    await page.context().close();
+  }
 });
 
 it("1024 宽：长名字的标签不撑破筛选行、页面不横滚，标签不超过 280", async () => {

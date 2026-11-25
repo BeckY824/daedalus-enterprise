@@ -158,8 +158,9 @@ it("D29：不能新建的人（只读管理员 / 没设业务角色）页头不�
   } finally { await 空.page.close(); }
 });
 
-it("K3：390 带「离职交接」的角色——标题块独占一行，「项目」不挤成一字一行；按钮换到下一行、点得中；筛选同客户页三排", async () => {
-  const { page, errors } = await 开(390, { 交接: 3 });
+// 29K（11-26）：375 也钉上（r7 实操 375 宽「项目」挤成一字一行）
+for (const w of [390, 375]) it(`K3：${w} 带「离职交接」的角色——标题块独占一行，「项目」不挤成一字一行；按钮换到下一行、点得中；筛选同客户页三排`, async () => {
+  const { page, errors } = await 开(w, { 交接: 3 });
   try {
     await page.locator("tr.ant-table-row").first().waitFor();
     const 头 = await 框(page, ".page-head");
@@ -179,6 +180,21 @@ it("K3：390 带「离职交接」的角色——标题块独占一行，「项�
     expect(Math.abs(切.上 - 列.上)).toBeLessThan(6);
     expect(搜.上).toBeGreaterThan(切.下);
     expect(搜.宽).toBeGreaterThan(200);
+    expect(await 页横滚(page)).toBe(false);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// 29K（11-26）：768 / 1024 / 1280 带「离职交接」的角色，标题照样一行、两颗键点得中、页面不横滚
+for (const w of [768, 1024, 1280]) it(`29K：${w} 宽带「离职交接」的角色，标题一行不挤、页头两颗键点得中、页面不横滚`, async () => {
+  const { page, errors } = await 开(w, { 交接: 3 });
+  try {
+    await page.locator("tr.ant-table-row").first().waitFor();
+    const 标题 = await 框(page, ".page-head h1");
+    const 行高 = await page.locator(".page-head h1").evaluate((el) => parseFloat(getComputedStyle(el).lineHeight) || el.getBoundingClientRect().height);
+    expect(标题.高).toBeLessThan(行高 * 1.5);
+    expect(await page.locator(".page-head h1").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    expect(await 点得中(page, ".page-head a[href='/projects/handover'] .ant-btn, .page-head .ant-btn-primary")).toEqual([true, true]);
     expect(await 页横滚(page)).toBe(false);
     expect(errors).toEqual([]);
   } finally { await page.close(); }

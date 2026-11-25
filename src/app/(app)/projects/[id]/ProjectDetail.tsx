@@ -9,6 +9,8 @@ import Link from "next/link";
 import { LinkPending } from "@/components/NavProgress";
 import { CommentOutlined, DownOutlined, EditOutlined, MoreOutlined, RightOutlined, SearchOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { Alert, Button, Card, Checkbox, Dropdown, Input, Menu, Modal, Popover, Progress, Segmented, Select, Space, Tag, Timeline, Tooltip, type MenuProps, type PopoverProps } from "antd";
+import { 售后回访名 } from "@/lib/project/follow-needs-project-text";
+import AfterSaleLockTag from "@/components/AfterSaleLockTag";
 import DatePicker from "@/components/BusinessDatePicker";
 import DictSelect from "@/components/DictSelect";
 import { useMotionTheme } from "@/components/MotionTheme";
@@ -93,7 +95,7 @@ import ProjectRelate from "./ProjectRelate";
 import { useFormDraft, 草稿范围 } from "@/components/FormDraft";
 import { 有字 } from "@/lib/form-draft";
 import { 动作出错话, 出错原话, 刷新再提交话 } from "@/lib/stale-deploy";
-import { 本人改沟通过时话, 改格不收 } from "@/lib/enterprise/follow-edit-text";
+import { 本人改沟通过时话, 本人改过时提示, 改格不收, 不能再改话 } from "@/lib/enterprise/follow-edit-text";
 import type { 项目关联 } from "@/lib/project/relate";
 
 export type 项目详情 = {
@@ -167,6 +169,8 @@ export type 项目详情 = {
   回收预演?: 回收预演底子 | null;
   /** 企业版预计成交日期（10-27 从客户挪到项目，服务端排好的 YYYY-MM-DD）；不是企业版不传 */
   expectedDealAt?: string | null; 要下一步: boolean; 能记沟通: boolean;
+  /** 售后回访（11-25，E-283）：交付结清的项目、我能在上面记售后回访（项目负责人 / 已进组组员 / 客户负责人，客户不在公海）——交付卡和沟通卡头给「记售后回访」 */
+  能记售后回访?: boolean;
   /** 能记沟通的是项目组员、不是能改项目的人（11-19 客户答复）：记沟通框不摆下一步，服务端也不写项目的下一步 */
   组员记沟通?: boolean;
   /** 企业版指定回复时间（11-17）：北京墙钟「YYYY-MM-DD HH:mm」，没填 null；不是企业版不传 */
@@ -249,6 +253,8 @@ export type 项目详情 = {
     附件?: 附件[]; 我记的?: boolean;
     /** 企业版：这条沟通的归属人不是当前负责人（负责人可以点一下不看，11-02） */
     接手前?: boolean;
+    /** 售后回访（11-25）：交付结清项目上记的，方式后面带小标 */
+    售后回访?: boolean;
     /** 企业版记录人本人能改到几点（写入 + 30 分钟，11-19）；不是我记的、我已经记不了这个项目的不给。原本就能改的看 可改沟通 */
     本人可改到?: string;
     /** 本人限时改时下一步跟着改（这个项目最近一条、负责人自己记的）：项目上现在的下一步和这条的下一步时间；不给 = 修改框不出这两格 */
@@ -647,6 +653,8 @@ export default function ProjectDetail({
   const 交付结局 = 字典.出口们.订单[0].结局 ?? "成功交付";
   const 交付叫法 = 结局叫法(交付结局, 字典);
   const 交付了 = 是交付(p.result);
+  /** 沟通卡头的主按钮：交付结清的项目上换成「记售后回访」（11-25，能记沟通的照旧「新建沟通」） */
+  const 售后钮 = p.能记售后回访 ? { 字: "记售后回访", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-after-sale" } : null;
   // 企业版交付结清只能在尾款结算点（客户 11-19 定稿）：不在那一步 = 那句话（交付卡按钮不摆），服务端 改节点问题 同一条
   const 交付不在尾款 = p.企业版 && p.交付只在尾款 && !交付了 ? 交付不在尾款话(当前, null, 字典) : null;
   const 异常 = p.result === "异常状态";
@@ -1757,6 +1765,10 @@ export default function ProjectDetail({
           ? (交付不在尾款 ?? (差.length ? 交付还差话(差, 交付叫法, true) : `可以点${交付叫法}`))
           : 差.length ? `两项都勾上才能点${交付叫法}（还差${差.join("、")}）` : `两项都勾上了，可以点${交付叫法}`}
       </div>
+      {/* 售后回访（11-25，E-283）：交付结清了，能记的人在这张卡上直接点「记售后回访」（项目、标记都带好） */}
+      {交付了 && p.能记售后回访 && (
+        <Button className="pd-as-btn" disabled={忙} onClick={() => set记一条开着(true)} data-testid="after-sale-visit">记售后回访</Button>
+      )}
       {/* 企业版交付结清只在尾款结算这一步摆按钮（客户 11-19 定稿）；别的节点上面那行写清要先推到哪 */}
       {!交付了 && !交付不在尾款 && (
         <Button
@@ -1827,6 +1839,7 @@ export default function ProjectDetail({
                 <span className="proj-fu-i" aria-hidden>{f.type === "OTHER" ? <CommentOutlined /> : (FOLLOW_TYPE_ICON[f.type] ?? <CommentOutlined />)}</span>
                 <span className="proj-fu-who">{f.who}</span>
                 <span aria-hidden>·</span><span>{跟进方式名(f, "其他方式")}</span>
+                {f.售后回访 && <Tag bordered={false} color="cyan" data-testid="follow-after-sale">{售后回访名}</Tag>}
                 {f.initiator && <><span aria-hidden>·</span><span>{f.initiator}</span></>}
                 <Tag variant="filled" className="proj-fu-stage">{f.node}</Tag>
                 {f.提醒 && <Tag color={提醒色[f.提醒.级别]}>{f.提醒.文字}</Tag>}
@@ -1901,7 +1914,7 @@ export default function ProjectDetail({
           {能隐藏 && !看全部沟通 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
           {/* 11-12：「AI 录入」不再单摆，进「新建沟通」弹窗顶上切「手动录入 | AI 录入」。连体按钮：左半新建沟通（⌘N 落这颗）、右半收起 / 展开这块；不能记沟通只剩右半。
               原来这里的「发起主题」挪到客户页右上角「发起点评 ▾」（教练点评改版 PR1，11-21），卡头只剩「隐藏接手前」和「新建沟通」 */}
-          <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new", 主快捷: true } : null} />
+          <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新建沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new", 主快捷: true } : 售后钮} />
         </Space>
       )}
     >
@@ -1921,7 +1934,7 @@ export default function ProjectDetail({
             {能隐藏 && <Button size="small" aria-pressed={隐藏中} title="隐藏归属人不是你的沟通，只是不显示，不删数据" onClick={() => set只看接手后(!只看接手后)} data-testid="follow-hide-before">{隐藏中 ? "显示全部" : "隐藏接手前"}</Button>}
             {/* 独立项目页（看不到客户的实线 / 虚线上级留在这页，能发点评）：「发起点评 ▾」留在沟通卡头，不挪到页头（这页页头 11-01 只留转让、退回公海） */}
             <StartReviewButton 数据={教练主题} projectId={p.id} size="small" />
-            <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新增沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new" } : null} />
+            <FoldSplit 色={模块钮色.沟通} 主={p.能记沟通 ? { 字: "新增沟通", onClick: () => set记一条开着(true), disabled: 忙, testid: "follow-card-new" } : 售后钮} />
           </Space>
         ) : p.能记沟通 ? <Button type="link" size="small" disabled={忙} onClick={() => set记一条开着(true)}>记一条</Button>
           // 别的版本照旧给「去客户页记一条」
@@ -2151,7 +2164,7 @@ export default function ProjectDetail({
       )}
 
       {后果框}
-      {p.能记沟通 && 记一条开着 && <RecordFollowModal p={p} 外贸={外贸精简(b)} 卡点默认={卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} 回执={就地} 回处={嵌入 && p.customer ? 客户页项目地址(p.customer.id, p.id) : undefined} />}
+      {(p.能记沟通 || p.能记售后回访) && 记一条开着 && <RecordFollowModal p={p} 售后={!p.能记沟通 && !!p.能记售后回访} 外贸={外贸精简(b)} 卡点默认={!p.能记沟通 ? null : 卡点?.能发 ? 卡点.默认 : null} 卡点原因们={卡点?.原因们 ?? []} onClose={() => set记一条开着(false)} 跑={跑} 回执={就地} 回处={嵌入 && p.customer ? 客户页项目地址(p.customer.id, p.id) : undefined} />}
 
       <Modal
         open={!!异常框}
@@ -2422,9 +2435,6 @@ function useOwnEditWindow(到点们: readonly (string | undefined)[], 服务器�
   return { 能改: (到) => !!到 && 量过 !== null && 量过.现在 <= Date.parse(到), 钟差: 量过?.差 ?? 0 };
 }
 
-/** 本人限时改的框开着到点（低-1） */
-const 本人改过时提示 = "已经超过提交后 30 分钟，这条不能再改了；没保存的改动已清掉";
-
 /**
  * 改项目上的一条沟通（「…」→ 修改，10-29）：沟通方式、时间、内容三格，别的（阶段、下一步）不在这里改。
  * 打开时的 updatedAt 一起交回去，别人先改了就报版本冲突，不悄悄盖掉
@@ -2466,6 +2476,9 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
   const [交错, set交错] = useState<string | null>(null);
   /** 本人限时改到点了（低-1）：框里说一句、草稿清掉、保存灰掉 */
   const [过时了, set过时了] = useState(false);
+  /** 服务端说这条改不成了（客户进了公海、挂的项目记不了沟通，11-26 审查）：同 过时了，保存灰掉、原因留在框里；改哪格都改不好，点了只会再被拒 */
+  const [不能改, set不能改] = useState<string | null>(null);
+  const 锁了 = 过时了 || !!不能改;
   // 改了没交的留草稿（components/FormDraft.tsx）：刷新、发版后重开这条接着改；只存改过的格子
   const 稿 = useFormDraft({
     键: `改项目沟通:${f.id}`,
@@ -2488,7 +2501,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     const t = setTimeout(() => { set过时了(true); set交错(本人改过时提示); 丢稿(); }, Math.max(0, Math.min(剩 + 200, 2 ** 31 - 1)));
     return () => clearTimeout(t);
   }, [限时到, 钟差, 丢稿]);
-  const 差 = 过时了 ? 本人改过时提示 : !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体"
+  const 差 = 过时了 ? 本人改过时提示 : 不能改 ? 不能改 : !content.trim() ? "请填写这次沟通的内容" : 主体们 && f.initiator && !发起 ? "请选发起主体"
     : 动了下一步 && !下一步文字.trim() ? "请写下一步计划" : 动了下一步 && 要下一步 && !下一步时间 ? "请填下一步时间" : "";
   /*
     设计语言 E1（D03，同 D4 新建沟通框）：「保存」一直能点（限时到点了除外）；点了还缺的在各自格子下面报红、焦点跳到第一处，
@@ -2504,7 +2517,8 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
   const 格错 = (格: string) => (试过 ? 错们.find(([k]) => k === 格)?.[1] ?? null : null);
   const 错行 = (格: string) => 格错(格) && <div className="fm-err" role="alert">{格错(格)}</div>;
   const 交 = async () => {
-    if (!过时了 && 错们.some(([, 话]) => 话)) {
+    if (锁了) return;
+    if (错们.some(([, 话]) => 话)) {
       set试过(true);
       const 第一处 = 错们.find(([, 话]) => 话)![0];
       window.setTimeout(() => document.querySelector<HTMLElement>(`.follow-edit-modal [data-fk="${第一处}"] :is(textarea, input:not([type=hidden]), [tabindex="0"])`)?.focus(), 0);
@@ -2514,6 +2528,9 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     const ok = await 跑(() => 改项目沟通(projectId, f.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt: occurredAt === 原时间 ? f.occurredAt : occurredAt, 版本: f.版本, ...(动了下一步 ? { 下一步: 下一步文字, 下一步时间 } : {}) }), "已保存修改", { 报错: (话) => {
       // 服务端说过了 30 分钟（本地钟慢、计时还没到点）：和本地计时到点一样——标过时、换本人改过时那句、草稿清掉、保存灰掉
       if (话 === 本人改沟通过时话) { set过时了(true); set交错(本人改过时提示); 丢稿(); return; }
+      // 客户进了公海、挂的项目记不了沟通：这条再也改不成，保存也灰掉（草稿留着，人能把写的字抄走）
+      const 锁 = 不能再改话(话);
+      if (锁) { set不能改(锁); set交错(锁); return; }
       set交错(话 === 刷新再提交话 ? `${话}（改的字刷新后还在）` : 话);
     } });
     set交中(false);
@@ -2523,7 +2540,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     }
   };
   return (
-    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} className="follow-edit-modal" okButtonProps={{ disabled: 过时了, loading: 交中, title: (过时了 && 差) || undefined }} onCancel={() => { 稿.丢掉(); onClose(); }} onOk={() => void 交()}>
+    <Modal open title="修改这条沟通" okText="保存" mask={{ closable: false }} className="follow-edit-modal" okButtonProps={{ disabled: 锁了, loading: 交中, title: (锁了 && 差) || undefined }} onCancel={() => { 稿.丢掉(); onClose(); }} onOk={() => void 交()}>
       {稿.提示}
       <div style={{ display: "grid", gap: 12 }}>
         <div className="follow-pick-row">
@@ -2614,8 +2631,13 @@ function 存录入模式(v: 录入模式) {
   try { if (v === "AI") localStorage.setItem(录入模式键, "AI"); else localStorage.removeItem(录入模式键); } catch { /* 无痕、禁用：只这一次 */ }
 }
 
-function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑, 回执, 回处 }: {
+function RecordFollowModal({ p, 售后 = false, 外贸, 卡点默认, 卡点原因们 = [], onClose, 跑, 回执, 回处 }: {
   p: 项目详情;
+  /**
+   * 售后回访（11-25，E-283）：交付结清的项目上记——锁着「售后回访」标、不摆卡点和下一步，保存带 售后回访: true（不带阶段）。
+   * 下次回访要排计划去客户页记（记项目沟通Action 不建计划）
+   */
+  售后?: boolean;
   外贸: boolean;
   /** 能发卡点才给（企业版）；null = 不摆卡点那一块 */
   卡点默认?: 卡点默认 | null;
@@ -2760,8 +2782,8 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     ["发起主体", 主体们 && !发起 ? "请选发起主体" : null],
     ["沟通内容", !content.trim() ? "请填写这次沟通的内容" : null],
     ["卡点原因", 卡点默认 && 卡点类型 !== "暂无卡点" && !卡点原因.length ? 缺原因话 : null],
-    ["下一步计划", !p.组员记沟通 && !下一步文字.trim() ? "请写下一步计划" : null],
-    ["下一步时间", !p.组员记沟通 && p.要下一步 && !下一步时间 ? "请填下一步时间" : null],
+    ["下一步计划", !p.组员记沟通 && !售后 && !下一步文字.trim() ? "请写下一步计划" : null],
+    ["下一步时间", !p.组员记沟通 && !售后 && p.要下一步 && !下一步时间 ? "请填下一步时间" : null],
   ];
   const 差 = 错们.find(([, 话]) => 话)?.[1] ?? "";
   const [试过, set试过] = useState(false);
@@ -2784,7 +2806,9 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     // 没记上的原因写在框里、框不关（g.save，不弹顶部提示）
     // 发版后老页面交的（lib/stale-deploy.ts）：填的字一直在存草稿，刷新后点开接着填；截图录音存不进来，说一句
     const 报错 = (话: string | null) => set交错(话 === 刷新再提交话 ? `${话}（${附件们.length ? "填的字刷新后还在，截图 / 录音要重新选" : "填的内容刷新后还在"}）` : 话);
-    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, ...(p.组员记沟通 ? {} : { 下一步: 下一步文字, 下一步时间 }), ...(p.企业版 ? { 阶段: p.phase } : {}) }, 卡点)), undefined, { 报错 });
+    const ok = await 跑(async () => (回.r = await 记项目沟通Action(p.id, 售后
+      ? { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, 售后回访: true }
+      : { type, method: 对得上的方式(type, method), initiator: 发起, content, occurredAt, ...(p.组员记沟通 ? {} : { 下一步: 下一步文字, 下一步时间 }), ...(p.企业版 ? { 阶段: p.phase } : {}) }, 售后 ? undefined : 卡点)), undefined, { 报错 });
     const r = 回.r;
     if (ok && r?.ok) {
       稿.存好了();
@@ -2836,7 +2860,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
     <Modal
       open
       // 设计语言 D4 · M7-b（D14）：标题和卡头同一个词「新建沟通」，提交键「保存」（原「记一条沟通」「记下」）
-      title="新建沟通"
+      title={售后 ? "记售后回访" : "新建沟通"}
       okText="保存"
       rootClassName="follow-modal"
       okButtonProps={{ loading: 交中 }}
@@ -2908,6 +2932,13 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             </div>
           )}
         </div>
+        {/* 售后回访：方式照选，下面锁着的「售后回访」标（不用另勾）；项目、客户状态都不变 */}
+        {售后 && (
+          <Space size={8} wrap>
+            <AfterSaleLockTag />
+            <span className="fm-help as-note">交付结清的项目只能记售后回访，项目和客户状态都不变</span>
+          </Space>
+        )}
         <div data-fk="沟通内容">
           <格标签 名="沟通内容" 必填 />
           <Input.TextArea aria-label="沟通内容" rows={4} status={格错("沟通内容") ? "error" : undefined} value={content} onChange={(e) => setContent(e.target.value)} placeholder="这次聊了什么" />
@@ -2929,7 +2960,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
             <div className="fm-help">选「暂无卡点」不生成；选了其他类型，保存时生成一个卡点</div>
           </div>
         )}
-        {!p.组员记沟通 && (<>
+        {!p.组员记沟通 && !售后 && (<>
         <div data-fk="下一步计划">
           <格标签 名="下一步计划" 必填 />
           <Input
