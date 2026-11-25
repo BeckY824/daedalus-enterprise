@@ -13,11 +13,12 @@
  *   可以「再按住补一段」（同一条录音的下一段，服务端拼）。
  * 边录边传：15 秒一片（uploader.ts 片队列，断网攒着重试）；网络跟不上录音时提示「网络较慢……先别关页面」。
  * 两条录法都用不了（飞书里拿不到麦克风、浏览器太老）：给「传录音文件」和「复制链接」到浏览器打开。
- * 电脑：弹框；手机（≤767）：底部升起。按钮关掉长按菜单、选中文字、触摸滚动（.ptt-btn）。
+ * 电脑：弹框；手机（≤767）：底部升起，左右贴边、上边两角圆（同名单抽屉 .pane-sheet），内容左右各留 16、不横滚（11-26）。按钮关掉长按菜单、选中文字、触摸滚动（.ptt-btn）。
  */
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Drawer, Grid, Modal, Segmented } from "antd";
+import { Button, Drawer, Modal, Segmented } from "antd";
+import { useNarrow } from "@/lib/roster";
 import type { 录音给界面 } from "@/lib/enterprise/coach-rec-db";
 import { 复制文字 } from "@/lib/clipboard";
 import { 按住上限毫秒, 点按上限毫秒, 最短录音毫秒, 录音每片毫秒, 片上限字节, type 打断原因 } from "@/lib/enterprise/coach-rec";
@@ -71,8 +72,8 @@ type 一次 = {
 
 export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }: { projectId: string; 项目名: string; 续?: 录音给界面 | null; 关: () => void; 改传文件?: () => void }) {
   const router = useRouter();
-  const 屏 = Grid.useBreakpoint();
-  const 手机 = 屏.md === false;
+  // 手机按 767 断点直接读（11-26）：Grid.useBreakpoint 头一次渲染还是空的（md 未知），手机上会先挂一下 480 宽的弹框再换成底部面板
+  const 手机 = useNarrow("(max-width: 767px)");
   const [选式, set式] = useState<录法式>(() => (typeof window === "undefined" ? "按住" : 读式()));
   const [录, set录] = useState<录音给界面 | null>(续 ?? null);
   const [阶, set阶] = useState<"空" | "准备" | "录" | "收">("空");
@@ -475,7 +476,7 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
   );
   const 关面板 = () => { 关了.current = true; if (阶 === "录" && 式 === "点按") void 收尾("松手"); 关(); };
   return 手机 ? (
-    <Drawer open placement="bottom" height="auto" title="录音点评" onClose={关面板} className="ptt-sheet" keyboard={!录着} destroyOnHidden>{体}</Drawer>
+    <Drawer open placement="bottom" height="auto" title="录音点评" onClose={关面板} rootClassName="ptt-sheet" keyboard={!录着} destroyOnHidden>{体}</Drawer>
   ) : (
     <Modal open title="录音点评" onCancel={关面板} footer={null} width={480} keyboard={!录着} maskClosable={false} destroyOnHidden className="ptt-modal">{体}</Modal>
   );
