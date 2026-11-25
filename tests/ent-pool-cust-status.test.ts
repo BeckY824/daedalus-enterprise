@@ -436,4 +436,45 @@ describe("撤销还回原值（服务端留痕，复审 11-25）", () => {
     expect(await 状态(c)).toBe("意向");
     expect(await 状态(旁.c)).toBe("意向");
   });
+
+  it("撤一半漏判（复审 11-25）：P1 批量领（记原值）、P2 项目页单个领，30 分钟内撤 P1：按项目重算，不写回 P1 的原值", async () => {
+    for (const 方式 of ["单个领记了原值", "没记原值的出公海"] as const) {
+      const { c, 公: P1 } = await 存意向的();
+      const P2 = await 公海线索(c);
+      const r = await 以(丙, () => 领取([], undefined, [P1]));
+      if (!r.ok) throw new Error(r.error);
+      expect((await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: P1, kind: "pool-claim" } })).prevCustStatus).toBe("意向");
+      expect(await 以(丙, () => 领取公海项目(丙, P2))).toEqual({ ok: true });
+      // 别的出公海的路（老代码、改项目换人出公海）不记原值：pool-claim 上是 NULL，也得算没撤
+      if (方式 === "没记原值的出公海") await prisma.projectNodeLog.updateMany({ where: { projectId: P2, kind: "pool-claim" }, data: { prevCustStatus: null } });
+      expect(await 状态(c)).toBe("潜在");
+      expect(await 以(丙, () => 撤销公海项目("领取", [P1]))).toMatchObject({ ok: true, updated: 1 });
+      expect((await prisma.project.findUniqueOrThrow({ where: { id: P1 } })).pooledAt).not.toBeNull();
+      // P2 还在外面在推：现算潜在，不是 P1 上记的意向
+      expect(await 状态(c)).toBe("潜在");
+    }
+  });
+
+  it("项目页单个领取也记原值：领了再撤，回到原值", async () => {
+    const { c, 公 } = await 存意向的();
+    expect(await 以(丙, () => 领取公海项目(丙, 公))).toEqual({ ok: true });
+    expect(await 状态(c)).toBe("潜在");
+    expect((await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: 公, kind: "pool-claim" } })).prevCustStatus).toBe("意向");
+    expect(await 以(丙, () => 撤销公海项目("领取", [公]))).toMatchObject({ ok: true, updated: 1 });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 公 } })).pooledAt).not.toBeNull();
+    expect(await 状态(c)).toBe("意向");
+  });
+
+  it("撤销领取时补的潜客培育还在（前端没带回 培育）：算没撤完，按重算，不写回原值", async () => {
+    const c = await 客户(甲.id, "成交");
+    await 进客户公海(c);
+    const r = await 以(丙, () => 领取([c]));
+    if (!r.ok) throw new Error(r.error);
+    expect(r.带过来?.培育?.length).toBe(1);
+    expect(await 状态(c)).toBe("潜在");
+    expect(await 以(丙, () => 撤销公海("领取", r.原负责人!, { ...r.带过来!, 培育: [] }, undefined, r.公海项目))).toMatchObject({ ok: true, updated: 1 });
+    // 培育项目没删、客户回了公海：按剩下的项目重算（潜在），不是领取前的「成交」
+    expect(await prisma.project.count({ where: { customerId: c } })).toBe(1);
+    expect(await 状态(c)).toBe("潜在");
+  });
 });

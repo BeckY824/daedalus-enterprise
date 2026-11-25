@@ -1007,9 +1007,15 @@ export async function 领取公海项目(me: 谁, projectId: string, 带待办?:
   const 备 = await 领公海项目准备(me, [projectId], 带待办);
   if (!备.ok) return 备;
   const r = await 查完再写(async (tx) => {
+    // 动手前记下客户存的状态，末尾记到这一下的 pool-claim 上，撤销公海项目 原样还回（同 在事务里领公海项目们，cust-status-undo.ts）
+    const 动手时 = new Date();
+    const 原状态 = await 读客户状态(tx, await 项目的客户们(tx, [String(projectId ?? "")]));
     const x = await 领一个公海项目(tx, me, String(projectId ?? ""), 备.上下文, true);
-    // 领出公海 = 又在推：客户状态按在推项目优先重算（cust-status-auto-db.ts 进出公海重算）
-    if (x.ok) await 进出公海重算(tx, [x.customerId]);
+    if (x.ok) {
+      // 领出公海 = 又在推：客户状态按在推项目优先重算（cust-status-auto-db.ts 进出公海重算）
+      await 进出公海重算(tx, [x.customerId]);
+      await 原状态记到出公海痕(tx, 原状态, 动手时);
+    }
     return x;
   });
   if (!r.ok) return r;

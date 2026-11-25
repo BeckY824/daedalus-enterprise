@@ -638,7 +638,7 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       // 出公海时盖成「公海领取」的客户分配还回原值（P-撤销-01）
       await 还公海领取前的客户分配(tx, x.id, x.分);
       // 出公海前存的客户状态记在领取这一行（cust-status-undo.ts），删之前读出来；不是 现 领的那一行不认
-      const 领 = await tx.customerClaim.findUnique({ where: { customerId: x.id }, select: { userId: true, prevCustStatus: true } });
+      const 领 = await tx.customerClaim.findUnique({ where: { customerId: x.id }, select: { userId: true, prevCustStatus: true, at: true } });
       const 原状态 = 领?.userId === 现 ? 读原状态(领.prevCustStatus) : undefined;
       await tx.customerClaim.deleteMany({ where: { customerId: x.id, userId: 现 } });
       // 领取 / 分配时带过来的活还回去：还挂在领到的人名下、还没做完的才还。
@@ -663,7 +663,8 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       }
       // 客户状态（P-撤销-01 按原样回滚；撤回项目公海 里重算过，所以放在它后面）：这位这次带出来的项目全回了公海、领取行上记了原值，原样还回；
       // 撤了一半（有项目撤不成、前端少带了几个、同一位客户的项目行还没撤）、老领取行没记：带出来的项目回了公海、补的潜客培育删了，按剩下的重算
-      if (!(项目全回了 && (await 写回出公海前状态(tx, x.id, 原状态)))) await 进出公海重算(tx, [x.id]);
+      // 领取那一刻之后建的项目（补的潜客培育前端没带回来、没删掉）还在，也算没撤完
+      if (!(项目全回了 && (await 写回出公海前状态(tx, x.id, 原状态, 领?.at)))) await 进出公海重算(tx, [x.id]);
       return true;
     }).catch((e) => {
       if (e instanceof Error && e.message === 负责人被改过) return false;

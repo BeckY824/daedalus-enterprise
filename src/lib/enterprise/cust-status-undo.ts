@@ -68,7 +68,12 @@ export async function 原状态记到出公海痕(db: 库, 原: Map<string, stri
   if (!企业版() || !原.size) return;
   // 同一个原值的并成一条 updateMany
   const 按值 = new Map<string, string[]>();
-  for (const [id, v] of 原) 按值.set(存原状态(v), [...(按值.get(存原状态(v)) ?? []), id]);
+  for (const [id, v] of 原) {
+    const 值 = 存原状态(v);
+    const 们 = 按值.get(值);
+    if (们) 们.push(id);
+    else 按值.set(值, [id]);
+  }
   await 看全部(async () => {
     for (const [值, ids] of 按值) {
       for (let i = 0; i < ids.length; i += 一批) {
@@ -102,16 +107,19 @@ export async function 项目痕原状态(db: 库, projectIds: string[]): Promise
 }
 
 /**
- * 撤销后：这位客户还有没撤的出公海——撤销时限内、记了原值的 CustomerClaim / pool-claim 还在（撤成了的那几行撤销时已删）。
+ * 撤销后：这位客户还有没撤的出公海——撤销时限内的 CustomerClaim / pool-claim 还在（撤成了的那几行撤销时已删）。
+ * 记没记原值都算（复审 11-25）：项目页单个领、改项目换人出公海这些路以前不记，只认记了的会把另一下还在外面的漏掉。
+ * 出公海时刻 = 客户级撤销读到的领取行时刻：这一下之后建的项目（补的潜客培育、查重领取新建的线索）还在，也算没撤完（前端少带了 培育，没删掉）。
  * 有 = 这次只撤了一半：有项目撤不成、前端少带了几个、同一位客户刚才另一下出公海还没撤（客户行 + 项目行一起领，先撤的那一半）
  */
-export async function 还有没撤的出公海(db: 库, customerId: string): Promise<boolean> {
+export async function 还有没撤的出公海(db: 库, customerId: string, 出公海时?: Date): Promise<boolean> {
   const 限 = new Date(Date.now() - 撤销时限毫秒);
   return 看全部(async () => {
-    if (await db.customerClaim.findFirst({ where: { customerId, prevCustStatus: { not: null }, at: { gte: 限 } }, select: { customerId: true } })) return true;
+    if (await db.customerClaim.findFirst({ where: { customerId, at: { gte: 限 } }, select: { customerId: true } })) return true;
+    if (出公海时 && 出公海时 >= 限 && (await db.project.findFirst({ where: { customerId, deletedAt: null, createdAt: { gte: 出公海时 } }, select: { id: true } }))) return true;
     const 项目们 = await 客户的项目们(db, [customerId]);
     for (let i = 0; i < 项目们.length; i += 一批) {
-      if (await db.projectNodeLog.findFirst({ where: { projectId: { in: 项目们.slice(i, i + 一批) }, kind: "pool-claim", prevCustStatus: { not: null }, at: { gte: 限 } }, select: { id: true } })) return true;
+      if (await db.projectNodeLog.findFirst({ where: { projectId: { in: 项目们.slice(i, i + 一批) }, kind: "pool-claim", at: { gte: 限 } }, select: { id: true } })) return true;
     }
     return false;
   });
@@ -119,11 +127,12 @@ export async function 还有没撤的出公海(db: 库, customerId: string): Pro
 
 /**
  * 撤销出公海的最后一步（同一笔事务里、撤回项目公海 / 撤回补的潜客培育 之后）：读到了原值、这位客户这次的出公海都撤完了，原样写回，回 true。
- * 不是企业版、没读到（老留痕、导入撤回）、撤了一半回 false：调用方照旧按重算（撤回项目公海 里已经算过）
+ * 不是企业版、没读到（老留痕、导入撤回）、撤了一半回 false：调用方照旧按重算（撤回项目公海 里已经算过）。
+ * 出公海时：客户级撤销传领取行的时刻，见 还有没撤的出公海
  */
-export async function 写回出公海前状态(db: 库, customerId: string, 原: string | null | undefined): Promise<boolean> {
+export async function 写回出公海前状态(db: 库, customerId: string, 原: string | null | undefined, 出公海时?: Date): Promise<boolean> {
   if (!企业版() || 原 === undefined) return false;
-  if (await 还有没撤的出公海(db, customerId)) return false;
+  if (await 还有没撤的出公海(db, customerId, 出公海时)) return false;
   await db.customer.updateMany({ where: { id: customerId }, data: { custStatus: 原 } });
   return true;
 }
