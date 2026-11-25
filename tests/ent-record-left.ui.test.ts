@@ -274,9 +274,9 @@ it("本人售后那条：项目名不是链接、能传附件、限时内摆「�
 });
 /*
   沟通行头一行（11-25，方案-售后回访 第五节 + 全站一行 + 省略号 + 悬停）：方式、售后回访标、时间、状态不折行；方式放不下「…」、悬停看全；
-  标和时间完整；手机（≤767）售后回访标排到方式前面。390 / 768 / 1024 / 1280 都不横滚
+  标和时间完整；手机（≤767）售后回访标排到方式前面。390 / 768 / 1024 / 1199 / 1200 / 1240 / 1280 / 1440 / 1536 都不横滚（横滚 / 溢出类扫全宽）
 */
-it.each([390, 768, 1024, 1280])("沟通汇总行头 %ipx：长方式 + 售后回访 + 时间 + 状态只占一行，方式「…」悬停看全，标完整，不横滚", async (w) => {
+it.each([390, 768, 1024, 1199, 1200, 1240, 1280, 1440, 1536])("沟通汇总行头 %ipx：长方式 + 售后回访 + 时间 + 状态只占一行，方式「…」悬停看全，标完整，不横滚", async (w) => {
   const 长方式 = "企业微信视频会议加屏幕共享演示再加一段";
   const 条 = (id: string, 加: Record<string, unknown>) => ({ id, type: "PHONE", method: 长方式, title: "", content: "回访", status: "待完成", duration: null, occurredAt: "2025-11-25T02:00:00.000Z", dueAt: null, participants: null, sourceText: null, ownerName: "QA", contactName: null, contactPosition: null, contactId: null, opportunityId: null, updatedAt: "2025-11-25T02:00:00.000Z", 项目: { id: "p9", 名: "交付项目甲" }, ...加 });
   const page = await open(true, w, true, { followUps: [条("f7", { afterSale: true }), 条("f8", {})], 只读: true });
