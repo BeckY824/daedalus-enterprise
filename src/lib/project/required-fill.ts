@@ -347,10 +347,14 @@ export type 存一项结果 = { ok: boolean; error?: string; 自动推到?: stri
 export type 依次保存结果 = { 已存: 必填项[]; 失败: Partial<Record<必填项, string>>; 自动推到: string[] };
 const 没存上 = "没存上，请稍后再试";
 
-/** 一项一项存：一项失败（返回 ok:false 或抛错）记下原因，接着存别的 */
+/**
+ * 一项一项存：一项失败（返回 ok:false 或抛错）记下原因，接着存别的。
+ * 物流单号排最前（其余照原顺序）：物流状态选「运输中」时服务端要单号已经在（db.ts 改项目），同一批里先存状态会被拦
+ */
 export async function 依次保存(项们: readonly 必填项[], 存一项: (k: 必填项) => Promise<存一项结果>): Promise<依次保存结果> {
   const 果: 依次保存结果 = { 已存: [], 失败: {}, 自动推到: [] };
-  for (const k of 项们) {
+  const 单号先 = [...项们.filter((k) => k === "物流单号"), ...项们.filter((k) => k !== "物流单号")];
+  for (const k of 单号先) {
     try {
       const r = await 存一项(k);
       if (r.ok) {

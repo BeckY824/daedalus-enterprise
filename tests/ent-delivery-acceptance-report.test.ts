@@ -2,7 +2,7 @@
  * 企业版「交付结清」结局认验收报告附件（M-必填-11，客户 11-08「验收报告用附件，有上传就算过」）：
  * 验收那一条 = 勾了「验收通过」或项目附件「验收报告」里有一份，任一成立就过；尾款结清照旧要勾。
  */
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { afterAll, describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
@@ -79,3 +79,6 @@ describe("交付结清：验收通过 或 验收报告附件", () => {
     expect(交付还差话(["验收通过"], "成功交付", false)).toBe("还差验收通过，勾上才能点成功交付");
   });
 });
+
+// 跑完清库（同 beforeEach 那套 resetDb）：附件不挂外键，留在共享 test.db 会绊倒后面从它拷库、自带清库清单的用例
+afterAll(async () => { await resetDb(); });

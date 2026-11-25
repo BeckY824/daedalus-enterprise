@@ -147,10 +147,11 @@ describe("完成节点框：一窗填完", () => {
     expect(量.单横滚).toBe(false);
     await 主按钮(page).click();
     await page.locator("#关了").waitFor();
+    // 物流单号先存（11-26）：选了「运输中」服务端要单号已经在，同一批里先存状态会被拦
     expect(await 窗口变量(page, "__存")).toEqual([
+      ["项目", { trackingNo: "SF1234567890".repeat(6).replace(/SF/g, " SF").trim() }],
       ["项目", { stockStatus: "未生产" }],
       ["项目", { logisticsStatus: "运输中" }],
-      ["项目", { trackingNo: "SF1234567890".repeat(6).replace(/SF/g, " SF").trim() }],
     ]);
     expect(await 窗口变量(page, "__推")).toBe(1);
     expect(errors).toEqual([]);
