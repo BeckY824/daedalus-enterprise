@@ -692,7 +692,13 @@ export default function ProjectDetail({
   const [待运输中, set待运输中] = useState<string | null>(null);
   const [开单号, set开单号] = useState(0);
   const 运输中名们 = 备货物流?.运输中 ?? [默认运输中];
-  const 选运输中缺单号 = (v: string | null) => !!v && 运输中名们.includes(v) && !(备货物流?.物流单号 ?? "").trim();
+  /*
+    刚在单号格存上的单号（11-26）：存完 router.refresh 回来之前，页面拿到的 物流单号 还是旧的（空），紧接着选运输中会被当成缺单号、又被带去单号格。
+    记下存的那一下页面给的是哪一份（备货物流 这个对象）：还是那一份 = 还没刷新回来，认刚存的；刷新回来换了一份就只认页面（别人刚清了单号也认得出）
+  */
+  const [刚存单号, set刚存单号] = useState<{ 值: string; 页上: typeof 备货物流 } | null>(null);
+  const 现单号 = 刚存单号 && 刚存单号.页上 === 备货物流 ? 刚存单号.值 : (备货物流?.物流单号 ?? "");
+  const 选运输中缺单号 = (v: string | null) => !!v && 运输中名们.includes(v) && !现单号.trim();
   /** 存项目卡的一格：同一个 编辑项目（权限、字段权限、留痕都在里面）；失败把原因交回格子，留在编辑态 */
   const 存项目项 = async (patch: Parameters<typeof 编辑项目>[1]): Promise<string | null> => {
     const r = await 编辑项目(p.id, patch);
@@ -1714,7 +1720,11 @@ export default function ProjectDetail({
               能改={能就地改}
               回车存
               显示={(v) => (有值(v) ? <span className="proj-one" title={v}>{v}</span> : p.必填?.还差.includes("物流单号") ? 占位确认("物流单号") : 待填("物流单号"))}
-              存={(v) => 存项目项({ trackingNo: 文字格改动(v), ...(待运输中 && v ? { logisticsStatus: 待运输中 } : {}) })}
+              存={async (v) => {
+                const 错 = await 存项目项({ trackingNo: 文字格改动(v), ...(待运输中 && v ? { logisticsStatus: 待运输中 } : {}) });
+                if (!错) set刚存单号({ 值: 文字格改动(v) ?? "", 页上: 备货物流 });
+                return 错;
+              }}
               打开={开单号}
               附言={待运输中 ? `先填物流单号；存上后物流状态一起改成「${待运输中}」` : undefined}
               收起时={() => set待运输中(null)}
@@ -2470,6 +2480,7 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
     },
   });
   const 丢稿 = 稿.丢掉;
+  useAnyEditClears([type, method, 发起, occurredAt, content, 下一步文字, 下一步时间], () => set交错((e) => (e === 本人改过时提示 ? e : null)));
   useEffect(() => {
     if (!限时到) return;
     const 剩 = Date.parse(限时到) - (Date.now() + 钟差);
@@ -2574,6 +2585,23 @@ function EditFollowModal({ projectId, f, 外贸, 要下一步 = false, 限时到
 /** 记一条沟通弹窗顶上的「手动录入 | AI 录入」，记在这台浏览器上（存不了就每次手动） */
 type 录入模式 = "手动" | "AI";
 const 录入模式键 = "daedalus.follow.mode";
+/**
+ * 框里那句「没存上」的原因（交错）：改了任何一格就收掉（11-26，3703 实操）——不然补够字、换了卡点，
+ * 上一次的原因还红着挂在框里，像是新写的也不行，要再点一次保存才没。网络错、服务端拦都一样收。
+ * 值们只放人能改的格子（附件按个数）；头一回渲染、值没变的重渲染不动。留着 = 返回 false 的（比如「改的时限已过」）不收
+ */
+function useAnyEditClears(值们: readonly unknown[], 收: () => void) {
+  const 键 = JSON.stringify(值们);
+  const 上次 = useRef(键);
+  const 收r = useRef(收);
+  useEffect(() => { 收r.current = 收; });
+  useEffect(() => {
+    if (上次.current === 键) return;
+    上次.current = 键;
+    收r.current();
+  }, [键]);
+}
+
 function 读录入模式(): 录入模式 {
   try { return localStorage.getItem(录入模式键) === "AI" ? "AI" : "手动"; } catch { return "手动"; }
 }
@@ -2718,6 +2746,7 @@ function RecordFollowModal({ p, 外贸, 卡点默认, 卡点原因们 = [], onCl
       if (typeof v.原话 === "string") set原话(v.原话);
     },
   });
+  useAnyEditClears([type, method, 选的发起, occurredAt, content, 下一步文字, 下一步时间, 卡点类型, 卡点影响, 卡点原因, 附件们.length], () => set交错(null));
   /*
     设计语言 D4 · M7-b（D03）：「保存」一直能点；点了还缺的在各自格子下面报红、焦点跳到第一处（原来「记下」灰着、原因是右下一行小灰字）。
     顺序 = 框里从上到下；填上了红字当场消失
