@@ -7,6 +7,7 @@
  *   复盘页带页签（P15）：「待办 | 数据」两个页签，数据页签里才有三视图切换
  *   自定义（V3.5.1 P-界面-10）：视图分段后面摆日期段、回显两头；别的视图不摆
  *   Windows 1024 / 1280 / 1366 宽度 + 超长名字：页面不横向溢出；选了自定义视图条还是一行
+ *   后售培育（P-界面-65）：各进程的项目、线索瀑布在潜客培育后面多一行后售培育，悬停写「客户已有交付结清的项目」；390 宽不横滚
  */
 import { beforeAll, afterAll, expect, it } from "vitest";
 import { build, type Plugin } from "esbuild";
@@ -31,14 +32,16 @@ beforeAll(async () => {
     import {项目漏斗of} from '@/app/(app)/overview/funnel';
     import {DEFAULT_BUSINESS} from '@/lib/business-config';
     const 长='某某超长名字的智能制造装备与工业自动化系统集成有限公司华东区域销售总监';
+    // 同 project-stats.ts 统计节点们：线索阶段潜客培育后面插后售培育
+    const 统计节点们=(p)=>p==='线索'?[节点们[p][0],'后售培育',...节点们[p].slice(1)]:节点们[p];
     const 现在={
       阶段:[{phase:'线索',count:12,amount:0},{phase:'商机',count:8,amount:98765432},{phase:'订单',count:3,amount:12345678}],
-      节点:阶段们.flatMap(p=>节点们[p].map((node,i)=>({phase:p,node,count:i+1,amount:1000000*i}))),
+      节点:阶段们.flatMap(p=>统计节点们(p).map((node,i)=>({phase:p,node,count:i+1,amount:1000000*i}))),
       结局:[{result:'线索流失',count:2},{result:'丢单',count:1},{result:'交付结清',count:5},{result:'异常状态',count:1}],
       公海:2,外币:1,
       漏斗:项目漏斗of([...Array(12)].map(()=>({phase:'线索',result:null})).concat([...Array(8)].map(()=>({phase:'商机',result:null})),[...Array(5)].map(()=>({phase:'订单',result:'成功交付'})))),
       按人:[1,2,3].map(i=>({id:'u'+i,name:长+i,线索:4,商机:3,订单:1,商机金额:98765432,订单金额:12345678})),
-      线索节点:节点们['线索'].map((node,i)=>({node,count:i+2,流失:i,判无效:i===1?1:0,退回公海:i===0?2:0})),
+      线索节点:统计节点们('线索').map((node,i)=>({node,count:i+2,流失:i,判无效:i===1?1:0,退回公海:i===0?2:0})),
       线索转商机:5,
     };
     const 一段={
@@ -47,7 +50,7 @@ beforeAll(async () => {
       按人:[1,2].map(i=>({id:'u'+i,name:长+i,新建:3,转商机:2,转订单:1,成功交付:1,交付金额:23456789,没成:1})),
       外币:0,
       漏斗:项目漏斗of([...Array(6)].map((_,i)=>({phase:i<4?'商机':'线索',result:i<3?'成功交付':null}))),
-      线索节点:节点们['线索'].map((node,i)=>({node,count:i,流失:i===2?1:0,判无效:0,退回公海:0})),
+      线索节点:统计节点们('线索').map((node,i)=>({node,count:i,流失:i===2?1:0,判无效:0,退回公海:0})),
       线索转商机:4,
     };
     window.__画=(view,项目,单人,页签)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:项目}}>
@@ -120,6 +123,31 @@ it.each([1024, 1280, 1366])("Windows %ipx + 超长名字：两个视图都不横
     const box = await 卡.boundingBox();
     expect(box!.x + box!.width).toBeLessThanOrEqual(w);
     await page.close();
+  }
+});
+
+it("后售培育那行（P-界面-65）：各进程的项目、线索瀑布悬停都写「客户已有交付结清的项目」；潜客培育那行不写；390 宽不横滚", async () => {
+  const { page, errors } = await 打开("现在");
+  /** 悬停到某张图第几条（从上往下数，0 起）上，读提示框的字 */
+  const 悬停 = async (卡名: string, 第几条: number, 条数: number, 上: number, 下: number) => {
+    const c = page.locator(".rb-mod-card", { hasText: 卡名 }).locator("canvas").first();
+    const b = (await c.boundingBox())!;
+    await page.mouse.move(b.x + b.width / 2, b.y + 上 + ((b.height - 上 - 下) / 条数) * (第几条 + 0.5));
+    await page.waitForTimeout(150);
+    return page.locator(".rb-mod-card", { hasText: 卡名 }).innerText();
+  };
+  // 各进程的项目：15 条（14 个节点 + 后售培育），潜客培育在最上，后售培育第二条（图上 grid 上 8 下 4）
+  expect(await 悬停("各进程的项目", 1, 15, 8, 4)).toMatch(/线索 · 后售培育\s*客户已有交付结清的项目/);
+  expect(await 悬停("各进程的项目", 0, 15, 8, 4)).not.toContain("客户已有交付结清的项目");
+  // 线索瀑布：潜客培育、后售培育、线索验证、线索推进、已转商机阶段、线索合计 6 条（grid 上 30 下 4）
+  expect(await 悬停("线索瀑布", 1, 6, 30, 4)).toMatch(/后售培育 · 共 \d+ 个\s*客户已有交付结清的项目/);
+  expect(await 悬停("线索瀑布", 0, 6, 30, 4)).not.toContain("客户已有交付结清的项目");
+  expect(errors).toEqual([]); await page.close();
+  for (const v of ["现在", "本月"]) {
+    const { page: 窄 } = await 打开(v, true, 390);
+    await 窄.waitForTimeout(300);
+    expect(await 窄.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `${v} 390`).toBe(true);
+    await 窄.close();
   }
 });
 

@@ -13,10 +13,10 @@ import { 金额, 金额缩写 } from "@/lib/currency";
 import { 滚法 } from "@/lib/reduced-motion";
 import type { 项目现在, 项目一段, 人行现在, 人行一段 } from "./project-stats";
 import ProjectFunnel from "./ProjectFunnel";
-import LeadWaterfall from "./LeadWaterfall";
+import LeadWaterfall, { 后售悬停字 } from "./LeadWaterfall";
 import { 复盘概况排, 复盘提醒排, 客户分布排, KPI排, type 复盘概况数 } from "./ReviewSummary";
 import type { 客户分布 } from "@/lib/project/review-extras";
-import { 字典of, 结局叫法, type 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 字典of, 结局叫法, 后售培育名, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 带批次 } from "@/lib/project/import-batch";
 
 /**
@@ -130,7 +130,10 @@ export function ProjectNowView({ 数, 本位币, 单人, 概况, 客户, 出口�
         axisPointer: { type: "shadow" },
         formatter: (ps: { dataIndex: number }[]) => {
           const n = 倒[ps[0]?.dataIndex ?? 0];
-          return n ? `${n.phase} · ${n.node}<br/>${n.count} 个${n.phase === "线索" ? "" : ` · ${金额(n.amount, 本位币)}`}` : "";
+          if (!n) return "";
+          // 后售培育那行（从潜客培育拆出来的）：多写一句为什么单独一行
+          const 注 = n.node === 后售培育名 ? `<br/>${后售悬停字}` : "";
+          return `${n.phase} · ${n.node}${注}<br/>${n.count} 个${n.phase === "线索" ? "" : ` · ${金额(n.amount, 本位币)}`}`;
         },
       },
       grid: { left: 8, right: 24, top: 8, bottom: 4, containLabel: true },

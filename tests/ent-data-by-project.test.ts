@@ -57,7 +57,9 @@ describe("现在", () => {
     ]);
     expect(数.节点.find((n) => n.node === "共识方案")).toMatchObject({ count: 2, amount: 100000 });
     expect(数.节点.find((n) => n.node === "安装实施")?.count).toBe(0);
-    expect(数.节点).toHaveLength(14);
+    // 14 个节点 + 潜客培育后面的后售培育那行（P-界面-65）：同一位客户有成功交付的 f，a 这个潜客培育就数在后售那行
+    expect(数.节点).toHaveLength(15);
+    expect(数.节点.filter((n) => n.phase === "线索").map((n) => [n.node, n.count])).toEqual([["潜客培育", 0], ["后售培育", 1], ["线索验证", 0], ["线索推进", 0]]);
     expect(数.结局.find((r) => r.result === "成功交付")?.count).toBe(1);
     expect(数.结局.find((r) => r.result === "异常状态")?.count).toBe(1);
     expect(数.公海).toBe(1);
