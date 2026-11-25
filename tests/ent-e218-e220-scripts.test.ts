@@ -193,3 +193,28 @@ describe("e218 --undo：按该批日志的改前值整批改回", () => {
     expect(状态()).toEqual({ 83028: "成交", 17535: "流失" });
   });
 });
+
+describe("E-275 选 a：17535 只在在推线索进了公海时才写「流失」", () => {
+  const 改库 = (sql: string) => { const db = new DatabaseSync(库); try { db.exec(sql); } finally { db.close(); } };
+
+  it("在推线索不在公海（新规则算出潜在）：空跑、写入都退出码 1，一行不写、不留日志", () => {
+    改库("UPDATE Project SET pooledAt = NULL WHERE id = 'p4'");
+    for (const 写 of [false, true]) {
+      const r = 跑(e218, [库, 写 ? "--write" : "--dry-run", ...必带], 写);
+      expect(r.code, r.out).toBe(1);
+      expect(r.out).toContain("按新规则算出「潜在」，预期「流失」");
+    }
+    expect(状态()).toEqual({ 83028: "流失", 17535: null });
+    expect(日志()).toEqual([]);
+  });
+
+  it("照正式库摆（83028 已是成交、名下项目都在推）：只写 17535 一行，83028 计已完成；再空跑 0 行", () => {
+    改库("UPDATE Customer SET custStatus = '成交' WHERE id = 'c83028'; UPDATE Project SET phase = '线索', node = '线索验证', result = NULL WHERE id = 'p1'");
+    写一批();
+    expect(状态()).toEqual({ 83028: "成交", 17535: "流失" });
+    expect(日志()).toHaveLength(1);
+    const 再 = 跑(e218, [库, "--dry-run", ...必带]);
+    expect(再.code, 再.out).toBe(0);
+    expect(再.out).toContain("空跑结束，一行没写");
+  });
+});
