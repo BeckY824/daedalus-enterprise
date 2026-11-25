@@ -30,6 +30,8 @@ import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from
 import type { FollowUpRow } from "@/app/(app)/customers/[id]/types";
 import type { 附件 } from "@/lib/attachment-rules";
 import { 是同号留痕 } from "./same-number-mark";
+import { 本人限时可改of, 本人可改到, 系统记的沟通们 } from "./follow-perm";
+import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
 
 export type 沟通游标 = { occurredAt: string; id: string };
 export const 汇总每页 = 50;
@@ -112,16 +114,39 @@ async function 售后去处(me: { id: string; role?: string }, customerId: strin
   if (!客 || 客.客户在公海) return 空;
   const 谁 = { id: me.id, role: me.role ?? "" };
   const 能记 = new Set(交付.filter((x) => 能记售后回访(谁, { ...x.行, ...客 }, org, x.行.members[0]?.inviteStatus)).map((x) => x.行.id));
-  if (客.客户负责人 !== me.id) return { 能记, 补: [] };
-  const 有 = new Set(们.map((x) => x.行.id));
-  const 看不到的 = await 看全部(() => prisma.project.findMany({
-    where: { customerId, result: { in: 同名们("交付结清") } }, select: { id: true, name: true, ownerId: true, result: true }, orderBy: { updatedAt: "desc" }, take: 50,
-  }));
-  const 补 = 看不到的.filter((p) => !有.has(p.id) && 能记售后回访(谁, { ...p, ...客 }, org, null)).map((p): 跟进去处 => ({
+  const 补 = (await 补进来的售后项目(me, customerId, new Set(们.map((x) => x.行.id)), org, 客)).map((p): 跟进去处 => ({
     id: p.id, 名: p.name, 主: true, 结束: true, 说明: "已结束", 下一步: null, 下一步文字: null, 能记: false, 能记售后: true,
   }));
   return { 能记, 补 };
 }
+
+/**
+ * 我是客户负责人时、看不到却能记售后回访的交付结清项目（企业版项目不跟客户走：别人负责、我没进组）：按 id 取全、逐个判 能记售后回访。
+ * 不是客户负责人、客户在公海 = 空，不查
+ */
+async function 补进来的售后项目(me: { id: string; role?: string }, customerId: string, 有: Set<string>, org: Awaited<ReturnType<typeof 权限组织>>, 客: 售后客户格): Promise<{ id: string; name: string }[]> {
+  if (!org || 客.客户在公海 || 客.客户负责人 !== me.id) return [];
+  const 谁 = { id: me.id, role: me.role ?? "" };
+  const 看不到的 = await 看全部(() => prisma.project.findMany({
+    where: { customerId, result: { in: 同名们("交付结清") } }, select: { id: true, name: true, ownerId: true, result: true }, orderBy: { updatedAt: "desc" }, take: 50,
+  }));
+  return 看不到的.filter((p) => !有.has(p.id) && 能记售后回访(谁, { ...p, ...客 }, org, null));
+}
+
+/**
+ * 本人记的售后回访（11-25 审查）：客户负责人能在看不到的交付结清项目上记售后回访（补进来的售后项目），记完客户页沟通记录、翻页、重读一条、AI 查询都要看得到——
+ * 只多收「这位客户名下、挂在这批项目上、我自己记的、标了售后回访的」，同项目别人记的照旧不出，项目本身也不放开。项目 id → 名称；不是企业版 / 不是客户负责人 = 空。
+ * 给了 客 就不再查客户那一句（客户页渲染手上有）
+ */
+async function 本人售后项目(me: { id: string; role?: string }, customerId: string, 有: Set<string>, 给的?: 售后客户格): Promise<Map<string, string>> {
+  if (!企业版()) return new Map();
+  const [org, 客] = await Promise.all([权限组织(), 给的 ?? 售后客户(customerId)]);
+  return new Map((await 补进来的售后项目(me, customerId, 有, org, 客)).map((p) => [p.id, p.name]));
+}
+
+/** 汇总里「本人售后」那一段的查询条件：只我记的、标了售后回访的、挂在这几个项目上的 */
+const 本人售后条件 = (meId: string, 们: Map<string, string>): Prisma.FollowUpWhereInput[] =>
+  们.size ? [{ ownerId: meId, afterSale: true, projectNode: { projectId: { in: [...们.keys()] } } }] : [];
 
 function 排去处(me: { id: string; role?: string }, 项目们: { 行: 项目行; 主: boolean }[], org: Awaited<ReturnType<typeof 权限组织>>, 售后: { 能记: Set<string>; 补: 跟进去处[] } = { 能记: new Set(), 补: [] }): 跟进去处[] {
   const 行们 = 项目们.map(({ 行, 主 }) => ({
@@ -157,7 +182,8 @@ function 按时间线顺序(a: { occurredAt: Date; id: string }, b: { occurredAt
  * 调用方先确认这位客户当前这位看得到（客户页本身就要看得到）。
  */
 export async function 客户沟通汇总(me: { id: string; role?: string }, customerId: string, before?: 沟通游标, 可见: 可见法 = 看得到的客户): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
-  return 汇总一页(customerId, await 汇总的项目(me, customerId, 可见), before);
+  const 项目们 = await 汇总的项目(me, customerId, 可见);
+  return 汇总一页(customerId, 项目们, before, { me, 项目: await 本人售后项目(me, customerId, new Set(项目们.keys())) });
 }
 
 /**
@@ -167,7 +193,11 @@ export async function 客户沟通汇总(me: { id: string; role?: string }, cust
 export async function 客户页沟通两样(me: { id: string; role?: string }, customerId: string, 可见: 可见法 = 看得到的客户, 客?: 售后客户格): Promise<[{ rows: FollowUpRow[]; hasMore: boolean }, 跟进去处[]]> {
   const [们, org] = await Promise.all([看得到的项目们(me, customerId, true, 可见), 权限组织()]);
   const 菜单 = 们.filter((x) => !x.只挂过);
-  return Promise.all([汇总一页(customerId, 项目名表(们), undefined), 售后去处(me, customerId, 菜单, org, 客).then((售后) => 排去处(me, 菜单, org, 售后))]);
+  const 名表 = 项目名表(们);
+  // 售后去处补进来的那批（客户负责人看不到的交付结清项目）顺带给汇总收「本人售后」那一段：不另查
+  const 售后 = await 售后去处(me, customerId, 菜单, org, 客);
+  const 本人售后 = new Map(售后.补.filter((p) => !名表.has(p.id)).map((p) => [p.id, p.名]));
+  return [await 汇总一页(customerId, 名表, undefined, { me, 项目: 本人售后 }), 排去处(me, 菜单, org, 售后)];
 }
 
 /** 客户列表「最近跟进」那一句最多给多少字（列里一行省略，悬停看全文） */
@@ -248,10 +278,17 @@ export async function 客户跟进可见条件(me: { id: string; role?: string }
     看全部(() => 看已删(() => prisma.project.findMany({ where: { customerId, deletedAt: { not: null } }, select: { id: true }, take: 项目上限 }))),
   ]);
   const 这位的项目 = [...项目们.keys(), ...删了的.map((p) => p.id)];
-  return 这位的项目.length ? { OR: [{ projectNode: null }, { projectNode: { projectId: { in: 这位的项目 } } }] } : { projectNode: null };
+  // 本人记的售后回访（11-25 审查）：同 汇总一页 那一段，AI 查询、重读一条、挑客户近况也看得到
+  const 本人 = 本人售后条件(me.id, await 本人售后项目(me, customerId, new Set(项目们.keys())));
+  const 段们: Prisma.FollowUpWhereInput[] = [{ projectNode: null }, ...(这位的项目.length ? [{ projectNode: { projectId: { in: 这位的项目 } } }] : []), ...本人];
+  return 段们.length === 1 ? 段们[0] : { OR: 段们 };
 }
 
-async function 汇总一页(customerId: string, 项目们: Map<string, string>, before?: 沟通游标): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
+/**
+ * 本人售后：本人记的售后回访那一段（本人售后项目）——收进这位客户那一句；这几条标 本人售后（客户页这条能传截图 / 录音、项目名不做链接，项目页我进不去），
+ * 30 分钟内的再给 本人可改到（客户页这条摆「修改」，服务端 saveFollowUp 照 本人限时改挡 核）
+ */
+async function 汇总一页(customerId: string, 项目们: Map<string, string>, before?: 沟通游标, 本人售后?: { me: { id: string }; 项目: Map<string, string> }): Promise<{ rows: FollowUpRow[]; hasMore: boolean }> {
   const ids = [...项目们.keys()];
   /*
     这位客户名下进了回收站的项目：挂在上面、记在这位客户名下的沟通照旧留在客户下（删项目时就是这么说的），
@@ -277,14 +314,19 @@ async function 汇总一页(customerId: string, 项目们: Map<string, string>, 
     orderBy: followHistoryOrder, take: 汇总每页 + 1,
     include: { ...followHistoryInclude, projectNode: { select: { projectId: true } } },
   }));
+  const 本人们 = 本人售后?.项目 ?? new Map<string, string>();
+  const 这位段们: Prisma.FollowUpWhereInput[] = [{ projectNode: null }, ...(这位的项目.length ? [{ projectNode: { projectId: { in: 这位的项目 } } }] : []), ...(本人售后 ? 本人售后条件(本人售后.me.id, 本人们) : [])];
   const 各句 = await Promise.all([
-    一位(customerId, 这位的项目.length ? { OR: [{ projectNode: null }, { projectNode: { projectId: { in: 这位的项目 } } }] } : { projectNode: null }),
+    一位(customerId, 这位段们.length === 1 ? 这位段们[0] : { OR: 这位段们 }),
     ...别的客户.map((c) => 一位(c, { projectNode: { projectId: { in: ids } } })),
   ]);
   const rows = 各句.length === 1 ? 各句[0] : 各句.flat().sort(按时间线顺序).slice(0, 汇总每页 + 1);
   const 页 = rows.slice(0, 汇总每页);
   // 删了的项目不标（上面的 删了的）
-  const 项目of = (f: (typeof 页)[number]) => (f.projectNode && 项目们.has(f.projectNode.projectId) ? f.projectNode.projectId : null);
+  const 项目of = (f: (typeof 页)[number]) => (f.projectNode && (项目们.has(f.projectNode.projectId) || 是本人售后(f)) ? f.projectNode.projectId : null);
+  // 只能是这位客户名下、我记的售后回访（查询条件就是这么收的），这里再按同样几格认一遍
+  const 是本人售后 = (f: (typeof 页)[number]) => !!f.projectNode && 本人们.has(f.projectNode.projectId) && !项目们.has(f.projectNode.projectId)
+    && f.customerId === customerId && f.afterSale && !!本人售后 && f.ownerId === 本人售后.me.id;
   /*
     「已修改」小字（11-19 记录人 30 分钟内能改）：这一页一句留痕。
     沟通上的截图、录音（F-047）：只给挂在 项目们 上的那几条——项目们 就是限定层 + 露客户 + 公海回避滤过的，和附件接口 认沟通 → 认项目看 同一把尺；
@@ -296,14 +338,27 @@ async function 汇总一页(customerId: string, 项目们: Map<string, string>, 
   */
   const 带附件 = (f: (typeof 页)[number]) => f.customerId === customerId && !!项目of(f);
   const 挂项目的 = 页.filter(带附件).map((f) => f.id);
-  const [改过的, 附件表] = await Promise.all([改过的沟通们(页.map((f) => f.id)), 挂项目的.length ? 沟通附件们(prisma, 挂项目的) : Promise.resolve(new Map<string, 附件[]>())]);
+  // 本人售后那几条里 30 分钟内的（本人限时改，follow-perm.ts）：沟通类型、不是导入 / 系统留痕；没有就不查
+  const 现在 = new Date();
+  const 限时候选 = 本人售后 ? 页.filter((f) => 是本人售后(f) && 要挂项目的类型(f.type) && 本人限时可改of(本人售后.me, f, 现在)) : [];
+  const [改过的, 附件表, 系统的] = await Promise.all([
+    改过的沟通们(页.map((f) => f.id)),
+    挂项目的.length ? 沟通附件们(prisma, 挂项目的) : Promise.resolve(new Map<string, 附件[]>()),
+    限时候选.length ? 系统记的沟通们(限时候选) : Promise.resolve(new Set<string>()),
+  ]);
+  const 可改到 = new Map(限时候选.filter((f) => !系统的.has(f.id)).map((f) => [f.id, 本人可改到(f.createdAt).toISOString()]));
   return {
     rows: 页.map((f) => {
       const pid = 项目of(f);
       const 行 = serializeFollowHistory(f);
       const 附 = 带附件(f) ? 附件表.get(f.id) : undefined;
       // 别的客户名下的记录（关联项目的）：商机是那家客户的，不在这里露
-      return { ...行, opportunity: f.customerId === customerId ? 行.opportunity : null, 项目: pid ? { id: pid, 名: 项目们.get(pid) ?? "" } : null, ...(改过的.has(f.id) ? { 已修改: true } : {}), ...(附?.length ? { 附件: 附 } : {}) };
+      const 本人 = 是本人售后(f);
+      return {
+        ...行, opportunity: f.customerId === customerId ? 行.opportunity : null, 项目: pid ? { id: pid, 名: 项目们.get(pid) ?? 本人们.get(pid) ?? "" } : null,
+        ...(改过的.has(f.id) ? { 已修改: true } : {}), ...(附?.length ? { 附件: 附 } : {}),
+        ...(本人 ? { 本人售后: true as const } : {}), ...(可改到.has(f.id) ? { 本人可改到: 可改到.get(f.id)! } : {}),
+      };
     }),
     hasMore: rows.length > 汇总每页,
   };

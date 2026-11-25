@@ -29,6 +29,11 @@ import { 默认组织规则, 默认三态规则 } from "@/lib/project/org-rules"
 import { 三态夜扫 } from "@/lib/enterprise/tri-state-db";
 import { 加天 } from "@/lib/enterprise/tri-state";
 import { beijingDay } from "@/lib/business-clock";
+import { 客户页沟通两样, 客户沟通汇总, 客户跟进可见条件, 汇总的项目 } from "@/lib/enterprise/customer-follow-feed";
+import { 认父记录 } from "@/app/api/attachments/access";
+import { DEFAULT_BUSINESS } from "@/lib/business-config";
+import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 看全部 } from "@/lib/team-scope";
 import {
   交付结清要售后回访话, 请选在推或售后话, 售后只在交付结清话, 售后不能记话, 售后回访主题, 沟通客户在公海话, 沟通项目已结束话, 能记售后回访,
 } from "@/lib/project/follow-needs-project";
@@ -231,5 +236,62 @@ describe("三态和本人限时改", () => {
     expect((await prisma.followUp.findUniqueOrThrow({ where: { id: f.id } })).afterSale).toBe(true);
     await prisma.project.update({ where: { id: p.id }, data: { result: "丢单" } });
     expect(await 改("再改一次")).toMatchObject({ ok: false });
+  });
+});
+
+describe("客户负责人在看不到的交付结清项目上记的售后回访（11-25 审查）", () => {
+  it("客户页沟通记录、翻页、可见条件（AI 查询 / 重读一条）里看得到自己这条，同项目别人记的看不到；带本人售后、本人可改到，能看能传附件、能改", async () => {
+    // 企业版项目不跟客户走：同事负责、我没进组，我只是客户负责人
+    const p = await 交付项目({ ownerId: 同事, creatorId: 同事 });
+    const 他的 = (await 项目上记(同事, p.id)).followUpId!;
+    expect(他的).toBeTruthy();
+    const 我们 = { id: 我, role: "SALES" };
+    // 按组织看客户开着：企业版项目不跟客户走（同事负责、我没进组的项目我看不到）
+    vi.stubEnv("CRM_ENTERPRISE", "1");
+    await setSetting(规则.按组织看客户.key, true);
+    await setSetting("business", { ...DEFAULT_BUSINESS, projectMode: true });
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    try {
+    // 下面都按我的范围查（限定层认 以谁的身份）
+    await 以谁的身份(我, async () => {
+    expect([...(await 汇总的项目(我们, 客户)).keys()]).not.toContain(p.id);
+    const r = await 记({ projectId: p.id, 售后回访: true });
+    expect(r).toMatchObject({ ok: true });
+    const 我的 = (r as { id: string }).id;
+    // 自己这条传过一张截图：汇总里带上（同 带附件：记在这位客户名下、挂在项目上）
+    await 看全部(() => prisma.attachment.create({ data: { followUpId: 我的, name: "回访.png", mime: "image/png", size: 10, sha256: "0".repeat(64), userId: 我 } }));
+
+    const [首页, 菜单] = await 客户页沟通两样(我们, 客户, undefined, { 客户负责人: 我, 客户在公海: false });
+    expect(首页.rows.map((f) => f.id)).toEqual([我的]);
+    expect(首页.rows[0]).toMatchObject({ 本人售后: true, afterSale: true, 项目: { id: p.id, 名: p.name } });
+    expect(首页.rows[0].本人可改到).toBeTruthy();
+    expect(首页.rows[0].附件?.map((a) => a.name)).toEqual(["回访.png"]);
+    expect(菜单.find((x) => x.id === p.id)).toMatchObject({ 能记售后: true });
+    // 翻页那条（loadCustomerFeed）同一批
+    expect((await 客户沟通汇总(我们, 客户)).rows.map((f) => f.id)).toEqual([我的]);
+    // 按客户直接读跟进的老接口（AI 查询、重读一条、挑客户近况）同一把尺
+    const 条件 = await 客户跟进可见条件(我们, 客户);
+    expect(条件).not.toBeNull();
+    expect((await prisma.followUp.findMany({ where: { customerId: 客户, AND: [条件!] }, select: { id: true } })).map((f) => f.id)).toEqual([我的]);
+
+    // 附件：自己这条能看能传，同事那条看不到
+    expect(await 认父记录({ followUpId: 我的 }, false)).toEqual({ 叫法: "这条售后回访" });
+    expect(await 认父记录({ followUpId: 我的 }, true)).toEqual({ 叫法: "这条售后回访" });
+    expect(await 认父记录({ followUpId: 他的 }, false)).toHaveProperty("错");
+
+    // 本人限时改：客户页这条点「修改」走 saveFollowUp
+    const f = await prisma.followUp.findUniqueOrThrow({ where: { id: 我的 } });
+    expect(await saveFollowUp({ id: f.id, customerId: 客户, type: f.type, method: f.method, initiator: f.initiator, content: "回访了使用情况，客户说设备运行稳定，下季度要加一台", status: f.status, occurredAt: dayjs(f.occurredAt).format("YYYY-MM-DD HH:mm"), title: f.title })).toMatchObject({ ok: true });
+
+    // 不再是客户负责人：这段不收（不扩大可见范围）
+    await 看全部(() => prisma.customer.update({ where: { id: 客户 }, data: { salesOwnerId: 同事 } }));
+    忘掉企业版范围();
+    expect((await 客户沟通汇总(我们, 客户)).rows.map((f) => f.id)).not.toContain(我的);
+    });
+    } finally {
+      vi.unstubAllEnvs();
+      忘掉企业版范围();
+    }
   });
 });

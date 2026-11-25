@@ -2108,6 +2108,23 @@ function StatusPicker({
   );
 }
 
+/**
+ * 本人限时改到点（ISO）：挂上以后按本机钟判，到点重渲一次收起；首帧当不能改（服务端渲染和首帧钟不一样，免得水合对不上）。
+ * 服务端 saveFollowUp 照 本人限时改挡 核 30 分钟，本机钟不准顶多摆着点了说过时
+ */
+function useOwnEditUntil(到?: string): boolean {
+  const [现在, set现在] = useState<number | null>(null);
+  useEffect(() => {
+    if (!到) return;
+    const 量 = () => set现在(Date.now());
+    const 先量 = setTimeout(量, 0);
+    const 剩 = Date.parse(到) - Date.now();
+    const 到点 = 剩 > 0 ? setTimeout(量, Math.min(剩 + 200, 2 ** 31 - 1)) : undefined;
+    return () => { clearTimeout(先量); if (到点) clearTimeout(到点); };
+  }, [到]);
+  return !!到 && 现在 !== null && 现在 <= Date.parse(到);
+}
+
 /** 时间线上「项目：X」默认去项目详情的沟通卡（服务端再判跳不跳） */
 const 项目页地址 = (id: string) => `/projects/${encodeURIComponent(id)}#project-follow`;
 
@@ -2115,6 +2132,8 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
   const { 曲线, 时长, 间隔 } = useMotionTheme();
   const meta = FOLLOW_TYPE_MAP[f.type] ?? FOLLOW_TYPE_MAP.OTHER;
   const [srcOpen, setSrcOpen] = useState(false);
+  // 汇总里本人记的售后回访（项目页进不去的那批）：30 分钟内这条摆「修改」
+  const 本人能改 = useOwnEditUntil(汇总 && f.本人售后 ? f.本人可改到 : undefined);
   const 原文 = f.sourceText && (
     <div style={{ marginTop: 2 }}>
       <Typography.Link style={{ fontSize: 12, color: "var(--text-muted)" }} onClick={() => setSrcOpen((v) => !v)}>
@@ -2164,11 +2183,15 @@ function FollowItem({ f, showOwner, index, onEdit, onDelete, 可改 = true, 可�
         <div className="rec-tl-content">{f.content}</div>
         {原文}
         {/* 沟通上的截图、录音（F-047）：市场成员看分出去的客户只剩这条汇总时间线，截图也摆在这里；只看、看大图、下载，传和删去项目详情 */}
-        {f.附件?.length ? <FollowAttachments followUpId={f.id} 附件={f.附件} 能传={false} 能删={false} /> : null}
-        {f.项目 && <div><RowLink href={项目地址(f.项目.id)} className="rec-sum-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink></div>}
+        {/* 本人记的售后回访、挂在我进不去的交付结清项目上（11-25）：这里就能传（服务端 认沟通 售后回访那一道），项目名不做链接 */}
+        {f.附件?.length || f.本人售后 ? <FollowAttachments followUpId={f.id} 附件={f.附件 ?? []} 能传={!!f.本人售后} 能删={false} /> : null}
+        {f.项目 && <div>{f.本人售后
+          ? <span className="rec-sum-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</span>
+          : <RowLink href={项目地址(f.项目.id)} className="rec-sum-proj" title={`项目：${f.项目.名}`}>项目：{f.项目.名}</RowLink>}</div>}
         <div className="rec-tl-meta">
           {f.ownerName && <span>{f.ownerName}</span>}
           {f.已修改 && <span title="这条沟通提交后改过，改了什么见操作日志">已修改</span>}
+          {本人能改 && f.本人可改到 && <Typography.Link onClick={onEdit} data-testid="follow-own-edit">修改（{dayjs(f.本人可改到).format("HH:mm")} 前可改）</Typography.Link>}
           {f.duration ? <span>时长 {duration(f.duration)}</span> : null}
           {(f.contactName || f.contactId) && <span>{空显(f.contactName)}{f.contactPosition ? `（${f.contactPosition}）` : ""}</span>}
           {f.participants && <span>参与人：{f.participants}</span>}

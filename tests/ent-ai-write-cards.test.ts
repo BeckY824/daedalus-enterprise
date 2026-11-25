@@ -705,10 +705,10 @@ describe("记沟通卡：多个在推项目列候选、只列在推的、回话�
     // 直接点名交付结清的：加卡点卡照旧说已结束；记沟通卡出一张售后回访卡（锁着标记、不要下一步）
     const 结 = await 出("propose_blocker_add", { project: "远山三期", ...沟通参, 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"] }, 乙);
     expect(结.卡).toBeUndefined();
-    expect((结.r.data as { error: string }).error).toBe("项目「远山三期」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）");
+    expect((结.r.data as { error: string }).error).toBe("项目「远山三期」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）；交付结清的只能记售后回访、不能加卡点");
     const 访 = await 出("propose_project_followup", { project: "远山三期", ...沟通参 }, 乙, "给远山三期记一条售后回访");
     expect(访.卡).toMatchObject({ 售后回访: true });
-    expect(missingFields({ ...访.卡!, 下一步: "" })).toEqual([]);
+    expect(missingFields({ ...(访.卡 as Extract<项目卡, { kind: "project_followup" }>), 下一步: "" })).toEqual([]);
   });
 
   it("只指向一个：返回里说回答只提它这一个", async () => {
@@ -730,10 +730,10 @@ describe("记沟通卡：多个在推项目列候选、只列在推的、回话�
       const 参 = 工具 === "propose_blocker_add" ? { ...沟通参, 卡点类型: "中度卡点", 阻碍原因: ["价格预算分歧"] } : 沟通参;
       const 三期 = await 出(工具, { project: "远山三期", ...参 }, 乙, "给远山三期记一条沟通");
       expect(三期.卡).toBeUndefined();
-      expect((三期.r.data as { error: string }).error).toBe("项目「远山三期」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）");
+      expect((三期.r.data as { error: string }).error).toBe("项目「远山三期」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）；交付结清的只能记售后回访、不能加卡点");
       const 华东 = await 出(工具, { project: "华东", ...参 }, 乙, "给华东记一条沟通");
       expect(华东.卡).toBeUndefined();
-      expect((华东.r.data as { error: string }).error).toBe("项目「华东一期」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）");
+      expect((华东.r.data as { error: string }).error).toBe("项目「华东一期」已结束或在公海，沟通只能记在还在推进的项目上（没结局、不在公海）；交付结清的只能记售后回访、不能加卡点");
     }
     // 精确一个都没对上，才去「包含」找（只找在推的）
     const 包含 = await 出("propose_project_followup", { project: "三期扩", ...沟通参 }, 乙, "给三期扩建记一条");

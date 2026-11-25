@@ -134,14 +134,18 @@ async function 认沟通(followUpId: string, 要改: boolean | "删"): Promise<{
   if (!我) return { 错: "请先登录", 状态: 401 };
   const f = await prisma.followUp.findFirst({ where: { id: followUpId }, select: { id: true, ownerId: true, customerId: true, afterSale: true } });
   if (!f) return { 错: "这条沟通记录已经不在了，刷新看看", 状态: 404 };
-  const 挂 = await prisma.followUpProject.findFirst({ where: { followUpId: f.id }, select: { projectId: true } });
+  // 挂哪个项目这一格跟着项目可见范围滤：本人记的售后回访（客户负责人记在看不到的交付结清项目上的）按 id 取全，下面那一道再核
+  const 本人售后 = 要改 !== "删" && f.afterSale && f.ownerId === 我.id;
+  const 取挂 = () => prisma.followUpProject.findFirst({ where: { followUpId: f.id }, select: { projectId: true } });
+  const 挂 = (await 取挂()) ?? (本人售后 ? await 看全部(取挂) : null);
   if (!挂) return { 错: "这条沟通记录没挂在项目上，不能传附件", 状态: 404 };
   /*
     售后回访（11-25，E-283）：自己记的售后回访传截图 / 录音，照记售后回访同一道（核售后回访：客户不在公海、项目负责人 / 已进组组员 / 客户负责人）。
     项目已交付结清（下面组员那条会说「已经结束了」），客户负责人也不一定看得到别人负责的项目（企业版项目不跟客户走），所以先走这一道、按 id 取全；
-    核不过的照下面原来的判
+    核不过的照下面原来的判。看（列、看大图、下载）同一道：客户页沟通记录收了「本人记的售后回访」那一段（customer-follow-feed.ts 本人售后项目），
+    客户负责人在那里传的截图要点得开；删不跟着放宽
   */
-  if (要改 === true && f.afterSale && f.ownerId === 我.id) {
+  if (本人售后) {
     const 项 = await 看全部(() => prisma.project.findUnique({ where: { id: 挂.projectId }, select: { customerId: true, ownerId: true, result: true, members: { where: { userId: 我.id }, select: { inviteStatus: true } } } }));
     if (项 && 是交付(项.result) && !(await 核售后回访(我, 项, true))) return { 叫法: "这条售后回访" };
   }
