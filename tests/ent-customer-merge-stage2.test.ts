@@ -19,7 +19,8 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 执行合并, 撤回合并, 合成联系人, 并入后去处, 并入提示, 联系人单 } from "@/lib/enterprise/customer-merge";
+import { 执行合并, 撤回合并, 合成联系人, 并入后去处, 并入提示, 联系人单, 项目来历, 已核对话, 撤回期限天数 } from "@/lib/enterprise/customer-merge";
+import { readFileSync } from "node:fs";
 import { 项目换客户, 项目换客户预览, 挂靠说明 } from "@/lib/enterprise/project-move-customer";
 import { 恢复, 彻底删除, 回收站列表 } from "@/lib/enterprise/soft-delete";
 import { 撤回一批 } from "@/lib/enterprise-import/revert";
@@ -251,3 +252,64 @@ describe("服务端动作", () => {
     expect(await 并进来的合并单(a)).toEqual([expect.objectContaining({ 从: "我的乙", status: "已合并", 能撤: true })]);
   });
 });
+
+describe("第三阶段界面要的（11-25）", () => {
+  const 都看得到 = async () => true;
+  it("界面抄的两句和服务端一致：「已核对…」那句、撤回期限天数（MergeHost.tsx 不能引 customer-merge.ts，抄了一份）", () => {
+    const 源 = readFileSync("src/app/(app)/customers/[id]/MergeHost.tsx", "utf8");
+    expect(源).toContain(`export const 已核对话 = "${已核对话}";`);
+    expect(源).toContain(`const 撤回天数 = ${撤回期限天数};`);
+  });
+  it("项目来历：合并挪过来的写「从 NO.xxxxx「B」并入」；之后又换客户的以最近一次为准，原客户看不到只给编号；撤回合并后不再说", async () => {
+    const a = await 客户(乙.id, { name: "留下甲", customerNo: 11 });
+    const b = await 客户(乙.id, { name: "被并乙", customerNo: 12 });
+    const c = await 客户(乙.id, { name: "第三家丙", customerNo: 13 });
+    const p = await 项目(乙.id, b);
+    const 本来 = await 项目(乙.id, a);
+    expect(await 项目来历(prisma, p, b, 都看得到)).toBeNull();
+    const r = await 执行合并(prisma, a, b, 乙);
+    if (!r.ok) throw new Error(r.error);
+    expect(await 项目来历(prisma, p, a, 都看得到)).toMatchObject({ 话: expect.stringMatching(/^从 NO\.?0*12「被并乙」并入$/), 怎么来: "合并客户" });
+    expect(await 项目来历(prisma, 本来, a, 都看得到)).toBeNull();
+    // 再换到丙：以最近一次（换客户）为准；原客户看不到只给编号
+    expect((await 项目换客户(prisma, p, c, 乙)).ok).toBe(true);
+    expect(await 项目来历(prisma, p, c, 都看得到)).toMatchObject({ 话: expect.stringMatching(/「留下甲」并入$/), 怎么来: "项目换客户" });
+    expect((await 项目来历(prisma, p, c, async () => false))!.话).not.toContain("留下甲");
+    // 换回 A：A 这边最近一次是换客户（从丙）
+    expect((await 项目换客户(prisma, p, a, 乙)).ok).toBe(true);
+    expect(await 项目来历(prisma, p, a, 都看得到)).toMatchObject({ 话: expect.stringContaining("「第三家丙」并入"), 怎么来: "项目换客户" });
+  });
+
+  it("撤回合并后，挪过的项目不再说「并入」", async () => {
+    const a = await 客户(乙.id, { name: "留下甲" });
+    const b = await 客户(乙.id, { name: "被并乙" });
+    const p = await 项目(乙.id, b);
+    const r = await 执行合并(prisma, a, b, 乙);
+    if (!r.ok) throw new Error(r.error);
+    expect(await 项目来历(prisma, p, a, 都看得到)).not.toBeNull();
+    expect((await 撤回合并(prisma, r.mergeId, 乙)).ok).toBe(true);
+    expect(await 项目来历(prisma, p, a, 都看得到)).toBeNull();
+    expect(await 项目来历(prisma, p, b, 都看得到)).toBeNull();
+  });
+
+  it("并进来的合并单：带上这位客户名下单独合成的联系人（kind 联系人、到 = 留下那位）；合并时勾的不单列", async () => {
+    const a = await 客户(乙.id, { name: "甲" });
+    const 留 = await 联系人(a, "13900000041");
+    const 并 = await 联系人(a, "13900000042");
+    const r = await 合成联系人(prisma, 留, 并, 乙);
+    if (!r.ok) throw new Error(r.error);
+    const b = await 客户(乙.id, { name: "乙家" });
+    const b人 = await 联系人(b, "13900000043");
+    const m = await 执行合并(prisma, a, b, 乙, { 同一个人: [{ 留, 并: b人 }] });
+    if (!m.ok) throw new Error(m.error);
+    登录.人 = 乙;
+    const 们 = await 并进来的合并单(a);
+    expect(们.map((x) => x.kind).sort()).toEqual(["客户", "联系人"]);
+    const 合成单 = 们.find((x) => x.kind === 联系人单)!;
+    expect(合成单).toMatchObject({ id: r.mergeId, 编号: null, 能撤: true, status: "已合并" });
+    expect(合成单.到).toMatch(/^联系人/);
+    登录.人 = 丙;
+    expect((await 并进来的合并单(a)).every((x) => !x.能撤)).toBe(true);
+  });
+});
+

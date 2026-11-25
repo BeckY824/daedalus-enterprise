@@ -47,22 +47,26 @@ function CandidateSearch({ customerId, 提示, 选 }: { customerId: string; 提�
   const [忙, set忙] = useState(false);
   const [错, set错] = useState<string | null>(null);
   const 次 = useRef(0);
-  useEffect(() => {
-    const t = 词.trim();
-    if (!t) { 次.current++; set们(null); set忙(false); return; }
+  const 计时 = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (计时.current) clearTimeout(计时.current); }, []);
+  /** 打字时搜：停 250ms 再发，只认最后一次的回包；清空就收起结果 */
+  function 改词(v: string) {
+    set词(v);
+    if (计时.current) clearTimeout(计时.current);
+    const t = v.trim();
     const 这次 = ++次.current;
+    if (!t) { set们(null); set忙(false); return; }
     set忙(true);
-    const 计时 = setTimeout(() => {
+    计时.current = setTimeout(() => {
       搜合并候选(customerId, t)
         .then((r) => { if (这次 === 次.current) { set们(r); set错(null); } })
         .catch((e) => { if (这次 === 次.current) set错(动作出错话(e, "没搜成，请再试一次")); })
         .finally(() => { if (这次 === 次.current) set忙(false); });
     }, 250);
-    return () => clearTimeout(计时);
-  }, [词, customerId]);
+  }
   return (
     <div className="mrg-search">
-      <Input.Search autoFocus allowClear value={词} onChange={(e) => set词(e.target.value)} loading={忙} placeholder="客户名称、简称、编号或号码" aria-label="搜客户" />
+      <Input.Search autoFocus allowClear value={词} onChange={(e) => 改词(e.target.value)} loading={忙} placeholder="客户名称、简称、编号或号码" aria-label="搜客户" />
       <p className="mrg-note">{提示}</p>
       {错 && <p role="alert" className="mrg-err">{错}</p>}
       {们 && !忙 && 们.length === 0 && <p className="mrg-empty">没搜到能选的客户</p>}

@@ -526,13 +526,21 @@ export async function 项目来历(
   db: 库, projectId: string, customerId: string, 看得到原客户: (id: string) => Promise<boolean>,
 ): Promise<{ 话: string; 怎么来: "合并客户" | "项目换客户"; at: string } | null> {
   if (!企业版()) return null;
-  const [单, 日志] = await Promise.all([
-    db.entCustomerMerge.findFirst({
-      where: { kind: 客户单, intoId: customerId, status: "已合并", detail: { contains: `"id":${JSON.stringify(projectId)},"挪客户":true` } },
-      orderBy: { at: "desc" }, select: { fromName: true, fromNo: true, at: true },
-    }),
-    db.auditLog.findFirst({ where: { entity: "Project", entityId: projectId, action: "project-move-customer" }, orderBy: { at: "desc" }, select: { at: true, detail: true } }),
-  ]);
+  // 一句 SQL 取两样（客户详情一次打开的查询条数有上限，tests/ent-cust-detail-queries.test.ts）：
+  // 并进这位客户、明细里这个项目是挪过来的合并单；这个项目最近的换客户日志。动作名走参数（同 history-data.ts 那句的讲究）
+  const 行们 = await 看全部(() => db.$queryRawUnsafe<{ k: string; at: bigint | number | string | Date; fromName: string | null; fromNo: bigint | number | null; detail: string | null }[]>(
+    `SELECT * FROM (
+       SELECT 'm' AS k, m."at" AS at, m."fromName" AS fromName, m."fromNo" AS fromNo, NULL AS detail FROM "EntCustomerMerge" m
+         WHERE m."kind" = ? AND m."intoId" = ? AND m."status" = ? AND instr(m."detail", ?) > 0
+       UNION ALL SELECT 'a', a."at", NULL, NULL, a."detail" FROM "AuditLog" a WHERE a."entity" = 'Project' AND a."entityId" = ? AND a."action" = ?
+     ) ORDER BY at DESC LIMIT 8`,
+    客户单, customerId, "已合并", `"id":${JSON.stringify(projectId)},"挪客户":true`, projectId, "project-move-customer",
+  ));
+  const 时刻 = (v: bigint | number | string | Date) => (v instanceof Date ? v : new Date(typeof v === "bigint" ? Number(v) : v));
+  const m行 = 行们.find((r) => r.k === "m");
+  const a行 = 行们.find((r) => r.k === "a");
+  const 单 = m行 ? { fromName: m行.fromName ?? "", fromNo: m行.fromNo === null ? null : Number(m行.fromNo), at: 时刻(m行.at) } : null;
+  const 日志 = a行 ? { at: 时刻(a行.at), detail: a行.detail } : null;
   let 换: { 从: string; at: Date } | null = null;
   if (日志?.detail) {
     try {
@@ -541,15 +549,17 @@ export async function 项目来历(
     } catch { /* 坏明细不认 */ }
   }
   if (单 && (!换 || 单.at >= 换.at)) {
-    return { 话: `从 ${[客户编号文字(单.fromNo), 单.fromName ? `「${单.fromName}」` : ""].filter(Boolean).join("")} 并入`, 怎么来: "合并客户", at: 单.at.toISOString() };
+    return { 话: 并入一句(客户编号文字(单.fromNo), 单.fromName), 怎么来: "合并客户", at: 单.at.toISOString() };
   }
   if (!换) return null;
   const 原 = await 看全部(() => 看已删(() => db.customer.findUnique({ where: { id: 换!.从 }, select: { customerNo: true, name: true, shortName: true } })));
   const 编号 = 客户编号文字(原?.customerNo ?? null);
   const 名字 = 原 && (await 看得到原客户(换.从)) ? 原.name?.trim() || 原.shortName || "" : "";
-  const 谁 = [编号, 名字 ? `「${名字}」` : ""].filter(Boolean).join("");
-  return { 话: 谁 ? `从 ${谁} 并入` : "从另一位客户并入", 怎么来: "项目换客户", at: 换.at.toISOString() };
+  return { 话: 并入一句(编号, 名字), 怎么来: "项目换客户", at: 换.at.toISOString() };
 }
+/** 「从 NO.00012「乙」并入」；没名字「从 NO.00012 并入」；都没有「从另一位客户并入」 */
+const 并入一句 = (编号: string | null | undefined, 名字: string | null | undefined) =>
+  名字 ? `从 ${编号 ?? ""}「${名字}」并入` : 编号 ? `从 ${编号} 并入` : "从另一位客户并入";
 
 /** 联系人已合成进哪位（还没撤回的合成单）；回收站用 */
 export async function 合成去向(db: 库, contactIds: string[]): Promise<Map<string, { mergeId: string; intoId: string; parentId: string | null }>> {

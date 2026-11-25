@@ -41,7 +41,7 @@ export default function RestrictedCustomerDetail({ 数据 }: { 数据: 受限客
   // 不摆「发起点评」：这页只列我负责的项目（restricted.ts），负责人本人不能发点评（lib/enterprise/coach-topic.ts）
   // 点了哪项在 Dropdown 的 menu.onClick 里按 key 交给 动作口（这一页菜单里只有项目那几项；灰着的项 antd 不触发 onClick）
   const 更多操作项 = 项目区.当前
-    ? 更多操作菜单({ 项目: { 当前名: 项目区.当前.p.name, 当前节点: 项目区.页签们.find((t) => t.id === 项目区.当前?.p.id)?.节点, 能建: false, 项们: 项目菜单项们(项目区.当前), 忙: 项目忙 }, 客户: [] })
+    ? 更多操作菜单({ 项目: { 当前名: 项目区.当前.p.name, 当前节点: 项目区.页签们.find((t) => t.id === 项目区.当前?.p.id)?.节点, 能建: false, 项们: 项目菜单项们(项目区.当前).filter((x) => x.key !== "move"), 忙: 项目忙 }, 客户: [] })
     : [];
   const 全部沟通 = (
     <div className="proj-mod-body" data-testid="restricted-follow-all">
