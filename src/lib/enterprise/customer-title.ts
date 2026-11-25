@@ -22,7 +22,7 @@
 import { 客户编号显示 } from "@/lib/customer-no";
 import { 去空 } from "@/lib/empty-value";
 import { 本套位置, 节点序号 } from "@/lib/project/nodes";
-import { 企业版字典 } from "@/lib/project/stage-dict";
+import { 企业版字典, 显示节点名 } from "@/lib/project/stage-dict";
 
 /** 段与段之间的分隔符：半角竖线、两边不加空格 */
 export const 抬头分隔 = "|";
@@ -175,7 +175,11 @@ function 毫秒(v: unknown): number {
  * 选哪个项目同客户列表「当前节点」（customer-list-projects.ts 最近有动静的）：updatedAt 最新的，一样新取节点更靠后的；
  * 写法同那一列（节点字）：有结局写结局，异常写「异常 · 节点」，库里的旧节点名按企业版新名
  */
-export async function 抬头节点们(db: 库, 客户们: readonly 抬头料[]): Promise<Record<string, Exclude<抬头节点格, string>>> {
+export async function 抬头节点们(
+  db: 库, 客户们: readonly 抬头料[],
+  /** 后售培育（P-界面-63）：服务端传 after-sale.ts 后售项目们（这份文件不 import 库），选中的项目一次判完，判成后售的潜客培育写后售培育；不给 = 不判 */
+  后售项目们?: (项目们: { id: string; customerId: string; phase: string; node: string; result: string | null }[]) => Promise<Set<string>>,
+): Promise<Record<string, Exclude<抬头节点格, string>>> {
   const ids = [...new Set(客户们.filter(要查节点).map((c) => c.id))];
   if (!ids.length) return {};
   const 行们 = await db.$queryRawUnsafe<项目行[]>(抬头节点SQL, JSON.stringify(ids));
@@ -187,10 +191,12 @@ export async function 抬头节点们(db: 库, 客户们: readonly 抬头料[]):
     if (!旧 || 时 > 旧.时 || (时 === 旧.时 && 序 > 旧.序)) 选.set(行.customerId, { 行, 时, 序 });
   }
   const 结果: Record<string, Exclude<抬头节点格, string>> = {};
+  const 后售们 = 后售项目们 ? await 后售项目们([...选.values()].map((v) => v.行)) : new Set<string>();
   for (const [cid, { 行 }] of 选) {
     const 位 = 本套位置({ phase: 行.phase, node: 行.node, result: 行.result }, 企业版字典);
+    const 节点 = 显示节点名(位.node, 后售们.has(行.id), 企业版字典);
     // 项目名只有全空客户用（全空抬头）；有区域没主体的照旧「区域|节点」
-    结果[cid] = { 节点: 位.result === "异常状态" ? `异常 · ${位.node}` : 位.result ?? 位.node, 项目名: 行.name ?? null, 项目id: 行.id };
+    结果[cid] = { 节点: 位.result === "异常状态" ? `异常 · ${节点}` : 位.result ?? 节点, 项目名: 行.name ?? null, 项目id: 行.id };
   }
   return 结果;
 }

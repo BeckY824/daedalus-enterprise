@@ -8,6 +8,7 @@
  *     不调 客户沟通汇总（那里有客户级老跟进、别的项目）；待办只取我名下的
  * 客户本身照旧改不了：客户 update / 转让 / 放公海 / 删除 / 三态都走限定层，这里不开任何写入口。
  */
+import { 后售项目们 } from "@/lib/project/after-sale";
 import type { SessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
@@ -98,7 +99,7 @@ export async function 读受限客户详情(me: SessionUser, customerId: string,
   return {
     // 页头和客户详情同一个抬头算法（11-19 客户名称选填：没全称也不空，最后兜客户编号）。
     // 全空客户写项目名（F-040）：这里只拿我自己最近动过的那个项目的名字，别人的项目名不给仅项目的人看
-    客户: { id: 客户行.id, name: 客户抬头(客户行, 仅我的项目名((await 抬头节点们(prisma, [客户行]))[客户行.id], 项目行[0]?.name)) },
+    客户: { id: 客户行.id, name: 客户抬头(客户行, 仅我的项目名((await 抬头节点们(prisma, [客户行], 后售项目们))[客户行.id], 项目行[0]?.name)) },
     卡,
     可改联系人: 我建的.map((c) => ({
       id: c.id, name: c.name, position: c.position, phone: 号(c.phone), email: c.email, wechat: c.wechat,

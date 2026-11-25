@@ -4,7 +4,8 @@ import { cache } from "react";
 import { 能看项目, 能看全部, 只看的人, 没设业务角色, 权限项目列, type 谁 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 本套位置, 节点序号 } from "./nodes";
-import { 企业版字典, 字典of } from "./stage-dict";
+import { 企业版字典, 字典of, 显示节点名 } from "./stage-dict";
+import { 后售项目们 } from "./after-sale";
 import { 阶段进程条件 } from "./list";
 import { 客户id集合, 包含模式, type 另比一词 } from "@/lib/search-keyword";
 import { 企业版 } from "@/lib/enterprise/switch";
@@ -64,10 +65,13 @@ export async function 客户项目概况们(me: 谁, customerIds: readonly strin
     else 按客户.set(p.customerId, [p]);
   }
   const 结果: Record<string, 客户项目概况> = {};
+  const 选中 = new Map([...按客户].map(([cid, ps]) => [cid, 最近有动静的(ps)]));
+  // 后售培育（P-界面-63）：这一页选中的项目一次判完（后售项目们，看客户名下全部项目，不受我能看的限）
+  const 后售们 = await 后售项目们([...选中.values()].filter((d): d is NonNullable<typeof d> => !!d));
   for (const [cid, ps] of 按客户) {
-    const d = 最近有动静的(ps);
+    const d = 选中.get(cid);
     const 位 = d ? 本套位置({ phase: d.phase, node: d.node, result: d.result }, 企业版字典) : null;
-    结果[cid] = { 项目数: ps.length, 当前节点: 位 ? 节点字(位) : null, 当前阶段: 位?.phase ?? null };
+    结果[cid] = { 项目数: ps.length, 当前节点: 位 ? 节点字({ ...位, node: 显示节点名(位.node, 后售们.has(d!.id), 企业版字典) }) : null, 当前阶段: 位?.phase ?? null };
   }
   return 结果;
 }
@@ -97,7 +101,7 @@ export async function 阶段筛选太多(me: 谁, sp: { phase?: string; node?: s
 
 const 阶段客户 = cache(async (id: string, role: string, phase: string, node: string): Promise<Prisma.CustomerWhereInput | null | typeof 阶段命中太多> => {
   const me: 谁 = { id, role: role || null };
-  const 阶进 = 阶段进程条件({ phase, node }, 字典of(true));
+  const 阶进 = await 阶段进程条件({ phase, node }, 字典of(true));
   if (!阶进.where.length) return null;
   // 看全部的（系统管理员、不按线的管理员只读；能看项目 里同一个顺序先排掉只看某人、没设角色）：不用逐个判可见，
   // 关联条件在库里一句筛完、不读进内存，也不点名（关联条件不过限定层，只靠它自己这几条：不在公海、没删、阶段 / 进程）

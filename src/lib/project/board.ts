@@ -5,7 +5,7 @@
 import { 按币种合计, type 币种合计 } from "../currency";
 import { 有值 } from "../empty-value";
 import { 看板列, 看板列们, 是阶段, 本套位置, type 看板列 as 列名 } from "./nodes";
-import { 阶段们, 是交付, 结局叫法, type 阶段, type 阶段字典 } from "./stage-dict";
+import { 阶段们, 是交付, 结局叫法, 显示节点名, type 阶段, type 阶段字典 } from "./stage-dict";
 
 export type 项目行 = {
   id: string;
@@ -27,6 +27,8 @@ export type 项目行 = {
   pooled: boolean;
   /** 企业版：客户在客户公海里，项目跟客户走，不单独分（线索公海的 pooled 也是真，分不分看这个） */
   客户在公海?: boolean;
+  /** 企业版后售培育（P-界面-63，after-sale.ts 后售项目们）：停在潜客培育、客户名下有交付结清的，进程那格写后售培育（存的仍是潜客培育，看板照落潜客培育那列）；不是 = 不带 */
+  后售?: true;
   /** 企业版新线索待分配（11-01 A7 / A10）：建好没分出去，负责人那一格只是建的人占着 */
   待分配?: boolean;
   /** 企业版超时回收：明天（或今天）就要回到项目公海的回收日，看板 / 列表标「即将回收」；不会收 = 不带（10-27） */
@@ -121,7 +123,8 @@ function 进程列(行: Pick<项目行, "phase" | "node" | "result">, 字典: �
 export function 卡片小字(r: 看板卡片, 字典?: 阶段字典): string {
   const 企 = 字典?.名 === "企业版";
   const 异常 = r.result === "异常状态";
-  const 进程 = 企 && (!r.result || 异常) ? 进程列(r, 字典!) : r.node;
+  // 后售培育只换小字、不拆列（方案第十节第 4 条）：列照落潜客培育
+  const 进程 = 企 && (!r.result || 异常) ? 显示节点名(进程列(r, 字典!), !!r.后售, 字典) : r.node;
   if (异常) return `异常 · ${有值(r.exceptionCategory) ? `${r.exceptionCategory} · ` : ""}${进程}`;
   if (r.result && 是交付(r.result)) return 结局叫法(r.result, 字典);
   return `${r.result ? `${结局叫法(r.result, 字典)} · ` : ""}${进程}`;
