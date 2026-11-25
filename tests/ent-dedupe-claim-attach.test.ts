@@ -3,7 +3,7 @@
  *   - 交了 要传附件 才回一张附件票（只认领取人 + 领取时记的那条沟通，15 分钟），不交不回；新建线索项目、只领旧项目两条路都回
  *   - 领了就分给销售、领取人不是负责人：不带票按原规矩 403，带票挂得上；旁人拿着票、票配别的沟通、过期的票不认
  * 组员对齐（总控 11-25）：已进组（JOINED）的组员给自己记的、在推项目上的沟通传附件放行（照 能往项目记沟通）；
- *   别人记的、没进组 / 退了组的、项目结束了的照旧不行；删不跟着放宽（M-权限-09）
+ *   别人记的、没进组 / 拒了邀请 / 退了组（成员行删了）的、项目结束了的照旧不行；删不跟着放宽（M-权限-09）
  * 号码全是编造的
  */
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
@@ -198,5 +198,21 @@ describe("组员对齐：已进组组员给自己记的沟通传附件（照 能
     const 结束 = await 项目和沟通("JOINED", { result: "赢单" });
     当(组员);
     expect((await 传一个(结束.我记的)).status).toBe(403);
+  });
+
+  it("拒了邀请（DECLINED）、退了组（成员行删了，库里没有 LEFT 状态）：自己记的也传不了", async () => {
+    const 拒了 = await 项目和沟通("DECLINED");
+    当(组员);
+    expect((await 传一个(拒了.我记的)).status).toBe(403);
+    await prisma.followUp.deleteMany();
+    await prisma.projectMember.deleteMany();
+    await prisma.project.deleteMany();
+    await prisma.customer.deleteMany();
+    const 退组 = await 项目和沟通("JOINED");
+    当(组员);
+    expect((await 传一个(退组.我记的)).status).toBe(200);
+    await prisma.projectMember.deleteMany({ where: { userId: 组员.id } });
+    当(组员);
+    expect((await 传一个(退组.我记的)).status).toBe(403);
   });
 });

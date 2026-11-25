@@ -412,17 +412,22 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     await new Promise((ok) => setTimeout(ok, 读一句停留));
     走();
   };
-  /** 建好之后凭票传首条沟通的附件：全传上回 null，有没传上的回一句（建好照旧，读完点「知道了」再走） */
+  /**
+   * 建好之后凭票传首条沟通的附件：全传上回 null，有没传上的回一句（建好照旧，读完点「知道了」再走）。
+   * 转走了（指定给别人 / 自动分配 / 进公海）：录入人已不是负责人、补不了（时间线不让传、项目页要负责人或记的人），叫他找负责人；
+   * 前一句提示里写着分给了谁。还在我名下的照旧「到这条沟通上补传」
+   */
   const 传首条附件 = async (r: object): Promise<string | null> => {
     if (!附件们.length) return null;
     const 票 = "附件票" in r ? (r as { 附件票?: { followUpId: string; 票: string } }).附件票 : undefined;
-    if (!票) return "建好了，截图 / 附件没传上：没拿到上传凭据，到这条沟通上补传";
+    const 找谁 = "转走" in r && r.转走 ? "请让负责人在这条沟通上补传" : "到这条沟通上补传";
+    if (!票) return `建好了，截图 / 附件没传上：没拿到上传凭据，${找谁}`;
     set建后话({ 话: `建好了，正在传 ${附件们.length} 个截图 / 附件…`, 警: false });
     const 错 = await 传沟通附件(票.followUpId, 附件们, 票.票);
     if (!错.length) return null;
     return 错.length === 附件们.length
-      ? `建好了，截图 / 附件没传上（${错[0]}），到这条沟通上补传`
-      : `建好了，${附件们.length} 个截图 / 附件传上 ${附件们.length - 错.length} 个，${错.length} 个没传上（${错[0]}），到这条沟通上补传`;
+      ? `建好了，截图 / 附件没传上（${错[0]}），${找谁}`
+      : `建好了，${附件们.length} 个截图 / 附件传上 ${附件们.length - 错.length} 个，${错.length} 个没传上（${错[0]}），${找谁}`;
   };
   const [显错, set显错] = useState(false);
   /**

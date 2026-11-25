@@ -16,6 +16,7 @@
  *   建档向导撞号、AI 新线索卡转过来领时，把那边已挑的附件 / 勾了存的对话截图带进来（带进来的仍可删）
  */
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { Button, Input, Modal, Select, Spin } from "antd";
 import ChannelPicker from "@/components/ChannelPicker";
 import { 主渠道入口前缀, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
@@ -27,10 +28,17 @@ import { 外贸精简 } from "@/lib/business-config";
 import { dayjs } from "@/lib/utils";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
-import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 import { 查重领取, 查重领取框数据, type 查重领取沟通, type 查重领取框 } from "./pool-actions";
 
 const 时间格式 = "YYYY-MM-DD HH:mm";
+/**
+ * 截图 / 录音挑选块按需加载（F-054，速度闸门 A）：这个键摆在首页查重框、AI 建档卡上，挑选块（antd Upload、粘贴截图）静态引进来
+ * 首页首屏 JS 超线；它只在框打开后才用，开框再取。取到之前摆一个灰的同名键占位（不跳版）
+ */
+const 选沟通附件 = dynamic(() => import("@/components/FollowAttachments").then((m) => m.选沟通附件), {
+  ssr: false,
+  loading: () => <Button size="small" disabled>加截图 / 录音</Button>,
+});
 /** FollowMethodSelect 只收 style：撑满格子 */
 const 满宽 = { width: "100%" } as const;
 
@@ -59,15 +67,20 @@ function 号哈希(s: string): string {
 
 type 外面给的 = { 类型: string; 值: string; 客户id?: string | null; 渠道?: 带进来的渠道 | null; 触点?: string | null; 带来的附件?: File[] | null };
 
-/** 领成了凭票传附件：全传上回 null；没票 / 有没传上的回一句（领取照旧成了，到这条沟通上补传） */
-async function 领后传附件(文件们: File[], 票: { followUpId: string; 票: string } | undefined): Promise<string | null> {
+/**
+ * 领成了凭票传附件：全传上回 null；没票 / 有没传上的回一句（领取照旧成了）。
+ * 领完客户就归了接手的销售，领取人（渠运 / 市场管理）补不了（时间线不让传、项目页要负责人或记的人、没票 403）：叫他找负责人补传
+ */
+async function 领后传附件(文件们: File[], 票: { followUpId: string; 票: string } | undefined, 接手人: string): Promise<string | null> {
   if (!文件们.length) return null;
-  if (!票) return "领好了，截图 / 录音没传上：没拿到上传凭据，到这条沟通上补传";
+  const 找谁 = `请让负责人 ${接手人} 在这条沟通上补传`;
+  if (!票) return `领好了，截图 / 录音没传上：没拿到上传凭据，${找谁}`;
+  const { 传沟通附件 } = await import("@/components/FollowAttachments");
   const 错 = await 传沟通附件(票.followUpId, 文件们, 票.票);
   if (!错.length) return null;
   return 错.length === 文件们.length
-    ? `领好了，截图 / 录音没传上（${错[0]}），到这条沟通上补传`
-    : `领好了，${文件们.length} 个截图 / 录音传上 ${文件们.length - 错.length} 个，${错.length} 个没传上（${错[0]}），到这条沟通上补传`;
+    ? `领好了，截图 / 录音没传上（${错[0]}），${找谁}`
+    : `领好了，${文件们.length} 个截图 / 录音传上 ${文件们.length - 错.length} 个，${错.length} 个没传上（${错[0]}），${找谁}`;
 }
 
 export default function DedupeClaimKey({ 领了, ...外 }: 外面给的 & { 领了?: (提示: string) => void }) {
@@ -157,7 +170,7 @@ function Body({ 类型, 值, 客户id, 渠道: 带渠道, 触点, 带来的附�
       if (附件们.length) {
         领成未关(r.提示);
         set传着(true);
-        const 没传上 = await 领后传附件(附件们, r.首条附件票);
+        const 没传上 = await 领后传附件(附件们, r.首条附件票, r.接手人);
         set传着(false);
         if (没传上) { set领后话({ 话: 没传上, 提示: r.提示 }); return; }
         return 成了(`${r.提示}；${附件们.length} 个截图 / 录音已挂上`);
@@ -237,7 +250,8 @@ function Body({ 类型, 值, 客户id, 渠道: 带渠道, 触点, 带来的附�
       {/* 不用 <label>：点文件名会把文件选择框也点开（同建档向导） */}
       <div className="cr-field" data-testid="dedupe-claim-attachments">
         <span>截图 / 录音</span>
-        <选沟通附件 文件们={附件们} on改={set附件们} />
+        {/* 交着 / 传着 / 等「知道了」：挑的文件已交不上了，挑选块灰掉（不然挑了悄悄丢） */}
+        <选沟通附件 文件们={附件们} on改={set附件们} disabled={交中 || !!领后话} />
         <span className="muted">选填；领好后挂在这条沟通上，也可以直接粘贴截图</span>
       </div>
       {错 && <span role="alert" className="cu-said cu-said-err">{错}</span>}

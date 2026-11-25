@@ -51,5 +51,6 @@ export async function 凭票认首条沟通(票: string | null | undefined, user
   if (!f) return null;
   const 挂 = await defaultClient.followUpProject.findFirst({ where: { followUpId }, select: { project: { select: { name: true } } } });
   if (!挂) return null;
-  return { 叫法: `项目「${挂.project?.name ?? "—"}」的首条沟通` };
+  // 查重领取只领旧项目那条路记的不是首条：统一叫「沟通记录」（日志里说准）
+  return { 叫法: `项目「${挂.project?.name ?? "—"}」的沟通记录` };
 }

@@ -303,7 +303,10 @@ it("截图 / 录音（F-054）：向导里已挑的带进来、框里还能加�
     await 表.getByRole("button", { name: "领取并自动分配" }).click();
     const 话 = 表.getByTestId("dedupe-claim-att-failed");
     await 话.waitFor();
-    expect(await 话.innerText()).toBe("领好了，2 个截图 / 录音传上 1 个，1 个没传上（只有负责人或记这条沟通的人能传附件），到这条沟通上补传");
+    expect(await 话.innerText()).toBe("领好了，2 个截图 / 录音传上 1 个，1 个没传上（只有负责人或记这条沟通的人能传附件），请让负责人 销售甲某 在这条沟通上补传");
+    // 等「知道了」时挑选块灰掉：再挑也交不上了（不然挑了悄悄丢）
+    expect(await 格.getByRole("button", { name: "加截图 / 录音" }).isDisabled()).toBe(true);
+    expect(await 格.getByRole("button", { name: "不传 框里加的.png" }).isDisabled()).toBe(true);
     const 领 = await page.evaluate(() => (window as unknown as { __领: unknown[] }).__领);
     expect(领[5]).toBe(true);
     expect(收).toEqual([{ 票: "tk-jia", 名: "向导里挑的.png" }, { 票: "tk-jia", 名: "框里加的.png" }]);
@@ -347,10 +350,36 @@ it("截图 / 录音全传上：框直接关、那句带上挂了几个；带进�
     const 交 = 表.getByRole("button", { name: "领取并自动分配" });
     await expect.poll(() => 交.isDisabled()).toBe(false);
     await 交.click();
-    await 表.getByTestId("dedupe-claim-att-failed").filter({ hasText: "没拿到上传凭据" }).waitFor();
+    await 表.getByTestId("dedupe-claim-att-failed").filter({ hasText: "没拿到上传凭据，请让负责人 销售甲某 在这条沟通上补传" }).waitFor();
     expect(收).toEqual([]);
     await page.locator(".ant-modal-close").click();
     await page.getByRole("status").filter({ hasText: "已领取并自动分配给 销售甲某" }).waitFor();
     expect(await page.getByTestId("dedupe-claim").count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("交着（查重领取还没回）：挑选块灰掉、粘贴不收；右上角关闭键不在、Esc 关不掉", async () => {
+  const page = await 开(1280, { __单独: { 渠道: { 名: "小红书|笔记" } } });
+  try {
+    // 让 查重领取 挂起不返回：一直停在交着
+    await page.evaluate(() => { (window as unknown as { __回: unknown }).__回 = new Promise(() => {}); });
+    await page.getByTestId("dedupe-claim").click();
+    const 表 = page.getByTestId("dedupe-claim-form");
+    const 格 = 表.getByTestId("dedupe-claim-attachments");
+    await 格.locator("input[type=file]").setInputFiles([一张图("一.png")]);
+    await 格.getByText("一.png").waitFor();
+    await 表.getByLabel("沟通内容").fill("客户来电");
+    const 交 = 表.getByRole("button", { name: "领取并自动分配" });
+    await expect.poll(() => 交.isDisabled()).toBe(false);
+    await 交.click();
+    await expect.poll(() => 格.getByRole("button", { name: "加截图 / 录音" }).isDisabled()).toBe(true);
+    expect(await 格.getByRole("button", { name: "不传 一.png" }).isDisabled()).toBe(true);
+    expect(await 格.locator("input[type=file]").isDisabled()).toBe(true);
+    expect(await 格.locator("[data-paste-upload]").count()).toBe(0);
+    expect(await page.locator(".ant-modal-close").count()).toBe(0);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(400);
+    expect(await page.getByTestId("dedupe-claim-form").count()).toBe(1);
+    expect(await 格.getByText("一.png").count()).toBe(1);
   } finally { await page.close(); }
 });
