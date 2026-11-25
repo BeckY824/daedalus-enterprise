@@ -243,9 +243,10 @@ export const 指向人的列: [string, string][] = [
   ["EntRequiredBlock", "userId"],
   // 企业版项目回款（2026-10-31）：谁记的
   ["EntProjectPayment", "userId"],
-  // 企业版合并客户的合并单（2026-11-25）：谁并的、被并客户当时的负责人、谁撤回的；不建外键
+  // 企业版合并客户的合并单（2026-11-25）：谁并的、被并客户当时的负责人和创建人、谁撤回的；不建外键
   ["EntCustomerMerge", "byUserId"],
   ["EntCustomerMerge", "fromOwnerId"],
+  ["EntCustomerMerge", "fromCreatorId"],
   ["EntCustomerMerge", "undoneById"],
 ];
 

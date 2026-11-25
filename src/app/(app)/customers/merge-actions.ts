@@ -177,7 +177,7 @@ export type 合并单一条 = {
   /**
    * 这会儿能不能撤（和服务端拦法对齐，免得摆了按钮点了才说不行）：没撤过、没过期、不是只读 / 只看某人；
    * 客户单：系统管理员，或合并的人本人且留下那家仍归本人负责、不在公海；两家都不在转让 / 离职交接中。
-   * 联系人单：合成的人本人或系统管理员；客户不在转让交接中
+   * 联系人单：系统管理员，或合成的人本人且这位客户仍归本人负责、不在公海；客户不在转让交接中
    */
   能撤: boolean;
   /** 撤回过的：没还原的那几条（存在合并单 undoLeft 里，刷新后照样看得到）；先拆开过单独合成的一句话 */
@@ -204,7 +204,7 @@ export async function 并进来的合并单(customerId: string): Promise<合并�
     orderBy: { at: "desc" }, take: 50,
   });
   const 线 = Date.now() - 撤回期限天数 * 86_400_000;
-  // 客户单：留下那家现在仍归本人负责、不在公海（系统管理员不限），同 customer-merge.ts 撤回合并
+  // 这位客户现在仍归本人负责、不在公海（系统管理员不限）：客户单、联系人单都要，同 customer-merge.ts 撤回合并 / 撤回合成
   const 留下归我 = 管 || (c.salesOwnerId === me.id && !c.pool);
   const 还能撤 = 们.filter((m) => m.status === "已合并" && m.at.getTime() >= 线 && 能写 && (m.byUserId === me.id || 管));
   const 被并们 = [...new Set(还能撤.filter((m) => m.kind === 客户单).map((m) => m.fromId))];
@@ -216,7 +216,7 @@ export async function 并进来的合并单(customerId: string): Promise<合并�
       id: m.id, kind: m.kind, 从: m.fromName, 编号: m.kind === 客户单 ? 客户编号文字(m.fromNo) ?? null : null,
       ...(m.kind === 联系人单 ? { 到: 人名.get(m.intoId) ?? "" } : {}),
       at: m.at.toISOString(), status: m.status,
-      能撤: 还能撤.includes(m) && (m.kind === 客户单 ? 客户单能撤(m.fromId) : !拦.转让.has(customerId)),
+      能撤: 还能撤.includes(m) && (m.kind === 客户单 ? 客户单能撤(m.fromId) : 留下归我 && !拦.转让.has(customerId)),
       ...(m.status === "已撤回" ? { 没还原: (撤?.没还原 ?? []).map((x) => ({ 类: x.类, 原因: x.原因 })), ...(撤?.提示 ? { 提示: 撤.提示 } : {}) } : {}),
       ...(m.kind === 客户单 ? 被并备注of(m.detail) : {}),
     };

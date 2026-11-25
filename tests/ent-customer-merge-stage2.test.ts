@@ -273,9 +273,9 @@ describe("服务端动作", () => {
     expect(await 撤得了(乙)).toEqual({ 客户: true, 联系人: true });
     // 只读角色（管理员）：看得到，两张都不给撤
     expect(await 撤得了(丁)).toEqual({ 客户: false, 联系人: false });
-    // 留下那家转给了丙：乙的客户单不摆（服务端「现在不归你负责」），合成单照旧（服务端不看负责人）；系统管理员照样能撤
+    // 留下那家转给了丙：乙的客户单、合成单都不摆（服务端「现在不归你负责」，合成单同撤回合并，第二单 b 建议 2）；系统管理员照样能撤
     await raw.customer.update({ where: { id: a }, data: { salesOwnerId: 丙.id } });
-    expect(await 撤得了(乙)).toEqual({ 客户: false, 联系人: true });
+    expect(await 撤得了(乙)).toEqual({ 客户: false, 联系人: false });
     登录.人 = 乙;
     expect(await 撤回合并(prisma, r.mergeId, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("不归你负责") });
     expect(await 撤得了(老板)).toEqual({ 客户: true, 联系人: true });

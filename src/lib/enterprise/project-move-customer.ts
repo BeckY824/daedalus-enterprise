@@ -28,6 +28,7 @@ import { notify } from "./notify";
 import { 通知里的客户名 } from "./notice-mask";
 import { 客户编号文字 } from "@/lib/customer-no";
 import { 忘掉企业版范围 } from "./visibility";
+import { 序号撞了 } from "./repeat-inquiry";
 import { 读客户, 重算最近跟进, 拦下, 合并事务选项, 并发失败话, 挂靠说明, type 客户行, type 合并人 } from "./customer-merge";
 
 type 库 = PrismaClient;
@@ -248,6 +249,8 @@ export async function 撤销换客户(db: 库, logId: string, me: 合并人, 现
     );
   } catch (e) {
     if (e instanceof 拦下) return { ok: false, error: e.message };
+    // 换回原序号时撞了 (repeatOfCustomerId, repeatSeq) 唯一索引：换走之后原客户又建了一条重复咨询占了这个号，整笔已回滚（第二单 b 建议 5）
+    if (序号撞了(e)) return { ok: false, error: 序号被占话 };
     const 话 = 并发失败话(e);
     if (话) return { ok: false, error: 话 };
     throw e;
@@ -267,6 +270,7 @@ export async function 撤销换客户(db: 库, logId: string, me: 合并人, 现
   return { ok: true };
 }
 const 刚被改过 = "这个项目刚被别人改过（已不在换去的那位客户名下），刷新看看";
+export const 序号被占话 = "原客户刚又建了重复咨询，占了这个序号，请稍后再撤或找系统管理员";
 
 async function 反着挪(tx: Tx, p: 项目行, 明: 换客户明细): Promise<void> {
   const { 从, 到 } = 明;

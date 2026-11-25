@@ -765,7 +765,7 @@ export async function 合成联系人(db: 库, 留id: string, 并id: string, me:
  * 撤回合并（整单）：合并的人本人或系统管理员，30 天内。单独合成的联系人也走这里（kind = 联系人）。
  * 留下那家现在的负责人已经不是撤回的人本人：只有系统管理员能撤（总控 11-25）；两家有一家在转让交接中不让撤（P-删-10）。
  * 留下那家已并进别家（连环合并 C→B→A 撤 C→B 同理）：先撤回那次合并。
- * 合并之后又单独合成过这张单里的联系人（留或并是挪过来的那几位）：先拆开那几次合成（做法同合并时勾的子单），再撤合并，
+ * 合并之后又单独合成过这张单里的联系人（留或并是挪过来的那几位，且留下那位现在主客户还是 A）：先拆开那几次合成（做法同合并时勾的子单），再撤合并，
  * 结果里 提示 =「先拆开了 N 次联系人合成」（审查第二单 M3）。
  * 撤回提交后：B 的原负责人已停用的，同从回收站恢复（P-删-06 恢复后停用负责人去向）；B 回来不判持有上限（撤回是还原，不算新领）
  */
@@ -804,12 +804,16 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
           const 离职 = await 离职交接拦(tx, [A, B], "撤回合并");
           if (离职.length) throw new 拦下(离职.join("；"));
           // 合并之后单独合成过挪过来的联系人：先拆开（新的先拆），号码、沟通回到原来那位，下面再随联系人一起挪回 B（M3）
+          // 只拆现在还在 A 名下合成的（留下那位主客户是 A）：B 来的人后来换主客户到 C、在 C 名下合成过的不拆（那是 C 的事；挪回时这位留在原处）（第二单 b 建议 3）
           const 人们 = (JSON.parse(m.detail) as 合并明细).联系人.map((c) => c.id);
           const 单独们 = new Map<string, Awaited<ReturnType<typeof tx.entCustomerMerge.findMany>>[number]>();
           for (const 段 of 分段(人们, 200)) {
-            for (const x of await tx.entCustomerMerge.findMany({
+            const 们 = await tx.entCustomerMerge.findMany({
               where: { kind: 联系人单, parentId: null, status: "已合并", at: { gte: m.at }, OR: [{ fromId: { in: 段 } }, { intoId: { in: 段 } }] },
-            })) 单独们.set(x.id, x);
+            });
+            if (!们.length) continue;
+            const 在A = new Set((await tx.contact.findMany({ where: { id: { in: [...new Set(们.map((x) => x.intoId))] }, customerId: A.id }, select: { id: true } })).map((x) => x.id));
+            for (const x of 们) if (在A.has(x.intoId)) 单独们.set(x.id, x);
           }
           for (const 子 of [...单独们.values()].sort((x, y) => y.at.getTime() - x.at.getTime() || (y.id < x.id ? -1 : 1))) {
             const 留 = await 拆开一对(tx, 子.detail, 子.intoId, 子.fromId);
@@ -903,8 +907,10 @@ async function 撤回合成(db: 库, mergeId: string, me: 合并人, 现在: Dat
           if (现在.getTime() - m.at.getTime() > 撤回期限天数 * 86_400_000) throw new 拦下(`合成已超过 ${撤回期限天数} 天，不能撤回`);
           const 并 = await tx.contact.findUnique({ where: { id: m.fromId }, select: { id: true, name: true, customerId: true } });
           if (!并) throw new 拦下("合成掉的那位已清出回收站，不能撤回");
-          const 主 = await tx.customer.findUnique({ where: { id: 并.customerId }, select: { id: true, name: true, shortName: true, customerNo: true, deletedAt: true } });
+          const 主 = await tx.customer.findUnique({ where: { id: 并.customerId }, select: { id: true, name: true, shortName: true, customerNo: true, deletedAt: true, salesOwnerId: true, pool: { select: { customerId: true } } } });
           if (主?.deletedAt) throw new 拦下("客户在回收站里，先恢复客户再撤回");
+          // 同撤回合并：客户现在不归撤回的人负责（换了负责人、进了公海）只有系统管理员能撤（服务端审查第二单 b 建议 2）
+          if (!是系统管理员(me, org) && (!主 || 主.pool || 主.salesOwnerId !== me.id)) throw new 拦下(`${主 ? `「${名(主)}」` : "客户"}现在不归你负责，请找系统管理员撤回`);
           // 拦法同撤回合并：客户在转让交接中不让撤（P-删-10）
           if (主 && (await 交接中的客户([主.id], tx)).has(主.id)) throw new 拦下(`「${名(主)}」正在转让交接中，等接手人确认或撤回交接后再撤回合成`);
           const 留 = await 拆开一对(tx, m.detail, m.intoId, m.fromId);
