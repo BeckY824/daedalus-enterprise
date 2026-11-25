@@ -10,7 +10,9 @@
  *   - 交上去只带号码（类型 + 值）、那条沟通、看到的客户 id、这次的渠道和录的对接人；领成了键收起、就地一行话
  *   - 只领旧项目那条路（框数据说 新建线索项目 = false）：没有渠道、对接人格
  *   - 没有 市场可领（销售等）照旧「去领取」；原负责人是我但服务端说可领（是客户创建人，用户 11-19「仅对创建人豁免」）也摆键、不摆「领不回」
- *   - Windows 1024 / 1280 / 1366：框里不横向溢出，「领取并自动分配」点得中
+ *   - Windows 1024 / 1280 / 1366、手机 375 / 390：框里不横向溢出，「领取并自动分配」点得中
+ *   - 截图 / 录音（员工反馈 F-054）：内容框下有挑选块；挑了才交 要传附件，领成了凭票逐个传；有没传上的写一句、等点「知道了」再关；
+ *     建档向导里已挑的附件带进来（仍可删）
  * 服务端规则见 ent-dedupe-claim.test.ts
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -29,7 +31,7 @@ const plugin: Plugin = { name: "ent-dedupe-claim", setup(b) {
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
   // 查号码：撞上公海里的「星河电子」；市场可领 / 原负责人是我 由用例设
   stub(/(^|\/)number-actions$/, 补全动作桩("src/app/(app)/customers/number-actions.ts", "export const 查号码=async(t,v)=>(window.__查次=(window.__查次??0)+1,{ok:true,状态:'公海待捞',提示:'这个号码的客户在公海，本次录入已拦截，可去公海领取',值:v,撞:{id:'c7',name:'星河电子',school:null,salesOwnerName:'无负责人',createdAt:null},归属地:null,...(window.__可领?{市场可领:true}:{}),...(window.__我退的?{原负责人是我:true}:{})});export const 查客户名=async()=>({ok:true,撞:null});"));
-  stub(/(^|\/)pool-actions$/, 补全动作桩("src/app/(app)/customers/pool-actions.ts", "export const 查重领取框数据=async()=>window.__框??{ok:true,新建线索项目:true,客户名:'星河电子',渠道们:[{id:'ch1',name:'小红书|笔记',attr:null,platform:'小红书',active:true}],联系人们:[{id:'k1',name:'王经理',position:'采购'},{id:'k2',name:'李工',position:null}],默认对接人:'k1'};export const 查重领取=async(t,v,f,id,n)=>{window.__领=[t,v,f,id,n];return window.__回??{ok:true,提示:'已领取并自动分配给 销售甲某，沟通已记在项目「星河电子-咨询」上',接手人:'销售甲某',项目:'星河电子-咨询',为什么:''}};"));
+  stub(/(^|\/)pool-actions$/, 补全动作桩("src/app/(app)/customers/pool-actions.ts", "export const 查重领取框数据=async()=>window.__框??{ok:true,新建线索项目:true,客户名:'星河电子',渠道们:[{id:'ch1',name:'小红书|笔记',attr:null,platform:'小红书',active:true}],联系人们:[{id:'k1',name:'王经理',position:'采购'},{id:'k2',name:'李工',position:null}],默认对接人:'k1'};export const 查重领取=async(t,v,f,id,n,att)=>{window.__领=[t,v,f,id,n,att];return window.__回??{ok:true,提示:'已领取并自动分配给 销售甲某，沟通已记在项目「星河电子-咨询」上',接手人:'销售甲某',项目:'星河电子-咨询',为什么:''}};"));
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[];");
   stub(/customers\/\[id\]\/project-actions$/, 补全动作桩("src/app/(app)/customers/[id]/project-actions.ts", "export const 新项目分配数据=async()=>({分配方式们:[],默认分配方式:0,是销售:false,客户业务线:'内贸',客户区域线:null,客户有地址:false});export const 建项目带走的项目=async()=>({项目数:0,项目:[]});"));
   stub(/same-number-actions$/, "export const 同号协同录入=async()=>({ok:true});");
@@ -113,6 +115,8 @@ it("市场可领：摆「领取并记沟通」不摆「去领取」；内容空�
     expect(领[2]).toMatchObject({ content: "客户来电咨询报价" });
     expect(领[3]).toBe("c7");
     expect(领[4]).toEqual({ 渠道: "ch1", 对接人: { 原id: "k1" } });
+    // 没挑附件：不交 要传附件
+    expect(领[5]).toBeUndefined();
     // 不重查号码；面板收成只剩「已领取」那句：没有领取键、去领取、打开它、挂靠 / 协同入口
     expect(await page.evaluate(() => (window as unknown as { __查次: number }).__查次)).toBe(1);
     expect(await 向导.getByTestId("dedupe-claim-done").innerText()).toBe("已领取并自动分配给 销售甲某，沟通已记在项目「星河电子-咨询」上");
@@ -236,7 +240,7 @@ it("原负责人是我、服务端说可领（是客户创建人）：摆键，�
 });
 
 it("Windows 1024 / 1280 / 1366（768 高）、手机 375：领取框不横向溢出，「领取并自动分配」点得中；电脑上整框一屏放得下", async () => {
-  for (const [w, h] of [[1024, 768], [1280, 768], [1366, 768], [375, 812]]) {
+  for (const [w, h] of [[1024, 768], [1280, 768], [1366, 768], [375, 812], [390, 844]]) {
     const page = await 开(w, { __可领: true, __高: h, __框: { ok: true, 新建线索项目: true, 客户名: 长名, 渠道们: [{ id: "ch1", name: "小红书|笔记", attr: null, platform: "小红书", active: true }], 联系人们: [{ id: "k1", name: "王经理", position: "采购" }], 默认对接人: null } });
     try {
       await page.getByTestId("dedupe-claim").click();
@@ -262,4 +266,91 @@ it("Windows 1024 / 1280 / 1366（768 高）、手机 375：领取框不横向溢
       expect(量, `宽 ${w}`).toEqual({ 页: true, 框: true, 点得中: true, 一屏: w < 768 ? 量.一屏 : true });
     } finally { await page.close(); }
   }
+});
+
+/** 接住上传：按次序回（ok = 200 带附件，不然 403 带那句话）；记下每次的票头和文件名 */
+async function 接上传(page: Page, 回们: boolean[]) {
+  const 收: { 票: string | null; 名: string | null }[] = [];
+  await page.route("http://dc.test/api/attachments**", (r) => {
+    const u = new URL(r.request().url());
+    收.push({ 票: r.request().headers()["x-first-follow-ticket"] ?? null, 名: u.searchParams.get("name") });
+    const ok = 回们[收.length - 1] ?? true;
+    return ok
+      ? r.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ 附件: { id: `a${收.length}`, name: u.searchParams.get("name"), mime: "image/png", size: 10 } }) })
+      : r.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ error: "只有负责人或记这条沟通的人能传附件" }) });
+  });
+  return 收;
+}
+const 一张图 = (名: string) => ({ name: 名, mimeType: "image/png", buffer: Buffer.from(`\x89PNG ${名}`) });
+const 领成带票 = { ok: true, 提示: "已领取并自动分配给 销售甲某，沟通已记在项目「星河电子-咨询」上", 接手人: "销售甲某", 项目: "星河电子-咨询", 为什么: "", 首条附件票: { followUpId: "f9", 票: "tk-jia" } };
+
+it("截图 / 录音（F-054）：向导里已挑的带进来、框里还能加；交 要传附件、凭票逐个传；有没传上的写一句，点「知道了」才关、面板收成已领取", async () => {
+  const page = await 开(1280, { __可领: true, __回: 领成带票 });
+  try {
+    const 收 = await 接上传(page, [true, false]);
+    const 向导 = page.getByRole("dialog").first();
+    await 向导.getByTestId("wizard-attachments").locator("input[type=file]").setInputFiles([一张图("向导里挑的.png")]);
+    await 向导.getByTestId("dedupe-claim").click();
+    const 表 = page.getByTestId("dedupe-claim-form");
+    const 格 = 表.getByTestId("dedupe-claim-attachments");
+    await 格.getByRole("button", { name: "加截图 / 录音" }).waitFor();
+    // 带进来的那张在，框里再加一张
+    await 格.getByText("向导里挑的.png").waitFor();
+    await 格.locator("input[type=file]").setInputFiles([一张图("框里加的.png")]);
+    await 格.getByText("框里加的.png").waitFor();
+    await 选渠道(page);
+    await 表.getByLabel("沟通内容").fill("客户来电，发了需求截图");
+    await 表.getByRole("button", { name: "领取并自动分配" }).click();
+    const 话 = 表.getByTestId("dedupe-claim-att-failed");
+    await 话.waitFor();
+    expect(await 话.innerText()).toBe("领好了，2 个截图 / 录音传上 1 个，1 个没传上（只有负责人或记这条沟通的人能传附件），到这条沟通上补传");
+    const 领 = await page.evaluate(() => (window as unknown as { __领: unknown[] }).__领);
+    expect(领[5]).toBe(true);
+    expect(收).toEqual([{ 票: "tk-jia", 名: "向导里挑的.png" }, { 票: "tk-jia", 名: "框里加的.png" }]);
+    // 没点「知道了」框不关；取消、领取键都不摆了（已经领成）
+    expect(await 表.getByRole("button", { name: "领取并自动分配" }).count()).toBe(0);
+    expect(await 表.getByRole("button", { name: "取消" }).count()).toBe(0);
+    await 表.getByRole("button", { name: "知道了" }).click();
+    await 向导.getByTestId("dedupe-claim-done").waitFor();
+    expect(await 向导.getByTestId("dedupe-claim-done").innerText()).toBe("已领取并自动分配给 销售甲某，沟通已记在项目「星河电子-咨询」上");
+    await expect.poll(() => page.getByTestId("dedupe-claim-form").count()).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("截图 / 录音全传上：框直接关、那句带上挂了几个；带进来的可以删掉不传；没回票的写一句没拿到上传凭据，右上角关掉也按领成了收", async () => {
+  let page = await 开(1280, { __单独: { 渠道: { 名: "小红书|笔记" } }, __回: 领成带票 });
+  try {
+    const 收 = await 接上传(page, [true]);
+    await page.getByTestId("dedupe-claim").click();
+    const 表 = page.getByTestId("dedupe-claim-form");
+    const 格 = 表.getByTestId("dedupe-claim-attachments");
+    await 格.locator("input[type=file]").setInputFiles([一张图("一.png"), 一张图("二.png")]);
+    // 一次选两个两个都挑上（原来逐个 on改 只剩最后一个）；删掉一个不传
+    await 格.getByText("一.png").waitFor();
+    await 格.getByRole("button", { name: "不传 二.png" }).click();
+    await 表.getByLabel("沟通内容").fill("客户来电");
+    const 交 = 表.getByRole("button", { name: "领取并自动分配" });
+    await expect.poll(() => 交.isDisabled()).toBe(false);
+    await 交.click();
+    await page.getByRole("status").filter({ hasText: "1 个截图 / 录音已挂上" }).waitFor();
+    expect(收).toEqual([{ 票: "tk-jia", 名: "一.png" }]);
+    await expect.poll(() => page.getByTestId("dedupe-claim-form").count()).toBe(0);
+    expect(await page.getByTestId("dedupe-claim").count()).toBe(0);
+  } finally { await page.close(); }
+  page = await 开(1280, { __单独: { 渠道: { 名: "小红书|笔记" } }, __回: { ...领成带票, 首条附件票: undefined } });
+  try {
+    const 收 = await 接上传(page, []);
+    await page.getByTestId("dedupe-claim").click();
+    const 表 = page.getByTestId("dedupe-claim-form");
+    await 表.getByTestId("dedupe-claim-attachments").locator("input[type=file]").setInputFiles([一张图("一.png")]);
+    await 表.getByLabel("沟通内容").fill("客户来电");
+    const 交 = 表.getByRole("button", { name: "领取并自动分配" });
+    await expect.poll(() => 交.isDisabled()).toBe(false);
+    await 交.click();
+    await 表.getByTestId("dedupe-claim-att-failed").filter({ hasText: "没拿到上传凭据" }).waitFor();
+    expect(收).toEqual([]);
+    await page.locator(".ant-modal-close").click();
+    await page.getByRole("status").filter({ hasText: "已领取并自动分配给 销售甲某" }).waitFor();
+    expect(await page.getByTestId("dedupe-claim").count()).toBe(0);
+  } finally { await page.close(); }
 });

@@ -856,7 +856,7 @@ export default function ProposalCard({
           {err}
           {公海号 && (
             <div className="prop-err-act">
-              <DedupeClaimKey 类型={公海号.类型} 值={公海号.值} 渠道={{ 名: 要提交的.kind === "add_lead" ? 要提交的.source : null }} 领了={() => router.refresh()} />
+              <DedupeClaimKey 类型={公海号.类型} 值={公海号.值} 渠道={{ 名: 要提交的.kind === "add_lead" ? 要提交的.source : null }} 带来的附件={要存截图 && 截图们 ? 截图们 : null} 领了={() => router.refresh()} />
             </div>
           )}
           {回收站号 && (

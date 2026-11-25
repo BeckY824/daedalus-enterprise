@@ -973,7 +973,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
                 // 查重领取成了（F-016）：面板收成只剩「已领取」那句。不重查——客户已在销售名下，重查是「重复」，会记撞号台账、摆挂靠 / 同号协同，
                 // 把市场成员引去挂靠自己刚交出去的客户。下次查号清掉
                 : 领成话 ? <Alert type="success" showIcon title={<span role="status" data-testid="dedupe-claim-done">{领成话}</span>} />
-                : <撞号面板 查={企查} users={users} 类型={d.号码类型 ?? ""} 捞回了={set企查} 渠道={d.客户.渠道 || null} 触点={d.客户.触点 || null} 领成了={set领成话} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />}
+                : <撞号面板 查={企查} users={users} 类型={d.号码类型 ?? ""} 捞回了={set企查} 渠道={d.客户.渠道 || null} 触点={d.客户.触点 || null} 领成了={set领成话} 附件们={附件们} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />}
             </div>
           )}
           {!企业版 && 号查过 && (
@@ -1266,9 +1266,9 @@ function 去符号(s: string): string {
  * 企业版查重撞了（P0-7）：把撞到的那条摆出来，并给出口，而不是只说「已存在」。
  * 看不到的客户不给名字（撞号结论 按 看得到 收），写「领取后可见」；在公海的给「去领取」，在同事名下的给「联系负责人」
  */
-function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了, 协同 }: {
+function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了, 附件们, 协同 }: {
   查: Extract<查号码结果, { ok: true }>; users: 可选成员[]; 类型: string; 捞回了: (查: 查号码结果) => void;
-  渠道?: string | null; 触点?: string | null; 领成了?: (话: string) => void; 协同?: React.ReactNode;
+  渠道?: string | null; 触点?: string | null; 领成了?: (话: string) => void; 附件们?: File[]; 协同?: React.ReactNode;
 }) {
   const 撞 = 查.撞;
   const 在公海 = 查.状态 === "公海待捞";
@@ -1308,6 +1308,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了
             {市场领 && (
               <DedupeClaimKey
                 类型={类型} 值={查.值} 客户id={撞?.id} 渠道={{ id: 渠道 }} 触点={触点}
+                带来的附件={附件们}
                 领了={领成了}
               />
             )}

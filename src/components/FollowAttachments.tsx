@@ -143,7 +143,8 @@ function PickFollowAttachments({ 文件们, on改 }: { 文件们: File[]; on改:
   usePasteUpload(根, !视图中, (们) => on改([...文件们, ...们]));
   return (
     <div ref={根} {...(视图中 ? {} : { [粘贴标记]: "" })}>
-      <Upload multiple showUploadList={false} accept={收的沟通类型} disabled={视图中} beforeUpload={(f) => { on改([...文件们, f]); return false; }}>
+      {/* 一次选了几个：beforeUpload 每个文件各调一次、拿的都是同一份旧的 文件们，逐个 on改 只剩最后一个；在第一个时整批加上（F-054 查出） */}
+      <Upload multiple showUploadList={false} accept={收的沟通类型} disabled={视图中} beforeUpload={(f, 列) => { if (f === 列[0]) on改([...文件们, ...列]); return false; }}>
         <Button size="small" icon={<PaperClipOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined}>加截图 / 录音</Button>
       </Upload>
       {文件们.length > 0 && (

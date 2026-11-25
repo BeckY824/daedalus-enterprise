@@ -11,8 +11,11 @@
  *   - 对接人必填：号码撞上的那位先带出来（没名字也挂他），可换成客户别的联系人——选已有的就挂他、他原有的信息不改；
  *     选「新的人」才填名字（必填）、职务，在客户下新建一位（不设主联系人）
  * 只领旧项目那条路只有记沟通的几格（沟通方式、时间、内容）
+ * 截图 / 录音（员工反馈 F-054「最次得能加个图片」，选填）：内容框下挂记沟通框同一个挑选块（类型、大小、条数照沟通附件）；
+ *   领成了凭服务端签的附件票传到这条沟通上（领了就分给销售，我不是负责人，照原规矩传不上）。没传上的写一句，等点「知道了」再关；
+ *   建档向导撞号、AI 新线索卡转过来领时，把那边已挑的附件 / 勾了存的对话截图带进来（带进来的仍可删）
  */
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Input, Modal, Select, Spin } from "antd";
 import ChannelPicker from "@/components/ChannelPicker";
 import { 主渠道入口前缀, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
@@ -24,6 +27,7 @@ import { 外贸精简 } from "@/lib/business-config";
 import { dayjs } from "@/lib/utils";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { useFormDraft } from "@/components/FormDraft";
+import { 选沟通附件, 传沟通附件 } from "@/components/FollowAttachments";
 import { 查重领取, 查重领取框数据, type 查重领取沟通, type 查重领取框 } from "./pool-actions";
 
 const 时间格式 = "YYYY-MM-DD HH:mm";
@@ -53,30 +57,57 @@ function 号哈希(s: string): string {
   return (h >>> 0).toString(36);
 }
 
-type 外面给的 = { 类型: string; 值: string; 客户id?: string | null; 渠道?: 带进来的渠道 | null; 触点?: string | null };
+type 外面给的 = { 类型: string; 值: string; 客户id?: string | null; 渠道?: 带进来的渠道 | null; 触点?: string | null; 带来的附件?: File[] | null };
+
+/** 领成了凭票传附件：全传上回 null；没票 / 有没传上的回一句（领取照旧成了，到这条沟通上补传） */
+async function 领后传附件(文件们: File[], 票: { followUpId: string; 票: string } | undefined): Promise<string | null> {
+  if (!文件们.length) return null;
+  if (!票) return "领好了，截图 / 录音没传上：没拿到上传凭据，到这条沟通上补传";
+  const 错 = await 传沟通附件(票.followUpId, 文件们, 票.票);
+  if (!错.length) return null;
+  return 错.length === 文件们.length
+    ? `领好了，截图 / 录音没传上（${错[0]}），到这条沟通上补传`
+    : `领好了，${文件们.length} 个截图 / 录音传上 ${文件们.length - 错.length} 个，${错.length} 个没传上（${错[0]}），到这条沟通上补传`;
+}
 
 export default function DedupeClaimKey({ 领了, ...外 }: 外面给的 & { 领了?: (提示: string) => void }) {
   const [开, set开] = useState(false);
   const [话, set话] = useState<{ 话: string; 级: "常" | "错" } | null>(null);
+  /** 交着 / 传附件着：框不让关（关了传没传上就看不到了） */
+  const [锁, set锁] = useState(false);
+  /** 已领成、在等点「知道了」：这时点右上角关掉也按领成了收（客户已出公海，键不能再摆） */
+  const 已领 = useRef<string | null>(null);
+  const 完 = (t: string) => { 已领.current = null; set锁(false); set开(false); set话({ 话: t, 级: "常" }); 领了?.(t); };
   return (
     <>
       {/* 领成了只留那一行话：客户已经出公海归了销售，再点只会撞上「没撞上公海」 */}
       {话?.级 !== "常" && <Button size="small" type="primary" data-testid="dedupe-claim" onClick={() => { set话(null); set开(true); }}>领取并记沟通</Button>}
       {话 && <span role={话.级 === "错" ? "alert" : "status"} className={话.级 === "错" ? "cu-said cu-said-err" : "cu-said"}>{话.话}</span>}
-      <Modal open={开} title="领取这位公海客户" footer={null} onCancel={() => set开(false)} destroyOnHidden width={560}>
-        {开 && <Body {...外} 关={() => set开(false)} 成了={(t) => { set开(false); set话({ 话: t, 级: "常" }); 领了?.(t); }} />}
+      <Modal
+        open={开} title="领取这位公海客户" footer={null} destroyOnHidden width={560}
+        closable={!锁} maskClosable={!锁} keyboard={!锁}
+        onCancel={() => { if (锁) return; if (已领.current) 完(已领.current); else set开(false); }}
+      >
+        {开 && <Body {...外} 关={() => set开(false)} 成了={完} 领成未关={(t) => { 已领.current = t; }} 上锁={set锁} />}
       </Modal>
     </>
   );
 }
 
-function Body({ 类型, 值, 客户id, 渠道: 带渠道, 触点, 关, 成了 }: 外面给的 & { 关: () => void; 成了: (提示: string) => void }) {
+function Body({ 类型, 值, 客户id, 渠道: 带渠道, 触点, 带来的附件, 关, 成了, 领成未关, 上锁 }: 外面给的 & {
+  关: () => void; 成了: (提示: string) => void; 领成未关: (提示: string) => void; 上锁: (锁: boolean) => void;
+}) {
   const b = useBusiness();
   const 能选类型 = 跟进类型们(外贸精简(b)).filter((t) => t.value !== "TASK" && t.value !== "REMIND");
   const [f, setF] = useState<查重领取沟通>({ type: 能选类型[0]?.value ?? "PHONE", content: "", occurredAt: dayjs().format(时间格式) });
   const 人改了方式 = useHabitDefault(true, (x) => setF((o) => ({ ...o, type: x.type, method: x.method })));
   const [交中, set交中] = useState(false);
   const [错, set错] = useState("");
+  /** 截图 / 录音（选填）：打开框时带上外面已挑的，文件进不了本机草稿（同记沟通框） */
+  const [附件们, set附件们] = useState<File[]>(() => [...(带来的附件 ?? [])]);
+  /** 领成了、有附件没传上：那句话 + 点「知道了」才关（读完原因再走） */
+  const [领后话, set领后话] = useState<{ 话: string; 提示: string } | null>(null);
+  const [传着, set传着] = useState(false);
   const [框, set框] = useState<查重领取框 | null>(null);
   const [渠道, set渠道] = useState<string | null>(null);
   const [带, set带] = useState<string>(新的人);
@@ -116,17 +147,27 @@ function Body({ 类型, 值, 客户id, 渠道: 带渠道, 触点, 关, 成了 }:
     : !f.content.trim() ? "请填写沟通内容：领取时必须写一条沟通记录" : "";
   async function 交() {
     set交中(true);
+    上锁(true);
     set错("");
     try {
       const 对接人 = 选新的人 ? { 原id: null, 名字, 职务: 职务 || null } : { 原id: 带 };
-      const r = await 查重领取(类型, 值, f, 客户id ?? null, 新建 ? { 渠道, 对接人 } : undefined);
+      const r = await 查重领取(类型, 值, f, 客户id ?? null, 新建 ? { 渠道, 对接人 } : undefined, 附件们.length ? true : undefined);
       if (!r.ok) { set错(r.error); return; }
       稿.存好了();
+      if (附件们.length) {
+        领成未关(r.提示);
+        set传着(true);
+        const 没传上 = await 领后传附件(附件们, r.首条附件票);
+        set传着(false);
+        if (没传上) { set领后话({ 话: 没传上, 提示: r.提示 }); return; }
+        return 成了(`${r.提示}；${附件们.length} 个截图 / 录音已挂上`);
+      }
       成了(r.提示);
     } catch (e) {
       set错(动作出错话(e, "没领成，请稍后再试"));
     } finally {
       set交中(false);
+      上锁(false);
     }
   }
   return (
@@ -193,10 +234,24 @@ function Body({ 类型, 值, 客户id, 渠道: 带渠道, 触点, 关, 成了 }:
         <span><span className="dc-claim-req">* </span>沟通内容</span>
         <Input.TextArea aria-label="沟通内容" rows={3} value={f.content} placeholder="这次咨询聊了什么" onChange={(e) => setF({ ...f, content: e.target.value })} />
       </div>
+      {/* 不用 <label>：点文件名会把文件选择框也点开（同建档向导） */}
+      <div className="cr-field" data-testid="dedupe-claim-attachments">
+        <span>截图 / 录音</span>
+        <选沟通附件 文件们={附件们} on改={set附件们} />
+        <span className="muted">选填；领好后挂在这条沟通上，也可以直接粘贴截图</span>
+      </div>
       {错 && <span role="alert" className="cu-said cu-said-err">{错}</span>}
+      {传着 && <span role="status" className="cu-said">领好了，正在传 {附件们.length} 个截图 / 录音…</span>}
+      {领后话 && <span role="alert" className="cu-said cu-said-err" data-testid="dedupe-claim-att-failed">{领后话.话}</span>}
       <div className="dc-claim-foot">
-        <Button onClick={() => { 稿.丢掉(); 关(); }}>取消</Button>
-        <Button type="primary" disabled={!!差} title={差 || undefined} loading={交中} onClick={() => void 交()}>领取并自动分配</Button>
+        {领后话 ? (
+          <Button type="primary" autoFocus onClick={() => 成了(领后话.提示)}>知道了</Button>
+        ) : (
+          <>
+            <Button disabled={交中} onClick={() => { 稿.丢掉(); 关(); }}>取消</Button>
+            <Button type="primary" disabled={!!差} title={差 || undefined} loading={交中} onClick={() => void 交()}>领取并自动分配</Button>
+          </>
+        )}
       </div>
     </div>
   );

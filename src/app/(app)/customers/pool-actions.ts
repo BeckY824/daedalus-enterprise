@@ -55,6 +55,7 @@ import { 本月分配行, 读挑人底子 } from "@/lib/enterprise/assign-eta";
 import { 找待用补位, 用掉补位, 待用补位行 } from "@/lib/enterprise/invalid-makeup";
 import { 分配通知 } from "@/lib/enterprise/notice-sources";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
+import { 签首条附件票 } from "@/lib/enterprise/first-follow-ticket";
 import {
   能查重领取, 不是市场成员查重领取话, 没撞上公海话, 查重领取作废, 查重领取换人, 公海客户的原负责人, 客户创建人, 要回避, 最近的公海项目, 最近的在推项目,
   查重领取候选们, 查重领取理由, 挑不到话, 查重领取记沟通, 查重领取口径, 撞上的联系人, 查重领取建线索项目, 认对接人, 落对接人, 发起人领不回, type 认好的对接人, type 录的对接人,
@@ -653,8 +654,13 @@ export type 查重领取沟通 = { type: string; method?: string | null; initiat
  * 这次的对接人（必填：选客户原有的联系人就挂他、不改他；选「新的人」填名字新建，见 dedupe-claim.ts 认对接人）
  */
 export type 查重领取新项目 = { 渠道?: string | null; 对接人?: 录的对接人 | null };
+/**
+ * 领取时记的那条沟通的附件票（员工反馈 F-054「最次得能加个图片」）：领了就分给销售，领取人不是负责人、按沟通附件原规矩传不上；
+ * 照建档向导签一张首条附件票给领取人（lib/enterprise/first-follow-ticket.ts：只认他 + 这条沟通，15 分钟），浏览器凭票把框里挑的截图 / 录音传上去
+ */
+export type 查重领取附件票 = { followUpId: string; 票: string };
 export type 查重领取结果 =
-  | { ok: true; 提示: string; 接手人: string; 项目: string; 为什么: string }
+  | { ok: true; 提示: string; 接手人: string; 项目: string; 为什么: string; 首条附件票?: 查重领取附件票 }
   | { ok: false; error: string };
 
 /** 自动分配挑人的事务复核最多重挑几次（同 自动分给） */
@@ -701,9 +707,10 @@ export async function 查重领取框数据(类型: string, 值: string): Promis
  * 挑不到人（没人参与、方向对不上、都满额、都超持有上限）：不领、什么都不写，回原因（P-转-38 的说法）。
  * 原负责人回避（P-公海-04）：用户 11-19「仅对创建人豁免，对其他人有效」——发起人是原负责人且不是客户创建人照旧拦；
  * 自动分配不挑原负责人，除非他是客户创建人（dedupe-claim.ts 要回避）。
- * 事务提交后：通知接手人（P-转-17，不走接手人确认）、操作日志一条、重算客户三态
+ * 事务提交后：通知接手人（P-转-17，不走接手人确认）、操作日志一条、重算客户三态。
+ * 要传附件（F-054）：框里挑了截图 / 录音才交 true，领成了签一张附件票（见 查重领取附件票）随结果回去
  */
-export async function 查重领取(类型: string, 值: string, 沟通: 查重领取沟通, 客户id?: string | null, 新项目?: 查重领取新项目): Promise<查重领取结果> {
+export async function 查重领取(类型: string, 值: string, 沟通: 查重领取沟通, 客户id?: string | null, 新项目?: 查重领取新项目, 要传附件?: boolean): Promise<查重领取结果> {
   const me = await requireUser();
   const b = await getBusiness();
   if (!企业版() || b.projectMode !== true) return { ok: false, error: "查重领取只在企业版项目模式里有" };
@@ -783,6 +790,7 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
     }
     const 为什么 = 查重领取理由(候, 挑的理由(底.排位(), 跳过, 查满, 谁, 底.不限额));
     let 项目id = "";
+    let 沟通id = "";
     let 算数 = false;
     try {
       const r = await 公海客户出手([cid], 谁, me.id, "pool-assign", undefined, undefined, undefined, !新建 && 要补潜客培育(企业版(), b.projectMode), {
@@ -811,7 +819,7 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
           // 没标上（按说不会）= 抛换人：整笔回滚、按最新的数重挑
           if (补位id && !挂.公海 && !(await 用掉补位(tx, 补位id, 记.id, 项目id))) throw new 查重领取换人(false);
           // 新建线索项目那条路：沟通是建项目带出的首条（M-公海-54）；领旧项目的不是
-          await 查重领取记沟通(tx, me.id, 项目id, 好, new Date(), 新建);
+          沟通id = await 查重领取记沟通(tx, me.id, 项目id, 好, new Date(), 新建);
         },
       });
       // 挑中的这位超了持有上限（M-公海-18）：整笔回滚，顺延下一位
@@ -846,7 +854,8 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
     刷新([cid]);
     revalidatePath("/projects");
     revalidatePath("/leads");
-    return { ok: true, 提示: `已领取并自动分配给 ${接手人}，沟通已记在${新建 ? "新建的线索项目" : "项目"}「${项目名}」上`, 接手人, 项目: 项目名, 为什么 };
+    const 附件票 = 要传附件 === true && 沟通id ? { followUpId: 沟通id, 票: await 签首条附件票(me.id, 沟通id) } : null;
+    return { ok: true, 提示: `已领取并自动分配给 ${接手人}，沟通已记在${新建 ? "新建的线索项目" : "项目"}「${项目名}」上`, 接手人, 项目: 项目名, 为什么, ...(附件票 ? { 首条附件票: 附件票 } : {}) };
   }
 }
 
