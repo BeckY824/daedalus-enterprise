@@ -103,6 +103,8 @@ export function 能加组员(me: 谁, p: { ownerId: string; pooledAt?: Date | nu
 /** 节点这一块和别的内容一个口径（11-01 起直属上级、总管理不再代推，C2） */
 export const 能改节点 = 能管项目;
 export const 只有负责人改进程 = "只有项目负责人或系统管理员能改进程（上级、条线总管理只能看、转让）";
+/** 客户整体进了公海：有结局的项目（交付结清、丢单……pooledAt 永远空，不跟客户进公海）不能改回进程，不然公海客户名下冒出在推项目（同 记售后回访 按客户判公海） */
+export const 客户在公海不能改回话 = "这位客户在公海里，先领取或分配，再改回进程";
 
 /**
  * 企业版 D-37：负责人有直属上级时，手动往前推节点只给这位直属上级、老板和组织里的总管理员；负责人本人、隔级上级、
@@ -352,6 +354,12 @@ export async function 改节点(
     if (!能改节点(me, p, org) && !上级代推) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
     // 待分配期间占着负责人一格的建的人不能推进、退回、点结局（P-转-21、X-68）：节点、结局都不给动，字段照改
     if (待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
+    // 企业版有结局的改回进程：客户在公海就拦（项目页 / 客户页交付结清页签的「改回进程」按客户判公海藏掉，load.ts 客户在公海）。
+    // 包 看全部：原负责人看不到公海里的这位客户（回避），限定着查不到公海那一行
+    if (企业版() && p.result && !到.result && p.customerId) {
+      const 在公海 = await 看全部(() => tx.customerPool.findUnique({ where: { customerId: p.customerId! }, select: { customerId: true } }));
+      if (在公海) return { ok: false as const, error: 客户在公海不能改回话 };
+    }
     // 企业版线索验证（P12）在等复核 / 等销售处理：别从这里绕过去（lead-verify.ts 带 验证放行 进来）
     const 等着 = 选项?.验证放行 ? null : await 等复核拦(tx, p.id);
     if (等着) return { ok: false as const, error: 等着 };

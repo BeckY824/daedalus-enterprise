@@ -35,7 +35,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { dayjs } from "@/lib/utils";
 import { saveFollowUp, 沟通可选项目, type FollowUpInput } from "@/app/(app)/customers/[id]/actions";
-import { 记项目沟通, 项目回收日, 算超时要的, 补回收起点留痕, 回收认的最近跟进, 回收认的最近跟进们, 公海超时收回明细 } from "@/lib/project/db";
+import { 记项目沟通, 改节点, 客户在公海不能改回话, 项目回收日, 算超时要的, 补回收起点留痕, 回收认的最近跟进, 回收认的最近跟进们, 公海超时收回明细 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 将回收提醒 } from "@/lib/project/timeout";
 import { 规则 } from "@/lib/enterprise/rules";
@@ -188,6 +188,18 @@ describe("谁能记", () => {
     } finally {
       vi.unstubAllEnvs();
     }
+  });
+});
+
+describe("客户在公海时交付结清的项目不能改回进程", () => {
+  it("客户整体进公海（项目 pooledAt 仍空）：项目负责人改回进程被拦，项目仍是交付结清；客户不在公海不说这句", async () => {
+    const p = await 交付项目({ node: "尾款结算" });
+    await prisma.customerPool.create({ data: { customerId: 客户, reason: "手动" } });
+    expect(await 改节点({ id: 我, role: "SALES" }, p.id, { phase: "订单", node: "尾款结算", result: null })).toEqual({ ok: false, error: 客户在公海不能改回话 });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).result).toBe("交付结清");
+    await prisma.customerPool.delete({ where: { customerId: 客户 } });
+    expect(await 改节点({ id: 我, role: "SALES" }, p.id, { phase: "订单", node: "尾款结算", result: null })).toMatchObject({ ok: true });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).result).toBeNull();
   });
 });
 

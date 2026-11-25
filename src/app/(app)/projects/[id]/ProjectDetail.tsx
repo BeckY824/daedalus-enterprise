@@ -236,6 +236,8 @@ export type 项目详情 = {
   不给推谁能推?: string | null;
   /** 能改节点：能改的人 + 企业版负责人的直属上级（账号可能是 SALES）；只管节点这一块 */
   能改节点: boolean;
+  /** 企业版：这位客户整体在公海（有结局的项目 pooledAt 空，不跟客户进公海）。有结局时不摆「改回进程」，同「记售后回访」按客户判（服务端 改节点 同样拦） */
+  客户在公海?: boolean;
   /** 能转让（换负责人）：企业版 = 总管理、负责人的实线上级（业务线对得上，lib/enterprise/permissions.ts 能转让项目）、负责人本人转出自己的 */
   能转让?: boolean;
   /** 企业版：转给这些人以后我还看得到这个项目（没有 = 按看不到说） */
@@ -1148,7 +1150,7 @@ export default function ProjectDetail({
     return (
       <>
         {节点可改 && (p.result
-          ? 灰着(不在当前 ?? 动不了, <Button disabled={忙 || !!(不在当前 ?? 动不了)} onClick={() => set头部框("推进")}>改回进程</Button>)
+          ? !p.客户在公海 && 灰着(不在当前 ?? 动不了, <Button disabled={忙 || !!(不在当前 ?? 动不了)} onClick={() => set头部框("推进")}>改回进程</Button>)
           : (
             <Space.Compact className="split-btn split-success">
               {灰着(完成灰, 要先补齐 ? (
