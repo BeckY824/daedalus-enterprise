@@ -21,6 +21,32 @@ const 导出上限 = 20_000;
 const 跟进上限 = 50_000;
 
 /**
+  主联系人另查、每段 500 位（11-25 3703 实操：总管理导 1.5 万 / 1.95 万位客户失败）。
+  Prisma 6.16 + SQLite：嵌套关系带 orderBy / take（主联系人号码选 的 contacts 和它下面的 contactMethods 都带），
+  父记录一句里超过 999 条、引擎拆 IN 批时查询引擎 panic（record.rs:69 no entry found for key），整句失败、导出报「导出失败，请重试」。
+  客户每批 1000 + 1 条、跟进每批 2500 条（涉及 1600 多位客户）都过了这条线；630 位的小范围不过线所以正常。
+  所以导出的主查询不带 contacts，取回来按客户 id 每段 500 位、照 主联系人号码选 原样另查一次再拼回去：
+  主联系人只取一位，下面号码几行的父记录也不超过 500，两层都在线内；拼出来的行和原来一字不差（列、打码、指纹都不变）
+*/
+const 联系人每段 = 500;
+type 主联系人行 = Prisma.CustomerGetPayload<{ select: { contacts: typeof 主联系人号码选 } }>["contacts"];
+const { contacts: _主联系人, ...客户行不带联系人 } = 客户行字段;
+async function 主联系人们(ids: readonly string[]): Promise<Map<string, 主联系人行>> {
+  const 出 = new Map<string, 主联系人行>();
+  const 去重 = [...new Set(ids)];
+  for (let i = 0; i < 去重.length; i += 联系人每段) {
+    const 段 = await prisma.customer.findMany({ where: { id: { in: 去重.slice(i, i + 联系人每段) } }, select: { id: true, contacts: 主联系人号码选 } });
+    for (const r of 段) 出.set(r.id, r.contacts);
+  }
+  return 出;
+}
+/** 不带 contacts 取回来的客户行，补上主联系人（没取到的当没有联系人，同原来的空数组） */
+async function 补主联系人<T extends { id: string }>(rows: readonly T[]): Promise<(T & { contacts: 主联系人行 })[]> {
+  const 联系人 = await 主联系人们(rows.map((r) => r.id));
+  return rows.map((r) => ({ ...r, contacts: 联系人.get(r.id) ?? [] }));
+}
+
+/**
   导出留痕（11-03）：谁、什么时候、导了哪张表、多少行、按什么筛的。日志平时只记写操作，
   导出是数据整批离开系统，单独记一条；设置 →「导出记录」给系统管理员翻
 */
@@ -38,10 +64,10 @@ export async function 导出客户(条件: 客户条件): Promise<
   if (拒) return 拒;
   const where = await 客户筛选条件(条件);
   const [全部, 号] = await Promise.all([
-    prisma.customer.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 导出上限 + 1, select: { ...客户行字段, createdAt: true } }),
+    prisma.customer.findMany({ where, orderBy: [{ createdAt: "desc" }, { id: "desc" }], take: 导出上限 + 1, select: { ...客户行不带联系人, createdAt: true } }),
     号码脱敏器(),
   ]);
-  const rows = 全部.slice(0, 导出上限);
+  const rows = await 补主联系人(全部.slice(0, 导出上限));
   /*
     这些客户的跟进记录（2026-10-05 外贸客户建议），一起放进同一个 Excel 的第二张表。
     按客户在列表里的顺序、每位里按时间先后排：在 Excel 里往下读就是一位一位的往来经过
@@ -208,8 +234,8 @@ async function 读一批(条件: 客户条件, 截止: Date, 类别: "客户" | 
   const where = await 客户筛选条件(条件);
   const 号 = await 号码脱敏器();
   if (类别 === "客户") {
-    const all = await prisma.customer.findMany({ where: { AND: [where, ...(游标 ? [{ id: { gt: 游标 } }] : [])] }, orderBy: { id: "asc" }, take: 客户每批 + 1, select: 客户行字段 });
-    const rows = all.slice(0, 客户每批);
+    const all = await prisma.customer.findMany({ where: { AND: [where, ...(游标 ? [{ id: { gt: 游标 } }] : [])] }, orderBy: { id: "asc" }, take: 客户每批 + 1, select: 客户行不带联系人 });
+    const rows = await 补主联系人(all.slice(0, 客户每批));
     const 附件 = await 客户附件个数(prisma, rows.map((r) => r.id), 企业版());
     await 让一让();
     const values = await 分段映射(rows, (r) => ({ ...成客户行(r, 号), 附件数: 附件.get(r.id) ?? null }));
@@ -218,9 +244,11 @@ async function 读一批(条件: 客户条件, 截止: Date, 类别: "客户" | 
   const all = await prisma.followUp.findMany({
     where: { customer: where, ...截止前有(截止), ...(游标 ? { id: { gt: 游标 } } : {}) },
     orderBy: { id: "asc" }, take: 跟进每批 + 1,
-    select: { id: true, customerId: true, customer: { select: { id: true, name: true, shortName: true, phone: true, customerNo: true, contacts: 主联系人号码选 } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true, owner: { select: { name: true } } },
+    select: { id: true, customerId: true, customer: { select: { id: true, name: true, shortName: true, phone: true, customerNo: true } }, occurredAt: true, type: true, method: true, title: true, content: true, status: true, owner: { select: { name: true } } },
   });
-  const rows = all.slice(0, 跟进每批);
+  const 取到 = all.slice(0, 跟进每批);
+  const 联系人 = await 主联系人们(取到.map((f) => f.customerId));
+  const rows = 取到.map((f) => ({ ...f, customer: { ...f.customer, contacts: 联系人.get(f.customerId) ?? [] } }));
   await 让一让();
   const values = await 分段映射(rows, (f) => ({ id: f.id, customerId: f.customerId, customerName: 全称或显名(f.customer), phone: 号(客户电话(f.customer)), customerNo: f.customer.customerNo, occurredAt: f.occurredAt.toISOString(), type: f.type, method: f.method, title: f.title, content: f.content, status: f.status, ownerName: f.owner.name }));
   return { 类别: "跟进" as const, rows: values, 指纹: await 分段指纹(values), 游标: all.length > 跟进每批 ? rows.at(-1)!.id : null };
