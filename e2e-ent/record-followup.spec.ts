@@ -38,8 +38,8 @@ async function 登录(page: Page, 谁: keyof typeof 账号) {
   await page.waitForURL(/\/dashboard/);
 }
 
-test("有项目时在客户档案记沟通：「新建沟通」开框、关联项目默认选上，记完留在原页，沟通记录里有这条、刷新还在、挂在项目上", async ({ page }) => {
-  const 内容 = `客户档案里记的沟通${后缀}`;
+/** 销售甲打开这位客户，从项目块的「新建沟通」开「记一条沟通」框（等水合、落空了再点） */
+async function 开记沟通框(page: Page) {
   await 登录(page, "销售1");
   await page.goto(`/customers/${客户}`);
   const 正文 = page.getByRole("main");
@@ -68,6 +68,11 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
     await expect(框).toBeVisible({ timeout: 3_000 });
   }).toPass({ timeout: 30_000 });
 
+  return { 框, 正文 };
+}
+
+/** 发起主体、内容、下一步填好，点保存，等框关掉 */
+async function 填好存下(page: Page, 框: ReturnType<Page["getByRole"]>, 内容: string) {
   // 发起主体字典里有「我方发起」时自动带上；没带上就挑第一项
   // 11-15 起记沟通框是项目那张（F-跟进-06），不是 antd Form.Item：按读屏名认这一格
   const 主体 = 框.getByRole("combobox", { name: "发起主体" });
@@ -81,6 +86,12 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
   // 项目那张记沟通框的提交键：11-15 起叫「记下」，D4 · M7-b 起叫「保存」
   await 框.getByRole("button", { name: "保存", exact: true }).click();
   await expect(框).toBeHidden();
+}
+
+test("有项目时在客户档案记沟通：「新建沟通」开框、关联项目默认选上，记完留在原页，沟通记录里有这条、刷新还在、挂在项目上", async ({ page }) => {
+  const 内容 = `客户档案里记的沟通${后缀}`;
+  const { 框, 正文 } = await 开记沟通框(page);
+  await 填好存下(page, 框, 内容);
 
   // 不跳页，这条出现在沟通记录卡里
   await expect(page).toHaveURL(new RegExp(`/customers/${客户}`));
@@ -93,4 +104,24 @@ test("有项目时在客户档案记沟通：「新建沟通」开框、关联�
   const 记的 = await db.followUp.findMany({ where: { customerId: 客户, content: 内容 }, include: { projectNode: { select: { projectId: true } } } });
   expect(记的).toHaveLength(1);
   expect(记的[0].projectNode?.projectId).toBe(项目);
+});
+
+/*
+  带截图记（PR-B 审查 11-25）：截图在 记项目沟通Action 之后另走 /api/attachments（fetch，不重渲染），
+  记录页保存后不再 router.refresh，FollowUpForm 传上了截图要自己刷一次，不然新的那条要刷新页面才看得到缩略图
+*/
+test("带一张截图记沟通：不刷新页面，新的那条就能看到缩略图", async ({ page }) => {
+  const 内容 = `带截图的沟通${后缀}`;
+  const 图名 = `截图${后缀}.png`;
+  const { 框, 正文 } = await 开记沟通框(page);
+  // 1×1 的 PNG：服务端按文件头认类型
+  const 图 = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+  await 框.locator('input[type="file"]').setInputFiles({ name: 图名, mimeType: "image/png", buffer: 图 });
+  await expect(框.getByText(图名)).toBeVisible();
+  await 填好存下(page, 框, 内容);
+  await expect(正文.getByText(内容).first()).toBeVisible();
+  // 不 reload：新的那条下面就有这张图的缩略图
+  await expect(正文.getByRole("img", { name: 图名 }).first()).toBeVisible({ timeout: 15_000 });
+  const 记的 = await db.followUp.findFirstOrThrow({ where: { customerId: 客户, content: 内容 }, select: { id: true } });
+  expect(await db.attachment.count({ where: { followUpId: 记的.id } })).toBe(1);
 });
