@@ -70,7 +70,8 @@ beforeEach(async () => {
 });
 afterEach(() => vi.unstubAllEnvs());
 afterAll(async () => {
-  await prisma.attachment.deleteMany();
+  // 跑完清库（同 beforeEach 那套 resetDb）：附件不挂外键，留在共享 test.db 会绊倒后面从它拷库、自带清库清单的用例
+  await resetDb();
   await prisma.$disconnect();
   fs.rmSync(目录, { recursive: true, force: true });
   delete process.env.CRM_DATA_DIR;

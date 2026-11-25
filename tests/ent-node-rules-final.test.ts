@@ -25,7 +25,7 @@ import { 还差, 宽严互斥, 去掉宽的 } from "@/lib/project/required";
 import { 改节点问题, 交付不在尾款话, 企业版字典 } from "@/lib/project/nodes";
 import { 看板推进预检 } from "@/app/(app)/projects/actions";
 import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
-import { 企业字典, 改字典项, 加字典项, 已签收认法, 已签收物流状态 } from "@/lib/enterprise/dict";
+import { 企业字典, 改字典项, 加字典项, 已签收认法, 已签收物流状态, 运输中认法 } from "@/lib/enterprise/dict";
 
 const 开着 = (必填: Record<string, string[]>): 组织规则 => ({ ...默认组织规则, 节点推进: { 开: true, 必填 } });
 
@@ -45,6 +45,17 @@ describe("已签收认法（纯函数）", () => {
   });
   it("自己加的同名项（不是默认那一项）不算", () => {
     expect(已签收认法([行("dict-projLogistics-2", "已送达"), 行("x2", "客户签了")]).名们).not.toContain("客户签了");
+  });
+});
+
+describe("运输中认法（纯函数，11-26 运输中要单号）", () => {
+  const 行 = (id: string, name: string, active = true) => ({ id, name, active });
+  it("没建过字典只认默认名；按 dict-projLogistics-1 认，改名后新名、旧名都认；新加的同名项不认；停用照认", () => {
+    expect(运输中认法([])).toEqual({ 名们: ["运输中"], 现名: "运输中", 停用: false });
+    expect(运输中认法([行("dict-projLogistics-1", "在途"), 行("dict-projLogistics-2", "已签收")])).toEqual({ 名们: ["在途", "运输中"], 现名: "在途", 停用: false });
+    expect(运输中认法([行("dict-projLogistics-1", "在途"), 行("x1", "运输中")]).名们).toEqual(["在途"]);
+    expect(运输中认法([行("dict-projLogistics-1", "运输中", false)])).toEqual({ 名们: ["运输中"], 现名: "运输中", 停用: true });
+    expect(运输中认法([行("dict-projLogistics-2", "运输中")]).名们).toEqual(["运输中"]);
   });
 });
 
@@ -151,7 +162,8 @@ describe("节点推进规则定稿（真库）", () => {
       expect(await 已签收物流状态()).toEqual({ 名们: ["已送达", "已签收"], 现名: "已送达", 停用: false });
       // 新项目选新名
       const 新 = await 项目({ name: "二号", node: "物流运输" });
-      expect(await 改项目(乙, 新.id, { logisticsStatus: "运输中" })).not.toHaveProperty("自动推到");
+      expect(await 改项目(乙, 新.id, { logisticsStatus: "运输中", trackingNo: "SF1" })).toMatchObject({ ok: true });
+      expect(await 现(新.id)).toMatchObject({ node: "物流运输" });
       expect(await 改项目(乙, 新.id, { logisticsStatus: "已送达" })).toMatchObject({ ok: true, 自动推到: ["安装实施"] });
       // 旧值「已签收」不在下拉里了（字典里没这个名），项目上存着照算
       expect(还差(开着({ 物流运输: ["已签收"] }), await 读必填数据(prisma as never, await 现(旧.id)))).toEqual([]);

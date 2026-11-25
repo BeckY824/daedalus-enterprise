@@ -36,6 +36,8 @@ const 附件夹 = fs.mkdtempSync(path.join(os.tmpdir(), "crm-claimatt-"));
 const 原数据夹 = process.env.CRM_DATA_DIR;
 process.env.CRM_DATA_DIR = 附件夹;
 afterAll(async () => {
+  // 跑完清库（同 beforeEach 那套 resetDb）：只填 followUpId 的附件不挂外键，留在共享 test.db 会绊倒后面从它拷库的用例
+  await resetDb();
   if (原数据夹 === undefined) delete process.env.CRM_DATA_DIR;
   else process.env.CRM_DATA_DIR = 原数据夹;
   fs.rmSync(附件夹, { recursive: true, force: true });
