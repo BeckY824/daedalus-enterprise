@@ -31,7 +31,8 @@ import type { 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import AttachEntry, { 负责人说法, 我名下入口 } from "./AttachEntry";
 import RescueKey from "../../customers/RescueKey";
 import DedupeClaimKey from "../../customers/DedupeClaimKey";
-import { 向导能选类型, 带进联系人, 号码类型叫法, type 联系人三格 } from "@/lib/enterprise/contact-format";
+import RepeatInquiryKey from "../../customers/RepeatInquiryKey";
+import { 向导能选类型, 带进联系人, 号码类型叫法, 查重提示, type 联系人三格 } from "@/lib/enterprise/contact-format";
 import { 每人最多号码, 内置号码种类, 号码上限, 联系人姓名问题 } from "@/lib/enterprise/customer-v2";
 import { 线索号码种类 } from "@/lib/agent/proposals";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
@@ -971,7 +972,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               {企查.ok && 企查.状态 === "首次录入" ? <Alert type="success" showIcon title={去符号(企查.提示)} description={企查.归属地 ? `归属地：${企查.归属地}` : undefined} />
                 : !企查.ok ? <Alert type="warning" showIcon title={去符号(企查.提示)} />
                 // 查重领取成了（F-016）：面板收成只剩「已领取」那句。不重查——客户已在销售名下，重查是「重复」，会记撞号台账、摆挂靠 / 同号协同，
-                // 把市场成员引去挂靠自己刚交出去的客户。下次查号清掉
+                // 把市场成员引去挂靠自己刚交出去的客户。下次查号清掉。出口 C 建成了（重复咨询第一步）同样只剩那一句
                 : 领成话 ? <Alert type="success" showIcon title={<span role="status" data-testid="dedupe-claim-done">{领成话}</span>} />
                 : <撞号面板 查={企查} users={users} 类型={d.号码类型 ?? ""} 捞回了={set企查} 渠道={d.客户.渠道 || null} 触点={d.客户.触点 || null} 领成了={set领成话} 协同={企查.可协同 ? <SameNumberEntry 类型={d.号码类型} 值={企查.值} 渠道们={企业?.渠道们 ?? []} 默认渠道={d.客户.渠道 || null} 情况={企查.协同} /> : null} />}
             </div>
@@ -1300,6 +1301,8 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了
             {撞?.school ? ` · ${撞.school}` : ""}
             {" · "}
             {在公海 ? "在公海" : 查.状态 === "我的通讯录已有" ? "在你名下" : 查.挂靠 ? `负责人：${负责人说法({ ...查.挂靠.负责人, 离职找: undefined })}` : `负责人：${负责人}${离职找 ? "（已离职）" : ""}`}
+            {/* 市场成员撞上客户：这位客户在推的项目个数（含 0，只给个数），服务端不是市场成员不带 */}
+            {查.在推个数 != null ? ` · ${查重提示.在推个数(查.在推个数)}` : ""}
             {查.归属地 ? ` · 归属地：${查.归属地}` : ""}
           </div>
           <Space size={8} style={{ marginTop: 8 }} wrap>
@@ -1313,6 +1316,10 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了
             )}
             {在公海 && !我退的 && !市场领 && <Link href={撞?.name ? `/pool?keyword=${encodeURIComponent(撞.name)}` : "/pool"}><Button size="small">去领取</Button></Link>}
             {查.状态 === "重复" && 离职找 && <span style={{ color: "var(--text-muted)" }}>负责人已离职，请联系 {离职找}</span>}
+            {/* 重复咨询第一步（出口 C）：市场成员撞上同事名下、负责人能接指定分配的客户，在负责人名下新建线索；建成了面板只剩那一句（同查重领取） */}
+            {查.状态 === "重复" && 查.出口C && (
+              <RepeatInquiryKey 类型={类型} 值={查.值} 负责人名={查.出口C.负责人名} 交销售={!!查.出口C.交销售} 渠道={{ id: 渠道 }} 触点={触点} 建了={领成了} />
+            )}
             {查.状态 === "重复" && 负责人 && !离职找 && (邮箱
               ? <CopyValue 种类="邮箱" 叫法="负责人邮箱" value={邮箱} 文字={`联系负责人：${负责人}`} style={{ color: "var(--text-muted)" }} />
               : <span style={{ color: "var(--text-muted)" }}>联系负责人：{负责人}</span>)}

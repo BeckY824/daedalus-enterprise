@@ -21,6 +21,7 @@ const plugin: Plugin = { name: "ent-new-cust-assign", setup(b) {
   stub(/^\.\.\/actions$/, "export const 建档向导=async(x)=>{(window.__调||=[]).push(['建档向导',x]);return {ok:true,customerId:'c1',projectId:'p1'}};export const 建档只建客户=async(x)=>{(window.__调||=[]).push(['建档只建客户',x]);return {ok:true,customerId:'c2',projectId:null}};");
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
   stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>({ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null});export const 查客户名=async()=>({ok:true,撞:null});export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
+  stub(/customers\/RepeatInquiryKey$/, "export default function R(){return null}");
   stub(/customers\/DedupeClaimKey$/, "export default function D(){return null}");
   stub(/customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[];");
   stub(/customers\/\[id\]\/project-actions$/, "export const 给客户建项目=async()=>({ok:true,projectId:'np9'});export const 新项目分配数据=async()=>null;export const 建项目带走的项目=async()=>({项目数:0,项目:[]});");

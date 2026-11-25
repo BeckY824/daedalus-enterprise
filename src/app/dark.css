@@ -23,6 +23,7 @@
   --avatar-1: #1e2a44; --avatar-2: #1a3326; --avatar-3: #3a2f12; --avatar-4: #3d1f1f;
   --avatar-5: #2a2444; --avatar-6: #14303d; --avatar-7: #3a1d2e; --avatar-8: #262c36;
   --cat-teal: #2bb3a3; --cat-lime: #84cc16;
+  --violet: #a78bfa; --violet-bg: rgb(167 139 250 / 12%); --violet-text: #b7a3f7; /* 紫 75% 混正文色，暗底上比 --violet 亮一档 */
   --pencil: var(--text-faint); --pencil-text: var(--text-muted);
   --heat-on: var(--brand); --heat-off: var(--line);
   --seal: var(--ink);

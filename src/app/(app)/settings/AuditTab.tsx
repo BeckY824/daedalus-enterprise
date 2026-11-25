@@ -27,6 +27,8 @@ const ACTION_LABEL: Record<string, string> = {
   reply: "回复", close: "关闭", "pool-close": "进公海自动关闭",
   // 主动放弃（豁免）（11-20，32H）
   giveup: "主动放弃",
+  // 出口 C 没建、待补建记录没写成（11-23，P-公海-15：整份记录在明细里，补建照它）
+  unbuilt_failed: "待补建没写成",
 };
 const ENTITY_LABEL: Record<string, string> = {
   EntRequiredBlock: "必填拦截记录",

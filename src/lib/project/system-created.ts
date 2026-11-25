@@ -63,8 +63,18 @@ export function 人名显示(id: string, 名: ReadonlyMap<string, string>, o: { 
 export const 历史分析来源 = "history-analysis";
 /** 回填万一写了节点变更，留痕的 userId 用这个（不是哪位成员），统计按它排掉（约定第 2 条） */
 export const 历史分析留痕人 = "history-analysis";
+/**
+ * Project.source：「老客户重复咨询」——市场成员查号码撞上已有客户另建的线索（重复咨询第一步，客户 11-22 定稿）：
+ * 出口 C（撞上同事名下的客户，在客户负责人名下新建）、查重领取新建线索项目（撞上公海客户，P-公海-12）两处建时写。
+ * 它是系统里正常建的线索：统计照算（不算历史分析、不算补建都只排各自那一个值），只用来打标、详情现算「其他在推的项目」
+ */
+export const 重复咨询来源 = "repeat-inquiry";
+/** 这条是老客户重复咨询吗 */
+export function 是重复咨询(p: { source?: string | null }): boolean {
+  return p.source === 重复咨询来源;
+}
 /** 界面上的来源标签（项目详情「数据来源」一行）；以后有项目导出时来源列也用它 */
-export const 来源名: Record<string, string> = { [历史分析来源]: "历史分析" };
+export const 来源名: Record<string, string> = { [历史分析来源]: "历史分析", [重复咨询来源]: "老客户重复咨询" };
 /** 来源写成人话：空 = 系统里建的，显示「—」；不认识的值照原样 */
 export function 来源字(source: string | null | undefined): string {
   return source ? 来源名[source] ?? source : "—";
