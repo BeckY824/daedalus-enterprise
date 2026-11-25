@@ -78,6 +78,7 @@ import { 认企业级别, 规整地址, 规整详细地址, 简称上限, type �
 import { 认业务线, 业务线不认得, 客户业务线必填 } from "@/lib/enterprise/assign-line";
 import type { Prisma } from "@/generated/prisma";
 import { 客户状态自动 } from "@/lib/enterprise/cust-status-auto-db";
+import { 原状态记到出公海痕, 项目痕原状态, 写回出公海前状态 } from "@/lib/enterprise/cust-status-undo";
 import { 交接通知, 分给你通知, 改负责人通知, 同事待分配随客户通知, 市场改分通知 } from "@/lib/enterprise/notice-sources";
 import { 记新建指定分配 } from "@/lib/enterprise/direct-assign";
 import { 认新客户分配, 落新客户分配, 新客户建好再分, type 新客户分配交 } from "@/lib/project/new-cust-assign";
@@ -1445,8 +1446,10 @@ async function 接待分配写(ids: string[], salesOwnerId: string, 操作人: s
   const 规则 = await 生效组织规则();
   const org = 企业版() ? await 权限组织() : null;
   return 整批或不做(() => 查完再写(async (tx) => {
-    // 先记下每位原来归谁：他们没做完的活要跟着走（排查 B3）
-    const 换人的 = await tx.customer.findMany({ where: { id: { in: ids }, salesOwnerId: { not: salesOwnerId } }, select: { id: true, salesOwnerId: true } });
+    // 先记下每位原来归谁：他们没做完的活要跟着走（排查 B3）。
+    // 客户状态也记下：一起带出线索公海的项目会让它重算（带走公海项目），记到那几行 pool-claim 上，撤销时原样还回（cust-status-undo.ts）
+    const 动手时 = new Date();
+    const 换人的 = await tx.customer.findMany({ where: { id: { in: ids }, salesOwnerId: { not: salesOwnerId } }, select: { id: true, salesOwnerId: true, custStatus: true } });
     await 接待分配核上限(tx, 规则, 换人的.map((c) => c.id), salesOwnerId);
     const res = await tx.customer.updateMany({ where: { id: { in: 换人的.map((c) => c.id) }, salesOwnerId: { not: salesOwnerId } }, data: { salesOwnerId } });
     const 换成了 = res.count === 换人的.length ? 换人的 : await 看全部(async () => {
@@ -1454,6 +1457,7 @@ async function 接待分配写(ids: string[], salesOwnerId: string, 操作人: s
       return 换人的.filter((c) => 已换.has(c.id));
     });
     const 带 = await 带走并记下在事务里(tx, 换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId, 操作人, "assign", org);
+    await 原状态记到出公海痕(tx, new Map(换成了.map((c) => [c.id, c.custStatus])), 动手时);
     return { res, 换成了, 带 };
   }, { timeout: 30_000 }));
 }
@@ -1631,8 +1635,15 @@ export async function 撤销改负责人(原值: { id: string; 值: string }[], 
         await 还项目(tx, 带过来.项目, cs, 新负责人, 原, me.id);
         // 转客户时一起从线索公海带过来的（P-转-07）：放回线索公海；放不回去整批回滚
         if (严) {
-          const 们 = await tx.project.findMany({ where: { id: { in: (带过来.公海项目 ?? []).filter((p) => typeof p === "string") }, customerId: 这几位 }, select: { id: true } });
+          const 们 = await tx.project.findMany({ where: { id: { in: (带过来.公海项目 ?? []).filter((p) => typeof p === "string") }, customerId: 这几位 }, select: { id: true, customerId: true } });
+          // 带出公海时重算过的客户状态：各位这几个项目 pool-claim 上记的原值（cust-status-undo.ts），撤回项目公海 会删那一行，先读
+          const 按客户 = new Map<string, string[]>();
+          for (const p of 们) 按客户.set(p.customerId, [...(按客户.get(p.customerId) ?? []), p.id]);
+          const 原状态 = new Map<string, string | null | undefined>();
+          for (const [c, ps] of 按客户) 原状态.set(c, await 项目痕原状态(tx, ps));
           for (const p of 们) if (!(await 撤回项目公海(tx, p.id, 新负责人, me.id))) throw new 撤销对不上("一起从线索公海带过来的项目放不回去了");
+          // 都放回去了（放不回去上面整批回滚）：原样还回；这位还有别的出公海没撤（前端少带了项目、刚才另一下）、老留痕没记的照旧用 撤回项目公海 里的重算
+          for (const [c, v] of 原状态) await 写回出公海前状态(tx, c, v);
         }
       }
       return { 退了: 这批.map((x) => ({ id: x.id, salesOwnerId: x.值 })) };

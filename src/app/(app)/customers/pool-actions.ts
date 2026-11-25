@@ -56,6 +56,8 @@ import { 找待用补位, 用掉补位, 待用补位行 } from "@/lib/enterprise
 import { 分配通知 } from "@/lib/enterprise/notice-sources";
 import { 存沟通后重算三态 } from "@/lib/enterprise/tri-state-db";
 import { 签首条附件票 } from "@/lib/enterprise/first-follow-ticket";
+import { 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
+import { 读客户状态, 项目的客户们, 原状态记到出公海痕, 存原状态, 读原状态, 写回出公海前状态, 写回进公海前状态 } from "@/lib/enterprise/cust-status-undo";
 import {
   能查重领取, 不是市场成员查重领取话, 没撞上公海话, 查重领取作废, 查重领取换人, 公海客户的原负责人, 客户创建人, 要回避, 最近的公海项目, 最近的在推项目,
   查重领取候选们, 查重领取理由, 候选挑不到为什么, 挑不到话, 查重领取记沟通, 查重领取口径, 撞上的联系人, 查重领取建线索项目, 认对接人, 落对接人, 发起人领不回, type 认好的对接人, type 录的对接人,
@@ -244,9 +246,13 @@ export async function 放进公海(ids: string[], 原因?: unknown): Promise<公
  */
 async function 放进公海连项目(tx: Prisma.TransactionClient, 们: { id: string; salesOwnerId: string }[], 操作人: string, reason: string): Promise<string[]> {
   return 看全部(async () => {
-    await tx.customerPool.createMany({ data: 们.map((c) => ({ customerId: c.id, userId: 操作人, reason })) });
+    // 进公海前存的客户状态记在客户公海这一行（项目进了公海会重算它），撤销放进时从这里读、原样还回（cust-status-undo.ts）。
+    // 公海那一行和每行 pool-release 同一个时刻：撤销时按它认「这一下跟着进公海的项目还回来没有」
+    const 原 = await 读客户状态(tx, 们.map((c) => c.id));
+    const 现在 = new Date();
+    await tx.customerPool.createMany({ data: 们.map((c) => ({ customerId: c.id, userId: 操作人, reason, at: 现在, ...(原.has(c.id) ? { prevCustStatus: 存原状态(原.get(c.id)) } : {}) })) });
     // 先项目后清负责人：项目那边靠客户原来的负责人认「他自己负责的」
-    const 项目 = await 客户名下在推项目进公海(tx, 们, 操作人, reason === "手动" ? null : reason, new Date());
+    const 项目 = await 客户名下在推项目进公海(tx, 们, 操作人, reason === "手动" ? null : reason, 现在);
     await 客户进公海清负责人(tx, 们, 操作人);
     return 项目;
   });
@@ -261,6 +267,7 @@ async function 撤回连带项目(tx: Prisma.TransactionClient, 客户们: strin
   if (!ids.length || !客户们.length) return;
   await 看全部(async () => {
     const 们 = await tx.project.findMany({ where: { id: { in: ids }, customerId: { in: 客户们 }, pooledAt: { not: null } }, select: { id: true, customerId: true, name: true, pooledAt: true } });
+    const 还了 = new Set<string>();
     for (const p of 们) {
       const 痕 = await tx.projectNodeLog.findFirst({ where: { projectId: p.id }, orderBy: [{ at: "desc" }, { id: "desc" }], select: { id: true, kind: true, userId: true, fromOwnerId: true, at: true } });
       if (!痕 || 痕.kind !== "pool-release" || 痕.userId !== 操作人 || !痕.fromOwnerId) continue;
@@ -269,7 +276,10 @@ async function 撤回连带项目(tx: Prisma.TransactionClient, 客户们: strin
       await tx.project.update({ where: { id: p.id }, data: { ...还负责人(痕.fromOwnerId), pooledAt: null } });
       await 还原清掉的组员(tx, p.id, 痕.at, 痕.fromOwnerId);
       await tx.projectNodeLog.delete({ where: { id: 痕.id } });
+      还了.add(p.customerId);
     }
+    // 还给原负责人 = 出了公海又在推：客户状态重算（cust-status-auto-db.ts 进出公海重算）
+    await 进出公海重算(tx, 还了);
   });
 }
 
@@ -389,6 +399,9 @@ async function 公海客户出手(
 ) {
   const 规则 = await 生效组织规则();
   return 整批或不做(() => 查完再写(async (tx) => {
+    // 动手前记下这几位（客户行 + 项目行的客户）存的客户状态，事务末尾记到这一下的出公海留痕上，撤销时原样还回（cust-status-undo.ts）
+    const 动手时 = new Date();
+    const 原状态 = await 读客户状态(tx, [...ids, ...(await 项目的客户们(tx, [...(项目?.ids ?? []), ...(分项目?.ids ?? [])]))]);
     const 起 = await 持有上限起点(tx, 规则, 给);
     /*
       看全部（团队版业务员，lib/team-scope.ts）：业务员能领，是因为这位在公海里；删掉公海那一行之后、负责人改成我之前，
@@ -403,7 +416,8 @@ async function 公海客户出手(
         if (!c || (企业版() && c.poolInvalidAt)) continue;
         // 团队范围同步（2026-10-14）：先改负责人、最后删公海那一行
         if (c.salesOwnerId !== 给) await tx.customer.update({ where: { id }, data: { salesOwnerId: 给 } });
-        await tx.customerClaim.upsert({ where: { customerId: id }, update: { userId: 给, at: new Date() }, create: { customerId: id, userId: 给 } });
+        // 客户状态原值不在这里记：事务末尾 原状态记到出公海痕 统一记（prevCustStatus 先清掉，免得留着上一次领取的）
+        await tx.customerClaim.upsert({ where: { customerId: id }, update: { userId: 给, at: new Date(), prevCustStatus: null }, create: { customerId: id, userId: 给 } });
         await tx.customerPool.deleteMany({ where: { customerId: id } });
         // 出客户公海归 给：客户分配记「公海领取」（领取、分配公海都是，customer-assign-way.ts）；盖掉的原值带回去，撤销按它还
         const 分 = await 写公海领取(tx, id);
@@ -426,6 +440,11 @@ async function 公海客户出手(
     }
     // 查重领取的那几样（新建线索项目、记分配、写沟通）放在核上限前面：新建的那条也算进接手人的持有数（同补培育）
     if (附?.然后) await 看全部(() => 附.然后!(tx, 客户部分));
+    // 出了公海的客户：带出线索公海的项目又在推、补了潜客培育、查重领取新建了线索，客户状态都按项目重算（B37「随领取和项目变动自然落库」，
+    // cust-status-auto-db.ts 进出公海重算；带走公海项目 里已算过的再算一遍，没变的不写）
+    await 进出公海重算(tx, 客户部分.到.map((x) => x.id));
+    // 在里面领 / 分项目行的帮手也记过一遍（读的是客户这一半动过以后的值），这里最后记、以动手前的为准
+    await 原状态记到出公海痕(tx, 原状态, 动手时);
     await 整批核上限(tx, 起, kind === "claim" ? "领" : "接");
     return { ...客户部分, 项目结果, 分项目结果 };
   }));
@@ -549,17 +568,30 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
     // 企业版：放进去超过撤销时限就撤不回（原负责人不能自己领回）
     const 时限内 = 企业版() ? { at: { gte: new Date(Date.now() - 撤销时限毫秒) } } : {};
     // 原负责人放进去之后自己看不到这位（回避，11-03），包 看全部 才撤得动；只认自己放进去的、时限内的，范围没放宽
-    const 撤 = (await 看全部(() => prisma.customerPool.findMany({ where: { customerId: { in: ids }, userId: me.id, ...时限内 }, select: { customerId: true } }))).map((x) => x.customerId);
-    // 企业版：负责人还回去（P-撤销-01）；跟着一起进线索公海的那几个项目同一个事务里还给原负责人（P-公海-06）
-    if (企业版() && 撤.length) await 钉住老签约();
-    const r = 企业版()
-      ? await 查完再写((tx) => 看全部(async () => {
-          const 删 = await tx.customerPool.deleteMany({ where: { customerId: { in: 撤 }, userId: me.id } });
-          if (Array.isArray(公海项目) && 公海项目.length) await 撤回连带项目(tx, 撤, 公海项目, me.id);
-          await 还原进公海前负责人(tx, 撤);
-          return 删;
-        }))
-      : await 看全部(() => prisma.customerPool.deleteMany({ where: { customerId: { in: 撤 }, userId: me.id } }));
+    const 找 = (db: Pick<Prisma.TransactionClient, "customerPool">) =>
+      db.customerPool.findMany({ where: { customerId: { in: ids }, userId: me.id, ...时限内 }, select: { customerId: true, at: true, prevCustStatus: true } });
+    let 撤: string[];
+    let r: { count: number };
+    if (企业版()) {
+      // 企业版：负责人还回去（P-撤销-01）；跟着一起进线索公海的那几个项目同一个事务里还给原负责人（P-公海-06）
+      if ((await 看全部(() => 找(prisma))).length) await 钉住老签约();
+      // 哪几位真撤回了在事务里认（复审 11-25）：事务外认完到这里之间被人领走的不算，也不给它写回客户状态
+      ({ 撤, r } = await 查完再写((tx) => 看全部(async () => {
+        const 行 = await 找(tx);
+        const 这几位 = 行.map((x) => x.customerId);
+        if (!这几位.length) return { 撤: [] as string[], r: { count: 0 } };
+        const 删 = await tx.customerPool.deleteMany({ where: { customerId: { in: 这几位 }, userId: me.id } });
+        if (Array.isArray(公海项目) && 公海项目.length) await 撤回连带项目(tx, 这几位, 公海项目, me.id);
+        await 还原进公海前负责人(tx, 这几位);
+        // 客户状态还回进公海前存的值（记在客户公海那一行，cust-status-undo.ts；撤回连带项目 里重算过，要放在它后面）。
+        // 没记的（别的入池、老行）、跟着进公海的项目没还全的，照旧用上面的重算
+        for (const x of 行) await 写回进公海前状态(tx, x.customerId, 读原状态(x.prevCustStatus), x.at, me.id);
+        return { 撤: 这几位, r: 删 };
+      })));
+    } else {
+      撤 = (await 看全部(() => 找(prisma))).map((x) => x.customerId);
+      r = await 看全部(() => prisma.customerPool.deleteMany({ where: { customerId: { in: 撤 }, userId: me.id } }));
+    }
     if (r.count) {
       忘掉企业版范围();
       await 记退回(撤, -1);
@@ -606,6 +638,9 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       if (!还.count) throw new Error(负责人被改过);
       // 出公海时盖成「公海领取」的客户分配还回原值（P-撤销-01）
       await 还公海领取前的客户分配(tx, x.id, x.分);
+      // 出公海前存的客户状态记在领取这一行（cust-status-undo.ts），删之前读出来；不是 现 领的那一行不认
+      const 领 = await tx.customerClaim.findUnique({ where: { customerId: x.id }, select: { userId: true, prevCustStatus: true, at: true } });
+      const 原状态 = 领?.userId === 现 ? 读原状态(领.prevCustStatus) : undefined;
       await tx.customerClaim.deleteMany({ where: { customerId: x.id, userId: 现 } });
       // 领取 / 分配时带过来的活还回去：还挂在领到的人名下、还没做完的才还。
       // 还给谁：x.值 是占位账号时活本来挂在进公海前的负责人名下，按 pool-release 认；客户本身回占位账号
@@ -619,13 +654,18 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       if (企业版() && Array.isArray(带过来?.培育) && 带过来.培育.length) {
         if (!(await 撤回补的潜客培育(tx, 带过来.培育, { customerId: x.id, 负责人: 现, 创建人: me.id }))) throw new Error(培育项目动过);
       }
+      let 项目全回了 = true;
       if (企业版() && Array.isArray(公海项目) && 公海项目.length) {
         // 包 看全部：客户刚放回公海，限定着查不到它下面的项目
         await 看全部(async () => {
           const 们 = await tx.project.findMany({ where: { id: { in: 公海项目.filter((p) => typeof p === "string") }, customerId: x.id }, select: { id: true } });
-          for (const p of 们) await 撤回项目公海(tx, p.id, 现, me.id);
+          for (const p of 们) if (!(await 撤回项目公海(tx, p.id, 现, me.id))) 项目全回了 = false;
         });
       }
+      // 客户状态（P-撤销-01 按原样回滚；撤回项目公海 里重算过，所以放在它后面）：这位这次带出来的项目全回了公海、领取行上记了原值，原样还回；
+      // 撤了一半（有项目撤不成、前端少带了几个、同一位客户的项目行还没撤）、老领取行没记：带出来的项目回了公海、补的潜客培育删了，按剩下的重算
+      // 领取那一刻之后建的项目（补的潜客培育前端没带回来、没删掉）还在，也算没撤完
+      if (!(项目全回了 && (await 写回出公海前状态(tx, x.id, 原状态, 领?.at)))) await 进出公海重算(tx, [x.id]);
       return true;
     }).catch((e) => {
       if (e instanceof Error && e.message === 负责人被改过) return false;

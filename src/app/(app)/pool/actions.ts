@@ -22,6 +22,7 @@ import { 持有上限起点, 整批核上限, 整批或不做 } from "@/lib/proj
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
+import { 项目痕原状态, 写回出公海前状态 } from "@/lib/enterprise/cust-status-undo";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 公海分配通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
 import { 分配方式叫法, 选的原因 } from "@/lib/enterprise/dict";
@@ -181,6 +182,9 @@ function 规整整包(x: unknown): 整包撤销 | null {
  * 分配时客户整包出了客户公海的（整包，P-公海-10）：整包退回——客户回客户公海、负责人还原，一起带出的项目回线索公海，
  * 带过来的活还回去，被撤的换负责人记录删掉（P-撤销-01、M-公海-01）。走 撤销公海 的分配那一支，认不认按它（得是我刚把客户从原负责人换给 给谁 的）。
  * 只退这次带出的：整包 是这次分配返回的，别的客户、项目不碰
+ * 客户状态（P-撤销-01 按原样回滚，复审 11-25）：一位客户一个事务，这位这一批的项目全撤成了、这次的出公海都撤完了，
+ * 还回各项目 pool-claim 上记的原值（cust-status-undo.ts，只认服务端留痕）；撤了一半、老留痕没记：照旧按 撤回项目公海 里的重算。
+ * 哪位客户按事务里库里项目所属的认；整包出了客户公海的客户交给下面 撤销公海「分配」统一还（客户那一半最后撤，读领取行上的原值）
  */
 export async function 撤销公海项目(动作: "领取" | "分配", ids: string[], 给谁?: string, 整包?: 整包撤销): Promise<标记结果> {
   const me = await requireUser();
@@ -196,8 +200,26 @@ export async function 撤销公海项目(动作: "领取" | "分配", ids: strin
     if (别线) return { ok: false, error: 别线 };
   }
   let 撤了 = 0;
+  // 按客户分组（事务外先分，事务里再核）：撤不成的项目各自不动，同原来逐个撤
+  const 项目客户 = new Map((await 看全部(() => prisma.project.findMany({ where: { id: { in: 们 } }, select: { id: true, customerId: true } }))).map((p) => [p.id, p.customerId]));
+  const 组 = new Map<string, string[]>();
   for (const id of 们) {
-    if (await 看全部(() => 查完再写((tx) => 撤回项目公海(tx, id, 现, me.id)))) 撤了++;
+    const k = 项目客户.get(id) ?? `?${id}`;
+    组.set(k, [...(组.get(k) ?? []), id]);
+  }
+  const 整包客户 = new Set(包?.原.map((x) => x.id) ?? []);
+  for (const [客户, 这几个] of 组) {
+    撤了 += await 看全部(() => 查完再写(async (tx) => {
+      // 以库里项目所属的客户为准：事务里再读一遍，有一个不是这位的（查完到这里之间被合并、换了客户）就不写回
+      const 属 = await tx.project.findMany({ where: { id: { in: 这几个 } }, select: { customerId: true } });
+      const 都是 = 属.length === 这几个.length && 属.every((p) => p.customerId === 客户);
+      // 撤回项目公海 会删掉 pool-claim 那一行：先读原值
+      const 原状态 = 都是 && !整包客户.has(客户) ? await 项目痕原状态(tx, 这几个) : undefined;
+      let 成 = 0;
+      for (const id of 这几个) if (await 撤回项目公海(tx, id, 现, me.id)) 成++;
+      if (成 === 这几个.length) await 写回出公海前状态(tx, 客户, 原状态);
+      return 成;
+    }));
   }
   if (包) {
     const r = await 撤销公海("分配", 包.原, 包.带过来, 现, 包.公海项目);

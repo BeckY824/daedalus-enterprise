@@ -16,6 +16,7 @@ import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 字典定义 } from "./dict-kinds";
 import { 企业版只用项目 } from "./project-only";
+import { 企业版 } from "./switch";
 import { 算客户状态, 客户状态id, type 算状态的项目 } from "./cust-status-auto";
 
 type 库 = Prisma.TransactionClient;
@@ -75,9 +76,10 @@ export async function 客户状态名们(db: 库 = prisma): Promise<string[]> {
 
 /**
  * 按项目重算这几个客户的状态，返回改了几个。不看开关（调用方自己挡）；在事务里传 tx。
- * 名们 = 客户状态名们() 读好的（全量重算一遍只读一次字典），不传现读
+ * 名们 = 客户状态名们() 读好的（全量重算一遍只读一次字典），不传现读。
+ * 不清空（进出公海重算用）：算出来是 null、库里现在有值的不写，留着库里的值；别的照常写
  */
-export async function 重算客户状态(db: 库, customerIds: Iterable<string | null | undefined>, 名们?: string[]): Promise<number> {
+export async function 重算客户状态(db: 库, customerIds: Iterable<string | null | undefined>, 名们?: string[], 选项?: { 不清空?: boolean }): Promise<number> {
   const ids = [...new Set([...customerIds].filter((x): x is string => !!x))];
   if (!ids.length) return 0;
   return 看全部(async () => {
@@ -102,6 +104,7 @@ export async function 重算客户状态(db: 库, customerIds: Iterable<string |
         const 序 = 算客户状态(按客户.get(c.id) ?? []);
         const 值 = 序 == null ? null : 名[序];
         if (值 === c.custStatus) continue;
+        if (值 === null && 选项?.不清空) continue;
         const 列 = 要改.get(值);
         if (列) 列.push(c.id);
         else 要改.set(值, [c.id]);
@@ -130,6 +133,19 @@ export async function 显示用客户状态(customerId: string, 存的: string |
 /** 写入口用：开着才算（开 = 事务外面读好的 客户状态自动()），关着什么都不做 */
 export async function 跟着项目重算(db: 库, 开: boolean, customerIds: Iterable<string | null | undefined>): Promise<number> {
   return 开 ? 重算客户状态(db, customerIds) : 0;
+}
+
+/**
+ * 项目进出公海的写入口用（11-25）：领取、分配、放回、超时回收、撤销、离职 / 三态进公海……项目 pooledAt 变了，
+ * 「在推项目优先」认的在推（没结局、不在公海）跟着变，客户状态要在同一笔事务里重算落库（B37「随领取和项目变动自然落库」、M-状态-01）。
+ * 开关不另读：企业版项目模式锁死开着（business-config.ts 企业版锁定），企业版() 就等于 客户状态自动()；
+ * 这几处多在事务里的底层帮手（带走公海项目、客户名下在推项目进公海……），拿不到事务外读好的开关，所以同步判。
+ * 批量的调用方攒齐客户一次调（重算客户状态 500 位一批），别逐个项目调
+ */
+export async function 进出公海重算(db: 库, customerIds: Iterable<string | null | undefined>): Promise<number> {
+  // 算出来是 null（名下一个算数的项目都没有）、库里有值的不清空（导入带的、零项目存的「成交」），同 全量重算客户状态 不把导入带了状态的清空；
+  // 只有结局项目的照常落库（B37「随领取自然落库」；M-状态-01 那 566 家存潜在、只有一条流失线索的，领取时落成流失，复审 11-25）
+  return 企业版() ? 重算客户状态(db, customerIds, undefined, { 不清空: true }) : 0;
 }
 
 /** 不在事务里的写入口用：自己读开关、开着才算 */

@@ -250,11 +250,13 @@ const 派生: Record<string, Record<string, string>> = {
     reason: "手动 / N 天没跟进自动放进，系统打上",
     at: "放进去的那一刻，系统打上",
     phoneIncomplete: "企业版三态到期自动进公海时系统查号码，空的 / 不对的打上「号码不全」（迁移 130），公海按它筛",
+    prevCustStatus: "放进公海前客户存的状态，企业版手动放进公海时系统记，撤销放进时原样还回（迁移 168，cust-status-undo.ts）",
   },
   CustomerClaim: {
     customerId: "哪位客户，领取时建 / 覆盖",
     userId: "谁领的，领取时打上",
     at: "领走的那一刻，自动掉公海从它算起",
+    prevCustStatus: "出客户公海前客户存的状态，企业版领取 / 分配时系统记，撤销时原样还回（迁移 169，cust-status-undo.ts）",
   },
   // 合并重复（2026-10-20）：两张都是一个动作的结果，没有单改某一格的入口
   CustomerMerge: {
@@ -503,6 +505,7 @@ const 派生: Record<string, Record<string, string>> = {
     kind: "这一行是改节点、转让负责人、放回公海还是领取，系统写",
     fromOwnerId: "转让 / 放回公海 / 领取前的负责人，那一刻系统写；改节点的行留空",
     toOwnerId: "转让 / 领取后的负责人，那一刻系统写；放回公海和改节点的行留空",
+    prevCustStatus: "pool-claim 行：出线索公海前客户存的状态，领 / 分那一下系统记，撤销时原样还回（迁移 170，cust-status-undo.ts）；别的行留空",
   },
   FollowUpProject: {
     followUpId: "哪条沟通记录，记的时候定", projectId: "挂在哪个项目，记的时候定", node: "记这条时项目在哪个节点，系统打上",

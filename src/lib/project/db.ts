@@ -48,7 +48,8 @@ import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
 import { 项目级别和地址改成, 项目成交钱改成, 读产品需求, type 项目级别和地址, type 项目成交钱 } from "./profile-rules";
 import { 项目新字段改成, 备货单号改成, type 项目新字段, type 备货单号 } from "./proj-fields";
-import { 客户状态自动, 跟着项目重算, 项目变了重算 } from "@/lib/enterprise/cust-status-auto-db";
+import { 客户状态自动, 跟着项目重算, 项目变了重算, 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
+import { 读客户状态, 项目的客户们, 原状态记到出公海痕 } from "@/lib/enterprise/cust-status-undo";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
@@ -737,7 +738,8 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: 新.ownerId }, new Date());
     }
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
-    if (推进.length) await 跟着项目重算(tx, 状态开, [p.customerId]);
+    // 公海里的项目改负责人 = 分出公海、又在推（换人 && p.pooledAt 上面清了 pooledAt）：同推进一样重算客户状态
+    if (推进.length || (换人 && p.pooledAt)) await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, 变了, ...带推进(推进) };
   });
 }
@@ -982,6 +984,8 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     // 企业版项目退回只进线索公海，客户不动（M-公海-02；开关 单项目客户跟着进公海 关着，pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
     if (await 单项目客户跟进公海(tx, p, me.id, 现在, reason)) 客户也进了 = p.customerId;
     await 进公海关待办(tx, p, p.ownerId, 现在);
+    // 进了公海不再算在推：客户状态按剩下的项目重算（cust-status-auto-db.ts 进出公海重算）
+    await 进出公海重算(tx, [p.customerId]);
     // 企业版统一公海（P7，迁移 080）：客户累计主动退回 +1（超时回收、离职交接不走这里，不算）。裸 SQL 不顶 updatedAt
     if (企业版()) await tx.$executeRaw(Prisma.sql`UPDATE "Customer" SET "poolReturns" = "poolReturns" + 1 WHERE "id" = ${p.customerId}`);
     return { ok: true as const };
@@ -1002,7 +1006,18 @@ const 领走了 = { ok: false as const, error: "这个项目已经被人领走�
 export async function 领取公海项目(me: 谁, projectId: string, 带待办?: boolean): Promise<结果> {
   const 备 = await 领公海项目准备(me, [projectId], 带待办);
   if (!备.ok) return 备;
-  const r = await 查完再写((tx) => 领一个公海项目(tx, me, String(projectId ?? ""), 备.上下文, true));
+  const r = await 查完再写(async (tx) => {
+    // 动手前记下客户存的状态，末尾记到这一下的 pool-claim 上，撤销公海项目 原样还回（同 在事务里领公海项目们，cust-status-undo.ts）
+    const 动手时 = new Date();
+    const 原状态 = await 读客户状态(tx, await 项目的客户们(tx, [String(projectId ?? "")]));
+    const x = await 领一个公海项目(tx, me, String(projectId ?? ""), 备.上下文, true);
+    if (x.ok) {
+      // 领出公海 = 又在推：客户状态按在推项目优先重算（cust-status-auto-db.ts 进出公海重算）
+      await 进出公海重算(tx, [x.customerId]);
+      await 原状态记到出公海痕(tx, 原状态, 动手时);
+    }
+    return x;
+  });
   if (!r.ok) return r;
   if (r.同事待分配.length) await (await import("@/lib/enterprise/notice-sources")).同事待分配随客户通知(me.id, me.id, r.同事待分配);
   return { ok: true };
@@ -1028,20 +1043,30 @@ export async function 领取公海项目们(me: 谁, projectIds: string[], 带�
   return { ok: true, 领到: r.值.领到, 没领到: r.值.没领到 };
 }
 
-/** 同一个事务里逐个领（不核上限，调用方整批核） */
+/**
+ * 同一个事务里逐个领（不核上限，调用方整批核）。
+ * 领到的项目各自客户动手前存的客户状态（领完会重算）记到这一下的 pool-claim 上，撤销公海项目 原样还回（cust-status-undo.ts）
+ */
 export async function 在事务里领公海项目们(
   tx: Prisma.TransactionClient, me: 谁, ids: string[], 上下文: 领项目上下文,
 ): Promise<{ 领到: string[]; 没领到: { id: string; 原因: string }[]; 同事待分配: 同事待分配们 }> {
   const 领到: string[] = [];
   const 没领到: { id: string; 原因: string }[] = [];
   const 同事待分配: 同事待分配们 = [];
+  const 出了的客户 = new Set<string>();
+  const 动手时 = new Date();
+  const 原状态 = await 读客户状态(tx, await 项目的客户们(tx, ids));
   for (const id of ids) {
     const x = await 领一个公海项目(tx, me, id, 上下文, false);
     if (x.ok) {
       领到.push(id);
       同事待分配.push(...x.同事待分配);
+      出了的客户.add(x.customerId);
     } else 没领到.push({ id, 原因: x.error });
   }
+  // 整批领完攒齐客户一次重算客户状态（同 领取公海项目），不逐个项目算
+  await 进出公海重算(tx, 出了的客户);
+  await 原状态记到出公海痕(tx, 原状态, 动手时);
   return { 领到, 没领到, 同事待分配 };
 }
 
@@ -1088,7 +1113,7 @@ export async function 领公海项目准备(me: 谁, projectIds: string[], 带�
  */
 export async function 领一个公海项目(
   tx: Prisma.TransactionClient, me: 谁, id: string, 上下文: 领项目上下文, 查上限: boolean,
-): Promise<{ ok: true; 同事待分配: 同事待分配们 } | { ok: false; error: string }> {
+): Promise<{ ok: true; 同事待分配: 同事待分配们; customerId: string } | { ok: false; error: string }> {
   const { 规则, 市场, org, way, 带待办 } = 上下文;
   const p = await tx.project.findUnique({ where: { id } });
   // 两人同时领：先进来的领走了，项目就落到后进来那位的范围外（业务员只看自己的 + 公海），带限定查是空的；
@@ -1134,7 +1159,7 @@ export async function 领一个公海项目(
   // 例外：客户创建人、负责人都是市场 → 客户整体给领的销售，记「分配」不算转客户（P-公海-11、X-60）
   // 推节点 false：销售自己领，不是市场分配，带过来的不推进线索验证（审核 11-18）
   const 同事待分配 = 转 && 市场 ? (await 看全部(() => 市场.转客户给销售(tx, p.customerId, 转.原, me.id, me.id, way, false))).同事待分配 : [];
-  return { ok: true as const, 同事待分配 };
+  return { ok: true as const, 同事待分配, customerId: p.customerId };
 }
 
 /** 本机记的「今天按这份规则扫过了」：值 = 日期 + 规则，老板改了时长当天再扫一遍 */
@@ -1342,6 +1367,8 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       if (await 单项目客户跟进公海(tx, p, null, 今)) 客户也进了.add(p.customerId);
       // 先关他手上这个项目的待办，再给他发收回提醒（提醒留着不关）
       await 进公海关待办(tx, p, p.ownerId, 今);
+      // 同 放回公海：超时回到公海的不再算在推，客户状态重算
+      await 进出公海重算(tx, [p.customerId]);
       await tx.task.create({
         data: {
           title: `项目「${p.name}」在「${本套名(p.node, 字典of(企业版()))}」超过处理时长没跟进，${收回提醒尾}`,

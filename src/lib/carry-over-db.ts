@@ -17,6 +17,7 @@ import { 停用的同事 } from "@/lib/offboard-db";
 import { 换负责人, 还负责人 } from "@/lib/project/owner-write";
 
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
+import { 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
 /**
  * 客户换了销售负责人，原负责人在他身上**没做完的活**跟着走（2026-10-02 排查 B3）：
  * 没完成的计划、待办，进行中的商机。原来不跟：客户转给李四以后，到点提醒、早报还发给张三，李四收不到。
@@ -429,5 +430,7 @@ export async function 带走公海项目(tx: Prisma.TransactionClient, customerI
     const 从 = 原.get(p.id) ?? p.ownerId;
     if (从) await 卡点随项目换人(tx, p.id, 从, 新, 操作人, 公海领走接手理由);
   }
+  // 出了公海 = 又在推，客户状态按在推项目优先重算（cust-status-auto-db.ts 进出公海重算）
+  await 进出公海重算(tx, 们.map((p) => p.customerId));
   return ids;
 }
