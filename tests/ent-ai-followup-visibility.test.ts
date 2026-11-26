@@ -18,7 +18,8 @@ import { TOOLS } from "@/lib/agent/tools";
 import { DEFAULT_BUSINESS } from "@/lib/business-config";
 
 type 人 = { id: string; name: string };
-let 老板: 人, 管理员: 人, 经理: 人, 甲: 人, 乙: 人;
+let 老板: 人, 管理员: 人, 经理: 人, 甲: 人, 乙: 人, 丙: 人;
+let 甲项目id: string, 乙项目id: string;
 let 客户: string, 甲的跟进: string, 乙的跟进: string, 不挂的: string;
 
 async function 造人(email: string, name: string, role: string): Promise<人> {
@@ -50,14 +51,17 @@ beforeEach(async () => {
   经理 = await 造人("mgr", "经理", "MANAGER");
   甲 = await 造人("jia", "甲", "SALES");
   乙 = await 造人("yi", "乙", "SALES");
+  丙 = await 造人("bing", "丙", "SALES");
   await setSetting("business", { projectMode: true });
   await setSetting(规则.按组织看客户.key, true);
-  await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 管理员.id, bizRole: "admin" }, { userId: 经理.id, bizRole: "sales_mgr" }, { userId: 甲.id, bizRole: "sales", managerId: 经理.id }, { userId: 乙.id, bizRole: "sales", managerId: 经理.id }] });
+  await prisma.entMember.createMany({ data: [{ userId: 老板.id, bizRole: "director" }, { userId: 管理员.id, bizRole: "admin" }, { userId: 经理.id, bizRole: "sales_mgr" }, { userId: 甲.id, bizRole: "sales", managerId: 经理.id }, { userId: 乙.id, bizRole: "sales", managerId: 经理.id }, { userId: 丙.id, bizRole: "sales", managerId: 经理.id }] });
   invalidateSettingsCache();
   忘掉企业版范围();
   客户 = (await prisma.customer.create({ data: { name: "测试客户", phone: "13900001111", salesOwnerId: 甲.id } })).id;
   const 甲项目 = await prisma.project.create({ data: { name: "甲的项目", customerId: 客户, ownerId: 甲.id, creatorId: 甲.id, phase: "商机", node: "明确需求" } });
   const 乙项目 = await prisma.project.create({ data: { name: "乙的项目", customerId: 客户, ownerId: 乙.id, creatorId: 乙.id, phase: "商机", node: "明确需求" } });
+  甲项目id = 甲项目.id;
+  乙项目id = 乙项目.id;
   甲的跟进 = await 记(甲.id, "甲聊预算", 3, 甲项目.id);
   不挂的 = await 记(甲.id, "老跟进说过预算", 5);
   // 乙在自己项目上记的最新一条：甲看不到这个项目
@@ -112,5 +116,30 @@ describe("首页 AI 读跟进按跟进可见条件", () => {
     expect(g.summary).toContain("3 条跟进");
     const s = 搜到((await 跑("search_followups", { keyword: "预算" }, 甲, false)) as 读);
     expect(s.总数).toBe(3);
+  });
+
+  it("项目组员丙（P-看-08）：search_followups 读得到已进组项目上的跟进，读不到同客户下没进组的别的项目上的", async () => {
+    await prisma.projectMember.create({ data: { projectId: 甲项目id, userId: 丙.id, inviteStatus: "JOINED" } });
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    const r = 搜到((await 以(丙, () => 跑("search_followups", { keyword: "预算" }, 丙))) as 读);
+    const 内容 = r.记录.map((x) => x.内容);
+    expect(内容).toContain("甲聊预算");
+    expect(内容).not.toContain("乙聊预算机密");
+  });
+
+  it("项目在公海、我是原负责人（回避）：本人记的售后回访不再经 search_followups 给出", async () => {
+    const 售后 = await prisma.followUp.create({ data: { customerId: 客户, ownerId: 甲.id, type: "PHONE", title: "", content: "甲的售后回访预算", occurredAt: dayjs().subtract(2, "day").toDate(), afterSale: true } });
+    await prisma.followUpProject.create({ data: { followUpId: 售后.id, projectId: 甲项目id, node: "明确需求" } });
+    // 先确认放回前本人售后读得到（对照）
+    const 前 = 搜到((await 以(甲, () => 跑("search_followups", { keyword: "售后回访" }, 甲))) as 读);
+    expect(前.记录.map((x) => x.内容)).toContain("甲的售后回访预算");
+    // 项目放回公海：留痕记原负责人甲
+    await prisma.project.update({ where: { id: 甲项目id }, data: { pooledAt: new Date() } });
+    await prisma.projectNodeLog.create({ data: { projectId: 甲项目id, userId: 甲.id, kind: "pool-release", fromOwnerId: 甲.id, toPhase: "线索", toNode: "线索" } });
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    const 后 = 搜到((await 以(甲, () => 跑("search_followups", { keyword: "售后回访" }, 甲))) as 读);
+    expect(后.记录.map((x) => x.内容)).not.toContain("甲的售后回访预算");
   });
 });

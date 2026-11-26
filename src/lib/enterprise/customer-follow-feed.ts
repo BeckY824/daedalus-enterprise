@@ -308,6 +308,8 @@ export async function 跨客户跟进可见条件(me: { id: string; role?: strin
     客户读条件(defaultClient),
     回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id))),
   ]);
+  // 总管理、系统管理员：项目读、客户读都没限定、回避名单也空 → 不加任何过滤（调用方按 null = 不滤处理）
+  if (!项目读 && !客户读 && !回避.length) return null;
   const 看得到的项目: Prisma.ProjectWhereInput = { AND: [
     ...(项目读 ? [项目读 as Prisma.ProjectWhereInput] : []),
     { OR: [{ customer: { AND: [...(客户读 ? [客户读 as Prisma.CustomerWhereInput] : []), { deletedAt: null }] } }, { pooledAt: null, ownerId: me.id }] },
@@ -317,7 +319,8 @@ export async function 跨客户跟进可见条件(me: { id: string; role?: strin
     { projectNode: null },
     { projectNode: { project: 看得到的项目 } },
     { projectNode: { project: { deletedAt: { not: null } } } },
-    { ownerId: me.id, afterSale: true, projectNode: { isNot: null } },
+    // 本人售后回访也过公海回避（C-01，同单客户版：项目进公海、我是原负责人时整段不给）
+    { ownerId: me.id, afterSale: true, projectNode: 回避.length ? { projectId: { notIn: 回避 } } : { isNot: null } },
   ] };
 }
 
