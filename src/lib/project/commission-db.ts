@@ -217,9 +217,9 @@ export async function 存提成分配(me: 谁, projectId: string, 分: 分配): 
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") }, select: 项目字段 });
     if (!p) return 项目不在;
-    if (!能改提成(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有组长（项目负责人）或总管理能改提成分配" };
+    if (!能改提成(me, p, org)) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人或总管理能改提成分配" };
     if (!分 || typeof 分 !== "object" || Array.isArray(分)) return { ok: false as const, error: "分配的格式不对，刷新再试" };
-    if (Object.hasOwn(分, p.ownerId)) return { ok: false as const, error: "组长自己不用分，剩下的都归组长" };
+    if (Object.hasOwn(分, p.ownerId)) return { ok: false as const, error: "项目负责人自己不用分，剩下的都归项目负责人" };
     const 问题 = 分配问题(分);
     if (问题) return { ok: false as const, error: 问题 };
     const 后: 分配 = {};

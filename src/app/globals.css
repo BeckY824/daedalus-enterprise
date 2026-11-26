@@ -680,7 +680,9 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
 .rail-item b { font-size: var(--fs-section); font-weight: 500; letter-spacing: -0.2px; white-space: nowrap; }
 .rail-item.on b { font-weight: 600; }
 /* 左栏「跟进」上的要跟数（逾期 + 今天）：和 Dock 角标同一种红、同一个数。靠右，不挤标签 */
-.rail-count { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+/* 上下各让 1px（11-26）：18px 的红数比这一行的字和图标高 2px，不让的话它一出现这一行就高 2px、下面几项往下挪——
+   壳的数现在晚一步到（components/LateCount.tsx），挪一下就是跳版。让出来这一行和别的项一样高 */
+.rail-count { margin-left: auto; margin-block: -1px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
   background: var(--danger); color: var(--on-ink); font-size: var(--fs-min); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .rail-item:hover { background: var(--hover); color: var(--ink); }
 .rail-item.on { color: var(--nav-on-fg); }

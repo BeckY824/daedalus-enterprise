@@ -351,7 +351,7 @@ export function ProjectTeamCard({
       */}
       {企业版 && 组长 && (
         <div className="proj-info-row pd-team-row pd-team-lead">
-          <span className="pd-team-who"><span className="pd-team-name" title={组长}>{组长}</span><Tag>组长</Tag></span>
+          <span className="pd-team-who"><span className="pd-team-name" title={组长}>{组长}</span><Tag>项目负责人</Tag></span>
         </div>
       )}
       {组员们.length === 0 && !还没回来.length && <div style={{ color: "var(--text-muted)", marginBottom: 8 }}>还没有拉人进项目组</div>}

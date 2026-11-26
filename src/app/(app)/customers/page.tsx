@@ -243,15 +243,9 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 可能兜底 = !子集 && sp.pool !== "1" && !看板视图;
   const 数公海筛 = async () => prisma.customer.count({ where: await 客户筛选条件(去公海筛) });
   /*
-    公海兜底提前起（11-26 提速）：只在带关键词时（搜不到人是它主要的用处；不带关键词 快 一定是 null）和下面的主查询一起跑，
-    总数不是 0 就丢掉不用；用哪一条和原来一样——快路走得通用关键词分页的数，走不通 / 按别的排序数 count。
-    不带关键词的筛选 0 条照旧等总数出来再数（不为每次打开多数一遍公海）
+    公海兜底按需（11-26 小修 h）：之前带关键词时预先和主查询并行多跑一句公海查询，客户页签搜到人时白丢（实测是主查询 2.5–3 倍，30 人并发白占读库）。
+    现在只有客户页签 0 条、要出「公海里有 N 位」时才查（串行在客户查询之后）；用哪一条和原来一样——快路走得通用关键词分页的数，走不通 / 按别的排序数 count
   */
-  const 预兜底 = 可能兜底 && !!sp.keyword?.trim();
-  const 预快公海P = 预兜底 && !慢路 ? 关键词分页(去公海筛, 1, 1) : null;
-  预快公海P?.catch(() => {});
-  const 预数公海P = 预兜底 && 慢路 ? 数公海筛() : null;
-  预数公海P?.catch(() => {});
   const 快 = 慢路 ? null : await 关键词分页(sp, 正整数(sp.page, 1), pageSize);
   const where = 快 ? null : await 客户筛选条件(sp);
   /*
@@ -267,10 +261,10 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 非公海总数 = 页签数?.非公海 ?? null;
   // 除了页签什么都没筛（最常见的「点进客户页」）：总数就是页签上那个数，不再数一遍
   const total = 筛出 ?? (就是页签 === "公海" ? 公海总数 : 非公海总数) ?? 0;
-  // 公海兜底（口径见上面 去公海筛）：先起了的用先起的那份，没起的照原来这时候再数
+  // 公海兜底（口径见上面 去公海筛）：客户页签 0 条才查
   const 公海里匹配 = 可能兜底 && total === 0 && 公海总数
-    ? ((快 ? await (预快公海P ?? 关键词分页(去公海筛, 1, 1)) : null)?.total
-      ?? await (预数公海P ?? 数公海筛()))
+    ? ((快 ? await 关键词分页(去公海筛, 1, 1) : null)?.total
+      ?? await 数公海筛())
     : 0;
   const page = 快?.page ?? Math.min(正整数(sp.page, 1), Math.max(1, Math.ceil(total / pageSize)));
 

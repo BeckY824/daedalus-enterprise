@@ -41,10 +41,12 @@ beforeAll(async () => {
     window.__画=(o)=>{
       window.__通知=o.行们;
       const 未读=o.行们.filter(r=>!r.read).length;
+      // 晚到（11-26）：layout 不等这个数，初始未读是个 Promise，测试里手动 __给(n) 让它到
+      const 初=o.晚?new Promise(r=>{window.__给=r}):未读;
       createRoot(document.getElementById('root')).render(<App><div style={{display:'flex'}}>
         <nav className="rail" aria-label="主导航"><div className="rail-top">
           <button type="button" className="rail-search"><span>搜索</span><kbd>⌘K</kbd></button>
-          <NoticeBell 初始未读={未读}/>
+          <NoticeBell 初始未读={初}/>
         </div></nav>
         <main style={{flex:1,minWidth:0,padding:24}}>页面</main>
       </div></App>);
@@ -62,7 +64,7 @@ const 三条 = [
   { id: "n3", kind: "交接", title: "总管 确认接手了 3 位客户", body: "", link: "/customers", read: true, createdAt: 刚才(60 * 24 * 2) },
 ];
 
-async function 打开(行们: unknown[] = 三条, o: { width?: number; 暗?: boolean; 减弱?: boolean; 地址?: string } = {}): Promise<{ page: Page; errors: string[] }> {
+async function 打开(行们: unknown[] = 三条, o: { width?: number; 暗?: boolean; 减弱?: boolean; 地址?: string; 晚?: boolean } = {}): Promise<{ page: Page; errors: string[] }> {
   const page = await browser.newPage({ viewport: { width: o.width ?? 1280, height: 800 }, reducedMotion: o.减弱 ? "reduce" : "no-preference" }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://ent.test/**", r => r.fulfill({ contentType: "text/html", body: `<!doctype html><html${o.暗 ? ' data-mode="dark"' : ""}><meta charset='utf-8'><body><div id='root'></div></body></html>` }));
@@ -70,7 +72,7 @@ async function 打开(行们: unknown[] = 三条, o: { width?: number; 暗?: boo
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ path: path.resolve("src/app/dark.css") });
   await page.addScriptTag({ content: bundle });
-  await page.evaluate((x) => (window as unknown as { __画: (o: unknown) => void }).__画({ 行们: x }), 行们);
+  await page.evaluate(([x, 晚]) => (window as unknown as { __画: (o: unknown) => void }).__画({ 行们: x, 晚 }), [行们, !!o.晚] as const);
   await page.locator(".notice-bell").waitFor();
   return { page, errors };
 }
@@ -339,4 +341,22 @@ it("g.notice：浮起的面板——离窗口边 8px、四角圆、不压暗页�
     expect(errors).toEqual([]);
     await page.close();
   }
+});
+
+it("初始未读晚到（11-26 layout 不等这个数）：铃铛先出、不带红数；数到了只多出角上红数，铃铛不挪位置", async () => {
+  const { page, errors } = await 打开(三条, { 晚: true });
+  try {
+    expect(await 铃(page).getAttribute("aria-label")).toBe("通知");
+    expect(await page.locator(".notice-bell-badge .ant-badge-count").count()).toBe(0);
+    const 前 = await 铃(page).boundingBox();
+    await page.evaluate(() => (window as unknown as { __给: (n: number) => void }).__给(2));
+    await expect.poll(() => 铃(page).getAttribute("aria-label")).toBe("通知，2 条未读");
+    expect(await page.locator(".notice-bell-badge .ant-badge-count").count()).toBe(1);
+    expect(await 铃(page).boundingBox()).toEqual(前);
+    // 之后照旧以自己问到的为准：点开抽屉、点一条，红数减一
+    await 铃(page).click();
+    await page.getByRole("button", { name: /^未读，自动分配给你/ }).click();
+    await expect.poll(() => 铃(page).getAttribute("aria-label")).toBe("通知，1 条未读");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });

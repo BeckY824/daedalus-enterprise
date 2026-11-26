@@ -22,6 +22,7 @@ import { 持有上限起点, 整批核上限, 整批或不做 } from "@/lib/proj
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
+import { 撤销时限毫秒 } from "@/lib/owner-log-db";
 import { 项目痕原状态, 写回出公海前状态 } from "@/lib/enterprise/cust-status-undo";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
 import { 公海分配通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
@@ -31,7 +32,7 @@ import { 在事务里分公海项目们, type 整包撤销 } from "@/lib/enterpr
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 
 /** 提示 / 有没撤成：撤销公海项目整包退回客户那一半带出来的话（撤销公海 同名字段，撤销条接着写） */
-export type 标记结果 = { ok: true; updated: number; unchanged: number; 提示?: string; 有没撤成?: true } | { ok: false; error: string };
+export type 标记结果 = { ok: true; updated: number; unchanged: number; 已撤回?: number; 提示?: string; 有没撤成?: true } | { ok: false; error: string };
 
 const 只企业版项目模式 = { ok: false as const, error: "统一公海只在企业版项目模式里有" };
 
@@ -178,6 +179,40 @@ function 规整整包(x: unknown): 整包撤销 | null {
 }
 
 /**
+ * 撤销公海项目没撤成的那几个里，哪几个是我自己刚才已经撤回的（小修 1126-g 第 4 条，同 #478 客户那边的 刚撤回过的）：
+ * A 标签页撤回了，B 标签页再点撤销，原来按「有人动过」说。撤回时 pool-claim 那一行删掉了，只能按撤销那条操作日志认：
+ * 现在在线索公海里，时限内我记的「撤销领取 / 撤销分配」那条 撤成 里有它，且那之后没有领取、放回、转让留痕（projectNodeLog）。
+ * 在公海 = 没有负责人在推，不会被别的路换走，比客户那边的判法稳
+ */
+async function 刚撤回过的项目(我: string, 动作: "领取" | "分配", ids: string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  // 包 看全部：回了公海，限定着查不到
+  const 在公海 = (await 看全部(() => prisma.project.findMany({ where: { id: { in: ids }, pooledAt: { not: null } }, select: { id: true } }))).map((p) => p.id);
+  if (!在公海.length) return new Set();
+  const 要 = new Set(在公海);
+  const 日志 = await prisma.auditLog.findMany({
+    where: { userId: 我, entity: "Project", at: { gte: new Date(Date.now() - 撤销时限毫秒) }, summary: { startsWith: `撤销${动作}：` } },
+    orderBy: { at: "desc" }, select: { at: true, detail: true },
+  });
+  const 撤回于 = new Map<string, Date>();
+  for (const l of 日志) {
+    let 们: unknown;
+    try { 们 = (JSON.parse(l.detail ?? "{}") as { 撤成?: unknown }).撤成; } catch { continue; }
+    if (!Array.isArray(们)) continue;
+    for (const id of 们) if (typeof id === "string" && 要.has(id) && !撤回于.has(id)) 撤回于.set(id, l.at);
+  }
+  if (!撤回于.size) return new Set();
+  const 这几个 = [...撤回于.keys()];
+  const 最早 = new Date(Math.min(...[...撤回于.values()].map((d) => d.getTime())));
+  const 痕 = await 看全部(() => prisma.projectNodeLog.findMany({
+    where: { projectId: { in: 这几个 }, kind: { in: ["pool-claim", "pool-release", "transfer"] }, at: { gt: 最早 } },
+    select: { projectId: true, at: true },
+  }));
+  const 动过 = new Set(痕.filter((x) => x.at > 撤回于.get(x.projectId)!).map((x) => x.projectId));
+  return new Set(这几个.filter((id) => !动过.has(id)));
+}
+
+/**
  * 撤销刚才从项目公海领 / 分走的项目（规则 B，6 秒内点）：项目回项目公海，负责人还给原来那位。
  * 认不认看留痕（撤回项目公海）：得是我在撤销时限内领 / 分给 现 的那一下。撤分配只有老板、主管能点
  * 分配时客户整包出了客户公海的（整包，P-公海-10）：整包退回——客户回客户公海、负责人还原，一起带出的项目回线索公海，
@@ -200,7 +235,7 @@ export async function 撤销公海项目(动作: "领取" | "分配", ids: strin
     const 别线 = await 公海按线拦(prisma, me, org, { 项目: [...们, ...(包?.公海项目 ?? [])], 客户: 包?.原.map((x) => x.id) ?? [] }, "撤销分配");
     if (别线) return { ok: false, error: 别线 };
   }
-  let 撤了 = 0;
+  const 撤成的: string[] = [];
   // 按客户分组（事务外先分，事务里再核）：撤不成的项目各自不动，同原来逐个撤
   const 项目客户 = new Map((await 看全部(() => prisma.project.findMany({ where: { id: { in: 们 } }, select: { id: true, customerId: true } }))).map((p) => [p.id, p.customerId]));
   const 组 = new Map<string, string[]>();
@@ -210,18 +245,22 @@ export async function 撤销公海项目(动作: "领取" | "分配", ids: strin
   }
   const 整包客户 = new Set(包?.原.map((x) => x.id) ?? []);
   for (const [客户, 这几个] of 组) {
-    撤了 += await 看全部(() => 查完再写(async (tx) => {
+    撤成的.push(...await 看全部(() => 查完再写(async (tx) => {
       // 以库里项目所属的客户为准：事务里再读一遍，有一个不是这位的（查完到这里之间被合并、换了客户）就不写回
       const 属 = await tx.project.findMany({ where: { id: { in: 这几个 } }, select: { customerId: true } });
       const 都是 = 属.length === 这几个.length && 属.every((p) => p.customerId === 客户);
       // 撤回项目公海 会删掉 pool-claim 那一行：先读原值
       const 原状态 = 都是 && !整包客户.has(客户) ? await 项目痕原状态(tx, 这几个) : undefined;
-      let 成 = 0;
-      for (const id of 这几个) if (await 撤回项目公海(tx, id, 现, me.id)) 成++;
-      if (成 === 这几个.length) await 写回出公海前状态(tx, 客户, 原状态);
+      const 成: string[] = [];
+      for (const id of 这几个) if (await 撤回项目公海(tx, id, 现, me.id)) 成.push(id);
+      if (成.length === 这几个.length) await 写回出公海前状态(tx, 客户, 原状态);
       return 成;
-    }));
+    })));
   }
+  const 撤了 = 撤成的.length;
+  // 没撤成的里，我自己刚才已经撤回的（另一个标签页撤过，小修 1126-g 第 4 条，同 #478 客户那边）：算撤成、说一句，不让界面说「有人动过」
+  const 已撤回 = (await 刚撤回过的项目(me.id, 动作, 们.filter((id) => !撤成的.includes(id)))).size;
+  const 已撤回话 = 已撤回 ? `${们.length === 1 ? "这个项目" : `${已撤回} 个项目`}刚才已经撤回公海了` : undefined;
   // 整包退回客户那一半：已撤回 / 改过 / 培育拦 / 事先筛掉 拼好的那句（提示、有没撤成）带出去，别只看 ok（复审 11-26 S1）。
   // 客户那一半一位都没撤成、项目这边撤了的：项目照样算撤了、照记日志，客户那句当没撤成说
   let 包话: string | undefined;
@@ -229,28 +268,35 @@ export async function 撤销公海项目(动作: "领取" | "分配", ids: strin
   if (包) {
     const r = await 撤销公海("分配", 包.原, 包.带过来, 现, 包.公海项目);
     if (!r.ok) {
-      if (!撤了) return r;
+      if (!撤了 && !已撤回) return r;
       包话 = `客户没撤销：${r.error}`;
       包没撤成 = true;
     } else {
       包话 = r.提示;
       包没撤成 = !!r.有没撤成;
+      // 项目一个都没撤成、客户那一半撤成了（小修 1126-g 第 1 条）：客户那句一定带出去（撤干净了服务端不带话，这里补「已撤销 N 位客户」），
+      // 界面按 提示 认「有撤成的」，不报撤销不了；只勾了项目行，「已撤销 N 位」后补上「客户」
+      if (!撤了) 包话 = (包话 ?? (r.updated ? `已撤销 ${r.updated} 位` : undefined))?.replace(/^已撤销 (\d+) 位(?!客户)/, "已撤销 $1 位客户");
     }
   }
   // 只勾了项目行、整包退回客户的：撤销条先说撤了几个项目，客户那一半接在后面（复审 S-b）；客户那句的「已撤销 N 位」改成「另撤销 N 位客户」，不叠两个「已撤销」
-  if (包话 && 撤了) 包话 = [`已撤销 ${撤了} 个项目`, 包话.replace(/^已撤销 (\d+) 位/, "另撤销 $1 位客户")].join("；");
+  if (包话 && 撤了) 包话 = 包话.replace(/^已撤销 (\d+) 位/, "另撤销 $1 位客户");
+  // 撤成几个项目在前，已撤回的接着说，客户那一半接在后面
+  const 话 = 包话 || 已撤回话 ? [撤了 ? `已撤销 ${撤了} 个项目` : undefined, 已撤回话, 包话].filter(Boolean).join("；") : undefined;
   if (撤了) {
     忘掉企业版范围(); // 回到公海，原负责人回避名单变了
     await recordAudit({
       user: me, action: "update", entity: "Project", entityId: 们.length === 1 ? 们[0] : null,
       summary: `撤销${动作}：${撤了} 个项目放回线索公海`,
-      detail: { ids: 们 },
+      // 撤成: 真撤回的那几个，刚撤回过的项目 按它认（ids 是这次要撤的全部，含没撤成的）
+      detail: { ids: 们, 撤成: 撤成的 },
     });
     刷新();
   }
   return {
-    ok: true, updated: 撤了, unchanged: 们.length - 撤了,
-    ...(包话 ? { 提示: 包话 } : {}),
+    ok: true, updated: 撤了, unchanged: 们.length - 撤了 - 已撤回,
+    ...(已撤回 ? { 已撤回 } : {}),
+    ...(话 ? { 提示: 话 } : {}),
     ...(包没撤成 ? { 有没撤成: true as const } : {}),
   };
 }
