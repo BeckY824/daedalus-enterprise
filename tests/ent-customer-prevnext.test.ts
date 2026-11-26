@@ -1,7 +1,7 @@
 /**
  * 客户详情「上一条 / 下一条」（E-332）：相邻两位和进来前那张客户列表同一个顺序（筛选、排序、跨页），只在看得到的客户里走。
  * 钉的是：
- *   - 服务端动作 相邻客户 给的上一位 / 下一位 = 列表页（customers/page.tsx）同一地址上那一页的前后两行；页头 / 页尾跨到上一页末位 / 下一页首位
+ *   - 路由 GET /api/customers/adjacent 给的上一位 / 下一位 = 列表页（customers/page.tsx）同一地址上那一页的前后两行；页头 / 页尾跨到上一页末位 / 下一页首位
  *   - 第一条没有上一位、最后一条没有下一位（界面上那颗灰着）
  *   - 可见范围走限定层：别人的客户不进相邻、拿别人的客户 id 来问 = null
  *   - 看板视图、不是客户列表的地址、这一位不在那一页 = null（详情页不摆箭头）
@@ -55,8 +55,9 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import CustomersPage from "@/app/(app)/customers/page";
-import { 相邻客户 } from "@/app/(app)/customers/[id]/adjacent-actions";
-import { 找相邻, 查询串of, 每页条数 } from "@/app/(app)/customers/[id]/adjacent";
+import { NextRequest } from "next/server";
+import { GET as 相邻路由 } from "@/app/api/customers/adjacent/route";
+import { 找相邻, 查询串of, 每页条数, type 相邻 } from "@/app/(app)/customers/[id]/adjacent";
 import { 客户排序, 关键词分页 } from "@/app/(app)/customers/query";
 import { 生效客户范围 } from "@/lib/enterprise/customer-scope";
 import { 定详情来源, 读详情来源, 记详情来源, 清详情来源 } from "@/lib/list-return";
@@ -95,6 +96,13 @@ beforeEach(async () => {
   忘掉企业版范围();
 });
 afterAll(async () => { vi.unstubAllEnvs(); invalidateSettingsCache(); await prisma.$disconnect(); });
+
+/** 照详情页那样调路由（id + 列表地址 + 这一位在第几页），回 JSON 体 */
+const 相邻客户 = async (来源: { href: string; page: number }, id: string): Promise<相邻 | null> => {
+  const r = await 相邻路由(new NextRequest(`http://t/api/customers/adjacent?${new URLSearchParams({ id, href: 来源.href, page: String(来源.page) })}`));
+  expect(r.status).toBe(200);
+  return (await r.json()) as 相邻 | null;
+};
 
 const 在请求里 = async <T,>(谁: 人, fn: () => Promise<T>): Promise<T> => {
   mocks.user = { ...谁 };
@@ -228,6 +236,20 @@ describe("看不到、对不上的不摆", () => {
     expect(await 在请求里(甲, () => 相邻客户({ href: "/projects", page: 1 }, ids[1]))).toBeNull();
     expect(await 在请求里(甲, () => 相邻客户({ href: "/customers", page: 2 }, ids[1]))).toBeNull();
     expect(await 在请求里(甲, () => 相邻客户({ href: "/customers", page: 1 }, "没有这位"))).toBeNull();
+  });
+
+  it("路由：没登录 401；缺参数、page 乱写当第 1 页", async () => {
+    const ids = await 列表页ids(甲, "/customers");
+    const 问 = (q: string) => 相邻路由(new NextRequest(`http://t/api/customers/adjacent?${q}`));
+    mocks.user = null as unknown as typeof mocks.user;
+    expect((await 问(`id=${ids[1]}&href=%2Fcustomers&page=1`)).status).toBe(401);
+    mocks.user = { ...甲 };
+    mocks.在请求 = true;
+    try {
+      expect(await (await 以谁的身份(甲.id, () => 问("href=%2Fcustomers"))).json()).toBeNull();
+      const 乱 = await (await 以谁的身份(甲.id, () => 问(`id=${ids[1]}&href=%2Fcustomers&page=abc`))).json();
+      expect(乱).toEqual({ 上: { id: ids[0], page: 1 }, 下: { id: ids[2], page: 1 } });
+    } finally { mocks.在请求 = false; }
   });
 });
 

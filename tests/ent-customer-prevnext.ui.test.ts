@@ -1,10 +1,12 @@
 /**
- * 客户详情「上一条 / 下一条」（E-332，customers/[id]/CustomerStep.tsx）：真组件 + globals.css，服务端动作换成桩。
+ * 客户详情「上一条 / 下一条」（E-332，customers/[id]/CustomerStep.tsx）：真组件 + globals.css，GET /api/customers/adjacent 换成 fetch 桩。
  * 钉的是：
  *   - 从客户列表点进来：「← 回到客户列表」那一行右端两颗箭头，链到相邻两位；问服务端时带的是记住的那张列表地址和这一位的页码
  *   - 第一条「上一条」灰着、最后一条「下一条」灰着（disabled，读屏念「已是第一条 / 已是最后一条」）
  *   - 点箭头记下换到的那位在第几页（到了那边、刷新都认）
  *   - 没有列表上下文（直接开链接）、服务端说不在那一页：不摆
+ *   - 按箭头换了人、新结果没到：上一位的两颗留着灰着，反方向那颗先摆成上一位；新结果到了才换；连点只用最后一次（上一次 abort）
+ *   - 服务端出错：收起，warn 一行（客户 id + 状态码）；abort 的不报
  *   - 手机 390：放得下、不横滚、点击区 36；并入提示同在这一行时箭头紧跟在它后面；电脑各档宽也不横滚
  * 顺序、可见范围的服务端那半见 tests/ent-customer-prevnext.test.ts
  */
@@ -16,8 +18,7 @@ import { chromium, type Browser, type Page } from "playwright";
 let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "customer-prevnext", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
-  stub(/^\.\/adjacent-actions$/, "export const 相邻客户=async(来源,id)=>{(window.__问||=[]).push([来源,id]);return window.__邻===undefined?null:window.__邻;};");
-  stub(/^next\/link$/, "export default function L({href,prefetch,replace,scroll,onClick,...p}){return <a href={href} data-replace={replace?'1':undefined} onClick={e=>{e.preventDefault();onClick?.(e)}} {...p}/>}");
+  stub(/^next\/link$/, "export default function L({href,prefetch,replace,scroll,onClick,...p}){return <a href={href} data-replace={replace?'1':undefined} onClick={e=>{e.preventDefault();onClick?.(e);window.__到?.(href)}} {...p}/>}");
   stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},refresh(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -29,16 +30,22 @@ beforeAll(async () => {
     import BackToList from '@/components/BackToList';import CustomerStep from '@/app/(app)/customers/[id]/CustomerStep';
     import {记地址,记进入} from '@/lib/list-return';
     const w=window;
+    // 换人：像点了 Link 那样改地址、报给 记进入，再换 customerId
+    function 详情(){
+      const [id,set]=React.useState(location.pathname.split('/').pop());
+      React.useEffect(()=>{ w.__到=(href)=>{ history.replaceState(null,'',href); 记进入(href); set(href.split('/').pop()); }; },[]);
+      return <CustomerStep customerId={id} />;
+    }
     if (w.__列表) 记地址('客户', w.__列表);
     if (w.__从) 记进入(w.__从);
-    const id=location.pathname.split('/').pop();
+    记进入(location.pathname);
     createRoot(document.getElementById('root')).render(
       <BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>
         <div className="rec-page ui-v2">
           <div className="back-to-list-row">
             <BackToList />
             {w.__并入 && <span className="mrg-landed" data-testid="merged-note"><span className="mrg-landed-t">{w.__并入}</span></span>}
-            <CustomerStep customerId={id} />
+            <详情 />
           </div>
         </div>
       </BusinessProvider>);
@@ -47,23 +54,42 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 设 = { id?: string; 从?: string; 列表?: string; 邻?: unknown; 并入?: string; 宽?: number; 预存?: string };
-async function 开(设: 设): Promise<{ page: Page; errors: string[] }> {
+type 设 = { id?: string; 从?: string; 列表?: string; 邻?: unknown; 并入?: string; 宽?: number; 预存?: string; 错?: number };
+async function 开(设: 设): Promise<{ page: Page; errors: string[]; warns: string[] }> {
   const 宽 = 设.宽 ?? 1280;
   const page = await browser.newPage({ viewport: { width: 宽, height: 800 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
+  const warns: string[] = []; page.on("console", (m) => { if (m.type() === "warning") warns.push(m.text()); });
   await page.route("http://step.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><meta name='viewport' content='width=device-width'><div id='root'></div>" }));
   await page.goto(`http://step.test/customers/${设.id ?? "c2"}`);
   await page.evaluate((s) => {
     const w = window as unknown as Record<string, unknown>;
-    w.__从 = s.从; w.__列表 = s.列表; w.__邻 = s.邻; w.__并入 = s.并入;
+    w.__从 = s.从; w.__列表 = s.列表; w.__邻 = s.邻; w.__并入 = s.并入; w.__错 = s.错;
     if (s.预存) sessionStorage.setItem("crm:list-return-nav:v1", s.预存);
+    /*
+      fetch 桩（GET /api/customers/adjacent）：__问 记 [{href, page}, id]；平时按 __邻 立刻回（__错 = 状态码就回那个错），
+      __手动 时挂起放进 __待，测试自己 收(邻) / 看 弃了没有；abort 时照浏览器那样以 AbortError 拒掉
+    */
+    type 待 = { id: string; 收: (邻: unknown) => void; 弃: () => boolean };
+    const 列 = (w.__待 = [] as 待[]);
+    const 答 = (邻: unknown) => new Response(JSON.stringify(邻 ?? null), { status: 200, headers: { "content-type": "application/json" } });
+    w.fetch = (url: string, init?: RequestInit) => {
+      const q = new URL(url, location.href).searchParams;
+      const id = q.get("id")!;
+      ((w.__问 as unknown[][]) ||= []).push([{ href: q.get("href"), page: Number(q.get("page")) }, id]);
+      if (w.__错) return Promise.resolve(new Response("x", { status: w.__错 as number }));
+      if (!w.__手动) return Promise.resolve(答(w.__邻));
+      return new Promise((res, rej) => {
+        init?.signal?.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError")));
+        列.push({ id, 收: (邻) => res(答(邻)), 弃: () => !!init?.signal?.aborted });
+      });
+    };
   }, 设);
   await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
   await page.addStyleTag({ content: 宽 >= 768 ? "#root{margin-left:220px;padding:22px 26px}" : "#root{padding:12px 16px}" });
   await page.addScriptTag({ content: bundle });
   await page.locator("[data-testid=back-to-list]").waitFor();
-  return { page, errors };
+  return { page, errors, warns };
 }
 const 中间 = { 上: { id: "c1", page: 2 }, 下: { id: "c3", page: 3 } };
 const 横滚 = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
@@ -123,6 +149,66 @@ it("服务端说这一位不在那一页（数据变了）：不摆", async () =
   await page.waitForFunction(() => ((window as unknown as { __问?: unknown[] }).__问 ?? []).length > 0);
   await page.waitForTimeout(100);
   expect(await page.getByTestId("rec-step").count()).toBe(0);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+type 窗 = { __待: { id: string; 收: (邻: unknown) => void; 弃: () => boolean }[]; __问: unknown[]; __手动?: boolean };
+const 挂起 = (page: Page) => page.evaluate(() => { (window as unknown as 窗).__手动 = true; });
+const 收 = (page: Page, i: number, 邻: unknown) => page.evaluate(([i, 邻]) => (window as unknown as 窗).__待[i as number].收(邻), [i, 邻] as const);
+const 颗 = (page: Page, t: string) => page.getByTestId(t).evaluate((x) => ({ tag: x.tagName, href: x.getAttribute("href"), 灰: (x as HTMLButtonElement).disabled === true, 等: x.getAttribute("aria-busy") }));
+
+it("按「下一条」换了人、新结果没到：两颗不消失；「上一条」先摆成上一位，「下一条」灰着等；新结果到了才换", async () => {
+  const { page, errors, warns } = await 开({ 从: "/customers", 列表: "/customers?page=2", 邻: 中间 });
+  await page.getByTestId("rec-step-next").waitFor();
+  await 挂起(page);
+  await page.getByTestId("rec-step-next").click();
+  await page.waitForFunction(() => (window as unknown as 窗).__待.length === 1);
+  expect(await page.evaluate(() => location.pathname)).toBe("/customers/c3");
+  expect(await 颗(page, "rec-step-prev")).toEqual({ tag: "A", href: "/customers/c2", 灰: false, 等: null });
+  expect(await 颗(page, "rec-step-next")).toEqual({ tag: "BUTTON", href: null, 灰: true, 等: "true" });
+  // 问的是 c3、它记下的第 3 页
+  expect((await page.evaluate(() => (window as unknown as 窗).__问))[1]).toEqual([{ href: "/customers?page=2", page: 3 }, "c3"]);
+  await 收(page, 0, { 上: { id: "c2", page: 2 }, 下: { id: "c4", page: 3 } });
+  await page.waitForFunction(() => document.querySelector("[data-testid=rec-step-next]")?.tagName === "A");
+  expect(await 颗(page, "rec-step-next")).toEqual({ tag: "A", href: "/customers/c4", 灰: false, 等: null });
+  expect(await 颗(page, "rec-step-prev")).toEqual({ tag: "A", href: "/customers/c2", 灰: false, 等: null });
+  expect(errors).toEqual([]);
+  expect(warns).toEqual([]);
+  await page.close();
+});
+
+it("快速连点两次（下一条、再点先摆出来的上一条回去）：前一次 abort，只用最后一次的结果；abort 不报 warn", async () => {
+  const { page, errors, warns } = await 开({ 从: "/customers", 列表: "/customers?page=2", 邻: 中间 });
+  await page.getByTestId("rec-step-next").waitFor();
+  await 挂起(page);
+  await page.getByTestId("rec-step-next").click();
+  await page.waitForFunction(() => (window as unknown as 窗).__待.length === 1);
+  await page.getByTestId("rec-step-prev").click();
+  await page.waitForFunction(() => (window as unknown as 窗).__待.length === 2);
+  expect(await page.evaluate(() => location.pathname)).toBe("/customers/c2");
+  expect(await page.evaluate(() => (window as unknown as 窗).__待.map((x) => [x.id, x.弃()]))).toEqual([["c3", true], ["c2", false]]);
+  const 最后 = { 上: { id: "c1", page: 2 }, 下: { id: "c9", page: 2 } };
+  await 收(page, 1, 最后);
+  // 被弃的那次就算晚到也不用（桩里早已 AbortError 拒掉，这里再收一次也不该改什么）
+  await 收(page, 0, { 上: { id: "c2", page: 2 }, 下: { id: "c4", page: 3 } });
+  await page.waitForFunction(() => document.querySelector("[data-testid=rec-step-next]")?.getAttribute("href") === "/customers/c9");
+  await page.waitForTimeout(100);
+  expect(await 颗(page, "rec-step-prev")).toEqual({ tag: "A", href: "/customers/c1", 灰: false, 等: null });
+  expect(await 颗(page, "rec-step-next")).toEqual({ tag: "A", href: "/customers/c9", 灰: false, 等: null });
+  expect(errors).toEqual([]);
+  expect(warns).toEqual([]);
+  await page.close();
+});
+
+it("服务端出错：收起、warn 一行（客户 id + 状态码，不带客户名）", async () => {
+  const { page, errors, warns } = await 开({ 从: "/customers", 列表: "/customers", 错: 500 });
+  await page.waitForFunction(() => ((window as unknown as { __问?: unknown[] }).__问 ?? []).length > 0);
+  await page.waitForTimeout(150);
+  expect(await page.getByTestId("rec-step").count()).toBe(0);
+  expect(warns).toHaveLength(1);
+  expect(warns[0]).toContain("customerId=c2");
+  expect(warns[0]).toContain("status=500");
   expect(errors).toEqual([]);
   await page.close();
 });
