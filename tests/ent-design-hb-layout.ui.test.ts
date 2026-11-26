@@ -76,14 +76,14 @@ it("H-新11 电脑：铃铛红数（含 99+）收在钮里、不压出左栏；�
     const { page, errors } = await 开壳(址, 宽, { 未读: 128 });
     try {
       const 钮 = await 盒(page, ".notice-bell");
-      const 数 = await 盒(page, ".notice-bell-badge > .late-badge > .ant-badge-count");
-      expect(await page.locator(".notice-bell-badge > .late-badge > .ant-badge-count").innerText(), `${址} ${宽}`).toBe("99+");
+      const 数 = await 盒(page, ".notice-bell-badge > .ant-badge-count");
+      expect(await page.locator(".notice-bell-badge > .ant-badge-count").innerText(), `${址} ${宽}`).toBe("99+");
       expect(数.r, `${址} ${宽} 红数右缘`).toBeLessThanOrEqual(钮.r + 0.5);
       expect(数.t, `${址} ${宽} 红数上缘`).toBeGreaterThanOrEqual(钮.t - 0.5);
       const 栏 = await 盒(page, "nav.rail");
       expect(数.r, `${址} ${宽} 不压出左栏`).toBeLessThanOrEqual(栏.r);
       // 红数不挡点：点在红数上也是点在铃铛上
-      expect(await page.evaluate(() => { const r = document.querySelector(".notice-bell-badge > .late-badge > .ant-badge-count")!.getBoundingClientRect(); return !!document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest(".notice-bell"); }), `${址} ${宽}`).toBe(true);
+      expect(await page.evaluate(() => { const r = document.querySelector(".notice-bell-badge > .ant-badge-count")!.getBoundingClientRect(); return !!document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)?.closest(".notice-bell"); }), `${址} ${宽}`).toBe(true);
       expect(await 点得到(page, ".notice-bell"), `${址} ${宽}`).toBe(true);
       expect(await 点得到(page, ".rail-search"), `${址} ${宽}`).toBe(true);
       expect(await 不横滚(page), `${址} ${宽}`).toBe(true);
@@ -100,7 +100,7 @@ it("H-新11 电脑：铃铛红数（含 99+）收在钮里、不压出左栏；�
 it("H-新11：没有未读时没有红数，提示只写「通知」", async () => {
   const { page, errors } = await 开壳("/customers", 1280, { 未读: 0 });
   try {
-    expect(await page.locator(".notice-bell-badge > .late-badge > .ant-badge-count").count()).toBe(0);
+    expect(await page.locator(".notice-bell-badge > .ant-badge-count").count()).toBe(0);
     await page.locator(".notice-bell").hover();
     await expect.poll(() => page.locator(".ant-tooltip:not(.ant-tooltip-hidden)").filter({ hasText: /^通知$/ }).count()).toBe(1);
     expect(errors).toEqual([]);

@@ -6206,15 +6206,8 @@ button.proj-miss-chip { cursor: pointer; }
    ===================================================================== */
 /* H-新11：铃铛的红数收进钮的右上角（NoticeBell 不给 offset）：不压出 32 的钮、不压到左栏边，99+ 也一样；
    窄栏（rail-mini）同一条 */
-:root:root .notice-bell-badge > .ant-badge-count,
-:root:root .notice-bell-badge > .late-badge {
+:root:root .notice-bell-badge > .ant-badge-count {
   top: 1px; right: 1px; inset-inline-end: 1px; transform: none; transform-origin: 100% 0%; pointer-events: none;
-}
-/* 晚到的角标（11-26，铃铛 / 手机顶栏日历）：钮在 Suspense 外、马上可点，红数是 <晚到> 里一颗独立的 Badge（不包钮）。
-   摆到外层定位框（不带数的 Badge）的右上角，和 antd 包着钮时那颗数同一个位置；
-   左栏顶 .rail-top .ant-badge 给铃铛的左外边距不落到它身上 */
-:root:root .late-badge {
-  position: absolute; top: 0; inset-inline-end: 0; margin: 0; transform: translate(50%, -50%); pointer-events: none;
 }
 /* D01：计数、分组小标题、通知时间、⌘K / ⌘J 提示从 faint 提到 muted（faint 只留给占位字和停用） */
 :root:root :is(.rail-num, .chat-g-h, .cmdk-sec, .notice-meta, .rail-search kbd, .rail-ask-k) { color: var(--text-muted); }

@@ -773,15 +773,16 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           {/* 手机上也要能说一句：用得别扭的时刻多半就发生在手机上（在路上翻学员的时候） */}
           {反馈去向 !== "none" && <FeedbackButton 去向={反馈去向} />}
           {通知未读 !== undefined && <NoticeBell 初始未读={通知未读} 手机 />}
-          {/* 日历钮在 <晚到> 外面、一出来就水合、点得动；只有角上的数在 <晚到> 里（11-26 审查：整颗包进 Suspense 时，
-              硬刷新后数没到那段是没水合的兜底，要等点了才被强行改客户端重画）。外层 Badge 不带数、只当定位框（钮不挪位），
-              数是一颗独立的 Badge（.late-badge，globals.css 摆到钮右上角）；aria-label 用已到的数（没到 = 当 0） */}
-          <Badge>
-            <Button type="text" icon={<CalendarOutlined />} aria-label={要跟说法 ? `跟进计划，${要跟说法}` : "跟进计划"} onClick={() => 跳.push("/follow-ups/plans")} />
-            <晚到 值={要跟} 占={没要跟}>
-              {(v) => <Badge count={要跟话(v).数} size="small" color={v.逾期 > 0 ? "var(--danger)" : "var(--text-muted)"} className="late-badge" />}
-            </晚到>
-          </Badge>
+          <晚到 值={要跟} 占={没要跟}>
+            {(v) => {
+              const { 数, 说法 } = 要跟话(v);
+              return (
+                <Badge count={数} size="small" color={v.逾期 > 0 ? "var(--danger)" : "var(--text-muted)"}>
+                  <Button type="text" icon={<CalendarOutlined />} aria-label={说法 ? `跟进计划，${说法}` : "跟进计划"} onClick={() => 跳.push("/follow-ups/plans")} />
+                </Badge>
+              );
+            }}
+          </晚到>
           <Dropdown trigger={["click"]} menu={userMenu}>
             <Button type="text" aria-label={`${user.name}，账号菜单`}>
               <Avatar size={24} style={{ background: avatarColor(user.name), color: AVATAR_TEXT }}>{initial(user.name)}</Avatar>
