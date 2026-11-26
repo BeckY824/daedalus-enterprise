@@ -23,6 +23,7 @@ import { 执行合并, 撤回合并 } from "@/lib/enterprise/customer-merge";
 import { 项目换客户 } from "@/lib/enterprise/project-move-customer";
 import { 改节点, 删项目 } from "@/lib/project/db";
 import { 销售初判 } from "@/lib/project/lead-verify";
+import { 撤回一批 } from "@/lib/enterprise-import/revert";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人;
@@ -426,5 +427,27 @@ describe("字段覆盖守卫：库里带项目 id 的表都定过挪不挪", () 
     ];
     expect(列们.filter((x) => ![...挪, ...勾, ...不挪].includes(x)), "新表带项目 id：在 project-merge.ts 决定挪不挪，再补进这里").toEqual([]);
     expect([...挪, ...勾, ...不挪].filter((x) => !列们.includes(x)), "表里没有了，从清单删掉").toEqual([]);
+  });
+});
+
+describe("导入整批撤回", () => {
+  it("这一批建的项目已并入别的项目、或有项目并进了它：都跳过不撤，报告写明", async () => {
+    const c = await 客户(乙.id);
+    const a = await (async () => (await raw.project.create({ data: { name: "留下的线索", customerId: c, ownerId: 乙.id, creatorId: 乙.id } })).id)();
+    const b = await (async () => (await raw.project.create({ data: { name: "导进来的线索", customerId: c, ownerId: 乙.id, creatorId: 乙.id } })).id)();
+    const 批 = await raw.entImportBatch.create({ data: { source: "excel", status: "done" } });
+    for (const [x, id] of [["o1", b], ["o2", a]] as const) {
+      await raw.entImportRow.create({ data: { batchId: 批.id, entity: "opportunity", externalId: x, targetId: id, kind: "create", written: "{}" } });
+      await raw.entExternalRef.create({ data: { source: "excel", entity: "opportunity", externalId: x, targetId: id, fingerprint: "f", written: "{}", raw: "{}", batchId: 批.id } });
+    }
+    const mergeId = await 并(a, b, 乙);
+    const 结 = await 撤回一批(批.id, { id: 老板.id, name: 老板.name });
+    expect(结.留下).toEqual(expect.arrayContaining([
+      expect.objectContaining({ 原因: expect.stringContaining("已并入 → 「留下的线索」，未撤") }),
+      expect.objectContaining({ 原因: expect.stringContaining("「导进来的线索」并进了这个项目，未撤") }),
+    ]));
+    expect((await 项(a)).deletedAt).toBeNull();
+    expect((await 项(b)).deletedAt).toBeNull();
+    expect((await raw.entCustomerMerge.findUniqueOrThrow({ where: { id: mergeId } })).status).toBe("已合并");
   });
 });
