@@ -65,12 +65,16 @@
 .mrg-pick-r > span:last-child { min-width: 0; overflow: hidden; }
 .mrg-out { margin: 0; padding-left: 1.2em; color: var(--ink-soft); font-size: var(--fs-note); line-height: 1.6; }
 .mrg-out-k { display: inline-block; min-width: 3.5em; margin-right: var(--s2); color: var(--text-muted); }
+/* 项目合并「核实」：两边各有联系人，可能是同一个人（E-331）；只提示，合成在客户详情 */
+.mrg-out-chk { color: var(--warning-text); overflow-wrap: anywhere; }
 .mrg-move { margin: 0; min-width: 0; }
 
-/* 并进另一个项目（第二批 2a，MergeHost ProjectMergeDialog）：留下的项目选择框通栏、可输入搜；组员一人一行，名字一行省略 */
+/* 并进另一个项目（第二批 2a，MergeHost ProjectMergeDialog）：留下的项目选择框通栏、可输入搜 */
 .mrg-psel { width: 100%; min-width: 0; }
-.mrg-ppl .mrg-pmem.ant-checkbox-wrapper { display: flex; min-width: 0; max-width: 100%; margin-inline-start: 0; }
-.mrg-pmem > span:last-child { min-width: 0; overflow: hidden; }
+/* 灰着列的候选（已签合同 / 到商机订单，E-331）：名称一行省略，原因整句不缩；窄到名称不足 8 字时原因折到下一行 */
+.mrg-popt { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--s2); min-width: 0; }
+.mrg-popt > .mrg-one { flex: 1 1 8em; }
+.mrg-popt-no { flex: none; color: var(--text-muted); font-size: var(--fs-note); }
 
 /* 历史变更里的合并单 */
 .mrg-orders { margin: 0 0 var(--s3); padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
@@ -104,9 +108,8 @@
   .mrg-ppl-r { grid-template-columns: minmax(0, 1fr) auto; }
   .mrg-ppl-b { grid-column: 1 / -1; }
   .mrg-cand { min-height: var(--hit-touch); }
-  /* 框底按钮、留下的项目选择框、组员每行点击区 ≥ --hit-touch（飞书手机网页） */
+  /* 框底按钮、留下的项目选择框点击区 ≥ --hit-touch（飞书手机网页） */
   .mrg-foot .ant-btn, .mrg-psel.ant-select { min-height: var(--hit-touch); }
-  .mrg-ppl .mrg-pmem.ant-checkbox-wrapper { min-height: var(--hit-touch); align-items: center; }
   /* 「已并入」那一行的撤回、知道了，历史变更里的撤回 */
   .mrg-into-r > .ant-btn, .mrg-order-h > .ant-btn { min-height: var(--hit-touch); }
 }

@@ -2,12 +2,12 @@
  * 企业版项目合并 · 数据层（合并客户第二批 2a：同负责人的两个项目合并；规划 merge-customer-b2 第「同负责人的两个项目怎么并」节，客户 E-280 二）。
  *
  * 同一位客户名下、同一位负责人的两个线索：被并掉的那个（B）挂着的沟通、附件、录音点评、项目联系人、关联客户、没解决的卡点改指留下的那个（A），
- * B 本身结束为「重复线索」（结局线索流失 + 线索验证终判无效线索 + 无效原因重复线索），系统直接记、不走复核、不补名额。
+ * B 本身结束为「重复线索」（结局线索流失 + 线索验证终判无效线索 + 无效原因重复线索），系统直接记、不走复核、不退还已占线索名额。
  * 合并单照第一批记在 EntCustomerMerge（kind = 项目，fromId = B、intoId = A），明细记下每一行挪了什么，30 天内只撤这一单。
  *
  *   挪：FollowUpProject / EntFollowUpMark / EntFollowUpMeta / Attachment / EntCoachRecording / EntCoachTopic / 没解决的 EntBlocker / 老商机对照（EntExternalRef entity = opportunity）
  *   挪 + 去重：ProjectContact、ProjectCustomer（A 已有同一位的，B 那行删掉、整行记进明细，撤回建回）
- *   人勾的：ProjectMember（勾了的在 A 加一行，已在组里跳过，B 的行不动）
+ *   组员不并（客户 E-331 必改 3「被并掉那个项目的组员关系随项目结束、留痕，不并进留下项目」）：ProjectMember 一行不动，B 当时的组员名单记进合并单明细和操作日志
  *   不挪：节点变更、线索验证结论和记录、分配 / 放弃 / 待补、回复逾期、必填拦截、冷项目标记、B 自己的资料格；回款提成不会有（前提拦住）
  * 合并本身不算一次跟进：A 的下一步时间、回复逾期都不碰，只重算客户最近跟进、客户状态、三态。
  *
@@ -19,6 +19,7 @@ import type { PrismaClient, Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
 import { 企业版 } from "./switch";
+import { 字段权限of } from "./field-perm";
 import { 权限组织, type 组织 } from "./org";
 import { 是系统管理员, 只读角色, 只看的人 } from "./permissions";
 import { 交接中的客户, 离职交接中的项目 } from "./handover-db";
@@ -28,6 +29,7 @@ import { notify } from "./notify";
 import { 忘掉企业版范围 } from "./visibility";
 import { 拦下, 合并事务选项, 并发失败话, 重算最近跟进, 读没还原, type 合并人, type 没还原 } from "./customer-merge";
 import { 项目单, 项目合并撤回天数, 项目合并单们, 项目合并验证步 } from "./project-merge-guard";
+import { 生效的合同状态 } from "@/lib/project/proj-fields";
 
 export { 项目单, 项目合并撤回天数, 项目合并验证步 };
 type 库 = PrismaClient;
@@ -42,7 +44,7 @@ export const 撤回项目合并验证步 = "撤回项目合并";
 
 const 项目列 = {
   id: true, name: true, customerId: true, ownerId: true, creatorId: true, phase: true, node: true, result: true, closedAt: true,
-  pooledAt: true, awaitAssignAt: true, deletedAt: true, channelId: true, bizLine: true, channel: { select: { channelOwnerId: true } },
+  pooledAt: true, awaitAssignAt: true, deletedAt: true, channelId: true, bizLine: true, contractStatus: true, channel: { select: { channelOwnerId: true } },
 } satisfies Prisma.ProjectSelect;
 type 项目行 = Prisma.ProjectGetPayload<{ select: typeof 项目列 }>;
 
@@ -60,9 +62,15 @@ const 有值 = (v: unknown) => v !== null && v !== undefined && v !== "";
  */
 export const 能并的阶段: Record<"留下" | "并掉", readonly string[]> = { 留下: ["线索"], 并掉: ["线索"] };
 const 钱也能有: Record<"留下" | "并掉", boolean> = { 留下: false, 并掉: false };
-export function 阶段和钱拦(p: Pick<项目行, "name" | "phase">, 角色: "留下" | "并掉", 钱: { 回款: number; 提成: number }): string[] {
+/** 已签合同（合同状态 = 已生效，proj-fields 生效的合同状态）：两边都拦（客户 E-331 必改 1）。开票库里没有字段，不判 */
+export const 已签合同的项目不能合并 = "已签合同的项目不能合并";
+export const 签了合同 = (p: { contractStatus?: string | null }) => p.contractStatus === 生效的合同状态;
+/** 候选里灰着列的那句：留下的那个到了商机 / 订单（能并的阶段.留下 之外），客户 E-331 必改 5「别让人以为功能坏了」 */
+export const 到商机订单不能合并 = "到商机 / 订单的项目暂不能合并";
+export function 阶段和钱拦(p: Pick<项目行, "name" | "phase"> & { contractStatus?: string | null }, 角色: "留下" | "并掉", 钱: { 回款: number; 提成: number }): string[] {
   const 因: string[] = [];
   if (!能并的阶段[角色].includes(p.phase)) 因.push(`「${名(p)}」在${p.phase}阶段，只有${能并的阶段[角色].join("、")}阶段的项目能合并`);
+  if (签了合同(p)) 因.push(`「${名(p)}」已签合同，不能合并`);
   if (!钱也能有[角色] && 钱.回款) 因.push(`「${名(p)}」有回款，不能合并`);
   if (!钱也能有[角色] && 钱.提成) 因.push(`「${名(p)}」有提成记录，不能合并`);
   return 因;
@@ -121,9 +129,17 @@ export type 项目合并预览结果 = {
   留下: { id: string; name: string } | null;
   并掉: { id: string; name: string } | null;
   条数: 项目合并条数 | null;
-  /** 被并掉的项目组员（已进组的）：合并的人勾，勾了的加进留下的项目；已在留下项目组里的标出来，勾了也跳过 */
-  组员: { userId: string; name: string; 已在组: boolean }[];
+  /** 被并掉的项目组员（已进组的）：只是框里提示一句「留在这个项目里、不并进留下的项目」，不能勾（E-331） */
+  组员: { userId: string; name: string }[];
+  /**
+   * 两边的项目联系人（E-331 必改 2「合并时要核实」）：并掉 只列留下那边没有的（同一位联系人 id 合并时去重，不提示）。
+   * 两边都有人时框里提示「这两位可能是同一个人，确认后可在客户详情里合成」，号码同不同都提示；合并本身不按号码去重、不自动合成
+   */
+  联系人: { 留下: 合并联系人[]; 并掉: 合并联系人[] };
 };
+/** 尾号 = 号码后四位（老号码列优先，没有取联系方式里第一个手机号）；没留号码是空串 */
+export type 合并联系人 = { id: string; name: string; 尾号: string; /** 电话权限是「藏」：尾号不给、界面写「号码看不到」 */ 号藏?: true };
+const 没联系人 = { 留下: [], 并掉: [] };
 
 async function 数条数(db: Tx | 库, B: string): Promise<项目合并条数> {
   const [沟通, 附件, 录音, 点评, 联系人, 关联客户, 卡点] = await 看全部(() => Promise.all([
@@ -138,14 +154,33 @@ async function 数条数(db: Tx | 库, B: string): Promise<项目合并条数> {
   return { 沟通, 附件, 录音, 点评, 联系人, 关联客户, 卡点 };
 }
 
-async function 组员们(db: 库, A: string, B: string): Promise<项目合并预览结果["组员"]> {
-  const [B组, A组] = await 看全部(() => Promise.all([
-    db.projectMember.findMany({ where: { projectId: B, inviteStatus: "JOINED" }, select: { userId: true } }),
-    db.projectMember.findMany({ where: { projectId: A }, select: { userId: true } }),
-  ]));
-  const 在 = new Set(A组.map((x) => x.userId));
-  const 人 = new Map((await db.user.findMany({ where: { id: { in: B组.map((x) => x.userId) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
-  return B组.map((x) => ({ userId: x.userId, name: 人.get(x.userId) ?? "", 已在组: 在.has(x.userId) }));
+async function 两边联系人(db: Tx | 库, A: string, B: string, me: 合并人): Promise<项目合并预览结果["联系人"]> {
+  const [行, 级别] = await Promise.all([
+    看全部(() => db.projectContact.findMany({
+      where: { projectId: { in: [A, B] }, contact: { deletedAt: null } }, orderBy: { createdAt: "asc" },
+      select: { projectId: true, contact: { select: { id: true, name: true, phone: true, contactMethods: { where: { kind: "phone" }, orderBy: { createdAt: "asc" }, take: 1, select: { value: true } } } } },
+    })),
+    字段权限of(me.id),
+  ]);
+  const 藏 = 级别("电话") === "藏";
+  const 位 = ({ contact: c }: (typeof 行)[number]): 合并联系人 => {
+    const 数字 = (c.phone || c.contactMethods[0]?.value || "").replace(/\D/g, "");
+    // 电话「藏」：号码够 11 位才给尾号，不然给空并标「号藏」，界面不能把「看不到」说成「没留号码」
+    if (藏) return 数字.length >= 11 ? { id: c.id, name: c.name, 尾号: 数字.slice(-4) } : { id: c.id, name: c.name, 尾号: "", 号藏: true };
+    return { id: c.id, name: c.name, 尾号: 数字.length >= 4 ? 数字.slice(-4) : "" };
+  };
+  const 留下 = 行.filter((x) => x.projectId === A).map(位);
+  const 有 = new Set(留下.map((x) => x.id));
+  return { 留下, 并掉: 行.filter((x) => x.projectId === B && !有.has(x.contact.id)).map(位) };
+}
+
+/** 被并项目的组员（带名字、角色、邀请状态）：预览只取已进组的，合并单明细留痕全取 */
+async function 组员们(db: Tx | 库, B: string, 只进组的: boolean): Promise<项目合并明细["被并组员"]> {
+  const 行 = await 看全部(() => db.projectMember.findMany({
+    where: { projectId: B, ...(只进组的 ? { inviteStatus: "JOINED" } : {}) }, orderBy: { createdAt: "asc" }, select: { userId: true, roleId: true, inviteStatus: true },
+  }));
+  const 人 = new Map((await db.user.findMany({ where: { id: { in: 行.map((x) => x.userId) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  return 行.map((x) => ({ userId: x.userId, name: 人.get(x.userId) ?? "", roleId: x.roleId, inviteStatus: x.inviteStatus }));
 }
 
 export async function 项目合并预览(db: 库, 留下id: string, 并掉id: string, me: 合并人): Promise<项目合并预览结果> {
@@ -153,15 +188,19 @@ export async function 项目合并预览(db: 库, 留下id: string, 并掉id: st
   const [A, B] = await Promise.all([读项目(db, 留下id), 读项目(db, 并掉id)]);
   const 原因 = await 拦的原因(db, A, B, me, org);
   const 两个 = { 留下: A ? { id: A.id, name: A.name } : null, 并掉: B ? { id: B.id, name: B.name } : null };
-  if (原因.length || !A || !B) return { 能并: false, 原因, ...两个, 条数: null, 组员: [] };
-  return { 能并: true, 原因: [], ...两个, 条数: await 数条数(db, B.id), 组员: await 组员们(db, A.id, B.id) };
+  if (原因.length || !A || !B) return { 能并: false, 原因, ...两个, 条数: null, 组员: [], 联系人: 没联系人 };
+  const [条数, 组员, 联系人] = await Promise.all([数条数(db, B.id), 组员们(db, B.id, true), 两边联系人(db, A.id, B.id, me)]);
+  return { 能并: true, 原因: [], ...两个, 条数, 组员: 组员.map(({ userId, name }) => ({ userId, name })), 联系人 };
 }
 
+/** 留下的候选一项：不能 = 灰着列、不能选，写原因（已签合同 / 到商机订单）；选不选得了执行时照样整套再判 */
+export type 并进候选 = { id: string; name: string; node: string; 不能?: string };
+
 /**
- * 从这个项目（被并掉的那个）出发，同一位客户名下能并进去的项目（留下的候选）：同负责人、没结束、不在公海、阶段对得上。
- * 只是给选择框列候选，执行时照样整套再判
+ * 从这个项目（被并掉的那个）出发，同一位客户名下留下的候选：同负责人、没结束、不在公海。
+ * 阶段对不上、已签合同的也列，灰着写原因（E-331 必改 5）；只是给选择框列候选，执行时照样整套再判
  */
-export async function 能并进的项目(db: 库, 并掉id: string, me: 合并人): Promise<{ id: string; name: string; node: string }[]> {
+export async function 能并进的项目(db: 库, 并掉id: string, me: 合并人): Promise<并进候选[]> {
   if (!企业版()) return [];
   const B = await 读项目(db, 并掉id);
   if (!B || B.pooledAt || B.result) return [];
@@ -171,12 +210,20 @@ export async function 能并进的项目(db: 库, 并掉id: string, me: 合并�
   return 能并进的候选们(db, B);
 }
 
-/** 候选那一句（同客户、同负责人、线索阶段在推的）：调用方手里已有这个项目的行（项目详情的 load.ts）就直接用，省一次读项目 */
-export async function 能并进的候选们(db: 库, B: { id: string; customerId: string; ownerId: string }): Promise<{ id: string; name: string; node: string }[]> {
-  return 看全部(() => db.project.findMany({
-    where: { customerId: B.customerId, ownerId: B.ownerId, id: { not: B.id }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null, phase: { in: [...能并的阶段.留下] } },
-    orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, name: true, node: true },
+/**
+ * 候选那一句（同客户、同负责人、在推的）：能选的排前，灰的（已签合同 / 不在线索阶段）排后。
+ * 调用方手里已有这个项目的行（项目详情的 load.ts）就直接用，省一次读项目；菜单只看有没有（灰的也算，点开框里写原因）
+ */
+export async function 能并进的候选们(db: 库, B: { id: string; customerId: string; ownerId: string }): Promise<并进候选[]> {
+  const 行 = await 看全部(() => db.project.findMany({
+    where: { customerId: B.customerId, ownerId: B.ownerId, id: { not: B.id }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null },
+    orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, name: true, node: true, phase: true, contractStatus: true },
   }));
+  const 列 = 行.map(({ id, name, node, phase, contractStatus }): 并进候选 => {
+    const 不能 = 签了合同({ contractStatus }) ? 已签合同的项目不能合并 : !能并的阶段.留下.includes(phase) ? 到商机订单不能合并 : undefined;
+    return 不能 ? { id, name, node, 不能 } : { id, name, node };
+  });
+  return [...列.filter((x) => !x.不能), ...列.filter((x) => x.不能)];
 }
 
 /* ───────────────────────── 执行 ───────────────────────── */
@@ -206,7 +253,7 @@ const 去重表 = [["projectContact", "contactId"], ["projectCustomer", "custome
 const 主键of: Record<string, string> = Object.fromEntries([...挪表.map(([t, 键]) => [t, 键]), ...去重表.map(([t]) => [t, "id"])]);
 const 类叫: Record<string, string> = {
   followUpProject: "沟通", entFollowUpMark: "沟通标记", entFollowUpMeta: "沟通编号", attachment: "附件", entCoachRecording: "录音", entCoachTopic: "点评",
-  entBlocker: "卡点", entExternalRef: "老系统对照", projectContact: "项目联系人", projectCustomer: "项目关联客户", projectMember: "项目组员", project: "被并掉的项目",
+  entBlocker: "卡点", entExternalRef: "老系统对照", projectContact: "项目联系人", projectCustomer: "项目关联客户", project: "被并掉的项目",
 };
 const 键 = (t: string, 列: string) => `${t}.${列}`;
 
@@ -221,8 +268,8 @@ export type 项目合并明细 = {
   改指: Record<string, string[]>;
   /** 去重删掉的整行，撤回时建回 */
   删掉: { projectContact: Record<string, unknown>[]; projectCustomer: Record<string, unknown>[] };
-  /** 勾的组员在留下项目加的行 */
-  加组员: { id: string; userId: string; roleId: string | null; inviteStatus: string }[];
+  /** 被并掉的项目合并时的组员名单（只留痕：组员行合并、撤回都不动，不并进留下的项目，E-331 必改 3） */
+  被并组员: { userId: string; name: string; roleId: string | null; inviteStatus: string }[];
   /** 被并掉的项目合并前的结局和线索验证（null = 原来没有验证这一行），和合并写下的无效原因 */
   被并: { result: string | null; closedAt: string | null; 验证: Record<string, unknown> | null; 无效原因: string };
 };
@@ -242,12 +289,12 @@ async function 改指(tx: Tx, t: string, 主键: string, 列: string, from: stri
   return ids;
 }
 
-export type 项目合并完 = { mergeId: string; 条数: 项目合并条数; 加组员: number };
+export type 项目合并完 = { mergeId: string; 条数: 项目合并条数 };
 
 /**
- * 执行项目合并：B 并进 A。组员 = 合并的人勾的 B 的组员（userId），勾了的加进 A（已在组里的跳过）；不勾不成组（E-280 一.2）
+ * 执行项目合并：B 并进 A。B 的组员不并进 A（E-331 必改 3，推翻 E-280 一.2 的勾选），名单记进合并单和日志
  */
-export async function 执行项目合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 组员?: readonly string[]; 现在?: Date } = {}): Promise<结果<项目合并完>> {
+export async function 执行项目合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 现在?: Date } = {}): Promise<结果<项目合并完>> {
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   const 开 = await 客户状态自动();
@@ -260,7 +307,7 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
           const [A, B] = [await 读项目(tx, 留下id), await 读项目(tx, 并掉id)];
           const 原因 = await 拦的原因(tx, A, B, me, org);
           if (原因.length) throw new 拦下(原因.join("；"));
-          const 结 = await 挪(tx, A!, B!, me, 现在, [...new Set(opt.组员 ?? [])]);
+          const 结 = await 挪(tx, A!, B!, me, 现在);
           await 重算最近跟进(tx, A!.customerId);
           await 跟着项目重算(tx, 开, [A!.customerId]);
           通知要 = { A: A!, B: B! };
@@ -283,13 +330,13 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
   return { ok: true, ...r! };
 }
 
-async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Date, 勾的组员: string[]): Promise<项目合并完> {
+async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Date): Promise<项目合并完> {
   const 条数 = await 数条数(tx, B.id);
   const 名们 = await 重复线索名们(tx);
   const 无效原因 = 名们[名们.length - 1];
   const 原验证 = await tx.entLeadVerify.findUnique({ where: { projectId: B.id } });
   const 明: 项目合并明细 = {
-    版本: 1, 留下名: A.name, 客户: A.customerId, 负责人: A.ownerId, 改指: {}, 删掉: { projectContact: [], projectCustomer: [] }, 加组员: [],
+    版本: 1, 留下名: A.name, 客户: A.customerId, 负责人: A.ownerId, 改指: {}, 删掉: { projectContact: [], projectCustomer: [] }, 被并组员: await 组员们(tx, B.id, false),
     被并: { result: B.result, closedAt: B.closedAt?.toISOString() ?? null, 验证: 原验证 ? (JSON.parse(JSON.stringify(原验证)) as Record<string, unknown>) : null, 无效原因 },
   };
 
@@ -305,18 +352,6 @@ async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Da
     const 余 = B行.filter((x) => !重.includes(x)).map((x) => x.id as string);
     for (const 段 of 分段(余)) await 表(tx, t).updateMany({ where: { id: { in: 段 } }, data: { projectId: A.id } });
     明.改指[键(t, "projectId")] = 余;
-  }
-
-  // 组员：只认 B 已进组的；勾了的加进 A，已在 A 组里（或就是 A 的负责人）跳过
-  if (勾的组员.length) {
-    const B组 = await tx.projectMember.findMany({ where: { projectId: B.id, userId: { in: 勾的组员 }, inviteStatus: "JOINED" } });
-    if (B组.length !== 勾的组员.length) throw new 拦下("勾的组员不在被并掉的项目组里，刷新再勾");
-    const A组 = new Set((await tx.projectMember.findMany({ where: { projectId: A.id }, select: { userId: true } })).map((x) => x.userId));
-    for (const m of B组) {
-      if (A组.has(m.userId) || m.userId === A.ownerId) continue;
-      const 新 = await tx.projectMember.create({ data: { projectId: A.id, userId: m.userId, roleId: m.roleId, inviteStatus: "JOINED", invitedById: me.id } });
-      明.加组员.push({ id: 新.id, userId: 新.userId, roleId: 新.roleId, inviteStatus: 新.inviteStatus });
-    }
   }
 
   // B 结束为重复线索：系统直接记终判无效，不走复核、不记待补（不调 记补位）
@@ -338,12 +373,21 @@ async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Da
     data: [
       { userId: me.id, userName: me.name, action: "merge", entity: "Project", entityId: A.id, at: 现在,
         summary: `合并项目：把「${名(B)}」并进这个项目（${条数.沟通} 条沟通、${条数.附件} 个附件、${条数.联系人} 位项目联系人），${项目合并撤回天数} 天内可撤回`,
-        detail: JSON.stringify({ mergeId: 单.id, 并掉: B.id, 条数, 加组员: 明.加组员.map((x) => x.userId) }) },
+        detail: JSON.stringify({ mergeId: 单.id, 并掉: B.id, 条数 }) },
       { userId: me.id, userName: me.name, action: "merge", entity: "Project", entityId: B.id, at: 现在,
-        summary: `合并项目：已并入「${名(A)}」，结束为重复线索（不补名额）`, detail: JSON.stringify({ mergeId: 单.id, 留下: A.id }) },
+        summary: `合并项目：已并入「${名(A)}」，结束为重复线索（不退还已占线索名额）${组员话(明.被并组员, A)}`,
+        detail: JSON.stringify({ mergeId: 单.id, 留下: A.id, 组员: 明.被并组员.map(({ userId, name, inviteStatus }) => ({ userId, name, inviteStatus })) }) },
     ],
   });
-  return { mergeId: 单.id, 条数, 加组员: 明.加组员.length };
+  return { mergeId: 单.id, 条数 };
+}
+
+/** 被并项目那条日志末尾的组员留痕（已进组的写名字；邀请着没进组的只在 detail 里） */
+function 组员话(组: 项目合并明细["被并组员"], A: 项目行): string {
+  const 进 = 组.filter((m) => m.inviteStatus === "JOINED");
+  if (!进.length) return "";
+  const 名们 = 进.map((m) => m.name || "（已删除的账号）").join("、");
+  return `；${进.length} 位组员留在这个项目里（${名们.length > 60 ? `${名们.slice(0, 60)}…` : 名们}），不并进「${名(A)}」`;
 }
 
 /**
@@ -355,7 +399,7 @@ async function 合并后通知({ A, B }: { A: 项目行; B: 项目行 }, me: 合
   await notify(收, {
     kind: 项目合并通知种类,
     title: `项目「${名(B)}」已并入「${名(A)}」`,
-    body: `${me.name}把项目「${名(B)}」并进了「${名(A)}」，沟通、附件、项目联系人都已挪过去；「${名(B)}」结束为重复线索，不补名额；${项目合并撤回天数} 天内可撤回。`,
+    body: `${me.name}把项目「${名(B)}」并进了「${名(A)}」，沟通、附件、项目联系人都已挪过去；「${名(B)}」结束为重复线索，不退还已占线索名额；${项目合并撤回天数} 天内可撤回。`,
     link: `/projects/${A.id}`,
     key: `merge-project:${B.id}:${A.id}:${Date.now()}`,
   });
@@ -461,14 +505,7 @@ export async function 在事务里撤回项目合并(
     }
   }
 
-  // 勾进留下项目组的：还在、没改过角色和状态的删掉；改过的记「没还原」；已经移出的不用管
-  for (const x of 明.加组员) {
-    const 现 = await tx.projectMember.findUnique({ where: { id: x.id } });
-    if (!现) continue;
-    if (现.projectId === A.id && 现.userId === x.userId && 现.roleId === x.roleId && 现.inviteStatus === x.inviteStatus) await tx.projectMember.delete({ where: { id: x.id } });
-    else 记("projectMember", x.id, "合并之后改过组员角色，留在留下的项目");
-  }
-
+  // 组员：合并没动过（B 的组员行一直在，A 没加人），撤回不用还原
   // 被并掉的项目：结局、终判、原因还是合并写下的，清回原值；对不上的不动
   const 现验证 = await tx.entLeadVerify.findUnique({ where: { projectId: B.id } });
   if (B.result === "线索流失" && 现验证?.finalResult === "无效线索" && 现验证.invalidReason === 明.被并.无效原因 && !现验证.pending) {

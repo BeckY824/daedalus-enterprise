@@ -79,7 +79,7 @@ for (const 宽 of [1280, 390]) {
       const 框话 = await 框.innerText();
       expect(框话).toContain(`撤回合并：把「重复的那条线索」从「${长名}」拆回来？`);
       expect(框话).toContain("结局、线索验证清回合并前");
-      expect(框话).toContain("项目组的组员移出");
+      expect(框话).toContain("「重复的那条线索」的项目组照旧，合并时没动过组员");
       await 框.getByRole("button", { name: "撤回合并" }).click();
       await page.getByTestId("project-merged-into-done").waitFor();
       expect(await page.getByTestId("project-merged-into-done").innerText()).toContain("已撤回，全部还原了");

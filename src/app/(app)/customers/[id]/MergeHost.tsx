@@ -7,7 +7,7 @@
  *   - 联系人「和另一位合成」：同一位客户名下另挑一位、定留谁 → 合成；成了走撤销条（撤回 = 撤回合并单）
  *   - 项目「换客户」：搜目标客户 → 预览（订单阶段、回款几笔、几条沟通、几位项目联系人挂靠过去）→ 后果框 → 换；
  *     不单独撤回（总控 11-25：换错了再换回去）；换完 8 秒撤销条上的「撤销」是真的反向操作（撤销换客户：挂靠、项目关联客户的身份、序号都回原样）
- *   - 项目「并进另一个项目」（第二批 2a，11-26）：从被并掉的这个项目出发，选同客户、同负责人、线索阶段在推的那个（项目合并候选）→ 预览（挪哪些、组员勾选、
+ *   - 项目「并进另一个项目」（第二批 2a，11-26）：从被并掉的这个项目出发，选同客户、同负责人、线索阶段在推的那个（项目合并候选）→ 预览（挪哪些、组员留在原项目不并过去、
  *     这个结束为重复线索）→ 后果框 → 并过去；成了走撤销条（撤销 = 撤回项目合并单），写明 30 天内可在「历史变更」里撤回。项目详情页自己也挂一份（只用这只框）
  * 谁能并、能换、能合成都在服务端判，这里只摆服务端说的原因。手机（< 768）两家并排改成上下两段（merge.css）
  */
@@ -504,18 +504,27 @@ function 挪话(n: NonNullable<并项目预览["条数"]>): string {
   return 有.length ? 有.join("、") : "没有要挪的沟通、附件";
 }
 
+/**
+ * 两边各有项目联系人（不是同一位）时的核实话（E-331「合并时要核实」）：号码同不同都提示，合并不按号码去重、不自动合成；
+ * 合成的入口在客户详情（联系人合并），这里只提示、不做按钮。每边最多列 3 位
+ */
+function 核实话(人: NonNullable<并项目预览["联系人"]>): string | null {
+  if (!人.留下.length || !人.并掉.length) return null;
+  const 列 = (xs: typeof 人.留下) => xs.slice(0, 3).map((x) => `${x.name || "（没写名字）"}（${x.尾号 ? `尾号 ${x.尾号}` : x.号藏 ? "号码看不到" : "没留号码"}）`).join("、") + (xs.length > 3 ? ` 等 ${xs.length} 位` : "");
+  const 两位 = 人.留下.length === 1 && 人.并掉.length === 1;
+  return `留下的项目有 ${列(人.留下)}，这个项目有 ${列(人.并掉)}：${两位 ? "这两位可能是同一个人" : "这几位里可能有同一个人"}，确认后可在客户详情里合成`;
+}
+
 function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 项目名: string; 关: () => void }) {
   const router = useRouter();
   const 去页 = useShellNavGo();
   const [问后果, 后果框] = useConsequence();
   const 管 = useMerge管();
-  const [候选, set候选] = useState<{ id: string; name: string; node: string }[] | null>(null);
+  const [候选, set候选] = useState<Awaited<ReturnType<typeof 项目合并候选>> | null>(null);
   const [候选错, set候选错] = useState<string | null>(null);
   const [留下, set留下] = useState<string | null>(null);
   const [预, set预] = useState<并项目预览 | null>(null);
   const [读错, set读错] = useState<string | null>(null);
-  /** 勾上的被并项目组员（userId）：加进留下的项目组；已在组的不列进来 */
-  const [勾, set勾] = useState<Set<string>>(new Set());
   const 读次 = useRef(0);
 
   useEffect(() => {
@@ -527,11 +536,10 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
 
   function 挑(id: string) {
     const 这次 = ++读次.current;
-    set留下(id); set预(null); set读错(null); set勾(new Set());
+    set留下(id); set预(null); set读错(null);
     预览项目合并(id, projectId).then((r) => {
       if (这次 !== 读次.current) return;
       if (!r.ok) { set读错(r.error); return; }
-      // 被并项目的组员默认都不勾（Even「不自动成组」、第一批「不替人勾」）：要带进留下的项目组的自己勾；已在组的不用勾
       set预(r.预览);
     }).catch((e) => { if (这次 === 读次.current) set读错(动作出错话(e, "没读到合并预览，请再试一次")); });
   }
@@ -541,8 +549,11 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
   const 撤回句 = `${撤回天数} 天内可在「历史变更」里撤回`;
   const 清单 = 预?.能并 && 预.条数 ? [
     { 标: "挪过去", 话: 挪话(预.条数), 级: "警" as const },
-    { 标: "联系人", 话: `${预.条数.联系人} 位项目联系人、${预.条数.关联客户} 位关联客户一起过去，重复的只留一份`, 级: "常" as const },
-    { 标: "结束", 话: "这个项目将结束为重复线索，不补名额", 级: "警" as const },
+    { 标: "联系人", 话: `${预.条数.联系人} 位项目联系人、${预.条数.关联客户} 位关联客户一起过去，同一位联系人只留一份`, 级: "常" as const },
+    ...(预.联系人 && 核实话(预.联系人) ? [{ 标: "核实", 话: 核实话(预.联系人)!, 级: "警" as const }] : []),
+    // 组员不并进留下的项目（E-331「随项目结束、留痕」）：只提示，不能勾；名单记在合并单和操作日志里
+    ...(预.组员.length ? [{ 标: "组员", 话: `${预.组员.length} 位组员留在这个项目里，随项目结束、留痕，不并进留下的项目；不在那边项目组的看不到挪过去的沟通`, 级: "常" as const }] : []),
+    { 标: "结束", 话: "这个项目将结束为重复线索，不退还已占线索名额", 级: "警" as const },
     { 标: "统计", 话: "记成重复线索（无效），渠道线索数照记，有效率会略降", 级: "常" as const },
     { 标: "不变", 话: "留下那个项目的负责人、阶段、节点都不变", 级: "常" as const },
   ] : [];
@@ -550,7 +561,6 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
   async function 并() {
     if (!留下 || !预?.能并) return;
     const 留 = 留下;
-    const 组员 = [...勾];
     const 结: { 单号: string | null } = { 单号: null };
     const 成 = await 问后果({
       题: `把「${B}」并进「${A}」？`,
@@ -559,11 +569,10 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
       是: "并过去",
       后果: [
         ...清单.filter((x) => x.标 !== "结束" && x.标 !== "不变"),
-        ...(组员.length ? [{ 标: "组员", 话: `${组员.length} 位组员加进「${A}」的项目组`, 级: "常" as const }] : []),
-        { 标: "结束", 话: `这个项目将结束为重复线索，不补名额，${撤回天数} 天内可撤回${管 ? "" : 并撤回谁话}`, 级: "警" as const },
+        { 标: "结束", 话: `这个项目将结束为重复线索，不退还已占线索名额，${撤回天数} 天内可撤回${管 ? "" : 并撤回谁话}`, 级: "警" as const },
       ],
       做: async () => {
-        const r = await 合并项目(留, projectId, { 组员 });
+        const r = await 合并项目(留, projectId);
         if (r.ok) 结.单号 = r.mergeId;
         return r;
       },
@@ -584,7 +593,9 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
     });
   }
 
-  const 选项 = (候选 ?? []).map((c) => ({ value: c.id, label: c.name || "（没写名称）", node: c.node }));
+  // 已签合同、到商机 / 订单的也列，灰着不能选、旁边写原因（E-331 必改 5，别像功能坏了）；服务端照样拦
+  const 选项 = (候选 ?? []).map((c) => ({ value: c.id, label: c.name || "（没写名称）", node: c.node, 不能: c.不能 ?? "", disabled: !!c.不能 }));
+  const 都灰 = 选项.length > 0 && 选项.every((o) => o.disabled);
   return (
     <Modal
       open
@@ -605,7 +616,8 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
         <p className="mrg-note">选留下的项目（同一位客户、同一位负责人、线索阶段在推的）：这个项目的沟通、附件、联系人都挪过去，它结束为重复线索；{撤回句}。</p>
         {!候选 && !候选错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
         {候选错 && <p role="alert" className="mrg-err">{候选错}</p>}
-        {候选 && 候选.length === 0 && <p className="mrg-empty" data-testid="pmerge-empty">这位客户名下没有同一位负责人、线索阶段在推的别的项目，没有能并进的。</p>}
+        {候选 && 候选.length === 0 && <p className="mrg-empty" data-testid="pmerge-empty">这位客户名下没有同一位负责人在推的别的项目，没有能并进的。</p>}
+        {都灰 && <p className="mrg-empty" data-testid="pmerge-allgrey">没有能选的项目，点开看各自为什么不能并。</p>}
         {候选 && 候选.length > 0 && (
           <Select
             className="mrg-psel"
@@ -615,7 +627,12 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
             value={留下 ?? undefined}
             onChange={挑}
             options={选项}
-            optionRender={(o) => 一行(<>{o.label}{o.data.node && <span className="mrg-ppl-s"> · {o.data.node}</span>}</>, [o.data.label, o.data.node].filter(Boolean).join(" · "))}
+            optionRender={(o) => (
+              <span className="mrg-popt">
+                {一行(<>{o.label}{o.data.node && <span className="mrg-ppl-s"> · {o.data.node}</span>}</>, [o.data.label, o.data.node, o.data.不能].filter(Boolean).join(" · "))}
+                {o.data.不能 && <span className="mrg-popt-no">{o.data.不能}</span>}
+              </span>
+            )}
             notFoundContent="没有名称对得上的项目"
             data-testid="pmerge-pick"
           />
@@ -627,19 +644,8 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
           <>
             <p className="mrg-move" data-testid="pmerge-move">{一行(<>「{B}」 → <b>「{A}」</b></>, `「${B}」 → 「${A}」`)}</p>
             <ul className="mrg-out" data-testid="pmerge-list">
-              {清单.map((x) => <li key={x.标}><span className="mrg-out-k">{x.标}</span>{x.话}</li>)}
+              {清单.map((x) => <li key={x.标} data-testid={`pmerge-${x.标}`} className={x.标 === "核实" ? "mrg-out-chk" : undefined}><span className="mrg-out-k">{x.标}</span>{x.话}</li>)}
             </ul>
-            {预.组员.length > 0 && (
-              <section className="mrg-ppl" aria-label="这个项目的组员">
-                <p className="mrg-sec-t">组员 <span className="mrg-sec-c">勾上的加进留下那个项目的项目组；不勾的组员看不到挪过去的沟通</span></p>
-                {预.组员.map((m) => (
-                  <Checkbox key={m.userId} className="mrg-pmem" disabled={m.已在组} checked={m.已在组 || 勾.has(m.userId)}
-                    onChange={(e) => set勾((s) => { const n = new Set(s); if (e.target.checked) n.add(m.userId); else n.delete(m.userId); return n; })}>
-                    {一行(<>{m.name || "—"}{m.已在组 && <span className="mrg-ppl-s"> · 已在组</span>}</>, m.name)}
-                  </Checkbox>
-                ))}
-              </section>
-            )}
           </>
         )}
       </div>

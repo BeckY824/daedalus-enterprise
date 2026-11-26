@@ -1,20 +1,25 @@
 /**
  * 合并客户第二批 2a · 项目合并（服务端；规划 merge-customer-b2「同负责人的两个项目怎么并」，客户 E-280 二）：
  *   - 前提：同客户、同负责人（系统管理员可代并）、都没结束、不在公海、线索阶段、无回款无提成行；被并掉的没判有效、没在等判、没判无效
- *   - 挪 / 不挪逐表；被并掉的结束为重复线索，不补名额；合并不算一次跟进
+ *   - 挪 / 不挪逐表；被并掉的结束为重复线索，不退还已占线索名额；合并不算一次跟进
  *   - 单撤：只比合并写过的格；谁能撤；30 天；删除 / 转让 / 交接之后再撤
  *   - 合并之后 30 天内的保护：重启、改结局、改判、换客户
  *   - 整单撤回客户合并时先撤之后并过的项目
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
+const 登录 = vi.hoisted(() => ({ user: null as null | { id: string; name: string; email: string; role: string; title: string; avatar: null } }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+// 只给「并进另一个项目」菜单那句读项目详情用（附件入口要认当前登录的人）
+vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => 登录.user, getCurrentUser: async () => 登录.user }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
+import { 字段权限key } from "@/lib/enterprise/field-perm";
+import { 规则 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 项目合并预览, 执行项目合并, 撤回项目合并, 能并进的项目, 项目的合并单, 项目合并通知种类, 阶段和钱拦, 项目合并验证步 } from "@/lib/enterprise/project-merge";
@@ -25,6 +30,7 @@ import { 改节点, 删项目, 只有负责人改进程 } from "@/lib/project/db
 import { 复核判死拦 } from "@/lib/project/lead-verify-guard";
 import { 销售初判 } from "@/lib/project/lead-verify";
 import { 撤回一批 } from "@/lib/enterprise-import/revert";
+import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人;
@@ -60,7 +66,7 @@ async function 卡点(customerId: string, projectId: string, status = "待接受
     data: { code: `KD${++序}`, projectId, customerId, phase: "线索", type: "x", impact: "x", obstacle: "x", description: "x", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status },
   })).id;
 }
-const 并 = async (a: string, b: string, me: 人, opt: { 组员?: string[]; 现在?: Date } = {}) => {
+const 并 = async (a: string, b: string, me: 人, opt: { 现在?: Date } = {}) => {
   const r = await 执行项目合并(prisma, a, b, me, opt);
   if (!r.ok) throw new Error(r.error);
   return r.mergeId;
@@ -131,6 +137,66 @@ describe("前提：谁能并、哪些拦", () => {
     expect(阶段和钱拦({ name: "x", phase: "订单" }, "留下", { 回款: 0, 提成: 0 })).toEqual([expect.stringContaining("订单阶段")]);
   });
 
+  it("[E-331] 合同已生效的拦（被并的、留下的都拦，执行也拦）；别的合同状态、空着不拦；候选里已签合同的灰着列出、不能选", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const 签了 = await 项目(乙.id, c, { contractStatus: "已生效" });
+    expect(await 项目合并预览(prisma, a, 签了, 乙)).toMatchObject({ 能并: false, 原因: [expect.stringContaining("已签合同，不能合并")] });
+    expect(await 项目合并预览(prisma, 签了, a, 乙)).toMatchObject({ 能并: false, 原因: [expect.stringContaining("已签合同，不能合并")] });
+    expect(await 执行项目合并(prisma, a, 签了, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("已签合同") });
+    expect(await raw.entCustomerMerge.count()).toBe(0);
+    expect(阶段和钱拦({ name: "x", phase: "线索", contractStatus: "已生效" }, "并掉", { 回款: 0, 提成: 0 })).toEqual(["「x」已签合同，不能合并"]);
+    for (const s of ["起草中", "我方修改中", "已终止", null]) expect(阶段和钱拦({ name: "x", phase: "线索", contractStatus: s }, "留下", { 回款: 0, 提成: 0 }), String(s)).toEqual([]);
+    const 起草 = await 项目(乙.id, c, { contractStatus: "起草中" });
+    expect(await 项目合并预览(prisma, 起草, a, 乙)).toMatchObject({ 能并: true });
+    // 候选（留下的那个）：已签合同的灰着列在后面、写原因（E-331 必改 5）；空着、起草中的照常能选
+    const 候 = await 能并进的项目(prisma, a, 乙);
+    expect(候).toEqual([expect.objectContaining({ id: 起草 }), expect.objectContaining({ id: 签了, 不能: "已签合同的项目不能合并" })]);
+    expect(候[0].不能).toBeUndefined();
+    // 项目详情「并进另一个项目」菜单：自己签了合同的灰着写原因（同一个 签了合同 判法）
+    const 菜单 = async (id: string) => {
+      登录.user = { ...乙, email: "yi", title: "", avatar: null };
+      const r = await 读项目详情(登录.user as never, id);
+      if (r.种 !== "有") throw new Error("没读到项目");
+      return r.props.p.并进;
+    };
+    expect(await 菜单(签了)).toEqual({ 灰: "已签合同的项目不能合并" });
+    expect(await 菜单(a)).toEqual({});
+  });
+
+  it("[E-331] 留下的候选：到商机 / 订单的、已签合同的灰着列在能选的后面、写原因；预览、执行照样拦；只剩灰的菜单照开，一个都没有才灰", async () => {
+    const c = await 客户(乙.id);
+    const b = await 项目(乙.id, c);
+    const 商机 = await 项目(乙.id, c, { phase: "商机", node: "需求确认" });
+    const 订单 = await 项目(乙.id, c, { phase: "订单", node: "签约" });
+    const 菜单 = async (id: string) => {
+      登录.user = { ...乙, email: "yi", title: "", avatar: null };
+      const r = await 读项目详情(登录.user as never, id);
+      if (r.种 !== "有") throw new Error("没读到项目");
+      return r.props.p.并进;
+    };
+    expect((await 能并进的项目(prisma, b, 乙)).map((x) => [x.id, x.不能])).toEqual(expect.arrayContaining([[商机, "到商机 / 订单的项目暂不能合并"], [订单, "到商机 / 订单的项目暂不能合并"]]));
+    expect(await 菜单(b)).toEqual({});
+    // 列出来不等于放行：预览、执行照样拦
+    expect((await 项目合并预览(prisma, 商机, b, 乙)).原因.join()).toContain("商机阶段");
+    expect(await 执行项目合并(prisma, 订单, b, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("订单阶段") });
+    expect(await raw.entCustomerMerge.count()).toBe(0);
+    // 能选的排前
+    const a = await 项目(乙.id, c);
+    const 候 = await 能并进的项目(prisma, b, 乙);
+    expect(候.map((x) => x.id)).toEqual([a, expect.any(String), expect.any(String)]);
+    expect(候.slice(1).map((x) => x.id).sort()).toEqual([订单, 商机].sort());
+    expect(候[0].不能).toBeUndefined();
+    // 结束的、在公海的、别人负责的不列
+    await 项目(乙.id, c, { result: "线索流失" });
+    await 项目(乙.id, c, { pooledAt: new Date() });
+    await 项目(丙.id, c);
+    expect(await 能并进的项目(prisma, b, 乙)).toHaveLength(3);
+    // 一个在推的别的项目都没有：菜单灰
+    const 孤 = await 项目(乙.id, await 客户(乙.id));
+    expect(await 菜单(孤)).toEqual({ 灰: "这位客户名下没有同一位负责人在推的别的项目" });
+  });
+
   it("业务线不同拦下（对齐第一批客户合并，2a 审查）；一边空着不拦", async () => {
     const c = await 客户(乙.id);
     const a = await 项目(乙.id, c, { bizLine: "外贸" });
@@ -184,7 +250,7 @@ describe("前提：谁能并、哪些拦", () => {
 });
 
 describe("挪 / 不挪", () => {
-  it("沟通、标记、编号、附件、录音点评、没解决的卡点、老商机对照挪到留下的；联系人、关联客户去重；勾的组员加进来；不挪的留着", async () => {
+  it("沟通、标记、编号、附件、录音点评、没解决的卡点、老商机对照挪到留下的；联系人、关联客户去重；被并项目的组员不并进来、名单记进合并单和日志（E-331）；不挪的留着", async () => {
     const c = await 客户(乙.id);
     const c2 = await 客户(乙.id);
     const a = await 项目(乙.id, c, { nextStepAt: new Date("2026-12-01T02:00:00Z") });
@@ -202,7 +268,7 @@ describe("挪 / 不挪", () => {
     const 只B = await 联系人(c);
     await raw.projectContact.createMany({ data: [{ projectId: a, contactId: 都有 }, { projectId: b, contactId: 都有, roles: "决策人" }, { projectId: b, contactId: 只B }] });
     await raw.projectCustomer.createMany({ data: [{ projectId: a, customerId: c2 }, { projectId: b, customerId: c2 }] });
-    await raw.projectMember.createMany({ data: [{ projectId: b, userId: 丙.id }, { projectId: b, userId: 老板.id }, { projectId: a, userId: 老板.id }] });
+    await raw.projectMember.createMany({ data: [{ projectId: b, userId: 丙.id }, { projectId: b, userId: 老板.id, inviteStatus: "INVITED" }, { projectId: a, userId: 老板.id }] });
     // 不挪的
     await raw.projectNodeLog.create({ data: { projectId: b, userId: 乙.id, toPhase: "线索", toNode: "潜客培育" } });
     await raw.entLeadVerifyLog.create({ data: { projectId: b, step: "销售初判", verdict: "还需培育", userId: 乙.id } });
@@ -211,7 +277,9 @@ describe("挪 / 不挪", () => {
     const 回复前 = await raw.entReplyOverdue.findUniqueOrThrow({ where: { projectId: a } });
     const 沟通数 = await raw.followUp.count();
 
-    const mergeId = await 并(a, b, 乙, { 组员: [丙.id, 老板.id] });
+    const 预 = await 项目合并预览(prisma, a, b, 乙);
+    expect(预.组员).toEqual([{ userId: 丙.id, name: "丙" }]);
+    const mergeId = await 并(a, b, 乙);
 
     expect((await raw.followUpProject.findUniqueOrThrow({ where: { followUpId: fb } })).projectId).toBe(a);
     expect((await raw.followUpProject.findUniqueOrThrow({ where: { followUpId: fa } })).projectId).toBe(a);
@@ -227,14 +295,14 @@ describe("挪 / 不挪", () => {
     expect(await raw.projectContact.count({ where: { projectId: b } })).toBe(0);
     expect(await raw.projectCustomer.count({ where: { projectId: a, customerId: c2 } })).toBe(1);
     expect(await raw.projectCustomer.count({ where: { projectId: b } })).toBe(0);
-    // 组员：丙 加进 A，老板 已在组里跳过；B 的组员行不动
-    expect((await raw.projectMember.findMany({ where: { projectId: a } })).map((m) => m.userId).sort()).toEqual([老板.id, 丙.id].sort());
+    // 组员（E-331 必改 3）：B 的组员不并进 A，A 的项目组照旧；B 的组员行不动
+    expect((await raw.projectMember.findMany({ where: { projectId: a } })).map((m) => m.userId)).toEqual([老板.id]);
     expect(await raw.projectMember.count({ where: { projectId: b } })).toBe(2);
     // 不挪
     expect(await raw.projectNodeLog.count({ where: { projectId: a } })).toBe(0);
     expect(await raw.entLeadVerifyLog.count({ where: { projectId: a } })).toBe(0);
     expect(await raw.entProjectCold.count({ where: { projectId: b } })).toBe(1);
-    // 被并掉的：重复线索，不补名额
+    // 被并掉的：重复线索，不退还已占线索名额
     const B后 = await 项(b);
     expect(B后).toMatchObject({ result: "线索流失", closedAt: expect.any(Date) });
     expect(await raw.entLeadVerify.findUniqueOrThrow({ where: { projectId: b } })).toMatchObject({ verdict: "无效线索", finalResult: "无效线索", invalidReason: "重复线索", pending: null });
@@ -249,16 +317,66 @@ describe("挪 / 不挪", () => {
     expect(单).toMatchObject({ kind: 项目单, fromId: b, intoId: a, status: "已合并", byUserId: 乙.id });
     expect(JSON.parse(单.counts)).toMatchObject({ 沟通: 1, 附件: 1, 录音: 1, 点评: 1, 联系人: 2, 关联客户: 1, 卡点: 1 });
     expect(await raw.auditLog.count({ where: { action: "merge", entity: "Project" } })).toBe(2);
+    // 留痕：合并单明细、被并项目那条日志记下 B 当时的组员名单（含邀请着没进组的，标着状态）
+    const 明 = JSON.parse(单.detail) as { 被并组员: unknown[]; 加组员?: unknown };
+    expect(明.加组员).toBeUndefined();
+    expect(明.被并组员).toEqual(expect.arrayContaining([
+      { userId: 丙.id, name: "丙", roleId: null, inviteStatus: "JOINED" },
+      { userId: 老板.id, name: "老板", roleId: null, inviteStatus: "INVITED" },
+    ]));
+    expect(明.被并组员).toHaveLength(2);
+    const B志 = await raw.auditLog.findFirstOrThrow({ where: { action: "merge", entity: "Project", entityId: b } });
+    expect(B志.summary).toContain("1 位组员留在这个项目里（丙），不并进「");
+    const B志组员 = JSON.parse(B志.detail ?? "{}").组员 as unknown[];
+    expect(B志组员).toEqual(expect.arrayContaining([{ userId: 丙.id, name: "丙", inviteStatus: "JOINED" }, { userId: 老板.id, name: "老板", inviteStatus: "INVITED" }]));
+    expect(B志组员).toHaveLength(2);
     await 等通知推完();
     expect(await raw.entNotice.count({ where: { kind: 项目合并通知种类 } })).toBe(0);
   });
 
-  it("系统管理员代并：负责人收一条通知；勾了不在被并项目组里的人整笔拦下", async () => {
+  it("[E-331] 电话「藏」的角色看合并预览：号码不够 11 位尾号为空并带号藏；够 11 位才给尾号", async () => {
+    await setSetting(规则.字段权限.key, true);
+    await setSetting(字段权限key, { 电话: { sales: "藏" } });
+    invalidateSettingsCache();
     const c = await 客户(乙.id);
     const a = await 项目(乙.id, c);
     const b = await 项目(乙.id, c);
-    expect(await 执行项目合并(prisma, a, b, 老板, { 组员: [丙.id] })).toMatchObject({ ok: false, error: expect.stringContaining("勾的组员不在") });
-    expect((await 项(b)).result).toBeNull();
+    const 短 = (await raw.contact.create({ data: { name: "联系人短", customerId: c, phone: "12345678" } })).id;
+    const 长 = (await raw.contact.create({ data: { name: "联系人长", customerId: c, phone: "13900001234" } })).id;
+    await raw.projectContact.createMany({ data: [{ projectId: a, contactId: 短 }, { projectId: b, contactId: 长 }] });
+    expect((await 项目合并预览(prisma, a, b, 乙)).联系人).toEqual({
+      留下: [{ id: 短, name: "联系人短", 尾号: "", 号藏: true }], 并掉: [{ id: 长, name: "联系人长", 尾号: "1234" }],
+    });
+  });
+
+  it("[E-331] 预览带两边项目联系人（被并的只列留下那边没有的）；号码相同的两位照样列、合并时只按联系人 id 去重，不按号码去重", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
+    const 甲 = (await raw.contact.create({ data: { name: "联系人甲", customerId: c, phone: "139-0000-1234" } })).id;
+    const 同号 = (await raw.contact.create({ data: { name: "联系人乙", customerId: c, phone: "13900001234" } })).id;
+    const 都有 = (await raw.contact.create({ data: { name: "联系人丙", customerId: c } })).id;
+    await raw.contactMethod.create({ data: { customerId: c, contactId: 都有, kind: "phone", value: "13800005678", numberKey: "13800005678" } });
+    const 没号 = (await raw.contact.create({ data: { name: "联系人丁", customerId: c } })).id;
+    // 只有共有的那一位：被并那边没有新的人，不提示
+    await raw.projectContact.createMany({ data: [{ projectId: a, contactId: 甲 }, { projectId: a, contactId: 都有 }, { projectId: b, contactId: 都有 }] });
+    expect((await 项目合并预览(prisma, a, b, 乙)).联系人).toEqual({
+      留下: [{ id: 甲, name: "联系人甲", 尾号: "1234" }, { id: 都有, name: "联系人丙", 尾号: "5678" }], 并掉: [],
+    });
+    await raw.projectContact.createMany({ data: [{ projectId: b, contactId: 同号 }, { projectId: b, contactId: 没号 }] });
+    expect((await 项目合并预览(prisma, a, b, 乙)).联系人.并掉).toEqual([{ id: 同号, name: "联系人乙", 尾号: "1234" }, { id: 没号, name: "联系人丁", 尾号: "" }]);
+    // 拦下的预览不带
+    expect((await 项目合并预览(prisma, a, b, 丙)).联系人).toEqual({ 留下: [], 并掉: [] });
+    await 并(a, b, 乙);
+    // 同号的联系人乙没被当成联系人甲去掉：四位都挂在留下的项目上；共有的那位只留一行
+    expect((await raw.projectContact.findMany({ where: { projectId: a } })).map((x) => x.contactId).sort()).toEqual([甲, 同号, 都有, 没号].sort());
+    expect(await raw.contact.count({ where: { id: { in: [甲, 同号] } } })).toBe(2);
+  });
+
+  it("系统管理员代并：负责人收一条通知", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
     await 并(a, b, 老板);
     await 等通知推完();
     expect((await raw.entNotice.findMany({ where: { kind: 项目合并通知种类 } })).map((n) => n.userId)).toEqual([乙.id]);
@@ -266,7 +384,7 @@ describe("挪 / 不挪", () => {
 });
 
 describe("撤回", () => {
-  it("只比合并写过的格：挪的回去、去重删的建回、加的组员删掉、结局终判清回；之后被改过的记进没还原", async () => {
+  it("只比合并写过的格：挪的回去、去重删的建回、结局终判清回、被并项目的组员照旧在；之后被改过的记进没还原", async () => {
     const c = await 客户(乙.id);
     const a = await 项目(乙.id, c);
     const b = await 项目(乙.id, c);
@@ -277,7 +395,7 @@ describe("撤回", () => {
     await raw.projectContact.createMany({ data: [{ projectId: a, contactId: 都有 }, { projectId: b, contactId: 都有, roles: "决策人" }] });
     await raw.projectMember.create({ data: { projectId: b, userId: 丙.id } });
     await raw.entLeadVerify.create({ data: { projectId: b, verdict: "暂未判定", verifyNote: "原来的" } });
-    const mergeId = await 并(a, b, 乙, { 组员: [丙.id] });
+    const mergeId = await 并(a, b, 乙);
     // 合并之后 f2 被挪到别的项目
     await raw.followUpProject.update({ where: { followUpId: f2 }, data: { projectId: x } });
 
@@ -289,6 +407,7 @@ describe("撤回", () => {
     expect(await raw.projectContact.findFirst({ where: { projectId: b, contactId: 都有 } })).toMatchObject({ roles: "决策人" });
     expect(await raw.projectContact.count({ where: { projectId: a, contactId: 都有 } })).toBe(1);
     expect(await raw.projectMember.count({ where: { projectId: a } })).toBe(0);
+    expect(await raw.projectMember.findMany({ where: { projectId: b }, select: { userId: true, inviteStatus: true } })).toEqual([{ userId: 丙.id, inviteStatus: "JOINED" }]);
     expect(await 项(b)).toMatchObject({ result: null, closedAt: null });
     expect(await raw.entLeadVerify.findUniqueOrThrow({ where: { projectId: b } })).toMatchObject({ verdict: "暂未判定", finalResult: null, invalidReason: null, verifyNote: "原来的" });
     expect(await raw.entCustomerMerge.findUniqueOrThrow({ where: { id: mergeId } })).toMatchObject({ status: "已撤回", undoneById: 乙.id });
