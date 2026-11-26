@@ -244,7 +244,7 @@ describe("客户名撞上自己名下的客户：「记到这位客户上」（1
     expect(await prisma.followUp.count({ where: { customerId: 老客户.id } })).toBe(2);
   });
 
-  it("同事拿别人名下客户的 id 硬交 记到客户（按真实可见范围跑）：服务端拦下，不建项目；销售教练（只读）同样拦", async () => {
+  it("同事拿别人名下客户的 id 硬交 记到客户（按真实可见范围跑）：服务端拦下，不建项目；销售教练（只读、不是负责人）同样拦", async () => {
     await setSetting(规则.按组织看客户.key, true);
     const 老客户 = await 甲先建({ phone: "13700001234" });
     const 项目数 = await prisma.project.count();
@@ -257,8 +257,34 @@ describe("客户名撞上自己名下的客户：「记到这位客户上」（1
     忘掉企业版范围();
     当(教练);
     const 拦2 = await 以谁的身份(教练.id, () => applyProposal(卡({ name: "随便二家", phone: "13700003333", 分配方式: 0, ownerId: 甲.id }) as never, { 记到客户: 老客户.id }));
-    expect(拦2).toEqual({ ok: false, error: "销售教练只能看，不能改任何数据" });
+    // 审查 3 起服务端先核「自己负责、同名」：教练不是这位的负责人，先在这道拦下（卡上名字和这位不同，回对不上那句）
+    expect(拦2).toEqual({ ok: false, error: "卡上的客户名对不上你名下的这位客户，没记上：请在卡上重新确认" });
     expect(await prisma.project.count()).toBe(项目数);
+    expect(await prisma.customer.count()).toBe(1);
+  });
+
+  it("服务端核「自己负责、同名」（审查 3）：销售管理交下属的同名客户被拦、卡上名字和这位不同被拦，自己同名（大小写、空格不同）放行", async () => {
+    await setSetting(规则.按组织看客户.key, true);
+    const 老客户 = await 甲先建({ phone: "13700001234" });
+    const 管 = await 造人("mgr", "小管");
+    await prisma.entMember.create({ data: { userId: 管.id, bizRole: "sales_mgr" } });
+    await prisma.entMember.update({ where: { userId: 甲.id }, data: { managerId: 管.id } });
+    const 项目数 = await prisma.project.count();
+    忘掉企业版范围();
+    当(管);
+    const 管拦 = await 以谁的身份(管.id, () => applyProposal(卡({ name: "老客户", phone: "13700002244" }) as never, { 记到客户: 老客户.id }));
+    expect(管拦).toMatchObject({ ok: false, error: expect.stringContaining("老客户") });
+    expect(管拦).not.toHaveProperty("我名下客户");
+    expect(await prisma.project.count()).toBe(项目数);
+    忘掉企业版范围();
+    当(甲);
+    const 名不同 = await applyProposal(卡({ name: "别的一家", phone: "13700002255" }) as never, { 记到客户: 老客户.id });
+    expect(名不同).toEqual({ ok: false, error: "卡上的客户名对不上你名下的这位客户，没记上：请在卡上重新确认" });
+    expect(await prisma.project.count()).toBe(项目数);
+    expect(await prisma.customer.count()).toBe(1);
+    const 自己 = await applyProposal(卡({ name: " 老 客户 ", phone: "13700002266" }) as never, { 记到客户: 老客户.id });
+    expect(自己).toMatchObject({ ok: true, 项目: expect.any(String) });
+    expect(await prisma.project.count({ where: { customerId: 老客户.id } })).toBe(2);
     expect(await prisma.customer.count()).toBe(1);
   });
 });

@@ -3,7 +3,8 @@
  * 真库、真组织架构（同 ent-contact-link-scope.test.ts）：
  *   - 纯函数：是默认号、默认号排前；联系人号码们 带 id、主号排最前标 默认
  *   - 负责人 A 设主号：电话格换了、号码几行一行不少；再设一次没变；邮箱行、别人的号码行不收；电话格的号不在几行里时补一行
- *   - 销售 B（看不到）、虚线上级（只读）、销售教练（只读角色）：一律拦，库里原样
+ *   - 销售 B（看不到）、虚线上级（只读）、销售教练、只读管理员、只看某人（切换视图）、只负责项目的人：一律拦，库里原样
+ *   - 电话格是座机 / 乱填的字时设主号：补出的那行种类、格式状态照实（座机记座机、乱填的记验号码的状态）；号码记满了不补、主号照换
  *   - 编辑联系人（存联系人号码 带原电话）：主号还在就不按「第一个手机」换掉
  *   - 合成后把并进来那位的号设成主号、再撤回：留下那位的电话格换回合成时的号，并的那位号码回到他身上
  * 号码、名字都是编的。
@@ -38,11 +39,16 @@ import { 设为主号 } from "@/app/(app)/customers/[id]/contact-link-actions";
 import { 联系人号码们, 存联系人号码 } from "@/lib/enterprise/customer-v2-db";
 import { 是默认号, 默认号排前 } from "@/lib/enterprise/default-number";
 import { 合成一对, 拆开一对 } from "@/lib/enterprise/contact-merge";
+import { 只看某人键 } from "@/lib/enterprise/org-core";
+import { invalidateSettingsCache } from "@/lib/settings";
 
 const 销售A = "dn_a";
 const 销售B = "dn_b";
 const 虚线上级 = "dn_dot";
 const 教练 = "dn_coach";
+const 只读管理员 = "dn_admin";
+const 只看某人的 = "dn_viewas";
+const 项目负责人 = "dn_proj";
 
 const 作为 = <T,>(id: string, f: () => Promise<T>) => {
   登录.user = { ...登录.user, id, name: id, email: `${id}@x.com` };
@@ -65,14 +71,19 @@ beforeAll(async () => {
   for (const t of ["EntCustomerMerge", "ContactCustomer", "ContactMethod", "Attachment", "ProjectNodeLog", "ProjectContact", "Project", "AiConversation", "AiProject", "Setting", "AuditLog", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "ContractOwner", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool", "CustomerClaim", "EntMember", "EntDept"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
   await raw.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
   for (const t of ["Customer", "Channel", "User"]) await raw.$executeRawUnsafe(`DELETE FROM "${t}"`);
-  for (const id of [销售A, 销售B, 虚线上级, 教练]) await raw.user.create({ data: { id, email: `${id}@x.com`, name: id, password: "x", role: "SALES" } });
-  await raw.entMember.createMany({ data: [{ userId: 虚线上级, bizRole: "sales_mgr" }, { userId: 销售A, dottedManagerId: 虚线上级 }, { userId: 销售B }, { userId: 教练, bizRole: "coach" }] });
+  for (const id of [销售A, 销售B, 虚线上级, 教练, 只读管理员, 只看某人的, 项目负责人]) await raw.user.create({ data: { id, email: `${id}@x.com`, name: id, password: "x", role: "SALES" } });
+  await raw.entMember.createMany({ data: [{ userId: 虚线上级, bizRole: "sales_mgr" }, { userId: 销售A, dottedManagerId: 虚线上级 }, { userId: 销售B }, { userId: 教练, bizRole: "coach" }, { userId: 只读管理员, bizRole: "admin" }, { userId: 只看某人的, bizRole: "sales_mgr" }, { userId: 项目负责人 }] });
   甲 = (await raw.customer.create({ data: { name: "QA-主号客户甲", phone: "", salesOwnerId: 销售A } })).id;
   人 = (await raw.contact.create({ data: { customerId: 甲, name: "QA-主号联系人", phone: "13800003001", isPrimary: true } })).id;
   await raw.contactCustomer.create({ data: { contactId: 人, customerId: 甲 } });
   行1 = (await 号(甲, 人, "phone", "13800003001")).id;
   行2 = (await 号(甲, 人, "phone", "13800003002")).id;
   邮箱行 = (await 号(甲, 人, "email", "qa-dn@example.com")).id;
+  // 只负责这位客户名下一个项目、不负责客户的人
+  await raw.project.create({ data: { customerId: 甲, name: "QA-主号项目", phase: "线索", ownerId: 项目负责人, creatorId: 销售A } });
+  // 切换视图：只看某人的那位设成只看销售 A
+  await raw.setting.upsert({ where: { key: 只看某人键 }, update: { value: JSON.stringify({ [只看某人的]: 销售A }) }, create: { key: 只看某人键, value: JSON.stringify({ [只看某人的]: 销售A }) } });
+  invalidateSettingsCache();
   await raw.setting.upsert({ where: { key: 规则.按组织看客户.key }, update: { value: "true" }, create: { key: 规则.按组织看客户.key, value: "true" } });
   忘掉企业版范围();
 });
@@ -118,6 +129,18 @@ describe("设为主号（真库、真组织架构）", () => {
     expect(await 几行(人)).toEqual(前);
   });
 
+  it("只读管理员、切换视图（只看销售 A）、只负责项目不负责客户的人：都拦，库里原样", async () => {
+    const 前 = await 几行(人);
+    const 日志前 = await raw.auditLog.count();
+    for (const [id, 话] of [[只读管理员, /管理员只能看/], [只看某人的, /只看某人/], [项目负责人, /不在了（或你看不到）/]] as const) {
+      忘掉企业版范围();
+      await 作为(id, async () => expect(await 设为主号(人, 行2)).toMatchObject({ ok: false, error: expect.stringMatching(话) }));
+    }
+    expect(await 电话格(人)).toBe("13800003001");
+    expect(await 几行(人)).toEqual(前);
+    expect(await raw.auditLog.count()).toBe(日志前);
+  });
+
   it("负责人设主号：电话格换成选中的号，号码几行一行不少；再设一次没变；邮箱行、乱给的 id 不收", async () => {
     const 前 = await 几行(人);
     await 作为(销售A, async () => {
@@ -144,6 +167,53 @@ describe("设为主号（真库、真组织架构）", () => {
     await 作为(销售A, async () => expect(await 设为主号(老, 新行)).toEqual({ ok: true }));
     expect(await 电话格(老)).toBe("13800003008");
     expect(await 几行(老)).toEqual(["phone:13800003007", "phone:13800003008", "phone:13800003009"]);
+  });
+
+  it("电话格是座机（老数据）：补出的那行记成座机、格式 ok、查重键照座机算；再设回去也不重复补", async () => {
+    const 座 = (await raw.contact.create({ data: { customerId: 甲, name: "QA-座机联系人", phone: "010-62345678" } })).id;
+    const 手机行 = (await 号(甲, 座, "phone", "13800006001")).id;
+    await 作为(销售A, async () => expect(await 设为主号(座, 手机行)).toEqual({ ok: true }));
+    expect(await 电话格(座)).toBe("13800006001");
+    const 补 = await raw.contactMethod.findFirstOrThrow({ where: { contactId: 座, value: "010-62345678" } });
+    expect(补).toMatchObject({ kind: "landline", formatStatus: "ok", numberKey: "01062345678", region: null });
+    expect(await 几行(座)).toEqual(["landline:010-62345678", "phone:13800006001"]);
+  });
+
+  it("电话格是乱填的字：补出的那行照实记验号码的状态，不写成 ok", async () => {
+    const 乱 = (await raw.contact.create({ data: { customerId: 甲, name: "QA-乱填联系人", phone: "问前台" } })).id;
+    const 手机行 = (await 号(甲, 乱, "phone", "13800006002")).id;
+    await 作为(销售A, async () => expect(await 设为主号(乱, 手机行)).toEqual({ ok: true }));
+    expect(await 电话格(乱)).toBe("13800006002");
+    const 补 = await raw.contactMethod.findFirstOrThrow({ where: { contactId: 乱, value: "问前台" } });
+    expect(补.formatStatus).not.toBe("ok");
+    expect(["格式错误", "无法识别"]).toContain(补.formatStatus);
+    // 打了码的号：无法识别
+    const 码 = (await raw.contact.create({ data: { customerId: 甲, name: "QA-打码联系人", phone: "138****6003" } })).id;
+    const 码手机行 = (await 号(甲, 码, "phone", "13800006004")).id;
+    await 作为(销售A, async () => expect(await 设为主号(码, 码手机行)).toEqual({ ok: true }));
+    expect(await raw.contactMethod.findFirstOrThrow({ where: { contactId: 码, value: "138****6003" } })).toMatchObject({ formatStatus: "无法识别" });
+  });
+
+  it("电话格是带 +86 的手机：补出的那行是规整后的手机号、ok、有查重键", async () => {
+    const 带 = (await raw.contact.create({ data: { customerId: 甲, name: "QA-带区号联系人", phone: "+86 138 0000 6005" } })).id;
+    const 手机行 = (await 号(甲, 带, "phone", "13800006006")).id;
+    await 作为(销售A, async () => expect(await 设为主号(带, 手机行)).toEqual({ ok: true }));
+    expect(await raw.contactMethod.findFirstOrThrow({ where: { contactId: 带, value: "13800006005" } })).toMatchObject({ kind: "phone", formatStatus: "ok", numberKey: "13800006005" });
+  });
+
+  it("号码已记满 20 个：原号不补，主号照换，日志里留着原主号", async () => {
+    const 满 = (await raw.contact.create({ data: { customerId: 甲, name: "QA-满号联系人", phone: "13800007000" } })).id;
+    let 第一行 = "";
+    for (let i = 1; i <= 20; i++) {
+      const m = await 号(甲, 满, "phone", `138000070${String(i).padStart(2, "0")}`);
+      if (i === 1) 第一行 = m.id;
+    }
+    await 作为(销售A, async () => expect(await 设为主号(满, 第一行)).toEqual({ ok: true }));
+    expect(await 电话格(满)).toBe("13800007001");
+    expect(await raw.contactMethod.count({ where: { contactId: 满 } })).toBe(20);
+    expect(await raw.contactMethod.count({ where: { contactId: 满, value: "13800007000" } })).toBe(0);
+    const 记 = await raw.auditLog.findFirstOrThrow({ where: { entity: "Contact", entityId: 满 } });
+    expect(JSON.parse(String(记.detail))).toMatchObject({ 原主号: "13800007000", 新主号: "13800007001", 说明: expect.stringContaining("记满") });
   });
 
   it("编辑联系人：交回来的几行里主号还在就照旧是它，不按第一个手机换", async () => {

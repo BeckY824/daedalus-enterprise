@@ -5,7 +5,7 @@ import { scheduleValue } from "@/lib/schedule-date";
 import { 读现值 } from "@/lib/agent/current-values";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 认回打码号 } from "@/lib/phone";
-import { prisma } from "@/lib/prisma";
+import { prisma, defaultClient } from "@/lib/prisma";
 import { 可选渠道条件, 主渠道入口们 } from "@/lib/enterprise/channel-main";
 import { 认渠道触点 } from "@/lib/enterprise/touchpoint";
 import { requireUser } from "@/lib/auth";
@@ -21,7 +21,9 @@ import { saveLead } from "../leads/actions";
 import { 建档向导 } from "../projects/actions";
 import { 给客户建项目, type 给客户建项目输入 } from "../customers/[id]/project-actions";
 import { 落到渠道 } from "@/lib/enterprise/channel-main";
-import type { 名撞结论 } from "@/lib/enterprise/dupe-ledger";
+import { 客户名查重, 名撞说法, type 名撞结论 } from "@/lib/enterprise/dupe-ledger";
+import { 名键 } from "@/lib/enterprise-import/clean";
+import { 读的我 } from "@/lib/team-scope";
 import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 卡片刚记的能撤, 卡片撤销放行, 卡片撤销过时话 } from "@/lib/enterprise/follow-perm";
@@ -428,12 +430,24 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
 /**
  * 新线索卡「记到这位客户上」（12-15 第三批 E 件）：卡上的项目和首条沟通走 给客户建项目（同建档弹窗挑了老客户、客户页「新增项目」），不新建客户。
  * 权限都在 给客户建项目 里判：看不到的客户查不到、同事 / 虚线下属的只读、公海里的先领取、管理员和销售教练只读；切换视图期间整个服务端只读。
- * 渠道照卡上认出的落（只有主渠道的占位先落成真渠道，同建档向导）；只认出触点 = 项目来源跟客户
+ * 渠道照卡上认出的落（只有主渠道的占位先落成真渠道，同建档向导）；只认出触点 = 项目来源跟客户。
+ * 开头先核交来的这位（审查 3）：要是我自己负责的、客户名按查重的名键和卡上的客户名对得上（同 客户名查重 的同名判法），
+ * 不然不记（销售管理交下属的客户、卡上改了名）：照新建时那样按卡上的名再查一次重，回那句撞名提示（撞上我名下另一位的照旧带 我名下客户）；
+ * 一位都没撞上说对不上。看不到的（乱给的 id、同事的）照 给客户建项目 那句「不在了（或你看不到）」
  */
 async function 记到已有客户(
   p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }, customerId: string,
   卡: { 项目负责人: string; 业务线: string; 渠道id: string | null; 进项目: ReturnType<typeof 线索卡地址>["项目"]; 跟进: 给客户建项目输入["跟进"]; 要传附件: boolean },
-): Promise<{ ok: true; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string }> {
+): Promise<{ ok: true; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 我名下客户?: 我名下客户 }> {
+  const 客 = await prisma.customer.findFirst({ where: { id: customerId }, select: { name: true, salesOwnerId: true } });
+  const 卡名键 = 名键(p.name ?? "");
+  // 看不到的（限定层查不到）照 给客户建项目 那句说，不露是谁
+  if (!客) return { ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" };
+  if (客.salesOwnerId !== me.id || 卡名键.length < 2 || 名键(客.name) !== 卡名键) {
+    const 撞 = await 客户名查重(me.id, await 读的我(defaultClient), p.name ?? "");
+    if (!撞) return { ok: false, error: "卡上的客户名对不上你名下的这位客户，没记上：请在卡上重新确认" };
+    return { ok: false, error: 名撞说法(撞), ...("我名下" in 撞 ? { 我名下客户: { id: 撞.我名下.客户id, 名: 撞.我名下.客户名 } } : {}) };
+  }
   const 落 = await 落到渠道(卡.渠道id, me);
   if (!落.ok) return { ok: false, error: 落.error };
   const r = await 给客户建项目({

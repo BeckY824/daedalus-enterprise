@@ -23,7 +23,7 @@ import { recordAudit } from "@/lib/audit";
 import { 看全部, 同事的客户, 只读话, 只读客户 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 不在了 } from "@/lib/not-there";
-import { 挂靠说明上限 } from "@/lib/enterprise/customer-v2";
+import { 挂靠说明上限, 每人最多号码 } from "@/lib/enterprise/customer-v2";
 import { 客户事项挡 } from "@/lib/enterprise/follow-perm";
 import { 客户显名, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
 import { 设默认号 } from "@/lib/enterprise/default-number";
@@ -220,7 +220,7 @@ export async function 设为主号(contactId: string, 号码id: string): Promise
     await recordAudit({
       user: me, action: "update", entity: "Contact", entityId: contactId,
       summary: `把${全称或显名(人.customer)}的联系人「${人.name || "—"}」的主号换成 ${r.新}`,
-      detail: { 原主号: r.原 ?? "（空）", 新主号: r.新, ...(r.补了原号 ? { 说明: "原主号补进号码几行" } : {}) },
+      detail: { 原主号: r.原 ?? "（空）", 新主号: r.新, ...(r.补了原号 ? { 说明: "原主号补进号码几行" } : r.原号满了 ? { 说明: `号码已记满 ${每人最多号码} 个，原主号没补进号码几行，只记在这条里` } : {}) },
     });
     刷新(人.customerId);
     return { ok: true };
