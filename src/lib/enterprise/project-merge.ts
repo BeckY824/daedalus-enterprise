@@ -2,7 +2,7 @@
  * 企业版项目合并 · 数据层（合并客户第二批 2a：同负责人的两个项目合并；规划 merge-customer-b2 第「同负责人的两个项目怎么并」节，客户 E-280 二）。
  *
  * 同一位客户名下、同一位负责人的两个线索：被并掉的那个（B）挂着的沟通、附件、录音点评、项目联系人、关联客户、没解决的卡点改指留下的那个（A），
- * B 本身结束为「重复线索」（结局线索流失 + 线索验证终判无效线索 + 无效原因重复线索），系统直接记、不走复核、不补名额。
+ * B 本身结束为「重复线索」（结局线索流失 + 线索验证终判无效线索 + 无效原因重复线索），系统直接记、不走复核、不退还已占线索名额。
  * 合并单照第一批记在 EntCustomerMerge（kind = 项目，fromId = B、intoId = A），明细记下每一行挪了什么，30 天内只撤这一单。
  *
  *   挪：FollowUpProject / EntFollowUpMark / EntFollowUpMeta / Attachment / EntCoachRecording / EntCoachTopic / 没解决的 EntBlocker / 老商机对照（EntExternalRef entity = opportunity）
@@ -334,7 +334,7 @@ async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Da
         summary: `合并项目：把「${名(B)}」并进这个项目（${条数.沟通} 条沟通、${条数.附件} 个附件、${条数.联系人} 位项目联系人），${项目合并撤回天数} 天内可撤回`,
         detail: JSON.stringify({ mergeId: 单.id, 并掉: B.id, 条数 }) },
       { userId: me.id, userName: me.name, action: "merge", entity: "Project", entityId: B.id, at: 现在,
-        summary: `合并项目：已并入「${名(A)}」，结束为重复线索（不补名额）${组员话(明.被并组员, A)}`,
+        summary: `合并项目：已并入「${名(A)}」，结束为重复线索（不退还已占线索名额）${组员话(明.被并组员, A)}`,
         detail: JSON.stringify({ mergeId: 单.id, 留下: A.id, 组员: 明.被并组员.map(({ userId, name, inviteStatus }) => ({ userId, name, inviteStatus })) }) },
     ],
   });
@@ -358,7 +358,7 @@ async function 合并后通知({ A, B }: { A: 项目行; B: 项目行 }, me: 合
   await notify(收, {
     kind: 项目合并通知种类,
     title: `项目「${名(B)}」已并入「${名(A)}」`,
-    body: `${me.name}把项目「${名(B)}」并进了「${名(A)}」，沟通、附件、项目联系人都已挪过去；「${名(B)}」结束为重复线索，不补名额；${项目合并撤回天数} 天内可撤回。`,
+    body: `${me.name}把项目「${名(B)}」并进了「${名(A)}」，沟通、附件、项目联系人都已挪过去；「${名(B)}」结束为重复线索，不退还已占线索名额；${项目合并撤回天数} 天内可撤回。`,
     link: `/projects/${A.id}`,
     key: `merge-project:${B.id}:${A.id}:${Date.now()}`,
   });

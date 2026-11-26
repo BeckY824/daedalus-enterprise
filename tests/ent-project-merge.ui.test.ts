@@ -4,8 +4,8 @@ import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
 /* 合并客户第二批 2a · 「并进另一个项目」框（customers/[id]/MergeHost.tsx ProjectMergeDialog）：真组件 + globals.css + merge.css，只桩掉 merge-actions。钉的是：
-   打开就读候选（项目合并候选(被并的)）→ 选择框可输入搜 → 预览（预览项目合并(留下, 被并)）列明挪什么、结束为重复线索、不补名额；被并项目的组员不能勾、只提示留在原项目（E-331）
-   → 后果框写「这个项目将结束为重复线索，不补名额，30 天内可撤回」→ 合并项目(留下, 被并) → 撤销条；撤销 = 撤回项目合并单；
+   打开就读候选（项目合并候选(被并的)）→ 选择框可输入搜 → 预览（预览项目合并(留下, 被并)）列明挪什么、结束为重复线索、不退还已占线索名额；被并项目的组员不能勾、只提示留在原项目（E-331）
+   → 后果框写「这个项目将结束为重复线索，不退还已占线索名额，30 天内可撤回」→ 合并项目(留下, 被并) → 撤销条；撤销 = 撤回项目合并单；
    拦下的原因原样摆、并过去点不了；执行时被拦，原因写在后果框里、框不关；没候选写明为什么；
    1280 / 390 不横滚，390 框底按钮、选择框 ≥ 44，长项目名一行省略、悬停看全 */
 let browser: Browser, bundle: string;
@@ -96,7 +96,7 @@ for (const 宽 of [1280, 390]) {
       expect(话).toContain("5 条沟通、2 个附件、1 条点评");
       expect(话).not.toContain("录音");
       expect(话).toContain("3 位项目联系人、1 位关联客户一起过去");
-      expect(话).toContain("这个项目将结束为重复线索，不补名额");
+      expect(话).toContain("这个项目将结束为重复线索，不退还已占线索名额");
       // 长项目名一行省略、悬停看全
       const 行 = page.getByTestId("pmerge-move").locator(".mrg-one");
       expect(await 行.evaluate((e) => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth, e.getAttribute("title")])).toEqual(["ellipsis", true, `「重复的那条线索」 → 「${长名}」`]);
@@ -117,7 +117,7 @@ for (const 宽 of [1280, 390]) {
       expect(框话).toContain(`把「重复的那条线索」并进「${长名}」？`);
       expect(框话).toContain("3 位组员留在这个项目里");
       expect(框话).not.toContain("加进");
-      expect(框话).toContain("这个项目将结束为重复线索，不补名额，30 天内可撤回（要你本人、且留下的项目仍归你负责，否则找系统管理员）");
+      expect(框话).toContain("这个项目将结束为重复线索，不退还已占线索名额，30 天内可撤回（要你本人、且留下的项目仍归你负责，否则找系统管理员）");
       await 框.getByRole("button", { name: "并过去" }).click();
       await page.locator(".undo-bar").waitFor();
       expect(await page.locator(".undo-t").innerText()).toBe(`已把「重复的那条线索」并进「${长名}」，30 天内可在「历史变更」里撤回`);

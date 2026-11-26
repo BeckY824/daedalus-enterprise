@@ -1,7 +1,7 @@
 /**
  * 合并客户第二批 2a · 项目合并（服务端；规划 merge-customer-b2「同负责人的两个项目怎么并」，客户 E-280 二）：
  *   - 前提：同客户、同负责人（系统管理员可代并）、都没结束、不在公海、线索阶段、无回款无提成行；被并掉的没判有效、没在等判、没判无效
- *   - 挪 / 不挪逐表；被并掉的结束为重复线索，不补名额；合并不算一次跟进
+ *   - 挪 / 不挪逐表；被并掉的结束为重复线索，不退还已占线索名额；合并不算一次跟进
  *   - 单撤：只比合并写过的格；谁能撤；30 天；删除 / 转让 / 交接之后再撤
  *   - 合并之后 30 天内的保护：重启、改结局、改判、换客户
  *   - 整单撤回客户合并时先撤之后并过的项目
@@ -265,7 +265,7 @@ describe("挪 / 不挪", () => {
     expect(await raw.projectNodeLog.count({ where: { projectId: a } })).toBe(0);
     expect(await raw.entLeadVerifyLog.count({ where: { projectId: a } })).toBe(0);
     expect(await raw.entProjectCold.count({ where: { projectId: b } })).toBe(1);
-    // 被并掉的：重复线索，不补名额
+    // 被并掉的：重复线索，不退还已占线索名额
     const B后 = await 项(b);
     expect(B后).toMatchObject({ result: "线索流失", closedAt: expect.any(Date) });
     expect(await raw.entLeadVerify.findUniqueOrThrow({ where: { projectId: b } })).toMatchObject({ verdict: "无效线索", finalResult: "无效线索", invalidReason: "重复线索", pending: null });
