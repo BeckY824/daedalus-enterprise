@@ -6999,10 +6999,10 @@ button.proj-miss-chip { cursor: pointer; }
 .done-plan-as { margin-top: 6px; }
 .pd-as-btn { margin-top: 8px; }
 
-/* 客户列表「排序」按钮（E-332）：筛选行一行放不下就折两行（1024 宽差 1px 都会折），所以按钮窄于 1600 只留图标、搜索框让出一点宽；
-   宽屏（≥1600）带「排序」两个字；手机宽（<768）另起一排，字照留 */
+/* 客户列表「排序」按钮（E-332）：筛选行一行放不下就折两行（1024 宽差 1px 都会折），所以按钮窄于 1440 只留图标、搜索框让出一点宽；
+   宽屏（≥1440）带「排序」两个字；手机宽（<768）另起一排，字照留 */
 .cust-sort-btn { flex: none; }
-@media (min-width: 768px) and (max-width: 1599px) {
+@media (min-width: 768px) and (max-width: 1439px) {
   .cust-sort-btn .cust-sort-txt { display: none; }
   .cust-sort-btn.ant-btn { min-width: 32px; padding-inline: 0; }
 }
