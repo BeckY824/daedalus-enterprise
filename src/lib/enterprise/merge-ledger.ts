@@ -7,11 +7,12 @@
  *   - 客户 detail.客户（A 的客户 id，名字现查，连回收站里的）
  *   - 两边负责人：留下 detail.负责人、被并 fromOwnerId（合并那一刻的；2a 只并同负责人的，两格通常同一个人，后面批次放开了照样对）
  *   - 开票自查 detail.自查.谁 / 时间（合并的人勾「两个项目都未开票」时记的）
- * 用途：运营对账；系统管理员每周一拿它和财务开票清单对一遍，误勾的 30 天内到被并项目详情里撤回（台账上不做撤回）。
+ * 用途：运营对账；系统管理员每周一拿它和财务开票清单对一遍，误勾的 30 天内到被并项目详情里撤回；公海客户合并到留下那家客户详情的历史变更里撤回（台账上不做撤回）。
  * 谁能看、能导：只有系统管理员（是系统管理员）。导出和列表走同一个 读合并台账、同一组条件，导一次记一行导出日志。
  * 首页 AI 不给（lib/ai 不引这个文件）：台账是管理员对账用的审计视图，AI 工具按角色给、合并本身也不给 AI（merge-actions 头注）。
  */
 import type { PrismaClient } from "@/generated/prisma";
+import { 客户编号文字 } from "@/lib/customer-no";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
 import { 企业版 } from "./switch";
@@ -42,6 +43,8 @@ export type 台账行 = {
   /** 项目合并 / 公海客户合并（两家都在公海的客户合并，P-合并-07）；公海客户合并行：客户 = 留下的客户、留下 / 被并项目格留空、被并客户见 被并客户 */
   类型: "项目合并" | "公海客户合并";
   被并客户: string;
+  /** 公海客户合并行：被并客户的编号（合并单 fromNo 写成 NO.xxxxx；老单没有就空） */
+  被并编号: string;
   at: string;
   发起人: string;
   客户id: string | null;
@@ -98,7 +101,7 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
     orderBy: [{ at: "desc" }, { id: "desc" }],
     // 有搜索词时先多拿一些再筛（名字不在列上）；没词直接按上限拿、多拿一条判截断
     take: 词 ? 台账上限 * 4 : 台账上限 + 1,
-    select: { id: true, kind: true, fromId: true, intoId: true, fromName: true, fromOwnerId: true, byUserId: true, status: true, detail: true, at: true, undoneAt: true, undoneById: true },
+    select: { id: true, kind: true, fromId: true, intoId: true, fromName: true, fromNo: true, fromOwnerId: true, byUserId: true, status: true, detail: true, at: true, undoneAt: true, undoneById: true },
   }));
   const 明们 = new Map(单们.map((m) => [m.id, 读明细(m.detail)]));
   const 人ids = new Set<string>();
@@ -129,6 +132,7 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
       id: m.id,
       类型: 公海单 ? "公海客户合并" : "项目合并",
       被并客户: 公海单 ? m.fromName : "",
+      被并编号: 公海单 ? 客户编号文字(m.fromNo) ?? "" : "",
       at: m.at.toISOString(),
       发起人: 人名(m.byUserId),
       客户id,

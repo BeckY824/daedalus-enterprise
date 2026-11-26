@@ -199,8 +199,8 @@ describe("客户已删", () => {
 });
 
 describe("公海客户合并进台账（P-合并-07）", () => {
-  async function 公海客户(name: string) {
-    const id = (await raw.customer.create({ data: { name, phone: "", salesOwnerId: 老板.id } })).id;
+  async function 公海客户(name: string, customerNo?: number) {
+    const id = (await raw.customer.create({ data: { name, phone: "", salesOwnerId: 老板.id, ...(customerNo ? { customerNo } : {}) } })).id;
     await raw.customerPool.create({ data: { customerId: id } });
     return id;
   }
@@ -224,6 +224,23 @@ describe("公海客户合并进台账（P-合并-07）", () => {
     expect((await 撤回合并(prisma, r.mergeId, 老板)).ok).toBe(true);
     const 后 = await 读合并台账(prisma, 老板, {});
     expect(后.ok && 后.行们.find((x) => x.id === r.mergeId)).toMatchObject({ 类型: "公海客户合并", 状态: "已撤回", 撤回人: "老板" });
+  });
+
+  it("公海客户合并行带被并客户的编号（没编号就空），导出行同样有；搜编号对不上不报错", async () => {
+    const a = await 公海客户("编造公海丙");
+    const b = await 公海客户("编造公海丁", 4321);
+    const r = await 执行合并(prisma, a, b, 老板);
+    if (!r.ok) throw new Error(r.error);
+    const 列 = await 读合并台账(prisma, 老板, {});
+    expect(列.ok && 列.行们[0]).toMatchObject({ 类型: "公海客户合并", 被并客户: "编造公海丁", 被并编号: "NO.04321" });
+    const 导 = await 导出合并台账(prisma, 老板, {});
+    expect(导.ok && 导.行们[0]).toMatchObject({ 被并客户: "编造公海丁", 被并编号: "NO.04321" });
+    const c = await 公海客户("编造公海戊");
+    const d = await 公海客户("编造公海己");
+    const r2 = await 执行合并(prisma, c, d, 老板);
+    if (!r2.ok) throw new Error(r2.error);
+    const 二 = await 读合并台账(prisma, 老板, { 词: "公海己" });
+    expect(二.ok && 二.行们[0]).toMatchObject({ 被并客户: "编造公海己", 被并编号: "" });
   });
 
   it("销售并自己名下两家客户：台账不多行", async () => {
