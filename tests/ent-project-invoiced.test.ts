@@ -1,6 +1,6 @@
 /**
  * 项目「已开票」勾选（12-15 第三批 A 件，lib/project/invoiced.ts）：
- *   能勾 = 系统管理员 + 可标已开票名单（名单只限系统管理员和财务部门的人，E-373 ②）；只读管理员、销售教练、只看某人的人在名单里也不给；
+ *   能勾 = 系统管理员 + 可标已开票名单（名单只限系统管理员和财务的人：职位含「财务」或部门链含「财务」，E-373 ② / E-375）；只读管理员、销售教练、只看某人的人在名单里也不给；
  *   看得到的项目都能勾（E-373 ①：别人名下、别的团队的也行），看不到的回「不在了」；日志写清谁勾的、负责人是谁，负责人打开项目看得到（E-373 ③）；
  *   取消 = 勾后 30 天内只有系统管理员，过了 30 天谁都不能改；勾 / 取消各一条操作日志（和改项目同一事务），进客户详情「历史变更」项目块。
  * 测试数据都是编的。
@@ -254,7 +254,7 @@ describe("看得到就能勾（E-373 ①）、负责人看得到记录（E-373 �
 });
 
 describe("名单只限系统管理员和财务（E-373 ②）、能随时收回", () => {
-  it("财务的 = 部门或上级部门名含「财务」；能进名单 = 系统管理员或财务的，只读三类不行", async () => {
+  it("财务的 = 职位含「财务」或部门 / 上级部门名含「财务」；能进名单 = 系统管理员或财务的，只读三类不行", async () => {
     const org = await 权限组织();
     expect(财务的(org, 被指定.id)).toBe(true);
     expect(财务的(org, 销售.id)).toBe(false);
@@ -265,6 +265,33 @@ describe("名单只限系统管理员和财务（E-373 ②）、能随时收回"
     await prisma.entMember.update({ where: { userId: 教练.id }, data: { deptId: 应收组id } });
     忘掉企业版范围();
     expect(能进开票名单(教练.id, await 权限组织())).toBe(false);
+  });
+
+  it("职位是财务、部门不在财务（E-375）：能进名单、能勾；职位改掉且不在财务部门 → 再勾拦", async () => {
+    // 被指定调出财务部门，职位写「财务」：占一样就算
+    await prisma.entMember.update({ where: { userId: 被指定.id }, data: { deptId: null } });
+    await prisma.user.update({ where: { id: 被指定.id }, data: { title: " 财务 " } });
+    // 销售写「财务主管」（含「财务」二字）也算；职位空着的以部门为准
+    await prisma.user.update({ where: { id: 销售.id }, data: { title: "  财务主管" } });
+    await setSetting(可标已开票键, null);
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    const org = await 权限组织();
+    expect(财务的(org, 被指定.id)).toBe(true);
+    expect(财务的(org, 销售.id)).toBe(true);
+    expect(财务的(org, 教练.id)).toBe(false);
+    expect(能进开票名单(被指定.id, org)).toBe(true);
+    expect(await 以(管, () => 设可标已开票([被指定.id]))).toEqual({ ok: true });
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    expect(await 以(被指定, () => 勾项目已开票(项目id, true))).toEqual({ ok: true, 变了: true });
+    expect(await 以(管, () => 勾项目已开票(项目id, false))).toEqual({ ok: true, 变了: true });
+    // 职位改掉、部门也不在财务：再勾拦
+    await prisma.user.update({ where: { id: 被指定.id }, data: { title: "销售" } });
+    忘掉企业版范围();
+    expect(能进开票名单(被指定.id, await 权限组织())).toBe(false);
+    expect(await 以(被指定, () => 勾项目已开票(项目id, true))).toEqual({ ok: false, error: 不再是财务话 });
+    expect((await 读(项目id)).invoiced).toBe(false);
   });
 
   it("名单里非财务、非系统管理员的人：设置时拒（明确的错），勾时拒（库里手塞进去的、后来调出财务的）", async () => {

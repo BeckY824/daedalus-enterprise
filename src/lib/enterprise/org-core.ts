@@ -19,6 +19,8 @@ export type 组织成员 = {
   dottedManagerId: string | null;
   /** 「不管设置」（迁移 108）：总管理勾上以后进不了设置页 */
   不管设置: boolean;
+  /** 账号的职位（User.title，去首尾空格）；读组织 带上，财务的 认「职位含财务」（E-375）。没带 = 空串 */
+  职位?: string;
 };
 /** 只含在职（User.active）的人：停用的人不当任何人的上级，也不算谁的下属 */
 export type 组织 = {
@@ -154,7 +156,7 @@ export const 合角色 = (们: readonly string[]): string => 拆角色(们.join(
 const 是业务线 = (x: unknown): x is 业务线 => x === "内贸" || x === "外贸";
 
 export function 建组织(
-  users: readonly { id: string; role: string; active: boolean }[],
+  users: readonly { id: string; role: string; active: boolean; title?: string | null }[],
   members: readonly { userId: string; deptId: string | null; bizRole: string; line: string | null; managerId: string | null; dottedManagerId: string | null; noSettings?: boolean | null }[],
   depts: readonly 组织部门[],
 ): 组织 {
@@ -183,6 +185,7 @@ export function 建组织(
       managerId: m?.managerId ?? null,
       dottedManagerId: m?.dottedManagerId ?? null,
       不管设置: !!m?.noSettings,
+      职位: (u.title ?? "").trim(),
     });
   }
   return { 成员, 部门, 离职上级, 停用的 };

@@ -408,11 +408,13 @@ export function 能恢复(me: 谁, org: 组织 | null): boolean {
 }
 
 /**
- * 财务的人（客户 E-373「开这个权限的人只限系统管理员和财务，别摊到销售」）：所在部门或往上任一级部门名含「财务」。
- * 只认部门（系统管理员在组织架构里设、或飞书 / 钉钉同步来的）；不认账号的「职位」——那一格本人在「个人资料」里自己就能改，认它等于谁都能把自己写成财务
+ * 财务的人（客户 E-373「开这个权限的人只限系统管理员和财务，别摊到销售」；E-375 定认法）：按成员资料认，占一样就算——
+ * 账号的职位（User.title，去首尾空格）含「财务」（如「财务」「财务主管」），或所在部门 / 往上任一级部门名含「财务」。
+ * 职位空着的以部门为准；部门不在财务部但职位写「财务」的也算
  */
 export function 财务的(org: 组织 | null, id: string): boolean {
   if (!org) return false;
+  if (org.成员.get(id)?.职位?.includes("财务")) return true;
   const 走过 = new Set<string>();
   for (let d = org.成员.get(id)?.deptId ?? null; d && !走过.has(d); d = org.部门.get(d)?.parentId ?? null) {
     走过.add(d);
@@ -423,7 +425,7 @@ export function 财务的(org: 组织 | null, id: string): boolean {
 
 /**
  * 能不能进「可标已开票」名单（E-373 ②）：在职、系统管理员或财务的人（财务的）；只读管理员、销售教练、设了「只看某人」的人不能进。
- * 设置页下拉候选、服务端 设可标已开票 都按这个；勾的时候 能标已开票 按当下再判一遍（进了名单后调出财务部门的勾不了）
+ * 设置页下拉候选、服务端 设可标已开票 都按这个；勾的时候 能标已开票 按当下再判一遍（进了名单后不再是财务的勾不了）
  */
 export function 能进开票名单(id: string, org: 组织 | null): boolean {
   if (老() || !org || !org.成员.has(id) || 只读角色({ id }, org) || 只看的人(org, id)) return false;

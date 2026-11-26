@@ -25,7 +25,7 @@ type 库 = Pick<typeof prisma, "user" | "entMember" | "entDept" | "setting">;
 /** 从给定的库（事务里传 tx）读整张组织表，不走缓存：写组织架构的事务里改完重查「还有没有系统管理员」用 */
 export async function 读组织于(db: 库): Promise<组织> {
   // 事务只有一条连接，一条条读（并发读在交互式事务里没好处）
-  const users = await db.user.findMany({ select: { id: true, role: true, active: true } });
+  const users = await db.user.findMany({ select: { id: true, role: true, active: true, title: true } });
   const members = await db.entMember.findMany();
   const depts = await db.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } });
   const 设 = async (key: string) => (await db.setting.findUnique({ where: { key }, select: { value: true } }))?.value ?? null;
@@ -38,7 +38,7 @@ export async function 读组织于(db: 库): Promise<组织> {
 export const 读组织 = cache(async (): Promise<组织> => {
   // 几项组织设置一句读回（原来各一句 findUnique）：多读「线索分配」开关后条数不涨
   const [users, members, depts, 设们] = await Promise.all([
-    prisma.user.findMany({ select: { id: true, role: true, active: true } }),
+    prisma.user.findMany({ select: { id: true, role: true, active: true, title: true } }),
     prisma.entMember.findMany(),
     prisma.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
     prisma.setting.findMany({ where: { key: { in: [回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 可标已开票键, 规则.线索分配.key] } }, select: { key: true, value: true } }),
