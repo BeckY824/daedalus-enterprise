@@ -207,6 +207,14 @@ export function 显示节点名(node: string, 后售: boolean, 字典: 阶段字
  * 结局 = 按字典的叫法（后台改了出口叫法就用改的），没结局 = null。
  * 后售 = 这个项目判成后售（after-sale.ts），进程那格写后售培育（显示节点名）；不给 = 不后售
  */
+/**
+ * 项目详情的结局字（P-界面-66）：结局线索流失、归项目合并 / 重复线索的写「线索流失・项目合并」/「线索流失・重复线索」（同看板拆出的两列）；
+ * 别的结局、其他线索流失照原样（细分由 load.ts 现算 lost-split.ts 线索流失细分 给，其他线索流失不给）
+ */
+export function 带流失细分(结局字: string | null, result: string | null | undefined, 细分?: "项目合并" | "重复线索" | null): string | null {
+  return 结局字 && result === "线索流失" && 细分 ? `${结局字}・${细分}` : 结局字;
+}
+
 export function 阶段与进程(
   p: { phase: string; node: string; result?: string | null },
   字典: 阶段字典 = 团队版字典,

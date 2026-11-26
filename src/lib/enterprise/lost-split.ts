@@ -59,7 +59,19 @@ export async function 线索流失细分(
   项目们: readonly { id: string; result: string | null; closedAt: 时刻 }[],
   选项: { db?: 读库; 名们?: readonly string[] } = {},
 ): Promise<Map<string, 流失细分>> {
-  const 出 = new Map<string, 流失细分>();
+  return new Map([...(await 线索流失细分详(项目们, 选项))].map(([id, d]) => [id, d.类]));
+}
+
+/**
+ * 同 线索流失细分，另带 终判：这一次结束对得上一条线索验证终判（判死 / 合并写的那条）。
+ * 数据页线索瀑布用它把「其他线索流失」再分成判无效（终判的原因不是重复线索）和手动点的线索流失——同一份判定，不另对一遍时间。
+ */
+export type 流失细分详 = { 类: 流失细分; 终判: boolean };
+export async function 线索流失细分详(
+  项目们: readonly { id: string; result: string | null; closedAt: 时刻 }[],
+  选项: { db?: 读库; 名们?: readonly string[] } = {},
+): Promise<Map<string, 流失细分详>> {
+  const 出 = new Map<string, 流失细分详>();
   const 流失 = 项目们.filter((p) => p.result === "线索流失");
   if (!流失.length) return 出;
   const db = 选项.db ?? prisma;
@@ -86,19 +98,44 @@ export async function 线索流失细分(
       for (const l of 手动们) 手.set(l.projectId, [...(手.get(l.projectId) ?? []), { at: l.at.getTime(), 原因: 备注里的无效原因(l.reason) }]);
       for (const p of 段) {
         const 关 = 毫秒(p.closedAt);
-        if ((并.get(p.id) ?? []).some((t) => 对得上(t, 关))) { 出.set(p.id, "项目合并"); continue; }
+        if ((并.get(p.id) ?? []).some((t) => 对得上(t, 关))) { 出.set(p.id, { 类: "项目合并", 终判: false }); continue; }
         const v = 验.get(p.id);
         // 终判那一刻：判死的那一步写的时间（初判即终判 verifiedAt、市场复核 reviewedAt、总管理终判 / 合并 finalAt），取最晚的
         const 判时 = v ? Math.max(...[v.verifiedAt, v.reviewedAt, v.finalAt].map((t) => 毫秒(t) ?? -Infinity)) : null;
         if (v && 对得上(Number.isFinite(判时) ? 判时 : null, 关)) {
-          出.set(p.id, v.invalidReason != null && 名.has(v.invalidReason.trim()) ? "重复线索" : "其他线索流失");
+          出.set(p.id, { 类: v.invalidReason != null && 名.has(v.invalidReason.trim()) ? "重复线索" : "其他线索流失", 终判: true });
           continue;
         }
         // 没终判（或终判是以前那一次的）：按这一次结束的那条节点变更里选的无效原因；同一刻有几条取最近的
         const 这次 = (手.get(p.id) ?? []).filter((l) => 对得上(l.at, 关)).sort((a, b) => b.at - a.at)[0];
-        出.set(p.id, 这次?.原因 && 名.has(这次.原因) ? "重复线索" : "其他线索流失");
+        出.set(p.id, { 类: 这次?.原因 && 名.has(这次.原因) ? "重复线索" : "其他线索流失", 终判: false });
       }
     }
     return 出;
+  });
+}
+
+/**
+ * 可能不是「手动点的其他线索流失」的项目（库里条件，数据页按它先筛一遍再交 线索流失细分详 判，不把看得到的全部线索流失都读进内存）：
+ * 结局线索流失，且 有已合并的项目合并单（被并方）/ 线索验证终判无效线索 / 有一条改到线索流失、备注带「无效原因：」且写着重复线索某个名字的节点变更。
+ * 是 线索流失细分详 三条路的宽松版（只放宽、不收紧）：不在这里面的，那边一定判成 { 其他线索流失, 终判: false }，所以先筛再判和全量判结果一样。
+ * 合并单不和项目连表，先取已合并的被并方 id（合并单条数小）；包 看全部，同 线索流失细分详
+ */
+export async function 细分候选条件(选项: { db?: Pick<读库, "entCustomerMerge" | "entDictItem">; 名们?: readonly string[] } = {}): Promise<Prisma.ProjectWhereInput> {
+  const db = 选项.db ?? prisma;
+  return 看全部(async () => {
+    const [并掉的, 名们] = await Promise.all([
+      db.entCustomerMerge.findMany({ where: { kind: 项目单, status: "已合并" }, select: { fromId: true } }),
+      选项.名们 ? Promise.resolve(选项.名们) : 重复线索名们(db),
+    ]);
+    const 名 = [...new Set(名们.map((n) => n.trim()).filter(Boolean))];
+    return {
+      result: "线索流失",
+      OR: [
+        { entLeadVerify: { is: { finalResult: "无效线索" } } },
+        ...(并掉的.length ? [{ id: { in: [...new Set(并掉的.map((d) => d.fromId))] } }] : []),
+        ...(名.length ? [{ logs: { some: { toResult: "线索流失", OR: 名.map((n) => ({ reason: { startsWith: 无效原因前缀, contains: n } })) } } }] : []),
+      ],
+    };
   });
 }

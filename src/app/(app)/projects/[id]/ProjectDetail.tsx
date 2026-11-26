@@ -38,7 +38,7 @@ import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import FollowMeaningLine from "@/components/FollowMeaningLine";
 import { useFollowJudge } from "@/components/useFollowJudge";
 import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
-import { 阶段与进程, type 出口叫法改动 } from "@/lib/project/stage-dict";
+import { 阶段与进程, 带流失细分, type 出口叫法改动 } from "@/lib/project/stage-dict";
 import { 有效线索节点, 缺有效沟通还差 } from "@/lib/project/stage-gates";
 import type { 线索验证 } from "@/lib/project/lead-verify";
 import LeadVerifyPanel from "./LeadVerifyPanel";
@@ -150,6 +150,8 @@ export type 项目详情 = {
   并入自?: { 话: string; 怎么来: "合并客户" | "项目换客户"; at: string } | null;
   /** 这个项目并进了另一个项目（合并客户第二批 2a，load.ts 已并入of：没撤回的项目合并单，过了 30 天也给）：顶上「已并入 → 留下的项目」那一行（MergedIntoLine，页面当槽递进来）；留下的项目不给 */
   已并入?: { mergeId: string; 到id: string; 到: string; at: string; 谁: string; 能撤: boolean } | null;
+  /** 企业版结局线索流失、归项目合并 / 重复线索的（P-界面-66，load.ts 现算 线索流失细分，过了 30 天也给）：结局写「线索流失・项目合并」/「线索流失・重复线索」；其他线索流失不带 */
+  流失细分?: "项目合并" | "重复线索";
   /** 企业版后售培育（P-界面-63，after-sale.ts）：停在潜客培育、客户名下有交付结清的；进程条第一格、「现在在」写后售培育。存的仍是潜客培育，不是 = 不带 */
   后售?: true;
   /** 能往项目组里拉人：能改的人，企业版加上已进组的项目组员（V3.5.1） */
@@ -1112,7 +1114,9 @@ export default function ProjectDetail({
    * 看的不是所在阶段、或推不了，按钮灰掉、悬停写原因（灰按钮收不到鼠标，提示挂在外面那层 span 上）
    */
   // 后售培育只换叫法：位.进程 给界面上写的字；进程条按存的节点找当前格（ProjectStages 的 所在进程），另给 后售 换第一格的字
-  const 位 = 阶段与进程(p, 字典, !!p.后售);
+  // 线索流失拆出的两类（P-界面-66）：结局标签、「现在在」写「线索流失・项目合并」/「线索流失・重复线索」，同看板列
+  const 原位 = 阶段与进程(p, 字典, !!p.后售);
+  const 位 = { ...原位, 结局: 带流失细分(原位.结局, p.result, p.流失细分) };
   const 关头部框 = () => set头部框(null);
   /** 框里点了要换到别的框（推进 → 结局确认）：先关这个，焦点回到页头。「管理沟通」框 M-权限-09 去掉了，改、删在每条沟通的「…」里 */
   const 换框 = (f: () => void) => () => { set头部框(null); f(); };
