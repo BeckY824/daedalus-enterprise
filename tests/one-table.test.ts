@@ -47,6 +47,8 @@ const 不算列表页 = [
   "src/app/(app)/settings/MembersTab.tsx",
   "src/app/(app)/settings/PasswordTab.tsx",
   "src/app/(app)/settings/AuditTab.tsx",
+  // 企业版设置「合并台账」（12-02，E-336）：系统管理员只读看项目合并 / 撤回记录，同操作记录；没有批量、列设置，筛选只有日期和搜索
+  "src/app/(app)/settings/MergeLedgerTab.tsx",
   // 导入记录：列的是导入批次，不是业务记录；只有一颗撤销，没有筛选分页批量
   "src/app/(app)/settings/ImportsTab.tsx",
   // 企业版回收站（2026-10-29 P9）：四张表删了的记录混在一张里，只有恢复 / 彻底删除两颗，没有筛选、批量、列设置；
