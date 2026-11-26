@@ -13,6 +13,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Button, Empty, Pagination, Segmented } from "antd";
 import { PageHead } from "@/components/ui";
+import { LinkPending } from "@/components/NavProgress";
 import { useViewAs } from "@/components/ViewAsContext";
 import { showUndo } from "@/components/UndoBar";
 import { 动作出错话 } from "@/lib/stale-deploy";
@@ -74,7 +75,7 @@ export default function DupesView({ 清单, 已标, 只读原因 = null }: { 清
 
   const 钮 = (b: ReactNode) => (不能写 ? <span className="dp-ro" title={不能写}>{b}</span> : b);
   const 名格 = (m: { id: string; 名: string }, 能点: boolean) =>
-    能点 ? <Link href={`/customers/${m.id}`} className="dp-one dp-link" title={m.名}>{m.名}</Link> : 一行(m.名);
+    能点 ? <Link href={`/customers/${m.id}`} className="dp-one dp-link" title={m.名}>{m.名}<LinkPending /></Link> : 一行(m.名);
 
   const 组行 = (g: 清单组) => {
     const 留 = g.们.find((m) => m.id === g.留下)!;

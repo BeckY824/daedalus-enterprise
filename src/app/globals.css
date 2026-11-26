@@ -1231,6 +1231,10 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 .dupe-hint-i { flex: none; color: var(--brand); }
 .dupe-hint-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dupe-hint-a { flex: none; white-space: nowrap; }
+/* 客户列表「范围」旁的「疑似重复 ›」：淡字链样子的按钮，不抢页头按钮 */
+.cust-dupe-a { flex: none; padding: 0; border: 0; background: none; color: var(--brand); font-size: var(--fs-note); white-space: nowrap; cursor: pointer; }
+.cust-dupe-a:hover { text-decoration: underline; }
+.cust-dupe-a:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 @media (max-width: 767px) {
   /* 关掉的 ✕ 点击区放大到 36，用负外边距吃回去，那一行还是 24 高 */
   .mrg-landed-x { width: 36px; height: 36px; margin: -6px -6px -6px 0; }

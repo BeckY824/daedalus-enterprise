@@ -1363,12 +1363,12 @@ export default function CustomersView({
           页签记在地址上（pool=1），翻页、搜索、筛选都留在这一页签里。
           一个人用、公海里也没人时不摆——那时公海就是个空抽屉；空库不摆；子集（筛选行上那三种标记）里不摆：那几个数本来就含公海
         */
-        titleAside={客户范围 ? (
-          /*
+        titleAside={客户范围 ? (<>
+          {/*
             「范围」（客户 11-18 第 12 题「把客户的页签直接加一个筛选项」）：企业版项目模式没有「客户 / 公海」页签（公海在 /pool），
             这一格就摆在原来页签的位置——标题旁边、不进筛选行（1024 宽筛选行本来就刚好一行），也不会被收进「更多筛选」。
             没有空值：「重置」回到这个人的默认；选中项记在地址栏 scope，换一项回第一页重查
-          */
+          */}
           <Segmented<客户范围>
             className="cust-scope"
             aria-label="范围"
@@ -1376,7 +1376,14 @@ export default function CustomersView({
             onChange={(v) => apply({ scope: v })}
             options={客户范围.选项.map((k) => ({ value: k, label: <span title={客户范围说明[k]}>{客户范围名[k]}</span> }))}
           />
-        ) : !统一公海 && !空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
+          {/*
+            疑似重复清单（12-15 第三批 C，P-合并-06）入口：「范围」旁一句淡链（企业版项目模式、不是市场视图、不是空库），不进页头按钮那一排（L-新3 页头只放导入 / 导出 / 离职交接 / 新建）。
+            谁看哪些组服务端判（负责人只看自己名下有份的，系统管理员全部）；不在这里数组数（数要整库成组，列表每次打开都算不划算）
+          */}
+          {!市场视图 && !空库 && (
+            <button type="button" className="cust-dupe-a" onClick={() => 去页.push(疑似重复页)} data-testid="cust-dupes">疑似重复 ›</button>
+          )}
+        </>) : !统一公海 && !空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
           <Segmented
             aria-label={`${b.customer} / 公海`}
             value={f.pool ? "公海" : "客户"}
@@ -1401,10 +1408,6 @@ export default function CustomersView({
               <Tooltip key="export" title={视图中 ? 视图外部话 : 导出说明}>
                 <Button className="cust-head-io" aria-label="导出" icon={<DownloadOutlined />} loading={导出中} disabled={视图中} onClick={导出做}>导出</Button>
               </Tooltip>
-            )}
-            {/* 疑似重复清单（12-15 第三批 C，P-合并-06）：企业版、不是市场视图；谁看哪些组服务端判（负责人只看自己名下有份的，系统管理员全部）。切换视图里照样能进去看 */}
-            {企业 && !市场视图 && !空库 && (
-              <Button key="dupes" className="cust-head-dupe" onClick={() => 去页.push(疑似重复页)} data-testid="cust-dupes">疑似重复</Button>
             )}
             {离职交接钮}
             {新建钮}
