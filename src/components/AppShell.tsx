@@ -56,6 +56,7 @@ import NavProgress, { LinkPending, PageFade } from "@/components/NavProgress";
 import { NavGoProvider, useNavGo } from "@/lib/nav-pending";
 import { 槽位, 名单详情页 } from "@/components/SlotSkeleton";
 import NoticeBell from "@/components/NoticeBell";
+import { 晚到, useLate, type 或晚到 } from "@/components/LateCount";
 import { 企业版根目录, 企业版亮项, 企业版页名, type 根目录图 } from "@/lib/enterprise/nav";
 import { 切换视图Provider } from "@/components/ViewAsContext";
 import ViewAsPicker from "@/components/ViewAsPicker";
@@ -82,12 +83,12 @@ type Props = {
   /** 左栏「收藏的项目」（11-02）。同上，没收藏过就没有这一栏。去 = 点了去哪（lib/favorites.ts 读项目收藏：项目页会跳去的客户页地址；没给 = /projects/<id>） */
   项目收藏?: { id: string; name: string; 去?: string }[];
   /** 导航项右边的数（2026-10-02 照毛玻璃原型）：客户总数、在谈的商机。只给有意义的那几项 */
-  计数?: Partial<Record<string, number>>;
+  计数?: Partial<Record<string, 或晚到<number>>>;
   /**
    * 要跟的：我名下逾期 + 今天到期、还没做的计划和待办（lib/reminders-db.ts）。
    * 和桌面端 Dock 上的数是同一个——左栏「跟进」、手机顶栏的跟进计划按钮（日历图标，11-03 C8-2 和通知铃铛分开）都挂它，人在 Dock 上看见 1，打开应用能顺着找到那个 1
    */
-  要跟: { 逾期: number; 今天: number };
+  要跟: 或晚到<要跟数据>;
   /** 跑在桌面端（Electron）里：红黄绿钮嵌在图标栏顶上，系统标题栏不再画 */
   desktop: boolean;
   /**
@@ -100,8 +101,9 @@ type Props = {
   企业版项目?: boolean;
   /** 企业版开关（服务端读了传下来）：右侧 AI 面板的回答里不摆「起草转介绍邀请」 */
   企业版?: boolean;
-  /** 企业版站内通知（11-01）：我没读的通知数，layout 读好传下来；undefined = 不摆铃铛（非企业版） */
-  通知未读?: number;
+  /** 企业版站内通知（11-01）：我没读的通知数，layout 读好传下来；undefined = 不摆铃铛（非企业版）。
+      上面这几个数 layout 不等、传 Promise 进来，壳先出、数到了再填（components/LateCount.tsx，11-26） */
+  通知未读?: 或晚到<number>;
   /** 标签页标题里的产品名。企业版可换成客户自己的（lib/enterprise/brand.ts） */
   产品名?: string;
   /**
@@ -181,6 +183,14 @@ function 身份分组(名单: 演示组[], 前缀: "view" | "demo", 我: string)
       ),
     })),
   }));
+}
+
+type 要跟数据 = { 逾期: number; 今天: number };
+const 没要跟: 要跟数据 = { 逾期: 0, 今天: 0 };
+/** 要跟几条、读屏和悬停那句话（左栏角标、手机顶栏日历、导航项 aria-label 共用） */
+function 要跟话(v: 要跟数据): { 数: number; 说法: string } {
+  const 数 = v.逾期 + v.今天;
+  return { 数, 说法: 数 > 0 ? `要跟 ${数} 条${v.逾期 > 0 ? `（逾期 ${v.逾期}）` : ""}` : "" };
 }
 
 export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = [], 计数 = {}, 要跟, desktop, 反馈去向, 企业版项目 = false, 企业版 = false, 通知未读, 产品名 = "Daedalus CRM", pane, ai, 演示名单, 演示换人, 全局搜索, 视图名单, 视图换人, 视图退出, 正在视图, 预热 = "全部", children }: Props) {
@@ -263,8 +273,9 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   // 团队同步收到同事的改动（壳 8 秒一轮）：刷新当前页。正在填的表单是客户端状态，refresh 不会冲掉
   useEffect(() => window.desktopTeam?.onChanged(() => router.refresh()), [router]);
 
-  const 要跟数 = 要跟.逾期 + 要跟.今天;
-  const 要跟说法 = 要跟数 > 0 ? `要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（逾期 ${要跟.逾期}）` : ""}` : "";
+  /* 要跟的数 layout 不等（11-26）：看得见的角标用 <晚到> 在流里填，aria-label 和 Dock 用这里到了的值（没到 = 当 0） */
+  const 要跟到了 = useLate(要跟);
+  const { 数: 要跟数, 说法: 要跟说法 } = 要跟话(要跟到了 ?? 没要跟);
   /*
     这个数一变（在哪儿完成了计划、勾了待办、改了时间——各处都会 router.refresh()，layout 重算），
     就叫桌面端的壳马上再问一次，Dock 上的数跟着变。原来只有计划页会叫，别处处理完 Dock 要等下一分钟。
@@ -272,9 +283,10 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
   */
   const 上次要跟 = useRef<number | null>(null);
   useEffect(() => {
+    if (要跟到了 === null) return;
     if (上次要跟.current !== null && 上次要跟.current !== 要跟数) void window.desktopReminders?.刷新();
     上次要跟.current = 要跟数;
-  }, [要跟数]);
+  }, [要跟数, 要跟到了]);
 
   type 导航项 = { key: string; icon: React.ReactNode; label: string; 组: "主" | "更多"; 挂要跟?: true };
   const nav = useMemo<导航项[]>(
@@ -548,11 +560,20 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
       {/* 和 Dock 上那个红数字同一个数、同一种红：人从 Dock 看见 1，打开应用第一眼就能对上它在哪。
           点进去是记录页，页头「计划」按钮上还挂着同一个数，再点就是逾期和今天那两组 */}
       {/* 企业版项目模式（11-12 C1 挂到「客户」）：提示说客户页里有逾期或今天要跟的（用户 11-12 定；原句指项目页「跟进」，入口已去掉） */}
-      {n.挂要跟 && 要跟数 > 0 && (
-        <span className="rail-count" title={`${要跟说法}${desktop ? "，和应用图标提示一致" : 企业版项目 ? "，客户页里有逾期或今天要跟的" : "，查看跟进计划中的逾期和今天"}`}>{要跟数 > 99 ? "99+" : 要跟数}</span>
+      {n.挂要跟 && (
+        <晚到 值={要跟} 占={没要跟}>
+          {(v) => {
+            const { 数, 说法 } = 要跟话(v);
+            return 数 > 0 && (
+              <span className="rail-count" title={`${说法}${desktop ? "，和应用图标提示一致" : 企业版项目 ? "，客户页里有逾期或今天要跟的" : "，查看跟进计划中的逾期和今天"}`}>{数 > 99 ? "99+" : 数}</span>
+            );
+          }}
+        </晚到>
       )}
       {/* 灰的数只是「有多少」，不是「要处理」：和上面那个红的分开，红的才催人。企业版不摆（10-30：几千个客户的总数没人看，只占地方） */}
-      {!企业版 && (计数[n.key] ?? 0) > 0 && <span className="rail-num">{计数[n.key]}</span>}
+      {!企业版 && 计数[n.key] !== undefined && (
+        <晚到 值={计数[n.key]!} 占={0}>{(数) => 数 > 0 && <span className="rail-num">{数}</span>}</晚到>
+      )}
       <LinkPending />
     </Link>
   ));
@@ -752,9 +773,16 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           {/* 手机上也要能说一句：用得别扭的时刻多半就发生在手机上（在路上翻学员的时候） */}
           {反馈去向 !== "none" && <FeedbackButton 去向={反馈去向} />}
           {通知未读 !== undefined && <NoticeBell 初始未读={通知未读} 手机 />}
-          <Badge count={要跟数} size="small" color={要跟.逾期 > 0 ? "var(--danger)" : "var(--text-muted)"}>
-            <Button type="text" icon={<CalendarOutlined />} aria-label={要跟说法 ? `跟进计划，${要跟说法}` : "跟进计划"} onClick={() => 跳.push("/follow-ups/plans")} />
-          </Badge>
+          <晚到 值={要跟} 占={没要跟}>
+            {(v) => {
+              const { 数, 说法 } = 要跟话(v);
+              return (
+                <Badge count={数} size="small" color={v.逾期 > 0 ? "var(--danger)" : "var(--text-muted)"}>
+                  <Button type="text" icon={<CalendarOutlined />} aria-label={说法 ? `跟进计划，${说法}` : "跟进计划"} onClick={() => 跳.push("/follow-ups/plans")} />
+                </Badge>
+              );
+            }}
+          </晚到>
           <Dropdown trigger={["click"]} menu={userMenu}>
             <Button type="text" aria-label={`${user.name}，账号菜单`}>
               <Avatar size={24} style={{ background: avatarColor(user.name), color: AVATAR_TEXT }}>{initial(user.name)}</Avatar>
@@ -764,7 +792,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         <Content className="app-content" style={{ padding: "22px 26px" }}>
           <ListMemory />
           <PageFade 页={底下那页}>
-            <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider></槽位>
+            <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟到了 ?? 没要跟}>{children}</要跟Context.Provider></我Provider></槽位>
           </PageFade>
         </Content>
         {/* 企业版项目模式：手机上也能问一句。点浮标，面板铺满屏（globals.css 的手机 .dock），× 收起 */}
@@ -931,7 +959,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         */}
         <ListMemory />
         <PageFade 页={底下那页} style={{ maxWidth: 1720, margin: "0 auto" }}>
-          <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟}>{children}</要跟Context.Provider></我Provider></槽位>
+          <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟到了 ?? 没要跟}>{children}</要跟Context.Provider></我Provider></槽位>
         </PageFade>
       </main>
       {/*
