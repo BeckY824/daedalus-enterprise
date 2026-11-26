@@ -60,7 +60,7 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
     const 行们 = await 看全部(() => prisma.entLeadVerify.findMany({
       where: {
         pending: { in: ["市场复核", "销售终验", "总管理终判"] },
-        project: { source: 重复咨询来源, phase: "线索", node: 有效线索节点, result: null, pooledAt: null, deletedAt: null },
+        project: { source: 重复咨询来源, phase: "线索", node: 有效线索节点, result: null, pooledAt: null, awaitAssignAt: null, deletedAt: null },
       },
       include: { project: { select: { id: true, name: true, ownerId: true } } },
       orderBy: { updatedAt: "asc" },
@@ -79,6 +79,8 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
         const 末提醒 = await prisma.entNotice.findFirst({ where: { kind: 验证时限通知种类, dedupeKey: { startsWith: `${头}:` } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
         const 做 = 该做({ since: 起, overdueAt: 末提醒?.createdAt ?? null }, 现在);
         if (!做) continue;
+        // 上一遍落不下来、已经通知过负责人的（缺必填等）：不每分钟重试，补齐后由负责人自己点终验
+        if (步 === "销售终验" && (await prisma.entNotice.findFirst({ where: { kind: 验证时限通知种类, dedupeKey: `${头}:卡住` }, select: { id: true } }))) continue;
         const 被等 = await 被等的人们(v.projectId, 步);
         const 链接 = `/projects/${encodeURIComponent(v.projectId)}`;
         if (做 !== "转") {
@@ -97,7 +99,19 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
           if (现在.getTime() < 起.getTime() + (超时提醒分钟 + 超时转出分钟) * 60_000) continue;
         }
         const r = await 到期落定(v.projectId, 步, 现在);
-        if (!r.ok) { 明细.没落成++; continue; }
+        if (!r.ok) {
+          明细.没落成++;
+          if (r.卡住) {
+            await notify([v.project.ownerId], {
+              kind: 验证时限通知种类,
+              title: `线索验证到期没能自动落定：${v.project.name}`,
+              body: `这条重复咨询线索等${步}超过时限，系统想按上一步判定替你落定，但被拦住了：${r.error}。请处理后自己点终验，系统不会再自动重试。`,
+              link: 链接,
+              key: `${头}:卡住`,
+            });
+          }
+          continue;
+        }
         明细.落定++;
         await notify([...new Set([...被等, v.verifiedById, v.project.ownerId])], {
           kind: 验证时限通知种类,

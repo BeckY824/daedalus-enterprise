@@ -9,7 +9,8 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 销售初判, 市场复核, 销售终验, 总管理终判, 到期落定话 } from "@/lib/project/lead-verify";
+import { 销售初判, 市场复核, 销售终验, 总管理终判, 到期落定话, 到期落定, 读线索验证 } from "@/lib/project/lead-verify";
+import * as 状态自动 from "@/lib/enterprise/cust-status-auto-db";
 import { 验证时限扫一遍, 验证时限通知种类, 起钟时刻 } from "@/lib/project/lead-verify-timeout";
 import { 待补数们 } from "@/lib/enterprise/invalid-makeup";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
@@ -88,6 +89,12 @@ describe("重复咨询线索的验证时限", () => {
     expect(((await 痕(id)).at(-1)?.note) ?? "").toContain(到期落定话);
     const 节点痕 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: id }, orderBy: { at: "desc" } });
     expect(节点痕.reason).toContain(到期落定话);
+    // 原因像系统自己落的，不像市场复核的人判的（建议 5）
+    expect(节点痕.reason).toContain("等市场复核超过时限，按上一步判定无效");
+    expect(节点痕.reason).not.toContain("市场复核判无效");
+    // 验证时间线里这一行的人显示「系统」，不是「已不在的成员」（必改 4）
+    const 详 = await 读线索验证(老板, await 现(id));
+    expect(详?.痕.at(-1)?.谁).toBe("系统");
     expect((await 待补数们([乙.id])).get(乙.id) ?? 0).toBe(1);
     for (const u of [市场.id, 乙.id]) {
       expect(await prisma.entNotice.count({ where: { userId: u, kind: 验证时限通知种类, title: { startsWith: "线索验证已自动落定" } } })).toBe(1);
@@ -248,5 +255,70 @@ describe("重复咨询线索的验证时限", () => {
     expect((await 现(id)).result).toBe("线索流失");
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+  it("销售终验到期：系统代推，节点变更的操作人是系统、验证痕是系统，不写必填拦截（必改 2）", async () => {
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 09:00"));
+    expect((await 市场复核(市场, id, true)).ok).toBe(true);
+    await prisma.entLeadVerify.update({ where: { projectId: id }, data: { reviewedAt: 京("2026-12-02 10:00") } });
+    await 记有效沟通(id);
+    await 扫(京("2026-12-02 11:00"));
+    expect((await 扫(京("2026-12-02 11:30"))).落定).toBe(1);
+    const 节点痕 = await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: id }, orderBy: { at: "desc" } });
+    expect(节点痕.userId).toBe("system");
+    expect(((await 痕(id)).at(-1))).toMatchObject({ step: "销售终验", userId: "system", note: 到期落定话 });
+    expect(await prisma.entRequiredBlock.count()).toBe(0);
+    expect((await 读线索验证(老板, await 现(id)))?.痕.at(-1)?.谁).toBe("系统");
+  });
+
+  it("销售终验到期被拦（缺沟通 / 必填）：只通知负责人一次、不写必填拦截、下一分钟不重试（必改 2）", async () => {
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 09:00"));
+    await 市场复核(市场, id, true);
+    await prisma.entLeadVerify.update({ where: { projectId: id }, data: { reviewedAt: 京("2026-12-02 10:00") } });
+    // 不补有效沟通：推进关拦着
+    await 扫(京("2026-12-02 11:00"));
+    const r = await 扫(京("2026-12-02 11:30"));
+    expect(r).toMatchObject({ 落定: 0, 没落成: 1 });
+    const 卡 = (u: string) => prisma.entNotice.count({ where: { userId: u, kind: 验证时限通知种类, title: { startsWith: "线索验证到期没能自动落定" } } });
+    expect(await 卡(乙.id)).toBe(1);
+    expect(await 卡(老板.id)).toBe(0);
+    expect(await prisma.entRequiredBlock.count()).toBe(0);
+    expect((await 现(id)).node).toBe("线索验证");
+    expect(await 状态(id)).toMatchObject({ pending: "销售终验" });
+    // 下一分钟、再下一分钟：不重试、不重发
+    for (const t of ["11:31", "11:32", "12:30"]) expect(await 扫(京(`2026-12-02 ${t}`))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect(await 卡(乙.id)).toBe(1);
+    expect((await 现(id)).node).toBe("线索验证");
+  });
+
+  it("待分配的线索不走到期落定（扫描查询带 awaitAssignAt: null）", async () => {
+    const id = await 项目({ awaitAssignAt: 京("2026-12-02 08:00") });
+    await 初判无效于(id, 京("2026-12-02 09:00")).catch(() => {});
+    await prisma.entLeadVerify.upsert({ where: { projectId: id }, create: { projectId: id, verdict: "初验无效", pending: "市场复核", verifiedAt: 京("2026-12-02 10:00") }, update: { pending: "市场复核", verifiedAt: 京("2026-12-02 10:00") } });
+    expect(await 扫(京("2026-12-02 12:00"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+  });
+
+  it("销售终验到期撞上销售同时提交异议：整笔回滚，项目不动、验证状态是总管理终判、没有系统的痕（必改 3）", async () => {
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 09:00"));
+    await 市场复核(市场, id, true);
+    await 记有效沟通(id);
+    const 原 = 状态自动.客户状态自动;
+    let 动过 = false;
+    const spy = vi.spyOn(状态自动, "客户状态自动").mockImplementation(async () => {
+      if (!动过) { 动过 = true; expect((await 销售终验(乙, id, false, "坚持无效")).ok).toBe(true); }
+      return 原();
+    });
+    const r = await 到期落定(id, "销售终验", 京("2026-12-02 11:30"));
+    spy.mockRestore();
+    expect(动过).toBe(true);
+    expect(r.ok).toBe(false);
+    expect((r as { error: string }).error).toContain("已被别人判过");
+    expect((r as { 卡住?: boolean }).卡住).toBe(false);
+    expect((await 现(id)).node).toBe("线索验证");
+    expect(await 状态(id)).toMatchObject({ pending: "总管理终判", salesAck: "提交异议" });
+    expect((await 痕(id)).some((l) => l.userId === "system")).toBe(false);
+    expect(await prisma.projectNodeLog.count({ where: { projectId: id, userId: "system" } })).toBe(0);
   });
 });
