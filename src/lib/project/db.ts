@@ -13,6 +13,7 @@ import { 不能当负责人 } from "../owners";
 import { 查完再写 } from "../check-then-write";
 import { 作废补位 } from "@/lib/enterprise/invalid-makeup";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
+import { 被并项目拦 } from "@/lib/enterprise/project-merge-guard";
 import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 节点推进管, 只管新建之后, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
@@ -354,6 +355,10 @@ export async function 改节点(
     if (!能改节点(me, p, org) && !上级代推) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
     // 待分配期间占着负责人一格的建的人不能推进、退回、点结局（P-转-21、X-68）：节点、结局都不给动，字段照改
     if (待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
+    // 合并客户第二批 2a：被并掉的项目 30 天内不能重启、改结局（要动先撤回合并，免得撤回对不上；project-merge-guard.ts）。
+    // 放在权限判断后面：没权限改的人照原样说没权限，不提示「先撤回合并」（2a 审查）
+    const 已并入 = await 被并项目拦(tx, p.id);
+    if (已并入) return { ok: false as const, error: 已并入 };
     // 企业版有结局的改回进程：客户在公海就拦（项目页 / 客户页交付结清页签的「改回进程」按客户判公海藏掉，load.ts 客户在公海）。
     // 包 看全部：原负责人看不到公海里的这位客户（回避），限定着查不到公海那一行
     if (企业版() && p.result && !到.result && p.customerId) {

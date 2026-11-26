@@ -4,6 +4,8 @@ import { getBusiness } from "@/lib/business";
 import { 企业版 } from "@/lib/enterprise/switch";
 import ProjectDetail from "./ProjectDetail";
 import SameNumberBanner from "./SameNumberBanner";
+import MergeHost from "../../customers/[id]/MergeHost";
+import MergedIntoLine from "./MergedIntoLine";
 import { 读项目详情, 项目页去向 } from "./load";
 import { 客户页项目地址, 录音确认参数, 带录音确认参数 } from "@/lib/project/customer-detail-href";
 import { 放弃参数, 带放弃参数 } from "@/lib/enterprise/lead-giveup-core";
@@ -34,5 +36,9 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   // 客户看不到的（只读卡、只露名字、公海里没领的同事客户）留在这页，照原样
   if (企业版() && r.露 && r.客户入口 === "详情") redirect(带上(客户页项目地址(r.customerId, id)));
   const { p } = r.props;
-  return <>{企业版() && r.露 ? <SameNumberBanner projectId={p.id} /> : null}<ProjectDetail key={p.id} {...r.props} /></>;
+  // 「并进另一个项目」（合并客户第二批 2a）：这页（客户看不到、留在项目详情的）也能并；框同客户页那只（MergeHost 里只开这一种，客户名用不上）
+  const 合并口 = 企业版() && p.并进 ? <MergeHost customerId={r.customerId} 客户名="" /> : null;
+  // 顶上「已并入 → 留下的项目」（第二批 2a）：企业版都摆一只（没并入时画空，撤回后结果写在原处）；留下的项目点过去由那边的 page 再决定跳不跳客户页
+  const 已并入口 = 企业版() ? <MergedIntoLine 单={p.已并入 ?? null} 项目名={p.name} 去={p.已并入 ? `/projects/${encodeURIComponent(p.已并入.到id)}` : null} /> : null;
+  return <>{企业版() && r.露 ? <SameNumberBanner projectId={p.id} /> : null}<ProjectDetail key={p.id} {...r.props} 合并口={合并口} 已并入口={已并入口} /></>;
 }

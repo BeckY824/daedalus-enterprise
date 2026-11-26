@@ -12,7 +12,8 @@ import { prisma } from "../prisma";
 import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
-import { 开现场, 落值, 建, 改, 读现值, 引用键, 无主客户进公海, 换人带走键, 号码待补, 补号码待补的, 库里样, type 现场, type 改的批 } from "./apply";
+import { 开现场, 落值, 建, 改, 读现值, 引用键, 无主客户进公海, 换人带走键, 号码待补, 补号码待补的, 库里样, 冲突说明键, type 现场, type 改的批 } from "./apply";
+import { 对照被项目合并改指, 对照已随合并话 } from "../enterprise/project-merge-guard";
 import { 企业版 } from "../enterprise/switch";
 import { 写不进, 规, type 值表 } from "./values";
 import { 别的在写, 重算最近跟进, type 定的一笔 } from "./revert";
@@ -44,6 +45,12 @@ function 解<T>(s: string | null | undefined, 缺: T): T {
 }
 
 type 冲突字段 = Record<string, { 原系统: 值表[string]; 我们: 值表[string]; 上次: 值表[string] }>;
+
+/** 冲突 fields 拆成字段和说明（说明放在 冲突说明键 那一格，apply.ts 记冲突写的） */
+function 拆说明(fields: string): { 字段: 冲突字段; 说明?: string } {
+  const { [冲突说明键]: 说明, ...字段 } = 解<Record<string, unknown>>(fields, {});
+  return { 字段: 字段 as 冲突字段, ...(typeof 说明 === "string" && 说明 ? { 说明 } : {}) };
+}
 
 const 名称 = (w: 待写 | null) => String(w?.值.name || w?.值.title || w?.外部ID || "");
 
@@ -120,6 +127,11 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
         const 现值 = await 读现值(tx, e, c.targetId);
         let 过时 = 过时了(c, ref, w, !!现值);
         if (过时 && ref && ref.targetId !== c.targetId && e === "customer" && (await 已并入(tx, c.targetId))) 过时 = 已并入话;
+        // 项目合并改指过的老商机对照（apply.ts 对照）：记冲突时对照行没动，这里总是过时；说明照记冲突那句，不说「原系统又变了」
+        if (过时 && ref && e === "opportunity") {
+          const 并 = await 对照被项目合并改指(tx, ref.id);
+          if (并) 过时 = 对照已随合并话(并.留下名);
+        }
         if (过时 || !ref) {
           await tx.entConflict.updateMany({ where: { id, status: "待定" }, data: { status: "已过时" } });
           结果.过时++;
@@ -133,7 +145,7 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
           continue;
         }
         const 上次 = 解<值表>(ref.written, {});
-        const 字段 = 解<冲突字段>(c.fields, {});
+        const 字段 = 拆说明(c.fields).字段;
 
         // 先算好原系统那份要落成什么样，算不出来（所属客户不在了）就不定
         let v: 值表 | null = null;
@@ -251,6 +263,8 @@ export type 冲突条目 = {
   本地已删: boolean;
   /** 字段 → 原系统 / 我们 / 上次 */
   字段: 冲突字段;
+  /** 记冲突时写的一句说明（如老商机已随项目合并并入别的项目）；没有不给 */
+  说明?: string;
   状态: string;
   记下时间: Date;
 };
@@ -272,7 +286,7 @@ export async function 列冲突(opts: { 状态?: string; 来源?: 来源; 跳过
       外部ID: c.externalId,
       名称: 名称(解<待写 | null>(c.incoming, null)),
       本地已删: c.localDeleted,
-      字段: 解<冲突字段>(c.fields, {}),
+      ...拆说明(c.fields),
       状态: c.status,
       记下时间: c.createdAt,
     })),

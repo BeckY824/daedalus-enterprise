@@ -32,6 +32,11 @@ const ACTION_LABEL: Record<string, string> = {
   // 合并客户第一批（11-25）：合并客户 / 合成联系人记 merge，撤回记 merge-undo；项目换客户在项目、两位客户上各一条
   "merge-undo": "撤回合并", "project-move-customer": "项目换客户", "project-move-customer-undo": "撤销换客户",
 };
+/** 同一个动作按对象另起叫法：项目合并（第二批 2a，project-merge.ts 在两个项目上各记一条 merge / merge-undo）和客户合并分开 */
+const ACTION_LABEL_BY_ENTITY: Record<string, Record<string, string>> = {
+  Project: { merge: "合并项目", "merge-undo": "撤回合并项目" },
+};
+const 动作叫法 = (action: string, entity: string) => ACTION_LABEL_BY_ENTITY[entity]?.[action] ?? ACTION_LABEL[action] ?? action;
 const ENTITY_LABEL: Record<string, string> = {
   EntRequiredBlock: "必填拦截记录",
   Customer: "学员", Contract: "签约", Lead: "线索", User: "成员", Channel: "渠道", Setting: "系统设置", Ai: "AI 功能", Device: "机器",
@@ -126,7 +131,7 @@ export default function AuditTab({ logs, 导出 = false }: { logs: AuditRow[]; �
                     render: (v: string, r: AuditRow) => (
                       <span className="audit-act">
                         <Tag color={ACTION_COLOR[v] ?? "default"} style={{ margin: 0 }}>
-                          {ACTION_LABEL[v] ?? v}
+                          {动作叫法(v, r.entity)}
                         </Tag>
                         <span className="muted">{r.entity === "Customer" ? b.customer : ENTITY_LABEL[r.entity] ?? r.entity}</span>
                       </span>

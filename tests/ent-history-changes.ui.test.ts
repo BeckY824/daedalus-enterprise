@@ -26,7 +26,9 @@ const 动作 = `
   export const 读项目历史=async(id,pid)=>{(window.__调??=[]).push(['项目',pid]);return {ok:true,...项目页(pid)}};`;
 const 合并动作 = `
   export const 并进来的合并单=async(id)=>{(window.__合并调??=[]).push(['合并单',id]);if(window.__合并慢)await new Promise(r=>{window.__合并放=r});if(window.__合并坏)throw new Error('连不上');return window.__合并单??[]};
-  export const 撤回合并单=async(mid)=>{(window.__合并调??=[]).push(['撤回',mid]);return window.__撤回结果??{ok:true,没还原:[]}};`;
+  export const 撤回合并单=async(mid)=>{(window.__合并调??=[]).push(['撤回',mid]);return window.__撤回结果??{ok:true,没还原:[]}};
+  export const 项目合并单们=async(pid)=>{(window.__合并调??=[]).push(['项目合并单',pid]);return (window.__项目合并单??{})[pid]??[]};
+  export const 撤回项目合并单=async(mid)=>{(window.__合并调??=[]).push(['撤回项目',mid]);return window.__撤回项目结果??{ok:true,没还原:[]}};`;
 const plugin: Plugin = { name: "history-changes", setup(b) {
   b.onResolve({ filter: /^\.\/history-actions$/ }, a => ({ path: a.path, namespace: "fixture", pluginData: 补全动作桩("src/app/(app)/customers/[id]/history-actions.ts", 动作) }));
   // 合并单（合并客户第一批 11-25）：window.__合并单 给几张；撤回回 window.__撤回结果
@@ -313,3 +315,57 @@ it("合并单没读到：写一行「合并单没读到，请稍后再试」，�
     expect(错).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
+
+it("项目合并单（第二批 2a）：两个项目那一节都列这一张（并入「A」/「B」并入这个项目）；能撤的给「撤回合并」，已合并不能撤的写原因；撤回后写结果、两节都不再给按钮", async () => {
+  for (const 宽 of [1280, 390]) {
+    const { page, 错 } = await open(宽);
+    try {
+      await page.evaluate((长名) => {
+        const w = window as unknown as Record<string, unknown>;
+        const at = new Date(Date.now() - 3600_000).toISOString();
+        const 老 = new Date(Date.now() - 40 * 86_400_000).toISOString();
+        const 单 = { id: "pm1", 从: "第二个项目", 到: 长名, 从id: "p2", 到id: "p1", at, status: "已合并", 谁: "测试销售甲", 能撤: true };
+        const 过期 = { id: "pm0", 从: "更早并进来的", 到: 长名, 从id: "p9", 到id: "p1", at: 老, status: "已合并", 谁: "测试销售甲", 能撤: false, 不能撤因: "合并已超过 30 天，不能撤回" };
+        w.__项目合并单 = { p1: [{ ...单, 方向: "并进来" }, { ...过期, 方向: "并进来" }], p2: [{ ...单, 方向: "并出去" }] };
+        w.__撤回项目结果 = { ok: true, 没还原: [{ 类: "沟通", id: "f1", 原因: "合并之后被改过（换了项目或删了）" }] };
+      }, "超长的项目名称".repeat(8));
+      await page.getByTestId("history-entry").click();
+      await page.getByRole("tab", { name: /项目/ }).click();
+      const 节 = page.getByTestId("history-project");
+      // 当前项目（留下的 p1）默认展开：并进来的两张；过了 30 天的写原因、不给按钮
+      await 节.nth(0).getByTestId("pmerge-order").first().waitFor();
+      expect(await 节.nth(0).getByTestId("pmerge-order").count()).toBe(2);
+      expect(await 节.nth(0).getByTestId("pmerge-order").first().locator(".mrg-order-t").innerText()).toBe("「第二个项目」并入这个项目");
+      expect(await 节.nth(0).getByTestId("pmerge-why").innerText()).toBe("合并已超过 30 天，不能撤回");
+      expect(await 节.nth(0).getByTestId("pmerge-undo").count()).toBe(1);
+      // 被并掉的 p2 那一节点开也看得到同一张：并入「A」，一行省略、悬停看全（带谁并的）
+      await 节.nth(1).locator(".hist-sec-h").click();
+      await 节.nth(1).getByTestId("pmerge-order").waitFor();
+      const 题 = 节.nth(1).locator(".mrg-order-t");
+      expect(await 题.innerText()).toContain("并入「超长的项目名称");
+      expect(await 题.evaluate((e) => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth])).toEqual(["ellipsis", true]);
+      expect(await 题.getAttribute("title")).toContain("（测试销售甲 ");
+      expect(await 横滚(page)).toEqual([false, false]);
+      if (宽 < 768) expect((await 节.nth(1).getByTestId("pmerge-undo").boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      await 节.nth(1).getByTestId("pmerge-undo").click();
+      const 框 = page.locator(".csq");
+      await 框.waitFor();
+      expect(await 框.innerText()).toContain("撤回合并：把「第二个项目」从「超长的项目名称");
+      await 框.getByRole("button", { name: "撤回合并" }).click();
+      await 节.nth(1).getByTestId("merge-undo-left").waitFor();
+      expect(await 节.nth(1).getByTestId("pmerge-order").innerText()).toContain("已撤回；留下 1 条没还原：");
+      expect(await 节.nth(1).getByTestId("merge-undo-left").innerText()).toContain("沟通：合并之后被改过（换了项目或删了）");
+      expect(await 节.nth(1).getByTestId("pmerge-undo").count()).toBe(0);
+      // 留下那一节的同一张也改成已撤回、不再给按钮（过了 30 天那张照旧写原因）
+      expect(await 节.nth(0).getByTestId("pmerge-order").first().innerText()).toContain("已撤回");
+      expect(await 节.nth(0).getByTestId("pmerge-undo").count()).toBe(0);
+      expect(await 节.nth(0).getByTestId("pmerge-why").count()).toBe(1);
+      expect(await page.evaluate(() => (window as unknown as { __刷新?: number }).__刷新)).toBe(1);
+      const 调们 = await page.evaluate(() => (window as unknown as { __合并调?: unknown[] }).__合并调);
+      expect(调们).toEqual([["合并单", "a"], ["项目合并单", "p1"], ["项目合并单", "p2"], ["撤回项目", "pm1"]]);
+      expect(await 横滚(page)).toEqual([false, false]);
+      await 截图(page, `历史变更-项目合并单-${宽}.png`);
+      expect(错).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 90_000);

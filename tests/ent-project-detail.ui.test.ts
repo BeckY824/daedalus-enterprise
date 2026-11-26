@@ -33,7 +33,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import ProjectRoster from '@/components/ProjectRoster';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';
+    import {合并桥} from '@/app/(app)/customers/[id]/merge-bridge';    import ProjectDetail from '@/app/(app)/projects/[id]/ProjectDetail';import ProjectRoster from '@/components/ProjectRoster';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';
     const root=createRoot(document.getElementById('root'));
     const 长='超长项目名字'.repeat(8), 串='X'.repeat(90);
     /* 11-01 权限只认业务角色：「项目转让」按 能转让 给（总管理 / 上级），fixture 里看的人能转让 */
@@ -51,6 +51,9 @@ beforeAll(async () => {
     const 包=(x)=><ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}>{x}</BusinessProvider></App></ConfigProvider>;
     window.__render=(企业)=>root.render(包(详情(企业)));
     /* 10-29 沟通「…」→ 修改 / 删除；下一步 = 一句话 + 可选时间 */
+    /* 合并客户第二批 2a：项目详情页「⋯」里的「并进另一个项目」点了经 merge-bridge 叫 合并口 开框；合并口 放个探针，把请求写出来 */
+    const 并探针=()=>{const {请求,收}=React.useContext(合并桥);return 请求?<div data-testid="pm-probe">{请求.种+'|'+请求.projectId}<button onClick={收}>收</button></div>:null};
+    window.__并=(x,口=true)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,...x}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={null} 合并口={口?<并探针/>:null}/>));
     window.__over=(x)=>root.render(包(<ProjectDetail p={{...详情(true).props.p,...x}} 能改={true} 候选={[]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
     /* U-项目-07 转让：候选里有接手的人（第一个是自己） */
     window.__转=()=>root.render(包(<ProjectDetail p={详情(true).props.p} 能改={true} 候选={[{id:'qa',name:'组长甲',email:'qa@x.test'},{id:'u3',name:'接手乙',email:'u3@x.test'}]} 在职={[]} 联系人们={[]} 角色们={[]} 类别们={[]} 卡点={{们:[],能发:true,默认:{默认类型:'中度卡点',默认影响:'短期不影响'},原因们:['价格']}}/>));
@@ -1524,6 +1527,35 @@ it("R6 页头：只留项目转让 / 项目退回公海（11-12 改名），没�
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it("[合并客户第二批 2a] 项目详情页「⋯」：服务端给了 并进 才摆「并进另一个项目」，点了经 merge-bridge 开框（种 并项目）；灰着的下面一行写原因；没给 合并口 不摆、也不出「⋯」", async () => {
+  for (const 宽 of [1280, 390]) {
+    const { page, errors } = await open(true, 宽);
+    try {
+      const 画 = (x: object, 口 = true) => page.evaluate(([v, k]) => (window as unknown as { __并: (x: unknown, k: boolean) => void }).__并(v, k as boolean), [x, 口] as const);
+      await 画({ 并进: {} });
+      const 更多 = page.getByRole("button", { name: "项目的更多操作" });
+      await 更多.click();
+      const 项 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) li.ant-dropdown-menu-item").filter({ hasText: "并进另一个项目" });
+      expect(await 项.getAttribute("aria-disabled")).not.toBe("true");
+      await 项.click();
+      expect(await page.getByTestId("pm-probe").innerText()).toMatch(/^并项目\|p1/);
+      await page.getByTestId("pm-probe").getByRole("button").click();
+      await 画({ 并进: { 灰: "项目已经结束（成交），不能再并" } });
+      await 更多.click();
+      expect(await 项.getAttribute("aria-disabled")).toBe("true");
+      expect(await 项.innerText()).toContain("项目已经结束（成交），不能再并");
+      await page.keyboard.press("Escape");
+      await 画({ 并进: {} }, false);
+      await expect.poll(() => 更多.count()).toBe(0);
+      await 画({ 并进: {} });
+      await expect.poll(() => 更多.count()).toBe(1);
+      await 画({ 并进: null });
+      await expect.poll(() => 更多.count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 60_000);
 
 it("项目退回公海（11-12 改名）：确认框叫「把项目退回公海？」，写明只退这个项目、客户不动", async () => {
   const { page, errors } = await 覆盖(1280, { 能放公海: true });
