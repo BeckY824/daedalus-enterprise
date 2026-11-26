@@ -20,7 +20,7 @@ const 动作 = `
   export const 预览项目换客户=async(p,t)=>{记('换预览',p,t);return {ok:true,预览:window.__换预览}};
   export const 给项目换客户=async(p,t)=>{记('换',p,t);return {ok:true,沟通:4,挂靠:2,logId:'L1'}};
   export const 撤销换客户=async(id)=>{记('撤销换',id);return {ok:true}};
-  export const 能并同事的=async()=>window.__管===true;
+  export const 能并同事的=async()=>{if(window.__管卡)await new Promise(()=>{});return window.__管===true};
   export const 预览合并申请=async(a,b,号)=>{记('申预览',a,b,号);return {ok:true,预览:window.__申预览??{能发:false,原因:['只有留下那家的客户负责人能发合并申请'],预览:null,同意人:[],等待工作日:5}}};
   export const 发起客户合并申请=async(a,b,o)=>{记('发申请',a,b,o);return {ok:true,requestId:'r1',同意人:[],expiresAt:''}};
   export const 撤回客户合并申请=async(id)=>{记('撤申请',id);return {ok:true}};`;
@@ -363,6 +363,33 @@ it("自己负责的两家、直接合并拦下（名下有同事在推的项目�
     expect(await page.locator(".mrg-why").innerText()).toContain("同事负责、还没结束的项目");
     expect((await 调(page)).map((x) => x[0]).filter((x) => x === "预览" || x === "申预览")).toEqual(["预览", "申预览"]);
     expect(await page.getByTestId("merge-request-go").count()).toBe(0);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("要申请的候选、申请预览发不了：不再留「正在读取…」，只摆原因块", async () => {
+  const { page, 错 } = await open(1280, { 种: "客户" }, {
+    __候选: [{ id: "b", name: "乙", 编号: "NO.00012", 负责人: "同事乙", 要申请: true, 按号: "13800000000" }],
+  });
+  try {
+    await page.getByLabel("搜客户").fill("13800000000");
+    await page.getByTestId("merge-candidate").click();
+    await page.locator(".mrg-why").waitFor();
+    expect(await page.locator(".mrg-why").innerText()).toContain("只有留下那家的客户负责人能发合并申请");
+    expect(await page.getByText("正在读取…").count()).toBe(0);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("系统管理员身份还没读到（管 为 null）：自己负责的直接合并被拦下，照样去读申请预览", async () => {
+  const 拦 = { ...预览(), 能并: false, 原因: ["「乙」名下有 1 个同事负责、还没结束的项目，不能直接合并"], 联系人们: { 留下: [], 并掉: [] } };
+  const { page, 错 } = await open(1280, { 种: "客户" }, { __预览: 拦, __管卡: true });
+  try {
+    await page.getByLabel("搜客户").fill("乙");
+    await page.getByTestId("merge-candidate").click();
+    await page.locator(".mrg-why").waitFor();
+    expect((await 调(page)).map((x) => x[0]).filter((x) => x === "预览" || x === "申预览")).toEqual(["预览", "申预览"]);
+    expect(await page.getByText("请找系统管理员代并").count()).toBe(0);
     expect(错).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);

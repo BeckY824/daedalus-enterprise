@@ -190,7 +190,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
       : 预览合并(customerId, c.id).then(async (r) => {
           if (这次 !== 读次.current) return;
           if (!r.ok) { set读错(r.error); return; }
-          if (!r.预览.能并 && 管 === false) return 读申请(r.预览);
+          if (!r.预览.能并 && 管 !== true) return 读申请(r.预览);
           set预(r.预览);
           先配(r.预览);
         });
@@ -310,7 +310,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
       ) : null}
     >
       {!并掉 && <CandidateSearch customerId={customerId} 提示={`选要并进这位客户的那家：它的联系人、项目、沟通都挪过来，它进回收站；${撤回话}。`} 空话={合并空话of(管)} 选={挑} />}
-      {并掉 && !预 && !读错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
+      {并掉 && !预 && !申 && !读错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
       {并掉 && 读错 && <p role="alert" className="mrg-err">{读错}</p>}
       {并掉 && !走申请 && 申 && !申.能发 && <原因块 原因={申.原因} />}
       {并掉 && 预 && !预.能并 && !走申请 && <原因块 原因={预.原因} />}
