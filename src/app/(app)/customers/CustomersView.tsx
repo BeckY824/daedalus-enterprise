@@ -11,7 +11,7 @@ import { 量变形起点, 放变形 } from "../projects/view-morph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
-import { Button, Select, Space, Dropdown, Tag, Segmented, Tooltip, type MenuProps, type SelectProps } from "antd";
+import { Button, Space, Dropdown, Tag, Segmented, Tooltip, type MenuProps, type SelectProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
   DownloadOutlined,
@@ -83,6 +83,7 @@ import { 客户编号显示 } from "@/lib/customer-no";
 import { 客户抬头, 客户显名, type 抬头节点格 } from "@/lib/enterprise/customer-title";
 import { 出错原话 } from "@/lib/stale-deploy";
 import { 切我分出去的去掉, 触点显示名, type 来源筛选组 } from "@/lib/enterprise/customer-source-filter";
+import FilterSelect from "@/components/FilterSelect";
 
 /** 「新增客户」弹窗（10-31 P5，整套建档向导）：点了才要，单拆一包，不压客户列表首屏 JS（速度闸门 850 KB） */
 // 客户看板（U-客户-06）只在切到「看板」时用，连同分页条单独一块，别压在客户列表首屏（速度闸门）
@@ -691,7 +692,7 @@ export default function CustomersView({
       ? [{
           键: "custStatus", 名: "客户状态", 宽: 140, 默认外露: true, 有值: !!f.custStatus,
           渲染: (style: CSSProperties) => (
-            <Select style={style} allowClear aria-label="客户状态"
+            <FilterSelect style={style} allowClear aria-label="客户状态"
               /* 手机宽（390）这一格只有约 120 宽，「全部客户状态」会被截成「全部客户…」：手机上换成短写「全部状态」，
                  悬停看全写、读屏照 aria-label「客户状态」（globals.css .ph-short / .ph-full） */
               placeholder={<><span className="ph-full">全部客户状态</span><span className="ph-short" title="全部客户状态">全部状态</span></>}
@@ -705,7 +706,7 @@ export default function CustomersView({
       : [{
           键: "followStatus", 名: "跟进状态", 宽: 140, 默认外露: true, 有值: !!f.followStatus,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部跟进状态" allowClear
+            <FilterSelect style={style} placeholder="全部跟进状态" allowClear
               value={f.followStatus || undefined} onChange={(v) => apply({ followStatus: v ?? "" })}
               options={FOLLOW_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
           ),
@@ -715,7 +716,7 @@ export default function CustomersView({
       ? [{
           键: "country", 名: "国家", 宽: 130, 默认外露: true, 有值: !!f.country,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部国家" allowClear showSearch
+            <FilterSelect style={style} placeholder="全部国家" allowClear
               value={f.country || undefined} onChange={(v) => apply({ country: v ?? "" })}
               options={[...new Set([...国家们, ...(f.country ? [f.country] : [])])].map((x) => ({ value: x, label: x }))} />
           ),
@@ -726,7 +727,7 @@ export default function CustomersView({
       ? [{
           键: "level", 名: "客户等级", 宽: 120, 默认外露: true, 有值: !!f.level,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部等级" allowClear aria-label="客户等级"
+            <FilterSelect style={style} placeholder="全部等级" allowClear aria-label="客户等级"
               value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
               options={[...客户等级.map((x) => ({ value: x, label: 客户等级说明[x] })), { value: 未分级, label: 未分级 }]} />
           ),
@@ -738,7 +739,7 @@ export default function CustomersView({
       ? [{
           键: "dept", 名: "部门", 宽: 140, 默认外露: true, 有值: 部门选项.some((o) => o.value === f.dept),
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部部门" allowClear aria-label="部门"
+            <FilterSelect style={style} placeholder="全部部门" allowClear aria-label="部门"
               value={部门选项.some((o) => o.value === f.dept) ? f.dept : undefined} onChange={(v) => apply({ dept: v ?? "" })}
               options={部门选项} />
           ),
@@ -749,7 +750,7 @@ export default function CustomersView({
       ? [{
           键: "salesOwnerId", 名: "负责人", 宽: 150, 默认外露: true, 有值: !!f.salesOwnerId,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部负责人" allowClear aria-label="负责人"
+            <FilterSelect style={style} placeholder="全部负责人" allowClear aria-label="负责人"
               value={f.salesOwnerId || undefined}
               onChange={(v) => apply({ salesOwnerId: v ?? "" })}
               // 同名的带部门（L-新6）：两位同名同事原来只能靠登录名分；部门是看的人认得的
@@ -766,13 +767,13 @@ export default function CustomersView({
       ? [{
           键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 挤: true, 有值: !!f.phase,
           渲染: (style: CSSProperties) => (
-            <Select style={style} aria-label="阶段" placeholder="全部阶段" allowClear value={f.phase || undefined}
+            <FilterSelect style={style} aria-label="阶段" placeholder="全部阶段" allowClear value={f.phase || undefined}
               onChange={(v?: string) => apply({ phase: v ?? "", node: "" })} options={阶段们.map((x) => ({ value: x, label: x }))} />
           ),
         }, {
           键: "node", 名: "进程", 宽: 130, 默认外露: true, 挤: true, 有值: !!f.node,
           渲染: (style: CSSProperties) => (
-            <Select style={style} aria-label="进程" placeholder="全部进程" allowClear value={f.node || undefined} popupMatchSelectWidth={false}
+            <FilterSelect style={style} aria-label="进程" placeholder="全部进程" allowClear value={f.node || undefined} popupMatchSelectWidth={false}
               onChange={(v?: string | null) => apply({ node: v ?? "" })} options={进程选项} />
           ),
         }]
@@ -785,7 +786,7 @@ export default function CustomersView({
       ? [{
           键: "triState", 名: "回收状态", 宽: 130, 默认外露: true, 挤: true, 有值: !!f.triState,
           渲染: (style: CSSProperties) => (
-            <Select style={style} aria-label="回收状态" placeholder="全部回收状态" allowClear value={f.triState || undefined}
+            <FilterSelect style={style} aria-label="回收状态" placeholder="全部回收状态" allowClear value={f.triState || undefined}
               onChange={(v?: string) => apply({ triState: v ?? "" })} options={三态筛选值们.map((x) => ({ value: x, label: 三态显示名(x) }))} />
           ),
         }]
@@ -793,7 +794,7 @@ export default function CustomersView({
     {
       键: "grade", 名: b.fields.grade, 宽: 130, 默认外露: false, 有值: !!f.grade,
       渲染: (style: CSSProperties) => (
-        <Select style={style} placeholder={`全部${b.fields.grade}`} allowClear
+        <FilterSelect style={style} placeholder={`全部${b.fields.grade}`} allowClear
           value={f.grade || undefined} onChange={(v) => apply({ grade: v ?? "" })}
           options={[...b.grades.map((g) => ({ value: g, label: g })), ...旧职位.map((g) => ({ value: g, label: `${g}（已不在选项里）` }))]} />
       ),
@@ -803,14 +804,14 @@ export default function CustomersView({
       ? [{
           键: "level", 名: "级别", 宽: 120, 默认外露: false, 有值: !!f.level,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部级别" allowClear aria-label="客户级别"
+            <FilterSelect style={style} placeholder="全部级别" allowClear aria-label="客户级别"
               value={f.level || undefined} onChange={(v) => apply({ level: v ?? "" })}
               options={[...级别选项(), { value: 未分级, label: 未分级 }]} />
           ),
         }, {
           键: "customerType", 名: "客户类型", 宽: 140, 默认外露: false, 有值: !!f.customerType,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部客户类型" allowClear aria-label="客户类型"
+            <FilterSelect style={style} placeholder="全部客户类型" allowClear aria-label="客户类型"
               popupRender={(menu) => <>{下拉说明(字典定义.custType.说明)}{menu}</>}
               popupMatchSelectWidth={false}
               {...释义下拉(字典释义?.类型)}
@@ -821,7 +822,7 @@ export default function CustomersView({
           // 归档档位（M-导入-23 / X-63）：归档导入来的客户按档位看；默认收着
           键: "archiveTier", 名: "归档档位", 宽: 130, 默认外露: false, 有值: !!f.archiveTier,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部归档档位" allowClear aria-label="归档档位"
+            <FilterSelect style={style} placeholder="全部归档档位" allowClear aria-label="归档档位"
               value={f.archiveTier || undefined} onChange={(v) => apply({ archiveTier: v ?? "" })}
               options={归档档位们.map((x) => ({ value: x, label: x }))} />
           ),
@@ -831,7 +832,7 @@ export default function CustomersView({
           // 框 160（F-049 审查）：钉到外面时「全部客户来源」、选中后的「客户介绍（触点）」都留足；窄屏照 globals.css 收缩规则
           键: "channelId", 名: "客户来源", 宽: 160, 默认外露: false, 有值: !!f.channelId,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部客户来源" allowClear aria-label="客户来源" showSearch={{ optionFilterProp: "label" }}
+            <FilterSelect style={style} placeholder="全部客户来源" allowClear aria-label="客户来源" showSearch
               popupMatchSelectWidth={false} classNames={{ popup: { root: "src-filter-pop" } }}
               value={f.channelId || undefined} onChange={(v) => apply({ channelId: v ?? "" })}
               options={渠道筛选项} />
@@ -841,7 +842,7 @@ export default function CustomersView({
           // 要常用的在「更多筛选」里自己摆出来（useCustomFilters 记在本机）
           键: "country", 名: "国家", 宽: 140, 默认外露: false, 有值: !!f.country,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部国家" allowClear aria-label="国家" showSearch={{ optionFilterProp: "label" }}
+            <FilterSelect style={style} placeholder="全部国家" allowClear aria-label="国家"
               popupMatchSelectWidth={false}
               value={f.country || undefined} onChange={(v) => apply({ country: v ?? "" })}
               options={[...new Set([...国家们.filter((x) => 有值(x)), ...(f.country ? [f.country] : [])])].map((x) => ({ value: x, label: x }))} />
@@ -878,7 +879,7 @@ export default function CustomersView({
       ? [{
           键: "decisionStatus", 名: "决策状态", 宽: 140, 默认外露: false, 有值: !!f.decisionStatus,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部决策状态" allowClear
+            <FilterSelect style={style} placeholder="全部决策状态" allowClear
               value={f.decisionStatus || undefined} onChange={(v) => apply({ decisionStatus: v ?? "" })}
               options={DECISION_STATUSES.map((s) => ({ value: s, label: statusLabel(b, s) }))} />
           ),
@@ -888,7 +889,7 @@ export default function CustomersView({
       ? [{
           键: "source", 名: "来源", 宽: 130, 默认外露: false, 有值: !!f.source,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部来源" allowClear showSearch
+            <FilterSelect style={style} placeholder="全部来源" allowClear
               value={f.source || undefined} onChange={(v) => apply({ source: v ?? "" })}
               options={[...new Set([...b.sources, ...(f.source ? [f.source] : [])])].map((x) => ({ value: x, label: x }))} />
           ),
@@ -898,7 +899,7 @@ export default function CustomersView({
       ? [{
           键: "channelOwnerId", 名: "渠道负责人", 宽: 150, 默认外露: false, 有值: !!f.channelOwnerId,
           渲染: (style: CSSProperties) => (
-            <Select style={style} placeholder="全部渠道负责人" allowClear
+            <FilterSelect style={style} placeholder="全部渠道负责人" allowClear
               value={f.channelOwnerId || undefined} onChange={(v) => apply({ channelOwnerId: v ?? "" })}
               options={成员选项(users)} />
           ),

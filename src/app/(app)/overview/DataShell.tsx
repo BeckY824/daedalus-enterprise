@@ -4,7 +4,7 @@ import { useBusiness } from "@/lib/business-client";
 import { 签约叫 } from "@/lib/business-config";
 import { useOptimistic, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button, Drawer, Segmented, Select, Tabs } from "antd";
+import { Button, Drawer, Segmented, Tabs } from "antd";
 import { DownOutlined } from "@ant-design/icons";
 import { PageHead } from "@/components/ui";
 import Skeleton from "@/components/Skeleton";
@@ -12,6 +12,7 @@ import { 视图们, type 视图 } from "./views";
 import { 读页签, 复盘页签们, 复盘页签叫法, type 复盘页签 } from "@/lib/project/board-todos";
 import CustomRangePicker from "@/components/CustomRangePicker";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
+import FilterSelect from "@/components/FilterSelect";
 
 /**
  * 「数据」页的壳：标题 + 三视图切换；企业版按项目时是「复盘」页：人员选择 + 「任务 | 卡点 | 沟通 | 数据」四个页签（P15 → P7）。
@@ -110,7 +111,7 @@ export default function DataShell({
         <CustomRangePicker 段={段 ?? 读日期段()} 改={(d) => 改({ view: "自定义", from: d.from, to: d.to })} />
       )}
       {批次 && (
-        <Select
+        <FilterSelect
           className="data-shell-batch"
           aria-label="导入批次"
           value={显批}
@@ -144,15 +145,13 @@ export default function DataShell({
   }
   function 人下拉(关?: () => void) {
     return (
-      <Select
+      <FilterSelect
         className="data-shell-who"
         aria-label="看谁的"
         disabled={人不适用}
         value={显人}
         // 换了人，待办从第一页看起
         onChange={(v: string) => { 改({ ownerId: v || undefined, p: undefined }); 关?.(); }}
-        showSearch
-        optionFilterProp="label"
         popupMatchSelectWidth={false}
         options={[{ value: "", label: "全部成员" }, ...(选人?.选项 ?? [])]}
       />

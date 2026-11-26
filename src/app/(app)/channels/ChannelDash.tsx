@@ -9,7 +9,7 @@
  */
 import { useEffect, useMemo, useState, useTransition, type ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Segmented, Select, Tooltip } from "antd";
+import { Segmented, Tooltip } from "antd";
 import { 合计文字, 合计缩写 } from "@/lib/currency";
 import CustomRangePicker from "@/components/CustomRangePicker";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
@@ -24,6 +24,7 @@ import { LinkPending } from "@/components/NavProgress";
 import { RosterNote } from "./RosterNote";
 import CountUp from "@/components/CountUp";
 import Skeleton from "@/components/Skeleton";
+import FilterSelect from "@/components/FilterSelect";
 
 /** 一位小数的百分比；算不了是「—」 */
 function 百分(r: number | null): string {
@@ -389,11 +390,10 @@ export default function ChannelDash({
             {进合计 > 0 && <span className="chan-count">（{数(进合计)}）</span>}
             {公海.视角 === "市场管理" && (
               // D37：显示选中值「全部创建人」（墨色），不靠占位字
-              <Select
+              <FilterSelect
                 size="small"
                 className="chan-dash-pool-who"
                 aria-label="创建人"
-                showSearch={{ optionFilterProp: "label" }}
                 value={创建人}
                 onChange={(v: string) => set创建人(v ?? "")}
                 options={[{ value: "", label: "全部创建人" }, ...公海.创建人们.map((u) => ({ value: u.id, label: u.name }))]}

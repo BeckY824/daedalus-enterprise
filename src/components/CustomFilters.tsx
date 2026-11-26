@@ -5,6 +5,7 @@ import { Button, Checkbox, Popover, Select, Space, type SelectProps } from "antd
 import { FilterOutlined, LeftOutlined, SettingOutlined } from "@ant-design/icons";
 import { useLocalPref } from "@/lib/local-pref";
 import { 切换外露, 拆筛选项, 筛选偏好键, type 筛选项元 } from "@/lib/custom-filters";
+import FilterSelect from "@/components/FilterSelect";
 
 export type 筛选项 = 筛选项元 & {
   /** 勾选清单里写的名字 */
@@ -112,12 +113,13 @@ function MoreFiltersButton({
 
 /**
  * 摆在外面、正筛着的下拉（原型 cu.filter）：变成一枚「名：值 ×」标签——前缀写这一项叫什么，× 一直看得见（不用悬停），
- * 点标签照旧弹出下拉换值。只认 antd 的 Select（单选，各页筛选行都是它）：别的控件（日期段、号码框）自己有样子，照旧。
+ * 点标签照旧弹出下拉换值。只认筛选下拉 FilterSelect（F-050 起各页筛选行都是它，能打字搜）和 antd 的 Select（单选）：
+ * 别的控件（日期段、号码框）自己有样子，照旧。
  * 宽度跟着字走（globals.css .cf-chip），每页不用改：名字、有值都在筛选项里了
  */
 function 外露项(x: 筛选项): ReactElement {
   const el = x.有值 ? x.渲染({}) : x.渲染({ width: x.宽 });
-  if (!x.有值 || el.type !== Select) return cloneElement(el, { key: x.键 });
+  if (!x.有值 || (el.type !== Select && el.type !== FilterSelect)) return cloneElement(el, { key: x.键 });
   const 下拉 = el as ReactElement<SelectProps>;
   const p = 下拉.props;
   if (p.mode) return cloneElement(x.渲染({ width: x.宽 }), { key: x.键 });

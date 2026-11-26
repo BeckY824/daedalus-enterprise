@@ -209,7 +209,49 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 页签数P = 子集 ? Promise.resolve(null) : 客户页签数();
   // 中间那两步先抛了的话，这条别成「没人接的拒绝」；它自己出错照样在下面 Promise.all 里抛
   页签数P.catch(() => {});
-  const 快 = sort || 等级排序 || 创建排序 || 跟进排序 ? null : await 关键词分页(sp, 正整数(sp.page, 1), pageSize);
+  const 企 = 企业版();
+  /** 企业版项目模式：客户表格多「当前节点」「项目数」两列和「阶段」「进程」两个筛选（第 3 批） */
+  const 按项目 = 企 && b.projectMode;
+  /*
+    「看板」视图（11-12 客户详情合并第 3 批，构想页 C17 / C18）：页头、筛选行和客户列表一样，表格换成按节点分列的项目看板
+    （和项目页同一份取数和画法，projects/board-page.tsx）。记在 cookie（lib/customers-view-pref.ts），服务端据此只取一边：
+    看板视图不取这一页客户行和两列，列表视图不取看板。子集（导入这一批、本月新增、直接推荐）里照旧是列表。
+    11-26 提速：判定和看板那份挪到总数之前起，和下面的关键词分页 / 数总数一起跑（原来等总数、公海兜底都完了才起）。
+    看板视图里总数照样要：页头「导出」悬停写「导出 N 位」、空库判定（CustomersView 空库）都用 total，所以总数那条不省
+  */
+  // 市场角色的看板是上面那套（我分出去的），走到这里的市场角色都是列表
+  const 看板视图 = 按项目 && !子集 && !市场角色 && (await 记的看法()) === "board";
+  const 看板P = 看板视图 ? 看板体(me, sp) : null;
+  看板P?.catch(() => {});
+  // 这两样和总数互不相干，先起（原来总数、公海兜底之后才一个个 await）；出错照样在下面 await 时抛
+  const 号码藏着P = 号码藏着();
+  号码藏着P.catch(() => {});
+  const 删权限orgP = 企 ? 权限组织() : Promise.resolve(null);
+  删权限orgP.catch(() => {});
+  const 慢路 = !!(sort || 等级排序 || 创建排序 || 跟进排序);
+  /*
+    「客户」页签搜不到、公海里却有对得上的：数出来给一条去公海页签的路（领导点「搜一下」找不到人，多半是掉进公海了）。
+    负责人条件不带：换到公海页签时它会清掉（公海里的负责人是「原负责人」），数要和点过去看到的对得上。
+    企业版项目模式（统一公海）点过去是 /pool、只带关键词（CustomersView「公海里有 N 位匹配 ›」）：「客户来源」也不带（F-049 审查），
+    不然筛着「未填」/ 某个触点数出 N 位、点过去那页不按它筛，对不上
+  */
+  const 去公海筛 = { ...sp, pool: "1", salesOwnerId: undefined, scope: undefined, ...(企业版() && b.projectMode ? { channelId: undefined } : {}) };
+  /*
+    看板视图不数它：「公海里有 N 位匹配 ›」只画在列表表格的空态里（DataList 没对上），看板视图表格整块换成看板体，这一句不渲染（11-26 核过）
+  */
+  const 可能兜底 = !子集 && sp.pool !== "1" && !看板视图;
+  const 数公海筛 = async () => prisma.customer.count({ where: await 客户筛选条件(去公海筛) });
+  /*
+    公海兜底提前起（11-26 提速）：只在带关键词时（搜不到人是它主要的用处；不带关键词 快 一定是 null）和下面的主查询一起跑，
+    总数不是 0 就丢掉不用；用哪一条和原来一样——快路走得通用关键词分页的数，走不通 / 按别的排序数 count。
+    不带关键词的筛选 0 条照旧等总数出来再数（不为每次打开多数一遍公海）
+  */
+  const 预兜底 = 可能兜底 && !!sp.keyword?.trim();
+  const 预快公海P = 预兜底 && !慢路 ? 关键词分页(去公海筛, 1, 1) : null;
+  预快公海P?.catch(() => {});
+  const 预数公海P = 预兜底 && 慢路 ? 数公海筛() : null;
+  预数公海P?.catch(() => {});
+  const 快 = 慢路 ? null : await 关键词分页(sp, 正整数(sp.page, 1), pageSize);
   const where = 快 ? null : await 客户筛选条件(sp);
   /*
     两个页签上的数：都不带筛选、和左栏「客户」角标在同一套限定下数（layout.tsx 的 customer.count()），
@@ -224,34 +266,16 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 非公海总数 = 页签数?.非公海 ?? null;
   // 除了页签什么都没筛（最常见的「点进客户页」）：总数就是页签上那个数，不再数一遍
   const total = 筛出 ?? (就是页签 === "公海" ? 公海总数 : 非公海总数) ?? 0;
-  /*
-    「客户」页签搜不到、公海里却有对得上的：数出来给一条去公海页签的路（领导点「搜一下」找不到人，多半是掉进公海了）。
-    负责人条件不带：换到公海页签时它会清掉（公海里的负责人是「原负责人」），数要和点过去看到的对得上。
-    企业版项目模式（统一公海）点过去是 /pool、只带关键词（CustomersView「公海里有 N 位匹配 ›」）：「客户来源」也不带（F-049 审查），
-    不然筛着「未填」/ 某个触点数出 N 位、点过去那页不按它筛，对不上
-  */
-  const 去公海筛 = { ...sp, pool: "1", salesOwnerId: undefined, scope: undefined, ...(企业版() && b.projectMode ? { channelId: undefined } : {}) };
-  const 公海里匹配 = !子集 && sp.pool !== "1" && total === 0 && 公海总数
-    ? ((快 ? await 关键词分页(去公海筛, 1, 1) : null)?.total
-      ?? await prisma.customer.count({ where: await 客户筛选条件(去公海筛) }))
+  // 公海兜底（口径见上面 去公海筛）：先起了的用先起的那份，没起的照原来这时候再数
+  const 公海里匹配 = 可能兜底 && total === 0 && 公海总数
+    ? ((快 ? await (预快公海P ?? 关键词分页(去公海筛, 1, 1)) : null)?.total
+      ?? await (预数公海P ?? 数公海筛()))
     : 0;
   const page = 快?.page ?? Math.min(正整数(sp.page, 1), Math.max(1, Math.ceil(total / pageSize)));
 
   // 这一页的行和页面上别的几样互不依赖，一次并起来取（10-29 提速：原来行取完以后再一个个 await，十来次往返串着）
-  const 企 = 企业版();
-  const 能按号码筛 = !(await 号码藏着());
-  const 删权限org = 企 ? await 权限组织() : null;
-  /** 企业版项目模式：客户表格多「当前节点」「项目数」两列和「阶段」「进程」两个筛选（第 3 批） */
-  const 按项目 = 企 && b.projectMode;
-  /*
-    「看板」视图（11-12 客户详情合并第 3 批，构想页 C17 / C18）：页头、筛选行和客户列表一样，表格换成按节点分列的项目看板
-    （和项目页同一份取数和画法，projects/board-page.tsx）。记在 cookie（lib/customers-view-pref.ts），服务端据此只取一边：
-    看板视图不取这一页客户行和两列，列表视图不取看板。子集（导入这一批、本月新增、直接推荐）里照旧是列表
-  */
-  // 市场角色的看板是上面那套（我分出去的），走到这里的市场角色都是列表
-  const 看板视图 = 按项目 && !子集 && !市场角色 && (await 记的看法()) === "board";
-  const 看板P = 看板视图 ? 看板体(me, sp) : null;
-  看板P?.catch(() => {});
+  const [号藏, 删权限org] = await Promise.all([号码藏着P, 删权限orgP]);
+  const 能按号码筛 = !号藏;
   const 行P = 看板视图 ? Promise.resolve([]) : 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
       where: where!,
       orderBy: 等级排序
@@ -287,6 +311,7 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     rows, users, channels, 用着的职位, 用着的国家,
     号, aiEnabled, 交接, 可导入导出, 只给自己, 客户状态选项, 分配方式选项, 客户类型选项, 只读ids, 转让选项, 直接推荐, 业务员,
     建档, 客户状态字典, 状态自动, 客户属性选项, 客户属性字典, 字典释义, 待交接, 渠道筛选项, 项目概况, 组织规则, 三态标, 最近一句, 抬头节点,
+    公海分给, 删挡, 公海别线ids, 原负责人领不回ids, 可自动分配, 仅项目行, 阶段太多, 看板, 待复核原,
   ] = await Promise.all([
     行P,
     负责人候选(),
@@ -346,13 +371,34 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       项目名（F-040）只给我看得见的项目：限定层主键查多一句，看不见的回到「编号|节点」（P-看-12）。看板卡片用的也是这一份
     */
     企 && !看板视图 ? 行P.then((rs) => 抬头节点们(prisma, rs, 后售项目们)).then((m) => 只留看得见的项目名(m, (ids) => prisma.project.findMany({ where: { id: { in: ids } }, select: { id: true } }))) : undefined,
+    /*
+      下面这几样原来写在 JSX 里一个个 await（每样等一轮库，11-26 提速并进来）；口径、条件一字不改。
+      要这一页行的（公海别线、原负责人领不回）接在 行P 后面——行没回来它们没法算，这是唯一的先后
+    */
+    // 公海「分配给…」只列分得过去的（11-03 B2-7）；不是企业版同 users
+    企 ? 公海分配候选(me) : undefined,
+    删除挡(me),
+    // P-公海-07：公海里不是我这条业务线的（销管、条线总管理），不摆「分配给…」；服务端 分配公海 另拦
+    企 && 能管公海(me, 删权限org)
+      ? 行P.then((rs) => 公海别线的(prisma, me, 删权限org, { 客户: rs.filter((r) => r.pool).map((r) => r.id) })).then((x) => x.客户.map((c) => c.id))
+      : [],
+    // 企业版「非原负责人均可领取」（10-26 定稿）：这一页公海里原负责人是我的，领取按钮灰着（接口也拦，pool-actions.ts 领取）
+    拦原负责人() ? 行P.then((rs) => 我放出去的公海客户(rs.map((r) => ({ id: r.id, 在公海: !!r.pool, salesOwnerId: r.salesOwnerId })), me.id)) : [],
+    批量可自动分配(me),
+    仅项目行P,
+    // 阶段 / 进程命中的客户太多、点不了名（customer-list-projects.ts 点名上限）：和筛选同一份请求内缓存，不另查
+    按项目 && !看板视图 ? 阶段筛选太多(me, sp) : false,
+    看板P ?? undefined,
+    // 「待我复核」（审核 11-18 节点 P2-3）：列表视图顶上摆（看板视图里的项目列表自己带）；读不出来不挡列表
+    企 && 按项目 && !看板视图 ? 待我复核的(me).catch((e) => { console.error("[待我复核] 客户页没读出来", e); return []; }) : [],
   ]);
   const 三态开 = !!组织规则?.三态.开;
   /*
     负责人筛选同名的带部门（设计语言 L-A · L-新6）：企业版按组织架构给每人带上部门名，下拉里只有撞名的那几位才显示出来（lib/utils.ts 成员选项带部门）。
     组织读不到（不是企业版）就照原样
   */
-  const 组织 = 企 ? await 权限组织() : null;
+  // 权限组织() 就是 删权限org 那一份（企业版读组织缓存，别的版本 null），不再另 await
+  const 组织 = 删权限org;
   const 带部门的人 = 组织 ? users.map((u) => {
     const 部门id = 组织.成员.get(u.id)?.deptId;
     return { ...u, 部门: 部门id ? 组织.部门.get(部门id)?.name ?? null : null };
@@ -365,26 +411,26 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
     ? 摊平部门(编制.部门).map(({ d, 层 }) => ({ value: d.id, label: `${"　".repeat(层 - 1)}${d.name}` }))
     : [];
 
-  // 「待我复核」（审核 11-18 节点 P2-3）：列表视图顶上摆（看板视图里的项目列表自己带）；读不出来不挡列表
-  const 待复核们 = 企 && 按项目 && !看板视图 ? (await 待我复核的(me).catch((e) => { console.error("[待我复核] 客户页没读出来", e); return []; })).map((r) => ({ ...r, 更新于: r.更新于.toISOString() })) : [];
+  // 「待我复核」：上面 Promise.all 里一起取的
+  const 待复核们 = 待复核原.map((r) => ({ ...r, 更新于: r.更新于.toISOString() }));
   const 视图 = (
     <CustomersView
       待复核={待复核们.length ? <VerifyInbox 们={待复核们} /> : undefined}
       // 公海里的直接分给同事：只给管理员（团队版的老板）。业务员那边不摆（2026-10-20）
-      能分配公海={能管公海(me, await 权限组织())}
-      能转出自己的={能转出自己的(me, await 权限组织())}
+      能分配公海={能管公海(me, 删权限org)}
+      能转出自己的={能转出自己的(me, 删权限org)}
       能导入导出={可导入导出}
       // 没设业务角色、只读管理员不摆「新建」「领取」（11-03 D3-7 ④）
       能新建和领取={能新建和领取(me, 删权限org)}
       // 公海「分配给…」只列分得过去的（11-03 B2-7）；不是企业版同 users
-      公海分给={企 ? await 公海分配候选(me) : undefined}
+      公海分给={公海分给}
       // 企业版能删的角色才摆删除（V3.5.1：系统管理员；销售、销管、渠运删自己负责的），不是自己负责的行不摆
-      能删={(await 删除挡(me)) == null}
+      能删={删挡 == null}
       删不了ids={企 ? rows.filter((r) => !能删除(me, 删权限org, r.pool ? null : r.salesOwnerId)).map((r) => r.id) : []}
       // P-公海-05：这一页里我放不回公海的（和服务端 放进公海 同一个判定）；勾的全是放不了的，批量条不摆「放回公海」
       放不了ids={rows.filter((r) => !能放回客户公海(me, { salesOwnerId: r.salesOwnerId, 在公海: !!r.pool }, 删权限org)).map((r) => r.id)}
       // P-公海-07：公海里不是我这条业务线的（销管、条线总管理），不摆「分配给…」；服务端 分配公海 另拦
-      公海别线ids={企 && 能管公海(me, 删权限org) ? (await 公海别线的(prisma, me, 删权限org, { 客户: rows.filter((r) => r.pool).map((r) => r.id) })).客户.map((x) => x.id) : []}
+      公海别线ids={公海别线ids}
       负责人只能自己={只给自己}
       rows={rows.map((r) => 成列表行(r, 号))}
       total={total}
@@ -449,11 +495,11 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       部门选项={部门选项}
       只读ids={只读ids}
       // 企业版「非原负责人均可领取」（10-26 定稿）：这一页公海里原负责人是我的，领取按钮灰着（接口也拦，pool-actions.ts 领取）
-      原负责人领不回ids={拦原负责人() ? await 我放出去的公海客户(rows.map((r) => ({ id: r.id, 在公海: !!r.pool, salesOwnerId: r.salesOwnerId })), me.id) : []}
+      原负责人领不回ids={原负责人领不回ids}
       // 企业版批量转给别人时可选的转让原因（字典「转让原因」，10-27）；别的版本空 = 不问
       转让原因={{ 选项: 转让选项, 自己: me.id }}
       // 批量转让框里「指定分配 / 自动分配」（客户 11-17）：市场成员、规则开着、自动分配他能用才递；勾的里有没有暂不分配的，框打开时再问
-      {...(await 批量可自动分配(me) ? { 自动分配预看: 批量客户自动分配预看, 批量自动分配客户: 批量客户自动分配 } : {})}
+      {...(可自动分配 ? { 自动分配预看: 批量客户自动分配预看, 批量自动分配客户: 批量客户自动分配 } : {})}
       本月新增={sp.createdWithin === "本月"}
       直接推荐={直接推荐}
       本批={sp.batch ? { 几位: total } : null}
@@ -471,14 +517,14 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
       项目概况={项目概况}
       最近一句={最近一句}
       抬头节点={抬头节点}
-      {...await 仅项目行P.then((x) => (x ? { 仅项目行: x.行们, 仅项目超了: x.超了 } : {}))}
+      {...(仅项目行 ? { 仅项目行: 仅项目行.行们, 仅项目超了: 仅项目行.超了 } : {})}
       三态标={三态标}
       项目看板={按项目}
       客户范围={范围 ? { 值: 范围, 默认: 默认客户范围(管理范围), 选项: 客户范围选项(管理范围) } : undefined}
       市场视图={市场角色}
       // 阶段 / 进程命中的客户太多、点不了名（customer-list-projects.ts 点名上限）：和筛选同一份请求内缓存，不另查
-      阶段太多={按项目 && !看板视图 ? await 阶段筛选太多(me, sp) : false}
-      看板体={看板P ? await 看板P : undefined}
+      阶段太多={阶段太多}
+      看板体={看板}
       出口叫法={组织规则?.阶段.出口叫法}
     />
   );

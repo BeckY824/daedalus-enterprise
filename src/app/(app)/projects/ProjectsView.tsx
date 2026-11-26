@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
 import { useHoverPrefetch } from "@/lib/prefetch-full";
-import { Button, Pagination, Select, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
+import { Button, Pagination, Space, Segmented, Tag, Typography, type SelectProps } from "antd";
 import { CloseOutlined, PlusOutlined, ThunderboltOutlined } from "@ant-design/icons";
 import { PageHead, CustomerLink, UserCell } from "@/components/ui";
 import DataList, { type 列 } from "@/components/DataList";
@@ -57,6 +57,7 @@ import NewMenuButton from "@/components/NewMenuButton";
 import { 看板工具位 } from "../customers/board-slot";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import BatchFilterTag from "@/components/BatchFilterTag";
+import FilterSelect from "@/components/FilterSelect";
 
 
 /** 老客户重复咨询（重复咨询第一步）的小标签：列表项目名前、看板卡片第二行，紫色（globals.css .proj-repeat-tag） */
@@ -545,7 +546,7 @@ export default function ProjectsView({
         ? [{
             键: "ownerId", 名: "负责人", 宽: 126, 默认外露: true, 有值: !!f.ownerId,
             渲染: (style: CSSProperties) => (
-              <Select style={style} aria-label="负责人" placeholder="全部成员" allowClear value={f.ownerId || undefined} onChange={(v) => apply({ ownerId: v ?? "" })} options={成员选项(users)} />
+              <FilterSelect style={style} aria-label="负责人" placeholder="全部成员" allowClear value={f.ownerId || undefined} onChange={(v) => apply({ ownerId: v ?? "" })} options={成员选项(users)} />
             ),
           }]
         : []),
@@ -553,7 +554,7 @@ export default function ProjectsView({
         ? [{
             键: "creator", 名: "创建人", 宽: 126, 默认外露: true, 有值: !!f.creator,
             渲染: (style: CSSProperties) => (
-              <Select style={style} aria-label="创建人" placeholder="全部创建人" allowClear showSearch={{ optionFilterProp: "label" }} value={f.creator || undefined} onChange={(v?: string) => apply({ creator: v ?? "" })} options={市场.创建人们.map((u) => ({ value: u.id, label: u.name }))} popupMatchSelectWidth={false} />
+              <FilterSelect style={style} aria-label="创建人" placeholder="全部创建人" allowClear value={f.creator || undefined} onChange={(v?: string) => apply({ creator: v ?? "" })} options={市场.创建人们.map((u) => ({ value: u.id, label: u.name }))} popupMatchSelectWidth={false} />
             ),
           }]
         : []),
@@ -562,14 +563,14 @@ export default function ProjectsView({
             // 市场管理的客户页（我分出去的）：阶段 / 进程同客户页带「挤」——一行放不下先收进「更多筛选」，手机上一律收（设计语言 L-A · L-新5 / D06）
             键: "phase", 名: "阶段", 宽: 110, 默认外露: true, 挤: 换回客户列表 || 切换进筛选, 有值: !!f.phase,
             渲染: (style: CSSProperties) => (
-              <Select style={style} aria-label="阶段" value={f.phase || ""} onChange={(v: string) => apply({ phase: v, node: "" })} options={[{ value: "", label: "全部阶段" }, ...阶段们.map((s) => ({ value: s, label: s }))]} />
+              <FilterSelect style={style} aria-label="阶段" value={f.phase || ""} onChange={(v: string) => apply({ phase: v, node: "" })} options={[{ value: "", label: "全部阶段" }, ...阶段们.map((s) => ({ value: s, label: s }))]} />
             ),
           }]
         : []),
       {
         键: "node", 名: "进程", 宽: 130, 默认外露: true, 挤: 换回客户列表 || 切换进筛选, 有值: !!f.node,
         渲染: (style: CSSProperties) => (
-          <Select style={style} aria-label="进程" placeholder="全部进程" allowClear value={f.node || undefined} onChange={(v?: string | null) => apply({ node: v ?? "" })} options={进程选项} popupMatchSelectWidth={false} />
+          <FilterSelect style={style} aria-label="进程" placeholder="全部进程" allowClear value={f.node || undefined} onChange={(v?: string | null) => apply({ node: v ?? "" })} options={进程选项} popupMatchSelectWidth={false} />
         ),
       },
       /* 企业版公海只有一处（左栏「公海」，/pool）：这里不再摆「项目公海」筛选，只给一条去那儿的路 */
@@ -577,7 +578,7 @@ export default function ProjectsView({
         ? [{
             键: "pool", 名: "线索公海", 宽: 120, 默认外露: true, 有值: !!f.pool,
             渲染: (style: CSSProperties) => (
-              <Select style={style} aria-label="线索公海" value={f.pool || ""} onChange={(v: string) => apply({ pool: v, recycled: "" })} options={[{ value: "", label: "全部项目" }, { value: "1", label: "线索公海" }]} />
+              <FilterSelect style={style} aria-label="线索公海" value={f.pool || ""} onChange={(v: string) => apply({ pool: v, recycled: "" })} options={[{ value: "", label: "全部项目" }, { value: "1", label: "线索公海" }]} />
             ),
           }]
         : []),
@@ -586,7 +587,7 @@ export default function ProjectsView({
             {
               键: "channelId", 名: "渠道", 宽: 150, 默认外露: false, 有值: !!f.channelId,
               渲染: (style: CSSProperties) => (
-                <Select style={style} aria-label="渠道" placeholder="全部渠道" allowClear showSearch={{ optionFilterProp: "label" }} value={f.channelId || undefined} onChange={(v?: string) => apply({ channelId: v ?? "" })} options={渠道筛选项} popupMatchSelectWidth={false} />
+                <FilterSelect style={style} aria-label="渠道" placeholder="全部渠道" allowClear showSearch value={f.channelId || undefined} onChange={(v?: string) => apply({ channelId: v ?? "" })} options={渠道筛选项} popupMatchSelectWidth={false} />
               ),
             },
             ...(能按号码筛 ? [{
@@ -604,14 +605,15 @@ export default function ProjectsView({
             {
               键: "level", 名: "级别", 宽: 120, 默认外露: false, 有值: !!f.level,
               渲染: (style: CSSProperties) => (
-                <Select style={style} aria-label="级别" placeholder="全部级别" allowClear value={f.level || undefined} onChange={(v?: string) => apply({ level: v ?? "" })} options={[...级别选项(), { value: 未分级, label: 未分级 }]} popupMatchSelectWidth={false} />
+                <FilterSelect style={style} aria-label="级别" placeholder="全部级别" allowClear value={f.level || undefined} onChange={(v?: string) => apply({ level: v ?? "" })} options={[...级别选项(), { value: 未分级, label: 未分级 }]} popupMatchSelectWidth={false} />
               ),
             },
             {
               // 项目标签（F-项目-14）：和级别各筛各的；「未填」= 标签空着的。候选点开下拉才取（首屏不多一句查询），取到之前只摆已选的那项
+              // 能打字搜（F-050）一律开着：点开那一刻候选还没取到，按个数定会在打开中途才冒出输入框
               键: "projTag", 名: "项目标签", 宽: 140, 默认外露: false, 有值: !!f.projTag,
               渲染: (style: CSSProperties) => (
-                <Select style={style} aria-label="项目标签" placeholder="全部标签" allowClear value={f.projTag || undefined} onChange={(v?: string) => apply({ projTag: v ?? "" })}
+                <FilterSelect style={style} aria-label="项目标签" placeholder="全部标签" allowClear showSearch value={f.projTag || undefined} onChange={(v?: string) => apply({ projTag: v ?? "" })}
                   loading={标签取中} onOpenChange={(开) => { if (开) 取标签项(); }}
                   options={[...(标签项 ?? (f.projTag && f.projTag !== 未填标签 ? [f.projTag] : [])).map((x) => ({ value: x, label: x })), { value: 未填标签, label: "未填" }]} popupMatchSelectWidth={false} />
               ),
@@ -620,7 +622,7 @@ export default function ProjectsView({
               // 数据来源（客户 E-218「检索、统计、复盘都读字段」）：只看「老客户重复咨询」的线索，读 Project.source，不认项目名
               键: "source", 名: "数据来源", 宽: 150, 默认外露: false, 有值: !!f.source,
               渲染: (style: CSSProperties) => (
-                <Select style={style} aria-label="数据来源" placeholder="全部来源" allowClear value={f.source || undefined} onChange={(v?: string) => apply({ source: v ?? "" })}
+                <FilterSelect style={style} aria-label="数据来源" placeholder="全部来源" allowClear value={f.source || undefined} onChange={(v?: string) => apply({ source: v ?? "" })}
                   options={[重复咨询来源, 仅记录用来源].map((v) => ({ value: v, label: 来源字(v) }))} popupMatchSelectWidth={false} />
               ),
             },

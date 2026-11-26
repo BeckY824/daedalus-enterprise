@@ -39,6 +39,7 @@ import { useNewProjectFlow } from "../projects/NewProjectFlow";
 import type { 向导跟进 } from "@/lib/project/wizard";
 import { 公海线索先领取话 } from "@/lib/enterprise/pool-rules";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import FilterSelect from "@/components/FilterSelect";
 
 type Row = {
   id: string;
@@ -413,7 +414,7 @@ export default function LeadsView({
               onChange={(v) => setF({ ...f, keyword: v })}
               onSearch={(v) => apply({ keyword: v })}
             />
-            <Select
+            <FilterSelect
               style={{ width: 152 }}
               placeholder="全部状态"
               allowClear
@@ -423,11 +424,11 @@ export default function LeadsView({
             />
             {/* 负责人、来源（T-029）：照客户列表的写法，只有一个人时负责人不摆 */}
             {!不问归属 && (
-              <Select style={{ width: 150 }} placeholder="全部负责人" allowClear
+              <FilterSelect style={{ width: 150 }} placeholder="全部负责人" allowClear
                 value={f.ownerId || undefined} onChange={(v) => apply({ ownerId: v ?? "" })}
                 options={成员选项(users)} />
             )}
-            <Select style={{ width: 140 }} placeholder="全部来源" allowClear
+            <FilterSelect style={{ width: 140 }} placeholder="全部来源" allowClear
               value={f.source || undefined} onChange={(v) => apply({ source: v ?? "" })}
               options={来源们.map((s2) => ({ value: s2, label: s2 }))} />
             <ResetFilters 显示={Boolean(f.keyword || f.status || f.ownerId || f.source)} onClick={reset} />

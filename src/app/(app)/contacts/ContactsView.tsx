@@ -4,7 +4,7 @@ import { useListKeep } from "@/lib/list-keep";
 import { 空显 } from "@/lib/empty-value";
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Space, Avatar, Tag, Select, Tooltip } from "antd";
+import { Button, Space, Avatar, Tag, Tooltip } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import CopyValue from "@/components/CopyValue";
 import ResetFilters from "@/components/ResetFilters";
@@ -20,6 +20,7 @@ import FlipRows from "@/components/FlipRows";
 import OrphanSidePanel from "./OrphanSidePanel";
 import { avatarColor, initial, AVATAR_TEXT, 成员选项 } from "@/lib/utils";
 import { useBusiness } from "@/lib/business-client";
+import FilterSelect from "@/components/FilterSelect";
 
 type Row = {
   id: string;
@@ -238,7 +239,7 @@ export default function ContactsView({
         筛选={
           <Space wrap size={[10, 10]}>
             <ListSearch width={300} placeholder={`姓名 / 电话 / 微信 / ${b.customer} / ${b.fields.school}`} value={kw} onChange={setKw} onSearch={search} />
-            <Select
+            <FilterSelect
               style={{ width: 140 }}
               placeholder="全部职位 / 角色"
               allowClear
@@ -247,7 +248,7 @@ export default function ContactsView({
               options={关系选项}
             />
             {!不问归属 && (
-              <Select
+              <FilterSelect
                 style={{ width: 150 }}
                 placeholder="全部负责人"
                 allowClear
@@ -257,7 +258,7 @@ export default function ContactsView({
               />
             )}
             {(有未归属 || 归属) && (
-              <Select
+              <FilterSelect
                 style={{ width: 140 }}
                 placeholder="全部归属"
                 allowClear
