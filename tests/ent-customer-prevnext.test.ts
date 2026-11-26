@@ -57,7 +57,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import CustomersPage from "@/app/(app)/customers/page";
 import { NextRequest } from "next/server";
 import { GET as 相邻路由 } from "@/app/api/customers/adjacent/route";
-import { 找相邻, 查询串of, 每页条数, type 相邻 } from "@/app/(app)/customers/[id]/adjacent";
+import { 找相邻, 找相邻带页, 查询串of, 每页条数, type 相邻 } from "@/app/(app)/customers/[id]/adjacent";
 import { 客户排序, 关键词分页 } from "@/app/(app)/customers/query";
 import { 生效客户范围 } from "@/lib/enterprise/customer-scope";
 import { 定详情来源, 读详情来源, 记详情来源, 清详情来源 } from "@/lib/list-return";
@@ -101,7 +101,16 @@ afterAll(async () => { vi.unstubAllEnvs(); invalidateSettingsCache(); await pris
 const 相邻客户 = async (来源: { href: string; page: number }, id: string): Promise<相邻 | null> => {
   const r = await 相邻路由(new NextRequest(`http://t/api/customers/adjacent?${new URLSearchParams({ id, href: 来源.href, page: String(来源.page) })}`));
   expect(r.status).toBe(200);
-  return (await r.json()) as 相邻 | null;
+  const j = (await r.json()) as (相邻 & { 页: number }) | null;
+  if (!j) return null;
+  // 接口多回的 页（这一位所在的钳过的页）单独在 page=99 那条断言，这里只比上下两位
+  const { 页: _页, ...邻 } = j; void _页;
+  return 邻;
+};
+/** 同上，但连 页 一起回 */
+const 相邻带页客户 = async (来源: { href: string; page: number }, id: string) => {
+  const r = await 相邻路由(new NextRequest(`http://t/api/customers/adjacent?${new URLSearchParams({ id, href: 来源.href, page: String(来源.page) })}`));
+  return (await r.json()) as (相邻 & { 页: number }) | null;
 };
 
 const 在请求里 = async <T,>(谁: 人, fn: () => Promise<T>): Promise<T> => {
@@ -212,6 +221,8 @@ describe("关键词快路、越界页（PR #492 审查）", () => {
       expect(头, 查询).toEqual({ 上: { id: 第二页[9], page: 2 }, 下: { id: 末页[1], page: 3 } });
       const 尾 = await 在请求里(甲, () => 相邻客户({ href: 越界, page: 99 }, 末页[4]));
       expect(尾, 查询).toEqual({ 上: { id: 末页[3], page: 3 }, 下: null });
+      // 接口回钳过的页：详情里「回到客户列表」的字和链接用它
+      expect((await 在请求里(甲, () => 相邻带页客户({ href: 越界, page: 99 }, 末页[0])))?.页, 查询).toBe(3);
     }
   });
 });
@@ -247,7 +258,7 @@ describe("看不到、对不上的不摆", () => {
     mocks.在请求 = true;
     try {
       expect(await (await 以谁的身份(甲.id, () => 问("href=%2Fcustomers"))).json()).toBeNull();
-      const 乱 = await (await 以谁的身份(甲.id, () => 问(`id=${ids[1]}&href=%2Fcustomers&page=abc`))).json();
+      const { 页: _页, ...乱 } = await (await 以谁的身份(甲.id, () => 问(`id=${ids[1]}&href=%2Fcustomers&page=abc`))).json(); void _页;
       expect(乱).toEqual({ 上: { id: ids[0], page: 1 }, 下: { id: ids[2], page: 1 } });
     } finally { mocks.在请求 = false; }
   });
@@ -275,6 +286,9 @@ describe("纯函数", () => {
     expect(await 找相邻("c", 99, 取页)).toEqual({ 上: { id: "b", page: 1 }, 下: { id: "d", page: 2 } });
     expect(取了.sort((x, y) => x - y)).toEqual([1, 99]);
     expect(await 找相邻("d", 99, 取页)).toEqual({ 上: { id: "c", page: 2 }, 下: null });
+    // 接口多回这一位所在的钳过的页（page=999 的「回到客户列表」标签 / 链接用它）；没越界就是问的那页
+    expect(await 找相邻带页("d", 999, 取页)).toEqual({ 上: { id: "c", page: 2 }, 下: null, 页: 2 });
+    expect(await 找相邻带页("a", 1, 取页)).toEqual({ 上: null, 下: { id: "b", page: 1 }, 页: 1 });
   });
 
   it("客户排序：金额另走；默认、等级、跟进、建档各一份；每页条数照列表 10–100", () => {

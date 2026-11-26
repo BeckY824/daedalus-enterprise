@@ -28,6 +28,12 @@ export type 一页 = { ids: string[]; 还有下页: boolean; page?: number };
 
 /** 按页找：这一位在第 page 页的第几位；头尾跨到上一页末位 / 下一页首位（只在需要时多取一页，两边要取就一起取） */
 export async function 找相邻(id: string, page: number, 取页: (p: number) => Promise<一页>): Promise<相邻 | null> {
+  const r = await 找相邻带页(id, page, 取页);
+  return r && { 上: r.上, 下: r.下 };
+}
+
+/** 同 找相邻，多给这一位所在的钳过的页码（接口回给浏览器：地址上 page=999 时「回到客户列表」的页码标签 / 链接用它） */
+export async function 找相邻带页(id: string, page: number, 取页: (p: number) => Promise<一页>): Promise<(相邻 & { 页: number }) | null> {
   const 这页 = await 取页(page);
   // 跨页从钳过的那页往前后推（地址上 page=99、其实是第 3 页时，上一页是 2 不是 98）
   page = 这页.page ?? page;
@@ -38,7 +44,7 @@ export async function 找相邻(id: string, page: number, 取页: (p: number) =>
   const [上页, 下页] = await Promise.all([要上页 ? 取页(page - 1) : null, 要下页 ? 取页(page + 1) : null]);
   const 上 = i > 0 ? { id: 这页.ids[i - 1], page } : 上页?.ids.length ? { id: 上页.ids[上页.ids.length - 1], page: page - 1 } : null;
   const 下 = i < 这页.ids.length - 1 ? { id: 这页.ids[i + 1], page } : 下页?.ids.length ? { id: 下页.ids[0], page: page + 1 } : null;
-  return { 上, 下 };
+  return { 上, 下, 页: page };
 }
 
 /** 地址上的查询串 → 一层的键值（同名的取第一个，和 Next searchParams 给页面的一样只认字符串） */

@@ -19,7 +19,7 @@ let browser: Browser, bundle: string;
 const plugin: Plugin = { name: "customer-prevnext", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "stub", pluginData: code }));
   stub(/^next\/link$/, "export default function L({href,prefetch,replace,scroll,onClick,...p}){return <a href={href} data-replace={replace?'1':undefined} onClick={e=>{e.preventDefault();onClick?.(e);window.__到?.(href)}} {...p}/>}");
-  stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},refresh(){},replace(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
+  stub(/^next\/navigation$/, "export const useRouter=()=>({push(){},refresh(){},replace(href){window.__到?.(href)}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   b.onLoad({ filter: /.*/, namespace: "stub" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 
@@ -54,7 +54,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 设 = { id?: string; 从?: string; 列表?: string; 邻?: unknown; 并入?: string; 宽?: number; 预存?: string; 错?: number };
+type 设 = { id?: string; 从?: string; 列表?: string; 邻?: unknown; 并入?: string; 宽?: number; 预存?: string; 错?: number; 手动?: boolean };
 async function 开(设: 设): Promise<{ page: Page; errors: string[]; warns: string[] }> {
   const 宽 = 设.宽 ?? 1280;
   const page = await browser.newPage({ viewport: { width: 宽, height: 800 } }); page.setDefaultTimeout(5000);
@@ -64,7 +64,7 @@ async function 开(设: 设): Promise<{ page: Page; errors: string[]; warns: str
   await page.goto(`http://step.test/customers/${设.id ?? "c2"}`);
   await page.evaluate((s) => {
     const w = window as unknown as Record<string, unknown>;
-    w.__从 = s.从; w.__列表 = s.列表; w.__邻 = s.邻; w.__并入 = s.并入; w.__错 = s.错;
+    w.__从 = s.从; w.__列表 = s.列表; w.__邻 = s.邻; w.__并入 = s.并入; w.__错 = s.错; w.__手动 = s.手动;
     if (s.预存) sessionStorage.setItem("crm:list-return-nav:v1", s.预存);
     /*
       fetch 桩（GET /api/customers/adjacent）：__问 记 [{href, page}, id]；平时按 __邻 立刻回（__错 = 状态码就回那个错），
@@ -158,7 +158,7 @@ const 挂起 = (page: Page) => page.evaluate(() => { (window as unknown as 窗).
 const 收 = (page: Page, i: number, 邻: unknown) => page.evaluate(([i, 邻]) => (window as unknown as 窗).__待[i as number].收(邻), [i, 邻] as const);
 const 颗 = (page: Page, t: string) => page.getByTestId(t).evaluate((x) => ({ tag: x.tagName, href: x.getAttribute("href"), 灰: (x as HTMLButtonElement).disabled === true, 等: x.getAttribute("aria-busy") }));
 
-it("按「下一条」换了人、新结果没到：两颗不消失；「上一条」先摆成上一位，「下一条」灰着等；新结果到了才换", async () => {
+it("按「下一条」换了人、新结果没到：两颗不消失；「上一条」先摆成上一位，「下一条」标忙等；新结果到了才换", async () => {
   const { page, errors, warns } = await 开({ 从: "/customers", 列表: "/customers?page=2", 邻: 中间 });
   await page.getByTestId("rec-step-next").waitFor();
   await 挂起(page);
@@ -166,11 +166,12 @@ it("按「下一条」换了人、新结果没到：两颗不消失；「上一�
   await page.waitForFunction(() => (window as unknown as 窗).__待.length === 1);
   expect(await page.evaluate(() => location.pathname)).toBe("/customers/c3");
   expect(await 颗(page, "rec-step-prev")).toEqual({ tag: "A", href: "/customers/c2", 灰: false, 等: null });
-  expect(await 颗(page, "rec-step-next")).toEqual({ tag: "BUTTON", href: null, 灰: true, 等: "true" });
+  // 等结果的那颗不灰、不换元素（还是 A，点了排队），只标 aria-busy
+  expect(await 颗(page, "rec-step-next")).toEqual({ tag: "A", href: "/customers/c3", 灰: false, 等: "true" });
   // 问的是 c3、它记下的第 3 页
   expect((await page.evaluate(() => (window as unknown as 窗).__问))[1]).toEqual([{ href: "/customers?page=2", page: 3 }, "c3"]);
   await 收(page, 0, { 上: { id: "c2", page: 2 }, 下: { id: "c4", page: 3 } });
-  await page.waitForFunction(() => document.querySelector("[data-testid=rec-step-next]")?.tagName === "A");
+  await page.waitForFunction(() => document.querySelector("[data-testid=rec-step-next]")?.getAttribute("href") === "/customers/c4");
   expect(await 颗(page, "rec-step-next")).toEqual({ tag: "A", href: "/customers/c4", 灰: false, 等: null });
   expect(await 颗(page, "rec-step-prev")).toEqual({ tag: "A", href: "/customers/c2", 灰: false, 等: null });
   expect(errors).toEqual([]);
@@ -198,6 +199,48 @@ it("快速连点两次（下一条、再点先摆出来的上一条回去）：�
   expect(await 颗(page, "rec-step-next")).toEqual({ tag: "A", href: "/customers/c9", 灰: false, 等: null });
   expect(errors).toEqual([]);
   expect(warns).toEqual([]);
+  await page.close();
+});
+
+const 长链 = (n: number) => (id: string) => { const i = Number(id.slice(1)); return { 上: i > 1 ? { id: `c${i - 1}`, page: 1 } : null, 下: i < n ? { id: `c${i + 1}`, page: 1 } : null }; };
+
+it("连点 5 次「下一条」（相邻慢慢回来）：不丢点击，落在第 6 位；两颗按钮全程在 DOM、同一个元素；地址、请求只认最后一位", async () => {
+  const { page, errors, warns } = await 开({ 从: "/customers", 列表: "/customers", 手动: true, id: "c1" });
+  // 每位的相邻都挂起，测试自己一位一位放
+  await page.waitForFunction(() => (window as unknown as 窗).__待.length === 1);
+  const 链 = 长链(20);
+  await page.evaluate(([f]) => (window as unknown as 窗).__待[0].收(JSON.parse(f as string)), [JSON.stringify(链("c1"))]);
+  await page.getByTestId("rec-step-next").waitFor();
+  // 钉住「下一条」那颗：之后不许被换掉（第 1 位的「上一条」是到头灰着的，换成能点的是该有的变化）
+  await page.evaluate(() => { const w = window as unknown as Record<string, unknown>; w.__元素 = [document.querySelector("[data-testid=rec-step-next]")]; });
+  for (let i = 0; i < 5; i++) { await page.getByTestId("rec-step-next").click(); await page.waitForTimeout(30); }
+  // 相邻一位一位回来，每次回来之间两颗都得在
+  for (let k = 0; k < 5; k++) {
+    await page.waitForFunction((n) => (window as unknown as 窗).__待.length === n, k + 2);
+    const 现 = await page.evaluate(() => ({ 在: !!document.querySelector("[data-testid=rec-step-prev]") && !!document.querySelector("[data-testid=rec-step-next]"), 同: ((window as unknown as Record<string, unknown[]>).__元素).every((e) => (e as Element).isConnected) }));
+    expect(现).toEqual({ 在: true, 同: true });
+    const id = await page.evaluate((n) => (window as unknown as 窗).__待[n].id, k + 1);
+    await page.evaluate(([n, f]) => (window as unknown as 窗).__待[n as number].收(JSON.parse(f as string)), [k + 1, JSON.stringify(链(id))] as const);
+  }
+  await page.waitForFunction(() => location.pathname === "/customers/c6");
+  await page.waitForFunction(() => document.querySelector("[data-testid=rec-step-next]")?.getAttribute("href") === "/customers/c7");
+  expect(await page.evaluate(() => location.pathname)).toBe("/customers/c6");
+  expect(await page.evaluate(() => (window as unknown as 窗).__问.map((x) => (x as [unknown, string])[1]))).toEqual(["c1", "c2", "c3", "c4", "c5", "c6"]);
+  expect(await page.evaluate(() => ((window as unknown as Record<string, unknown[]>).__元素).every((e) => (e as Element).isConnected))).toBe(true);
+  expect(errors).toEqual([]);
+  expect(warns).toEqual([]);
+  await page.close();
+});
+
+it("来源地址 page=999（其实只有 3 页）：回到客户列表的字和链接都夹到第 3 页；记的列表地址也跟着改", async () => {
+  const { page, errors } = await 开({ 从: "/customers", 列表: "/customers?sort=level-desc&page=999", 邻: { 上: { id: "c1", page: 3 }, 下: null, 页: 3 } });
+  await page.getByTestId("rec-step-prev").waitFor();
+  await page.waitForFunction(() => document.querySelector("[data-testid=back-to-list]")?.getAttribute("href")?.endsWith("page=3"));
+  const 回 = page.getByTestId("back-to-list");
+  expect(await 回.getAttribute("href")).toBe("/customers?sort=level-desc&page=3");
+  expect(await 回.getAttribute("aria-label")).toBe("回到客户列表（第 3 页）");
+  expect(JSON.parse(await page.evaluate(() => sessionStorage.getItem("crm:list-return-nav:v1") ?? "{}"))).toEqual({ href: "/customers?sort=level-desc&page=3", 位: { c2: 3 } });
+  expect(errors).toEqual([]);
   await page.close();
 });
 

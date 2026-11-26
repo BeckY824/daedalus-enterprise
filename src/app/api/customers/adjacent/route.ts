@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { 找相邻, 查询串of, 客户列表取页 } from "@/app/(app)/customers/[id]/adjacent";
+import { 找相邻带页, 查询串of, 客户列表取页 } from "@/app/(app)/customers/[id]/adjacent";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -23,5 +23,5 @@ export async function GET(req: NextRequest) {
   if (!id || id.length > 64 || href.split("?")[0] !== "/customers") return NextResponse.json(null);
   const page = Number.isSafeInteger(页) && 页 > 0 ? 页 : 1;
   const 取页 = await 客户列表取页(查询串of(href));
-  return NextResponse.json(取页 ? await 找相邻(id, page, 取页) : null, { headers: { "Cache-Control": "no-store" } });
+  return NextResponse.json(取页 ? await 找相邻带页(id, page, 取页) : null, { headers: { "Cache-Control": "no-store" } });
 }
