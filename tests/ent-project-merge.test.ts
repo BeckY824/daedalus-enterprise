@@ -67,7 +67,7 @@ async function 卡点(customerId: string, projectId: string, status = "待接受
   })).id;
 }
 const 并 = async (a: string, b: string, me: 人, opt: { 现在?: Date } = {}) => {
-  const r = await 执行项目合并(prisma, a, b, me, opt);
+  const r = await 执行项目合并(prisma, a, b, me, { 已核未开票: true, ...opt });
   if (!r.ok) throw new Error(r.error);
   return r.mergeId;
 };
@@ -107,7 +107,7 @@ describe("前提：谁能并、哪些拦", () => {
     expect(await 项目合并预览(prisma, a, 别家, 乙)).toMatchObject({ 能并: false, 原因: expect.arrayContaining([expect.stringContaining("不在同一位客户名下")]) });
     expect(await 项目合并预览(prisma, a, a, 乙)).toMatchObject({ 能并: false, 原因: [expect.stringContaining("不能和自己合并")] });
     // 执行同样拦，一行不写
-    expect(await 执行项目合并(prisma, a, b, 丙)).toMatchObject({ ok: false, error: expect.stringContaining("不是你负责的") });
+    expect(await 执行项目合并(prisma, a, b, 丙, { 已核未开票: true })).toMatchObject({ ok: false, error: expect.stringContaining("不是你负责的") });
     expect(await raw.entCustomerMerge.count()).toBe(0);
   });
 
@@ -143,7 +143,7 @@ describe("前提：谁能并、哪些拦", () => {
     const 签了 = await 项目(乙.id, c, { contractStatus: "已生效" });
     expect(await 项目合并预览(prisma, a, 签了, 乙)).toMatchObject({ 能并: false, 原因: [expect.stringContaining("已签合同，不能合并")] });
     expect(await 项目合并预览(prisma, 签了, a, 乙)).toMatchObject({ 能并: false, 原因: [expect.stringContaining("已签合同，不能合并")] });
-    expect(await 执行项目合并(prisma, a, 签了, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("已签合同") });
+    expect(await 执行项目合并(prisma, a, 签了, 乙, { 已核未开票: true })).toMatchObject({ ok: false, error: expect.stringContaining("已签合同") });
     expect(await raw.entCustomerMerge.count()).toBe(0);
     expect(阶段和钱拦({ name: "x", phase: "线索", contractStatus: "已生效" }, "并掉", { 回款: 0, 提成: 0 })).toEqual(["「x」已签合同，不能合并"]);
     for (const s of ["起草中", "我方修改中", "已终止", null]) expect(阶段和钱拦({ name: "x", phase: "线索", contractStatus: s }, "留下", { 回款: 0, 提成: 0 }), String(s)).toEqual([]);
@@ -179,7 +179,7 @@ describe("前提：谁能并、哪些拦", () => {
     expect(await 菜单(b)).toEqual({});
     // 列出来不等于放行：预览、执行照样拦
     expect((await 项目合并预览(prisma, 商机, b, 乙)).原因.join()).toContain("商机阶段");
-    expect(await 执行项目合并(prisma, 订单, b, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("订单阶段") });
+    expect(await 执行项目合并(prisma, 订单, b, 乙, { 已核未开票: true })).toMatchObject({ ok: false, error: expect.stringContaining("订单阶段") });
     expect(await raw.entCustomerMerge.count()).toBe(0);
     // 能选的排前
     const a = await 项目(乙.id, c);
@@ -202,7 +202,7 @@ describe("前提：谁能并、哪些拦", () => {
     const a = await 项目(乙.id, c, { bizLine: "外贸" });
     const b = await 项目(乙.id, c, { bizLine: "内贸" });
     expect(await 项目合并预览(prisma, a, b, 乙)).toMatchObject({ 能并: false, 原因: ["两个项目业务线不同（外贸 / 内贸），不能合并"] });
-    expect(await 执行项目合并(prisma, a, b, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("业务线不同") });
+    expect(await 执行项目合并(prisma, a, b, 乙, { 已核未开票: true })).toMatchObject({ ok: false, error: expect.stringContaining("业务线不同") });
     expect(await raw.entCustomerMerge.count()).toBe(0);
     const 空 = await 项目(乙.id, c, { bizLine: null });
     expect(await 项目合并预览(prisma, a, 空, 乙)).toMatchObject({ 能并: true });
@@ -228,7 +228,7 @@ describe("前提：谁能并、哪些拦", () => {
     const c = await 客户(乙.id);
     const a = await 项目(乙.id, c);
     const b = await 项目(乙.id, c);
-    expect(await 执行项目合并(prisma, a, b, 丁)).toMatchObject({ ok: false, error: expect.stringContaining("只能看") });
+    expect(await 执行项目合并(prisma, a, b, 丁, { 已核未开票: true })).toMatchObject({ ok: false, error: expect.stringContaining("只能看") });
     const mergeId = await 并(a, b, 乙);
     expect(await 撤回项目合并(prisma, mergeId, 丁)).toMatchObject({ ok: false, error: expect.stringContaining("只有合并的人或系统管理员") });
     expect((await 项目的合并单(prisma, a, 丁))[0]).toMatchObject({ 能撤: false, 不能撤因: "只有合并的人或系统管理员能撤回合并" });
@@ -625,5 +625,39 @@ describe("导入整批撤回", () => {
     expect((await 项(a)).deletedAt).toBeNull();
     expect((await 项(b)).deletedAt).toBeNull();
     expect((await raw.entCustomerMerge.findUniqueOrThrow({ where: { id: mergeId } })).status).toBe("已合并");
+  });
+});
+
+describe("[E-335] 一.4 两个项目都未开票的自查", () => {
+  it("没勾（没传、传 false）服务端拦：话术明确、一行不写", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
+    for (const opt of [{}, { 已核未开票: false }]) {
+      expect(await 执行项目合并(prisma, a, b, 乙, opt)).toEqual({ ok: false, error: "请先确认两个项目都还没开票" });
+    }
+    expect(await raw.entCustomerMerge.count()).toBe(0);
+    expect((await 项(b)).result).not.toBe("线索流失");
+  });
+
+  it("勾了留痕：合并单明细和两条操作日志都记「自查：两个项目都未开票（某人 时间）」，撤回照旧可撤", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
+    const 现在 = new Date("2026-11-27T02:00:00Z");
+    const id = await 并(a, b, 乙, { 现在 });
+    const 单 = await raw.entCustomerMerge.findUniqueOrThrow({ where: { id } });
+    const 明 = JSON.parse(单.detail) as { 自查?: { 两个项目都未开票: boolean; 谁: string; 时间: string } };
+    expect(明.自查).toEqual({ 两个项目都未开票: true, 谁: 乙.name, 时间: 现在.toISOString() });
+    const 志 = await raw.auditLog.findMany({ where: { action: "merge", entity: "Project" } });
+    expect(志).toHaveLength(2);
+    // summary 按北京时间显示（02:00Z = 北京 10:00），不能带 ISO 原串；今年的不写年
+    for (const l of 志) {
+      expect(l.summary).toMatch(new RegExp(`自查：两个项目都未开票（${乙.name} (\\d{4}-)?11-27 10:00）`));
+      expect(l.summary).not.toContain(现在.toISOString());
+      expect(l.summary).not.toMatch(/\d{2}T\d{2}:|\.\d{3}Z/);
+    }
+    expect(await 撤回项目合并(prisma, id, 乙, 现在)).toMatchObject({ ok: true });
+    expect(JSON.parse((await raw.entCustomerMerge.findUniqueOrThrow({ where: { id } })).detail).自查).toBeTruthy();
   });
 });

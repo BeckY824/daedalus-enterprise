@@ -30,6 +30,7 @@ import { 忘掉企业版范围 } from "./visibility";
 import { 拦下, 合并事务选项, 并发失败话, 重算最近跟进, 读没还原, type 合并人, type 没还原 } from "./customer-merge";
 import { 项目单, 项目合并撤回天数, 项目合并单们, 项目合并验证步 } from "./project-merge-guard";
 import { 生效的合同状态 } from "@/lib/project/proj-fields";
+import { 短时刻 } from "@/lib/project/time-fields";
 
 export { 项目单, 项目合并撤回天数, 项目合并验证步 };
 type 库 = PrismaClient;
@@ -270,6 +271,8 @@ export type 项目合并明细 = {
   删掉: { projectContact: Record<string, unknown>[]; projectCustomer: Record<string, unknown>[] };
   /** 被并掉的项目合并时的组员名单（只留痕：组员行合并、撤回都不动，不并进留下的项目，E-331 必改 3） */
   被并组员: { userId: string; name: string; roleId: string | null; inviteStatus: string }[];
+  /** E-335 一.4：合并人勾过「两个项目都还没开票」的自查留痕（旧单没有这一项） */
+  自查?: { 两个项目都未开票: true; 谁: string; 时间: string };
   /** 被并掉的项目合并前的结局和线索验证（null = 原来没有验证这一行），和合并写下的无效原因 */
   被并: { result: string | null; closedAt: string | null; 验证: Record<string, unknown> | null; 无效原因: string };
 };
@@ -294,7 +297,8 @@ export type 项目合并完 = { mergeId: string; 条数: 项目合并条数 };
 /**
  * 执行项目合并：B 并进 A。B 的组员不并进 A（E-331 必改 3，推翻 E-280 一.2 的勾选），名单记进合并单和日志
  */
-export async function 执行项目合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 现在?: Date } = {}): Promise<结果<项目合并完>> {
+export async function 执行项目合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 现在?: Date; 已核未开票?: boolean } = {}): Promise<结果<项目合并完>> {
+  if (!opt.已核未开票) return { ok: false, error: "请先确认两个项目都还没开票" };
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   const 开 = await 客户状态自动();
@@ -337,6 +341,7 @@ async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Da
   const 原验证 = await tx.entLeadVerify.findUnique({ where: { projectId: B.id } });
   const 明: 项目合并明细 = {
     版本: 1, 留下名: A.name, 客户: A.customerId, 负责人: A.ownerId, 改指: {}, 删掉: { projectContact: [], projectCustomer: [] }, 被并组员: await 组员们(tx, B.id, false),
+    自查: { 两个项目都未开票: true, 谁: me.name, 时间: 现在.toISOString() },
     被并: { result: B.result, closedAt: B.closedAt?.toISOString() ?? null, 验证: 原验证 ? (JSON.parse(JSON.stringify(原验证)) as Record<string, unknown>) : null, 无效原因 },
   };
 
@@ -372,14 +377,19 @@ async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Da
   await tx.auditLog.createMany({
     data: [
       { userId: me.id, userName: me.name, action: "merge", entity: "Project", entityId: A.id, at: 现在,
-        summary: `合并项目：把「${名(B)}」并进这个项目（${条数.沟通} 条沟通、${条数.附件} 个附件、${条数.联系人} 位项目联系人），${项目合并撤回天数} 天内可撤回`,
-        detail: JSON.stringify({ mergeId: 单.id, 并掉: B.id, 条数 }) },
+        summary: `合并项目：把「${名(B)}」并进这个项目（${条数.沟通} 条沟通、${条数.附件} 个附件、${条数.联系人} 位项目联系人），${项目合并撤回天数} 天内可撤回；${自查话(明)}`,
+        detail: JSON.stringify({ mergeId: 单.id, 并掉: B.id, 条数, 自查: 明.自查 }) },
       { userId: me.id, userName: me.name, action: "merge", entity: "Project", entityId: B.id, at: 现在,
-        summary: `合并项目：已并入「${名(A)}」，结束为重复线索（不退还已占线索名额）${组员话(明.被并组员, A)}`,
+        summary: `合并项目：已并入「${名(A)}」，结束为重复线索（不退还已占线索名额）${组员话(明.被并组员, A)}；${自查话(明)}`,
         detail: JSON.stringify({ mergeId: 单.id, 留下: A.id, 组员: 明.被并组员.map(({ userId, name, inviteStatus }) => ({ userId, name, inviteStatus })) }) },
     ],
   });
   return { mergeId: 单.id, 条数 };
+}
+
+/** 合并人勾过的自查，写进两条操作日志 */
+function 自查话(明: 项目合并明细): string {
+  return `自查：两个项目都未开票（${明.自查?.谁 || "未知"} ${短时刻(明.自查?.时间) ?? ""}）`;
 }
 
 /** 被并项目那条日志末尾的组员留痕（已进组的写名字；邀请着没进组的只在 detail 里） */

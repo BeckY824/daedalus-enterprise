@@ -66,6 +66,7 @@
 .mrg-out { margin: 0; padding-left: 1.2em; color: var(--ink-soft); font-size: var(--fs-note); line-height: 1.6; }
 .mrg-out-k { display: inline-block; min-width: 3.5em; margin-right: var(--s2); color: var(--text-muted); }
 /* 项目合并「核实」：两边各有联系人，可能是同一个人（E-331）；只提示，合成在客户详情 */
+.mrg-nobill { margin-top: 12px; overflow-wrap: anywhere; }
 .mrg-out-chk { color: var(--warning-text); overflow-wrap: anywhere; }
 .mrg-move { margin: 0; min-width: 0; }
 
