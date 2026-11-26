@@ -5756,8 +5756,9 @@ button.proj-miss-chip { cursor: pointer; }
 :root:root .proj-stage-nodes.fade-r { -webkit-mask-image: linear-gradient(90deg, black 0, black calc(100% - var(--edge-fade)), transparent 100%); mask-image: linear-gradient(90deg, black 0, black calc(100% - var(--edge-fade)), transparent 100%); }
 :root:root .proj-stage-nodes.fade-l { -webkit-mask-image: linear-gradient(90deg, transparent 0, black var(--edge-fade), black 100%); mask-image: linear-gradient(90deg, transparent 0, black var(--edge-fade), black 100%); }
 :root:root .proj-stage-nodes.fade-l.fade-r { -webkit-mask-image: linear-gradient(90deg, transparent 0, black var(--edge-fade), black calc(100% - var(--edge-fade)), transparent 100%); mask-image: linear-gradient(90deg, transparent 0, black var(--edge-fade), black calc(100% - var(--edge-fade)), transparent 100%); }
-:root:root .proj-stage-exit { flex: none; max-width: none; }
-:root:root .proj-stage-exit .proj-stage-name { overflow: visible; }
+/* 11-26：后台把出口改成长叫法时，原来 max-width: none 胶囊按字撑宽，390 宽把节点排挤没、整页横滚 73px。
+   默认叫法（四个字）照旧写全不缩（flex: none，宽 = 字宽，远不到 160）；超过 160 才省略号，悬停看全（胶囊上挂着 title） */
+:root:root .proj-stage-exit { flex: none; max-width: 160px; }
 /* 缺项小块：悬停 / 按下深一档；键盘焦点同全站 */
 :root:root button.proj-miss-chip { transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
 :root:root button.proj-miss-chip:hover { background: var(--warning-bg); border-color: var(--warning); }

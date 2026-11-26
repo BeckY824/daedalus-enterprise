@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
 import { LinkPending } from "@/components/NavProgress";
-import { Pagination, Segmented, Select, Tooltip } from "antd";
+import { Pagination, Segmented, Tooltip } from "antd";
 import { dayjs, fmtDateTime } from "@/lib/utils";
 import { isCalendarDate } from "@/lib/schedule-date";
 import { 有值 } from "@/lib/empty-value";
@@ -20,6 +20,7 @@ import CustomRangePicker from "@/components/CustomRangePicker";
 import { 读日期段, type 日期段 } from "@/lib/custom-date-range";
 import { 沟通按天 } from "@/lib/project/talk-days";
 import { TalkKindSwitch } from "./BoardTopics";
+import FilterSelect from "@/components/FilterSelect";
 
 /**
  * 复盘页「沟通」页签（P7 U-复盘-01；11-01 参考复盘稿融合改成时间线）：项目负责人本人在项目上记的跟进（别人记的不算，11-02），时间倒序。
@@ -73,7 +74,7 @@ export default function BoardTalks({ 数, 段, 区间, 方式 = "", 只看自己
   const 去 = (x: 复盘沟通行) => 去页.push(x.项目去 ?? `/projects/${encodeURIComponent(x.projectId)}`);
 
   const 方式下拉 = (
-      <Select<沟通方式 | "">
+      <FilterSelect<沟通方式 | "">
               size="small"
               className="rtalk-m"
               aria-label="沟通方式"

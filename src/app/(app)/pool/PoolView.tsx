@@ -42,6 +42,7 @@ import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, �
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
 import { 确认条行们 } from "@/lib/enterprise/pool-ask-rows";
 import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目, type 整包撤销 } from "./actions";
+import FilterSelect from "@/components/FilterSelect";
 
 type Props = {
   行: 公海行[];
@@ -388,9 +389,18 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
       }
       撤了 = 客户撤了 + 项目撤了;
       router.refresh();
-      const 错们 = [客户错 && `客户没撤销：${客户错}`, 项目错 && `项目没撤销：${项目错}`].filter((x): x is string => !!x);
+      // 回了 ok、但比到手的少、服务端又没带话的（项目逐个撤，撤不动的只少算、不说）：撤销条上按客户 / 项目各说一句，
+      // 不再在表格上方另冒一条「已撤销 N 个，其余已经有人动过了」（位、个混着数，跟撤销条那句重复）
+      const 客户没撤 = 客户res?.ok && 客户到 && !客户错 && !客户话 ? Math.max(0, 客户到 - 客户撤了) : 0;
+      const 项目没撤 = 项目到.length && !项目错 ? Math.max(0, 项目到.length - 项目撤了) : 0;
+      const 错们 = [
+        客户错 && `客户没撤销：${客户错}`,
+        项目错 && `项目没撤销：${项目错}`,
+        客户没撤 && `${客户没撤} 位客户刚才有人动过，这次没有撤销`,
+        项目没撤 && `${项目没撤} 个项目刚才有人动过，这次没有撤销`,
+      ].filter((x): x is string => !!x);
       // 一个都没撤成：只有一边出错照旧说那一句，两边都出错各说各的
-      if (!撤了) return { ok: false, error: 错们.length > 1 ? 错们.join("；") : (客户错 ?? 项目错 ?? "已经有人动过了") };
+      if (!撤了) return { ok: false, error: 错们.length > 1 ? 错们.join("；") : (客户错 ?? 项目错 ?? 错们[0] ?? "已经有人动过了") };
       if (错们.length) 有没撤成 = true;
       // 一句话：撤成的那部分在前（客户那句只数客户，一起撤回的项目接在后面，不然像是只撤了那几位），没撤成的那部分接在后面。
       // 客户那句以「已撤销 N 位」开头、后面还有话（没撤成的原因、已撤回）时，「另撤销 N 个项目」插在开头那段后面、原因前面（复审 S-f）。
@@ -398,11 +408,13 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
       const [客头, ...客尾] = 客户话 && /^已撤销 \d+ 位；/.test(客户话) ? 客户话.split("；") : [客户话];
       const 段 = 客户错
         ? [项目话 ? undefined : `已撤销 ${项目撤了} 个项目`, 项目话, ...错们]
-        : [客头 ?? (项目错 || (项目话 && 客户撤了) ? `已撤销 ${客户撤了} 位客户` : undefined), 项目撤了 && 客户撤了 && !项目话 ? `另撤销 ${项目撤了} 个项目` : undefined, ...客尾, 项目话, ...错们];
+        : [
+          客头 ?? (客户撤了 && (项目错 || 项目话 || 客户没撤 || 项目没撤) ? `已撤销 ${客户撤了} 位客户` : !客户撤了 && 项目撤了 && !项目话 && 项目没撤 ? `已撤销 ${项目撤了} 个项目` : undefined),
+          项目撤了 && 客户撤了 && !项目话 ? `另撤销 ${项目撤了} 个项目` : undefined, ...客尾, 项目话, ...错们,
+        ];
       const 话们 = 段.filter((x): x is string => !!x);
       // 只撤成了、没别的话说：照旧「已撤销」（客户那边没提示、项目这边没出错时不拼「另撤销 N 个项目」）
       const 提示 = 客户话 || 项目话 || 错们.length ? 话们.join("；") : undefined;
-      if (撤了 < 到数) set结果({ 文案: `已撤销 ${撤了} 个，其余已经有人动过了`, 没领到: [] });
       return { ok: true, 提示, ...(有没撤成 ? { 有没撤成: true } : {}) };
     };
     // 真到手 / 分出去的那几行（客户池并成一行的：名下有一个项目到了就算），滑出、撤销后滑回用
@@ -805,7 +817,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     {
       键: "quick", 名: "入池方式", 宽: 140, 默认外露: true, 有值: !!f.quick,
       渲染: (style: CSSProperties) => (
-        <Select style={style} aria-label="入池方式" placeholder="全部入池方式" allowClear
+        <FilterSelect style={style} aria-label="入池方式" placeholder="全部入池方式" allowClear
           popupMatchSelectWidth={260}
           value={f.quick || undefined}
           onChange={(v) => 换池({ quick: v ?? "" })}
@@ -829,7 +841,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     {
       键: "channelId", 名: "客户来源", 宽: 150, 默认外露: false, 有值: !!f.channelId,
       渲染: (style: CSSProperties) => (
-        <Select style={style} aria-label="客户来源" placeholder="全部客户来源" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={f.channelId || undefined} onChange={(v?: string) => apply({ channelId: v ?? "" })} options={渠道筛选项} />
+        <FilterSelect style={style} aria-label="客户来源" placeholder="全部客户来源" allowClear showSearch popupMatchSelectWidth={false} value={f.channelId || undefined} onChange={(v?: string) => apply({ channelId: v ?? "" })} options={渠道筛选项} />
       ),
     },
     // 号码不全（C14，三态开着才有）：只看三态自动收回时打了「号码不全」的客户，再点一次取消。
@@ -864,7 +876,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     <div className="pool-bar">
       <div className="pool-pools">
         {手机 ? (
-          <Select aria-label="公海属性" className="pool-pick-attr" value={f.attr || "全部"} popupMatchSelectWidth={false}
+          <FilterSelect aria-label="公海属性" className="pool-pick-attr" value={f.attr || "全部"} popupMatchSelectWidth={false}
             onChange={(v) => 换池({ attr: v === "全部" ? "" : String(v) })} options={池选项} />
         ) : (
           <Segmented aria-label="公海属性" className="pool-seg-attr" value={f.attr || "全部"}
