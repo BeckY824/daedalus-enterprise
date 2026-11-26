@@ -367,6 +367,70 @@ it.each([375, 1366])("K7 %ipx：就地改金额敲「约5万」回车没存上�
   } finally { await page.close(); }
 });
 
+/*
+  29O 回归（11-20 实操，#377 引入；main 上 e9449d73 的 K7 已修，这里补齐「点别处」和「币种对不上」两条路）：
+  敲错字 / 币种对不上回车被拒 → 焦点留在框、气泡出来；点别处 → 气泡跟着焦点收起，原因留在格下一行静态字、不重复交；
+  点回框里 Esc → 还原成上次存好的值、收起、气泡没了；之后敲正常数字照存
+*/
+it.each([
+  [375, "约5万", "CNY", "金额认不出"],
+  [1366, "约5万", "CNY", "金额认不出"],
+  [1280, "5000元", "USD", "写的是人民币，币种选的是美元"],
+] as const)("29O %ipx：就地改金额敲「%s」（%s）回车被拒 → 气泡出现；点别处 → 气泡收起、格下留静态原因；Esc → 还原原值；正常数字照存", async (w, 敲, 币, 原因) => {
+  const { page, errors } = await open("__就地", { 数: 20000, 币 }, w);
+  try {
+    await 开格(page);
+    await 框(page).fill(敲);
+    await 框(page).press("Enter");
+    await expect.poll(() => page.locator(".proj-inline-err").innerText()).toContain(原因);
+    // 被拒后焦点回到框里，气泡跟着焦点出来
+    await expect.poll(() => page.evaluate(() => document.activeElement?.getAttribute("aria-label"))).toBe("金额");
+    await expect.poll(() => 浮层(page).count()).toBe(1);
+    // 点别处：气泡收起，原因留在格下一行（静态字），同一份草稿不重复交
+    await page.locator("#别处").click();
+    await expect.poll(() => 浮层(page).count()).toBe(0);
+    expect(await page.locator(".proj-inline-err").innerText()).toContain(原因);
+    expect(await 框(page).isDisabled()).toBe(false);
+    expect(await 交了(page)).toEqual([]);
+    // 点回框里：气泡又跟着焦点出来；Esc 还原成上次存好的值、收起、气泡没了
+    await 框(page).click();
+    await expect.poll(() => 浮层(page).count()).toBe(1);
+    await page.keyboard.press("Escape");
+    await expect.poll(() => page.locator(".proj-inline-money").count()).toBe(0);
+    expect(await page.locator(".proj-inline-val").innerText()).toContain("20,000");
+    await expect.poll(() => 浮层(page).count()).toBe(0);
+    expect(await 交了(page)).toEqual([]);
+    // 正常数字照存
+    await 开格(page);
+    expect(await 框(page).inputValue()).toBe("20,000");
+    await 框(page).fill("3万");
+    await 框(page).press("Enter");
+    await expect.poll(() => 交了(page)).toEqual([{ amount: 30000, currency: 币 }]);
+    await expect.poll(() => page.locator(".proj-inline-money").count()).toBe(0);
+    await expect.poll(() => 浮层(page).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("29O：就地改金额敲「约5万」直接点别处（失焦存被拒）→ 气泡不挂着、格下留静态原因；点回框里 Esc 还原原值", async () => {
+  const { page, errors } = await open("__就地", { 数: 20000, 币: "CNY" }, 1280);
+  try {
+    await 开格(page);
+    await 框(page).fill("约5万");
+    await page.locator("#别处").click();
+    await expect.poll(() => page.locator(".proj-inline-err").innerText()).toContain("金额认不出");
+    await expect.poll(() => 浮层(page).count()).toBe(0);
+    expect(await 交了(page)).toEqual([]);
+    await 框(page).click();
+    await page.keyboard.press("Escape");
+    await expect.poll(() => page.locator(".proj-inline-money").count()).toBe(0);
+    expect(await page.locator(".proj-inline-val").innerText()).toContain("20,000");
+    await expect.poll(() => 浮层(page).count()).toBe(0);
+    expect(await 交了(page)).toEqual([]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 it.each(["合同金额", "定金金额"])("就地改%s：清空回车 / 清空点别处都交 null，格子显示待填写", async (格) => {
   for (const 怎么存 of ["回车", "点别处"] as const) {
     const { page, errors } = await open("__就地", { 格, 值: { 数: 5000, 币: "USD" } }, 1280);

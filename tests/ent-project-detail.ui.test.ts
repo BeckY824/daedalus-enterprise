@@ -1765,11 +1765,14 @@ it("R5 有结局 / 不能改进程：有结局换成「改回进程」、没有�
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ result: "交付结清" }));
     await page.waitForFunction(() => document.querySelectorAll(".proj-stage-node.is-done").length === 5);
     expect(await page.locator(".proj-stage-exit.is-done").innerText()).toBe("交付结清");
-    // 客户整体进了公海（交付结清项目 pooledAt 仍空）：「改回进程」藏掉，同「记售后回访」按客户判公海（服务端 改节点 同样拦）
+    // 客户整体进了公海（交付结清项目 pooledAt 仍空）：「改回进程」灰着、悬停写为什么（同别的推不了的按钮），不再一声不吭藏掉；服务端 改节点 同样拦
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ result: "交付结清", 客户在公海: true }));
-    await page.waitForFunction(() => ![...document.querySelectorAll(".proj-stage-acts button")].some(b => b.textContent === "改回进程"));
+    await page.waitForFunction(() => [...document.querySelectorAll<HTMLButtonElement>(".proj-stage-acts button")].some(b => b.textContent === "改回进程" && b.disabled));
+    await page.locator(".proj-stage-acts .proj-stage-tip").filter({ hasText: "改回进程" }).hover();
+    await page.locator(".ant-tooltip").filter({ hasText: "这位客户在公海里，先领取或分配，再改回进程" }).first().waitFor();
+    await page.mouse.move(0, 0);
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ result: "交付结清", 客户在公海: false }));
-    await page.waitForFunction(() => [...document.querySelectorAll(".proj-stage-acts button")].some(b => b.textContent === "改回进程"));
+    await page.waitForFunction(() => [...document.querySelectorAll<HTMLButtonElement>(".proj-stage-acts button")].some(b => b.textContent === "改回进程" && !b.disabled));
     await page.evaluate(() => (window as unknown as { __over: (x: unknown) => void }).__over({ 能改节点: false }));
     await page.waitForFunction(() => ![...document.querySelectorAll(".proj-stage-acts button")].some(b => b.textContent === "改回进程"));
     expect((await page.locator(".proj-stage-acts button").allInnerTexts()).map(t => t.trim())).toEqual(["新增沟通"]);

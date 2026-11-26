@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, type CSSProperties } from "react";
-import { InputNumber, Select } from "antd";
+import { InputNumber } from "antd";
+import FilterSelect from "@/components/FilterSelect";
 
 /** 选了它就换成填天数的框（不是真的天数，不会写进地址栏） */
 const 自定义 = "__custom";
@@ -39,7 +40,7 @@ export default function IdleDaysFilter({ value, 天数们, 改, style }: { value
     );
   }
   return (
-    <Select
+    <FilterSelect
       style={style}
       placeholder="不限跟进时间"
       allowClear

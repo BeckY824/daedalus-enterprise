@@ -3,10 +3,11 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Button, Segmented, Select } from "antd";
+import { Button, Segmented } from "antd";
 import { 卡点类型们, 影响等级们, type 卡点状态 } from "@/lib/project/blocker-rules";
 import type { 看板筛选, 看板统计 } from "@/lib/project/blocker";
 import { BlockerList, type 卡点卡 } from "../projects/BlockerPanel";
+import FilterSelect from "@/components/FilterSelect";
 
 /**
  * 复盘页「卡点」页签（11-01 定稿 B15）：三栏看板（待接受 / 处理中 / 已解决）+ 筛选 + 统计。
@@ -110,26 +111,26 @@ export default function BoardBlockers({ 开, 全部, 栏, 已解决共, 统计, 
 
   const 下拉们 = (
     <>
-      <Select
-        showSearch optionFilterProp="label" aria-label="阻碍原因" className="rbk-sel" popupMatchSelectWidth={false}
+      <FilterSelect
+        aria-label="阻碍原因" className="rbk-sel" popupMatchSelectWidth={false}
         value={筛.原因 ?? ""}
         onChange={(v: string) => 改多({ 原因: v || undefined })}
         options={[{ value: "", label: "全部原因" }, ...原因们.map((r) => ({ value: r.id, label: r.status === "启用" || r.status === "未分类" ? r.name : `${r.name}（${r.status}）` }))]}
       />
-      <Select
+      <FilterSelect
         aria-label="卡点类型" className="rbk-sel"
         value={筛.类型 ?? ""}
         onChange={(v: string) => 改多({ 类型: v || undefined })}
         options={[{ value: "", label: "全部类型" }, ...卡点类型们.filter((t) => t !== "暂无卡点").map((t) => ({ value: t, label: t }))]}
       />
-      <Select
+      <FilterSelect
         aria-label="卡点影响" className="rbk-sel"
         value={筛.影响 ?? ""}
         onChange={(v: string) => 改多({ 影响: v || undefined })}
         options={[{ value: "", label: "全部影响" }, ...影响等级们.map((t) => ({ value: t, label: t }))]}
       />
-      <Select
-        showSearch optionFilterProp="label" aria-label="项目" className="rbk-sel" popupMatchSelectWidth={false}
+      <FilterSelect
+        aria-label="项目" className="rbk-sel" popupMatchSelectWidth={false}
         value={筛.项目 ?? ""}
         onChange={(v: string) => 改多({ 项目: v || undefined })}
         options={[{ value: "", label: "全部项目" }, ...项目们.map((p) => ({ value: p.id, label: p.name }))]}

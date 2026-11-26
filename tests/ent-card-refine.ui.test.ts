@@ -139,7 +139,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 无区?: boolean; 全?: boolean; 项目页?: boolean; 单?: boolean; 多?: boolean; 空?: boolean; 只读?: boolean; 公司名?: string; 暗?: boolean };
+type 参 = { 无区?: boolean; 全?: boolean; 项目页?: boolean; 单?: boolean; 多?: boolean; 空?: boolean; 只读?: boolean; 公司名?: string; 暗?: boolean; 项目改?: Record<string, unknown> };
 async function 开(width: number, o: 参 = {}, height = 900) {
   const 手机 = width < 768;
   const ctx = await browser.newContext({ viewport: { width, height }, hasTouch: 手机 });
@@ -385,6 +385,51 @@ it("各宽（768 / 1024 / 1199 / 1200 / 1240 / 1280 / 1440 / 1536 / 390 / 375）
     } finally { await close(); }
   }
 }, 120_000);
+
+/* 11-26：阶段条名字长了也只占一行——节点格（136 宽）里名字省略号，出口胶囊（最宽 160，后台能改叫法）里省略号，悬停看全名（title，TruncTip 浮层读它）；
+   390 / 768 / 1024 / 1280 客户详情都不横滚，阶段条、出口胶囊右缘不出卡 */
+it("阶段条长名：节点名、出口叫法超长也一行省略、悬停看全名；390 / 768 / 1024 / 1280 客户详情不横滚", async () => {
+  const 长出口 = "商机赢单并完成合同签署归档".repeat(2);
+  for (const w of [390, 768, 1024, 1280]) {
+    // 默认叫法（D4：结局钮写全「商机赢单」，不省略）：照旧一个字不截
+    const 默认 = await 开(w, { 单: true });
+    try {
+      const 出名 = 默认.page.locator(".cd-proc .proj-stage-exit .proj-stage-name");
+      expect(await 出名.evaluate(e => [e.textContent, e.scrollWidth > e.clientWidth]), `宽 ${w} 默认出口叫法`).toEqual(["商机赢单", false]);
+    } finally { await 默认.close(); }
+    const { page, errors, close } = await 开(w, { 单: true, 项目改: { 出口叫法: { 商机: [长出口, null] } } });
+    try {
+      // 每格名字都挂着全名（title）：放不下省略号时悬停看全
+      expect(await page.locator(".cd-proc .proj-stage-node .proj-stage-name").evaluateAll(es => es.filter(e => !e.getAttribute("title") || e.getAttribute("title") !== e.textContent).length), `宽 ${w} 节点名缺悬停全名`).toBe(0);
+      const r = await page.evaluate(() => {
+        const 卡 = document.querySelector<HTMLElement>(".cd-proc")!, 排 = 卡.querySelector<HTMLElement>(".proj-stage-nodes")!;
+        // 节点名是字典写死的、今天都短：换成超长的量 CSS 兜不兜得住（一行、省略号、格不变宽）
+        const 名 = 排.querySelector<HTMLElement>(".proj-stage-node .proj-stage-name")!, 格 = 名.closest<HTMLElement>(".proj-stage-node")!;
+        const 原宽 = 格.getBoundingClientRect().width;
+        名.textContent = "超长节点名字".repeat(8);
+        const 出 = 卡.querySelector<HTMLElement>(".proj-stage-exit")!, 出名 = 出.querySelector<HTMLElement>(".proj-stage-name")!;
+        const 量 = (e: HTMLElement) => { const s = getComputedStyle(e); return { 一行: e.getBoundingClientRect().height <= 32, 省: s.textOverflow, 折: s.whiteSpace, 截: e.scrollWidth > e.clientWidth }; };
+        return {
+          页: document.documentElement.scrollWidth - innerWidth,
+          节点: 量(名), 格宽变: Math.round(格.getBoundingClientRect().width - 原宽), 格高: Math.round(格.getBoundingClientRect().height),
+          出口: 量(出名), 出口题: 出.getAttribute("title"), 出口宽: Math.round(出.getBoundingClientRect().width),
+          排右: Math.round(排.getBoundingClientRect().right), 出右: Math.round(出.getBoundingClientRect().right), 卡右: Math.round(卡.getBoundingClientRect().right),
+        };
+      });
+      const 一行省略 = { 一行: true, 省: "ellipsis", 折: "nowrap", 截: true };
+      expect(r.节点, `宽 ${w} 超长节点名`).toEqual(一行省略);
+      expect(r.格宽变, `宽 ${w} 节点名长了格不变宽`).toBe(0);
+      expect(r.格高, `宽 ${w}`).toBe(32);
+      expect(r.出口, `宽 ${w} 超长出口叫法`).toEqual(一行省略);
+      expect(r.出口题, `宽 ${w} 出口悬停看全名`).toBe(长出口);
+      expect(r.出口宽, `宽 ${w}`).toBeLessThanOrEqual(160);
+      expect(r.页, `宽 ${w} 页面横滚`).toBeLessThanOrEqual(0);
+      expect(r.排右, `宽 ${w} 阶段条出卡`).toBeLessThanOrEqual(r.卡右);
+      expect(r.出右, `宽 ${w} 出口胶囊出卡`).toBeLessThanOrEqual(r.卡右);
+      expect(errors).toEqual([]);
+    } finally { await close(); }
+  }
+}, 60_000);
 
 it("暗黑（现状）：卡边是暗黑的 --field-line、影 .30；计数灰跟着 token", async () => {
   const { page, errors, close } = await 开(1280, { 暗: true });

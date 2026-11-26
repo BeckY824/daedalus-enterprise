@@ -196,9 +196,9 @@ describe("D1 · 设计语言 token 和基础控件", () => {
     const 段 = 全.slice(起, 止 > 起 ? 止 : undefined);
     const 选择器们 = [...段.matchAll(/([^{}]+)\{([^{}]*)\}/g)].flatMap((m) => m[1].trim().replace(/\s+/g, " ").split(/,(?![^()]*\))\s*/));
     expect(选择器们.length).toBeGreaterThan(30);
-    // 规范里的几样都在这段：完成节点浅绿 + 右半白底、只读收起钮白底、节点条两头 --edge-fade、结局钮不省略、
-    // 手机项目名两行、切换两半等宽 40 高、待办勾选框间距 16（8 + gap 8）
-    for (const 片 of ["background: var(--success-bg); border-color: var(--success-line); color: var(--success-text)", "split-solo", "var(--edge-fade)", "max-width: none", "-webkit-line-clamp: 2", "grid-template-columns: 1fr 1fr", "height: 40px", "margin-inline-end: 8px"]) {
+    // 规范里的几样都在这段：完成节点浅绿 + 右半白底、只读收起钮白底、节点条两头 --edge-fade、结局钮默认叫法写全不缩（11-26：超 160 才省略，
+    // 后台改的长叫法不再撑出横滚）、手机项目名两行、切换两半等宽 40 高、待办勾选框间距 16（8 + gap 8）
+    for (const 片 of ["background: var(--success-bg); border-color: var(--success-line); color: var(--success-text)", "split-solo", "var(--edge-fade)", ".proj-stage-exit { flex: none; max-width: 160px; }", "-webkit-line-clamp: 2", "grid-template-columns: 1fr 1fr", "height: 40px", "margin-inline-end: 8px"]) {
       expect(段, 片).toContain(片);
     }
   });

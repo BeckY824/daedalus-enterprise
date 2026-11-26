@@ -71,6 +71,11 @@ async function open(p: 参数, width = 1366) {
 
 // expect.poll 默认只等 1 秒，并发负载下不够：统一放宽到 5 秒
 const 轮询 = <T,>(fn: () => T | Promise<T>) => expect.poll(fn, { timeout: 5000 });
+/**
+ * 等 antd 弹层出场动画走完（rc-motion 摘掉 -appear / -enter 类）。出场「start」那一帧样式是 transform: scale(0)，框是 0×0，
+ * Playwright 算它不可见：这时用 `:visible` 去读，定位落空、evaluateAll 读到 []（main CI 红过两次）。只等「出现」不够，出现后还会缩成 0 一下
+ */
+const 等出场完 = (loc: import("playwright").Locator) => 轮询(() => loc.evaluate((e) => /-(appear|enter)\b/.test(e.className))).toBe(false);
 const 长渠道 = "某某跨境电商直播间合作渠道（华东区）".repeat(3);
 const 表头 = (page: import("playwright").Page) => page.locator(".ant-table-thead th").allInnerTexts();
 async function 打开列设置(page: import("playwright").Page) {
@@ -204,12 +209,12 @@ describe("客户来源下拉：未填 + 渠道触点一组（F-049）", () => {
   async function 打开来源下拉(page: import("playwright").Page) {
     await 更多筛选(page).click();
     const 弹层 = page.locator(".ant-popover:visible");
+    // 弹层还在放大（zoom 出场）时点框，下拉按半路的位置对齐：等弹层出场走完再点
+    await 等出场完(弹层);
     await 弹层.getByLabel("客户来源").click();
     const 下拉 = page.locator(".ant-select-dropdown:visible");
-    await 下拉.waitFor();
-    // 选项是下拉展开后才渲染（虚拟列表）：等到第一条选项文字出现再交出去，读选项不抢跑
+    await 等出场完(下拉);
     await 下拉.locator(".ant-select-item").first().waitFor();
-    await 轮询(() => 下拉.locator(".ant-select-item").count()).toBeGreaterThan(0);
     return 下拉;
   }
 
@@ -225,8 +230,13 @@ describe("客户来源下拉：未填 + 渠道触点一组（F-049）", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       // 下拉整个在屏幕里（不按长名撑到屏幕外）；悬停长名浮出全文
       expect(await 下拉.evaluate((d) => { const r = d.getBoundingClientRect(); return r.left >= 0 && r.right <= window.innerWidth; })).toBe(true);
-      // 悬停全文：每轮重新悬停（鼠标事件可能早于浮层挂载），等到非空再断言
-      await 轮询(async () => { await 长那条.hover(); return (await page.locator(".trunc-tip").textContent({ timeout: 1000 }).catch(() => "")) ?? ""; }).toBe(长渠道);
+      // 悬停全文（TruncTip）：hover 会先把这一条滚进视野，负载下那次 scroll 事件晚于 pointerover 到，TruncTip 见滚动就收、
+      // 鼠标原地再 hover 不再发 pointerover，浮层就一直不出（本机并发跑 2/10 红）。每轮先把鼠标挪开再悬停，再等浮层真亮出来
+      await 轮询(async () => {
+        await page.mouse.move(0, 0);
+        await 长那条.hover();
+        return (await page.locator(".trunc-tip.is-on").textContent({ timeout: 1000 }).catch(() => "")) ?? "";
+      }).toBe(长渠道);
       // 搜「公司资源」触点和停用的同名渠道都出来
       await page.keyboard.type("公司资源");
       await 轮询(() => 下拉.locator(".ant-select-item-option").allInnerTexts()).toEqual(["公司资源（触点）", "公司资源（已停用）"]);
