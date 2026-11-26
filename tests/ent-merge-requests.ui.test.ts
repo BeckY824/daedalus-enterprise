@@ -118,6 +118,10 @@ it("同意：留下那家的同事说「项目不动、多出联系人和沟通�
     await 见(page, "merge-request-agree-ok").click();
     await 见(page, "merge-request-done").waitFor();
     expect(await 见(page, "merge-request-done").innerText()).toMatch(/已合并\s*已合并 · 30 天内发起人可撤回/);
+    // 进度格跟着办完结果：不再写办之前的「0 / 1 位同意」
+    const 行 = page.locator(".ant-table-row", { has: page.getByTestId("merge-request-done") });
+    expect(await 行.innerText()).not.toContain("位同意");
+    expect(await 行.innerText()).toContain("已合并");
     expect(错).toEqual([]);
   } finally { await page.close(); }
 });

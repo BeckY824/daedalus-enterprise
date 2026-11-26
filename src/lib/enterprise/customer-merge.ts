@@ -290,8 +290,9 @@ export async function 合并预览(db: 库, 留下id: string, 并掉id: string, 
   const 日 = (d: Date) => d.toISOString().slice(0, 10);
   const 行 = (格: string, a: string, b: string, 标红 = false): 并排格 => ({ 格, 留下: a, 并掉: b, 不同: a !== b, ...(标红 && a !== b ? { 标红: true } : {}) });
   const 并排 = [
-    行("客户名称", A.name ?? "", B.name ?? ""),
-    行("客户简称", A.shortName ?? "", B.shortName ?? ""),
+    // 并进来那家发起人看不到（按号放行）：名称给代称、简称不给，同搜索行和确认框
+    行("客户名称", A.name ?? "", 藏B ? "同事负责的客户（号码撞上）" : B.name ?? ""),
+    行("客户简称", A.shortName ?? "", 藏B ? "" : B.shortName ?? ""),
     行("客户编号", 客户编号文字(A.customerNo) ?? "", 客户编号文字(B.customerNo) ?? ""),
     行("负责人", 人.get(A.salesOwnerId) ?? (A.pool ? "公海" : ""), 人.get(B.salesOwnerId) ?? (B.pool ? "公海" : "")),
     行("来源渠道", A.channel?.name ?? "", B.channel?.name ?? "", true),

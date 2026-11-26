@@ -331,13 +331,17 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
               <span role="columnheader" className="mrg-cmp-a">{一行("留下（这位）", "留下（这位）")}</span>
               <span role="columnheader" className="mrg-cmp-b">{一行("并进来", "并进来")}</span>
             </div>
-            {预.并排.map((r) => (
+            {预.并排.map((r0) => {
+              // 按号放行进来的、看不到的同事客户：并进来一列不显示真名（服务端已换，这里再兜一道）
+              const r = 并掉.按号 && r0.格 === "客户名称" ? { ...r0, 并掉: 按号名 } : 并掉.按号 && r0.格 === "客户简称" ? { ...r0, 并掉: "" } : r0;
+              return (
               <div key={r.格} role="row" data-testid="merge-row" className={`mrg-cmp-r${r.不同 ? " is-diff" : ""}${r.标红 ? " is-red" : ""}`}>
                 <span role="rowheader" className="mrg-cmp-k">{一行(r.格, r.格)}</span>
                 <span role="cell" className="mrg-cmp-a"><span className="mrg-cmp-tag" aria-hidden>留下</span>{一行(r.留下 || "—", r.留下)}</span>
                 <span role="cell" className="mrg-cmp-b"><span className="mrg-cmp-tag" aria-hidden>并进来</span>{一行(r.并掉 || "—", r.并掉)}</span>
               </div>
-            ))}
+              );
+            })}
           </div>
           {预.补空.length > 0 && <p className="mrg-note">留下这家空着的{预.补空.join("、")}，用并进来那家的补上；其余两家不同的格都按留下这家。</p>}
           {(预.号格留下有值?.length ?? 0) > 0 && <p className="mrg-note" data-testid="merge-keep-keys">{预.号格留下有值.join("、")}两家都填了：留下这家的不动，并进来那家的随它进回收站（撤回时一起回来）。</p>}

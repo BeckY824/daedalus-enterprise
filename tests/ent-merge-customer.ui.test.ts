@@ -354,6 +354,25 @@ it("同事负责的候选标「要申请」：读申请预览、底部列要同�
   } finally { await page.close(); }
 }, 60_000);
 
+it("按号搜到的同事客户：预览并排「并进来」一列不露那家真名和简称，用代称", async () => {
+  const 申预览 = {
+    能发: true, 原因: [], 等待工作日: 5,
+    预览: 预览({ 要勾选: false, 并排: [行("客户名称", 长名, "编造的看不到的客户甲"), 行("客户简称", "", "编造简称甲"), 行("客户编号", "NO.00001", "NO.00012")] }),
+    同意人: [{ userId: "u2", 名: "同事乙", 凭: ["被并客户负责人"], 项目: [] }],
+  };
+  const { page, 错 } = await open(1280, { 种: "客户" }, { __候选: [{ id: "b", name: "", 编号: "NO.00012", 负责人: "同事乙", 要申请: true, 按号: "13800000000" }], __申预览: 申预览 });
+  try {
+    await page.getByLabel("搜客户").fill("13800000000");
+    await page.getByTestId("merge-candidate").click();
+    await page.getByTestId("merge-request-go").waitFor();
+    const 表 = await page.locator(".mrg-cmp").innerText();
+    expect(表).not.toContain("编造的看不到的客户甲");
+    expect(表).not.toContain("编造简称甲");
+    expect(表).toContain("同事负责的客户（号码撞上）");
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
 it("发合并申请成了：撤销条的人数用发起返回的同意人数，不用预览时数的（两边不一样时跟着发起返回）", async () => {
   const 申预览 = {
     能发: true, 原因: [], 等待工作日: 5, 预览: 预览({ 要勾选: false }),

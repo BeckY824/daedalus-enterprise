@@ -148,6 +148,8 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
       {钮(<Button size="small" danger disabled={!!不能写 || (!!忙 && 忙 !== r.id)} onClick={() => 开("拒绝", r)} data-testid="merge-request-reject">拒绝</Button>)}
     </div>
   );
+  /** 办成已合并的，进度写「已合并」，不再是办之前的「0 / 1 位同意」 */
+  const 进度话 = (r: 合并申请一条) => (办了[r.id]?.状态 === "已合并" ? "已合并" : 同意进度(r));
   const 结果格 = (完: 办完) => (
     <div className="mrq-res" data-testid="merge-request-done">
       <Tag color={状态色[完.状态] ?? "default"}>{完.状态}</Tag>
@@ -180,7 +182,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
     { title: "合并", key: "两家", width: 240, ...省略, render: (_, r) => <span title={两家话(r)}>{两家话(r)}</span> },
     { title: "发起人", dataIndex: "发起人", width: 90, ...省略 },
     { title: "要我同意是因为", key: "凭", width: 220, ...省略, render: (_, r) => <span title={我的身份话(r, 我)}>{我的身份话(r, 我)}</span> },
-    { title: "进度", key: "进度", width: 100, render: (_, r) => 同意进度(r) },
+    { title: "进度", key: "进度", width: 100, render: (_, r) => 进度话(r) },
     { title: "发起时间", dataIndex: "发起", width: 140, render: 时刻 },
     { title: "失效", key: "到期", width: 90, render: (_, r) => (办了[r.id] ? "—" : 剩(r)) },
     { title: "", key: "op", width: 200, render: (_, r) => (办了[r.id] ? 结果格(办了[r.id]) : 处理钮(r)) },
@@ -207,7 +209,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
       {项("合并", 一行(两家话(r)))}
       {项("发起人", 一行(r.发起人))}
       {项("因为", 一行(我的身份话(r, 我)))}
-      {项("进度", 一行(同意进度(r)))}
+      {项("进度", 一行(进度话(r)))}
       {!办了[r.id] && 项("失效", 剩(r))}
       {办了[r.id] ? 结果格(办了[r.id]) : 处理钮(r)}
     </li>
