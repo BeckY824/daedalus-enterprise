@@ -153,26 +153,35 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
     }
   };
 
-  /** 铃铛这颗钮（带角上红数）。初始数没到时同一颗钮、不带数，到了只多出角上那个红数，不挪位置 */
-  const 钮 = (未读: number) => {
-    const 说法 = 未读 > 0 ? `通知，${未读} 条未读` : "通知";
-    return !手机 ? (
+  /*
+    铃铛这颗钮在 <晚到> 外面、一出来就水合、点得动；只有角上那个红数在 <晚到> 里（11-26 审查）。
+    原来整颗钮包在 Suspense 里：硬刷新时服务端先吐的是兜底，数没到之前那段不水合，
+    要等人去点，React 19 才放弃等服务端、把那块改成客户端重画（流里后到的数作废）。
+    外层 Badge 不带数，只当钮的定位框（和原来包着钮的那层同一个 span.ant-badge，钮不挪位）；
+    红数是一颗独立的 Badge（.late-badge，globals.css 摆到钮右上角），数没到 = 0 = 不画。
+    钮上的提示和 aria-label 用已到的数（未读值，没到 = 0）
+  */
+  const 说法 = 未读 > 0 ? `通知，${未读} 条未读` : "通知";
+  const 角数 = (n: number) => <Badge count={n} size="small" overflowCount={99} className="late-badge" />;
+  /* 自己问到过（或初始数已到、并进了 未读值）就直接画；还没有才交给 <晚到>——兜底挂着时它不跟着外面重画（LateCount.tsx） */
+  const 红数 = 未读值 !== null ? 角数(未读值) : <晚到 值={初始未读} 占={0}>{角数}</晚到>;
+  return (
+    <>
+      {!手机 ? (
         /* 设计语言 H-B · H-新11：悬停出一句提示（「通知，N 条未读」），不再只有一块灰底；
            红数收进铃铛这颗钮的右上角（globals.css .notice-bell-badge），99+ 也不压出钮外、不压到左栏边 */
         <Tooltip title={说法} placement="bottom" mouseEnterDelay={0.3}>
-          <Badge count={未读} size="small" overflowCount={99} className="notice-bell-badge">
+          <Badge className="notice-bell-badge">
             <Button type="text" className="notice-bell" icon={<BellOutlined />} aria-label={说法} onClick={打开} />
+            {红数}
           </Badge>
         </Tooltip>
       ) : (
-        <Badge count={未读} size="small" overflowCount={99}>
+        <Badge>
           <Button type="text" icon={<BellOutlined />} aria-label={说法} title={说法} onClick={打开} />
+          {红数}
         </Badge>
-      );
-  };
-  return (
-    <>
-      <晚到 值={初始未读} 占={0}>{(初) => 钮(未读值 ?? 初)}</晚到>
+      )}
       {挂过 && (
         <ConfigProvider theme={{ token: { motion: !少 } }}>
           <Drawer

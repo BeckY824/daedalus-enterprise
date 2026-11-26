@@ -1,6 +1,6 @@
 // 客户三态的小标（列表状态列、看板色点、公海号码不全、交接看板超期行）：放在应用壳上引，组件里引会让 *.ui.test 的 esbuild 打包失败
 import "./tri-state-ui.css";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { 读收藏, 读项目收藏 } from "@/lib/favorites";
 import { 客户总数 } from "@/lib/pool-db";
 import { headers } from "next/headers";
@@ -75,7 +75,9 @@ export default async function AppLayout({
     数不出来（库锁着之类）只少一个角标，不把整页拖成错误页：记一笔，按 0 摆
   */
   const 带通知 = 企业版() && !user.视图由;
-  const 角标 = 数角标(user.id, 带通知).catch((e) => {
+  /* Next 自己的控制流（动态渲染退出、重定向等）先原样抛回去，不当成「数不出来」吞掉（next/navigation unstable_rethrow） */
+  const 角标 = 数角标(user.id, 带通知).catch((e: unknown) => {
+    unstable_rethrow(e);
     console.error("[layout] 数角标没成，这一页角标按 0：", e instanceof Error ? e.message : e);
     return { 逾期: 0, 今天: 0, 通知未读: 带通知 ? 0 : undefined };
   });
@@ -84,7 +86,13 @@ export default async function AppLayout({
     左栏「客户」右边的灰数（lib/pool-db.ts 客户总数）。企业版左栏不摆这个数（AppShell 10-30），也就不数：
     客户页要的页签数在客户页自己数（同一次渲染 cache() 只数一遍，谁先叫谁数）。别的版本照旧数、同样不等
   */
-  const 客户数 = 企业版() ? undefined : 客户总数().catch(() => 0);
+  const 客户数 = 企业版()
+    ? undefined
+    : 客户总数().catch((e: unknown) => {
+        unstable_rethrow(e);
+        console.error("[layout] 客户总数没数成，左栏灰数按 0：", e instanceof Error ? e.message : e);
+        return 0;
+      });
 
   const 业务 = getBusiness();
   const 有AIP = llmEnabled();
