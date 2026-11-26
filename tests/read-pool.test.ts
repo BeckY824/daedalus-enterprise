@@ -261,7 +261,7 @@ describe("分流", () => {
     expect(() => (换 as unknown as { setting: { create: unknown } }).setting.create).toThrow(只读通道错误);
     expect(await 换!.user.count()).toBeGreaterThan(0);
     const { PrismaClient } = await import("@/generated/prisma");
-    const 别的 = new PrismaClient({ datasourceUrl: process.env.DATABASE_URL });
+    const 别的 = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: process.env.DATABASE_URL });
     expect(读通道不限定(别的)).toBeNull();
     关();
     expect(读通道不限定(raw)).toBeNull();

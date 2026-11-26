@@ -24,7 +24,7 @@ const 临时 = vi.hoisted(() => {
 });
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@/generated/prisma");
-  const mk = (w: string) => new PrismaClient({ datasourceUrl: `file:${path.join(临时.root, w, "crm.db")}?connection_limit=1` });
+  const mk = (w: string) => new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${path.join(临时.root, w, "crm.db")}?connection_limit=1` });
   const dbs = { boss: mk("boss"), li: mk("li") };
   (globalThis as { __dbs?: typeof dbs }).__dbs = dbs;
   const prisma = new Proxy({}, { get: (_t, p) => { const db = dbs[临时.谁] as unknown as Record<string | symbol, unknown>; const v = db[p]; return typeof v === "function" ? (v as (...a: unknown[]) => unknown).bind(db) : v; } });

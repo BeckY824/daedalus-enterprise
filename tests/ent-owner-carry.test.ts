@@ -1966,6 +1966,35 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
       expect(await 以(总管, () => 交接全部(甲.id, 丙.id))).toMatchObject({ ok: true });
       await 查(x);
     });
+    describe("E-339：本人已结束的项目随客户走，线索公海里的项目不带", () => {
+      const 场景2 = async () => {
+        await 开项目模式();
+        const c = await 客户(甲.id);
+        const 已结束 = await 项目(c, 甲.id, { name: "已结束的", result: "丢单" });
+        const 公海的 = await 项目(c, 甲.id, { name: "公海里的", pooledAt: new Date() });
+        await prisma.user.update({ where: { id: 甲.id }, data: { active: false } });
+        return { c, 已结束, 公海的 };
+      };
+      const 查2 = async (x: Awaited<ReturnType<typeof 场景2>>) => {
+        expect(await 客户负责人(x.c)).toBe(丙.id);
+        // 已结束的跟客户给接手人，结局不变
+        expect(await 项目of(x.已结束)).toMatchObject({ ownerId: 丙.id, result: "丢单", pooledAt: null });
+        // 公海里的不带：还在公海、负责人不变
+        const 公海 = await 项目of(x.公海的);
+        expect(公海.pooledAt).not.toBeNull();
+        expect(公海.ownerId).toBe(甲.id);
+      };
+      it("交一位客户", async () => {
+        const x = await 场景2();
+        expect(await 以(总管, () => 交接客户(甲.id, x.c, 丙.id))).toMatchObject({ ok: true });
+        await 查2(x);
+      });
+      it("全部交给", async () => {
+        const x = await 场景2();
+        expect(await 以(总管, () => 交接全部(甲.id, 丙.id))).toMatchObject({ ok: true });
+        await 查2(x);
+      });
+    });
     it("确认离职交接（升级前留下的那笔）", async () => {
       const x = await 场景();
       const h = await prisma.entHandover.create({ data: { kind: "离职", way: "转交", fromUserId: 甲.id, toUserId: 丙.id, byUserId: 总管.id, customerIds: JSON.stringify([x.c]), counts: JSON.stringify({ 客户: 1 }) } });

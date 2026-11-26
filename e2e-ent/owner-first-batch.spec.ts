@@ -47,7 +47,7 @@ async function 造活(customerId: string, ownerId: string, 名: string) {
 
 test.beforeAll(async () => {
   种 = 读种子();
-  db = new PrismaClient({ datasources: { db: { url: `file:${ENT_DB}` } } });
+  db = new PrismaClient<import("../src/generated/prisma").Prisma.PrismaClientOptions>({ datasources: { db: { url: `file:${ENT_DB}` } } });
   const hash = await bcrypt.hash(种.密码, 10);
   const 经理 = await db.user.findFirstOrThrow({ where: { email: 账号.经理 } });
   const 销售部 = (await db.entMember.findUniqueOrThrow({ where: { userId: 经理.id } })).deptId;

@@ -21,7 +21,7 @@ const 项目们: string[] = [];
 
 test.beforeAll(async () => {
   种 = 读种子();
-  db = new PrismaClient({ datasources: { db: { url: `file:${ENT_DB}` } } });
+  db = new PrismaClient<import("../src/generated/prisma").Prisma.PrismaClientOptions>({ datasources: { db: { url: `file:${ENT_DB}` } } });
   const 老板 = await db.user.findFirstOrThrow({ where: { email: 账号.老板 } });
   for (let i = 1; i <= 3; i++) {
     const c = await db.customer.create({ data: { name: `${前缀}-${i}`, phone: "", contacts: { create: { name: "", phone: `139${String(Date.now() + i).slice(-8)}`, isPrimary: true } }, salesOwnerId: 老板.id, lastFollowAt: new Date(Date.now() + i * 1000) } });

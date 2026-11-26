@@ -21,7 +21,7 @@ const 临时 = vi.hoisted(() => {
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@/generated/prisma");
   const { 加上限定 } = await import("@/lib/team-scope");
-  const raw = new PrismaClient({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=4&socket_timeout=20` });
+  const raw = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=4&socket_timeout=20` });
   return { prisma: 加上限定(raw), defaultClient: raw };
 });
 const 假头 = vi.hoisted(() => () => ({

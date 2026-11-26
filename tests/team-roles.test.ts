@@ -23,7 +23,7 @@ vi.mock("@/lib/prisma", async () => {
   const { 加上限定 } = await import("@/lib/team-scope");
   const { 单连接 } = await import("@/lib/sqlite-url");
   // 与真实客户端相同：池里多连接会在 Windows 上让前一条查询与清库撞锁。
-  const raw = new PrismaClient({ datasourceUrl: 单连接(`file:${path.join(临时.dir, "A.db").replaceAll("\\", "/")}`) });
+  const raw = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: 单连接(`file:${path.join(临时.dir, "A.db").replaceAll("\\", "/")}`) });
   return { prisma: 加上限定(raw), defaultClient: raw };
 });
 
