@@ -19,12 +19,12 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 合并通知种类 } from "@/lib/enterprise/customer-merge";
+import { 合并通知种类, 撤回期限天数 } from "@/lib/enterprise/customer-merge";
 import {
   发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 扫过期合并申请, 申请状态, 合并申请通知种类, 看不到那家叫法, 申请两家话, 给发起人藏名,
 } from "@/lib/enterprise/merge-request";
 import { 发起客户合并申请, 处理客户合并申请, 我发起的合并申请, 等我同意的合并申请 } from "@/app/(app)/customers/merge-actions";
-import { 合并申请页 } from "@/app/(app)/customers/merge-request-words";
+import { 合并申请页, 撤回天数, 拒绝原因上限 } from "@/app/(app)/customers/merge-request-words";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人, 乙: 人, 丙: 人, 丁: 人;
@@ -219,5 +219,16 @@ describe("按号放行进来、发起人看不到的那家", () => {
     const 我的 = await 以谁的身份(乙.id, () => 我发起的合并申请());
     expect(我的[0].并掉.名).toBe("同事负责的客户（号码撞上） 42");
     expect(JSON.stringify(我的)).not.toContain("看不到的同事客户");
+  });
+});
+
+describe("界面常量和服务端一致；拒绝原因上限服务端也拦", () => {
+  it("撤回天数 = 撤回期限天数；拒绝原因超 100 字动作层拒、不悄悄截，100 字照收", async () => {
+    expect(撤回天数).toBe(撤回期限天数);
+    const { id } = await 一张();
+    登录.人 = 丙;
+    expect(await 处理客户合并申请(id, "拒绝", "字".repeat(拒绝原因上限 + 1))).toEqual({ ok: false, error: "拒绝原因最多 100 字" });
+    expect((await raw.entMergeRequest.findUniqueOrThrow({ where: { id } })).status).toBe(申请状态.待同意);
+    expect(await 处理客户合并申请(id, "拒绝", "字".repeat(拒绝原因上限))).toMatchObject({ ok: true, 状态: 申请状态.已拒绝 });
   });
 });

@@ -40,6 +40,7 @@ import {
   type 发起完, type 处理完, type 快照, type 凭, type 涉及项目, type 合并申请预览结果,
 } from "@/lib/enterprise/merge-request";
 import { 全公司查号 } from "@/lib/enterprise/contact-dedupe";
+import { 拒绝原因上限 } from "./merge-request-words";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -417,10 +418,11 @@ export async function 发起客户合并申请(
   return r;
 }
 
-/** 同意人同意 / 拒绝。拒绝可带一句原因（最多 200 字，数据层截） */
+/** 同意人同意 / 拒绝。拒绝可带一句原因（选填，最多 100 字：界面超了点不了，这里再拦一道，不悄悄截） */
 export async function 处理客户合并申请(requestId: string, 结论: "同意" | "拒绝", 原因?: string): Promise<结果<处理完>> {
   const me = await 我();
   if (!是id(requestId) || (结论 !== "同意" && 结论 !== "拒绝") || (原因 !== undefined && typeof 原因 !== "string")) return 坏参数;
+  if (原因 && 原因.trim().length > 拒绝原因上限) return { ok: false, error: `拒绝原因最多 ${拒绝原因上限} 字` };
   const r = await 处理合并申请(prisma, requestId, me, 结论, { 原因 });
   if (r.ok) await 刷新申请(requestId);
   return r;
