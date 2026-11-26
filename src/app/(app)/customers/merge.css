@@ -98,7 +98,11 @@
 .mrg-into-s { color: var(--text-muted); font-size: var(--fs-note); }
 .mrg-into-b { flex: 1 1 auto; min-width: 0; }
 .mrg-into-r > .ant-btn { flex: none; }
+/* 过了撤回期限：按钮的位置写「合并已超过 N 天，不能撤回」，不省略（宁可挤前面那句） */
+.mrg-into-x { flex: none; color: var(--text-muted); font-size: var(--fs-note); white-space: nowrap; }
 .mrg-order-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 联系人「⋯」里置灰的「和另一位合成」（ContactLinks 合成灰）：电脑悬停看原因（title），这行小字只在手机（≤767，没有悬停）露出 */
+.mrg-gray-note { display: none; }
 
 @media (max-width: 767px) {
   /* 两家改成上下两段：每一项「项」一行，下面「留下」「并进来」各一行，带小标签 */
@@ -113,4 +117,5 @@
   .mrg-foot .ant-btn, .mrg-psel.ant-select { min-height: var(--hit-touch); }
   /* 「已并入」那一行的撤回、知道了，历史变更里的撤回 */
   .mrg-into-r > .ant-btn, .mrg-order-h > .ant-btn { min-height: var(--hit-touch); }
+  .mrg-gray-note { display: block; }
 }

@@ -22,7 +22,7 @@ import { 字段权限key } from "@/lib/enterprise/field-perm";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 项目合并预览, 执行项目合并, 撤回项目合并, 能并进的项目, 项目的合并单, 项目合并通知种类, 阶段和钱拦, 项目合并验证步 } from "@/lib/enterprise/project-merge";
+import { 项目合并预览, 执行项目合并, 撤回项目合并, 能并进的项目, 项目的合并单, 项目合并通知种类, 阶段和钱拦, 项目合并验证步, 项目合并撤回过期话 } from "@/lib/enterprise/project-merge";
 import { 项目单, 被并项目拦, 换客户合并拦 } from "@/lib/enterprise/project-merge-guard";
 import { 执行合并, 撤回合并 } from "@/lib/enterprise/customer-merge";
 import { 项目换客户, 撤销换客户 } from "@/lib/enterprise/project-move-customer";
@@ -428,10 +428,24 @@ describe("撤回", () => {
     expect(await 撤回项目合并(prisma, mergeId, 丙)).toMatchObject({ ok: false, error: expect.stringContaining("只有合并的人或系统管理员") });
     expect(await 撤回项目合并(prisma, mergeId, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("超过 30 天") });
     expect((await 项目的合并单(prisma, b, 乙))[0]).toMatchObject({ 方向: "并出去", status: "已合并", 能撤: false, 不能撤因: "合并已超过 30 天，不能撤回" });
+    expect((await 项目的合并单(prisma, b, 老板))[0]).toMatchObject({ 能撤: false, 不能撤因: 项目合并撤回过期话 });
+    expect(await 撤回项目合并(prisma, mergeId, 老板)).toMatchObject({ ok: false, error: 项目合并撤回过期话 });
+    // 被并项目详情顶上「已并入」那一行：过了期限带过期话，合并的人、系统管理员看到的一样（都不带撤回）
+    for (const 谁 of [乙, 老板]) {
+      登录.user = { ...谁, email: "x", title: "", avatar: null };
+      const r = await 读项目详情(登录.user as never, b);
+      if (r.种 !== "有") throw new Error("没读到项目");
+      expect(r.props.p.已并入).toMatchObject({ 能撤: false, 过期话: "合并已超过 30 天，不能撤回" });
+    }
     // 过了 30 天也不再拦换客户（不能撤也就不拦）
     expect(await 换客户合并拦(prisma, b)).toBeNull();
     const e = await 项目(乙.id, c);
     const 近 = await 并(a, e, 乙);
+    登录.user = { ...乙, email: "yi", title: "", avatar: null };
+    const 近详情 = await 读项目详情(登录.user as never, e);
+    if (近详情.种 !== "有") throw new Error("没读到项目");
+    expect(近详情.props.p.已并入).toMatchObject({ 能撤: true });
+    expect(近详情.props.p.已并入?.过期话).toBeUndefined();
     expect((await 撤回项目合并(prisma, 近, 老板)).ok).toBe(true);
   });
 
