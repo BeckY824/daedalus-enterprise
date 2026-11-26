@@ -33,6 +33,8 @@ import { 角色名, type 业务角色 } from "@/lib/sync/dept-policy";
 import type { BusinessConfig } from "@/lib/business-config";
 import type { AiUsage } from "@/lib/ai-usage";
 import { 滚法 } from "@/lib/reduced-motion";
+import MergeLedgerTab from "./MergeLedgerTab";
+import type { 查合并台账, 导出合并台账Action } from "./merge-ledger-actions";
 
 /** 左目录里每一项底下那句话。放在组件外面，免得每次渲染重建 */
 const 说明表: Record<string, string> = {
@@ -45,6 +47,7 @@ const 说明表: Record<string, string> = {
   business: "客户 / 学员 这些叫法",
   imports: "导进来的那几批，可撤销",
   exports: "谁导出了哪张表、多少行",
+  merges: "项目合并一单一行，对账、导出",
   enterprise: "飞书 / 钉钉 / Excel 导进来、同步、切换",
   audit: "每一次改动的记录",
   trash: "删了的 30 天内能恢复",
@@ -75,6 +78,7 @@ const 搜词表: Record<string, string[]> = {
   ai: ["Key", "模型", "MCP", "令牌"],
   imports: ["导入", "撤销"],
   exports: ["导出"],
+  merges: ["合并", "撤回", "开票", "对账"],
   enterprise: ["飞书", "钉钉", "Excel", "同步"],
   audit: ["日志", "谁改了"],
   trash: ["恢复", "删除"],
@@ -154,6 +158,7 @@ export default function SettingsView({
   导入记录 = true,
   回收站 = false,
   导出记录 = null,
+  合并台账 = null,
   只个人 = false,
   客户回收 = null,
   线索配额 = null,
@@ -195,6 +200,8 @@ export default function SettingsView({
   回收站?: boolean;
   /** 「导出记录」那一栏（11-03）：最近 200 次导出，只给系统管理员；null = 不摆 */
   导出记录?: AuditRow[] | null;
+  /** 「合并台账」那一栏（12-02，客户 E-336 / E-337 / E-339）：项目合并一单一行，只给系统管理员；两个动作由 SettingsBody 传进来，null = 不摆 */
+  合并台账?: { 查: typeof 查合并台账; 导出: typeof 导出合并台账Action } | null;
   /** 企业版不是系统管理员（11-03 D3-1）：只摆个人资料、登录与密码、快捷键、外观（回收站副手另有回收站），成员管理、后台设置都不出 */
   只个人?: boolean;
   /** 企业版项目模式多一栏「客户回收」（客户三态的开关、天数、占位词，C16）；null = 不摆 */
@@ -255,6 +262,7 @@ export default function SettingsView({
     ...(企业版导入 ? [{ key: "enterprise", label: "企业版导入", children: <EnterpriseImportTab /> }] : []),
     ...(回收站 ? [{ key: "trash", label: "回收站", children: <TrashTab /> }] : []),
     ...(导出记录 ? [{ key: "exports", label: "导出记录", children: <AuditTab logs={导出记录} 导出 /> }] : []),
+    ...(合并台账 ? [{ key: "merges", label: "合并台账", children: <MergeLedgerTab 查={合并台账.查} 导出={合并台账.导出} /> }] : []),
     { key: "audit", label: "操作日志", children: <AuditTab logs={logs} /> },
     /*
       开关总览（设置开关 N1，11-23）：只给系统管理员（P-全局-02，isAdmin = 能进设置；只个人的人下面那行过滤掉，带 ?tab=switches 落回第一栏）。
@@ -292,7 +300,7 @@ export default function SettingsView({
         ["团队与权限", ["switches", "members", "org"]],
         ["线索和公海", ["recycle", "project"]],
         ["业务与 AI", ["business", "ai"]],
-        ["数据", ["imports", "enterprise", "exports", "trash", "audit"]],
+        ["数据", ["imports", "enterprise", "exports", "merges", "trash", "audit"]],
       ];
 
   /**

@@ -12,6 +12,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 能管回收站 } from "@/lib/enterprise/soft-delete";
 import { 能导入导出 } from "@/lib/enterprise/import-perm";
 import { 导出必填拦截Action } from "./required-block-actions";
+import { 查合并台账, 导出合并台账Action } from "./merge-ledger-actions";
 import { 全部企业字典, 读分配谁能用 } from "@/lib/enterprise/dict";
 import { aiUsageThisMonth } from "@/lib/ai-usage";
 import { multiTenant } from "@/lib/tenant/context";
@@ -283,6 +284,8 @@ export default async function SettingsBody() {
       机器={机器}
       logs={(只个人 ? [] : logs).map(成日志行)}
       导出记录={导出日志 && 导出日志.map(成日志行)}
+      /* 合并台账（12-02）：只给系统管理员（是总管理 = 是系统管理员），动作里再判一遍；勾了「不管设置」的跟着「可进」走 */
+      合并台账={企业版() && 可进 && 是总管理(me, 权限org) ? { 查: 查合并台账, 导出: 导出合并台账Action } : null}
       users={(只个人 ? [] : users).map((u) => ({
         id: u.id,
         name: u.name,
