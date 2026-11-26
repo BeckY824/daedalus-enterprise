@@ -12,9 +12,9 @@
  */
 import { 改过的沟通们 } from "./follow-edited";
 import { 沟通附件们 } from "@/lib/attachments";
-import { prisma } from "@/lib/prisma";
+import { prisma, defaultClient } from "@/lib/prisma";
 import type { Prisma } from "@/generated/prisma";
-import { 看全部 } from "@/lib/team-scope";
+import { 看全部, 客户读条件, 项目读条件 } from "@/lib/team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 露客户, 看得到的客户 } from "@/lib/project/db";
 import { 能往项目记沟通, 能记售后回访, 售后客户 } from "@/lib/project/follow-needs-project";
@@ -292,6 +292,33 @@ export async function 客户跟进可见条件(me: { id: string; role?: string }
   const 本人 = 本人售后条件(me.id, await 本人售后项目(me, customerId, new Set(项目们.keys())));
   const 段们: Prisma.FollowUpWhereInput[] = [{ projectNode: null }, ...(这位的项目.length ? [{ projectNode: { projectId: { in: 这位的项目 } } }] : []), ...本人];
   return 段们.length === 1 ? 段们[0] : { OR: 段们 };
+}
+
+/**
+ * 跨客户版的 客户跟进可见条件（首页 AI search_followups 跨人搜）：同样三段并起来，只是不按一位客户枚举项目，改成写进 where 的项目条件——
+ *   不挂项目的；挂在我看得到的项目上的（限定层读项目那一句 项目读条件 + 露客户：客户我看得到、或不在公海且我是负责人 + 公海里我回避的不算，
+ *   和 看得到的项目们 逐个过的是同一把尺）；挂在删了的项目上的（单客户版只认这位名下删了的，这里认不出「同一位」，跟进本身的客户仍过限定层）；
+ *   本人记的售后回访（单客户版还只认我能补记售后的那几个项目，这里放宽到本人记的全部——是我自己写的内容，不是同事的）。
+ * 不是企业版只用项目 = null（不滤，照原样）
+ */
+export async function 跨客户跟进可见条件(me: { id: string; role?: string }): Promise<Prisma.FollowUpWhereInput | null> {
+  if (!(await 企业版只用项目())) return null;
+  const [项目读, 客户读, 回避] = await Promise.all([
+    项目读条件(defaultClient),
+    客户读条件(defaultClient),
+    回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id))),
+  ]);
+  const 看得到的项目: Prisma.ProjectWhereInput = { AND: [
+    ...(项目读 ? [项目读 as Prisma.ProjectWhereInput] : []),
+    { OR: [{ customer: { AND: [...(客户读 ? [客户读 as Prisma.CustomerWhereInput] : []), { deletedAt: null }] } }, { pooledAt: null, ownerId: me.id }] },
+    ...(回避.length ? [{ id: { notIn: 回避 } }] : []),
+  ] };
+  return { OR: [
+    { projectNode: null },
+    { projectNode: { project: 看得到的项目 } },
+    { projectNode: { project: { deletedAt: { not: null } } } },
+    { ownerId: me.id, afterSale: true, projectNode: { isNot: null } },
+  ] };
 }
 
 /**

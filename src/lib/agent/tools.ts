@@ -26,6 +26,7 @@ import { 后售培育名, 显示节点名 } from "../project/stage-dict";
 import { 看得到的客户, 露客户 } from "../project/db";
 import { 不进统计, 历史分析的, 仅记录用的, 是历史分析, 是仅记录用, 来源字, 并条件, 人名显示 } from "../project/system-created";
 import { 企业版 } from "../enterprise/switch";
+import { 客户跟进可见条件, 跨客户跟进可见条件 } from "../enterprise/customer-follow-feed";
 import { 认渠道触点 } from "../enterprise/touchpoint";
 import { 主联系人号码选, 主联系人电话, 客户电话 } from "../enterprise/primary-contact-phone";
 import { 启用渠道条件 } from "../enterprise/channel-main";
@@ -225,6 +226,12 @@ function 按渠道或触点(channel: string): Prisma.CustomerWhereInput {
   return 触点 ? { OR: [按名, { touchpoint: 触点 }] } : 按名;
 }
 
+/** 跟进可见条件要的「我」（角色认本人售后能补记哪几个项目）：只在企业版查库 */
+async function 读我(userId: string): Promise<{ id: string; role?: string }> {
+  if (!企业版()) return { id: userId };
+  return (await prisma.user.findUnique({ where: { id: userId }, select: { id: true, role: true } })) ?? { id: userId };
+}
+
 export const TOOLS: Tool[] = [
   {
     name: "search_customers",
@@ -411,6 +418,8 @@ export const TOOLS: Tool[] = [
         id = 候选[0].id;
       }
       if (!id) return { summary: "没给客户", data: { error: "id / name 至少给一个" } };
+      // 企业版：挂在我看不到的项目上的沟通不给模型（同客户页沟通记录，P-看-12）；条数、上次跟进都从这批算。非企业版 null 照旧
+      const 可见跟进 = await 客户跟进可见条件(await 读我(ctx.userId), id);
       const c = await prisma.customer.findUnique({
         where: { id },
         include: {
@@ -430,7 +439,7 @@ export const TOOLS: Tool[] = [
           },
           tasks: { where: { done: false }, select: { title: true, dueAt: true, dueOn: true } },
           plans: { where: { done: false }, select: { id: true, subject: true, plannedAt: true, plannedOn: true, method: true } },
-          followUps: { orderBy: { occurredAt: "desc" }, take: 20, select: { id: true, type: true, title: true, content: true, occurredAt: true, duration: true, owner: { select: { name: true } }, source: { select: { text: true } } } },
+          followUps: { ...(可见跟进 ? { where: 可见跟进 } : {}), orderBy: { occurredAt: "desc" }, take: 20, select: { id: true, type: true, title: true, content: true, occurredAt: true, duration: true, owner: { select: { name: true } }, source: { select: { text: true } } } },
         },
       });
       if (!c) return { summary: "当前可访问范围内未找到这位", data: { 找到: 0, error: "当前可访问范围内未找到该客户；无法据此判断记录不存在还是无权访问" } };
@@ -1011,6 +1020,9 @@ export const TOOLS: Tool[] = [
         ...(days ? { occurredAt: { gte: dayjs().subtract(days, "day").startOf("day").toDate() } } : {}),
         ...(args.mine === true ? { ownerId: ctx.userId } : {}),
       };
+      // 企业版：挂在我看不到的项目上的沟通不搜出来、也不进总数（P-看-12，同 get_customer）。非企业版 null 照旧
+      const 可见跟进 = await 跨客户跟进可见条件(await 读我(ctx.userId));
+      if (可见跟进) where.AND = [可见跟进];
       const [total, rows] = await Promise.all([
         prisma.followUp.count({ where }),
         prisma.followUp.findMany({
