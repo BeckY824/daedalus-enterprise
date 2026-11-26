@@ -179,9 +179,9 @@ it("dt.team：改分配框里的分配条边输边变，组长那段跟着缩、
     await 输.fill("30");
     await expect.poll(() => 宽("u3")).toBe("30%");
     expect(await 宽("组长")).toBe("60%");
-    expect(await 条.getAttribute("aria-label")).toContain("组长 60%");
+    expect(await 条.getAttribute("aria-label")).toContain("项目负责人 60%");
     await page.evaluate(() => Reflect.set(window, "__分回", { ok: false, error: "组员刚退出了项目组，刷新再分" }));
-    await expect.poll(() => page.getByRole("dialog").innerText()).toContain("分出去 40%，组长留 60%");
+    await expect.poll(() => page.getByRole("dialog").innerText()).toContain("分出去 40%，项目负责人留 60%");
     const 存 = page.getByRole("dialog").getByRole("button", { name: /保\s*存|没保存上/ });
     await 存.click();
     // g.save：没存上的原因浮在保存键正上方（不是顶部提示），框不关

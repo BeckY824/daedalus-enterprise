@@ -74,12 +74,12 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
       {t.每人.length > 1 && <SplitBar 段们={t.每人.filter((x) => !x.组长).map((x) => ({ userId: x.userId, name: x.name, 比例: x.比例 }))} 组长名={t.每人.find((x) => x.组长)?.name} />}
       {t.每人.map((x) => (
         <div key={x.userId} style={{ ...行样, marginBottom: 4 }}>
-          <span style={{ flex: "1 1 120px", minWidth: 0, overflowWrap: "anywhere" }}>{x.name}{x.组长 && <Tag style={{ marginLeft: 6 }}>组长</Tag>}</span>
+          <span style={{ flex: "1 1 120px", minWidth: 0, overflowWrap: "anywhere" }}>{x.name}{x.组长 && <Tag style={{ marginLeft: 6 }}>项目负责人</Tag>}</span>
           <span style={{ flex: "0 0 64px", textAlign: "right" }}>{x.比例}%</span>
           <span style={{ flex: "0 0 auto", minWidth: 96, textAlign: "right" }}>{钱(x.金额)}</span>
         </div>
       ))}
-      <div style={{ ...淡, marginTop: 4 }}>组长把提成按比例分给已进组的组员，剩下的归组长{固定了 ? "" : "；金额按预估算，赢单后按实际提成算"}</div>
+      <div style={{ ...淡, marginTop: 4 }}>项目负责人把提成按比例分给已进组的组员，剩下的归项目负责人{固定了 ? "" : "；金额按预估算，赢单后按实际提成算"}</div>
 
       {分开着 && <SplitModal projectId={projectId} t={t} onClose={() => set分开着(false)} />}
       {更正开着 && t.实际 && <FixModal projectId={projectId} 现在={t.实际.合计} 钱={钱} 币种={t.币种} 跑={跑} onClose={() => set更正开着(false)} />}
@@ -91,7 +91,7 @@ export function ProjectCommissionCard({ projectId, t, 忙, 跑, 不摆改 = fals
  * 分配条（dt.team）：一根横条按比例分段，组员一段一段、剩下的归组长；改分配框里边输边变（宽度过渡只用动效令牌）。
  * 合计超 100 时组长那段为 0、条标红
  */
-export function SplitBar({ 段们, 组长名 = "组长" }: { 段们: { userId: string; name: string; 比例: number }[]; 组长名?: string }) {
+export function SplitBar({ 段们, 组长名 = "项目负责人" }: { 段们: { userId: string; name: string; 比例: number }[]; 组长名?: string }) {
   const 给出去 = 段们.reduce((a, x) => a + Math.max(0, x.比例 || 0), 0);
   const 留 = Math.max(0, 100 - 给出去);
   const 超 = 给出去 > 100.0001;
@@ -128,7 +128,7 @@ export function SplitModal({ projectId, t, onClose }: { projectId: string; t: �
       )}
     >
       {t.组员.length === 0 ? (
-        <div style={淡}>项目组里还没有已进组的组员（邀请要对方同意了才算），提成全归组长</div>
+        <div style={淡}>项目组里还没有已进组的组员（邀请要对方同意了才算），提成全归项目负责人</div>
       ) : (
         t.组员.map((m) => (
           <div key={m.userId} className="pd-split-edit-row">
@@ -140,7 +140,7 @@ export function SplitModal({ projectId, t, onClose }: { projectId: string; t: �
       )}
       {t.组员.length > 0 && <SplitBar 段们={t.组员.map((m) => ({ userId: m.userId, name: m.name, 比例: 分[m.userId] ?? 0 }))} />}
       <div style={{ marginTop: 8, color: 问题 ? "var(--danger-text)" : "var(--text-muted)" }} aria-live="polite">
-        {问题 ?? <>分出去 <b className="pd-split-num"><CountUp 值={给出去} 记号={`split-out:${projectId}`} 只滚变化 格式={(n) => String(两位(n))} /></b>%，组长留 <b className="pd-split-num"><CountUp 值={两位(100 - 给出去)} 记号={`split-lead:${projectId}`} 只滚变化 格式={(n) => String(两位(n))} /></b>%</>}
+        {问题 ?? <>分出去 <b className="pd-split-num"><CountUp 值={给出去} 记号={`split-out:${projectId}`} 只滚变化 格式={(n) => String(两位(n))} /></b>%，项目负责人留 <b className="pd-split-num"><CountUp 值={两位(100 - 给出去)} 记号={`split-lead:${projectId}`} 只滚变化 格式={(n) => String(两位(n))} /></b>%</>}
       </div>
     </Modal>
   );

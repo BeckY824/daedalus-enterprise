@@ -178,7 +178,7 @@ export function 分配问题(分: 分配): string | null {
     if (错) return 错;
     合 += Math.round(v * 100);
   }
-  return 合 > 10000 ? `合计超过 100%（现在是 ${两位(合 / 100)}%），剩下的才归组长` : null;
+  return 合 > 10000 ? `合计超过 100%（现在是 ${两位(合 / 100)}%），剩下的才归项目负责人` : null;
 }
 
 export type 每人一份 = { userId: string; 比例: number; 金额: number | null; 组长: boolean };
