@@ -102,7 +102,7 @@ export default async function CustomerDetailPage({
         include: 带币种.签约,
       },
       // 企业版联系人的号码几行（定稿 P5 第 24 条）；别的版本这张子表里没有挂联系人的行，带上也是空
-      contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }, { id: "asc" }], include: { contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true } } } },
+      contacts: { orderBy: [{ isPrimary: "desc" }, { createdAt: "asc" }, { id: "asc" }], include: { contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, kind: true, value: true } } } },
       tasks: { orderBy: [{ done: "asc" }, { dueAt: "asc" }] },
       plans: { where: { done: false, ...(要看的计划 ? { id: 要看的计划 } : {}) }, orderBy: [{ plannedAt: "asc" }, { id: "asc" }] },
       followUps: { orderBy: followHistoryOrder, take: 只项目 ? 0 : 51, include: followHistoryInclude },
@@ -258,7 +258,8 @@ export default async function CustomerDetailPage({
           birthday: c.birthday,
           hobby: c.hobby,
           address: c.address,
-          号码们: 联系人号码们(c, c.contactMethods).map((x) => ({ kind: x.kind, value: 打码种类.has(x.kind) ? 号(x.value) : x.value })),
+          // 带上 id 和 默认（主号，12-15 第三批 B）：「设为主号」按 id 认那一行（号码打了码认不出），主号那一行标「主号」
+          号码们: 联系人号码们(c, c.contactMethods).map((x) => ({ ...x, value: 打码种类.has(x.kind) ? 号(x.value) : x.value })),
         }
       : {}),
   });

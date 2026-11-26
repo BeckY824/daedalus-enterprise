@@ -145,7 +145,7 @@ export async function 改仅项目联系人Action(contactId: unknown, input: unk
     const 写了 = await 看全部(() => prisma.$transaction(async (tx) => {
       const r = await tx.contact.updateMany({ where: { id: contactId, createdById: me.id, deletedAt: null, ...版本条件(input.版本) }, data });
       if (r.count === 0) return false;
-      if (号) await tx.contact.update({ where: { id: contactId }, data: await 存联系人号码(tx, 原.customerId, contactId, 号.行们) });
+      if (号) await tx.contact.update({ where: { id: contactId }, data: await 存联系人号码(tx, 原.customerId, contactId, 号.行们, 原.phone) });
       return true;
     }));
     if (!写了) return { ok: false, error: 版本冲突 };
