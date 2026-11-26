@@ -4,7 +4,7 @@ import path from "node:path";
 import { chromium, type Browser, type Page } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
 /* 合并客户第二批 2a · 「并进另一个项目」框（customers/[id]/MergeHost.tsx ProjectMergeDialog）：真组件 + globals.css + merge.css，只桩掉 merge-actions。钉的是：
-   打开就读候选（项目合并候选(被并的)）→ 选择框可输入搜 → 预览（预览项目合并(留下, 被并)）列明挪什么、结束为重复线索、不补名额；组员默认勾上、已在组的灰着
+   打开就读候选（项目合并候选(被并的)）→ 选择框可输入搜 → 预览（预览项目合并(留下, 被并)）列明挪什么、结束为重复线索、不补名额；组员默认不勾（不自动成组）、已在组的灰着勾着
    → 后果框写「这个项目将结束为重复线索，不补名额，30 天内可撤回」→ 合并项目(留下, 被并, {组员}) → 撤销条；撤销 = 撤回项目合并单；
    拦下的原因原样摆、并过去点不了；执行时被拦，原因写在后果框里、框不关；没候选写明为什么；
    1280 / 390 不横滚，390 框底按钮、选择框、组员行 ≥ 44，长项目名一行省略、悬停看全 */
@@ -74,7 +74,7 @@ async function 选(page: Page, 词: string) {
 }
 
 for (const 宽 of [1280, 390]) {
-  it(`${宽}：读候选 → 输入搜、选留下的 → 预览列明挪什么、结束为重复线索；组员默认勾上、已在组灰着 → 后果框 → 合并项目(留下, 被并, 组员) → 撤销条；撤销 = 撤回项目合并单`, async () => {
+  it(`${宽}：读候选 → 输入搜、选留下的 → 预览列明挪什么、结束为重复线索；组员默认不勾、已在组灰着勾着 → 勾一位 → 后果框 → 合并项目(留下, 被并, 组员) → 撤销条；撤销 = 撤回项目合并单`, async () => {
     const { page, 错 } = await open(宽);
     try {
       const 钮 = page.getByTestId("pmerge-go");
@@ -100,14 +100,15 @@ for (const 宽 of [1280, 390]) {
       // 长项目名一行省略、悬停看全
       const 行 = page.getByTestId("pmerge-move").locator(".mrg-one");
       expect(await 行.evaluate((e) => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth, e.getAttribute("title")])).toEqual(["ellipsis", true, `「重复的那条线索」 → 「${长名}」`]);
-      // 组员：没在组的默认勾上，已在组的灰着勾着
+      // 组员：没在组的默认不勾（Even「不自动成组」），已在组的灰着勾着；说明写明不勾的看不到挪过去的沟通
+      expect(await page.locator(".mrg-ppl .mrg-sec-c").innerText()).toContain("不勾的组员看不到挪过去的沟通");
       const 员 = page.locator(".mrg-pmem");
       expect(await 员.count()).toBe(3);
-      expect(await Promise.all([0, 1, 2].map((i) => 员.nth(i).locator("input").isChecked()))).toEqual([true, true, true]);
+      expect(await Promise.all([0, 1, 2].map((i) => 员.nth(i).locator("input").isChecked()))).toEqual([false, false, true]);
       expect(await 员.nth(2).locator("input").isDisabled()).toBe(true);
       expect(await 员.nth(2).innerText()).toContain("已在组");
-      await 员.nth(1).click();
-      expect(await 员.nth(1).locator("input").isChecked()).toBe(false);
+      await 员.nth(0).click();
+      expect(await 员.nth(0).locator("input").isChecked()).toBe(true);
       expect(await 横滚(page)).toEqual([false, false]);
       if (宽 < 768) {
         const 高 = await page.evaluate(() => [...document.querySelectorAll(".mrg-foot .ant-btn, .mrg-psel, .mrg-pmem")].map((e) => Math.round(e.getBoundingClientRect().height)));

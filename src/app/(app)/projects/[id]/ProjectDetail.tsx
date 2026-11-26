@@ -148,6 +148,8 @@ export type 项目详情 = {
   并进?: { 灰?: string } | null;
   /** 这个项目是怎么到这位客户名下的：「从 NO.xxxxx「B」并入」（合并客户 / 项目换客户，customer-merge.ts 项目来历）；没有 = 不摆那一行 */
   并入自?: { 话: string; 怎么来: "合并客户" | "项目换客户"; at: string } | null;
+  /** 这个项目并进了另一个项目（合并客户第二批 2a，load.ts 已并入of：没撤回的项目合并单，过了 30 天也给）：顶上「已并入 → 留下的项目」那一行（MergedIntoLine，页面当槽递进来）；留下的项目不给 */
+  已并入?: { mergeId: string; 到id: string; 到: string; at: string; 谁: string; 能撤: boolean } | null;
   /** 企业版后售培育（P-界面-63，after-sale.ts）：停在潜客培育、客户名下有交付结清的；进程条第一格、「现在在」写后售培育。存的仍是潜客培育，不是 = 不带 */
   后售?: true;
   /** 能往项目组里拉人：能改的人，企业版加上已进组的项目组员（V3.5.1） */
@@ -597,8 +599,14 @@ export type 嵌在客户页 = {
 };
 
 export default function ProjectDetail({
-  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 教练主题 = null, 嵌入, 合并口 = null,
-}: 项目详情Props & { 嵌入?: 嵌在客户页; /** 项目详情页（不嵌在客户页）的「并进另一个项目」框（page.tsx 递 MergeHost 进来，同客户页 合并口）；不给 = 不摆那一项 */ 合并口?: ReactNode }) {
+  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 教练主题 = null, 嵌入, 合并口 = null, 已并入口 = null,
+}: 项目详情Props & {
+  嵌入?: 嵌在客户页;
+  /** 项目详情页（不嵌在客户页）的「并进另一个项目」框（page.tsx 递 MergeHost 进来，同客户页 合并口）；不给 = 不摆那一项 */
+  合并口?: ReactNode;
+  /** 顶上「已并入 → 留下的项目」那一行（第二批 2a，MergedIntoLine；两个 page.tsx 递进来，没并入时它自己画空）：摆在告示最上面 */
+  已并入口?: ReactNode;
+}) {
   // 合并客户第二批 2a：项目详情页「⋯」里的「并进另一个项目」，点了经 merge-bridge 叫 合并口 开框（客户页走 RecordView 那份，不经这里）
   const [并进请, set并进请] = useState<(合并请求 & { 次: number }) | null>(null);
   const 并进桥 = useMemo(() => ({ 请求: 并进请, 收: () => set并进请(null) }), [并进请]);
@@ -2346,6 +2354,8 @@ export default function ProjectDetail({
       <section className="rec-zone" aria-label={`项目：${p.name}`} data-project={p.id}>
         <div className="cd-zb">
           {嵌入.提醒 && <div className="cd-alert">{嵌入.提醒}</div>}
+          {/* 「已并入」那一行自己套 .cd-notice（撤回后结果还要写在原处，没并入时画空、不留空格子） */}
+          {已并入口}
           {(p.pooled || 异常 || p.客户在谁名下 || p.放弃) && <div className="cd-notice">{告示}</div>}
           <div className="cd-mid">
             {节点卡}
@@ -2395,6 +2405,7 @@ export default function ProjectDetail({
         页头
       )}
 
+      {已并入口}
       {告示}
 
       {p.企业版 ? (

@@ -531,9 +531,8 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
     预览项目合并(id, projectId).then((r) => {
       if (这次 !== 读次.current) return;
       if (!r.ok) { set读错(r.error); return; }
+      // 被并项目的组员默认都不勾（Even「不自动成组」、第一批「不替人勾」）：要带进留下的项目组的自己勾；已在组的不用勾
       set预(r.预览);
-      // 被并项目的组员默认都勾上（不勾就进不了留下的项目组、看不到挪过去的沟通）；已在组的不用勾
-      set勾(new Set(r.预览.组员.filter((x) => !x.已在组).map((x) => x.userId)));
     }).catch((e) => { if (这次 === 读次.current) set读错(动作出错话(e, "没读到合并预览，请再试一次")); });
   }
 
@@ -632,7 +631,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
             </ul>
             {预.组员.length > 0 && (
               <section className="mrg-ppl" aria-label="这个项目的组员">
-                <p className="mrg-sec-t">组员 <span className="mrg-sec-c">勾上的加进留下那个项目的项目组</span></p>
+                <p className="mrg-sec-t">组员 <span className="mrg-sec-c">勾上的加进留下那个项目的项目组；不勾的组员看不到挪过去的沟通</span></p>
                 {预.组员.map((m) => (
                   <Checkbox key={m.userId} className="mrg-pmem" disabled={m.已在组} checked={m.已在组 || 勾.has(m.userId)}
                     onChange={(e) => set勾((s) => { const n = new Set(s); if (e.target.checked) n.add(m.userId); else n.delete(m.userId); return n; })}>

@@ -20,7 +20,9 @@ import { dayjs, fmtDateTime, smartTime } from "@/lib/utils";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { 历史筛选们, type 历史筛选, type 历史行, type 历史事件, type 历史游标, type 建档格, type 项目概要, type 历史摘要 } from "./history-types";
 import { 读客户历史, 读项目历史, 读项目历史们 } from "./history-actions";
-import { 并进来的合并单, 撤回合并单, type 合并单一条 } from "../merge-actions";
+import { 并进来的合并单, 撤回合并单, 项目合并单们, 撤回项目合并单, type 合并单一条 } from "../merge-actions";
+import type { 项目合并单一条 } from "@/lib/enterprise/project-merge";
+import { 项目合并撤回后果, 撤回结果话, type 撤回结果 } from "./project-merge-undo";
 
 const 读不到话 = "没读到历史变更，请稍后再试";
 /** 只用来认「水合完了没有」（同 CustomersView 已水合）：入口上的「· 最近」是相对时间，按浏览器的钟算，服务端和首帧不画，免得水合对不上 */
@@ -217,6 +219,13 @@ function ProjectsPanel({ customerId, 当前项目 }: { customerId: string; 当�
   const [忙于, set忙于] = useState<Set<string>>(new Set());
   const [错, set错] = useState<string | null>(null);
   const [项目错, set项目错] = useState<Record<string, string>>({});
+  // 项目合并单（第二批 2a）：展开那一节时和第一页一起取（并进来的、并出去的，两个项目各自那一节都列这一张）；没读到写一行
+  const [单们, set单们] = useState<Record<string, 项目合并单一条[]>>({});
+  const [单错, set单错] = useState<Record<string, true>>({});
+  const 取单 = useCallback((id: string) => {
+    项目合并单们(id).then((r) => set单们((m) => ({ ...m, [id]: r })))
+      .catch(() => { set单错((m) => ({ ...m, [id]: true })); set单们((m) => ({ ...m, [id]: [] })); });
+  }, []);
   useEffect(() => {
     let 还在 = true;
     读项目历史们(customerId, 当前项目).then((r) => {
@@ -227,10 +236,13 @@ function ProjectsPanel({ customerId, 当前项目 }: { customerId: string; 当�
         const { id, ...列 } = r.展开;
         set各({ [id]: 列 });
         set开着(new Set([id]));
+        取单(id);
       }
     }).catch((e) => { if (还在) set错(动作出错话(e, 读不到话)); });
     return () => { 还在 = false; };
-  }, [customerId, 当前项目]);
+  }, [customerId, 当前项目, 取单]);
+  /** 撤了一张：两个项目那一节里的同一张一起改成已撤回（不再给按钮） */
+  const 撤了单 = (id: string) => set单们((m) => Object.fromEntries(Object.entries(m).map(([k, xs]) => [k, xs.map((y) => (y.id === id ? { ...y, status: "已撤回", 能撤: false, 不能撤因: undefined } : y))])));
   const 取 = async (id: string, 游标: 历史游标 | null) => {
     set忙于((s) => new Set(s).add(id));
     set项目错((m) => { const { [id]: _, ...余 } = m; return 余; });
@@ -251,6 +263,7 @@ function ProjectsPanel({ customerId, 当前项目 }: { customerId: string; 当�
     const 开 = !开着.has(id);
     set开着((s) => { const n = new Set(s); if (开) n.add(id); else n.delete(id); return n; });
     if (开 && !各[id] && !忙于.has(id)) void 取(id, null);
+    if (开 && !单们[id]) 取单(id);
   };
   if (错) return <p role="alert" className="hist-err">{错}</p>;
   if (!概要) return <p className="hist-empty" aria-live="polite">正在读取…</p>;
@@ -259,7 +272,8 @@ function ProjectsPanel({ customerId, 当前项目 }: { customerId: string; 当�
       {概要.项目们.length === 0 && !概要.看不到 && <p className="hist-empty">这位客户名下还没有项目</p>}
       {概要.项目们.map((p) => {
         const 开 = 开着.has(p.id);
-        const 列 = 各[p.id];
+        // 合并单还在取：时间线先摆「正在读取…」，回来一起画（同客户块，不先画再被顶）
+        const 列 = 单们[p.id] ? 各[p.id] : undefined;
         return (
           <section key={p.id} className="hist-sec" data-open={开} data-testid="history-project">
             <button type="button" className="hist-sec-h" aria-expanded={开} aria-controls={`hist-sec-${p.id}`} onClick={() => 切(p.id)}>
@@ -271,7 +285,9 @@ function ProjectsPanel({ customerId, 当前项目 }: { customerId: string; 当�
             {开 && (
               <div className="hist-sec-b" id={`hist-sec-${p.id}`}>
                 {列?.建档 && <BornCell 格={列.建档} />}
-                <Timeline 数据={列 ?? null} 忙={忙于.has(p.id)} 错={项目错[p.id] ?? null} 空话="这个项目还没有变更" 更早={() => 列?.更早 && void 取(p.id, 列.更早)} />
+                {单错[p.id] && <p role="alert" className="hist-err" data-testid="pmerge-orders-err">合并单没读到，请稍后再试</p>}
+                {(单们[p.id]?.length ?? 0) > 0 && <ProjectMergeOrders 们={单们[p.id]} 撤了={撤了单} />}
+                <Timeline 数据={列 ?? null} 忙={忙于.has(p.id)} 错={单们[p.id] ? 项目错[p.id] ?? null : null} 空话="这个项目还没有变更" 更早={() => 列?.更早 && void 取(p.id, 列.更早)} />
               </div>
             )}
           </section>
@@ -346,6 +362,48 @@ function MergeOrders({ 们, set们 }: { 们: 合并单一条[]; set们: React.Di
                     </>
                   )
               )}
+            </li>
+          );
+        })}
+      </ul>
+      {后果框}
+    </>
+  );
+}
+
+/**
+ * 项目合并单（第二批 2a）：这个项目并入了别的（「并入「A」」）、别的并进这个（「「B」并入这个项目」），两个项目各自那一节都列；
+ * 30 天内能撤的（merge-actions 项目合并单们 能撤，和服务端拦法对齐）给「撤回合并」，已合并但不能撤的写原因（过了 30 天、不是合并的人……）；
+ * 撤回结果写在那一张下面（同第一批）。刷新后读合并单里存的没还原
+ */
+function ProjectMergeOrders({ 们, 撤了: 撤了单 }: { 们: 项目合并单一条[]; 撤了: (id: string) => void }) {
+  const router = useRouter();
+  const [问后果, 后果框] = useConsequence();
+  const [结果, set结果] = useState<Record<string, 撤回结果>>({});
+  const 题 = (m: 项目合并单一条) => (m.方向 === "并出去" ? `并入「${m.到}」` : `「${m.从}」并入这个项目`);
+  const 撤 = (m: 项目合并单一条) => void 问后果(项目合并撤回后果(m.从, m.到, async () => {
+    const r = await 撤回项目合并单(m.id);
+    if (!r.ok) return r;
+    set结果((x) => ({ ...x, [m.id]: { 没还原: r.没还原.map((y) => ({ 类: y.类, 原因: y.原因 })) } }));
+    撤了单(m.id);
+    router.refresh();
+  }));
+  return (
+    <>
+      <ul className="mrg-orders" aria-label="项目合并单" data-testid="pmerge-orders">
+        {们.map((m) => {
+          const 撤了 = 结果[m.id] ?? (m.status === "已撤回" && m.没还原 ? { 没还原: m.没还原 } : null);
+          const 全题 = `${题(m)}（${m.谁 ? `${m.谁} ` : ""}${fmtDateTime(m.at)}）`;
+          return (
+            <li key={m.id} className={`mrg-order${m.status === "已撤回" ? " is-undone" : ""}`} data-testid="pmerge-order">
+              <div className="mrg-order-h">
+                <span className="mrg-order-k">合并</span>
+                <span className="mrg-order-t" title={全题}>{题(m)}</span>
+                <span className="mrg-order-s" title={fmtDateTime(m.at)}>{m.status === "已撤回" ? "已撤回" : smartTime(m.at)}</span>
+                {m.能撤 && <Button size="small" onClick={() => 撤(m)} data-testid="pmerge-undo">撤回合并</Button>}
+              </div>
+              {m.status === "已合并" && !m.能撤 && m.不能撤因 && <p className="mrg-note mrg-order-why" title={m.不能撤因} data-testid="pmerge-why">{m.不能撤因}</p>}
+              {撤了 && 撤回结果话({ r: 撤了 })}
             </li>
           );
         })}

@@ -153,8 +153,10 @@ describe("前提：谁能并、哪些拦", () => {
     expect(await 执行项目合并(prisma, a, b, 丁)).toMatchObject({ ok: false, error: expect.stringContaining("只能看") });
     const mergeId = await 并(a, b, 乙);
     expect(await 撤回项目合并(prisma, mergeId, 丁)).toMatchObject({ ok: false, error: expect.stringContaining("只有合并的人或系统管理员") });
-    expect((await 项目的合并单(prisma, a, 丁))[0].能撤).toBe(false);
-    expect((await 项目的合并单(prisma, b, 乙))[0]).toMatchObject({ 方向: "并出去", 能撤: true });
+    expect((await 项目的合并单(prisma, a, 丁))[0]).toMatchObject({ 能撤: false, 不能撤因: "只有合并的人或系统管理员能撤回合并" });
+    const 出 = (await 项目的合并单(prisma, b, 乙))[0];
+    expect(出).toMatchObject({ 方向: "并出去", 能撤: true, 谁: "乙" });
+    expect(出.不能撤因).toBeUndefined();
   });
 
   it("项目在离职交接里、客户在转让交接里都拦", async () => {
@@ -294,6 +296,7 @@ describe("撤回", () => {
     const mergeId = await 并(a, b, 乙, { 现在: new Date(Date.now() - 31 * 天) });
     expect(await 撤回项目合并(prisma, mergeId, 丙)).toMatchObject({ ok: false, error: expect.stringContaining("只有合并的人或系统管理员") });
     expect(await 撤回项目合并(prisma, mergeId, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("超过 30 天") });
+    expect((await 项目的合并单(prisma, b, 乙))[0]).toMatchObject({ 方向: "并出去", status: "已合并", 能撤: false, 不能撤因: "合并已超过 30 天，不能撤回" });
     // 过了 30 天也不再拦换客户（不能撤也就不拦）
     expect(await 换客户合并拦(prisma, b)).toBeNull();
     const e = await 项目(乙.id, c);
@@ -309,7 +312,7 @@ describe("撤回", () => {
     const mergeId = await 并(a, b, 乙);
     await raw.project.update({ where: { id: a }, data: { ownerId: 丙.id } });
     expect(await 撤回项目合并(prisma, mergeId, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("不归你负责") });
-    expect((await 项目的合并单(prisma, a, 乙))[0].能撤).toBe(false);
+    expect((await 项目的合并单(prisma, a, 乙))[0]).toMatchObject({ 能撤: false, 不能撤因: expect.stringContaining("现在不归你负责，请找系统管理员撤回") });
     expect((await 项目的合并单(prisma, a, 老板))[0].能撤).toBe(true);
     const r = await 撤回项目合并(prisma, mergeId, 老板);
     expect(r).toMatchObject({ ok: true, 没还原: [] });

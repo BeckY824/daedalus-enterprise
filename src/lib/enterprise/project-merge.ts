@@ -490,9 +490,25 @@ export type 项目合并单一条 = {
   方向: "并进来" | "并出去";
   从: string; 到: string; 从id: string; 到id: string;
   at: string; status: string;
+  /** 谁并的（名字；人删了写空） */
+  谁: string;
   能撤: boolean;
+  /** 已合并、这会儿不能撤的原因（历史变更里摆在按钮的位置）；能撤、已撤回的不给 */
+  不能撤因?: string;
   没还原?: Pick<没还原, "类" | "原因">[];
 };
+
+/** 已合并的单这会儿为什么不能撤（和 撤回项目合并 / 在事务里撤回项目合并 的拦话同一套说法，先判的先说） */
+function 不能撤因of(
+  m: { at: Date; byUserId: string }, A: { name: string; ownerId: string | null; pooledAt: Date | null; deletedAt: Date | null } | undefined,
+  B: { name: string; deletedAt: Date | null } | undefined, me: 合并人, 管: boolean, 能写: boolean, 线: number,
+): string {
+  if (m.at.getTime() < 线) return `合并已超过 ${项目合并撤回天数} 天，不能撤回`;
+  if (!能写 || (m.byUserId !== me.id && !管)) return "只有合并的人或系统管理员能撤回合并";
+  if (!A || !B) return "项目已彻底删除，不能撤回合并";
+  for (const p of [A, B]) if (p.deletedAt) return `「${名(p)}」在回收站里，先恢复再撤回合并`;
+  return `「${名(A)}」现在不归你负责，请找系统管理员撤回`;
+}
 
 /** 这个项目相关的项目合并单（并进来的、并出去的），能撤 按服务端撤回的拦法预判（服务端照样再判） */
 export async function 项目的合并单(db: 库, projectId: string, me: 合并人, 现在: Date = new Date()): Promise<项目合并单一条[]> {
@@ -503,6 +519,7 @@ export async function 项目的合并单(db: 库, projectId: string, me: 合并�
   const 们 = await db.entCustomerMerge.findMany({ where: { kind: 项目单, OR: [{ fromId: projectId }, { intoId: projectId }] }, orderBy: { at: "desc" }, take: 50 });
   const 项目们 = new Map((await 看已删(() => 看全部(() => db.project.findMany({ where: { id: { in: 们.flatMap((m) => [m.fromId, m.intoId]) } }, select: { id: true, name: true, ownerId: true, pooledAt: true, deletedAt: true } })))).map((p) => [p.id, p]));
   const 线 = 现在.getTime() - 项目合并撤回天数 * 86_400_000;
+  const 人名 = new Map((await 看全部(() => db.user.findMany({ where: { id: { in: [...new Set(们.map((m) => m.byUserId))] } }, select: { id: true, name: true } }))).map((u) => [u.id, u.name]));
   return 们.map((m) => {
     const A = 项目们.get(m.intoId);
     const B = 项目们.get(m.fromId);
@@ -513,7 +530,8 @@ export async function 项目的合并单(db: 库, projectId: string, me: 合并�
       && (管 || (m.byUserId === me.id && A.ownerId === me.id && !A.pooledAt));
     return {
       id: m.id, 方向: m.intoId === projectId ? "并进来" as const : "并出去" as const, 从: m.fromName, 到: A?.name ?? 留下名, 从id: m.fromId, 到id: m.intoId,
-      at: m.at.toISOString(), status: m.status, 能撤,
+      at: m.at.toISOString(), status: m.status, 谁: 人名.get(m.byUserId) ?? "", 能撤,
+      ...(m.status === "已合并" && !能撤 ? { 不能撤因: 不能撤因of(m, A, B, me, 管, 能写, 线) } : {}),
       ...(撤 ? { 没还原: 撤.没还原.map((x) => ({ 类: x.类, 原因: x.原因 })) } : {}),
     };
   });

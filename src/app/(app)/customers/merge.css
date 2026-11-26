@@ -1,6 +1,6 @@
 /*
  * 合并客户第一批（11-25，docs/合并客户-第一批-落地.md）：合并 / 合成 / 换客户三只框（customers/[id]/MergeHost.tsx）、
- * 历史变更里的合并单（HistoryChanges.tsx）。客户页顶上「已并入」那句、回收站「已并入 → A」不是每次都带上这几只框，样式在 globals.css（.mrg-landed / .mrg-trash-*）。
+ * 历史变更里的合并单（HistoryChanges.tsx）、项目详情顶上「已并入 → 留下的项目」（第二批 2a）。客户页顶上「已并入」那句、回收站「已并入 → A」不是每次都带上这几只框，样式在 globals.css（.mrg-landed / .mrg-trash-*）。
  * 只用 :root 的 token（暗色由 dark.css 那层 token 接）；一行放不下省略号、悬停看全（11-04 全站规矩）。
  * 手机（≤767）：两家并排改成上下两段，联系人配对一行拆成两行，点击区 ≥ --hit-touch（框底按钮、并进另一个项目的选择框和组员行也是）
  */
@@ -83,6 +83,18 @@
 .mrg-left { margin: 0; padding-left: 1.2em; color: var(--ink-soft); font-size: var(--fs-note); line-height: 1.6; }
 .mrg-left li { overflow-wrap: anywhere; }
 
+/* 项目详情顶上「已并入 → 留下的项目」（第二批 2a，projects/[id]/MergedIntoLine.tsx）：一行省略、悬停看全，点一下展开；撤回结果写在原处 */
+.mrg-into { min-width: 0; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--brand-bg); }
+.mrg-into.is-solo { margin-bottom: var(--s4); }
+.mrg-into-r { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.mrg-into-i { flex: none; color: var(--brand); }
+.mrg-into-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrg-into-t.is-full { white-space: normal; overflow-wrap: anywhere; }
+.mrg-into-s { color: var(--text-muted); font-size: var(--fs-note); }
+.mrg-into-b { flex: 1 1 auto; min-width: 0; }
+.mrg-into-r > .ant-btn { flex: none; }
+.mrg-order-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 @media (max-width: 767px) {
   /* 两家改成上下两段：每一项「项」一行，下面「留下」「并进来」各一行，带小标签 */
   .mrg-cmp-h { display: none; }
@@ -95,4 +107,6 @@
   /* 框底按钮、留下的项目选择框、组员每行点击区 ≥ --hit-touch（飞书手机网页） */
   .mrg-foot .ant-btn, .mrg-psel.ant-select { min-height: var(--hit-touch); }
   .mrg-ppl .mrg-pmem.ant-checkbox-wrapper { min-height: var(--hit-touch); align-items: center; }
+  /* 「已并入」那一行的撤回、知道了，历史变更里的撤回 */
+  .mrg-into-r > .ant-btn, .mrg-order-h > .ant-btn { min-height: var(--hit-touch); }
 }

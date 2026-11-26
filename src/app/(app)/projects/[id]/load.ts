@@ -17,7 +17,7 @@ import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选, 是系统管理员, 只读角色, 只看的人, type 权限项目 } from "@/lib/enterprise/permissions";
 import { 项目来历 } from "@/lib/enterprise/customer-merge";
-import { 能并进的项目, 能并的阶段 } from "@/lib/enterprise/project-merge";
+import { 能并进的项目, 能并的阶段, 项目的合并单 } from "@/lib/enterprise/project-merge";
 import { 客户事项挡, 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
 import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
 import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -380,6 +380,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
       && (是系统管理员(me, org) || (!p.customer.pool && 能删除(me, org, p.customer.salesOwnerId) && (!!p.result || 公海 || !p.ownerId || p.ownerId === me.id))),
     // 合并客户第二批 2a「并进另一个项目」：只摆给负责人本人或系统管理员（同 能并进的项目）；结束了、不在线索阶段、没有可并进的项目时灰着写原因。能不能并整套在预览里再判
     ...(企业 && !占位 ? { 并进: await 并进菜单(me, org, p) } : {}),
+    // 合并客户第二批 2a：被并掉的项目（结束为重复线索、合并单没撤回）顶上一行「已并入 → 留下的项目」；留下的项目不给。没结束的不查库
+    ...(企业 && !占位 && p.result ? { 已并入: await 已并入of(me, p.id) } : {}),
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
     aiEnabled: (能记沟通 || 能记售后回访) && 露 ? await llmEnabled() : false,
@@ -545,6 +547,12 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
     种: "有", customerId: p.customerId, 露, 客户入口,
     props: { 卡点, 教练主题, p: 详情, 能改, 候选, 在职, 联系人们, 角色们: 角色们.map((r) => ({ id: r.id, name: r.name, active: r.active })), 类别们: 类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name })) },
   };
+}
+
+/** 这个项目并进了别的项目、合并单没撤回：那一张（能撤 和历史变更同一个预判；过了 30 天照样写已并入，只是不带撤回） */
+async function 已并入of(me: SessionUser, projectId: string): Promise<项目详情["已并入"]> {
+  const m = (await 项目的合并单(prisma, projectId, me)).find((x) => x.方向 === "并出去" && x.status === "已合并");
+  return m ? { mergeId: m.id, 到id: m.到id, 到: m.到, at: m.at, 谁: m.谁, 能撤: m.能撤 } : null;
 }
 
 /** 「并进另一个项目」那一项：null = 不摆；灰 = 摆着灰、悬停写原因（候选同 能并进的项目：同客户、同负责人、线索阶段在推的） */
