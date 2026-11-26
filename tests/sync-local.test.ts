@@ -53,7 +53,7 @@ async function 一台(名: string): Promise<PrismaClient> {
   fs.copyFileSync(测试库, f);
   if (fs.existsSync(`${测试库}-wal`)) fs.copyFileSync(`${测试库}-wal`, `${f}-wal`); // 没落盘的那部分一起拷
   if (这条 !== 第几条) throw new Error(`sync-local：建库「${名}」时上一条用例已经超时结束，停下`);
-  const db = new PrismaClient({ datasourceUrl: `file:${f}?connection_limit=1` });
+  const db = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${f}?connection_limit=1` });
   代号.set(db, 这条);
   开着.push(db);
   await 步(`建库 ${名}：和桌面端一样的 WAL`, [db], async () => {

@@ -21,7 +21,7 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@/generated/prisma");
   const { 加上限定 } = await import("@/lib/team-scope");
-  const raw = new PrismaClient({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=1` });
+  const raw = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=1` });
   return { prisma: 加上限定(raw), defaultClient: raw };
 });
 vi.mock("@/lib/enterprise/view-as", async (原) => ({

@@ -60,7 +60,7 @@ async function 建库() {
   execFileSync("npx", ["prisma", "db", "push", "--skip-generate", "--accept-data-loss"], { cwd: ROOT, env, stdio: "pipe" });
   execFileSync("npx", ["tsx", "prisma/seed.ts"], { cwd: ROOT, env, stdio: "pipe" });
 
-  const db = new PrismaClient({ datasources: { db: { url: `file:${企业版库}` } } });
+  const db = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasources: { db: { url: `file:${企业版库}` } } });
   try {
     writeFileSync(种子文件, JSON.stringify({ 密码, ...(await 灌数据(db, 密码)) }, null, 2));
   } finally {
