@@ -1,7 +1,8 @@
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 搜索词, 拆搜索词, 全半角写法, 客户号码条件, 号码藏着 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
-import { 看板落列, 看板列键们, 未填标签, type 项目行, type 看板合计组, type 看板卡片 } from "./board";
+import { 看板落列, 看板列键们, 未填标签, 流失细分列键, 拆出的流失of, type 项目行, type 看板合计组, type 看板卡片, type 拆出的流失 } from "./board";
+import { 线索流失细分 } from "../enterprise/lost-split";
 import type { 阶段 } from "./nodes";
 import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的, 超时成员线, 补回收起点留痕, type 回收起点留痕 } from "./db";
 import { 即将回收 } from "./timeout";
@@ -423,7 +424,7 @@ async function 后筛候选(c: 列表条件包, 排: 项目排序, 超时线们:
   const 候选 = await 补回收起点留痕(await prisma.project.findMany({
     where: c.where,
     orderBy: 排序of(按负责人 ? "" : 排),
-    select: { ...算超时要的, amount: true, currency: true },
+    select: { ...算超时要的, amount: true, currency: true, closedAt: true },
   }), prisma, c.今);
   const 收回 = c.收回筛 ? await 数收回次数(候选.map((r) => r.id), prisma) : null;
   let 剩 = 候选.filter((p) => 合收回次数(收回?.get(p.id) ?? 0, c.收回筛) && (c.卡 !== "due-soon" || (!!c.规则 && 即将逾期(项目回收日(c.规则, p, 超时线们), c.今))));
@@ -447,10 +448,65 @@ const 看板字典of = (c: Pick<列表条件包, "企" | "规则">) => (c.企 ? 
  * 一列在库里的条件：落在这一列的那几组 阶段 / 进程 / 结局（取自 groupBy 的分组，和列头的数同一份）。
  * 不另写一套「哪个进程算哪列」：旧节点名、认不出的进程落本阶段第一列这些，都按 看板落列 认过的组来
  */
-function 列条件(组们: readonly { phase: string; node: string; result: string | null }[], 列: string, 落: (r: { phase: string; node: string; result: string | null }) => string): Prisma.ProjectWhereInput | null {
+function 列条件(组们: readonly 落列组[], 列: string, 落: (r: 落列组) => string, 分?: 流失分 | null): Prisma.ProjectWhereInput | null {
   const 三 = new Map<string, { phase: string; node: string; result: string | null }>();
   for (const g of 组们) if (落(g) === 列) 三.set(JSON.stringify([g.phase, g.node, g.result]), { phase: g.phase, node: g.node, result: g.result });
-  return 三.size ? { OR: [...三.values()].map((g) => ({ phase: g.phase, node: g.node, result: g.result })) } : null;
+  if (!三.size) return null;
+  const 基: Prisma.ProjectWhereInput = { OR: [...三.values()].map((g) => ({ phase: g.phase, node: g.node, result: g.result })) };
+  // 线索流失拆列（P-界面-66）：拆出的两列 = 同几组再限这一类的 id；原来那列去掉拆出去的
+  const 细 = 拆出的流失of(列);
+  if (分 && 细) return { AND: [基, { id: { in: 分[细] } }] };
+  const 拆走 = 分 && 列 === "线索流失" ? [...分.项目合并, ...分.重复线索] : [];
+  return 拆走.length ? { AND: [基, { id: { notIn: 拆走 } }] } : 基;
+}
+
+type 落列组 = { phase: string; node: string; result: string | null; 细分?: 拆出的流失 };
+/** 线索流失里拆出去的两类各是哪些项目（列条件用）；这一屏看板没有拆出的列 = null */
+type 流失分 = Record<拆出的流失, string[]>;
+
+/**
+ * 看板「线索流失」拆列（P-界面-66）：合计组里落在线索流失那列的几组，把这几组的项目（同一个 where）一次取回，
+ * 按 lib/enterprise/lost-split.ts 线索流失细分 判，重新按 阶段 / 进程 / 结局 / 币种 / 细分 分组顶替那几组（列头的数、金额跟着走），
+ * 再回两类各自的 id 给 列条件（首屏每列取卡片、「再看」都按它）。查询数固定：取一句 + 判定每 500 个三句，不按项目查。
+ * 这一屏没有拆出的列（团队版、筛了别的阶段、不是看板）原样回、不查
+ */
+async function 拆流失组(where: Prisma.ProjectWhereInput, 组们: 看板合计组[], 落: (r: 落列组) => string, 列键们: readonly string[]): Promise<{ 组们: 看板合计组[]; 分: 流失分 | null }> {
+  if (!列键们.includes(流失细分列键.项目合并)) return { 组们, 分: null };
+  const 分: 流失分 = { 项目合并: [], 重复线索: [] };
+  const 条 = 列条件(组们, "线索流失", 落);
+  if (!条) return { 组们, 分 };
+  const 行们 = await prisma.project.findMany({ where: { AND: [where, 条] }, select: { id: true, phase: true, node: true, result: true, currency: true, amount: true, closedAt: true } });
+  const 判 = await 线索流失细分(行们);
+  const 新 = new Map<string, 看板合计组>();
+  for (const r of 行们) {
+    const 细 = 判.get(r.id);
+    const 细分 = 细 === "项目合并" || 细 === "重复线索" ? 细 : undefined;
+    if (细分) 分[细分].push(r.id);
+    const k = JSON.stringify([r.phase, r.node, r.result, r.currency, 细分 ?? ""]);
+    const g = 新.get(k) ?? { phase: r.phase, node: r.node, result: r.result, currency: r.currency, amount: 0, 数: 0, ...(细分 ? { 细分 } : {}) };
+    g.amount += r.amount;
+    g.数 += 1;
+    新.set(k, g);
+  }
+  return { 组们: [...组们.filter((g) => 落(g) !== "线索流失"), ...新.values()], 分 };
+}
+
+/** 后筛（收回次数、3 天内回公海）那条路：候选已经全在手里，直接拿它们判，不再按 where 取（where 里没有后筛的条件）；这一屏没有拆出的列 = null */
+async function 拆后筛候选(剩: readonly { id: string; result: string | null; closedAt: Date | null }[], 列键们: readonly string[]): Promise<流失分 | null> {
+  if (!列键们.includes(流失细分列键.项目合并)) return null;
+  const 分: 流失分 = { 项目合并: [], 重复线索: [] };
+  for (const [id, 细] of await 线索流失细分(剩)) if (细 === "项目合并" || 细 === "重复线索") 分[细].push(id);
+  return 分;
+}
+
+/** 一行带上拆出的那一类（看板落列 认它）：不在 分 里的原样 */
+const 细分表们 = new WeakMap<流失分, Map<string, 拆出的流失>>();
+function 带细分<T extends { id: string }>(r: T, 分: 流失分 | null): T & { 细分?: 拆出的流失 } {
+  if (!分) return r;
+  let 表 = 细分表们.get(分);
+  if (!表) 细分表们.set(分, (表 = new Map([...分.项目合并.map((id) => [id, "项目合并"] as const), ...分.重复线索.map((id) => [id, "重复线索"] as const)])));
+  const 细 = 表.get(r.id);
+  return 细 ? { ...r, 细分: 细 } : r;
 }
 
 /** 按负责人排（名字拼音）时第 偏移+1 起 条数 个落在哪几位名下：每位从第几个起、取几个 */
@@ -517,7 +573,8 @@ export async function 读看板一列(me: Parameters<typeof 公海超时收回>[
   if (!Number.isSafeInteger(条数) || 条数 < 1 || 条数 > 每列一次最多) return null;
   const c = await 列表条件(me, sp);
   const 字典 = 看板字典of(c);
-  if (!看板列键们(字典, sp.phase).includes(列)) return null;
+  const 列键们 = 看板列键们(字典, sp.phase);
+  if (!列键们.includes(列)) return null;
   const 落 = 看板落列(字典);
   const 排 = 认项目排序(sp.sort);
   const 按负责人 = 排 === "owner-asc" || 排 === "owner-desc";
@@ -525,13 +582,20 @@ export async function 读看板一列(me: Parameters<typeof 公海超时收回>[
   let 总: number;
   let ids: string[];
   if (!!c.收回筛 || c.卡 === "due-soon") {
-    const 这列 = (await 后筛候选(c, 排, 超时线们)).filter((r) => 落(r) === 列);
+    const 候选 = await 后筛候选(c, 排, 超时线们);
+    const 分 = await 拆后筛候选(候选, 列键们);
+    const 这列 = 候选.filter((r) => 落(带细分(r, 分)) === 列);
     总 = 这列.length;
     ids = 这列.slice(偏移, 偏移 + 条数).map((r) => r.id);
   } else {
-    const 组 = await prisma.project.groupBy({ by: ["phase", "node", "result"], where: c.where, _count: { _all: true } });
-    const 条 = 列条件(组, 列, 落);
-    总 = 组.filter((g) => 落(g) === 列).reduce((n, g) => n + g._count._all, 0);
+    const 原组 = await prisma.project.groupBy({ by: ["phase", "node", "result"], where: c.where, _count: { _all: true } });
+    // 线索流失拆列（P-界面-66）：只在要的是线索流失那三列时拆（别的列和拆不拆无关，不多查）
+    const 流失家 = 列 === "线索流失" || !!拆出的流失of(列);
+    const { 组们: 组, 分 } = 流失家
+      ? await 拆流失组(c.where, 原组.map((g) => ({ phase: g.phase, node: g.node, result: g.result, currency: "", amount: 0, 数: g._count._all })), 落, 列键们)
+      : { 组们: 原组.map((g) => ({ phase: g.phase, node: g.node, result: g.result, 数: g._count._all })), 分: null };
+    const 条 = 列条件(组, 列, 落, 分);
+    总 = 组.filter((g) => 落(g) === 列).reduce((n, g) => n + g.数, 0);
     if (!条 || 偏移 >= 总) ids = [];
     else if (按负责人) {
       const 按人 = await prisma.project.groupBy({ by: ["ownerId"], where: { AND: [c.where, 条] }, _count: { _all: true } });
@@ -687,10 +751,12 @@ export async function 读项目列表(
   let 直接取: 行带include[] | null = null;
   /** 每列首屏要的 id（照列里的序）；不是看板每列 = 不给 */
   let 列ids: Map<string, string[]> | null = null;
+  /** 线索流失拆出去的两类（P-界面-66，拆流失组 / 拆后筛候选）；不是看板、这一屏没有拆出的列 = null */
+  let 分: 流失分 | null = null;
   const 分到列 = (序: readonly { id: string; phase: string; node: string; result: string | null }[]) => {
     const m = new Map(列键们.map((k) => [k, [] as string[]]));
     for (const r of 序) {
-      const 这列 = m.get(落(r));
+      const 这列 = m.get(落(带细分(r, 分)));
       if (这列 && 这列.length < 每列条数) 这列.push(r.id);
     }
     return m;
@@ -706,12 +772,14 @@ export async function 读项目列表(
     总数 = 剩.length;
     页 = 要列表页 ? Math.min(要页, Math.max(1, Math.ceil(总数 / 每页))) : 1;
     列表ids = 要列表页 ? 剩.slice((页 - 1) * 每页, 页 * 每页).map((r) => r.id) : [];
+    if (看板) 分 = await 拆后筛候选(剩, 列键们);
     // 看板列里按默认序：列表按别的排时另取一遍候选（后筛本来就窄）
     if (看板) 列ids = 分到列(排 ? await 后筛候选(条件, "", 超时线们) : 剩);
     const 组 = new Map<string, 看板合计组>();
-    for (const r of 剩) {
-      const k = JSON.stringify([r.phase, r.node, r.result, r.currency]);
-      const g = 组.get(k) ?? { phase: r.phase, node: r.node, result: r.result, currency: r.currency, amount: 0, 数: 0 };
+    for (const 原 of 剩) {
+      const r = 带细分(原, 分);
+      const k = JSON.stringify([r.phase, r.node, r.result, r.currency, r.细分 ?? ""]);
+      const g = 组.get(k) ?? { phase: r.phase, node: r.node, result: r.result, currency: r.currency, amount: 0, 数: 0, ...(r.细分 ? { 细分: r.细分 } : {}) };
       g.amount += r.amount;
       g.数 += 1;
       组.set(k, g);
@@ -770,11 +838,13 @@ export async function 读项目列表(
         ③ 卡片（小列整列 + 大列那几个 id + 列表页那几行）一句带 include 取回，最近留痕一句（补回收起点留痕）。
         首屏 = 每个大列一句 + include 一句（+ 最近留痕一句）；全是小列、不要列表页时和原来取一页一样多；要列表页时列表页那句只取 id，多 1 句
       */
+      // 线索流失拆列（P-界面-66）：列头的数、金额和每列取卡片的条件都按拆过的组
+      ({ 组们: 看板合计, 分 } = await 拆流失组(where, 看板合计, 落, 列键们));
       const 列数 = new Map(列键们.map((k) => [k, 0]));
       for (const g of 看板合计) { const k = 落(g); if (列数.has(k)) 列数.set(k, 列数.get(k)! + g.数); }
       const 大列 = 列键们.filter((k) => 列数.get(k)! > 每列条数);
-      const 小条们 = 列键们.filter((k) => 列数.get(k)! > 0 && 列数.get(k)! <= 每列条数).flatMap((k) => { const 条 = 列条件(看板合计, k, 落); return 条 ? [条] : []; });
-      const 大ids = await Promise.all(大列.map((k) => 列里一段(where, 列条件(看板合计, k, 落)!, "", 0, 每列条数)));
+      const 小条们 = 列键们.filter((k) => 列数.get(k)! > 0 && 列数.get(k)! <= 每列条数).flatMap((k) => { const 条 = 列条件(看板合计, k, 落, 分); return 条 ? [条] : []; });
+      const 大ids = await Promise.all(大列.map((k) => 列里一段(where, 列条件(看板合计, k, 落, 分)!, "", 0, 每列条数)));
       // 小列整列、大列那几个 id、列表页那几行：一句带 include 取回（外面再套一层列表条件），最近留痕再一句
       const 按id = [...大ids.flat(), ...列表ids];
       const 或: Prisma.ProjectWhereInput[] = [...小条们, ...(按id.length ? [{ id: { in: 按id } }] : [])];

@@ -79,8 +79,10 @@ describe("现在", () => {
   });
 
   it("分组数和逐个数一样：判无效拆开、外币只数金额大于 0 的、按人只看", async () => {
-    const 判 = await 建({ name: "x", ownerId: 王.id, phase: "线索", node: "潜客培育", result: "线索流失", closedAt: new Date() });
-    await prisma.entLeadVerify.create({ data: { projectId: 判.id, finalResult: "无效线索" } });
+    // 判无效要这一次结束对得上终判的时间（P-界面-66，lost-split.ts）
+    const 判时 = new Date();
+    const 判 = await 建({ name: "x", ownerId: 王.id, phase: "线索", node: "潜客培育", result: "线索流失", closedAt: 判时 });
+    await prisma.entLeadVerify.create({ data: { projectId: 判.id, finalResult: "无效线索", finalAt: 判时 } });
     await 建({ name: "y", ownerId: 王.id, phase: "线索", node: "潜客培育", result: "线索流失", closedAt: new Date() });
     await 建({ name: "z", ownerId: 王.id, phase: "线索", node: "潜客培育", pooledAt: new Date() });
     await 建({ name: "u1", ownerId: 李.id, phase: "商机", node: "共识方案", amount: 50, currency: "USD" });
