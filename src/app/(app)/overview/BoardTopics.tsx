@@ -3,13 +3,14 @@
 import { useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
-import { Pagination, Segmented, Select, Tag } from "antd";
+import { Pagination, Segmented, Tag } from "antd";
 import { fmtDateTime } from "@/lib/utils";
 import EmptyState from "@/components/EmptyState";
 import {
   主题范围们, 主题范围叫法, 主题状态们, 复盘列表每页,
   type 沟通档, type 主题范围, type 主题状态筛, type 复盘主题, type 复盘主题行,
 } from "@/lib/project/review-tabs";
+import FilterSelect from "@/components/FilterSelect";
 
 /** 这几个键只属于某一档：换档时丢掉，页码也回第一页 */
 const 沟通键 = ["t", "tf", "tt", "m"];
@@ -71,7 +72,7 @@ export default function BoardTopics({ 数, 范围, 状态 = "" }: { 数: 复盘�
   };
   const 去 = (x: 复盘主题行) => 去页.push(x.项目去 ?? `/projects/${encodeURIComponent(x.projectId)}`);
   const 状态下拉 = (
-            <Select<主题状态筛 | "">
+            <FilterSelect<主题状态筛 | "">
               size="small"
               className="rtalk-m"
               aria-label="主题状态"

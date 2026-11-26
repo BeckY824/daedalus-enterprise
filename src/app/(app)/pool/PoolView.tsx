@@ -42,6 +42,7 @@ import { 公海属性们, 快捷们, 排序们, 默认排序, 多次退回起, �
 import { 领取, 分配公海, 撤销公海, type 公海结果 } from "../customers/pool-actions";
 import { 确认条行们 } from "@/lib/enterprise/pool-ask-rows";
 import { 标无效客户, 恢复有效客户, 分配公海项目, 撤销公海项目, type 整包撤销 } from "./actions";
+import FilterSelect from "@/components/FilterSelect";
 
 type Props = {
   行: 公海行[];
@@ -805,7 +806,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     {
       键: "quick", 名: "入池方式", 宽: 140, 默认外露: true, 有值: !!f.quick,
       渲染: (style: CSSProperties) => (
-        <Select style={style} aria-label="入池方式" placeholder="全部入池方式" allowClear
+        <FilterSelect style={style} aria-label="入池方式" placeholder="全部入池方式" allowClear
           popupMatchSelectWidth={260}
           value={f.quick || undefined}
           onChange={(v) => 换池({ quick: v ?? "" })}
@@ -829,7 +830,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     {
       键: "channelId", 名: "客户来源", 宽: 150, 默认外露: false, 有值: !!f.channelId,
       渲染: (style: CSSProperties) => (
-        <Select style={style} aria-label="客户来源" placeholder="全部客户来源" allowClear showSearch={{ optionFilterProp: "label" }} popupMatchSelectWidth={false} value={f.channelId || undefined} onChange={(v?: string) => apply({ channelId: v ?? "" })} options={渠道筛选项} />
+        <FilterSelect style={style} aria-label="客户来源" placeholder="全部客户来源" allowClear showSearch popupMatchSelectWidth={false} value={f.channelId || undefined} onChange={(v?: string) => apply({ channelId: v ?? "" })} options={渠道筛选项} />
       ),
     },
     // 号码不全（C14，三态开着才有）：只看三态自动收回时打了「号码不全」的客户，再点一次取消。
@@ -864,7 +865,7 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
     <div className="pool-bar">
       <div className="pool-pools">
         {手机 ? (
-          <Select aria-label="公海属性" className="pool-pick-attr" value={f.attr || "全部"} popupMatchSelectWidth={false}
+          <FilterSelect aria-label="公海属性" className="pool-pick-attr" value={f.attr || "全部"} popupMatchSelectWidth={false}
             onChange={(v) => 换池({ attr: v === "全部" ? "" : String(v) })} options={池选项} />
         ) : (
           <Segmented aria-label="公海属性" className="pool-seg-attr" value={f.attr || "全部"}
