@@ -665,7 +665,12 @@ describe("[E-335] 一.4 两个项目都未开票的自查", () => {
     expect(明.自查).toEqual({ 两个项目都未开票: true, 谁: 乙.name, 时间: 现在.toISOString() });
     const 志 = await raw.auditLog.findMany({ where: { action: "merge", entity: "Project" } });
     expect(志).toHaveLength(2);
-    for (const l of 志) expect(l.summary).toContain(`自查：两个项目都未开票（${乙.name} ${现在.toISOString()}）`);
+    // summary 按北京时间显示（02:00Z = 北京 10:00），不能带 ISO 原串；今年的不写年
+    for (const l of 志) {
+      expect(l.summary).toMatch(new RegExp(`自查：两个项目都未开票（${乙.name} (\\d{4}-)?11-27 10:00）`));
+      expect(l.summary).not.toContain(现在.toISOString());
+      expect(l.summary).not.toMatch(/\d{2}T\d{2}:|\.\d{3}Z/);
+    }
     expect(await 撤回项目合并(prisma, id, 乙, 现在)).toMatchObject({ ok: true });
     expect(JSON.parse((await raw.entCustomerMerge.findUniqueOrThrow({ where: { id } })).detail).自查).toBeTruthy();
   });

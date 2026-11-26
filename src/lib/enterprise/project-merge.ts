@@ -30,6 +30,7 @@ import { 忘掉企业版范围 } from "./visibility";
 import { 拦下, 合并事务选项, 并发失败话, 重算最近跟进, 读没还原, type 合并人, type 没还原 } from "./customer-merge";
 import { 项目单, 项目合并撤回天数, 项目合并单们, 项目合并验证步 } from "./project-merge-guard";
 import { 生效的合同状态 } from "@/lib/project/proj-fields";
+import { 短时刻 } from "@/lib/project/time-fields";
 
 export { 项目单, 项目合并撤回天数, 项目合并验证步 };
 type 库 = PrismaClient;
@@ -390,7 +391,7 @@ async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Da
 
 /** 合并人勾过的自查，写进两条操作日志 */
 function 自查话(明: 项目合并明细): string {
-  return `自查：两个项目都未开票（${明.自查?.谁 || "未知"} ${明.自查?.时间 ?? ""}）`;
+  return `自查：两个项目都未开票（${明.自查?.谁 || "未知"} ${短时刻(明.自查?.时间) ?? ""}）`;
 }
 
 /** 被并项目那条日志末尾的组员留痕（已进组的写名字；邀请着没进组的只在 detail 里） */
