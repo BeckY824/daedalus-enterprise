@@ -57,6 +57,7 @@ import { 系统 } from "../project/timeout";
 import { 导入分配方式 } from "../project/proj-fields";
 import { 企业版只用项目 } from "../enterprise/project-only";
 import { 企业版 } from "../enterprise/switch";
+import { 对照被项目合并改指, 对照已随合并话 } from "../enterprise/project-merge-guard";
 import { 是项目线 } from "../enterprise/assign-line";
 import { 公海客户要先领取, 公海客户先领取说 } from "../enterprise/pool-customer-guard";
 import { 负责人口径 } from "../owners";
@@ -985,6 +986,27 @@ async function 对照(tx: Tx, 现: 现场, w: 待写, ref: 引用行): Promise<�
       data: { batchId: 现.批次Id, entity: w.实体, externalId: w.外部ID, targetId: ref.targetId, kind: "update", before: J(before), written: J(written), refBefore: J(ref) },
     });
 
+  // 合并客户第二批 2a：这条老商机的对照被项目合并改指到了留下的项目（被并项目原来的商机）。留下项目的值不是这条商机「上次写的」那份，
+  // 照三方比对会把它当「我们没动过」覆盖（悄悄结束、转人、换客户，换客户还绕过合并后 30 天的拦）→ 整条记冲突、一格不写，说明写清。
+  // 对照行不动（指纹不更新）：撤回合并后对照指回被并的项目，下次同步照常比对；这笔冲突去定时按过时处理、说同一句。
+  // 企业版销帮帮导出是最终数据、目前不再重导（不会走到这里），这是防将来接上同步时出错
+  if (w.实体 === "opportunity") {
+    const 并 = await 对照被项目合并改指(tx, ref.id);
+    if (并) {
+      const v = await 落值(tx, 现, w, 上次, 现值);
+      const 冲: Record<string, { 原系统: 标量; 我们: 标量; 上次: 标量 }> = {};
+      for (const k of 比对字段[w.实体]) {
+        if (只补的格.has(k) && !(k in v)) continue;
+        const n = 规(v[k]);
+        const l = 规(上次[k]);
+        if (!同(n, l)) 冲[k] = { 原系统: n, 我们: 规(现值?.[k]), 上次: l };
+      }
+      await 记冲突(tx, 现, w, ref.targetId, { ...冲, [冲突说明键]: 对照已随合并话(并.留下名) }, false);
+      await 记一行({}, {});
+      return "冲突";
+    }
+  }
+
   if (!现值) {
     await 记冲突(tx, 现, w, ref.targetId, {}, true);
     await 记对照(上次);
@@ -1048,6 +1070,9 @@ async function 对照(tx: Tx, 现: 现场, w: 待写, ref: 引用行): Promise<�
   await 记一行(before, 改动);
   return 有冲突 ? "冲突" : Object.keys(改动).length ? "更新" : "跳过";
 }
+
+/** 冲突 fields 里放说明的那一键（不是字段；值是一句话）：列冲突时拆出来单独给，定冲突时不当字段写 */
+export const 冲突说明键 = "_说明";
 
 /** 一条原系统记录最多一笔待定的冲突：已有就换成这次的，不越记越多 */
 async function 记冲突(tx: Tx, 现: 现场, w: 待写, targetId: string, fields: object, localDeleted: boolean): Promise<void> {

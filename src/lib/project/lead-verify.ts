@@ -32,6 +32,7 @@ import { 有效线索节点 } from "./stage-gates";
 import { 生效组织规则 } from "./org-rules-store";
 import { 原因上限 } from "./nodes";
 import { 补项目去 } from "./customer-detail-direct";
+import { 被并项目拦 } from "@/lib/enterprise/project-merge-guard";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true; 自动推到?: string[] } | { ok: false; error: string };
@@ -106,7 +107,9 @@ async function 读当前(projectId: unknown) {
     读组织(),
   ]));
   const 交给 = await 无效交给(org);
-  return { p, v, org, 交给, 待: 实际待(v?.pending ?? null, 交给) };
+  // 合并客户第二批 2a：被并掉的项目 30 天内不能改判（要动先撤回合并）
+  const 已并入 = p ? await 被并项目拦(prisma, p.id) : null;
+  return { p, v, org, 交给, 待: 实际待(v?.pending ?? null, 交给), 已并入 };
 }
 
 /** 新一轮初判把上一轮的复核、终验、终判都清掉（项目退回去又走到线索验证会再判一次） */
@@ -217,9 +220,10 @@ export async function 销售初判(
 ): Promise<结果> {
   if (!企业版()) return 开不了;
   if (判 !== "有效" && 判 !== "无效" && 判 !== "还需培育") return { ok: false, error: "请选有效、无效或还需培育" };
-  const { p, v, org, 待 } = await 读当前(projectId);
+  const { p, v, org, 待, 已并入 } = await 读当前(projectId);
   const 读 = 快照(v);
   if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
+  if (已并入) return { ok: false, error: 已并入 };
   if (!在验证(p)) return { ok: false, error: `只有停在「${有效线索节点}」的线索能判` };
   if (待) return { ok: false, error: `这条线索在等${待}，不用再判` };
   if (待分配占位(me, p)) return { ok: false, error: 待分配不能动 };
@@ -249,8 +253,9 @@ export async function 销售初判(
 /** 复核两步（市场复核、总管理终判）共用：先核是不是轮到这一步、这人能不能拍板 */
 async function 核复核(me: 谁, projectId: string, 步: "市场复核" | "总管理终判") {
   if (!企业版()) return 开不了;
-  const { p, v, org, 待 } = await 读当前(projectId);
+  const { p, v, org, 待, 已并入 } = await 读当前(projectId);
   if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+  if (已并入) return { ok: false as const, error: 已并入 };
   if (待 !== 步) return { ok: false as const, error: 待 ? `这条线索现在等的是${待}，不是${步}` : "这条线索没在等复核，刷新看看" };
   if (!在验证(p)) return 作废;
   if (!能拍板(me, 步, p, org)) return { ok: false as const, error: 拍不了[步] };
@@ -280,8 +285,9 @@ export async function 总管理终判(me: 谁, projectId: string, 有效: boolea
 /** 销售两步（终验、认领）共用的核 */
 async function 核销售(me: 谁, projectId: string, 步: "销售终验" | "销售认领") {
   if (!企业版()) return 开不了;
-  const { p, v, org, 待 } = await 读当前(projectId);
+  const { p, v, org, 待, 已并入 } = await 读当前(projectId);
   if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+  if (已并入) return { ok: false as const, error: 已并入 };
   if (待 !== 步) return { ok: false as const, error: 待 ? `这条线索现在等的是${待}` : "这条线索没在等你处理，刷新看看" };
   if (!在验证(p)) return 作废;
   if (待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
@@ -340,8 +346,9 @@ export async function 撤回验证(me: 谁, projectId: string): Promise<结果> 
   return 看已删(() => 撤回这条(me, projectId));
 }
 async function 撤回这条(me: 谁, projectId: string): Promise<结果> {
-  const { p, v, org, 待 } = await 读当前(projectId);
+  const { p, v, org, 待, 已并入 } = await 读当前(projectId);
   if (!p) return { ok: false, error: "这个项目已经不在了，刷新看看" };
+  if (已并入) return { ok: false, error: 已并入 };
   if (!v?.pending || !待) return { ok: false, error: "这条线索没在验证中，不用撤回，刷新看看" };
   if (!能撤回(me, v, org)) return { ok: false, error: "只有提交验证的人或系统管理员能撤回验证" };
   return 写状态(p.id, 快照(v), {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { LinkPending } from "@/components/NavProgress";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -34,6 +34,8 @@ export type 项目区数据 = {
   锁数: number;
   /** 当前页签的项目：项目详情的那一份数据；没有项目可选 = null（空状态） */
   当前: 项目详情Props | null;
+  /** 当前项目顶上「已并入 → 留下的项目」那一行（第二批 2a，page.tsx 递 MergedIntoLine 进来）：递给 ProjectDetail 摆在告示格最上面 */
+  已并入口?: ReactNode;
 };
 
 const 锁 = (
@@ -362,6 +364,7 @@ export default function ProjectZone({ 数据, 槽, 挂动作, 报忙 }: { 数据
     <ProjectDetail
       key={当前.p.id}
       {...当前}
+      已并入口={数据.已并入口}
       嵌入={{
         页签行: <ProjectSwitch 数据={数据} 当前id={当前.p.id} />,
         提醒: 槽.提醒,

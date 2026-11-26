@@ -29,6 +29,7 @@ import { 通知里的客户名 } from "./notice-mask";
 import { 客户编号文字 } from "@/lib/customer-no";
 import { 忘掉企业版范围 } from "./visibility";
 import { 序号撞了 } from "./repeat-inquiry";
+import { 换客户合并拦 } from "./project-merge-guard";
 import { 读客户, 重算最近跟进, 拦下, 合并事务选项, 并发失败话, 挂靠说明, type 客户行, type 合并人 } from "./customer-merge";
 
 type 库 = PrismaClient;
@@ -65,6 +66,9 @@ async function 拦的原因(db: Tx | 库, p: 项目行 | null, 原: 客户行 | 
   if (有值(原.bizLine) && 有值(目标.bizLine) && 原.bizLine !== 目标.bizLine) 因.push(`两位客户业务线不同（${原.bizLine} / ${目标.bizLine}），不能换`);
   // 项目在离职交接里等接手人确认：确认时要按当时的客户和负责人分拣，换了客户会对不上（handover-db 离职交接中的项目）
   if ((await 离职交接中的项目([p], db as Tx)).has(p.id)) 因.push("这个项目正在离职交接中，等接手人确认或撤回交接后再换");
+  // 合并客户第二批 2a：30 天内的项目合并单里的项目（被并掉的、留下的）都不能换客户，先撤回合并（project-merge-guard.ts）
+  const 合并拦 = await 换客户合并拦(db, p.id);
+  if (合并拦) 因.push(合并拦);
   return 因;
 }
 

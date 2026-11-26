@@ -75,4 +75,13 @@ describe("操作日志：写进去的动作、对象都有中文叫法（D6-2）
     expect(表).toMatch(/"project-move-customer": "项目换客户"/);
     expect(表).toMatch(/"project-move-customer-undo": "撤销换客户"/);
   });
+
+  it("合并客户第二批 2a：项目上的 merge / merge-undo 叫「合并项目」「撤回合并项目」，和客户的分开", () => {
+    const 写的 = new Set<string>();
+    for (const m of 读("src/lib/enterprise/project-merge.ts").matchAll(/action:\s*"([\w-]+)",\s*entity:\s*"(\w+)"/g)) 写的.add(`${m[2]}.${m[1]}`);
+    expect([...写的].sort()).toEqual(["Project.merge", "Project.merge-undo"]);
+    const 表 = 页.match(/const ACTION_LABEL_BY_ENTITY: Record<string, Record<string, string>> = \{([\s\S]*?)\n\};/)![1];
+    expect(表).toMatch(/Project: \{ merge: "合并项目", "merge-undo": "撤回合并项目" \}/);
+    expect(页).toMatch(/\{动作叫法\(v, r\.entity\)\}/);
+  });
 });

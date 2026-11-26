@@ -5,6 +5,7 @@
  */
 import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 项目合并验证步 } from "@/lib/enterprise/project-merge-guard";
 import { 看全部 } from "@/lib/team-scope";
 
 export const 等复核的 = ["市场复核", "总管理终判"] as const;
@@ -68,14 +69,16 @@ export async function 客户验证中不能放公海(db: Pick<Prisma.Transaction
 
 /**
  * 复核判死（市场复核 / 总管理终判判了无效线索）是终局（11-03 测试 A4-1）：结局改不回进行中，谁都不行，免得一人推翻别的角色的裁决。
- * 销售初判即终判（创建人是销售，自己判的）不算复核，照旧能自己改回。不是企业版 null
+ * 销售初判即终判（创建人是销售，自己判的）不算复核，照旧能自己改回。
+ * 项目合并写的「无效」（step 项目合并）也不算复核：30 天内被并项目拦（project-merge-guard）挡着，过了 30 天不能撤回，
+ * 这时候要重启被并的项目照常放行，不说「终局」。不是企业版 null
  */
 export async function 复核判死拦(db: Pick<Prisma.TransactionClient, "entLeadVerify" | "entLeadVerifyLog">, projectId: string): Promise<string | null> {
   if (!企业版()) return null;
   const v = await db.entLeadVerify.findUnique({ where: { projectId }, select: { finalResult: true } });
   if (v?.finalResult !== "无效线索") return null;
   const 末 = await db.entLeadVerifyLog.findFirst({ where: { projectId, verdict: "无效" }, orderBy: { at: "desc" }, select: { step: true } });
-  if (!末 || 末.step === "销售初判") return null;
+  if (!末 || 末.step === "销售初判" || 末.step === 项目合并验证步) return null;
   return `这条线索${末.step}判了无效线索，是终局，改不回进行中`;
 }
 
