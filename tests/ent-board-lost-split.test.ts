@@ -17,6 +17,12 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("next/navigation", () => ({ redirect: (u: string) => { throw new Error(`REDIRECT:${u}`); }, notFound: () => { throw new Error("NOT_FOUND"); } }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user, getCurrentUser: async () => mocks.user }));
+// 线索流失细分 原样透传，只记每次交进来几个项目（对拍那条看 拆流失组 只交候选）
+const 交判 = vi.hoisted(() => ({ 数: [] as number[] }));
+vi.mock("@/lib/enterprise/lost-split", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/lost-split")>();
+  return { ...m, 线索流失细分: (ps: Parameters<typeof m.线索流失细分>[0], o?: Parameters<typeof m.线索流失细分>[1]) => { 交判.数.push(ps.length); return m.线索流失细分(ps, o); } };
+});
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -214,6 +220,46 @@ describe("看板接上（list.ts 拆流失组）", () => {
       expect([重?.总, 名们(重!.行)]).toEqual([1, ["手动重复"]]);
     } finally {
       await prisma.project.updateMany({ where: { id: { in: 放 } }, data: { pooledAt: null } });
+    }
+  });
+
+  it("对拍：预筛（细分候选条件）后判 = 全部线索流失逐个判，各列数、各币种金额、「再看」的总数一样；拆流失组只取回候选", async () => {
+    // 加几条金额 / 币种不同的，金额对拍才有意义：候选里判成其他的（终判空号）要留在原组、不被减
+    const 加: string[] = [];
+    const 建加 = async (名: string, amount: number, currency: string) => {
+      const p = await prisma.project.create({ data: { name: 名, customerId: 客户id, ownerId: 管.id, creatorId: 管.id, phase: "线索", node: "线索验证", amount, currency, result: "线索流失", closedAt: T } });
+      加.push(p.id);
+      return p.id;
+    };
+    try {
+      await 手动关(await 建加("对拍美元重复", 250, "USD"), T, "无效原因：重复线索");
+      await 终判(await 建加("对拍美元空号", 33, "USD"), "空号", { finalAt: T });
+      await 手动关(await 建加("对拍人民币其他", 77, "CNY"), T, "无效原因：空号");
+      // 改前：看得到的全部线索流失逐个判（管理员看得到全部）
+      const 全部 = await prisma.project.findMany({ where: { result: "线索流失" }, select: { id: true, result: true, closedAt: true, amount: true, currency: true } });
+      const 判 = await 线索流失细分(全部);
+      const 列of = (id: string) => { const 细 = 判.get(id); return 细 === "项目合并" ? 流失细分列键.项目合并 : 细 === "重复线索" ? 流失细分列键.重复线索 : "线索流失"; };
+      const 期望: Record<string, { 数: number; 合计: Record<string, number> }> = {};
+      for (const k of [流失细分列键.项目合并, 流失细分列键.重复线索, "线索流失"]) 期望[k] = { 数: 0, 合计: {} };
+      for (const r of 全部) { const e = 期望[列of(r.id)]; e.数 += 1; e.合计[r.currency] = (e.合计[r.currency] ?? 0) + r.amount; }
+      // 改后：看板（拆流失组 预筛）；记下 拆流失组 交给判定的有几个
+      交判.数 = [];
+      const d = await 作为(() => 读项目列表(管, {}, undefined, { 每列: true, 要列表页: false }));
+      const 首屏交判 = [...交判.数];
+      const 列们 = 看板分列(d.行, 字典(), undefined, d.看板合计, d.每列);
+      for (const k of Object.keys(期望)) {
+        const c = 列们.find((x) => x.列 === k)!;
+        expect([k, c.数, Object.fromEntries(c.合计.map((x) => [x.币种, x.合计]))]).toEqual([k, 期望[k].数, 期望[k].合计]);
+        expect((await 作为(() => 读看板一列(管, {}, k, 0, 20)))?.总).toBe(期望[k].数);
+      }
+      expect(期望.线索流失.合计).toEqual({ CNY: 777, USD: 33 });
+      expect(期望[流失细分列键.重复线索].合计).toEqual({ CNY: 500, USD: 250 });
+      // 只取回候选判：13 + 3 条线索流失里，手动其他 / 手动无原因 / 撤回后普通关 / 对拍人民币其他 不是候选
+      expect(首屏交判).toEqual([全部.length - 4]);
+    } finally {
+      await prisma.projectNodeLog.deleteMany({ where: { projectId: { in: 加 } } });
+      await prisma.entLeadVerify.deleteMany({ where: { projectId: { in: 加 } } });
+      await prisma.project.deleteMany({ where: { id: { in: 加 } } });
     }
   });
 
