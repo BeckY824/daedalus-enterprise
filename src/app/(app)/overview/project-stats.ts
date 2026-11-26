@@ -51,9 +51,9 @@ export type 项目现在 = {
  * 线索瀑布（P15 / 10-29 定稿：每个节点要看得出流出去多少）：线索阶段各节点，按 节点们.线索 的先后铺开（没有的也摆 0）。
  *   count     还停在这个节点、进行中、不在公海
  *   流失      在这个节点点了线索流失（不含下面三样）
- *   判无效    在这个节点被判成无效线索（线索验证的市场复核 / 总管理终判判无效，结局也记线索流失，单独拆出来；原因是重复线索的不在这里）
+ *   判无效    在这个节点被判成无效线索（线索验证的市场复核 / 总管理终判判无效，结局也记线索流失，单独拆出来；归到下面两类的不在这里）
  *   项目合并 / 重复线索（P-界面-66）：结局线索流失里这两类，口径同看板两列（lib/enterprise/lost-split.ts 线索流失细分，按 closedAt 对得上的那一次结束认）；
- *             判无效 = 剩下的里这一次结束对得上终判的，流失 = 剩下的手动点的
+ *             剩下的里判无效 = 线索验证终判无效线索（同拆列前，不看时间对不对得上：拆列不改历史），流失 = 剩下的其余
  *   退回公海  停在这个节点、人已经放回公海了（还没结局）
  * 另外 线索转商机of：已经进了商机或订单的（线索阶段的好出口），摆在最后一条。都只用现成的列，不加表。
  */
@@ -128,17 +128,20 @@ async function 这些人的(只看: 只看谁): Promise<Prisma.ProjectWhereInput
 }
 /**
  * 结局线索流失的这一次结束怎么归（P-界面-66）：先按 细分候选条件 在库里筛出可能不是「手动点的其他线索流失」的（一句），
- * 再交 线索流失细分详 判（同看板拆列那一份）。没进候选的一定是手动点的线索流失，不用判。
- * 回 id → 拆出（项目合并 / 重复线索）或 判无效（剩下的里这一次结束对得上终判）；手动点的不在回的 Map 里
+ * 再交 线索流失细分详 判（同看板拆列那一份）。没进候选的一定是手动点的线索流失、也没有无效终判，不用判。
+ * 回 id → 拆出（项目合并 / 重复线索）或 判无效；别的不在回的 Map 里。
+ * 时间对齐只管这两列归不归（拆出）；剩下的「其他线索流失」判无效照拆列前的旧规则 = 线索验证终判无效线索（P-界面-66 不改历史：
+ * 判无效后改回进程再普通关、closedAt 空的老数据，拆列前算判无效，现在照算）。终判无效的都在候选里（细分候选条件 第一条）
  */
 type 流失去向 = { 拆出?: 拆出类; 判无效: boolean };
 async function 流失去向们(where: Prisma.ProjectWhereInput): Promise<{ 去向: Map<string, 流失去向>; 行们: { id: string; phase: string; node: string; result: string | null; pooledAt: Date | null }[] }> {
   const 名们 = await 重复线索名们();
-  const 行们 = await prisma.project.findMany({ where: 并条件(where, await 细分候选条件({ 名们 })), select: { id: true, phase: true, node: true, result: true, pooledAt: true, closedAt: true } });
+  const 行们 = await prisma.project.findMany({ where: 并条件(where, await 细分候选条件({ 名们 })), select: { id: true, phase: true, node: true, result: true, pooledAt: true, closedAt: true, entLeadVerify: { select: { finalResult: true } } } });
   const 去向 = new Map<string, 流失去向>();
+  const 终判无效 = new Set(行们.filter((r) => r.entLeadVerify?.finalResult === "无效线索").map((r) => r.id));
   for (const [id, d] of await 线索流失细分详(行们, { 名们 })) {
-    if (d.类 === "其他线索流失" && !d.终判) continue;
-    去向.set(id, d.类 === "其他线索流失" ? { 判无效: true } : { 拆出: d.类, 判无效: false });
+    if (d.类 !== "其他线索流失") 去向.set(id, { 拆出: d.类, 判无效: false });
+    else if (终判无效.has(id)) 去向.set(id, { 判无效: true });
   }
   return { 去向, 行们 };
 }

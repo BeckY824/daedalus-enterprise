@@ -552,12 +552,13 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   };
 }
 
-/** 这个项目并进了别的项目、合并单没撤回：那一张（能撤 和历史变更同一个预判；过了 30 天照样写已并入，只是不带撤回） */
+/** 结局线索流失的细分（P-界面-66）：归项目合并 / 重复线索的给，其他线索流失、别的结局不给 */
 async function 流失细分of(p: { id: string; result: string | null; closedAt: Date | null }): Promise<Pick<项目详情, "流失细分">> {
   const 类 = (await 线索流失细分([p])).get(p.id);
   return 类 === "项目合并" || 类 === "重复线索" ? { 流失细分: 类 } : {};
 }
 
+/** 这个项目并进了别的项目、合并单没撤回：那一张（能撤 和历史变更同一个预判；过了 30 天照样写已并入，只是不带撤回） */
 async function 已并入of(me: SessionUser, projectId: string): Promise<项目详情["已并入"]> {
   const m = (await 项目的合并单(prisma, projectId, me)).find((x) => x.方向 === "并出去" && x.status === "已合并");
   return m ? { mergeId: m.id, 到id: m.到id, 到: m.到, at: m.at, 谁: m.谁, 能撤: m.能撤 } : null;

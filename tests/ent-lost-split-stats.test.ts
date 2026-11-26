@@ -1,7 +1,7 @@
 /**
  * 线索流失拆项目合并 / 重复线索第二段（P-界面-66）：数据页线索瀑布、结局分布、项目详情、看板卡片小字接上 lib/enterprise/lost-split.ts。
  *   - 瀑布（项目现在 / 项目一段）的项目合并、重复线索两项 = 结局分布拆出的两个数 = 看板两列的数（同一批造数，造数同 ent-board-lost-split.test.ts）
- *   - 判无效 = 剩下的里这一次结束对得上终判的（对不上的旧终判、容差外、closedAt 空的老数据算手动点的线索流失）
+ *   - 剩下的里有无效终判的算判无效（同拆列前，不看时间对不对得上：旧终判、容差外、closedAt 空的老数据照算判无效，P-界面-66 不改历史）
  *   - 库里先按 细分候选条件 筛再判，和把全部线索流失交 线索流失细分详 判的结果一样
  *   - 项目详情：被并 → 线索流失・项目合并；重复线索 → 线索流失・重复线索；其他线索流失不带；不是线索流失的不查
  *   - 卡片小字：拆出列里写「项目合并 · 进程」，原来那列照写「线索流失 · 进程」
@@ -112,7 +112,7 @@ beforeAll(async () => {
 const 合 = (节点: 线索节点格[], k: "count" | "流失" | "判无效" | "项目合并" | "重复线索" | "退回公海") => 节点.reduce((s, n) => s + n[k], 0);
 
 describe("数据页接上（overview/project-stats.ts）", () => {
-  it("瀑布两项 = 结局分布拆出的两个数 = 看板两列；判无效只数对得上终判的；加起来 = 全部线索流失", async () => {
+  it("瀑布两项 = 结局分布拆出的两个数 = 看板两列；剩下的有无效终判就算判无效（同拆列前）；加起来 = 全部线索流失", async () => {
     const 板 = await 作为(() => 读项目列表(管, {}, undefined, { 每列: true, 要列表页: false }));
     const 列们 = 看板分列(板.行, 字典of(true), undefined, 板.看板合计, 板.每列);
     const 列数 = (k: string) => 列们.find((c) => c.列 === k)!.数;
@@ -120,19 +120,20 @@ describe("数据页接上（overview/project-stats.ts）", () => {
     expect([合(数.线索节点, "项目合并"), 合(数.线索节点, "重复线索")]).toEqual([列数(流失细分列键.项目合并), 列数(流失细分列键.重复线索)]);
     expect(数.流失拆出).toEqual({ 项目合并: 列数(流失细分列键.项目合并), 重复线索: 列数(流失细分列键.重复线索) });
     expect(数.流失拆出).toEqual({ 项目合并: 1, 重复线索: 5 });
-    // 看板「线索流失」那列 7 个 = 瀑布的判无效（终判空号，时间对得上）+ 流失（其余 6 个：手动的、旧终判对不上的、容差外、老数据）
-    expect([合(数.线索节点, "判无效"), 合(数.线索节点, "流失")]).toEqual([1, 6]);
+    // 看板「线索流失」那列 7 个 = 瀑布的判无效 4 个（有无效终判、没归到两列的：终判空号、改回后普通关、容差外、老数据）
+    //   + 流失 3 个（没有无效终判的：手动其他、手动无原因、撤回后普通关）
+    expect([合(数.线索节点, "判无效"), 合(数.线索节点, "流失")]).toEqual([4, 3]);
     expect(合(数.线索节点, "判无效") + 合(数.线索节点, "流失")).toBe(列数("线索流失"));
     expect(数.结局.find((r) => r.result === "线索流失")?.count).toBe(13);
     // 都停在线索验证
     const 验证 = 数.线索节点.find((n) => n.node === "线索验证")!;
-    expect([验证.流失, 验证.判无效, 验证.项目合并, 验证.重复线索]).toEqual([6, 1, 1, 5]);
+    expect([验证.流失, 验证.判无效, 验证.项目合并, 验证.重复线索]).toEqual([3, 4, 1, 5]);
   });
 
   it("项目一段：这一段新建的同一口径", async () => {
     const 今 = Date.now();
     const 一段 = await 作为(() => 项目一段(new Date(今 - 86_400_000), new Date(今 + 86_400_000), "day", "CNY"));
-    expect([合(一段.线索节点, "项目合并"), 合(一段.线索节点, "重复线索"), 合(一段.线索节点, "判无效"), 合(一段.线索节点, "流失")]).toEqual([1, 5, 1, 6]);
+    expect([合(一段.线索节点, "项目合并"), 合(一段.线索节点, "重复线索"), 合(一段.线索节点, "判无效"), 合(一段.线索节点, "流失")]).toEqual([1, 5, 4, 3]);
   });
 
   it("库里先筛候选再判 = 全部线索流失都交 线索流失细分详 判（没进候选的都是手动点、没终判的）", async () => {
@@ -147,14 +148,15 @@ describe("数据页接上（overview/project-stats.ts）", () => {
     expect(全.length - 候选.size).toBeGreaterThanOrEqual(3);
   });
 
-  it("容差外的终判不算判无效，挪进容差就算（改的是同一份判定）", async () => {
+  it("容差外的重复线索终判挪进容差：判无效 −1、重复线索 +1（时间对齐只管两列归不归，改的是同一份判定）", async () => {
     const 前 = await 作为(() => 项目现在("CNY"));
-    await prisma.entLeadVerify.update({ where: { projectId: ids.容差外 }, data: { finalAt: new Date(T.getTime() - 归列容差毫秒), invalidReason: "空号" } });
+    await prisma.entLeadVerify.update({ where: { projectId: ids.容差外 }, data: { finalAt: new Date(T.getTime() - 归列容差毫秒) } });
     try {
       const 后 = await 作为(() => 项目现在("CNY"));
-      expect([合(后.线索节点, "判无效") - 合(前.线索节点, "判无效"), 合(后.线索节点, "流失") - 合(前.线索节点, "流失")]).toEqual([1, -1]);
+      const 差 = (k: "判无效" | "重复线索" | "流失") => 合(后.线索节点, k) - 合(前.线索节点, k);
+      expect([差("判无效"), 差("重复线索"), 差("流失")]).toEqual([-1, 1, 0]);
     } finally {
-      await prisma.entLeadVerify.update({ where: { projectId: ids.容差外 }, data: { finalAt: new Date(T.getTime() - 归列容差毫秒 - 1000), invalidReason: "重复线索" } });
+      await prisma.entLeadVerify.update({ where: { projectId: ids.容差外 }, data: { finalAt: new Date(T.getTime() - 归列容差毫秒 - 1000) } });
     }
   });
 });

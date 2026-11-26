@@ -76,7 +76,7 @@ export async function 线索流失细分详(
   if (!流失.length) return 出;
   const db = 选项.db ?? prisma;
   return 看全部(async () => {
-    const 名 = new Set(选项.名们 ?? (await 重复线索名们(db)));
+    const 名 = new Set((选项.名们 ?? (await 重复线索名们(db))).map((n) => n.trim()));
     for (let i = 0; i < 流失.length; i += 一批) {
       const 段 = 流失.slice(i, i + 一批);
       const ids = 段.map((p) => p.id);
