@@ -2,7 +2,8 @@ import { prisma, defaultClient } from "@/lib/prisma";
 import { 搜索词, 拆搜索词, 全半角写法, 客户号码条件, 号码藏着 } from "@/lib/search-keyword";
 import { 负责人候选 } from "@/lib/owners";
 import { 看板落列, 看板列键们, 未填标签, 流失细分列键, 拆出的流失of, type 项目行, type 看板合计组, type 看板卡片, type 拆出的流失 } from "./board";
-import { 线索流失细分 } from "../enterprise/lost-split";
+import { 线索流失细分, 细分候选条件 } from "../enterprise/lost-split";
+import { 重复线索名们 } from "../enterprise/cust-status-auto-db";
 import type { 阶段 } from "./nodes";
 import { 看得到的客户, 露客户, 公海超时收回, 待我回的邀请, 项目回收日, 算超时要的, 超时成员线, 补回收起点留痕, type 回收起点留痕 } from "./db";
 import { 即将回收 } from "./timeout";
@@ -465,30 +466,42 @@ type 落列组 = { phase: string; node: string; result: string | null; 细分?: 
 type 流失分 = Record<拆出的流失, string[]>;
 
 /**
- * 看板「线索流失」拆列（P-界面-66）：合计组里落在线索流失那列的几组，把这几组的项目（同一个 where）一次取回，
- * 按 lib/enterprise/lost-split.ts 线索流失细分 判，重新按 阶段 / 进程 / 结局 / 币种 / 细分 分组顶替那几组（列头的数、金额跟着走），
- * 再回两类各自的 id 给 列条件（首屏每列取卡片、「再看」都按它）。查询数固定：取一句 + 判定每 500 个三句，不按项目查。
- * 这一屏没有拆出的列（团队版、筛了别的阶段、不是看板）原样回、不查
+ * 看板「线索流失」拆列（P-界面-66）：合计组里落在线索流失那列的几组，只把其中 细分候选条件 筛出的项目（同一个 where）取回，
+ * 按 lib/enterprise/lost-split.ts 线索流失细分 判；判成项目合并 / 重复线索的从原组按 阶段 / 进程 / 结局 / 币种 同键减掉（数、金额），
+ * 另成带 细分 的组（列头的数、金额跟着走），减到 0 的组去掉；再回两类各自的 id 给 列条件（首屏每列取卡片、「再看」都按它）。
+ * 候选条件是三条判定路的宽松版（只放宽不收紧）：不在候选里的一定判成其他线索流失、留在原组，所以和全量判结果一样，
+ * 只是不把看得到的全部线索流失读进内存。查询数固定：字典一句 + 候选条件一句 + 取一句 + 判定每 500 个三句，不按项目查。
+ * 组们 要带 currency 和 amount（按 阶段 / 进程 / 结局 / 币种 分的组）。这一屏没有拆出的列（团队版、筛了别的阶段、不是看板）原样回、不查
  */
 async function 拆流失组(where: Prisma.ProjectWhereInput, 组们: 看板合计组[], 落: (r: 落列组) => string, 列键们: readonly string[]): Promise<{ 组们: 看板合计组[]; 分: 流失分 | null }> {
   if (!列键们.includes(流失细分列键.项目合并)) return { 组们, 分: null };
   const 分: 流失分 = { 项目合并: [], 重复线索: [] };
   const 条 = 列条件(组们, "线索流失", 落);
   if (!条) return { 组们, 分 };
-  const 行们 = await prisma.project.findMany({ where: { AND: [where, 条] }, select: { id: true, phase: true, node: true, result: true, currency: true, amount: true, closedAt: true } });
-  const 判 = await 线索流失细分(行们);
+  const 名们 = await 重复线索名们();
+  const 行们 = await prisma.project.findMany({
+    where: { AND: [where, 条, await 细分候选条件({ 名们 })] },
+    select: { id: true, phase: true, node: true, result: true, currency: true, amount: true, closedAt: true },
+  });
+  const 判 = await 线索流失细分(行们, { 名们 });
+  const 键 = (g: { phase: string; node: string; result: string | null; currency: string }) => JSON.stringify([g.phase, g.node, g.result, g.currency]);
+  // 原组照留（复制一份，不改调用方的）；落在线索流失那列的按同键减
+  const 原 = 组们.map((g) => ({ ...g }));
+  const 原of = new Map(原.filter((g) => 落(g) === "线索流失").map((g) => [键(g), g]));
   const 新 = new Map<string, 看板合计组>();
   for (const r of 行们) {
     const 细 = 判.get(r.id);
-    const 细分 = 细 === "项目合并" || 细 === "重复线索" ? 细 : undefined;
-    if (细分) 分[细分].push(r.id);
-    const k = JSON.stringify([r.phase, r.node, r.result, r.currency, 细分 ?? ""]);
-    const g = 新.get(k) ?? { phase: r.phase, node: r.node, result: r.result, currency: r.currency, amount: 0, 数: 0, ...(细分 ? { 细分 } : {}) };
+    if (细 !== "项目合并" && 细 !== "重复线索") continue;
+    分[细].push(r.id);
+    const 减 = 原of.get(键(r));
+    if (减) { 减.数 -= 1; 减.amount -= r.amount; }
+    const k = JSON.stringify([r.phase, r.node, r.result, r.currency, 细]);
+    const g = 新.get(k) ?? { phase: r.phase, node: r.node, result: r.result, currency: r.currency, amount: 0, 数: 0, 细分: 细 };
     g.amount += r.amount;
     g.数 += 1;
     新.set(k, g);
   }
-  return { 组们: [...组们.filter((g) => 落(g) !== "线索流失"), ...新.values()], 分 };
+  return { 组们: [...原.filter((g) => g.数 > 0), ...新.values()], 分 };
 }
 
 /** 后筛（收回次数、3 天内回公海）那条路：候选已经全在手里，直接拿它们判，不再按 where 取（where 里没有后筛的条件）；这一屏没有拆出的列 = null */
@@ -588,12 +601,12 @@ export async function 读看板一列(me: Parameters<typeof 公海超时收回>[
     总 = 这列.length;
     ids = 这列.slice(偏移, 偏移 + 条数).map((r) => r.id);
   } else {
-    const 原组 = await prisma.project.groupBy({ by: ["phase", "node", "result"], where: c.where, _count: { _all: true } });
-    // 线索流失拆列（P-界面-66）：只在要的是线索流失那三列时拆（别的列和拆不拆无关，不多查）
+    // 按币种也分：拆流失组 按 阶段 / 进程 / 结局 / 币种 同键减（金额这里用不上，数照对）
+    const 原组 = await prisma.project.groupBy({ by: ["phase", "node", "result", "currency"], where: c.where, _count: { _all: true }, _sum: { amount: true } });
+    const 合计组们 = 原组.map((g) => ({ phase: g.phase, node: g.node, result: g.result, currency: g.currency, amount: g._sum.amount ?? 0, 数: g._count._all }));
+    // 线索流失拆列（P-界面-66）：只在要的是线索流失那三列时拆（别的列和拆不拆无关，不多查）；拆时只取候选判（同首屏）
     const 流失家 = 列 === "线索流失" || !!拆出的流失of(列);
-    const { 组们: 组, 分 } = 流失家
-      ? await 拆流失组(c.where, 原组.map((g) => ({ phase: g.phase, node: g.node, result: g.result, currency: "", amount: 0, 数: g._count._all })), 落, 列键们)
-      : { 组们: 原组.map((g) => ({ phase: g.phase, node: g.node, result: g.result, 数: g._count._all })), 分: null };
+    const { 组们: 组, 分 } = 流失家 ? await 拆流失组(c.where, 合计组们, 落, 列键们) : { 组们: 合计组们, 分: null };
     const 条 = 列条件(组, 列, 落, 分);
     总 = 组.filter((g) => 落(g) === 列).reduce((n, g) => n + g.数, 0);
     if (!条 || 偏移 >= 总) ids = [];
