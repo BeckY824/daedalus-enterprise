@@ -52,7 +52,7 @@ const 清单 = {
   ],
   共: 2, 页: 1, 每页: 20, 管: false,
 };
-const 已标 = [{ id: "x__y", 两家: [{ id: "x", 名: "已标测试客户", 负责人: "QA" }, { id: "y", 名: "已标测试客户", 负责人: null }], 谁标: "QA", 标于: 1_700_000_000_000 }];
+const 已标 = [{ id: "x__y", 两家: [{ id: "x", 名: "已标测试客户", 负责人: "QA", 我的: true }, { id: "y", 名: "已标测试客户", 负责人: null, 我的: false }], 谁标: "QA", 标于: 1_700_000_000_000 }];
 
 async function open(width: number, 渲: "清单" | "合并框", 参: Record<string, unknown> = {}) {
   const page = await browser.newPage({ viewport: { width, height: width < 768 ? 844 : 900 } }); page.setDefaultTimeout(5000);
@@ -118,6 +118,8 @@ it("已标页签：列已标的对，每行「撤销标记」，点了调撤销�
     await page.getByTestId("dupe-marked").first().waitFor();
     expect(await page.getByTestId("dupe-group").count()).toBe(0);
     expect(await page.getByTestId("dupe-marked").innerText()).toContain("QA标的");
+    // 自己负责那家点得进、别人的只是文字（非管理员）
+    expect(await page.getByTestId("dupe-marked").locator("a.dp-link").evaluateAll((l) => l.map((x) => x.getAttribute("href")))).toEqual(["/customers/x"]);
     await page.getByTestId("dupe-undo-mark").click();
     await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "撤标"));
     expect((await 调(page)).find((x) => x[0] === "撤标")).toEqual(["撤标", ["x__y"]]);

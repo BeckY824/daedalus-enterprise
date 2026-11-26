@@ -39,6 +39,7 @@ import {
   发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 申请状态, 同意状态, 合并申请预览, 给发起人藏名, 读选择, 看不到那家叫法, 显示状态of, 拒绝原因超话,
   type 发起完, type 处理完, type 快照, type 凭, type 涉及项目, type 合并申请预览结果,
 } from "@/lib/enterprise/merge-request";
+import { 两家在我清单成对 } from "@/lib/enterprise/dupe-groups";
 import { 全公司查号 } from "@/lib/enterprise/contact-dedupe";
 import { 拒绝原因上限 } from "./merge-request-words";
 import { 验号码 } from "@/lib/enterprise/contact-format";
@@ -145,7 +146,7 @@ export async function 搜合并候选(留下id: string, 关键词: string): Prom
 export async function 预览合并申请(留下id: string, 并掉id: string, 按号?: string): Promise<结果<{ 预览: 合并申请预览结果 }>> {
   const me = await 我();
   if (!是id(留下id) || !是id(并掉id) || (按号 !== undefined && typeof 按号 !== "string")) return 坏参数;
-  if (!(await 都看得到([留下id])) || !(await 并掉那家放行(并掉id, 按号))) return 看不到;
+  if (!(await 都看得到([留下id])) || !(await 并掉那家放行(留下id, 并掉id, 按号))) return 看不到;
   return { ok: true, 预览: await 合并申请预览(prisma, 留下id, 并掉id, me) };
 }
 
@@ -153,8 +154,10 @@ export async function 预览合并申请(留下id: string, 并掉id: string, 按
  * 并进来那家放行（预览合并申请、发起客户合并申请共用一个判法）：看得到；看不到的，要带着搜到它的那个完整号码、服务端再核一次撞得上。
  * 不放行一律回「看不到」，不往下走数据层（数据层跑在 看全部 里，拦下的原因会带出客户名、业务线、交接状态）
  */
-async function 并掉那家放行(并掉id: string, 按号?: string): Promise<boolean> {
+async function 并掉那家放行(留下id: string, 并掉id: string, 按号?: string): Promise<boolean> {
   if (await 都看得到([并掉id])) return true;
+  // 疑似重复清单上「要申请」的平级同事同名客户：服务端按清单同一个判法重判两家成对
+  if (await 两家在我清单成对(prisma, await 我(), await 权限组织(), 留下id, 并掉id)) return true;
   const 号 = 按号 ? 完整号码(搜索词(按号.trim().slice(0, 50)) ?? "") : null;
   return !!号 && (await 全公司查号(prisma, 号.类型, 号.值, 号.键)).includes(并掉id);
 }
@@ -412,7 +415,7 @@ export async function 发起客户合并申请(
   if (按号 !== undefined && typeof 按号 !== "string") return 坏参数;
   const 对们 = 规整对们(opt?.同一个人);
   if (!对们) return 坏参数;
-  if (!(await 都看得到([留下id])) || !(await 并掉那家放行(并掉id, 按号))) return 看不到;
+  if (!(await 都看得到([留下id])) || !(await 并掉那家放行(留下id, 并掉id, 按号))) return 看不到;
   const r = await 发起合并申请(prisma, 留下id, 并掉id, me, { 已核对: opt?.已核对 === true, 同一个人: 对们 });
   if (r.ok) 刷新(留下id, 并掉id);
   return r;

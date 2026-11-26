@@ -55,7 +55,7 @@ beforeAll(async () => {
     const 项目概况={c1:{项目数:12,当前节点:'异常 · 某个后台改得特别特别长的节点名字',当前阶段:'订单'},c2:{项目数:1,当前节点:'方案敲定',当前阶段:'商机'}};
     const 根=()=>{const [板,set板]=React.useState(!!window.__看板);window.__设板=set板;return 树里(板)};
     const 树里=(板)=>(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><我Provider value={{id:'me',name:'小王'}}>
-      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 最近一句={window.__一句} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={板?<假看板/>:undefined} 市场视图={!!window.__市场} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerNo:123456,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined} 仅项目超了={!!window.__超了}/>
+      <CustomersView rows={rows} total={3} page={1} requestedPage="1" pageSize={20} users={users} channels={[]} filters={{phase:window.__阶段||'',node:'',...(window.__三态?{triState:''}:{})}} 三态标={window.__三态?{c1:{态:'待回收',几天后进公海:12},c2:{态:'暂缓回收中'},c3:{态:'不计时'}}:undefined} 客户数={3} 企业版 项目概况={项目概况} 最近一句={window.__一句} 项目看板={!window.__非项目} 能新建和领取={!window.__不能新建} 待交接={window.__交接??null} 看板体={板?<假看板/>:undefined} 市场视图={!!window.__市场} 客户范围={window.__范围?{值:'mine',默认:'mine',选项:['mine','joined','visible']}:undefined} 仅项目行={window.__仅项目?[{id:'x1',name:'仅项目的'+长,shortName:null,school:null,customerNo:123456,customerType:'某个特别长的客户类型名字',customerAttr:null,地区:'浙江省 杭州市 西湖区',当前节点:'某个后台改得特别特别长的节点名字',当前阶段:'商机',项目数:2,仅项目:true}]:undefined} 仅项目超了={!!window.__超了}/>
     </我Provider></BusinessProvider></App></ConfigProvider>);
     const 树=<根/>;
     const el=document.getElementById('root');
@@ -707,6 +707,27 @@ it("市场成员、市场管理（X-107）：切换叫「客户列表 / 我分�
     expect(await page.evaluate(() => document.cookie)).toContain("customers-view=board");
     expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/customers");
   } finally { await page.close(); }
+});
+
+it("疑似重复入口（12-15 C，cust-dupes）：企业版项目模式（有「范围」）在「范围」旁摆一句淡链、点了去 /customers/dupes；市场视图不摆；没有「范围」（非项目模式）不摆", async () => {
+  for (const [设, 有] of [[{ __范围: true }, true], [{ __范围: true, __市场: true }, false], [{}, false]] as const) {
+    const page = await browser.newPage({ viewport: { width: 1280, height: 900 } }); page.setDefaultTimeout(5000);
+    try {
+      await page.route("http://cust-cols.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+      await page.goto("http://cust-cols.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+      await page.evaluate((x) => { Object.assign(window, x); }, 设);
+      await page.addScriptTag({ content: 包 });
+      await page.locator("tr.ant-table-row").first().waitFor();
+      const 钮 = page.getByTestId("cust-dupes");
+      expect(await 钮.count(), JSON.stringify(设)).toBe(有 ? 1 : 0);
+      if (有) {
+        expect((await 钮.innerText()).trim()).toBe("疑似重复 ›");
+        await 钮.click();
+        await page.waitForFunction(() => (window as unknown as { __push?: string }).__push !== undefined);
+        expect(await page.evaluate(() => (window as unknown as { __push?: string }).__push)).toBe("/customers/dupes");
+      }
+    } finally { await page.close(); }
+  }
 });
 
 it("页头「新建 ▾」（11-12）：两样都能建 = 一颗主按钮，键盘能打开，菜单两项「新建客户」「新建项目」；点「新建项目」才挂上那条路（先选新老客户，同项目页）", async () => {

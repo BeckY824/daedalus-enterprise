@@ -216,9 +216,10 @@ function MergeCustomerDialog({ customerId, 客户名, 预选, 关 }: { customerI
   // 预选了并进来那家（疑似重复清单）：一开框就读预览，跳过搜索那步；只在开框那一下
   const 预选过 = useRef(false);
   useEffect(() => {
-    if (预选 && !预选过.current) { 预选过.current = true; 挑(预选); }
+    // 等管理员身份读回来再预选：挑 里按 管 分走申请 / 直接预览，读回前调会走错路
+    if (预选 && 管 !== null && !预选过.current) { 预选过.current = true; 挑(预选); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [管]);
   const 换一家 = () => { 读次.current++; set并掉(null); set预(null); set申(null); set读错(null); };
 
   const 对们 = 预 ? 预.联系人们.并掉.filter((b) => 同.has(b.id) && 配[b.id]).map((b) => ({ 留: 配[b.id]!, 并: b.id })) : [];

@@ -163,6 +163,8 @@ describe("标 / 撤「不是同一个人」", () => {
     expect(日志.every((x) => x.userId === 甲.id)).toBe(true);
     expect((await 已标的对(prisma, 甲, org)).map((p) => p.id)).toEqual([对id(a1, a2)]);
     expect(await 已标的对(prisma, 经理, org)).toEqual([]);
+    // 已标一对里自己负责的那家带「我的」（页签里才点得进）
+    expect((await 已标的对(prisma, 甲, org))[0].两家.map((m) => [m.id, m.我的]).sort()).toEqual([[a1, true], [a2, false]].sort());
 
     expect(await 撤销不是同一个人(prisma, 乙, org, [对id(a1, a2)])).toEqual({ ok: true, 撤了: 1 });
     const 行 = await raw.customerNotDupe.findUnique({ where: { id: 对id(a1, a2) } });

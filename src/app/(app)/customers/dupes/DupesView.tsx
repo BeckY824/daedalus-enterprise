@@ -108,7 +108,7 @@ export default function DupesView({ 清单, 已标, 只读原因 = null }: { 清
       <ul className="dp-mems" aria-label="标了不是同一个人的两家">
         {p.两家.map((m) => (
           <li key={m.id} className="dp-mem">
-            {名格(m, 清单.管)}
+            {名格(m, 清单.管 || m.我的)}
             {一行(`负责人 ${m.负责人 ?? "公海"}`, "dp-sub")}
           </li>
         ))}

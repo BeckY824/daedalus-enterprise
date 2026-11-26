@@ -184,6 +184,21 @@ export async function 本客户疑似重复数(db: 库, me: 看的人, org: 组�
   return g ? g.们.length - 1 : 0;
 }
 
+/**
+ * 合并申请里「并进来那家我看不到」的放行：留下那家是我负责、不在公海，且按登录的人重新成组，两家在他清单上成对
+ * （名键同、业务线不冲突、没标不是同一个人）。只回是不是，不带任何客户资料
+ */
+export async function 两家在我清单成对(db: 库, me: 看的人, org: 组织 | null, 留下id: string, 并掉id: string): Promise<boolean> {
+  if (留下id === 并掉id) return false;
+  const 行们 = (await db.$queryRawUnsafe<裸行[]>(`${选列SQL} WHERE c."deletedAt" IS NULL AND c.id IN (?,?)`, 留下id, 并掉id)).map(转行);
+  if (行们.length !== 2) return false;
+  const 留 = 行们.find((r) => r.id === 留下id);
+  if (!留 || !我的(留, me.id)) return false;
+  if (new Set(行们.map((r) => 名键(r.name))).size !== 1) return false;
+  const 对们 = 成组(行们, await 标着的对(db, [留下id, 并掉id]), 看法of(me, org)).flatMap((g) => g.对们);
+  return 对们.includes(对id(留下id, 并掉id));
+}
+
 type 写结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 function 能写(me: 看的人, org: 组织 | null): string | null {
@@ -262,7 +277,7 @@ export async function 撤销不是同一个人(db: 库, me: 看的人, org: 组�
   return { ok: true, 撤了: 能撤.length };
 }
 
-export type 已标一对 = { id: string; 两家: { id: string; 名: string; 负责人: string | null }[]; 谁标: string | null; 标于: number };
+export type 已标一对 = { id: string; 两家: { id: string; 名: string; 负责人: string | null; 我的: boolean }[]; 谁标: string | null; 标于: number };
 
 /** 「已标不是同一个人」：登录的人能撤的那些（负责人：有一家是他负责的；系统管理员：全部），新标的在前，最多 100 对 */
 export async function 已标的对(db: 库, me: 看的人, org: 组织 | null): Promise<已标一对[]> {
@@ -274,7 +289,7 @@ export async function 已标的对(db: 库, me: 看的人, org: 组织 | null): 
   });
   const ids = [...new Set(行.flatMap((r) => [r.customerId, r.otherId]))];
   const [客户们, 人们] = await 看全部(() => Promise.all([
-    db.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, salesOwner: { select: { name: true } }, pool: { select: { customerId: true } } } }),
+    db.customer.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, salesOwnerId: true, salesOwner: { select: { name: true } }, pool: { select: { customerId: true } } } }),
     db.user.findMany({ where: { id: { in: [...new Set(行.map((r) => r.userId))] } }, select: { id: true, name: true } }),
   ]));
   const 客 = new Map(客户们.map((c) => [c.id, c]));
@@ -282,7 +297,7 @@ export async function 已标的对(db: 库, me: 看的人, org: 组织 | null): 
   // 有一家已经不在了（合并 / 删除）的不列：撤了也不会重新成组
   return 行.filter((r) => 客.has(r.customerId) && 客.has(r.otherId)).map((r) => ({
     id: r.id,
-    两家: [r.customerId, r.otherId].map((id) => { const c = 客.get(id)!; return { id, 名: c.name.trim(), 负责人: c.pool ? null : c.salesOwner?.name ?? null }; }),
+    两家: [r.customerId, r.otherId].map((id) => { const c = 客.get(id)!; return { id, 名: c.name.trim(), 负责人: c.pool ? null : c.salesOwner?.name ?? null, 我的: !c.pool && c.salesOwnerId === me.id }; }),
     谁标: 人.get(r.userId) ?? null, 标于: r.at.getTime(),
   }));
 }
