@@ -20,6 +20,7 @@ import { 是系统管理员 } from "./permissions";
 import { 客户显名, 显名列 } from "./customer-title";
 import { 项目单 } from "./project-merge-guard";
 import { recordAudit } from "@/lib/audit";
+import { 是日期, 创建时间段 } from "@/lib/custom-date-range";
 import type { 合并人 } from "./customer-merge";
 
 type 库 = Pick<PrismaClient, "entCustomerMerge" | "user" | "customer">;
@@ -31,6 +32,7 @@ export const 台账状态 = ["已合并", "已撤回"] as const;
 export const 台账上限 = 5000;
 export const 只有系统管理员能看台账 = "只有系统管理员能看合并台账";
 
+/** 起 / 止：北京日历日 YYYY-MM-DD（两端都含：起日 00:00:00.000 ～ 止日 23:59:59.999，北京时间），服务端换成时刻 */
 export type 台账条件 = { 起?: string | null; 止?: string | null; 词?: string | null };
 export type 台账行 = {
   id: string;
@@ -59,12 +61,14 @@ function 读明细(detail: string): 明细 {
   } catch { return {}; }
 }
 const 字 = (v: unknown) => (typeof v === "string" ? v : "");
-/** 前端传来的时间：认得出的 ISO 才用，别的当没填 */
-function 时刻(v: unknown): Date | null {
+/** 明细里记的时间：认得出的才用 */
+function 读时刻(v: unknown): Date | null {
   if (typeof v !== "string" || !v) return null;
   const d = new Date(v);
   return Number.isNaN(d.getTime()) ? null : d;
 }
+/** 前端传来的起止日：只认 YYYY-MM-DD 的北京日历日，别的当没填 */
+const 日 = (v: unknown): string | null => (是日期(v) ? v : null);
 /** 搜：去空白、不分大小写，客户名、留下项目名、被并项目名任一包含就算 */
 const 规整 = (s: string) => s.replace(/\s+/g, "").toLowerCase();
 
@@ -76,11 +80,10 @@ export async function 能看合并台账(me: 合并人): Promise<boolean> {
 export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条件 | null | undefined): Promise<结果<{ 行们: 台账行[]; 截断: boolean }>> {
   if (!企业版()) return { ok: false, error: "只有企业版有合并台账" };
   if (!(await 能看合并台账(me))) return { ok: false, error: 只有系统管理员能看台账 };
-  const 起 = 时刻(条件?.起);
-  const 止 = 时刻(条件?.止);
+  const 段 = 创建时间段(日(条件?.起) ?? undefined, 日(条件?.止) ?? undefined);
   const 词 = 规整(字(条件?.词)).slice(0, 60);
   const 单们 = await 看全部(() => db.entCustomerMerge.findMany({
-    where: { kind: 项目单, status: { in: [...台账状态] }, ...(起 || 止 ? { at: { ...(起 ? { gte: 起 } : {}), ...(止 ? { lte: 止 } : {}) } } : {}) },
+    where: { kind: 项目单, status: { in: [...台账状态] }, ...(段 ? { at: { ...(段.gte ? { gte: 段.gte } : {}), ...(段.lte ? { lte: 段.lte } : {}) } } : {}) },
     orderBy: [{ at: "desc" }, { id: "desc" }],
     // 有搜索词时先多拿一些再筛（名字不在列上）；没词直接按上限拿、多拿一条判截断
     take: 词 ? 台账上限 * 4 : 台账上限 + 1,
@@ -105,7 +108,7 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
   const 全部 = 单们.map((m): 台账行 => {
     const 明 = 明们.get(m.id)!;
     const 客户id = 字(明.客户) || null;
-    const 自查时间 = 时刻(明.自查?.时间);
+    const 自查时间 = 读时刻(明.自查?.时间);
     return {
       id: m.id,
       at: m.at.toISOString(),
@@ -133,11 +136,13 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
 export async function 导出合并台账(db: 库, me: 合并人, 条件: 台账条件 | null | undefined): Promise<结果<{ 行们: 台账行[]; 截断: boolean }>> {
   const r = await 读合并台账(db, me, 条件);
   if (!r.ok) return r;
-  const 范围 = [条件?.起 ? `${条件.起.slice(0, 10)} 起` : "", 条件?.止 ? `${条件.止.slice(0, 10)} 止` : ""].filter(Boolean).join("、") || "全部时间";
+  const 起 = 日(条件?.起);
+  const 止 = 日(条件?.止);
+  const 范围 = [起 ? `${起} 起` : "", 止 ? `${止} 止` : ""].filter(Boolean).join("、") || "全部时间";
   await recordAudit({
     user: me, action: "export", entity: "EntCustomerMerge",
     summary: `导出合并台账：${范围}${条件?.词 ? `、搜「${条件.词.slice(0, 30)}」` : ""}，${r.行们.length} 单${r.截断 ? "（超上限，只导了最新的）" : ""}`,
-    detail: { 起: 条件?.起 ?? null, 止: 条件?.止 ?? null, 词: 条件?.词 ?? null, 行数: r.行们.length, 截断: r.截断 },
+    detail: { 起, 止, 词: 条件?.词 ?? null, 行数: r.行们.length, 截断: r.截断 },
   });
   return r;
 }

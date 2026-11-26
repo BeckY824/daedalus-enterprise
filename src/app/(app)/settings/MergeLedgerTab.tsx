@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Alert, Button, DatePicker, Input, Table, Tag } from "antd";
+import { Alert, Button, Input, Table, Tag } from "antd";
+import DatePicker from "@/components/BusinessDatePicker";
 import type { Dayjs } from "dayjs";
 import { dayjs } from "@/lib/utils";
 import { 写xlsx } from "@/lib/xlsx-write";
@@ -20,9 +21,10 @@ import type { 查合并台账, 导出合并台账Action } from "./merge-ledger-a
 
 type 段 = [Dayjs | null, Dayjs | null] | null;
 const 时 = (v: string | null) => (v ? dayjs(v).format("YYYY-MM-DD HH:mm") : "");
+/** 只传北京日期串：选择器回来的是业务钟实例（BusinessDatePicker），预设也是业务钟，直接 format；边界由服务端换成时刻 */
 const 条件of = (范围: 段, 词: string): 台账条件 => ({
-  起: 范围?.[0] ? 范围[0].startOf("day").toISOString() : null,
-  止: 范围?.[1] ? 范围[1].endOf("day").toISOString() : null,
+  起: 范围?.[0] ? 范围[0].format("YYYY-MM-DD") : null,
+  止: 范围?.[1] ? 范围[1].format("YYYY-MM-DD") : null,
   词: 词.trim() || null,
 });
 /** 周一对账用：本周、上周都从周一算（不跟 dayjs 语言包的周起点走） */
@@ -52,16 +54,20 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
   const [截断, set截断] = useState(false);
   const [读不到, set读不到] = useState<string | null>(null);
   const [导着, set导着] = useState(false);
+  // 列表上次真正查过的条件（拉 成功后写入）：导出用它，不用输入框里还没搜的词
+  const [已查, set已查] = useState<台账条件>({ 起: null, 止: null, 词: null });
 
   const 拉 = useCallback(async (范: 段, w: string) => {
     set行(null);
-    const r = await 查(条件of(范, w)).catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "合并台账没读出来") }));
+    const 条件 = 条件of(范, w);
+    const r = await 查(条件).catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "合并台账没读出来") }));
     if (!r.ok) {
       set读不到(r.error);
       set行([]);
       return;
     }
     set读不到(null);
+    set已查(条件);
     set截断(r.截断);
     set行(r.行们);
   }, [查]);
@@ -72,7 +78,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
   async function 导() {
     set导着(true);
     try {
-      const r = await 导出(条件of(范围, 词)).catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "导出没能完成，请重试") }));
+      const r = await 导出(已查).catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "导出没能完成，请重试") }));
       if (!r.ok) return void 就地.error(r.error);
       const bytes = 写xlsx([{ 名: "合并台账", 表头, 行: r.行们.map(成格), 列宽: [17, 10, 24, 24, 24, 12, 12, 12, 17, 8, 10, 17] }]);
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));

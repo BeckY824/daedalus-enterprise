@@ -102,7 +102,7 @@ describe("一单一行", () => {
     if (!全.ok) throw new Error(全.error);
     expect(全.行们.map((r) => r.留下项目)).toEqual(["二号留下", "一号留下"]);
 
-    const 段 = { 起: 早.toISOString(), 止: new Date(早.getTime() + 天).toISOString() };
+    const 段 = { 起: "2026-11-28", 止: "2026-11-29" };
     const 筛时 = await 读合并台账(prisma, 老板, 段);
     expect(筛时.ok && 筛时.行们.map((r) => r.留下项目)).toEqual(["一号留下"]);
 
@@ -124,6 +124,51 @@ describe("一单一行", () => {
     expect(日志).toHaveLength(3);
     expect(日志[0].summary).toContain("导出合并台账：全部时间，2 单");
     expect(JSON.parse(日志[1].detail!)).toMatchObject({ 行数: 1, 截断: false });
+  });
+
+  it("时间范围按北京日：北京日 00:00 和 23:59 的单两端都含，前一分钟 / 后一分钟不含；起止不是 YYYY-MM-DD 当没传", async () => {
+    const c = await 客户("编造测试客户丁");
+    // 北京 12-01 00:00 = 11-30T16:00Z；北京 12-01 23:59 = 12-01T15:59Z
+    const 点 = [
+      ["前一分钟", "2026-11-30T15:59:00.000Z"],
+      ["零点", "2026-11-30T16:00:00.000Z"],
+      ["二十三点五十九", "2026-12-01T15:59:00.000Z"],
+      ["后一天零点", "2026-12-01T16:00:00.000Z"],
+    ] as const;
+    for (const [名, t] of 点) await 并(await 项目(c, `${名}留下`), await 项目(c, `${名}被并`), 乙, new Date(t));
+    const 名们 = async (条件: { 起?: string | null; 止?: string | null }) => {
+      const r = await 读合并台账(prisma, 老板, 条件);
+      if (!r.ok) throw new Error(r.error);
+      return r.行们.map((x) => x.留下项目).sort();
+    };
+    expect(await 名们({ 起: "2026-12-01", 止: "2026-12-01" })).toEqual(["二十三点五十九留下", "零点留下"]);
+    expect(await 名们({ 起: "2026-12-01" })).toEqual(["二十三点五十九留下", "后一天零点留下", "零点留下"]);
+    expect(await 名们({ 止: "2026-11-30" })).toEqual(["前一分钟留下"]);
+    // ISO 串、乱写：当没传（不再按 ISO 解析）
+    expect(await 名们({ 起: "2026-11-30T16:00:00.000Z", 止: "乱写" })).toHaveLength(4);
+    expect(await 名们({ 起: 123 as unknown as string })).toHaveLength(4);
+    // 导出日志的起止日直接写北京日期串
+    const 导 = await 导出合并台账(prisma, 老板, { 起: "2026-12-01", 止: "2026-12-01" });
+    expect(导.ok && 导.行们).toHaveLength(2);
+    const 日志 = await raw.auditLog.findMany({ where: { action: "export", entity: "EntCustomerMerge" } });
+    expect(日志[0].summary).toContain("2026-12-01 起、2026-12-01 止");
+    expect(JSON.parse(日志[0].detail!)).toMatchObject({ 起: "2026-12-01", 止: "2026-12-01" });
+    await 导出合并台账(prisma, 老板, { 起: "2026-12-01T00:00:00.000Z", 止: 5 as unknown as string });
+    const 日志2 = await raw.auditLog.findMany({ where: { action: "export", entity: "EntCustomerMerge" }, orderBy: { at: "desc" } });
+    expect(日志2[0].summary).toContain("导出合并台账：全部时间");
+  });
+
+  it("旧单 detail 里没有自查：自查人、自查时间两格为空", async () => {
+    const c = await 客户("编造测试客户戊");
+    await 并(await 项目(c, "旧单留下"), await 项目(c, "旧单被并"), 乙);
+    const m = await raw.entCustomerMerge.findFirstOrThrow({ where: { kind: "项目" } });
+    const d = JSON.parse(m.detail) as Record<string, unknown>;
+    delete d.自查;
+    await raw.entCustomerMerge.update({ where: { id: m.id }, data: { detail: JSON.stringify(d) } });
+    const r = await 读合并台账(prisma, 老板, {});
+    if (!r.ok) throw new Error(r.error);
+    expect(r.行们).toHaveLength(1);
+    expect(r.行们[0]).toMatchObject({ 自查人: "", 自查时间: null });
   });
 
   it("客户合并单（kind = 客户）不进台账", async () => {

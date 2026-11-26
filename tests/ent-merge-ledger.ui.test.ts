@@ -70,6 +70,23 @@ for (const w of [390, 1024, 1440]) {
       const 导 = 调.find(([n]) => n === "导出合并台账Action")![1][0];
       expect(导).toEqual(最后查);
       expect(导).toMatchObject({ 词: "编造客户0" });
+      // 改了词没搜就导出：导出的仍是上次查过的条件，不是输入框里的词
+      await page.getByText(/已导出 \d+ 单/).waitFor();
+      await page.waitForFunction(() => !document.querySelector("[data-testid=合并台账] .ant-btn-loading"));
+      await page.getByRole("searchbox", { name: "按客户名或项目名搜" }).fill("还没搜的词");
+      await page.getByRole("button", { name: /导\s*出$/ }).click();
+      await page.waitForFunction(() => ((window as unknown as { __calls?: [string][] }).__calls ?? []).filter(([n]) => n === "导出合并台账Action").length >= 2);
+      const 调2 = await 调用们(page);
+      const 导们 = 调2.filter(([n]) => n === "导出合并台账Action");
+      expect(导们[1][1][0]).toEqual(最后查);
+      expect(调2.filter(([n]) => n === "查合并台账").map(([, a]) => (a[0] as { 词?: string }).词)).not.toContain("还没搜的词");
+      // 点预设：只传日期串（YYYY-MM-DD）
+      await page.getByRole("textbox", { name: "合并时间范围" }).first().click();
+      await page.getByText("近 30 天", { exact: true }).dispatchEvent("click");
+      await page.waitForFunction(() => ((window as unknown as { __calls?: [string, [{ 起?: string }]][] }).__calls ?? []).some(([n, a]) => n === "查合并台账" && !!a[0].起));
+      const 预设查 = (await 调用们(page)).filter(([n, a]) => n === "查合并台账" && !!(a[0] as { 起?: string }).起).pop()![1][0] as { 起: string; 止: string };
+      expect(预设查.起).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(预设查.止).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   });
