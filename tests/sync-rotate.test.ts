@@ -23,7 +23,7 @@ const 临时 = vi.hoisted(() => {
 });
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@/generated/prisma");
-  return { prisma: new PrismaClient({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}` }) };
+  return { prisma: new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}` }) };
 });
 
 import { prisma as 甲 } from "@/lib/prisma";

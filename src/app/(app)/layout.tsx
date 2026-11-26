@@ -1,6 +1,6 @@
 // 客户三态的小标（列表状态列、看板色点、公海号码不全、交接看板超期行）：放在应用壳上引，组件里引会让 *.ui.test 的 esbuild 打包失败
 import "./tri-state-ui.css";
-import { redirect } from "next/navigation";
+import { redirect, unstable_rethrow } from "next/navigation";
 import { 读收藏, 读项目收藏 } from "@/lib/favorites";
 import { 客户总数 } from "@/lib/pool-db";
 import { headers } from "next/headers";
@@ -64,19 +64,45 @@ export default async function AppLayout({
    * 宁可把人挡在门口：壳换完目录、本地服务重起之后，这里自然就放行了。
    */
   if (归属对不上()) redirect("/api/auth/logout?reason=switched");
-  // 升级后第一次进来：记下「号码从这一刻起留着分机」，查重据此只拿主号认这之前的老记录（lib/phone-dedupe）。只写一次
-  await 记下分机留存起();
-
   /*
-    要跟的数：我名下逾期 + 今天到期、还没做的计划和待办。左栏「跟进」上的红数字、手机顶栏的铃铛、
+    要跟的数：我名下逾期 + 今天到期、还没做的计划和待办。左栏「跟进」上的红数字、手机顶栏的日历、
     桌面端 Dock 上的数都是这一个（lib/reminders-db.ts）。layout 在客户端导航时不重算，
-    但完成、改期、新建之后各处都会 router.refresh()——那时它跟着变。中栏要的数据在 @pane 槽位里各自查
+    但完成、改期、新建之后各处都会 router.refresh()——那时它跟着变。中栏要的数据在 @pane 槽位里各自查。
+
+    **壳不等这几个数**（11-26 客户页提速第三段）：原来整页打开（硬刷新、飞书里直开）要等 layout 把它们数完才吐壳和骨架。
+    现在只起查询、把 Promise 传给壳，壳和骨架先出，数到了在流里填进那一小块（components/LateCount.tsx）。
+    只要几个数：在库里数（数角标，口径同 算提醒），企业版铃铛上的未读通知数一起数（以别人视图看时不摆），一句 SQL。
+    数不出来（库锁着之类）只少一个角标，不把整页拖成错误页：记一笔，按 0 摆
   */
+  const 带通知 = 企业版() && !user.视图由;
+  /* Next 自己的控制流（动态渲染退出、重定向等）先原样抛回去，不当成「数不出来」吞掉（next/navigation unstable_rethrow） */
+  const 角标 = 数角标(user.id, 带通知).catch((e: unknown) => {
+    unstable_rethrow(e);
+    console.error("[layout] 数角标没成，这一页角标按 0：", e instanceof Error ? e.message : e);
+    return { 逾期: 0, 今天: 0, 通知未读: 带通知 ? 0 : undefined };
+  });
+  const 要跟 = 角标.then((r) => ({ 逾期: r.逾期, 今天: r.今天 }));
+  /*
+    左栏「客户」右边的灰数（lib/pool-db.ts 客户总数）。企业版左栏不摆这个数（AppShell 10-30），也就不数：
+    客户页要的页签数在客户页自己数（同一次渲染 cache() 只数一遍，谁先叫谁数）。别的版本照旧数、同样不等
+  */
+  const 客户数 = 企业版()
+    ? undefined
+    : 客户总数().catch((e: unknown) => {
+        unstable_rethrow(e);
+        console.error("[layout] 客户总数没数成，左栏灰数按 0：", e instanceof Error ? e.message : e);
+        return 0;
+      });
+
   const 业务 = getBusiness();
-  const [角标, business, ua, 有AI, models, 收藏, 项目收藏, 客户数] = await Promise.all([
-    // 只要几个数：在库里数（lib/reminders-db.ts 数角标，口径同 算提醒），不把名下没做的全拉回来；
-    // 企业版铃铛上的未读通知数一起数（以别人视图看时不摆），和跟进的 逾期 / 今天 一句 SQL（原来 5 句）
-    数角标(user.id, 企业版() && !user.视图由),
+  const 有AIP = llmEnabled();
+  /*
+    剩下这些决定壳长什么样（菜单、账号菜单里的名单、收藏两栏），照旧等，但一起起、不再一样等完再起下一样：
+    记下分机留存起、业务术语、UA、AI 面板要的模型清单和计次、收藏、切换视图、演示名单、工作区
+  */
+  const [, business, ua, 有AI, models, 收藏, 项目收藏, 视图, AI计次, 演示名单, workspaces] = await Promise.all([
+    // 升级后第一次进来：记下「号码从这一刻起留着分机」，查重据此只拿主号认这之前的老记录（lib/phone-dedupe）。只写一次
+    记下分机留存起(),
     // 业务术语（学员/客户、院校/年级/专业…）：全站客户端组件从这里拿
     业务,
     headers().then((h) => h.get("user-agent") ?? ""),
@@ -85,36 +111,34 @@ export default async function AppLayout({
       而 layout 在客户端导航时不重新渲染——模型清单和额度都不需要每次换页重取，
       额度变了下次整页加载会对上。真正每次导航要重算的东西在 @pane 槽位里，别搬进来。
     */
-    llmEnabled(),
+    有AIP,
     listModelOptions(),
-    // 左栏下半截（2026-10-02 照毛玻璃原型）：收藏的客户、客户数。都很便宜，和上面一起查
+    // 左栏下半截（2026-10-02 照毛玻璃原型）：收藏的客户
     读收藏(user.id),
     // 收藏的项目（11-02）：只有项目模式才有项目可收
     业务.then((b) => (b.projectMode === true ? 读项目收藏(user) : [])),
-    // 和客户页页签同一个数，同一次渲染只数一遍（lib/pool-db.ts 客户总数）
-    // 左栏商机一项 10-28 删了（/opportunities 一律转到 /projects），在谈商机数也不数了
-    客户总数(),
+    /*
+      切换视图（M-权限-08）：总管理员账号菜单里的名单；正在看别人时顶上一条「正在以 X 的视图查看 · 退出」。
+      票还在、但 getCurrentUser 不认了（真身不再是总管理员、被看的人停用了）：这时服务端照样只读，条上写「已失效」让他退出
+    */
+    有切换视图()
+      ? Promise.all([读视图名单(user), user.视图由 ? Promise.resolve(null) : 当前视图(), user.视图由 ? 视图身份说明(user.id) : Promise.resolve(null)])
+      : Promise.resolve([null, null, null] as const),
+    /*
+      这个人点 AI 按钮花不花次数、还剩几次（lib/ai-meter.ts）：全站的「1 次」角标和输入框下那行字都认它。
+      这里**不去云端问余额**（桌面端要联网，断网时会把整页拖住），数由浏览器随后问 /api/ai/meter。
+    */
+    有AIP.then((有) => (有 ? 读AI计次({ 问余额: false }) : 不计次)),
+    读演示名单(),
+    user.accountId ? accessibleWorkspacesFor(user.accountId) : Promise.resolve([]),
   ]);
-  const 要跟 = { 逾期: 角标.逾期, 今天: 角标.今天 };
-  /*
-    这个人点 AI 按钮花不花次数、还剩几次（lib/ai-meter.ts）：全站的「1 次」角标和输入框下那行字都认它。
-    这里**不去云端问余额**（桌面端要联网，断网时会把整页拖住），数由浏览器随后问 /api/ai/meter。
-  */
-  /*
-    切换视图（M-权限-08）：总管理员账号菜单里的名单；正在看别人时顶上一条「正在以 X 的视图查看 · 退出」。
-    票还在、但 getCurrentUser 不认了（真身不再是总管理员、被看的人停用了）：这时服务端照样只读，条上写「已失效」让他退出
-  */
-  const [视图名单, 视图票在] = 有切换视图()
-    ? await Promise.all([读视图名单(user), user.视图由 ? Promise.resolve(null) : 当前视图()])
-    : [null, null];
-  const 正在视图 = user.视图由 ? { 名: user.name, 身份: await 视图身份说明(user.id) } : 视图票在 ? { 名: null } : null;
-  const AI计次 = 有AI ? await 读AI计次({ 问余额: false }) : 不计次;
+  const [视图名单, 视图票在, 视图身份] = 视图;
+  const 正在视图 = user.视图由 ? { 名: user.name, 身份: 视图身份 ?? (await 视图身份说明(user.id)) } : 视图票在 ? { 名: null } : null;
   /**
    * 跑在桌面端里：Electron 的 UA 带 "Electron/"。本地模式和连服务器两种都识别得到，
    * 壳据此把红黄绿钮的位置留出来。只影响布局，不影响任何权限。
    */
   const desktop = /Electron\//.test(ua);
-  const workspaces = user.accountId ? await accessibleWorkspacesFor(user.accountId) : [];
   const workspace = workspaces.find(w => w.id === user.workspaceId);
   // 网页版不再有试用期：只有一个长期运行的共享工作区，横条整条去掉了（2026-09-16）。
   // 到期只读那套机制还在 computeWritable 里，共享工作区靠 paidUntil 设在很远来绕过它——
@@ -135,14 +159,14 @@ export default async function AppLayout({
         // 企业版只用项目一条线：左栏和 ⌘K 没有商机，线索叫「新线索」（lib/enterprise/project-only.ts）
         企业版项目={企业版() && business.projectMode === true}
         企业版={企业版()}
-        // 企业版站内通知（11-01）：铃铛上的未读数，之后铃铛自己每分钟问一次（lib/enterprise/notify.ts）；以别人视图看时不摆（上面 数角标 没数，是 undefined）
-        通知未读={角标.通知未读}
+        // 企业版站内通知（11-01）：铃铛上的未读数，之后铃铛自己每分钟问一次（lib/enterprise/notify.ts）；以别人视图看时不摆（undefined）。和要跟的数同一句 SQL、同样不等
+        通知未读={带通知 ? 角标.then((r) => r.通知未读 ?? 0) : undefined}
         产品名={自定产品名() ?? undefined}
         pane={pane}
         ai={有AI ? { models } : null}
         收藏={收藏}
         项目收藏={项目收藏}
-        演示名单={await 读演示名单()}
+        演示名单={演示名单}
         演示换人={演示登录}
         // ⌘K 顺带搜客户、项目、联系人（U-项目-04）：只在企业版项目模式给，范围按角色走（global-search.ts）
         全局搜索={企业版() && business.projectMode === true ? 全局搜索 : undefined}
@@ -150,7 +174,7 @@ export default async function AppLayout({
         视图换人={开始视图}
         视图退出={退出视图}
         正在视图={正在视图}
-        计数={{ "/customers": 客户数 }}
+        计数={客户数 === undefined ? undefined : { "/customers": 客户数 }}
         // 左栏空闲预热哪几页：部署时 CRM_NAV_PREWARM 定，运行时读，改了重启即生效（lib/nav-prewarm.ts）
         预热={读预热设置()}
       >

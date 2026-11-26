@@ -14,7 +14,7 @@ let db: PrismaClient;
 
 test.beforeAll(() => {
   种 = 读种子();
-  db = new PrismaClient({ datasources: { db: { url: `file:${ENT_DB}` } } });
+  db = new PrismaClient<import("../src/generated/prisma").Prisma.PrismaClientOptions>({ datasources: { db: { url: `file:${ENT_DB}` } } });
 });
 test.afterAll(async () => {
   await db?.$disconnect();

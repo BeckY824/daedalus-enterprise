@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null },
   看法: "" as string,
   在请求: false,
+  /** 页面向公海那边（pool="1"）查了几次：关键词分页 + 客户筛选条件 */
+  查公海: 0,
 }));
 vi.mock("next/headers", async (原) => ({
   ...(await 原<object>()),
@@ -31,6 +33,14 @@ vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();
   return { ...m, getBusiness: async () => ({ ...(await m.getBusiness()), projectMode: true }) };
+});
+vi.mock("@/app/(app)/customers/query", async (原) => {
+  const m = await 原<typeof import("@/app/(app)/customers/query")>();
+  const 数 = <A extends [{ pool?: string }, ...unknown[]], R>(f: (...a: A) => R) => (...a: A): R => {
+    if (a[0]?.pool === "1") mocks.查公海++;
+    return f(...a);
+  };
+  return { ...m, 关键词分页: 数(m.关键词分页), 客户筛选条件: 数(m.客户筛选条件) };
 });
 vi.mock("@/app/(app)/customers/CustomersView", () => ({ default: () => null }));
 vi.mock("@/app/(app)/customers/HandoverPending", () => ({ default: () => null }));
@@ -55,6 +65,7 @@ const 名表 = new Map<string, string>();
 beforeEach(async () => {
   vi.stubEnv("CRM_ENTERPRISE", "1");
   mocks.看法 = "";
+  mocks.查公海 = 0;
   await resetDb();
   invalidateSettingsCache();
   await setSetting("enterprise.rule.org_scope", true);
@@ -153,4 +164,25 @@ describe("客户页并起来取数：交给 CustomersView 的数和改前一样"
       expect(表).toMatchSnapshot();
     });
   }
+});
+
+describe("公海关键词查询按需（11-26 小修 h）：客户页签搜到人不跑，0 条才跑", () => {
+  for (const [名, sort] of [["快路", undefined], ["慢路", "created-asc"]] as const) {
+    it(`${名}：客户有结果时不查公海，提示 0`, async () => {
+      const p = await 打开({ keyword: "关键", ...(sort ? { sort } : {}) }, 人们.销售管理);
+      expect(p.rows.length).toBeGreaterThan(0);
+      expect(p.公海里匹配).toBe(0);
+      expect(mocks.查公海).toBe(0);
+    });
+    it(`${名}：客户 0 条时才查公海，提示照出`, async () => {
+      const p = await 打开({ keyword: "海里", ...(sort ? { sort } : {}) }, 人们.销售管理);
+      expect(p.rows.length).toBe(0);
+      expect(p.公海里匹配).toBe(2);
+      expect(mocks.查公海).toBeGreaterThan(0);
+    });
+  }
+  it("不带关键词、客户有结果：不查公海", async () => {
+    await 打开({}, 人们.销售管理);
+    expect(mocks.查公海).toBe(0);
+  });
 });

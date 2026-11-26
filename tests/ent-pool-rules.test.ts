@@ -709,6 +709,38 @@ describe("默认：线索公海的项目能单独领，客户不动（11-09，M-
     expect(await 负责人(c)).toBe(乙.id);
   });
 
+  // 小修 1126-g 第 4 条（照 #478 客户那边）：两个标签页先后撤同一下领取，第二次说「刚才已经撤回公海了」、算撤成，不说有人动过
+  it("撤销领取项目再撤一次：第二次说这个项目刚才已经撤回公海了，算撤成", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    await 放回公海(乙, p);
+    expect(await 领取公海项目(丙, p)).toEqual({ ok: true });
+    当(丙);
+    expect(await 撤销公海项目("领取", [p])).toEqual({ ok: true, updated: 1, unchanged: 0 });
+    expect(await 撤销公海项目("领取", [p])).toEqual({ ok: true, updated: 0, unchanged: 0, 已撤回: 1, 提示: "这个项目刚才已经撤回公海了" });
+    expect(await 项目在公海(p)).toBe(true);
+    // 只记第一次那条撤销日志
+    expect(await prisma.auditLog.count({ where: { summary: { startsWith: "撤销领取：" } } })).toBe(1);
+  });
+
+  it("撤回之后被同事领走、或撤的不是我：照旧不算撤回", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    const q = await 项目(乙.id, c);
+    await 放回公海(乙, p);
+    await 放回公海(乙, q);
+    expect(await 领取公海项目(丙, p)).toEqual({ ok: true });
+    expect(await 领取公海项目(丙, q)).toEqual({ ok: true });
+    当(丙);
+    expect(await 撤销公海项目("领取", [p, q])).toMatchObject({ ok: true, updated: 2 });
+    // p 撤回后又被经理领走
+    expect(await 领取公海项目(经理, p)).toEqual({ ok: true });
+    expect(await 撤销公海项目("领取", [p, q])).toEqual({ ok: true, updated: 0, unchanged: 1, 已撤回: 1, 提示: "1 个项目刚才已经撤回公海了" });
+    // 别人的撤销日志不认
+    当(经理);
+    expect(await 撤销公海项目("领取", [q])).toEqual({ ok: true, updated: 0, unchanged: 1 });
+  });
+
   it("客户在客户公海里：项目不能单独领（M-公海-06）；领客户项目一起过来", async () => {
     const c = await 客户(乙.id);
     const p = await 项目(乙.id, c);
@@ -821,6 +853,25 @@ describe("默认：线索公海的项目能单独领，客户不动（11-09，M-
     expect(await 项目在公海(p)).toBe(true);
     expect(await 负责人(c)).toBe(经理.id);
     expect(await prisma.auditLog.count({ where: { summary: { contains: "撤销分配：1 个项目放回线索公海" } } })).toBe(1);
+  });
+
+  it("P-公海-10 撤销整包：项目一个没撤成、客户那一半撤成了——ok、提示里带客户那句（小修 1126-g 第 1 条）", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    当(乙);
+    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true });
+    当(老板);
+    const r = await 分配公海项目([p], 丙.id);
+    if (!r.ok || !r.整包) throw new Error("没整包");
+    // 分完主管把项目转给了经理：项目那边撤不动，客户还归丙
+    await prisma.project.update({ where: { id: p }, data: { ownerId: 经理.id } });
+    expect(await 撤销公海项目("分配", r.分到, 丙.id, r.整包)).toEqual({
+      ok: true, updated: 0, unchanged: 1, 提示: "已撤销 1 位客户",
+    });
+    // 客户那一半照撤：回客户公海、不再归丙；项目还在经理名下
+    expect(await 在客户公海(c)).toBe(true);
+    expect(await 负责人(c)).not.toBe(丙.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(经理.id);
   });
 });
 
