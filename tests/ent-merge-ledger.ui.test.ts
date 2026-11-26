@@ -92,8 +92,8 @@ for (const w of [390, 1024, 1440]) {
   });
 }
 
-for (const w of [390, 768, 1024, 1280]) {
-  it(`${w} 宽：日期范围弹层整块在视口内，起止两天点得到`, async () => {
+for (const w of [390, 768, 1024, 1199, 1280]) {
+  it(`${w} 宽：日期范围弹层整块在视口内，${w <= 1199 ? "上下叠" : "双月并排"}，起止两天点得到`, async () => {
     const { page, errors } = await 开页(browser, bundle, props(true), w, "?tab=merges");
     try {
       await page.addStyleTag({ content: "body{margin:0}" });
@@ -102,7 +102,7 @@ for (const w of [390, 768, 1024, 1280]) {
       const 框 = page.getByRole("textbox", { name: "合并时间范围" });
       const 量 = () => page.evaluate(() => {
         const r = document.querySelector(".ant-picker-dropdown:not(.ant-picker-dropdown-hidden)")!.getBoundingClientRect();
-        return { left: r.left, right: r.right, vw: innerWidth };
+        return { left: r.left, right: r.right, width: r.width, vw: innerWidth };
       });
       await 框.first().click();
       await page.locator(".ant-picker-dropdown:not(.ant-picker-dropdown-hidden) .ant-picker-cell-in-view").first().waitFor();
@@ -110,6 +110,7 @@ for (const w of [390, 768, 1024, 1280]) {
       const a = await 量();
       expect(a.left).toBeGreaterThanOrEqual(0);
       expect(a.right).toBeLessThanOrEqual(a.vw);
+      if (w <= 1199) expect(a.width).toBeLessThanOrEqual(360); else expect(a.width).toBeGreaterThan(600);
       await page.locator(".ant-picker-dropdown:not(.ant-picker-dropdown-hidden) .ant-picker-cell-in-view").nth(2).click();
       await page.locator(".ant-picker-dropdown:not(.ant-picker-dropdown-hidden) .ant-picker-cell-in-view").nth(9).click();
       await page.waitForFunction(() => ((window as unknown as { __calls?: [string, [{ 起?: string; 止?: string }]][] }).__calls ?? []).some(([n, a]) => n === "查合并台账" && !!a[0].起 && !!a[0].止));

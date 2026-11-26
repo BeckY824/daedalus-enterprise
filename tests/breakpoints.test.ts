@@ -20,7 +20,6 @@ const 档 = { max: new Set([767, 1199, 1439]), min: new Set([768, 1200, 1440]) }
 /** 放行：文件 + 查询 → 怎么算出来的 */
 const 版面门槛: Record<string, string> = {
   "app/globals.css (max-width: 1213px)": "记录页名单放不下就收：左栏 220 + 名单 312 + 留白 52 + 两栏下限 630 = lib/roster.ts 名单门槛 1214（下面有一条测试对数）",
-  "app/(app)/settings/settings.css (max-width: 799px)": "合并台账日期范围弹层双月并排约 780 宽 + 两边各留 8 = 796，视口不到这个宽就改上下两个月；按弹层宽度算，不是设备档",
   "app/globals.css (max-width: 575px)": "客户页页头两颗按钮各占一半只管手机竖屏（同 antd xs 576）：576–767 窄窗口按钮留在客户名一行右端（11-12 规矩），这是按钮放得下的门槛，不是设备档",
   "app/globals.css (max-width: 1799px)": "AI 面板常驻时 xl 栅格重映射：正文 = 窗口 - 左栏 220 - 面板 380，窗口 1800 正文才有 1200",
   "components/AppShell.tsx (max-width: 1599px)": "AI 面板能不能常驻（面板放不下），面板 380 + 左栏 220 + 正文下限",

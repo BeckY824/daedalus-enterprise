@@ -198,8 +198,8 @@
 @media (max-width: 767px) {
   .ml-range, .ml-search { flex-basis: 100%; max-width: none; }
 }
-/* 日期范围弹层双月并排约 780 宽 + 两边各留 8：视口 ≤ 799 放不下，改成上下两个月、预设排在上面（手机 390 实测整块冒出视口 left -415） */
-@media (max-width: 799px) {
+/* 日期范围弹层双月并排约 780 宽：窄屏档（≤ 1199）有左栏 220，弹层靠右对齐会冒出视口左边（1024/1199 实测 left -33），改成上下两个月、预设排在上面 */
+@media (max-width: 1199px) {
   .ml-range-pop .ant-picker-panel-container { max-width: calc(100vw - 16px); overflow: auto; }
   .ml-range-pop .ant-picker-panel-layout { flex-direction: column; }
   .ml-range-pop .ant-picker-presets { max-width: none; }
