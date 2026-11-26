@@ -12,7 +12,7 @@ import { cache } from "react";
 import { prisma } from "@/lib/prisma";
 import { 企业版 } from "./switch";
 import { 规则, 开关值开着 } from "./rules-table";
-import { 回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 填组织设置, 建组织, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
+import { 回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 可标已开票键, 填组织设置, 建组织, 管理员类别of, type 组织, type 管理员类别 as 类别 } from "./org-core";
 
 export * from "./org-core";
 // 部门树在 org-tree.ts（客户端组件也用，不能带 prisma）；这里转出去，服务端照旧从 org 拿
@@ -25,11 +25,11 @@ type 库 = Pick<typeof prisma, "user" | "entMember" | "entDept" | "setting">;
 /** 从给定的库（事务里传 tx）读整张组织表，不走缓存：写组织架构的事务里改完重查「还有没有系统管理员」用 */
 export async function 读组织于(db: 库): Promise<组织> {
   // 事务只有一条连接，一条条读（并发读在交互式事务里没好处）
-  const users = await db.user.findMany({ select: { id: true, role: true, active: true } });
+  const users = await db.user.findMany({ select: { id: true, role: true, active: true, title: true } });
   const members = await db.entMember.findMany();
   const depts = await db.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } });
   const 设 = async (key: string) => (await db.setting.findUnique({ where: { key }, select: { value: true } }))?.value ?? null;
-  const org = 填组织设置(建组织(users, members, depts), await 设(回收站副手键), await 设(只看某人键), await 设(系统管理员标记键), await 设(无主线索复核人键));
+  const org = 填组织设置(建组织(users, members, depts), await 设(回收站副手键), await 设(只看某人键), await 设(系统管理员标记键), await 设(无主线索复核人键), await 设(可标已开票键));
   org.线索分配开着 = 开关值开着(await 设(规则.线索分配.key));
   return org;
 }
@@ -38,13 +38,13 @@ export async function 读组织于(db: 库): Promise<组织> {
 export const 读组织 = cache(async (): Promise<组织> => {
   // 几项组织设置一句读回（原来各一句 findUnique）：多读「线索分配」开关后条数不涨
   const [users, members, depts, 设们] = await Promise.all([
-    prisma.user.findMany({ select: { id: true, role: true, active: true } }),
+    prisma.user.findMany({ select: { id: true, role: true, active: true, title: true } }),
     prisma.entMember.findMany(),
     prisma.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
-    prisma.setting.findMany({ where: { key: { in: [回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 规则.线索分配.key] } }, select: { key: true, value: true } }),
+    prisma.setting.findMany({ where: { key: { in: [回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 可标已开票键, 规则.线索分配.key] } }, select: { key: true, value: true } }),
   ]);
   const 设 = (key: string) => 设们.find((x) => x.key === key)?.value ?? null;
-  const org = 填组织设置(建组织(users, members, depts), 设(回收站副手键), 设(只看某人键), 设(系统管理员标记键), 设(无主线索复核人键));
+  const org = 填组织设置(建组织(users, members, depts), 设(回收站副手键), 设(只看某人键), 设(系统管理员标记键), 设(无主线索复核人键), 设(可标已开票键));
   // 「线索分配」开关：能看项目 的待分配本线放开按它判（同 visibility.ts 数据层，P-转-42）
   org.线索分配开着 = 开关值开着(设(规则.线索分配.key));
   return org;

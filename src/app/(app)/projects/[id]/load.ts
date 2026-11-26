@@ -63,6 +63,7 @@ import { 客户在谁名下 } from "@/lib/enterprise/reply-overdue";
 import { 放弃资格 } from "@/lib/enterprise/lead-giveup";
 import type { 放弃入口 } from "@/lib/enterprise/lead-giveup-core";
 import { 补项目去 } from "@/lib/project/customer-detail-direct";
+import { 已开票格of } from "@/lib/project/invoiced";
 
 /**
  * 重复咨询「其他在推项目」那一格：看得到的那几个补上直达地址（补项目去，同 repeat-unbuilt.ts 待补建一栏），
@@ -274,7 +275,7 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   // 不是企业版（放回过 = 空）照旧从 p.logs 找
   const 最近放回: { userId: string; reason: string | null } | undefined = 公海 ? 放回过[0] ?? p.logs.find((l) => l.kind === "pool-release") : undefined;
   const 人id = new Set<string>([...历史负责人, ...(上一任 ? [上一任] : []), ...(最近放回 ? [最近放回.userId] : []), p.ownerId, p.creatorId, ...(p.scheduledAssignTo ? [p.scheduledAssignTo] : []), ...p.members.map((m) => m.userId), ...p.logs.flatMap((l) => [l.userId, l.fromOwnerId, l.toOwnerId].filter((x): x is string => !!x)), ...(露沟通 ? p.followUps.map((f) => f.followUp.ownerId) : [])]);
-  for (const x of [p.balanceSettledById, p.acceptancePassedById]) if (x) 人id.add(x);
+  for (const x of [p.balanceSettledById, p.acceptancePassedById, p.invoicedById]) if (x) 人id.add(x);
   const 人 = await prisma.user.findMany({ where: { id: { in: [...人id] } }, select: { id: true, name: true } });
   const 名 = new Map(人.map((u) => [u.id, u.name]));
   // 超时回收记在「系统」名下（timeout.ts 系统，QA #16），不是真成员
@@ -503,6 +504,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
     放回的是我: 公海 && (最近放回 ? 最近放回.userId === me.id : 上一任 === me.id),
     balanceSettled: p.balanceSettled, balanceSettledBy: 叫(p.balanceSettledById), balanceSettledAt: p.balanceSettledAt?.toISOString() ?? null,
     acceptancePassed: p.acceptancePassed, acceptancePassedBy: 叫(p.acceptancePassedById), acceptancePassedAt: p.acceptancePassedAt?.toISOString() ?? null,
+    // 已开票（12-15 第三批）：企业版才有；能不能勾 / 取消按 lib/project/invoiced.ts（服务端 勾已开票 再判一遍）
+    ...(企业 ? { 已开票: await 已开票格of(me, org, p, 叫(p.invoicedById)) } : {}),
     logs: p.logs.map((l) => ({
       id: l.id, at: l.at.toISOString(), who: 叫(l.userId)!,
       from: l.fromNode ? { phase: l.fromPhase ?? "", node: l.fromNode, result: l.fromResult } : null,

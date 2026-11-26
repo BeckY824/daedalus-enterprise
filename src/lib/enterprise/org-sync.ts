@@ -53,12 +53,17 @@ export type 通讯录设置 = {
   人对照: Record<string, string>;
   /** 上次同步给每个人的业务角色：这边的和它不一样 = 有人手动改过，不覆盖 */
   给过: Record<string, string>;
+  /**
+   * 上次同步写到每个人账号上的职位（User.title）：这边的和它一样才跟上游改，不一样 = 本人或管理员在 CRM 里改过，不覆盖
+   * （E-375：调岗后上游职务变了，「财务的」靠职位认，不跟着改就还算财务）。老设置没有这一项，读出来按空的算
+   */
+  职位给过?: Record<string, string>;
   /** 多久同步一次：默认每小时，可改半小时 */
   间隔分钟?: 通讯录间隔;
 };
 
 export type 通讯录间隔 = 60 | 30;
-const 默认: 通讯录设置 = { 开: false, 开的人Id: null, 上次: null, 角色对照: {}, 职务们: [], 部门对照: {}, 人对照: {}, 给过: {}, 间隔分钟: 60 };
+const 默认: 通讯录设置 = { 开: false, 开的人Id: null, 上次: null, 角色对照: {}, 职务们: [], 部门对照: {}, 人对照: {}, 给过: {}, 职位给过: {}, 间隔分钟: 60 };
 export const 通讯录键 = (源: 通讯录来源) => `entOrgSync.${源}`;
 /** 每小时一次：离上次满 55 分钟（钟每 5 分钟走一下）；选了半小时的满 25 分钟 */
 export const 通讯录间隔毫秒 = 55 * 60_000;
@@ -197,13 +202,15 @@ async function 建适配器(源: 通讯录来源): Promise<{ 拉通讯录(): Pro
 type 现有 = {
   部门: { id: string; name: string; parentId: string | null; sort: number }[];
   成员: { userId: string; deptId: string | null; bizRole: string; managerId: string | null; line: string | null; dottedManagerId: string | null }[];
-  用户: { id: string; email: string; name: string; role: string; active: boolean; feishuOpenId: string | null; password: string }[];
+  用户: { id: string; email: string; name: string; role: string; active: boolean; feishuOpenId: string | null; password: string; title: string | null }[];
 };
 
 type 人计划 = {
   外部ID: string;
   userId: string | null;
   新建?: { email: string; name: string; title: string };
+  /** 上游职务（去首尾空格，空 = 上游没填） */
+  职务: string;
   deptExt: string | null;
   上级外部ID: string | null;
   bizRole: string | null;
@@ -318,7 +325,7 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
       const 有: 现有 = {
         部门: await tx.entDept.findMany({ select: { id: true, name: true, parentId: true, sort: true } }),
         成员: await tx.entMember.findMany({ select: { userId: true, deptId: true, bizRole: true, managerId: true, line: true, dottedManagerId: true } }),
-        用户: await tx.user.findMany({ select: { id: true, email: true, name: true, role: true, active: true, feishuOpenId: true, password: true } }),
+        用户: await tx.user.findMany({ select: { id: true, email: true, name: true, role: true, active: true, feishuOpenId: true, password: true, title: true } }),
       };
       const 部门有 = new Map(有.部门.map((d) => [d.id, d]));
       const 用户有 = new Map(有.用户.map((u) => [u.id, u]));
@@ -409,6 +416,7 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
           外部ID: p.外部ID,
           userId: uid,
           新建: uid ? undefined : { email: 新邮箱,  name: p.名.trim() || p.外部ID, title: 职务 || "销售" },
+          职务,
           deptExt,
           上级外部ID: p.上级外部ID ?? null,
           bizRole: null,
@@ -429,17 +437,41 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
         else 这个.bizRole = 换销售角色(现角色, p.是负责人 ? "sales_mgr" : "sales");
       }
 
-      // 先把要建的账号建出来，拿到 id
+      // 先把要建的账号建出来，拿到 id；已有的账号按上游职务更新职位（E-375，手动改过的不动）
+      const 职位给过: Record<string, string> = { ...(s.职位给过 ?? {}) };
       for (const p of 计划们) {
         if (p.userId) {
-          人对照[p.外部ID] = p.userId;
+          const uid = p.userId;
+          人对照[p.外部ID] = uid;
+          const u = 用户有.get(uid);
+          if (!u || !p.职务) continue;
+          const 现职位 = (u.title ?? "").trim();
+          const 上次 = 职位给过[uid];
+          if (现职位 === p.职务) {
+            职位给过[uid] = p.职务;
+            continue;
+          }
+          // 这边空着的，或还是上次同步写的那个：跟上游改
+          if (!现职位 || 上次 === 现职位) {
+            await tx.user.update({ where: { id: uid }, data: { title: p.职务 } });
+            u.title = p.职务;
+            职位给过[uid] = p.职务;
+            改了++;
+            continue;
+          }
+          // 第一次比对（老设置没记过）且两边不一样：分不清是不是手动改的，宁可不覆盖，说一次；记下上游的，以后照「改过」算
+          if (上次 === undefined) {
+            报告.push(`${u.name} 的职位这边是「${现职位}」，${名}是「${p.职务}」：像是在这边改过，没覆盖；要跟${名}一致请在成员资料里改`);
+            职位给过[uid] = p.职务;
+          }
           continue;
         }
         const n = p.新建!;
         const u = await tx.user.create({ data: { email: n.email, name: n.name, title: n.title, role: "SALES", password: 不能登录 } });
         p.userId = u.id;
+        职位给过[u.id] = n.title;
         人对照[p.外部ID] = u.id;
-        用户有.set(u.id, { id: u.id, email: u.email, name: u.name, role: u.role, active: true, feishuOpenId: null, password: u.password });
+        用户有.set(u.id, { id: u.id, email: u.email, name: u.name, role: u.role, active: true, feishuOpenId: null, password: u.password, title: u.title });
         新建数++;
         改了++;
       }
@@ -544,6 +576,7 @@ async function 写进去(源: 通讯录来源, s: 通讯录设置, 本: 通讯�
         部门对照,
         人对照,
         给过,
+        职位给过,
         职务们: [...职务们].sort(),
         上次: { 时间: 现在.toISOString(), 结果, 话, 报告 },
       };

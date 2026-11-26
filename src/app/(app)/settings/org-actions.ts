@@ -18,9 +18,10 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 规则, 规则开着, type 规则名 } from "@/lib/enterprise/rules";
 import { 超时转重新起算 } from "@/lib/enterprise/reply-overdue";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
+import { 读组织, 名单原文ids, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 可标已开票键, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
 import type { Prisma } from "@/generated/prisma";
-import { 能改后台设置 } from "@/lib/enterprise/permissions";
+import { 能改后台设置, 只读角色, 能进开票名单 } from "@/lib/enterprise/permissions";
+import { 名单只限财务话 } from "@/lib/project/invoiced-words";
 import { 是业务角色, 角色名, 角色组合问题, type 业务角色 } from "@/lib/sync/dept-policy";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 市场部门key, 市场成员key, 规整市场部门 } from "@/lib/enterprise/market";
@@ -506,6 +507,45 @@ export async function 设回收站副手(ids: unknown): Promise<结果> {
     await setSetting(回收站副手键, 存);
     const 名 = 设.length ? (await prisma.user.findMany({ where: { id: { in: 设 } }, select: { name: true } })).map((u) => u.name).join("、") : "清空";
     await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 回收站副手键, summary: `改回收站副手（${名}）`, detail: 存 });
+    改完了();
+    return { ok: true };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/**
+ * 可标已开票（12-15 第三批，客户 E-337 / E-373）：系统管理员之外能勾项目「已开票」的人（不新增角色）；取消仍只有系统管理员、限勾后 30 天内。
+ * 只能选系统管理员和财务（职位或部门，E-375）的人（E-373 ②，permissions.ts 能进开票名单）；只读管理员、销售教练、设了「只看某人」的人不能进。空 = 清空。
+ * 已在名单里、后来不再符合的人照留（设置页标「不能标，请去掉」，勾的时候服务端按当下拦），只拦新加进来的。
+ * 收回（从名单去掉）记一条操作日志写清加了谁、收回了谁；他之前勾的不动（E-373 ③）
+ */
+export async function 设可标已开票(ids: unknown): Promise<结果> {
+  const who = await 能改的人();
+  if (!who) return 不能改;
+  try {
+    const 设 = 规整市场部门(ids);
+    if (!设) return { ok: false, error: "选的人不对，刷新再试" };
+    const org = await 读组织();
+    // 名单原文（含已停用的）：停用的人本来就在名单里的照留，不拦整笔保存（收回由系统管理员手动去掉，不自动剔人）
+    const 原文 = 名单原文ids((await prisma.setting.findUnique({ where: { key: 可标已开票键 }, select: { value: true } }))?.value);
+    const 原 = new Set(原文);
+    const 新加 = 设.filter((id) => !原.has(id));
+    const 不在组织 = 设.filter((id) => !org.成员.has(id) && !原.has(id));
+    if (不在组织.length) {
+      const 停用的 = await prisma.user.findMany({ where: { id: { in: 不在组织 }, active: false }, select: { id: true, name: true } });
+      if (停用的.length) return { ok: false, error: `${停用的.map((u) => u.name).join("、")} 已停用，不能加进名单，请先去掉再保存` };
+      return { ok: false, error: "选的人有的已经不在组织里了，刷新再选" };
+    }
+    if (新加.some((id) => 只读角色({ id }, org) || org.只看某人?.has(id))) return { ok: false, error: "只读管理员、销售教练、设了「只看某人」的人不能标已开票，换一位" };
+    if (新加.some((id) => !能进开票名单(id, org))) return { ok: false, error: `${名单只限财务话}，换一位` };
+    const 收回 = [...原].filter((id) => !设.includes(id));
+    const 存 = 设.length ? 设 : null;
+    await setSetting(可标已开票键, 存);
+    const 名 = new Map((await prisma.user.findMany({ where: { id: { in: [...新加, ...收回] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+    const 叫 = (xs: string[]) => xs.map((id) => 名.get(id) ?? "已不在的成员").join("、");
+    const 段 = [...(新加.length ? [`加上 ${叫(新加)}`] : []), ...(收回.length ? [`收回 ${叫(收回)}（之前勾的不动）`] : [])];
+    await recordAudit({ user: who.me, action: "update", entity: "Setting", entityId: 可标已开票键, summary: `改可标已开票名单：${段.join("；") || "没变"}`, detail: { 名单: 存, 加上: 新加, 收回 } });
     改完了();
     return { ok: true };
   } catch (e) {

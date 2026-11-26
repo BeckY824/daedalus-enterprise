@@ -3,7 +3,7 @@
  *
  *   - 摘要（入口小方框上的「N · 最近」）：页面首屏一句 SQL（几张留痕表 UNION ALL 数条数、取最近时刻），不取明细
  *   - 客户块：建档一格 + 按时间倒序的变更（负责人、进出公海、三态状态、资料修改、同号再次录入），系统批量修正同一天同一批折一行
- *   - 项目块：我看得到的每个项目一节，建档一格 + 节点 / 转让 / 公海 / 领取（ProjectNodeLog 全部 kind）、线索验证每一步、卡点流转
+ *   - 项目块：我看得到的每个项目一节，建档一格 + 节点 / 转让 / 公海 / 领取（ProjectNodeLog 全部 kind）、线索验证每一步、卡点流转、已开票勾 / 撤回（AuditLog）
  *
  * 权限都在服务端判：客户块跟客户详情同一道（限定层 findUnique 看得到这位客户）；项目块按项目可见（project-zone.ts 客户页项目列表 + 能看的项目，
  * 和客户详情项目页签同一份名单），看不到的同事在推项目只回个数（和项目区锁数同一个函数，P-看-12），名字、变更都不出。
@@ -35,6 +35,7 @@ import { 节点字 } from "@/lib/project/customer-list-projects";
 import { 动作叫法 } from "@/lib/project/blocker-rules";
 import { 逐个号码, 号码数字 } from "@/lib/enterprise/notice-mask";
 import { 认放回 } from "../../projects/[id]/load";
+import { 已开票动作们, 已开票历史文, 已开票明细人 } from "@/lib/project/invoiced";
 import { 客户页项目列表, 能看的项目, 看不到的在推数 } from "./project-zone";
 import { 历史每页, type 历史筛选, type 历史事件, type 历史行, type 历史游标, type 建档格, type 历史页, type 项目概要, type 历史摘要 } from "./history-types";
 
@@ -169,8 +170,9 @@ export async function 历史变更摘要(customerId: string, 可看项目: reado
        UNION ALL SELECT 'p', l."at" FROM "ProjectNodeLog" l WHERE l."projectId" IN (SELECT value FROM json_each(?))
        UNION ALL SELECT 'p', v."at" FROM "EntLeadVerifyLog" v WHERE v."projectId" IN (SELECT value FROM json_each(?))
        UNION ALL SELECT 'p', bl."at" FROM "EntBlockerLog" bl JOIN "EntBlocker" b ON b."id" = bl."blockerId" WHERE b."projectId" IN (SELECT value FROM json_each(?))
+       UNION ALL SELECT 'p', pa."at" FROM "AuditLog" pa WHERE pa."entity" = 'Project' AND pa."entityId" IN (SELECT value FROM json_each(?)) AND pa."action" IN (?, ?)
      ) GROUP BY part`,
-    ...(状态 ? [customerId, customerId] : [customerId]), customerId, ...客户审计动作, customerId, ids, customerId, ids, ids, ids,
+    ...(状态 ? [customerId, customerId] : [customerId]), customerId, ...客户审计动作, customerId, ids, customerId, ids, ids, ids, ids, ...已开票动作们,
   ));
   const 取 = (k: string) => rows.find((r) => r.part === k);
   const 最近 = Math.max(...rows.map((r) => Number(r.t ?? 0)));
@@ -328,10 +330,11 @@ export async function 客户页可看项目(me: SessionUser, customerId: string)
 export async function 历史项目们(me: SessionUser, customerId: string, 号: 号码器): Promise<{ 项目们: 项目概要[]; 看不到: number }> {
   const 可看 = await 客户页可看项目(me, customerId);
   const ids = 可看.map((p) => p.id);
-  const [节点, 验证, 卡点, 共, 后售们] = await 看全部(() => Promise.all([
+  const [节点, 验证, 卡点, 开票, 共, 后售们] = await 看全部(() => Promise.all([
     ids.length ? prisma.projectNodeLog.groupBy({ by: ["projectId"], where: { projectId: { in: ids } }, _count: { _all: true } }) : [],
     ids.length ? prisma.entLeadVerifyLog.groupBy({ by: ["projectId"], where: { projectId: { in: ids } }, _count: { _all: true } }) : [],
     ids.length ? prisma.entBlocker.findMany({ where: { projectId: { in: ids } }, select: { projectId: true, _count: { select: { logs: true } } } }) : [],
+    ids.length ? prisma.auditLog.groupBy({ by: ["entityId"], where: { entity: "Project", entityId: { in: ids }, action: { in: [...已开票动作们] } }, _count: { _all: true } }) : [],
     看不到的在推数(customerId, ids),
     // 后售培育（P-界面-63）：一次判完这几节（同客户详情项目页签 project-zone.ts；没有停在潜客培育的不查库）
     后售项目们(可看.map((p) => ({ ...p, customerId }))),
@@ -340,6 +343,7 @@ export async function 历史项目们(me: SessionUser, customerId: string, 号: 
   for (const r of 节点) 数.set(r.projectId, (数.get(r.projectId) ?? 0) + r._count._all);
   for (const r of 验证) 数.set(r.projectId, (数.get(r.projectId) ?? 0) + r._count._all);
   for (const r of 卡点) 数.set(r.projectId, (数.get(r.projectId) ?? 0) + r._count.logs);
+  for (const r of 开票) if (r.entityId) 数.set(r.entityId, (数.get(r.entityId) ?? 0) + r._count._all);
   return {
     项目们: 可看.map((p) => ({ id: p.id, 名: 文字打码(p.name, 号), 阶段: `${p.phase} · ${节点字({ ...p, node: 显示节点名(p.node, 后售们.has(p.id), 企业版字典) })}`, 条数: 数.get(p.id) ?? 0 })),
     看不到: 共,
@@ -387,10 +391,12 @@ export async function 项目历史页(projectId: string, 号: 号码器, before?
   const 游 = 游标of(before);
   const where = <T extends object>(w: T) => (游 ? { AND: [w, 游] } : w);
   const take = 历史每页 + 1;
-  const [节点, 验证, 卡点, 建档, 规则] = await Promise.all([
+  const [节点, 验证, 卡点, 开票, 建档, 规则] = await Promise.all([
     看全部(() => prisma.projectNodeLog.findMany({ where: where({ projectId }), orderBy: 倒序, take })),
     看全部(() => prisma.entLeadVerifyLog.findMany({ where: where({ projectId }), orderBy: 倒序, take })),
     看全部(() => prisma.entBlockerLog.findMany({ where: where({ blocker: { projectId } }), orderBy: 倒序, take, include: { blocker: { select: { title: true, code: true } } } })),
+    // 已开票勾 / 撤回（12-15 第三批）：留痕就是那条操作日志（lib/project/invoiced.ts），不另建表
+    看全部(() => prisma.auditLog.findMany({ where: where({ entity: "Project", entityId: projectId, action: { in: [...已开票动作们] } }), orderBy: 倒序, take, select: { id: true, at: true, userId: true, userName: true, action: true, detail: true } })),
     before ? null : 项目建档(projectId),
     生效组织规则(),
   ]);
@@ -428,6 +434,13 @@ export async function 项目历史页(projectId: string, 号: 号码器, before?
         id: v.id, at: v.at.toISOString(), 标: "线索验证", 文: `${v.step}：${v.verdict}`, 谁: 叫(v.userId) ?? "已不在的成员",
         因: [...(v.reason ? [`无效原因：${v.reason}`] : []), ...(v.note ? [`说明：${v.note}`] : [])],
       }),
+    })),
+    ...开票.map((a): 原 => ({
+      at: a.at, id: a.id, 人: [a.userId, ...已开票明细人(a.detail)],
+      做: (叫) => {
+        const { 文, 因 } = 已开票历史文(a, 叫);
+        return { id: a.id, at: a.at.toISOString(), 标: "开票", 文, 谁: 叫(a.userId) ?? a.userName ?? "已不在的成员", 因 };
+      },
     })),
     ...卡点.map((b): 原 => ({
       at: b.at, id: b.id, 人: [b.userId, b.fromUserId, b.toUserId],

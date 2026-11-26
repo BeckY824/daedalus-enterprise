@@ -67,6 +67,7 @@ import { 定时时刻格 } from "@/components/ScheduleAssignInput";
 import { 改定时分配, 取消定时分配, 定时分配现在分 } from "../../leads/schedule-actions";
 import { 指定回复文字, 北京墙钟转时刻, 回复晚于回收, 短时刻, 客户在谁名下话 } from "@/lib/project/time-fields";
 import { 成交需求上限, 详细地址上限, 详细地址提示, 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
+import { 已开票撤回天数, 不能标已开票话, type 已开票格, type 已开票记录 } from "@/lib/project/invoiced-words";
 import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限, 默认运输中, type 合同状态, type 备货状态 } from "@/lib/project/proj-fields";
 import { 备注上限 } from "@/lib/project/wizard";
 import { 文字格改动, 沟通正文改动, type 钱格值 } from "@/lib/project/inline-edit";
@@ -74,7 +75,7 @@ import ProjectInlineField, { type 编辑器参数 } from "./ProjectInlineField";
 import { 钱编辑器, 钱格存法 } from "./money-cell";
 import { 项目沟通预填, 沟通时间格式, 下一步文字上限 } from "@/lib/project/project-fields";
 import { parseFollowUpDraft } from "../../customers/[id]/ai";
-import { 改项目节点, 记完成节点被拦, 终止项目进程, 勾项目交付, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 编辑项目 } from "../actions";
+import { 改项目节点, 记完成节点被拦, 终止项目进程, 勾项目交付, 勾项目已开票, 删除项目, 放回项目公海, 领取项目, 记项目沟通Action, 改项目沟通, 删项目沟通, 编辑项目 } from "../actions";
 import type { 可选成员 } from "@/lib/utils";
 import { ProjectEditModal, ProjectTeamCard, type 组员, type 角色, type 联系人 } from "./ProjectTeam";
 import { BlockerList, PublishBlockerModal, 原因选择, type 卡点卡 } from "../BlockerPanel";
@@ -246,6 +247,8 @@ export type 项目详情 = {
   转后还能看?: string[];
   balanceSettled: boolean; balanceSettledBy: string | null; balanceSettledAt: string | null;
   acceptancePassed: boolean; acceptancePassedBy: string | null; acceptancePassedAt: string | null;
+  /** 企业版「已开票」（12-15 第三批，lib/project/invoiced.ts）：不是企业版不传。能勾 / 取消不给 由服务端算，点了服务端再判 */
+  已开票?: 已开票格;
   /** kind 不是 node 的行是换负责人（转让 / 放回公海 / 从公海领取），transfer 记从谁到谁；category 是进异常时选的类别 */
   logs: {
     id: string; at: string; who: string; from: 位置 | null; to: 位置; reason: string | null; category: string | null;
@@ -284,6 +287,12 @@ export type 项目详情 = {
 
 /** 项目卡「线索验证」结果的颜色（11-01 六个叫法） */
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
+/** 「已开票」那一格后面的「谁 · 何时 / 未开票」灰字（行内样式闸门：用模块常量） */
+const 开票人样: React.CSSProperties = { color: "var(--text-muted)" };
+/** 已开票变更记录一条：「何时 谁 标为已开票（负责人 X；原来 Y 何时 勾的）」 */
+const 开票记录字 = (r: 已开票记录) => `${fmtDateTime(r.何时)} ${r.谁} ${r.文}${r.因.length ? `（${r.因.join("；")}）` : ""}`;
+/** 「已开票」后面那句：勾了写谁 · 何时，没勾写「未开票」 */
+const 开票字 = (g: 已开票格) => (g.勾了 ? [g.谁 ?? "已不在的成员", g.何时 ? fmtDateTime(g.何时) : null].filter(Boolean).join(" · ") : "未开票");
 /** 详情页顶上提示条和下面隔开（行内样式闸门：新加的提示条用模块常量） */
 const 提示条下距: React.CSSProperties = { marginBottom: 16 };
 /** 指定分配时间那一行（11-17）：窄宽度折行；写在组件外，行内样式只减不增（tests/inline-style-cap.test.ts） */
@@ -1029,6 +1038,30 @@ export default function ProjectDetail({
     }
     改到(完成到, { 成了: 跨阶段 ? `${完成到字}` : `已推进到 ${完成到.node}`, 可撤: !跨阶段, 入口: "完成节点" });
   };
+  /** 勾 / 撤回「已开票」：后果框写清勾了不能并、撤回期限；没成原因写在框里（服务端 勾已开票 判权限和 30 天） */
+  const 问已开票 = (格: 已开票格, 勾: boolean) => {
+    void 问后果({
+      题: 勾 ? `把「${p.name}」标为已开票？` : `撤回「${p.name}」的已开票？`,
+      后果: 勾
+        ? [
+          { 标: "不能并", 话: "勾上后这个项目不能做项目合并", 级: "警" },
+          { 标: "撤回", 话: `${已开票撤回天数} 天内只有系统管理员能撤回，过了 ${已开票撤回天数} 天谁都不能改`, 级: "危" },
+          { 标: "留痕", 话: "谁勾的、何时、项目负责人是谁记进历史变更和操作日志，负责人打开项目看得到" },
+        ]
+        : [
+          { 标: "之后", 话: "撤回后这个项目又能合并；要标回来得重新勾" },
+          { 标: "留痕", 话: `撤回记进历史变更和操作日志（原来 ${格.谁 ?? "已不在的成员"} 勾的）` },
+        ],
+      是: 勾 ? "标为已开票" : "撤回已开票",
+      危: !勾,
+      做: async () => {
+        const r = await 勾项目已开票(p.id, 勾);
+        // 变了 为假 = 别人刚勾过 / 撤过（已是这个值），不说「已标为」，照实说、刷新看最新
+        if (r.ok) { if (r.变了) 就地.success(勾 ? "已标为已开票" : "已撤回已开票"); else 就地.info(勾 ? "已经是已开票了" : "已经是未开票了"); router.refresh(); }
+        return r;
+      },
+    });
+  };
   /** 「终止进程」（M-节点-04）：按所在阶段落到 线索流失 / 丢单 / 异常状态；先确认，再到写原因 / 选类别的框 */
   const 终止到 = p.企业版 && !p.result ? 终止结局(当前, 字典) : null;
   const 开终止 = () => {
@@ -1494,6 +1527,40 @@ export default function ProjectDetail({
             </div>
           )}
         </>
+      )}
+      {/* 已开票（12-15 第三批，lib/project/invoiced.ts）：各阶段都摆（项目合并只在线索阶段，放在只在订单阶段出现的交付卡里就拦不到）。
+          勾 = 系统管理员 + 可标已开票名单；取消 = 30 天内只有系统管理员。灰着悬停写为什么，服务端再判一遍。一行放不下「…」、悬停看全文 */}
+      {p.已开票 && (
+        <div {...资料行()} data-testid="proj-invoiced">
+          <span {...键}>已开票</span>
+          {/* 悬停原因挂在外面这层：灰着的 input 不出 title */}
+          <span title={p.已开票.勾了 ? p.已开票.取消不给 ?? undefined : p.已开票.能勾 ? undefined : 不能标已开票话} data-testid="proj-invoiced-box">
+            <Checkbox
+              aria-label="已开票"
+              checked={p.已开票.勾了}
+              disabled={忙 || (p.已开票.勾了 ? !!p.已开票.取消不给 : !p.已开票.能勾)}
+              onChange={(e) => 问已开票(p.已开票!, e.target.checked)}
+            />
+          </span>
+          <span className="proj-one" style={开票人样} title={开票字(p.已开票)} data-testid="proj-invoiced-by">{开票字(p.已开票)}</span>
+          {/* 变更记录（E-373 ③）：最近几条谁勾 / 撤回、负责人是谁；负责人打开自己的项目就看得到别人勾的。点开（手机没有悬停），框样式同「完成节点」补填框 */}
+          {!!p.已开票.记录?.length && (
+            <Popover trigger="click" placement="bottomRight" arrow={false} destroyOnHidden classNames={{ root: "pd-fill-pop" }}
+              content={(
+                <div className="pd-fill-pop-body" data-testid="proj-invoiced-log-list">
+                  <div className="pd-fill-pop-t">已开票变更记录（最近 {p.已开票.记录.length} 条）</div>
+                  {p.已开票.记录.map((r) => <div key={r.id} className="muted">{开票记录字(r)}</div>)}
+                  {/* 只摆最近几条：全部的在客户名下那一行的「历史变更」（同一页的入口，点它就是；受限客户详情没有入口、不摆） */}
+                  {嵌入 && !嵌入.进程变更卡 && (
+                    <Button type="link" size="small" className="proj-inv-all" data-testid="proj-invoiced-log-all"
+                      onClick={() => document.querySelector<HTMLButtonElement>('[data-testid="history-entry"]')?.click()}>全部见历史变更</Button>
+                  )}
+                </div>
+              )}>
+              <Button type="link" size="small" data-testid="proj-invoiced-log" aria-haspopup="dialog">变更记录</Button>
+            </Popover>
+          )}
+        </div>
       )}
       {p.企业版 && (
         <div {...资料行()}>

@@ -256,6 +256,54 @@ describe("业务角色", () => {
   });
 });
 
+/** 飞书录制里把某人（按 open_id）的职务换掉 */
+const 换职务 = (openId: string, 职务: string): 录制 => {
+  const 录 = JSON.parse(JSON.stringify(飞书录)) as 录制;
+  for (const 响应们 of Object.values(录.路由))
+    for (const r of 响应们 as { body?: { data?: { items?: { open_id?: string; job_title?: string }[] } } }[])
+      for (const it of r.body?.data?.items ?? []) if (it.open_id === openId) it.job_title = 职务;
+  return 录;
+};
+
+describe("职位跟上游职务（E-375：调岗后「财务的」靠职位认）", () => {
+  it("已有账号：职位跟着上游改；这边手动改过的不覆盖", async () => {
+    await 接飞书();
+    await 同步通讯录("feishu");
+    // 这边职位空着：第一次就写上游的
+    expect((await 人("zs@example.com")).title).toBe("外贸专员");
+    // 上游调岗：财务专员 → 销售，职位跟着变
+    换联网(假网(换职务("ou-s1", "财务专员")).网);
+    await 同步通讯录("feishu");
+    expect((await 人("zs@example.com")).title).toBe("财务专员");
+    换联网(假网(换职务("ou-s1", "销售")).网);
+    await 同步通讯录("feishu");
+    expect((await 人("zs@example.com")).title).toBe("销售");
+    // 本人 / 管理员在这边改了：上游再变也不覆盖
+    await prisma.user.update({ where: { id: 张三 }, data: { title: "客户经理" } });
+    换联网(假网(换职务("ou-s1", "财务专员")).网);
+    await 同步通讯录("feishu");
+    expect((await 人("zs@example.com")).title).toBe("客户经理");
+    // 同步建的账号：建时写的职位也记着，上游改了照样跟
+    const 赵四 = await 人("feishu-ou-s2@contacts.invalid");
+    expect(赵四.title).toBe("销售");
+    换联网(假网(换职务("ou-s2", "财务专员")).网);
+    await 同步通讯录("feishu");
+    expect((await 人("feishu-ou-s2@contacts.invalid")).title).toBe("财务专员");
+  });
+
+  it("老设置没记过、两边职位又不一样：分不清是不是手动改的，不覆盖，只报一次", async () => {
+    await prisma.user.update({ where: { id: 张三 }, data: { title: "老职位" } });
+    await 接飞书();
+    const r = await 同步通讯录("feishu");
+    expect((await 人("zs@example.com")).title).toBe("老职位");
+    expect(r.报告.some((x) => x.includes("老职位") && x.includes("外贸专员"))).toBe(true);
+    换联网(假网(飞书录).网);
+    const r2 = await 同步通讯录("feishu");
+    expect((await 人("zs@example.com")).title).toBe("老职位");
+    expect(r2.报告.some((x) => x.includes("老职位"))).toBe(false);
+  });
+});
+
 describe("直属上级", () => {
   it("会绕成环的不设，进报告", async () => {
     // 这边已经设了：王经理的直属上级是张三

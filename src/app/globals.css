@@ -1430,6 +1430,7 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 .proj-att-src { display: flex; align-items: center; min-width: 0; color: var(--text-muted); font-size: var(--fs-note, 12px); }
 .proj-att-src > * { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .proj-att-link.ant-btn { padding-inline: 0; height: auto; font-size: inherit; max-width: 100%; }
+.proj-inv-all.ant-btn { padding-inline: 0; }
 .proj-att-link.ant-btn > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .att-compact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-width: 0; }
 .att-compact > .muted { font-size: var(--fs-note, 12px); }

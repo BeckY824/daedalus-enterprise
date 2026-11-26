@@ -407,6 +407,53 @@ export function 能恢复(me: 谁, org: 组织 | null): boolean {
   return !老() && !!org?.成员.has(me.id) && !!org.回收站副手?.has(me.id);
 }
 
+/**
+ * 财务的人（客户 E-373「开这个权限的人只限系统管理员和财务，别摊到销售」；E-375 定认法）：按成员资料认，占一样就算——
+ * 账号的职位（User.title，去首尾空格）含「财务」（如「财务」「财务主管」），或所在部门 / 往上任一级部门名含「财务」。
+ * 职位空着的以部门为准；部门不在财务部但职位写「财务」的也算
+ */
+export function 财务的(org: 组织 | null, id: string): boolean {
+  if (!org) return false;
+  if (org.成员.get(id)?.职位?.includes("财务")) return true;
+  const 走过 = new Set<string>();
+  for (let d = org.成员.get(id)?.deptId ?? null; d && !走过.has(d); d = org.部门.get(d)?.parentId ?? null) {
+    走过.add(d);
+    if (org.部门.get(d)?.name.includes("财务")) return true;
+  }
+  return false;
+}
+
+/**
+ * 能不能进「可标已开票」名单（E-373 ②）：在职、系统管理员或财务的人（财务的）；只读管理员、销售教练、设了「只看某人」的人不能进。
+ * 设置页下拉候选、服务端 设可标已开票 都按这个；勾的时候 能标已开票 按当下再判一遍（进了名单后不再是财务的勾不了）
+ */
+export function 能进开票名单(id: string, org: 组织 | null): boolean {
+  if (老() || !org || !org.成员.has(id) || 只读角色({ id }, org) || 只看的人(org, id)) return false;
+  return 是系统管理员({ id }, org) || 财务的(org, id);
+}
+
+/**
+ * 勾项目「已开票」（12-15 第三批，客户 E-337 / E-373）：系统管理员 + 设置「组织架构 → 可标已开票」名单里、当下还是财务的人（org.可标已开票，不新增角色）。
+ * 只读管理员、销售教练、设了「只看某人」的人一律不给（名单里有也不给）；切换视图期间写库在 lib/team-scope.ts 统一拦。不是企业版没有这一项。
+ * 看得到的项目都能勾（E-373 ①，lib/project/invoiced.ts 先按读范围核、再越过写范围写）
+ */
+export function 能标已开票(me: 谁, org: 组织 | null): boolean {
+  if (老() || !org || 只读角色(me, org) || 只看的人(org, me.id)) return false;
+  return 是系统管理员(me, org) || (!!org.可标已开票?.has(me.id) && 能进开票名单(me.id, org));
+}
+
+/**
+ * 取消「已开票」（客户 E-363 四②）：勾后 30 天内只有系统管理员能撤回，过了 30 天谁都不能改。能取消 = null，不能 = 那一句。
+ * 天数在 lib/project/invoiced.ts（已开票撤回天数）；这里只认身份和时刻，调用方传「勾的那一刻」和现在
+ */
+export function 取消已开票不给(me: 谁, org: 组织 | null, 勾的时刻: Date | null, 现在: Date, 天数: number): string | null {
+  if (老() || !org || 只读角色(me, org) || 只看的人(org, me.id)) return "你只能看，不能取消已开票";
+  // 没记勾的时刻（手改库的老数据）按过期算：宁可不让改，不放开
+  if (!勾的时刻 || 现在.getTime() - 勾的时刻.getTime() > 天数 * 86_400_000) return `勾上已超过 ${天数} 天，谁都不能取消`;
+  if (!是系统管理员(me, org)) return `勾上 ${天数} 天内只有系统管理员能撤回`;
+  return null;
+}
+
 /** 领公海（V3.5.1）：销售、销管、条线总管理、系统管理员；管理员只读、市管、项目组员、没设角色的不能领 */
 export function 能领公海(me: 谁, org: 组织 | null): boolean {
   if (老()) return true;

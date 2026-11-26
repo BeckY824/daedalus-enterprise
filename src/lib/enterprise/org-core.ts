@@ -19,6 +19,8 @@ export type 组织成员 = {
   dottedManagerId: string | null;
   /** 「不管设置」（迁移 108）：总管理勾上以后进不了设置页 */
   不管设置: boolean;
+  /** 账号的职位（User.title，去首尾空格）；读组织 带上，财务的 认「职位含财务」（E-375）。没带 = 空串 */
+  职位?: string;
 };
 /** 只含在职（User.active）的人：停用的人不当任何人的上级，也不算谁的下属 */
 export type 组织 = {
@@ -43,6 +45,11 @@ export type 组织 = {
    */
   无主线索复核人?: string | null;
   /**
+   * 可标已开票（12-15 第三批，客户 E-337「系统管理员能勾，并可给指定的人开『可标已开票』，不新增角色」）：系统管理员之外能勾项目「已开票」的人。
+   * Setting enterprise.invoice_markers（JSON 数组 userId），org.ts 读组织 填；只留在职的。取消勾选不看这份（只有系统管理员，lib/project/invoiced.ts）
+   */
+  可标已开票?: ReadonlySet<string>;
+  /**
    * 「线索分配」规则开关（Setting enterprise.rule.lead_assign，认法同 rules-table.ts 开关值开着、visibility.ts 数据层）。org.ts 读组织 填；
    * 没填（测试里手搭的组织）= 关。能看项目 的待分配本线放开（await-assign-open.ts）按它判，和数据层同一口径（P-转-42 审查）
    */
@@ -58,6 +65,8 @@ export const 只看某人键 = "enterprise.watch_only";
 export const 系统管理员标记键 = "enterprise.sysadmin_flag";
 /** 无主线索复核人存的 Setting 键（JSON 字符串 userId）：设置页「组织架构」里配，默认空（= 系统管理员） */
 export const 无主线索复核人键 = "enterprise.orphan_lead_reviewer";
+/** 可标已开票名单存的 Setting 键（JSON 数组 userId）：设置页「组织架构」里配，默认空（= 只有系统管理员能勾） */
+export const 可标已开票键 = "enterprise.invoice_markers";
 
 /** Setting 原文：JSON 解得开就解（setSetting 存的），解不开当原样字符串（库里手写的逗号串） */
 function 解码(v: string | null | undefined): unknown {
@@ -67,6 +76,13 @@ function 解码(v: string | null | undefined): unknown {
   } catch {
     return v;
   }
+}
+
+/** 名单原文里的 userId（不按在职过滤）：设置页要看到名单里已停用的人，服务端保存时也要认「本来就在名单里」 */
+export function 名单原文ids(v: string | null | undefined): string[] {
+  const 解 = 解码(v);
+  const 们 = Array.isArray(解) ? 解 : typeof 解 === "string" ? 解.split(",") : [];
+  return 们.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean);
 }
 
 /** userId 名单（JSON 数组，或手写的逗号串）：只留在职的 */
@@ -80,11 +96,12 @@ function 解名单(v: string | null | undefined, org: 组织): Set<string> {
  * 读完 Setting 后补上组织里的几份名单（org.ts 读组织、visibility.ts 算 共用）：回收站副手（逗号串）、只看某人（JSON）、系统管理员标记（JSON 数组）。
  * 标记没传（undefined）= 不动 org 上原有的，传 null = 没设
  */
-export function 填组织设置(org: 组织, 副手: string | null | undefined, 只看: string | null | undefined, 标记?: string | null, 无主复核人?: string | null): 组织 {
+export function 填组织设置(org: 组织, 副手: string | null | undefined, 只看: string | null | undefined, 标记?: string | null, 无主复核人?: string | null, 可标?: string | null): 组织 {
   org.回收站副手 = 解名单(副手, org);
   org.只看某人 = 规整只看某人(只看, org);
   if (标记 !== undefined) org.系统管理员标记 = 解名单(标记, org);
   if (无主复核人 !== undefined) org.无主线索复核人 = 解一个人(无主复核人, org);
+  if (可标 !== undefined) org.可标已开票 = 解名单(可标, org);
   return org;
 }
 
@@ -146,7 +163,7 @@ export const 合角色 = (们: readonly string[]): string => 拆角色(们.join(
 const 是业务线 = (x: unknown): x is 业务线 => x === "内贸" || x === "外贸";
 
 export function 建组织(
-  users: readonly { id: string; role: string; active: boolean }[],
+  users: readonly { id: string; role: string; active: boolean; title?: string | null }[],
   members: readonly { userId: string; deptId: string | null; bizRole: string; line: string | null; managerId: string | null; dottedManagerId: string | null; noSettings?: boolean | null }[],
   depts: readonly 组织部门[],
 ): 组织 {
@@ -175,6 +192,7 @@ export function 建组织(
       managerId: m?.managerId ?? null,
       dottedManagerId: m?.dottedManagerId ?? null,
       不管设置: !!m?.noSettings,
+      职位: (u.title ?? "").trim(),
     });
   }
   return { 成员, 部门, 离职上级, 停用的 };

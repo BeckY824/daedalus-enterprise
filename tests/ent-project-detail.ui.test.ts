@@ -16,7 +16,7 @@ const plugin: Plugin = { name: "project-detail-boundaries", setup(b) {
   const 空跑 = "async()=>({ok:true})";
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){},push(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams();");
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
-  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return window.__改节点回??{ok:true}},记完成节点被拦=async(...a)=>{(window.__被拦||=[]).push(a)},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记沟通||=[]).push(a);return window.__记沟通回??{ok:true,followUpId:'fx'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return window.__改沟通回??{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
+  stub(/^\.\.\/actions$/, 补全动作桩("src/app/(app)/projects/actions.ts", `const f=${空跑};export const 改项目节点=async(...a)=>{(window.__改节点||=[]).push(a);return window.__改节点回??{ok:true}},记完成节点被拦=async(...a)=>{(window.__被拦||=[]).push(a)},终止项目进程=async(...a)=>{(window.__终止||=[]).push(a);return{ok:true}},勾项目交付=f,勾项目已开票=async(...a)=>{(window.__开票||=[]).push(a);return window.__开票回??{ok:true,变了:true}},删除项目=f,放回项目公海=f,领取项目=f,记项目沟通Action=async(...a)=>{(window.__记沟通||=[]).push(a);return window.__记沟通回??{ok:true,followUpId:'fx'}},判MQLAction=f,线索初判Action=f,市场复核Action=f,销售终验Action=f,总管理终判Action=f,销售认领Action=f,撤回验证Action=f,编辑项目=async(...a)=>{(window.__编辑||=[]).push(a);return window.__编辑回||{ok:true}},改项目画像Action=async(...a)=>{(window.__画像存||=[]).push(a);return{ok:true}},改项目沟通=async(...a)=>{(window.__改沟通||=[]).push(a);return window.__改沟通回??{ok:true}},删项目沟通=async(...a)=>{(window.__删沟通||=[]).push(a);return{ok:true}},加项目组员=f,换项目组员角色=f,移出项目组员=f;`));
   stub(/^\.\.\/commission-actions$/, `const f=${空跑};export const 存项目底价=f,存提成分配=f,更正实际提成=f;`);
   // 定时分配（11-17）改 / 取消 / 现在分：服务端那串（prisma、通知）进不了浏览器包
   stub(/(^|\/)schedule-actions$/, 补全动作桩("src/app/(app)/leads/schedule-actions.ts", `const f=${空跑};export const 改定时分配=f,取消定时分配=f,定时分配现在分=f;`));
@@ -3166,4 +3166,108 @@ describe("后售培育：进程条第一格", () => {
       } finally { await page.close(); }
     });
   }
+});
+
+/* 12-15 第三批「已开票」：项目资料卡一行（各阶段都摆），勾前写清后果；不能勾 / 不能取消的灰着、悬停写为什么；窄屏一行「…」不横出 */
+type 开票窗 = { __over: (x: unknown) => void; __开票?: unknown[][]; __开票回?: unknown };
+it("已开票：能勾的点了先弹后果框，确认才调动作；不能勾、不能取消的灰着悬停写原因；没有这一格不摆", async () => {
+  const { page, errors } = await open(true, 1280);
+  try {
+    await page.evaluate(() => (window as unknown as 开票窗).__over({ phase: "线索", node: "初次接触", 已开票: { 勾了: false, 谁: null, 何时: null, 能勾: true, 取消不给: null } }));
+    const 行 = page.getByTestId("proj-invoiced");
+    await 行.waitFor();
+    expect(await 行.getByTestId("proj-invoiced-by").innerText()).toBe("未开票");
+    await 行.getByRole("checkbox", { name: "已开票" }).click();
+    const 框 = page.locator(".ant-modal-container");
+    await 框.waitFor();
+    expect(await 框.innerText()).toContain("勾上后这个项目不能做项目合并");
+    expect(await 框.innerText()).toContain("30 天内只有系统管理员能撤回，过了 30 天谁都不能改");
+    expect(await page.evaluate(() => (window as unknown as 开票窗).__开票 ?? [])).toEqual([]);
+    await 框.getByRole("button", { name: "标为已开票" }).click();
+    await 框.waitFor({ state: "hidden" });
+    expect(await page.evaluate(() => (window as unknown as 开票窗).__开票)).toEqual([["p1", true]]);
+    // 不在名单：灰着，悬停写谁能勾
+    await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: false, 谁: null, 何时: null, 能勾: false, 取消不给: null } }));
+    const 灰 = page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" });
+    expect(await 灰.isDisabled()).toBe(true);
+    expect(await page.getByTestId("proj-invoiced-box").getAttribute("title")).toBe("只有系统管理员或被指定「可标已开票」的人能勾");
+    // 勾了、不是系统管理员：灰着，悬停写 30 天内只有系统管理员能撤回；后面写谁 · 何时
+    await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: "开票人", 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: "勾上 30 天内只有系统管理员能撤回" } }));
+    expect(await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).isChecked()).toBe(true);
+    expect(await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).isDisabled()).toBe(true);
+    expect(await page.getByTestId("proj-invoiced-box").getAttribute("title")).toBe("勾上 30 天内只有系统管理员能撤回");
+    expect(await page.getByTestId("proj-invoiced-by").innerText()).toBe("开票人 · 2026-12-01 10:00");
+    // 系统管理员 30 天内：能撤回，框里写原来谁勾的，确认键「撤回已开票」
+    await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: "开票人", 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: null } }));
+    await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).click();
+    await 框.waitFor();
+    expect(await 框.innerText()).toContain("原来 开票人 勾的");
+    await 框.getByRole("button", { name: "撤回已开票" }).click();
+    await 框.waitFor({ state: "hidden" });
+    expect(await page.evaluate(() => (window as unknown as 开票窗).__开票)).toEqual([["p1", true], ["p1", false]]);
+    expect(await page.locator(".pd-note").innerText()).toContain("已撤回已开票");
+    // 别人刚撤过（变了:false）：不说「已撤回」，照实说已经是未开票了
+    await page.evaluate(() => { (window as unknown as 开票窗).__开票回 = { ok: true, 变了: false }; });
+    await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).click();
+    await 框.waitFor();
+    await 框.getByRole("button", { name: "撤回已开票" }).click();
+    await 框.waitFor({ state: "hidden" });
+    await page.locator(".pd-note", { hasText: "已经是未开票了" }).waitFor();
+    expect(await page.locator(".pd-note").innerText()).not.toContain("已撤回已开票");
+    // 没有勾 / 撤回过：不摆「变更记录」
+    expect(await page.getByTestId("proj-invoiced-log").count()).toBe(0);
+    // 有记录（E-373 ③）：点「变更记录」列最近几条，写清谁勾的 / 撤回的、负责人是谁（负责人打开自己的项目看得到）
+    await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: "开票人", 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: "勾上 30 天内只有系统管理员能撤回", 记录: [
+      { id: "a2", 何时: "2026-12-01T02:00:00.000Z", 谁: "开票人", 文: "标为已开票", 因: ["负责人 编造负责人"] },
+      { id: "a1", 何时: "2026-11-30T02:00:00.000Z", 谁: "测试管", 文: "撤回已开票", 因: ["负责人 编造负责人", "原来 开票人 2026-11-29 10:00 勾的"] },
+    ] } }));
+    await page.getByTestId("proj-invoiced-log").click();
+    const 记 = page.getByTestId("proj-invoiced-log-list");
+    await 记.waitFor();
+    expect(await 记.innerText()).toContain("2026-12-01 10:00 开票人 标为已开票（负责人 编造负责人）");
+    expect(await 记.innerText()).toContain("撤回已开票（负责人 编造负责人；原来 开票人 2026-11-29 10:00 勾的）");
+    // 「全部见历史变更」只在客户详情嵌入版摆（点的是客户名下那一行的「历史变更」入口）；这里是独立挂载，不摆
+    expect(await 记.getByTestId("proj-invoiced-log-all").count()).toBe(0);
+    await page.keyboard.press("Escape");
+    await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: "开票人", 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: null } }));
+    await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).waitFor();
+    await page.waitForFunction(() => !(document.querySelector("[data-testid=proj-invoiced] input[type=checkbox]") as HTMLInputElement | null)?.disabled);
+    // 没成：原因写在框里、框不关
+    await page.evaluate(() => { const w = window as unknown as 开票窗; w.__开票回 = { ok: false, error: "勾上已超过 30 天，谁都不能取消" }; });
+    await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).click();
+    await 框.waitFor();
+    await 框.getByRole("button", { name: "撤回已开票" }).click();
+    await 框.getByText("勾上已超过 30 天，谁都不能取消").waitFor();
+    await 框.getByRole("button", { name: /取\s*消/ }).click();
+    // 不是企业版 / 没给这一格：不摆
+    await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: undefined }));
+    await page.getByTestId("proj-invoiced").waitFor({ state: "detached" });
+    expect(await page.getByTestId("proj-invoiced").count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it.each([390, 768])("已开票 %ipx：超长勾的人名一行「…」、悬停看全文，不横出卡片和页面", async (w) => {
+  const { page } = await open(true, w);
+  try {
+    const 长名 = "开票人" + "超长名字".repeat(20);
+    // 带「变更记录」：按钮挤在一行里也不横出（E-373 ③）
+    await page.evaluate((n) => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: n, 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: null, 记录: [{ id: "a1", 何时: "2026-12-01T02:00:00.000Z", 谁: n, 文: "标为已开票", 因: [`负责人 ${n}`] }] } }), 长名);
+    const 字 = page.getByTestId("proj-invoiced-by");
+    await 字.waitFor();
+    expect(await 字.getAttribute("title")).toBe(`${长名} · 2026-12-01 10:00`);
+    expect(await 字.evaluate((el) => el.scrollWidth > el.clientWidth && getComputedStyle(el).textOverflow === "ellipsis" && getComputedStyle(el).whiteSpace === "nowrap")).toBe(true);
+    const 行 = await page.getByTestId("proj-invoiced").boundingBox();
+    expect(Math.round(行!.height)).toBeLessThanOrEqual(34);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    expect(await page.getByTestId("proj-invoiced").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    // 点开的记录框在屏里、长名折行不横出
+    await page.getByTestId("proj-invoiced-log").click();
+    const 记 = page.getByTestId("proj-invoiced-log-list");
+    await 记.waitFor();
+    const 框 = (await 记.boundingBox())!;
+    expect(框.x).toBeGreaterThanOrEqual(0);
+    expect(框.x + 框.width).toBeLessThanOrEqual(w);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  } finally { await page.close(); }
 });
