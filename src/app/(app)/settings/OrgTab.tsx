@@ -1,7 +1,7 @@
 "use client";
 
 import { useSettingsNote } from "./InlineNote";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, Checkbox, Input, Select, Space, Switch, Tag } from "antd";
 import { useConsequence } from "@/components/ConsequenceDialog";
@@ -58,6 +58,8 @@ export type 组织架构 = {
   可标已开票?: string[];
   /** 能进「可标已开票」名单的人（E-373 ②：系统管理员和财务（职位或部门，E-375），服务端 permissions.ts 能进开票名单 算好）；不在里面的不出现在下拉，已在名单里的标「不能标，请去掉」 */
   可标已开票候选?: string[];
+  /** 名单里已停用（离职）的人：照留一项标「已停用，请去掉」，保存不拦（收回由系统管理员手动去掉） */
+  可标已开票停用?: { id: string; name: string }[];
 };
 type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string; 要确认?: string }>;
 
@@ -261,7 +263,9 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   // 可标已开票的候选（E-373 ②）：只列系统管理员和财务（职位或部门）的人（服务端算好的 可标已开票候选，设可标已开票 照拦）。
   // 已经在名单里、后来不再符合的（调出了财务、改了角色、设了只看某人）照留一项、标明，好让人去掉，不显示成一串编号
   const 开票候选 = new Set(value.可标已开票候选 ?? []);
-  const 开票选项 = value.成员.filter((m) => 开票候选.has(m.id) || 开票人.includes(m.id)).map((m) => ({ value: m.id, name: m.name, label: 开票候选.has(m.id) ? m.name : <span title="已不符合条件（调出了财务、改了角色或设了只看某人），勾不进去">{`${m.name}（不能标，请去掉）`}</span> }));
+  const 开票选项: { value: string; name: string; label: ReactNode }[] = value.成员.filter((m) => 开票候选.has(m.id) || 开票人.includes(m.id)).map((m) => ({ value: m.id, name: m.name, label: 开票候选.has(m.id) ? m.name : <span title="已不符合条件（调出了财务、改了角色或设了只看某人），勾不进去">{`${m.name}（不能标，请去掉）`}</span> }));
+  const 停用开票 = (value.可标已开票停用 ?? []).filter((u) => 开票人.includes(u.id));
+  开票选项.push(...停用开票.map((u) => ({ value: u.id, name: u.name, label: <span title="已停用（离职），不能再标已开票，请去掉；他之前勾的照旧留">{`${u.name}（已停用，请去掉）`}</span> })));
   const 页面无主 = value.无主线索复核人 ?? null;
   const [无主草稿, set无主草稿] = useState<{ 基于: string | null; 人: string | null } | null>(null);
   const 无主 = 无主草稿 && 无主草稿.基于 === 页面无主 ? 无主草稿.人 : 页面无主;

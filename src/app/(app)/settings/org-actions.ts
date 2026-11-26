@@ -18,7 +18,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 规则, 规则开着, type 规则名 } from "@/lib/enterprise/rules";
 import { 超时转重新起算 } from "@/lib/enterprise/reply-overdue";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 读组织, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 可标已开票键, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
+import { 读组织, 名单原文ids, 建组织, 拆角色, 合角色, 部门挪动问题, 上级设置问题, 权限组织, 填组织设置, 规整只看某人, 回收站副手键, 只看某人键, 系统管理员标记键, 无主线索复核人键, 可标已开票键, 是系统管理员of, 能管设置of, 有人能管设置, 读组织于, 留一位系统管理员错, 留一位系统管理员话, 直属上级of, type 组织, type 组织部门 } from "@/lib/enterprise/org";
 import type { Prisma } from "@/generated/prisma";
 import { 能改后台设置, 只读角色, 能进开票名单 } from "@/lib/enterprise/permissions";
 import { 名单只限财务话 } from "@/lib/project/invoiced-words";
@@ -527,9 +527,16 @@ export async function 设可标已开票(ids: unknown): Promise<结果> {
     const 设 = 规整市场部门(ids);
     if (!设) return { ok: false, error: "选的人不对，刷新再试" };
     const org = await 读组织();
-    if (设.some((id) => !org.成员.has(id))) return { ok: false, error: "选的人有的已经不在组织里了，刷新再选" };
-    const 原 = new Set(org.可标已开票 ?? []);
+    // 名单原文（含已停用的）：停用的人本来就在名单里的照留，不拦整笔保存（收回由系统管理员手动去掉，不自动剔人）
+    const 原文 = 名单原文ids((await prisma.setting.findUnique({ where: { key: 可标已开票键 }, select: { value: true } }))?.value);
+    const 原 = new Set(原文);
     const 新加 = 设.filter((id) => !原.has(id));
+    const 不在组织 = 设.filter((id) => !org.成员.has(id) && !原.has(id));
+    if (不在组织.length) {
+      const 停用的 = await prisma.user.findMany({ where: { id: { in: 不在组织 }, active: false }, select: { id: true, name: true } });
+      if (停用的.length) return { ok: false, error: `${停用的.map((u) => u.name).join("、")} 已停用，不能加进名单，请先去掉再保存` };
+      return { ok: false, error: "选的人有的已经不在组织里了，刷新再选" };
+    }
     if (新加.some((id) => 只读角色({ id }, org) || org.只看某人?.has(id))) return { ok: false, error: "只读管理员、销售教练、设了「只看某人」的人不能标已开票，换一位" };
     if (新加.some((id) => !能进开票名单(id, org))) return { ok: false, error: `${名单只限财务话}，换一位` };
     const 收回 = [...原].filter((id) => !设.includes(id));

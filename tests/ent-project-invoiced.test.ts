@@ -207,6 +207,24 @@ describe("名单设置", () => {
     expect(await prisma.setting.findUnique({ where: { key: 可标已开票键 } })).toMatchObject({ value: JSON.stringify([被指定.id]) });
     expect(await prisma.auditLog.count({ where: { entity: "Setting", entityId: 可标已开票键 } })).toBe(1);
   });
+
+  it("名单里有已停用的人：照留不拦保存（不自动剔人）；新加已停用的人报错点名", async () => {
+    await setSetting(可标已开票键, [被指定.id]);
+    invalidateSettingsCache();
+    await prisma.user.update({ where: { id: 被指定.id }, data: { active: false } });
+    忘掉企业版范围();
+    // 停用的人本来就在名单里：保存同一份名单、或再加别人，都不报错，他照留
+    expect(await 以(管, () => 设可标已开票([被指定.id]))).toEqual({ ok: true });
+    expect(await prisma.setting.findUnique({ where: { key: 可标已开票键 } })).toMatchObject({ value: JSON.stringify([被指定.id]) });
+    // 不在名单里的停用的人加不进：点名
+    expect(await 以(管, () => 设可标已开票([被指定.id, 只读.id]))).toMatchObject({ ok: false });
+    const 名 = (await prisma.user.findUniqueOrThrow({ where: { id: 被指定.id }, select: { name: true } })).name;
+    await setSetting(可标已开票键, null);
+    invalidateSettingsCache();
+    expect(await 以(管, () => 设可标已开票([被指定.id]))).toEqual({ ok: false, error: `${名} 已停用，不能加进名单，请先去掉再保存` });
+    await prisma.user.update({ where: { id: 被指定.id }, data: { active: true } });
+    忘掉企业版范围();
+  });
 });
 
 describe("历史变更项目块", () => {

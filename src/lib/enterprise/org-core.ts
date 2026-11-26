@@ -78,6 +78,13 @@ function 解码(v: string | null | undefined): unknown {
   }
 }
 
+/** 名单原文里的 userId（不按在职过滤）：设置页要看到名单里已停用的人，服务端保存时也要认「本来就在名单里」 */
+export function 名单原文ids(v: string | null | undefined): string[] {
+  const 解 = 解码(v);
+  const 们 = Array.isArray(解) ? 解 : typeof 解 === "string" ? 解.split(",") : [];
+  return 们.filter((x): x is string => typeof x === "string").map((x) => x.trim()).filter(Boolean);
+}
+
 /** userId 名单（JSON 数组，或手写的逗号串）：只留在职的 */
 function 解名单(v: string | null | undefined, org: 组织): Set<string> {
   const 解 = 解码(v);

@@ -17,7 +17,7 @@ import { aiUsageThisMonth } from "@/lib/ai-usage";
 import { multiTenant } from "@/lib/tenant/context";
 import { 规则开着, 规则名们 } from "@/lib/enterprise/rules";
 import { 同名带邮箱 } from "@/lib/utils";
-import { 读组织, 直属上级of, 虚线上级of, 权限组织 } from "@/lib/enterprise/org";
+import { 读组织, 直属上级of, 虚线上级of, 权限组织, 名单原文ids, 可标已开票键 } from "@/lib/enterprise/org";
 import { 拆角色, 是系统管理员of } from "@/lib/enterprise/org-core";
 import { 能进设置, 是总管理, 能进开票名单 } from "@/lib/enterprise/permissions";
 import { 设置范围of } from "@/lib/enterprise/settings-scope";
@@ -184,6 +184,7 @@ export default async function SettingsBody() {
     时限节点: org && 改权限 ? 能改时限的节点(org, me, 改权限) : undefined,
     按人提成: 项目设置底.提成比例 && org ? await 按人提成数据(org) : null,
   };
+  const 开票原文 = org && 开关 && 字段权限 && 改权限 && !只个人 ? 名单原文ids((await prisma.setting.findUnique({ where: { key: 可标已开票键 }, select: { value: true } }))?.value) : [];
   const 组织架构: 组织架构 | null = org && 开关 && 字段权限 && 改权限 && !只个人
     ? (() => {
         // 同名的带邮箱：组织架构每人一行、上级下拉都靠这个分清两个王芳
@@ -216,7 +217,9 @@ export default async function SettingsBody() {
           只看某人: Object.fromEntries(org.只看某人 ?? []),
           回收站副手: [...(org.回收站副手 ?? [])],
           无主线索复核人: org.无主线索复核人 ?? null,
-          可标已开票: [...(org.可标已开票 ?? [])],
+          // 名单原文（含已停用的）：停用的人照留一项、标「已停用，请去掉」，不显示成编号、也不被保存悄悄剔掉
+          可标已开票: 开票原文,
+          可标已开票停用: users.filter((u) => !u.active && 开票原文.includes(u.id)).map((u) => ({ id: u.id, name: u.name })),
           // 下拉只列系统管理员和财务（职位或部门）的人（E-373 ②，同服务端 设可标已开票）
           可标已开票候选: [...org.成员.keys()].filter((id) => 能进开票名单(id, org)),
         };
