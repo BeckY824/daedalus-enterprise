@@ -12,7 +12,9 @@ import { resetDb } from "./reset";
 import { 销售初判, 市场复核, 销售终验, 总管理终判, 到期落定话 } from "@/lib/project/lead-verify";
 import { 验证时限扫一遍, 验证时限通知种类, 起钟时刻 } from "@/lib/project/lead-verify-timeout";
 import { 待补数们 } from "@/lib/enterprise/invalid-makeup";
-import { invalidateSettingsCache } from "@/lib/settings";
+import { invalidateSettingsCache, setSetting } from "@/lib/settings";
+import { 验证时限生效key } from "@/lib/project/lead-verify-timeout";
+import { 超时转生效key } from "@/lib/enterprise/reply-overdue";
 import { 月份 } from "@/lib/enterprise/lead-assign";
 import { 记有效沟通 } from "./helpers/ent-valid-followup";
 
@@ -48,6 +50,9 @@ describe("重复咨询线索的验证时限", () => {
   beforeEach(async () => {
     await resetDb();
     invalidateSettingsCache();
+    // 两个生效时刻都放到用例之前（只认生效后进入这一步的）；要测生效时刻的用例自己改
+    await setSetting(超时转生效key, "2026-01-01T00:00:00.000Z");
+    await setSetting(验证时限生效key, "2026-01-01T00:00:00.000Z");
     vi.stubEnv("CRM_ENTERPRISE", "1");
     老板 = await 建人("boss", "ADMIN");
     总管 = await 建人("director", "SALES");
@@ -193,5 +198,55 @@ describe("重复咨询线索的验证时限", () => {
     const id = await 项目();
     await 初判无效于(id, 京("2026-12-02 19:00"));
     expect(await 扫(京("2026-12-02 23:00"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+  });
+
+  it("生效时刻：上线前就在等的不提醒不落定，上线后（生效时刻之后）进入的照常", async () => {
+    await setSetting(验证时限生效key, 京("2026-12-02 10:30").toISOString());
+    const 老 = await 项目();
+    await 初判无效于(老, 京("2026-12-02 10:00"));
+    const 新 = await 项目();
+    await 初判无效于(新, 京("2026-12-02 11:00"));
+    expect(await 扫(京("2026-12-02 11:20"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect((await 扫(京("2026-12-02 12:00"))).提醒).toBe(1);
+    expect((await 扫(京("2026-12-02 12:30"))).落定).toBe(1);
+    expect((await 现(新)).result).toBe("线索流失");
+    expect((await 现(老)).result).toBeNull();
+    expect(await 提醒数(市场.id)).toBe(1);
+  });
+
+  it("本钟第一遍扫记生效时刻（上线时刻）：之前就在等的都不算", async () => {
+    await prisma.setting.deleteMany({ where: { key: 验证时限生效key } });
+    invalidateSettingsCache();
+    const 老 = await 项目();
+    await 初判无效于(老, 京("2026-12-02 09:00"));
+    expect(await 扫(京("2026-12-02 10:00"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect(await 扫(京("2026-12-02 11:00"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect(await 扫(京("2026-12-02 12:00"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect((await prisma.setting.findUnique({ where: { key: 验证时限生效key } }))?.value).toContain("2026-12-02T02:00:00.000Z");
+    expect((await 现(老)).result).toBeNull();
+  });
+
+  it("超时转开关从关拨开（生效时刻重记成那一刻）：老的不落定", async () => {
+    const 老 = await 项目();
+    await 初判无效于(老, 京("2026-12-02 09:00"));
+    await setSetting(超时转生效key, 京("2026-12-02 10:00").toISOString());
+    expect(await 扫(京("2026-12-02 10:10"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect(await 扫(京("2026-12-02 11:30"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect((await 现(老)).result).toBeNull();
+  });
+
+  it("被等的人为空：不会每分钟回到提醒，按起钟 + 1.5 小时直接落定", async () => {
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 10:00"));
+    await prisma.entMember.deleteMany({ where: { userId: { in: [老板.id, 总管.id, 市场.id] } } });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect((await 扫(京("2026-12-02 11:00"))).提醒).toBe(0);
+    expect((await 扫(京("2026-12-02 11:29"))).落定).toBe(0);
+    expect((await 现(id)).result).toBeNull();
+    const r = await 扫(京("2026-12-02 11:30"));
+    expect(r.落定).toBe(1);
+    expect((await 现(id)).result).toBe("线索流失");
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
   });
 });

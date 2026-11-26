@@ -7,16 +7,19 @@
  * 起钟时刻 = 进入这一步的时刻，不加库结构，读已有的列：
  *   市场复核 = verifiedAt（销售初判交上来）；销售终验 = reviewedAt（市场复核判有效）；
  *   总管理终判 = 销售提交异议的 ackedAt，没走异议（初判无效直接交总管理）= verifiedAt。
+ * 生效时刻 = max(本钟自己的 Setting 验证时限生效key, 超时转生效时刻)：本钟第一遍扫（= 上线时刻）记成那一刻，超时转开关从关拨开时那边重记，
+ *   起钟早于生效时刻的（上线前就在等的、关着期间进入的）一律不提醒不落定，只认之后进入这一步的。
  * 提醒发出的时刻 = 站内通知（EntNotice kind 验证时限）的 createdAt，不另存。销售认领不是验证，不走这个钟。
  * 跑在每分钟那一遍（nightly.ts，排在超时自动转后面）；开关同「超时未跟进自动转」。从不抛。
  */
 import { prisma } from "../prisma";
+import { getSetting, setSetting } from "../settings";
 import { 看全部 } from "../team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织 } from "@/lib/enterprise/org";
 import { notify } from "@/lib/enterprise/notify";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
-import { 该做, 不执行, 超时自动转开着, 超时提醒分钟, 超时转出分钟 } from "@/lib/enterprise/reply-overdue";
+import { 该做, 不执行, 超时自动转开着, 超时提醒分钟, 超时转出分钟, 超时转生效时刻 } from "@/lib/enterprise/reply-overdue";
 import { 重复咨询来源 } from "./system-created";
 import { 有效线索节点 } from "./stage-gates";
 import { 实际待, 无效交给, 被等的人们, 到期落定, type 待哪步 } from "./lead-verify";
@@ -34,6 +37,17 @@ export function 起钟时刻(步: 钟步, v: 验证行): Date | null {
   return v.salesAck === "提交异议" ? v.ackedAt : v.verifiedAt;
 }
 
+/** 本钟的生效时刻存在这一行（Setting，ISO 时刻；坏了不覆盖，这一遍按现在算） */
+export const 验证时限生效key = "enterprise.lead_verify_timeout.since";
+async function 本钟生效时刻(现在: Date): Promise<Date> {
+  const v = await getSetting<unknown>(验证时限生效key);
+  const t = typeof v === "string" ? new Date(v) : null;
+  if (t && !Number.isNaN(t.getTime())) return t;
+  if (v == null) await setSetting(验证时限生效key, 现在.toISOString());
+  else console.warn(`[验证时限] ${验证时限生效key} 存的值解析不出时刻，不覆盖，先按现在算`);
+  return 现在;
+}
+
 const 键头 = (id: string, 起: Date) => `verify-timeout:${id}:${起.toISOString()}`;
 
 export async function 验证时限扫一遍(现在: Date = new Date()): Promise<验证时限明细> {
@@ -42,12 +56,14 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
   try {
     if (!(await 超时自动转开着())) return 明细;
     if (await 视图中跳过()) return 明细;
+    const 生效 = new Date(Math.max((await 本钟生效时刻(现在)).getTime(), (await 超时转生效时刻(现在)).getTime()));
     const 行们 = await 看全部(() => prisma.entLeadVerify.findMany({
       where: {
         pending: { in: ["市场复核", "销售终验", "总管理终判"] },
         project: { source: 重复咨询来源, phase: "线索", node: 有效线索节点, result: null, pooledAt: null, deletedAt: null },
       },
       include: { project: { select: { id: true, name: true, ownerId: true } } },
+      orderBy: { updatedAt: "asc" },
       take: 500,
     }));
     if (!行们.length) return 明细;
@@ -58,14 +74,14 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
         const 步 = 实际待(v.pending, 交给) as 待哪步 | null;
         if (步 !== "市场复核" && 步 !== "销售终验" && 步 !== "总管理终判") continue;
         const 起 = 起钟时刻(步, v);
-        if (!起) continue;
+        if (!起 || 起.getTime() < 生效.getTime()) continue;
         const 头 = 键头(v.projectId, 起);
         const 末提醒 = await prisma.entNotice.findFirst({ where: { kind: 验证时限通知种类, dedupeKey: { startsWith: `${头}:` } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
         const 做 = 该做({ since: 起, overdueAt: 末提醒?.createdAt ?? null }, 现在);
         if (!做) continue;
         const 被等 = await 被等的人们(v.projectId, 步);
         const 链接 = `/projects/${encodeURIComponent(v.projectId)}`;
-        if (做 === "提醒" || 做 === "再提醒") {
+        if (做 !== "转") {
           const 重 = 做 === "再提醒";
           const n = await notify(被等, {
             kind: 验证时限通知种类,
@@ -75,7 +91,10 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
             key: `${头}:${重 ? `再${现在.toISOString()}` : "提醒"}`,
           });
           明细.提醒 += n;
-          continue;
+          if (n > 0) continue;
+          // 被等的人为空 / 通知一条没记上：overdueAt 永远 null，不然每分钟回到提醒、永远落不了。按起钟 + 1.5 小时直接落定
+          console.warn(`[验证时限] ${v.projectId} 等${步}但没有可通知的人（或通知没记上），到起钟 + ${(超时提醒分钟 + 超时转出分钟) / 60} 小时直接落定`);
+          if (现在.getTime() < 起.getTime() + (超时提醒分钟 + 超时转出分钟) * 60_000) continue;
         }
         const r = await 到期落定(v.projectId, 步, 现在);
         if (!r.ok) { 明细.没落成++; continue; }
