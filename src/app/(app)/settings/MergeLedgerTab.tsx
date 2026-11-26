@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Alert, Button, Input, Table, Tag } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import type { Dayjs } from "dayjs";
@@ -57,23 +57,31 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
   // 列表上次真正查过的条件（拉 成功后写入）：导出用它，不用输入框里还没搜的词
   const [已查, set已查] = useState<台账条件>({ 起: null, 止: null, 词: null });
 
-  const 拉 = useCallback(async (范: 段, w: string) => {
-    set行(null);
+  // 初次进来 行 本来就是 null（转圈）；用户改条件时先清成 null 再查，见 重拉
+  const 拉 = (范: 段, w: string) => {
     const 条件 = 条件of(范, w);
-    const r = await 查(条件).catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "合并台账没读出来") }));
-    if (!r.ok) {
-      set读不到(r.error);
-      set行([]);
-      return;
-    }
-    set读不到(null);
-    set已查(条件);
-    set截断(r.截断);
-    set行(r.行们);
-  }, [查]);
+    return 查(条件)
+      .catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "合并台账没读出来") }))
+      .then((r) => {
+        if (!r.ok) {
+          set读不到(r.error);
+          set行([]);
+          return;
+        }
+        set读不到(null);
+        set已查(条件);
+        set截断(r.截断);
+        set行(r.行们);
+      });
+  };
   useEffect(() => {
     void 拉(null, "");
-  }, [拉]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在进来时拉一次，之后由 重拉 按用户改的条件查
+  }, []);
+  const 重拉 = (范: 段, w: string) => {
+    set行(null);
+    void 拉(范, w);
+  };
 
   async function 导() {
     set导着(true);
@@ -116,7 +124,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
           onChange={(v) => {
             const 新 = (v as 段) ?? null;
             set范围(新);
-            void 拉(新, 词);
+            重拉(新, 词);
           }}
         />
         <Input.Search
@@ -128,9 +136,9 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
           onChange={(e) => {
             set词(e.target.value);
             // 点了清空：立刻回到不带词的列表
-            if (!e.target.value) void 拉(范围, "");
+            if (!e.target.value) 重拉(范围, "");
           }}
-          onSearch={(v) => void 拉(范围, v)}
+          onSearch={(v) => 重拉(范围, v)}
         />
         <Button onClick={() => void 导()} loading={导着} disabled={!行?.length}>导出</Button>
         {行 && !读不到 && (
@@ -152,7 +160,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
           emptyText: 读不到 ? (
             <span>
               {读不到}
-              <Button type="link" size="small" onClick={() => void 拉(范围, 词)}>重试</Button>
+              <Button type="link" size="small" onClick={() => 重拉(范围, 词)}>重试</Button>
             </span>
           ) : 范围 || 词 ? "这个范围里没有项目合并" : "还没有项目合并",
         }}
