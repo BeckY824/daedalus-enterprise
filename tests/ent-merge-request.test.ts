@@ -132,6 +132,64 @@ describe("谁发起", () => {
     expect(发起人问题(org, { id: "渠" }, "渠", null)).toMatch(/不是销售/);
   });
 
+  describe("同业务线（E-336 三，写死）", () => {
+    const 员 = (userId: string, 角色: string, line: "内贸" | "外贸" | null, managerId: string | null = null) =>
+      [userId, { userId, deptId: null, bizRole: 角色, 角色们: [角色], line, managerId, dottedManagerId: null, 不管设置: false }] as const;
+    /** 渠运「渠」（内贸）的直属上级是「上」；「渠外」没设线、直属上级「上外」是外贸；「渠空」没设线、上级「上空」也没设线 */
+    const org = {
+      成员: new Map([
+        员("渠", "channel_ops", "内贸", "上"), 员("上", "marketing_mgr", "内贸"),
+        员("渠2", "channel_ops", "内贸", "上外"), 员("上外", "sales_mgr", "外贸"),
+        员("渠外", "channel_ops", null, "上外"),
+        员("渠空", "channel_ops", null, "上空"), 员("上空", "marketing_mgr", null),
+        员("渠x", "channel_ops", "外贸", "上空"),
+        员("内售", "sales", "内贸"), 员("外售", "sales", "外贸"), 员("外管", "sales_mgr", "外贸"), 员("无线售", "sales", null),
+      ]),
+      部门: new Map(),
+    } as unknown as 组织;
+
+    it("直属上级：同业务线能发，跨业务线拦", () => {
+      expect(发起人问题(org, { id: "上" }, "渠", "内贸")).toBeNull();
+      expect(发起人问题(org, { id: "上外" }, "渠2", "内贸")).toBe("你和留下那家业务线不同（外贸 / 内贸），不能发合并申请");
+      expect(发起人问题(org, { id: "上外" }, "渠2", "外贸")).toBeNull();
+    });
+
+    it("直属上级自己没设线：按他管的那位负责人的线比", () => {
+      expect(发起人问题(org, { id: "上空" }, "渠x", "外贸")).toBeNull();
+      expect(发起人问题(org, { id: "上空" }, "渠x", "内贸")).toBe("你和留下那家业务线不同（外贸 / 内贸），不能发合并申请");
+      // 上级、负责人都没线：不限（同现状）
+      expect(发起人问题(org, { id: "上空" }, "渠空", "外贸")).toBeNull();
+    });
+
+    it("客户没填业务线：按留下那家负责人的业务线比（同 → 能，不同 → 拦）", () => {
+      for (const 空 of [null, undefined, ""]) {
+        expect(发起人问题(org, { id: "上" }, "渠", 空)).toBeNull();
+        expect(发起人问题(org, { id: "内售" }, "渠", 空)).toBeNull();
+        expect(发起人问题(org, { id: "外售" }, "渠", 空)).toBe("你和留下那家业务线不同（外贸 / 内贸，留下那家没填业务线，按它负责人的业务线算），不能发合并申请");
+        expect(发起人问题(org, { id: "上外" }, "渠2", 空)).toMatch(/^你和留下那家业务线不同（外贸 \/ 内贸，留下那家没填业务线/);
+      }
+      // 负责人也没线：不限；「暂不分配」算填了、不限线（同现状）
+      expect(发起人问题(org, { id: "外售" }, "渠外", null)).toBeNull();
+      expect(发起人问题(org, { id: "外售" }, "渠", "暂不分配")).toBeNull();
+    });
+
+    it("销售、销售管理跨业务线仍拦；没设线的销售不限（同 接手问题）", () => {
+      expect(发起人问题(org, { id: "外售" }, "渠", "内贸")).toBe("你和留下那家业务线不同（外贸 / 内贸），不能发合并申请");
+      expect(发起人问题(org, { id: "外管" }, "渠", "内贸")).toBe("你和留下那家业务线不同（外贸 / 内贸），不能发合并申请");
+      expect(发起人问题(org, { id: "内售" }, "渠", "内贸")).toBeNull();
+      expect(发起人问题(org, { id: "外管" }, "渠", "外贸")).toBeNull();
+      expect(发起人问题(org, { id: "无线售" }, "渠", "内贸")).toBeNull();
+    });
+  });
+
+  it("客户没填业务线：发申请时按留下那家负责人的业务线比（走库）", async () => {
+    await raw.entMember.update({ where: { userId: 渠运.id }, data: { managerId: 销管.id, line: "内贸" } });
+    const a = await 客户(渠运.id);
+    const b = await 客户(丙.id);
+    expect(await 发起合并申请(prisma, a, b, 外贸销售)).toMatchObject({ ok: false, error: expect.stringMatching(/按它负责人的业务线算/) });
+    expect((await 发起合并申请(prisma, a, b, 丁)).ok).toBe(true);
+  });
+
   it("留下那家负责人是销售：只有他本人能发，别的销售不能", async () => {
     const a = await 客户(乙.id);
     const b = await 客户(丙.id);
@@ -144,8 +202,8 @@ describe("谁发起", () => {
     const a = await 客户(渠运.id, { bizLine: "内贸" });
     const b = await 客户(丙.id, { bizLine: "内贸" });
     expect(await 发起合并申请(prisma, a, b, 渠运)).toMatchObject({ ok: false, error: expect.stringMatching(/不是销售/) });
-    // 业务线对不上的销售不算能接分配
-    expect(await 发起合并申请(prisma, a, b, 外贸销售)).toMatchObject({ ok: false, error: expect.stringMatching(/直属上级或能接分配的销售/) });
+    // 业务线对不上的销售不能发（E-336 三，写死）
+    expect(await 发起合并申请(prisma, a, b, 外贸销售)).toMatchObject({ ok: false, error: "你和留下那家业务线不同（外贸 / 内贸），不能发合并申请" });
     const r = await 发起合并申请(prisma, a, b, 销管);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
