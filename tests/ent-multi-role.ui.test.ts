@@ -130,7 +130,7 @@ it("可标已开票：只列系统管理员和财务（服务端给的候选）�
   try {
     const 卡 = page.getByTestId("org-invoice-markers");
     expect(await 卡.locator(".ant-select-selection-item").allInnerTexts()).toEqual(["旧名单人（不能标，请去掉）"]);
-    expect(await 卡.locator(".ant-select-selection-item span[title]").getAttribute("title")).toBe("不再是财务，勾不进去");
+    expect(await 卡.locator(".ant-select-selection-item span[title]").getAttribute("title")).toBe("已不符合条件（调出了财务、改了角色或设了只看某人），勾不进去");
     const 框 = page.getByLabel("可标已开票");
     const 选项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
     let 字: string[] = [];
