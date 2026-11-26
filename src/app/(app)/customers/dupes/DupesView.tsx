@@ -132,7 +132,7 @@ export default function DupesView({ 清单, 已标, 只读原因 = null }: { 清
         className="dp-tabs"
         value={看已标 ? "marked" : "todo"}
         onChange={(v) => 去({ tab: v === "marked" ? "marked" : undefined })}
-        options={[{ label: `待处理 ${清单.共} 组`, value: "todo" }, { label: "已标不是同一个人", value: "marked" }]}
+        options={[{ label: 看已标 ? "待处理" : `待处理 ${清单.共} 组`, value: "todo" }, { label: "已标不是同一个人", value: "marked" }]}
       />
       {!看已标 && (清单.组们.length
         ? <>

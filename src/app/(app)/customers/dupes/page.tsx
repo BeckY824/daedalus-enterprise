@@ -4,7 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 只读角色, 只看的人, 只看某人话, 只读话of } from "@/lib/enterprise/permissions";
-import { 疑似重复页, 已标的对 } from "@/lib/enterprise/dupe-groups";
+import { 疑似重复页, 已标的对, 清单空页 } from "@/lib/enterprise/dupe-groups";
 import DupesView from "./DupesView";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,8 @@ export default async function DupesPage({ searchParams }: { searchParams: Promis
   const 只读原因 = 只读角色(me, org) ? 只读话of(me, org) : 只看的人(org, me.id) ? 只看某人话 : null;
   const 看已标 = sp.tab === "marked";
   const [清单, 已标] = await Promise.all([
-    疑似重复页(prisma, me, org, Number(sp.page) || 1),
+    // 「已标」页签不成组（建议 3）：只要「管」一个字段
+    看已标 ? Promise.resolve(清单空页(me, org)) : 疑似重复页(prisma, me, org, Number(sp.page) || 1),
     看已标 ? 已标的对(prisma, me, org) : Promise.resolve(null),
   ]);
   return <DupesView 清单={清单} 已标={已标} 只读原因={只读原因} />;

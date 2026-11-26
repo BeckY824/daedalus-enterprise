@@ -18,7 +18,7 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 只看某人键 } from "@/lib/enterprise/org-core";
 import {
-  成组, 对id, 疑似重复页, 本客户疑似重复数, 标不是同一个人, 撤销不是同一个人, 已标的对, type 成员行,
+  成组, 对id, 疑似重复页, 本客户疑似重复数, 标不是同一个人, 撤销不是同一个人, 已标的对, 两家在我清单成对, 清单空页, 忘掉疑似重复缓存, type 成员行,
 } from "@/lib/enterprise/dupe-groups";
 
 type 人 = { id: string; name: string; role: string };
@@ -42,6 +42,7 @@ const 名们 = async (me: 人) => (await 页(me)).组们.map((g) => g.们.map((m
 
 beforeEach(async () => {
   await resetDb();
+  忘掉疑似重复缓存();
   invalidateSettingsCache();
   忘掉企业版范围();
   vi.stubEnv("CRM_ENTERPRISE", "1");
@@ -207,5 +208,75 @@ describe("标 / 撤「不是同一个人」", () => {
     expect(await 标不是同一个人(prisma, 甲, org, [a1, a2])).toMatchObject({ ok: false });
     await raw.customer.update({ where: { id: a2 }, data: { name: "星河展具", deletedAt: new Date() } });
     expect(await 标不是同一个人(prisma, 甲, org, [a1, a2])).toMatchObject({ ok: false });
+  });
+});
+
+describe("名键底数据缓存（C 审查建议 2、3、9）", () => {
+  const 隔一毫秒 = () => new Promise((r) => setTimeout(r, 3));
+
+  it("清单页、详情提示、两家成对共用一份：指纹没变就不重读（库里悄悄改名不动 updatedAt，缓存里还是老名）", async () => {
+    const a1 = await 客户("缓存星河", 甲.id);
+    const a2 = await 客户("缓存星河", 甲.id);
+    const org = await 权限组织();
+    expect((await 疑似重复页(prisma, 甲, org, 1)).组们).toHaveLength(1);
+    await raw.$executeRawUnsafe(`UPDATE "Customer" SET "name" = '悄悄改了' WHERE id = ?`, a2);
+    expect((await 疑似重复页(prisma, 甲, org, 1)).组们).toHaveLength(1);
+    expect(await 本客户疑似重复数(prisma, 甲, org, a1)).toBe(1);
+    expect(await 两家在我清单成对(prisma, 甲, org, a1, a2)).toBe(true);
+    忘掉疑似重复缓存();
+    expect((await 疑似重复页(prisma, 甲, org, 1)).组们).toHaveLength(0);
+  });
+
+  it("改名、新增、删除、进公海后缓存失效，结果更新", async () => {
+    const a1 = await 客户("失效星河", 甲.id);
+    const a2 = await 客户("别的名字", 甲.id);
+    const org = await 权限组织();
+    expect(await 名们(甲)).toEqual([]);
+    expect(await 本客户疑似重复数(prisma, 甲, org, a1)).toBe(0);
+    // 改名：别的名字 → 同名
+    await 隔一毫秒();
+    await raw.customer.update({ where: { id: a2 }, data: { name: "失效星河" } });
+    expect(await 名们(甲)).toEqual([[a1, a2].sort()]);
+    expect(await 本客户疑似重复数(prisma, 甲, org, a1)).toBe(1);
+    expect(await 两家在我清单成对(prisma, 甲, org, a1, a2)).toBe(true);
+    // 新增第三家（条数变）
+    const a3 = await 客户("失效星河", 甲.id);
+    expect(await 本客户疑似重复数(prisma, 甲, org, a1)).toBe(2);
+    expect((await 名们(甲))[0]).toEqual([a1, a2, a3].sort());
+    // 删了一家（软删）
+    await 隔一毫秒();
+    await raw.customer.update({ where: { id: a3 }, data: { deletedAt: new Date() } });
+    expect(await 本客户疑似重复数(prisma, 甲, org, a1)).toBe(1);
+    // 两家都进公海：这对不再列（公海组下一单 D）
+    await 进公海(a1);
+    await 进公海(a2);
+    expect(await 名们(甲)).toEqual([]);
+    expect(await 两家在我清单成对(prisma, 甲, org, a1, a2)).toBe(false);
+  });
+
+  it("换负责人后放行判定跟着变；标着的对不进缓存、标完马上不列", async () => {
+    const a1 = await 客户("换人星河", 甲.id);
+    const a2 = await 客户("换人星河", 乙.id);
+    const org = await 权限组织();
+    expect(await 两家在我清单成对(prisma, 甲, org, a1, a2)).toBe(true);
+    await 隔一毫秒();
+    await raw.customer.update({ where: { id: a1 }, data: { salesOwnerId: 乙.id } });
+    expect(await 两家在我清单成对(prisma, 甲, org, a1, a2)).toBe(false);
+    await 隔一毫秒();
+    await raw.customer.update({ where: { id: a1 }, data: { salesOwnerId: 甲.id } });
+    expect(await 两家在我清单成对(prisma, 甲, org, a1, a2)).toBe(true);
+    await 标不是同一个人(prisma, 甲, org, [a1, a2]);
+    expect(await 名们(甲)).toEqual([]);
+  });
+
+  it("按 id 取的几家（标、放行）不带 NOT INDEXED，只有整表读带；「已标」页签不成组", async () => {
+    const { readFileSync } = await import("node:fs");
+    const 源 = readFileSync("src/lib/enterprise/dupe-groups.ts", "utf8");
+    const 选列 = 源.match(/const 选列SQL = `([^`]*)`/)![1];
+    expect(选列).not.toMatch(/NOT INDEXED/);
+    expect(源.match(/const 整表SQL = `([^`]*)`/)![1]).toMatch(/NOT INDEXED/);
+    const org = await 权限组织();
+    expect(清单空页(甲, org)).toMatchObject({ 组们: [], 共: 0, 管: false });
+    expect(清单空页(总, org).管).toBe(true);
   });
 });

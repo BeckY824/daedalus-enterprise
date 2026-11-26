@@ -16,7 +16,6 @@
 import type { PrismaClient } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 名键 } from "@/lib/enterprise-import/clean";
-import { 名键必含字 } from "@/lib/search-keyword";
 import { 客户编号文字 } from "@/lib/customer-no";
 import type { 组织 } from "@/lib/enterprise/org-core";
 import { 是系统管理员, 只读角色, 只看的人, 只读话of, 只看某人话 } from "@/lib/enterprise/permissions";
@@ -91,18 +90,49 @@ function 毫秒(v: unknown): number {
 
 type 裸行 = { id: string; name: string | null; bizLine: string | null; salesOwnerId: string | null; createdAt: unknown; inPool: number | bigint | boolean };
 const 转行 = (r: 裸行): 成员行 => ({ id: r.id, name: r.name ?? "", bizLine: r.bizLine, salesOwnerId: r.salesOwnerId, 在公海: !!Number(r.inPool), 建档: 毫秒(r.createdAt) });
-const 选列SQL = `SELECT c.id, c."name", c."bizLine", c."salesOwnerId", c."createdAt", EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) AS inPool FROM "Customer" c NOT INDEXED`;
+// 按 id 取的几家（标、撤、合并放行）不带 NOT INDEXED：走主键，别顺表扫（12-15 C 审查建议 9）；整表读才用 整表SQL
+const 选列SQL = `SELECT c.id, c."name", c."bizLine", c."salesOwnerId", c."createdAt", EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) AS inPool FROM "Customer" c`;
+const 整表SQL = `SELECT c.id, c."name", c."bizLine", c."salesOwnerId", c."createdAt", EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) AS inPool FROM "Customer" c NOT INDEXED WHERE c."deletedAt" IS NULL AND length(trim(c."name")) >= 2`;
 
 /**
- * 在用的客户（没删，含公海）：只取成组要的几列。裸 SQL 不过软删扩展，自己带 deletedAt IS NULL；全称不足两个字的库里先筛掉。
- * 给了名键：先用 名键必含字 在库里 instr 预筛（名键对上的原名一定含这几个字，同 dupe-ledger 名查重候选），挑不出这种字（全是字母数字）照旧整批取
+ * 名键底数据（id、全称、业务线、负责人、在不在公海、建档）的进程内短缓存：清单页、客户详情那一行提示、合并申请放行三处共用，
+ * 不再每次整表扫一遍、把名字全取进 JS（12-15 C 审查建议 2、3）。失效看一句指纹：在用客户数 + 客户 max(updatedAt) + 公海行数 + 公海 max(at)
+ * （改名、换负责人、新增、删除都动 updatedAt 或条数；进出公海动公海行数 / 时刻）。标着的对不在缓存里，每次现读（有索引、行少）。
+ * 一个进程一份；指纹读完到底数据读完之间有人写，缓存的是更新的数据挂旧指纹，下一次指纹对不上会重读，不会读到比库旧的
  */
-async function 读行们(db: 库, 只要键?: string): Promise<成员行[]> {
-  const 字 = 只要键 ? 名键必含字(只要键) : [];
-  const 条件 = [`c."deletedAt" IS NULL`, `length(trim(c."name")) >= 2`, ...字.map(() => `instr(c."name", ?) > 0`)];
-  const 行 = await db.$queryRawUnsafe<裸行[]>(`${选列SQL} WHERE ${条件.join(" AND ")}`, ...字);
-  const 们 = 行.map(转行);
-  return 只要键 ? 们.filter((r) => 名键(r.name) === 只要键) : 们;
+type 底 = { 行们: 成员行[]; 按id: Map<string, 成员行>; 按键: Map<string, 成员行[]> };
+let 缓存: { 指纹: string; 底P: Promise<底> } | null = null;
+/** 测试 / 导入脚本整库换数据后手动清（正常写入靠指纹自动失效） */
+export function 忘掉疑似重复缓存() { 缓存 = null; }
+
+async function 读指纹(db: 库): Promise<string> {
+  const [r] = await db.$queryRawUnsafe<{ n: unknown; u: unknown; pn: unknown; pa: unknown }[]>(
+    `SELECT (SELECT count(*) FROM "Customer" WHERE "deletedAt" IS NULL) AS n, (SELECT max("updatedAt") FROM "Customer") AS u, (SELECT count(*) FROM "CustomerPool") AS pn, (SELECT max("at") FROM "CustomerPool") AS pa`,
+  );
+  return [r?.n, r?.u, r?.pn, r?.pa].map((v) => String(v instanceof Date ? v.getTime() : v)).join("|");
+}
+
+async function 装底(db: 库): Promise<底> {
+  const 行们 = (await db.$queryRawUnsafe<裸行[]>(整表SQL)).map(转行);
+  const 按键 = new Map<string, 成员行[]>();
+  for (const r of 行们) {
+    const k = 名键(r.name);
+    if (!够长(k)) continue;
+    const 们 = 按键.get(k);
+    if (们) 们.push(r); else 按键.set(k, [r]);
+  }
+  return { 行们, 按id: new Map(行们.map((r) => [r.id, r])), 按键 };
+}
+
+async function 读底(db: 库): Promise<底> {
+  const 指纹 = await 读指纹(db);
+  if (缓存?.指纹 === 指纹) return 缓存.底P;
+  const 底P = 装底(db);
+  const 这份 = { 指纹, 底P };
+  缓存 = 这份;
+  // 读失败不留着：下一次重读
+  底P.catch(() => { if (缓存 === 这份) 缓存 = null; });
+  return 底P;
 }
 
 /** 标着的对（没撤的）；给了客户 id 只取碰到这几家的 */
@@ -166,20 +196,25 @@ const 看法of = (me: 看的人, org: 组织 | null) => ({ 管: 是系统管理�
 /** 疑似重复清单的一页（页从 1 起；越界落到最后一页） */
 export async function 疑似重复页(db: 库, me: 看的人, org: 组织 | null, 页 = 1): Promise<清单页> {
   const 看 = 看法of(me, org);
-  const [行们, 标着] = await Promise.all([读行们(db), 标着的对(db)]);
-  const 全 = 成组(行们, 标着, 看);
+  const [底, 标着] = await Promise.all([读底(db), 标着的对(db)]);
+  const 全 = 成组(底.行们, 标着, 看);
   const 末页 = Math.max(1, Math.ceil(全.length / 每页组数));
   const p = Math.min(Math.max(1, Math.floor(Number(页)) || 1), 末页);
   return { 组们: await 补全(db, 全.slice((p - 1) * 每页组数, p * 每页组数), 看), 共: 全.length, 页: p, 每页: 每页组数, 管: 看.管 };
 }
 
-/** 客户详情顶部那一行提示：这位客户在登录的人的清单里和几家同名（0 = 不提示）。只按这位的名键在库里预筛，不整库成组 */
+/** 「已标」页签用：不成组，只带界面要的「管」（谁看全部）；待处理的组数那一项在这个页签上不写数（12-15 C 审查建议 3） */
+export function 清单空页(me: 看的人, org: 组织 | null): 清单页 {
+  return { 组们: [], 共: 0, 页: 1, 每页: 每页组数, 管: 看法of(me, org).管 };
+}
+
+/** 客户详情顶部那一行提示：这位客户在登录的人的清单里和几家同名（0 = 不提示）。读缓存里同名键那几家，不整库成组 */
 export async function 本客户疑似重复数(db: 库, me: 看的人, org: 组织 | null, customerId: string): Promise<number> {
-  const 这位 = await 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { name: true } }));
-  const k = 名键(这位?.name ?? "");
-  if (!够长(k)) return 0;
-  const 行们 = await 读行们(db, k);
-  if (行们.length < 2) return 0;
+  const 底 = await 读底(db);
+  const 这位 = 底.按id.get(customerId);
+  if (!这位) return 0;
+  const 行们 = 底.按键.get(名键(这位.name));
+  if (!行们 || 行们.length < 2) return 0;
   const g = 成组(行们, await 标着的对(db, 行们.map((r) => r.id)), 看法of(me, org)).find((x) => x.们.some((r) => r.id === customerId));
   return g ? g.们.length - 1 : 0;
 }
@@ -190,9 +225,10 @@ export async function 本客户疑似重复数(db: 库, me: 看的人, org: 组�
  */
 export async function 两家在我清单成对(db: 库, me: 看的人, org: 组织 | null, 留下id: string, 并掉id: string): Promise<boolean> {
   if (留下id === 并掉id) return false;
-  const 行们 = (await db.$queryRawUnsafe<裸行[]>(`${选列SQL} WHERE c."deletedAt" IS NULL AND c.id IN (?,?)`, 留下id, 并掉id)).map(转行);
-  if (行们.length !== 2) return false;
-  const 留 = 行们.find((r) => r.id === 留下id);
+  const 底 = await 读底(db);
+  const 留 = 底.按id.get(留下id), 并 = 底.按id.get(并掉id);
+  if (!留 || !并) return false;
+  const 行们 = [留, 并];
   if (!留 || !我的(留, me.id)) return false;
   if (new Set(行们.map((r) => 名键(r.name))).size !== 1) return false;
   const 对们 = 成组(行们, await 标着的对(db, [留下id, 并掉id]), 看法of(me, org)).flatMap((g) => g.对们);

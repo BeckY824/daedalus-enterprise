@@ -123,7 +123,7 @@ it("已标页签：列已标的对，每行「撤销标记」，点了调撤销�
     await page.getByTestId("dupe-undo-mark").click();
     await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "撤标"));
     expect((await 调(page)).find((x) => x[0] === "撤标")).toEqual(["撤标", ["x__y"]]);
-    await page.locator(".dp-tabs").getByText("待处理 2 组").click();
+    await page.locator(".dp-tabs").getByText("待处理", { exact: true }).click();
     await page.waitForFunction(() => (window as unknown as { __去?: string }).__去 !== undefined);
     expect(await page.evaluate(() => (window as unknown as { __去?: string }).__去)).toBe("/customers/dupes");
     expect(错).toEqual([]);
