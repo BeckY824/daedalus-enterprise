@@ -308,8 +308,25 @@ export const 客户行字段 = {
 
 type 取到的行 = Prisma.CustomerGetPayload<{ select: typeof 客户行字段 }>;
 
-/** 全范围按一种币种排序，再取页。扫描不带档案正文，避免把整库完整行交给浏览器。 */
-export async function 客户金额分页(where: Prisma.CustomerWhereInput, order: "amount-asc" | "amount-desc", currency: string, page: number, pageSize: number): Promise<取到的行[]> {
+/** 按签约金额排的两种（全范围算金额再排，见 客户金额分页） */
+export type 金额排序 = "amount-asc" | "amount-desc";
+
+/**
+ * 客户列表的排序（地址栏 sort）→ Prisma 的 orderBy；按金额排的给「金额」（另走 客户金额分页）。
+ * 列表页（page.tsx）和详情页「上一条 / 下一条」（E-332，adjacent.ts）共用这一份，两边的顺序才一样。
+ * 带关键词的快路（关键词分页）只接默认排序，那条 SQL 的序（createdAt DESC, id DESC）和这里默认的一样
+ */
+export function 客户排序(sort: string | undefined): { 金额: 金额排序 } | Prisma.CustomerOrderByWithRelationInput[] {
+  if (sort === "amount-asc" || sort === "amount-desc") return { 金额: sort };
+  if (sort === "level-asc" || sort === "level-desc") return [{ extra: { level: { sort: sort === "level-asc" ? "asc" : "desc", nulls: "last" } } }, { createdAt: "desc" }, { id: "desc" }];
+  if (sort === "follow-asc") return [{ lastFollowAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }, { id: "asc" }];
+  if (sort === "follow-desc") return [{ lastFollowAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }];
+  if (sort === "created-asc") return [{ createdAt: "asc" }, { id: "asc" }];
+  return [{ createdAt: "desc" }, { id: "desc" }];
+}
+
+/** 按金额排好的全部 id（客户金额分页 切页前那一步，详情页上下条也用它） */
+export async function 金额排序ids(where: Prisma.CustomerWhereInput, order: 金额排序, currency: string): Promise<string[]> {
   const amounts: { id: string; amount: number; createdAt: number }[] = [];
   let after: string | undefined;
   for (;;) {
@@ -324,7 +341,12 @@ export async function 客户金额分页(where: Prisma.CustomerWhereInput, order
   }
   const direction = order === "amount-asc" ? 1 : -1;
   amounts.sort((a, b) => direction * (a.amount - b.amount) || b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
-  const ids = amounts.slice((page - 1) * pageSize, page * pageSize).map(row => row.id);
+  return amounts.map((row) => row.id);
+}
+
+/** 全范围按一种币种排序，再取页。扫描不带档案正文，避免把整库完整行交给浏览器。 */
+export async function 客户金额分页(where: Prisma.CustomerWhereInput, order: 金额排序, currency: string, page: number, pageSize: number): Promise<取到的行[]> {
+  const ids = (await 金额排序ids(where, order, currency)).slice((page - 1) * pageSize, page * pageSize);
   if (!ids.length) return [];
   const rows = await prisma.customer.findMany({ where: { AND: [where, { id: { in: ids } }] }, select: 客户行字段 });
   const positions = new Map(ids.map((id, index) => [id, index]));
