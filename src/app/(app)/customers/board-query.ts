@@ -12,7 +12,8 @@ export type 客户页看板地址 = 客户条件 & { phase?: string; node?: stri
  */
 export async function 客户页看板条件(sp: 客户页看板地址): Promise<{ 项目: { phase?: string; node?: string; page?: string; pageSize?: string; sort?: string }; 客户: Prisma.CustomerWhereInput | null; 仅项目客户: Prisma.CustomerWhereInput | null }> {
   const { phase, node, page, pageSize, sort, sortCurrency: _币, triState: _三态, ...客户的 } = sp;
-  const w = await 客户筛选条件(客户的);
+  // 关键词的编号名单按我看得到的客户收窄（11-26：宽词时名单上万个，看板每句项目查询都要绑一遍；看不到的客户 列表条件 本来就不出）
+  const w = await 客户筛选条件(客户的, undefined, true);
   // 只负责项目的人（project-only-customers.ts）：筛了客户时，他看不到的那几位客户只按白名单条件参与（防拿号码、级别反推），
   // 作为 仅项目客户 显式带给 列表条件（page.tsx 看板体 → 项目页 → 读项目列表；board-actions.ts 同）；没筛（客户 = null）不收窄，他自己的项目卡照常在
   // 只拿客户条件登记过的键（new、paste 这类界面开关 客户筛选条件 本来就不认，不该让这类行消失）

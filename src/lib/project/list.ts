@@ -187,6 +187,18 @@ export const 项目排序们 = ["created-asc", "created-desc", "deal-asc", "deal
 export type 项目排序 = (typeof 项目排序们)[number] | "";
 export const 认项目排序 = (v: unknown): 项目排序 => ((项目排序们 as readonly unknown[]).includes(v) ? (v as 项目排序) : "");
 const 默认序: Prisma.ProjectOrderByWithRelationInput[] = [{ updatedAt: "desc" }, { id: "desc" }];
+
+/** 客户页看板的客户条件里一共带了多少个 in / notIn 的值（关键词、批次那几串编号名单）：超过 客户名单一次取全线 看板改一句取全（读项目列表） */
+export function 绑定名单长度(w: unknown): number {
+  if (Array.isArray(w)) return w.reduce((n: number, x) => n + 绑定名单长度(x), 0);
+  if (!w || typeof w !== "object" || w instanceof Date) return 0;
+  let n = 0;
+  for (const [k, v] of Object.entries(w)) n += (k === "in" || k === "notIn") && Array.isArray(v) ? v.length : 绑定名单长度(v);
+  return n;
+}
+/** 名单短于这个数（窄词）照原来的分列各取；测试里可以调小（设客户名单一次取全线） */
+let 客户名单一次取全线 = 2000;
+export function 设客户名单一次取全线(n: number) { 客户名单一次取全线 = n; }
 function 排序of(排: 项目排序): Prisma.ProjectOrderByWithRelationInput[] {
   if (排 === "created-asc") return [{ createdAt: "asc" }, { id: "asc" }];
   if (排 === "created-desc") return [{ createdAt: "desc" }, { id: "desc" }];
@@ -692,6 +704,32 @@ export async function 读项目列表(
       组.set(k, g);
     }
     看板合计 = [...组.values()];
+  } else if (看板 && 绑定名单长度(sp.客户) > 客户名单一次取全线) {
+    /*
+      客户页看板筛的客户带着一长串编号（宽关键词，customers/board-query.ts → 客户关键词条件 的编号名单，11-26）：
+      下面那条路 groupBy、每个大列、带 include 的各一句，每句都把这串编号重新绑一遍（上万个参数、每句一两百 ms）。
+      这里一句按默认序只取分列要的几列，列头的数、每列前 每列条数 个都在内存里算（和下面那条路同一个序、同一个落列），
+      卡片另按 id 一句取（按序取行，只几十个 id）；列表页那几行（能分配时）照下面那条路的写法取
+    */
+    const 全 = await prisma.project.findMany({ where, orderBy: 默认序, select: { id: true, phase: true, node: true, result: true, currency: true, amount: true } });
+    const 组 = new Map<string, 看板合计组>();
+    for (const r of 全) {
+      const k = JSON.stringify([r.phase, r.node, r.result, r.currency]);
+      const g = 组.get(k) ?? { phase: r.phase, node: r.node, result: r.result, currency: r.currency, amount: 0, 数: 0 };
+      g.amount += r.amount;
+      g.数 += 1;
+      组.set(k, g);
+    }
+    看板合计 = [...组.values()];
+    总数 = 全.length;
+    页 = 要列表页 ? Math.min(要页, Math.max(1, Math.ceil(总数 / 每页))) : 1;
+    if (!要列表页 || !总数) 列表ids = [];
+    else if (按负责人) {
+      const 数 = new Map((await prisma.project.groupBy({ by: ["ownerId"], where, _count: { _all: true } })).map((g) => [g.ownerId, g._count._all]));
+      列表ids = await 按负责人取ids(where, await 负责人顺序([...数.keys()], 排 === "owner-desc"), 数, (页 - 1) * 每页, 每页);
+    } else if (!排) 列表ids = 全.slice((页 - 1) * 每页, 页 * 每页).map((r) => r.id);
+    else 列表ids = (await prisma.project.findMany({ where, orderBy: 排序of(排), skip: (页 - 1) * 每页, take: 每页, select: { id: true } })).map((r) => r.id);
+    列ids = 分到列(全);
   } else {
     // 一句 groupBy 出总数（各组相加）和看板列头；按负责人排时再按负责人数一遍，用来定这一页落在哪几位名下
     const [分组, 按人] = await Promise.all([
