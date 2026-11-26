@@ -188,13 +188,11 @@ export async function 预览项目合并(留下id: string, 并掉id: string): Pr
   return { ok: true, 预览: await 项目合并预览(prisma, 留下id, 并掉id, me) };
 }
 
-/** 组员 = 勾的被并项目组员 userId（勾了的加进留下的项目）；谁能并、勾的对不对数据层判 */
-export async function 合并项目(留下id: string, 并掉id: string, opt: { 组员?: unknown } = {}): Promise<结果<项目合并完>> {
+/** 被并项目的组员不并进留下的项目（E-331），没有勾选；谁能并数据层判 */
+export async function 合并项目(留下id: string, 并掉id: string): Promise<结果<项目合并完>> {
   const me = await 我();
   if (!是id(留下id) || !是id(并掉id)) return 坏参数;
-  const 组员 = opt?.组员 ?? [];
-  if (!Array.isArray(组员) || 组员.length > 200 || !组员.every(是id)) return 坏参数;
-  const r = await 执行项目合并(prisma, 留下id, 并掉id, me, { 组员 });
+  const r = await 执行项目合并(prisma, 留下id, 并掉id, me);
   if (r.ok) await 刷新项目(留下id, 并掉id);
   return r;
 }

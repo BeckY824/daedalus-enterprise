@@ -64,7 +64,7 @@ async function 卡点(customerId: string, projectId: string, status = "待接受
     data: { code: `KD${++序}`, projectId, customerId, phase: "线索", type: "x", impact: "x", obstacle: "x", description: "x", dueDays: 3, dueAt: new Date(), creatorId: 乙.id, status },
   })).id;
 }
-const 并 = async (a: string, b: string, me: 人, opt: { 组员?: string[]; 现在?: Date } = {}) => {
+const 并 = async (a: string, b: string, me: 人, opt: { 现在?: Date } = {}) => {
   const r = await 执行项目合并(prisma, a, b, me, opt);
   if (!r.ok) throw new Error(r.error);
   return r.mergeId;
@@ -213,7 +213,7 @@ describe("前提：谁能并、哪些拦", () => {
 });
 
 describe("挪 / 不挪", () => {
-  it("沟通、标记、编号、附件、录音点评、没解决的卡点、老商机对照挪到留下的；联系人、关联客户去重；勾的组员加进来；不挪的留着", async () => {
+  it("沟通、标记、编号、附件、录音点评、没解决的卡点、老商机对照挪到留下的；联系人、关联客户去重；被并项目的组员不并进来、名单记进合并单和日志（E-331）；不挪的留着", async () => {
     const c = await 客户(乙.id);
     const c2 = await 客户(乙.id);
     const a = await 项目(乙.id, c, { nextStepAt: new Date("2026-12-01T02:00:00Z") });
@@ -231,7 +231,7 @@ describe("挪 / 不挪", () => {
     const 只B = await 联系人(c);
     await raw.projectContact.createMany({ data: [{ projectId: a, contactId: 都有 }, { projectId: b, contactId: 都有, roles: "决策人" }, { projectId: b, contactId: 只B }] });
     await raw.projectCustomer.createMany({ data: [{ projectId: a, customerId: c2 }, { projectId: b, customerId: c2 }] });
-    await raw.projectMember.createMany({ data: [{ projectId: b, userId: 丙.id }, { projectId: b, userId: 老板.id }, { projectId: a, userId: 老板.id }] });
+    await raw.projectMember.createMany({ data: [{ projectId: b, userId: 丙.id }, { projectId: b, userId: 老板.id, inviteStatus: "INVITED" }, { projectId: a, userId: 老板.id }] });
     // 不挪的
     await raw.projectNodeLog.create({ data: { projectId: b, userId: 乙.id, toPhase: "线索", toNode: "潜客培育" } });
     await raw.entLeadVerifyLog.create({ data: { projectId: b, step: "销售初判", verdict: "还需培育", userId: 乙.id } });
@@ -240,7 +240,9 @@ describe("挪 / 不挪", () => {
     const 回复前 = await raw.entReplyOverdue.findUniqueOrThrow({ where: { projectId: a } });
     const 沟通数 = await raw.followUp.count();
 
-    const mergeId = await 并(a, b, 乙, { 组员: [丙.id, 老板.id] });
+    const 预 = await 项目合并预览(prisma, a, b, 乙);
+    expect(预.组员).toEqual([{ userId: 丙.id, name: "丙" }]);
+    const mergeId = await 并(a, b, 乙);
 
     expect((await raw.followUpProject.findUniqueOrThrow({ where: { followUpId: fb } })).projectId).toBe(a);
     expect((await raw.followUpProject.findUniqueOrThrow({ where: { followUpId: fa } })).projectId).toBe(a);
@@ -256,8 +258,8 @@ describe("挪 / 不挪", () => {
     expect(await raw.projectContact.count({ where: { projectId: b } })).toBe(0);
     expect(await raw.projectCustomer.count({ where: { projectId: a, customerId: c2 } })).toBe(1);
     expect(await raw.projectCustomer.count({ where: { projectId: b } })).toBe(0);
-    // 组员：丙 加进 A，老板 已在组里跳过；B 的组员行不动
-    expect((await raw.projectMember.findMany({ where: { projectId: a } })).map((m) => m.userId).sort()).toEqual([老板.id, 丙.id].sort());
+    // 组员（E-331 必改 3）：B 的组员不并进 A，A 的项目组照旧；B 的组员行不动
+    expect((await raw.projectMember.findMany({ where: { projectId: a } })).map((m) => m.userId)).toEqual([老板.id]);
     expect(await raw.projectMember.count({ where: { projectId: b } })).toBe(2);
     // 不挪
     expect(await raw.projectNodeLog.count({ where: { projectId: a } })).toBe(0);
@@ -278,16 +280,27 @@ describe("挪 / 不挪", () => {
     expect(单).toMatchObject({ kind: 项目单, fromId: b, intoId: a, status: "已合并", byUserId: 乙.id });
     expect(JSON.parse(单.counts)).toMatchObject({ 沟通: 1, 附件: 1, 录音: 1, 点评: 1, 联系人: 2, 关联客户: 1, 卡点: 1 });
     expect(await raw.auditLog.count({ where: { action: "merge", entity: "Project" } })).toBe(2);
+    // 留痕：合并单明细、被并项目那条日志记下 B 当时的组员名单（含邀请着没进组的，标着状态）
+    const 明 = JSON.parse(单.detail) as { 被并组员: unknown[]; 加组员?: unknown };
+    expect(明.加组员).toBeUndefined();
+    expect(明.被并组员).toEqual(expect.arrayContaining([
+      { userId: 丙.id, name: "丙", roleId: null, inviteStatus: "JOINED" },
+      { userId: 老板.id, name: "老板", roleId: null, inviteStatus: "INVITED" },
+    ]));
+    expect(明.被并组员).toHaveLength(2);
+    const B志 = await raw.auditLog.findFirstOrThrow({ where: { action: "merge", entity: "Project", entityId: b } });
+    expect(B志.summary).toContain("1 位组员留在这个项目里（丙），不并进「");
+    const B志组员 = JSON.parse(B志.detail ?? "{}").组员 as unknown[];
+    expect(B志组员).toEqual(expect.arrayContaining([{ userId: 丙.id, name: "丙", inviteStatus: "JOINED" }, { userId: 老板.id, name: "老板", inviteStatus: "INVITED" }]));
+    expect(B志组员).toHaveLength(2);
     await 等通知推完();
     expect(await raw.entNotice.count({ where: { kind: 项目合并通知种类 } })).toBe(0);
   });
 
-  it("系统管理员代并：负责人收一条通知；勾了不在被并项目组里的人整笔拦下", async () => {
+  it("系统管理员代并：负责人收一条通知", async () => {
     const c = await 客户(乙.id);
     const a = await 项目(乙.id, c);
     const b = await 项目(乙.id, c);
-    expect(await 执行项目合并(prisma, a, b, 老板, { 组员: [丙.id] })).toMatchObject({ ok: false, error: expect.stringContaining("勾的组员不在") });
-    expect((await 项(b)).result).toBeNull();
     await 并(a, b, 老板);
     await 等通知推完();
     expect((await raw.entNotice.findMany({ where: { kind: 项目合并通知种类 } })).map((n) => n.userId)).toEqual([乙.id]);
@@ -295,7 +308,7 @@ describe("挪 / 不挪", () => {
 });
 
 describe("撤回", () => {
-  it("只比合并写过的格：挪的回去、去重删的建回、加的组员删掉、结局终判清回；之后被改过的记进没还原", async () => {
+  it("只比合并写过的格：挪的回去、去重删的建回、结局终判清回、被并项目的组员照旧在；之后被改过的记进没还原", async () => {
     const c = await 客户(乙.id);
     const a = await 项目(乙.id, c);
     const b = await 项目(乙.id, c);
@@ -306,7 +319,7 @@ describe("撤回", () => {
     await raw.projectContact.createMany({ data: [{ projectId: a, contactId: 都有 }, { projectId: b, contactId: 都有, roles: "决策人" }] });
     await raw.projectMember.create({ data: { projectId: b, userId: 丙.id } });
     await raw.entLeadVerify.create({ data: { projectId: b, verdict: "暂未判定", verifyNote: "原来的" } });
-    const mergeId = await 并(a, b, 乙, { 组员: [丙.id] });
+    const mergeId = await 并(a, b, 乙);
     // 合并之后 f2 被挪到别的项目
     await raw.followUpProject.update({ where: { followUpId: f2 }, data: { projectId: x } });
 
@@ -318,6 +331,7 @@ describe("撤回", () => {
     expect(await raw.projectContact.findFirst({ where: { projectId: b, contactId: 都有 } })).toMatchObject({ roles: "决策人" });
     expect(await raw.projectContact.count({ where: { projectId: a, contactId: 都有 } })).toBe(1);
     expect(await raw.projectMember.count({ where: { projectId: a } })).toBe(0);
+    expect(await raw.projectMember.findMany({ where: { projectId: b }, select: { userId: true, inviteStatus: true } })).toEqual([{ userId: 丙.id, inviteStatus: "JOINED" }]);
     expect(await 项(b)).toMatchObject({ result: null, closedAt: null });
     expect(await raw.entLeadVerify.findUniqueOrThrow({ where: { projectId: b } })).toMatchObject({ verdict: "暂未判定", finalResult: null, invalidReason: null, verifyNote: "原来的" });
     expect(await raw.entCustomerMerge.findUniqueOrThrow({ where: { id: mergeId } })).toMatchObject({ status: "已撤回", undoneById: 乙.id });
