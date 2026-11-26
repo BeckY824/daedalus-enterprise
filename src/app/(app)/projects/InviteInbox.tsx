@@ -69,7 +69,7 @@ export default function InviteInbox({ 邀请们 }: { 邀请们: 邀请行[] }) {
         <div key={r.id} style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 8 }}>
           <span style={{ flex: "1 1 240px", minWidth: 0 }}>
             <b>{r.项目}</b>
-            <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>组长 {r.负责人} · {r.邀请人} 邀请 · {fmtDate(r.createdAt)}</span>
+            <span style={{ color: "var(--text-muted)", marginLeft: 8 }}>项目负责人 {r.负责人} · {r.邀请人} 邀请 · {fmtDate(r.createdAt)}</span>
             {r.角色 && <Tag style={{ marginLeft: 8 }}>{r.角色}</Tag>}
           </span>
           <Space>

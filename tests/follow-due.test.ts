@@ -27,11 +27,12 @@ describe("要跟的数：一个口径、处处一样", () => {
   it("左栏「跟进」、手机铃铛都挂它", () => {
     const 壳 = 读("src/components/AppShell.tsx");
     // 左栏哪一项挂红数看 挂要跟：别的版本是「跟进」，企业版项目模式跟进不在左栏，挂在「客户」上（lib/enterprise/nav.ts；10-29 起挂「项目」，11-12 C1 去掉「项目」后挪到「客户」）
-    expect(壳).toContain("n.挂要跟 && 要跟数 > 0");
+    // 11-26 起这个数 layout 不等、晚一步到（components/LateCount.tsx）：红数包在 <晚到 值={要跟}> 里，到了 > 0 才画
+    expect(壳).toMatch(/n\.挂要跟 && \(\s*<晚到 值=\{要跟\} 占=\{没要跟\}>[\s\S]{0,200}return 数 > 0 && \(\s*<span className="rail-count"/);
     // 团队版左栏「跟进」直接进计划页（沟通记录主页 11-15 删了）
     expect(壳).toMatch(/key: "\/follow-ups\/plans", icon: <InteractionOutlined \/>, label: "跟进", 组: "主", 挂要跟: true/);
     expect(读("src/lib/enterprise/nav.ts")).toMatch(/key: "\/customers", label: 客户叫法, 图: "客户", 挂要跟: true/);
-    expect(壳).toMatch(/<Badge count=\{要跟数\}/);
+    expect(壳).toMatch(/<晚到 值=\{要跟\} 占=\{没要跟\}>[\s\S]{0,200}<Badge count=\{数\}[^\n]*\n\s*<Button type="text" icon=\{<CalendarOutlined \/>\}/);
     // 企业版项目首页只留看板、列表（U-项目-08，10-31）：页头不再摆「沟通记录」键，项目页不挂这个数
     expect(读("src/app/(app)/projects/ProjectsView.tsx")).not.toContain("useFollowDue()");
   });

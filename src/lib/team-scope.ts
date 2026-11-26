@@ -324,9 +324,21 @@ export async function 现在的公海回避(db: PrismaClient): Promise<公海回
  * 项目列表按客户名 / 号码 / 客户来源筛时，客户不露的不算中（lib/project/list.ts 露客户条件），总数和分页才能在库里算
  */
 export async function 客户读条件(db: PrismaClient): Promise<Record<string, unknown> | null> {
-  const { 我, 读, 互看, 市场, 按线, 公海回避, 组员客户, 市场全看, 本人, 条线建的 } = await 现在的限定(db);
-  if (!我) return 公海回避 ? 只回避条件("Customer", 公海回避) : null;
-  return 限定条件("Customer", 读 ?? 我, !读 && 互看, 市场, 按线, 公海回避, 组员客户, 市场全看, false, undefined, 本人, 条线建的);
+  return 读条件of(db, "Customer");
+}
+
+/**
+ * 同 客户读条件，「读项目」那一句（和 加上限定 里 Project 的读同一个分支，含待分配对本线管理放开）。
+ * 给跨客户按项目滤跟进的地方用（首页 AI search_followups，lib/enterprise/customer-follow-feed.ts 跨客户跟进可见条件）
+ */
+export async function 项目读条件(db: PrismaClient): Promise<Record<string, unknown> | null> {
+  return 读条件of(db, "Project");
+}
+
+async function 读条件of(db: PrismaClient, model: "Customer" | "Project"): Promise<Record<string, unknown> | null> {
+  const { 我, 读, 互看, 市场, 按线, 公海回避, 组员客户, 市场全看, 待分配放开, 本人, 条线建的 } = await 现在的限定(db);
+  if (!我) return 公海回避 ? 只回避条件(model, 公海回避) : null;
+  return 限定条件(model, 读 ?? 我, !读 && 互看, 市场, 按线, 公海回避, 组员客户, 市场全看, false, model === "Project" ? 待分配放开 : undefined, 本人, 条线建的);
 }
 
 /**

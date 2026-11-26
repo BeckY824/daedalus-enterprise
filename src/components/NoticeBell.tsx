@@ -13,6 +13,7 @@ import { 读我的通知, 读未读通知数, 标已读, 全部标已读 } from 
 import type { 通知行 } from "@/lib/enterprise/notify";
 import { 去放弃参数, 放弃后要离开 } from "@/lib/enterprise/lead-giveup-core";
 import GiveUpDialog from "@/app/(app)/projects/[id]/GiveUpDialog";
+import { 晚到, type 或晚到 } from "@/components/LateCount";
 
 /**
  * 企业版站内通知的铃铛（11-01）：左栏顶上搜索框右边 / 手机顶栏。红数 = 我没读的通知；
@@ -50,12 +51,26 @@ export function 多久以前(iso: string, 现在 = Date.now()): string {
   return businessDayjs(iso).format("M月D日");
 }
 
-export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初始未读?: number; 手机?: boolean }) {
+/**
+ * 初始未读：layout 不等这个数（11-26），可以是 Promise——铃铛先出，红数到了在流里填进角上（components/LateCount.tsx）。
+ * 之后的数照旧是这里自己问的（每分钟、打开抽屉、点了已读），以那个为准
+ */
+export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初始未读?: 或晚到<number>; 手机?: boolean }) {
   const router = useRouter();
   /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
   const 去页 = useNavGo();
   const 少 = useSystemReducedMotion();
-  const [未读, set未读] = useState(初始未读);
+  /** null = 还没自己问过、初始数也还没到：显示的数从 初始未读 拿 */
+  const [未读值, set未读] = useState<number | null>(typeof 初始未读 === "number" ? 初始未读 : null);
+  useEffect(() => {
+    if (typeof 初始未读 === "number") return;
+    let 还在 = true;
+    初始未读.then((n) => 还在 && set未读((原) => 原 ?? n), () => {});
+    return () => {
+      还在 = false;
+    };
+  }, [初始未读]);
+  const 未读 = 未读值 ?? 0;
   const [开着, set开着] = useState(false);
   const [挂过, set挂过] = useState(false);
   /** 第几次打开：列表按它换 key，每次打开条目都依次落位一遍（原型 g.notice「改后」） */
@@ -107,7 +122,7 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
   const 点 = (r: 通知行) => {
     if (!r.read) {
       set行们((原) => 原?.map((x) => (x.id === r.id ? { ...x, read: true } : x)) ?? 原);
-      set未读((n) => Math.max(0, n - 1));
+      set未读((n) => Math.max(0, (n ?? 0) - 1));
       标已读(r.id).then(set未读).catch(() => {});
     }
     if (r.link) {
@@ -138,10 +153,10 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
     }
   };
 
-  const 说法 = 未读 > 0 ? `通知，${未读} 条未读` : "通知";
-  return (
-    <>
-      {!手机 ? (
+  /** 铃铛这颗钮（带角上红数）。初始数没到时同一颗钮、不带数，到了只多出角上那个红数，不挪位置 */
+  const 钮 = (未读: number) => {
+    const 说法 = 未读 > 0 ? `通知，${未读} 条未读` : "通知";
+    return !手机 ? (
         /* 设计语言 H-B · H-新11：悬停出一句提示（「通知，N 条未读」），不再只有一块灰底；
            红数收进铃铛这颗钮的右上角（globals.css .notice-bell-badge），99+ 也不压出钮外、不压到左栏边 */
         <Tooltip title={说法} placement="bottom" mouseEnterDelay={0.3}>
@@ -153,7 +168,11 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
         <Badge count={未读} size="small" overflowCount={99}>
           <Button type="text" icon={<BellOutlined />} aria-label={说法} title={说法} onClick={打开} />
         </Badge>
-      )}
+      );
+  };
+  return (
+    <>
+      <晚到 值={初始未读} 占={0}>{(初) => 钮(未读值 ?? 初)}</晚到>
       {挂过 && (
         <ConfigProvider theme={{ token: { motion: !少 } }}>
           <Drawer
