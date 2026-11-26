@@ -16,7 +16,7 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 视图写拦 } from "@/lib/enterprise/view-as";
-import { 能标已开票, 取消已开票不给, type 谁 } from "@/lib/enterprise/permissions";
+import { 能标已开票, 财务的, 取消已开票不给, type 谁 } from "@/lib/enterprise/permissions";
 import { dayjs } from "@/lib/utils";
 import { 看全部 } from "@/lib/team-scope";
 import { prisma } from "@/lib/prisma";
@@ -48,7 +48,8 @@ export async function 勾已开票(me: 谁 & { name: string }, projectId: string
   if (!企业版()) return { ok: false, error: "已开票只在企业版有" };
   await 视图写拦("Project.invoice");
   const org = await 权限组织();
-  if (勾 && !能标已开票(me, org)) return { ok: false, error: org?.可标已开票?.has(me.id) ? 不再是财务话 : 不能标已开票话 };
+  // 名单里的人勾不了：只有确实不再是财务的才说「你已不是财务」；被设只看某人、改成只读角色的回原来那句
+  if (勾 && !能标已开票(me, org)) return { ok: false, error: org?.可标已开票?.has(me.id) && !财务的(org, me.id) ? 不再是财务话 : 不能标已开票话 };
   // 取消：身份先判（不是系统管理员的不读项目），30 天在事务里按库里勾的时刻再判
   const 身份不给 = 勾 ? null : 取消已开票不给(me, org, 现在, 现在, 已开票撤回天数);
   if (身份不给) return { ok: false, error: 身份不给 };

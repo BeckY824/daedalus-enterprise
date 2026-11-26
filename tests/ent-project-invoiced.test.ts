@@ -28,6 +28,10 @@ import { 勾已开票, 已开票撤回天数, 已开票拦合并, 不能标已�
 import { 能进开票名单, 财务的 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 视图只读话 } from "@/lib/enterprise/view-as-words";
+import feishuContacts from "./fixtures/ent-feishu-contacts.json";
+import { 换联网, 连接键 } from "@/lib/enterprise-import/adapter";
+import { 同步通讯录 } from "@/lib/enterprise/org-sync";
+import { 假网, type 录制 } from "./helpers/ent-fake-net";
 import { 勾项目已开票 } from "@/app/(app)/projects/actions";
 import { 设可标已开票 } from "@/app/(app)/settings/org-actions";
 import { 项目历史页, 历史变更摘要 } from "@/app/(app)/customers/[id]/history-data";
@@ -105,6 +109,53 @@ describe("谁能勾", () => {
     }
     expect((await 读(项目id)).invoiced).toBe(false);
     expect(await 日志(项目id)).toHaveLength(0);
+  });
+
+  it("名单里的财务被设只看某人、改成只读角色：回原来那句「不能标」，不说「你已不是财务」", async () => {
+    for (const u of [只读, 只看]) await prisma.user.update({ where: { id: u.id }, data: { title: "财务专员" } });
+    忘掉企业版范围();
+    const org = await 权限组织();
+    for (const u of [只读, 只看]) {
+      expect(财务的(org, u.id)).toBe(true);
+      expect(await 以(u, () => 勾项目已开票(项目id, true))).toEqual({ ok: false, error: 不能标已开票话 });
+    }
+    expect((await 读(项目id)).invoiced).toBe(false);
+  });
+
+  it("飞书同步：上游职务「财务专员」改「销售」，职位跟着变，再勾就拦（E-375）", async () => {
+    // 名单里的人在飞书是 ou-s1（zs@example.com），部门不在财务：只靠职位认
+    const zs = await 造人("zs", "测试财务丙", "SALES", "sales");
+    await prisma.user.update({ where: { id: zs.id }, data: { email: "zs@example.com" } });
+    await setSetting(可标已开票键, [zs.id]);
+    // 项目挂到他名下：看得到才勾得上
+    await prisma.customer.update({ where: { id: 客户id }, data: { salesOwnerId: zs.id } });
+    await prisma.project.update({ where: { id: 项目id }, data: { ownerId: zs.id } });
+    await setSetting(连接键("feishu"), { appId: "cli_fake", appSecret: "fake-secret" });
+    const 录 = (职务: string): 录制 => {
+      const r = JSON.parse(JSON.stringify(feishuContacts)) as 录制;
+      for (const 响应们 of Object.values(r.路由))
+        for (const x of 响应们 as { body?: { data?: { items?: { open_id?: string; job_title?: string }[] } } }[])
+          for (const it of x.body?.data?.items ?? []) if (it.open_id === "ou-s1") it.job_title = 职务;
+      return r;
+    };
+    try {
+      换联网(假网(录("财务专员")).网);
+      expect((await 同步通讯录("feishu")).结果).toBe("成功");
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: zs.id } })).title).toBe("财务专员");
+      invalidateSettingsCache();
+      忘掉企业版范围();
+      expect(await 以(zs, () => 勾项目已开票(项目id, true))).toEqual({ ok: true, 变了: true });
+      expect(await 以(管, () => 勾项目已开票(项目id, false))).toEqual({ ok: true, 变了: true });
+      换联网(假网(录("销售")).网);
+      await 同步通讯录("feishu");
+      expect((await prisma.user.findUniqueOrThrow({ where: { id: zs.id } })).title).toBe("销售");
+      invalidateSettingsCache();
+      忘掉企业版范围();
+      expect(await 以(zs, () => 勾项目已开票(项目id, true))).toEqual({ ok: false, error: 不再是财务话 });
+      expect((await 读(项目id)).invoiced).toBe(false);
+    } finally {
+      换联网(null);
+    }
   });
 });
 
