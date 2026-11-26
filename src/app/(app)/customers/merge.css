@@ -58,7 +58,7 @@
 /* 申请页操作列只有约 150 宽：撤回失败的原因一行放不下就省略，全文在 title（悬停看） */
 .mrq-stack .ls-at-op .ls-row-err { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 /* 第二段：等我同意的同意 / 拒绝两颗、办完的结果（标签 + 一行省略），只读时按钮外那层 span 收悬停 */
-.mrq-cnt { margin-left: var(--s2); color: var(--text-muted); font-size: var(--fs-note); font-weight: normal; }
+.mrq-cnt { margin-left: var(--s2); color: var(--text-muted); font-size: var(--fs-note); font-weight: 400; }
 .mrq-ops { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
 .mrq-ro { display: inline-flex; cursor: not-allowed; }
 .mrq-ro > .ant-btn { pointer-events: none; }
