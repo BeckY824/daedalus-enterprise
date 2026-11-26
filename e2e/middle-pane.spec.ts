@@ -8,6 +8,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { 连库 } from "./mock-data";
 import { 装个假模型, 拆掉假模型 } from "./fake-llm";
+import { 等流式出页落定 } from "./stream-settle";
 
 const 前缀 = "中栏开关测试";
 let 客户id = "";
@@ -55,10 +56,11 @@ test("记录页名单：收起、打开、刷新后保持、快捷键、窄窗�
   await page.setViewportSize({ width: 1440, height: 900 });
   await 登录(page);
   await page.goto(`/customers/${客户id}`);
-  // 只认真名单：整页载入时 @pane/customers/[id]/loading.tsx 的骨架（同 class、aria-busy）先到，
-  // 真名单流式到达后先放在 <div hidden> 里，React 最多再攒 300ms 才换上去——这段时间两块 aside 同在 DOM，严格模式会报两个
+  // 只认真名单：整页载入时 @pane/customers/(detail)/layout.tsx 里 Suspense 的骨架（同 class、aria-busy）先到
   const 名单 = page.locator('aside.pane-roster:not([aria-busy="true"])');
   const 主区开关 = page.getByRole("main").getByRole("button", { name: /^显示.+名单$/ });
+  // 真名单流式到达后先藏在 body 下，换上之前可能已在客户端重画一份——两份同在最多约 300ms，见 stream-settle.ts
+  await 等流式出页落定(名单);
   await expect(名单).toBeVisible();
   await expect(主区开关).toHaveCount(0);
 
@@ -124,6 +126,8 @@ test("首页对话列表：收起、打开、刷新后保持、快捷键、窄�
   await page.goto("/dashboard");
   const 列表 = page.locator("aside.pane-chat");
   const 主区开关 = page.getByRole("button", { name: "显示对话列表" });
+  // 骨架（同 class、aria-busy）和流式出页藏着的那份走了再数，见 stream-settle.ts
+  await 等流式出页落定(列表);
   await expect(列表).toBeVisible();
   await expect(主区开关).toHaveCount(0);
 
