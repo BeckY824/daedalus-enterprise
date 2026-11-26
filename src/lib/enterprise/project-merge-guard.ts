@@ -14,6 +14,11 @@ import { 回收站保留天数 } from "./soft-delete-core";
 export const 项目单 = "项目";
 /** 项目合并单撤回期限（天）：同客户合并 */
 export const 项目合并撤回天数 = 回收站保留天数;
+/**
+ * 项目合并写给被并项目的那条线索验证痕的步骤名（EntLeadVerifyLog.step，verdict「无效」）。放这里不放 project-merge.ts：
+ * lead-verify-guard 的复核判死拦要引它（和「销售初判」一样不算复核终局，过了 30 天保护能重启），引 project-merge.ts 会成环
+ */
+export const 项目合并验证步 = "项目合并";
 
 type 读单 = Pick<Prisma.TransactionClient, "entCustomerMerge">;
 export type 在合并单里 = { mergeId: string; 被并: string; 留下: string; 留下名: string; 被并名: string; at: Date };

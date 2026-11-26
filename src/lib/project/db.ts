@@ -350,14 +350,15 @@ export async function 改节点(
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
-    // 合并客户第二批 2a：被并掉的项目 30 天内不能重启、改结局（要动先撤回合并，免得撤回对不上；project-merge-guard.ts）
-    const 已并入 = await 被并项目拦(tx, p.id);
-    if (已并入) return { ok: false as const, error: 已并入 };
     // 「仅上级推」开着（企业版组织规则）：负责人自己推不动，直属上级只给往前推这一步，别的照旧只给负责人（11-01 闭环）
     const 上级代推 = !能改节点(me, p, org) && 上级只推(me, p, 推的组织, 规则);
     if (!能改节点(me, p, org) && !上级代推) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
     // 待分配期间占着负责人一格的建的人不能推进、退回、点结局（P-转-21、X-68）：节点、结局都不给动，字段照改
     if (待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
+    // 合并客户第二批 2a：被并掉的项目 30 天内不能重启、改结局（要动先撤回合并，免得撤回对不上；project-merge-guard.ts）。
+    // 放在权限判断后面：没权限改的人照原样说没权限，不提示「先撤回合并」（2a 审查）
+    const 已并入 = await 被并项目拦(tx, p.id);
+    if (已并入) return { ok: false as const, error: 已并入 };
     // 企业版有结局的改回进程：客户在公海就拦（项目页 / 客户页交付结清页签的「改回进程」按客户判公海藏掉，load.ts 客户在公海）。
     // 包 看全部：原负责人看不到公海里的这位客户（回避），限定着查不到公海那一行
     if (企业版() && p.result && !到.result && p.customerId) {

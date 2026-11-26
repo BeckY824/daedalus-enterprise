@@ -27,16 +27,15 @@ import { 存沟通后重算三态 } from "./tri-state-db";
 import { notify } from "./notify";
 import { 忘掉企业版范围 } from "./visibility";
 import { 拦下, 合并事务选项, 并发失败话, 重算最近跟进, 读没还原, type 合并人, type 没还原 } from "./customer-merge";
-import { 项目单, 项目合并撤回天数, 项目合并单们 } from "./project-merge-guard";
+import { 项目单, 项目合并撤回天数, 项目合并单们, 项目合并验证步 } from "./project-merge-guard";
 
-export { 项目单, 项目合并撤回天数 };
+export { 项目单, 项目合并撤回天数, 项目合并验证步 };
 type 库 = PrismaClient;
 type Tx = Prisma.TransactionClient;
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 export const 项目合并通知种类 = "合并项目";
-/** 被并掉的项目在线索验证记录里的那一步（EntLeadVerifyLog.step） */
-export const 项目合并验证步 = "项目合并";
+/** 撤回项目合并时给被并掉的项目在线索验证记录里留的那一步（EntLeadVerifyLog.step）；合并那一步「项目合并验证步」在 project-merge-guard */
 export const 撤回项目合并验证步 = "撤回项目合并";
 
 /* ───────────────────────── 读两个项目 ───────────────────────── */

@@ -20,8 +20,9 @@ import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 项目合并预览, 执行项目合并, 撤回项目合并, 能并进的项目, 项目的合并单, 项目合并通知种类, 阶段和钱拦, 项目合并验证步 } from "@/lib/enterprise/project-merge";
 import { 项目单, 被并项目拦, 换客户合并拦 } from "@/lib/enterprise/project-merge-guard";
 import { 执行合并, 撤回合并 } from "@/lib/enterprise/customer-merge";
-import { 项目换客户 } from "@/lib/enterprise/project-move-customer";
-import { 改节点, 删项目 } from "@/lib/project/db";
+import { 项目换客户, 撤销换客户 } from "@/lib/enterprise/project-move-customer";
+import { 改节点, 删项目, 只有负责人改进程 } from "@/lib/project/db";
+import { 复核判死拦 } from "@/lib/project/lead-verify-guard";
 import { 销售初判 } from "@/lib/project/lead-verify";
 import { 撤回一批 } from "@/lib/enterprise-import/revert";
 
@@ -381,6 +382,44 @@ describe("合并之后 30 天内的保护", () => {
     expect((await 撤回项目合并(prisma, mergeId, 乙)).ok).toBe(true);
     expect(await 被并项目拦(prisma, b)).toBeNull();
     expect((await 项目换客户(prisma, a, c2, 乙)).ok).toBe(true);
+  });
+
+  it("改节点：没权限的人照原样说没权限，不提示先撤回合并（2a 审查）", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
+    await 并(a, b, 乙);
+    const r = await 改节点(丙, b, { phase: "线索", node: "潜客培育", result: null });
+    expect(r).toMatchObject({ ok: false, error: 只有负责人改进程 });
+  });
+
+  it("过了 30 天保护：被并掉的项目能重启（项目合并写的无效不算复核判死，2a 审查）", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
+    await 并(a, b, 乙, { 现在: new Date(Date.now() - 31 * 天) });
+    expect(await raw.entLeadVerify.findUniqueOrThrow({ where: { projectId: b } })).toMatchObject({ finalResult: "无效线索" });
+    expect(await 被并项目拦(prisma, b)).toBeNull();
+    expect(await 复核判死拦(prisma, b)).toBeNull();
+    const r = await 改节点(乙, b, { phase: "线索", node: "潜客培育", result: null });
+    expect(r).toMatchObject({ ok: true });
+    expect(await 项(b)).toMatchObject({ result: null });
+  });
+
+  it("撤销换客户（8 秒撤销条）：换过来之后并了项目，撤销拦下，先撤回合并（2a 审查）", async () => {
+    const c = await 客户(乙.id);
+    const c2 = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const x = await 项目(乙.id, c2);
+    const 换 = await 项目换客户(prisma, x, c, 乙);
+    if (!换.ok) throw new Error(换.error);
+    const mergeId = await 并(a, x, 乙);
+    expect(await 撤销换客户(prisma, 换.logId, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("要动先撤回合并") });
+    expect((await 项(x)).customerId).toBe(c);
+    // 撤回合并后照常能撤销（还在撤销时限里）
+    expect((await 撤回项目合并(prisma, mergeId, 乙)).ok).toBe(true);
+    expect(await 撤销换客户(prisma, 换.logId, 乙)).toMatchObject({ ok: true });
+    expect((await 项(x)).customerId).toBe(c2);
   });
 });
 
