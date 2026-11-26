@@ -8,7 +8,10 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
+const 登录 = vi.hoisted(() => ({ user: null as null | { id: string; name: string; email: string; role: string; title: string; avatar: null } }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+// 只给「并进另一个项目」菜单那句读项目详情用（附件入口要认当前登录的人）
+vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => 登录.user, getCurrentUser: async () => 登录.user }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
@@ -25,6 +28,7 @@ import { 改节点, 删项目, 只有负责人改进程 } from "@/lib/project/db
 import { 复核判死拦 } from "@/lib/project/lead-verify-guard";
 import { 销售初判 } from "@/lib/project/lead-verify";
 import { 撤回一批 } from "@/lib/enterprise-import/revert";
+import { 读项目详情 } from "@/app/(app)/projects/[id]/load";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人;
@@ -129,6 +133,31 @@ describe("前提：谁能并、哪些拦", () => {
     const r = await 项目合并预览(prisma, 商机, await 项目(乙.id, c), 乙);
     expect(r.原因.join("；")).toContain("商机阶段");
     expect(阶段和钱拦({ name: "x", phase: "订单" }, "留下", { 回款: 0, 提成: 0 })).toEqual([expect.stringContaining("订单阶段")]);
+  });
+
+  it("[E-331] 合同已生效的拦（被并的、留下的都拦，执行也拦）；别的合同状态、空着不拦；候选里不列已签合同的", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const 签了 = await 项目(乙.id, c, { contractStatus: "已生效" });
+    expect(await 项目合并预览(prisma, a, 签了, 乙)).toMatchObject({ 能并: false, 原因: [expect.stringContaining("已签合同，不能合并")] });
+    expect(await 项目合并预览(prisma, 签了, a, 乙)).toMatchObject({ 能并: false, 原因: [expect.stringContaining("已签合同，不能合并")] });
+    expect(await 执行项目合并(prisma, a, 签了, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("已签合同") });
+    expect(await raw.entCustomerMerge.count()).toBe(0);
+    expect(阶段和钱拦({ name: "x", phase: "线索", contractStatus: "已生效" }, "并掉", { 回款: 0, 提成: 0 })).toEqual(["「x」已签合同，不能合并"]);
+    for (const s of ["起草中", "我方修改中", "已终止", null]) expect(阶段和钱拦({ name: "x", phase: "线索", contractStatus: s }, "留下", { 回款: 0, 提成: 0 }), String(s)).toEqual([]);
+    const 起草 = await 项目(乙.id, c, { contractStatus: "起草中" });
+    expect(await 项目合并预览(prisma, 起草, a, 乙)).toMatchObject({ 能并: true });
+    // 候选（留下的那个）不列已签合同的；空着、起草中的照列
+    expect((await 能并进的项目(prisma, a, 乙)).map((x) => x.id).sort()).toEqual([起草].sort());
+    // 项目详情「并进另一个项目」菜单：自己签了合同的灰着写原因（同一个 签了合同 判法）
+    const 菜单 = async (id: string) => {
+      登录.user = { ...乙, email: "yi", title: "", avatar: null };
+      const r = await 读项目详情(登录.user as never, id);
+      if (r.种 !== "有") throw new Error("没读到项目");
+      return r.props.p.并进;
+    };
+    expect(await 菜单(签了)).toEqual({ 灰: "已签合同的项目不能合并" });
+    expect(await 菜单(a)).toEqual({});
   });
 
   it("业务线不同拦下（对齐第一批客户合并，2a 审查）；一边空着不拦", async () => {

@@ -28,6 +28,7 @@ import { notify } from "./notify";
 import { 忘掉企业版范围 } from "./visibility";
 import { 拦下, 合并事务选项, 并发失败话, 重算最近跟进, 读没还原, type 合并人, type 没还原 } from "./customer-merge";
 import { 项目单, 项目合并撤回天数, 项目合并单们, 项目合并验证步 } from "./project-merge-guard";
+import { 生效的合同状态 } from "@/lib/project/proj-fields";
 
 export { 项目单, 项目合并撤回天数, 项目合并验证步 };
 type 库 = PrismaClient;
@@ -42,7 +43,7 @@ export const 撤回项目合并验证步 = "撤回项目合并";
 
 const 项目列 = {
   id: true, name: true, customerId: true, ownerId: true, creatorId: true, phase: true, node: true, result: true, closedAt: true,
-  pooledAt: true, awaitAssignAt: true, deletedAt: true, channelId: true, bizLine: true, channel: { select: { channelOwnerId: true } },
+  pooledAt: true, awaitAssignAt: true, deletedAt: true, channelId: true, bizLine: true, contractStatus: true, channel: { select: { channelOwnerId: true } },
 } satisfies Prisma.ProjectSelect;
 type 项目行 = Prisma.ProjectGetPayload<{ select: typeof 项目列 }>;
 
@@ -60,9 +61,15 @@ const 有值 = (v: unknown) => v !== null && v !== undefined && v !== "";
  */
 export const 能并的阶段: Record<"留下" | "并掉", readonly string[]> = { 留下: ["线索"], 并掉: ["线索"] };
 const 钱也能有: Record<"留下" | "并掉", boolean> = { 留下: false, 并掉: false };
-export function 阶段和钱拦(p: Pick<项目行, "name" | "phase">, 角色: "留下" | "并掉", 钱: { 回款: number; 提成: number }): string[] {
+/** 已签合同（合同状态 = 已生效，proj-fields 生效的合同状态）：两边都拦（客户 E-331 必改 1）。开票库里没有字段，不判 */
+export const 已签合同的项目不能合并 = "已签合同的项目不能合并";
+export const 签了合同 = (p: { contractStatus?: string | null }) => p.contractStatus === 生效的合同状态;
+/** 候选那一句（Prisma where）：合同没生效的（空着的也算没生效；SQL 里 NULL <> x 不成立，所以要 OR） */
+const 没签合同 = { OR: [{ contractStatus: null }, { contractStatus: { not: 生效的合同状态 } }] } satisfies Prisma.ProjectWhereInput;
+export function 阶段和钱拦(p: Pick<项目行, "name" | "phase"> & { contractStatus?: string | null }, 角色: "留下" | "并掉", 钱: { 回款: number; 提成: number }): string[] {
   const 因: string[] = [];
   if (!能并的阶段[角色].includes(p.phase)) 因.push(`「${名(p)}」在${p.phase}阶段，只有${能并的阶段[角色].join("、")}阶段的项目能合并`);
+  if (签了合同(p)) 因.push(`「${名(p)}」已签合同，不能合并`);
   if (!钱也能有[角色] && 钱.回款) 因.push(`「${名(p)}」有回款，不能合并`);
   if (!钱也能有[角色] && 钱.提成) 因.push(`「${名(p)}」有提成记录，不能合并`);
   return 因;
@@ -171,10 +178,10 @@ export async function 能并进的项目(db: 库, 并掉id: string, me: 合并�
   return 能并进的候选们(db, B);
 }
 
-/** 候选那一句（同客户、同负责人、线索阶段在推的）：调用方手里已有这个项目的行（项目详情的 load.ts）就直接用，省一次读项目 */
+/** 候选那一句（同客户、同负责人、线索阶段在推的、没签合同的）：调用方手里已有这个项目的行（项目详情的 load.ts）就直接用，省一次读项目 */
 export async function 能并进的候选们(db: 库, B: { id: string; customerId: string; ownerId: string }): Promise<{ id: string; name: string; node: string }[]> {
   return 看全部(() => db.project.findMany({
-    where: { customerId: B.customerId, ownerId: B.ownerId, id: { not: B.id }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null, phase: { in: [...能并的阶段.留下] } },
+    where: { customerId: B.customerId, ownerId: B.ownerId, id: { not: B.id }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null, phase: { in: [...能并的阶段.留下] }, ...没签合同 },
     orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, name: true, node: true },
   }));
 }
