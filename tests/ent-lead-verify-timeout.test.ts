@@ -341,6 +341,61 @@ describe("重复咨询线索的验证时限", () => {
     expect((await 现(id)).node).toBe("线索验证");
   });
 
+  const 卡数 = (u: string) => prisma.entNotice.count({ where: { userId: u, kind: 验证时限通知种类, title: { startsWith: "线索验证到期没能自动落定" } } });
+  async function 备终验卡住() {
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 09:00"));
+    await 市场复核(市场, id, true);
+    await prisma.entLeadVerify.update({ where: { projectId: id }, data: { reviewedAt: 京("2026-12-02 10:00") } });
+    return id; // 不补有效沟通：推进关拦着
+  }
+
+  it("卡住时负责人没了（通知记不上）：同一个 key 改发给系统管理员一次，下一分钟不再重推（单 4 建议 D）", async () => {
+    const id = await 备终验卡住();
+    const orig = await import("@/lib/enterprise/notify");
+    const 真 = orig.notify;
+    // 负责人（乙）记不上，别人照常走真实现
+    const spy = vi.spyOn(orig, "notify").mockImplementation(async (ids, n) =>
+      n.title.startsWith("线索验证到期没能自动落定") && ids.includes(乙.id) ? 0 : 真(ids, n));
+    await 扫(京("2026-12-02 11:00"));
+    await 扫(京("2026-12-02 11:30"));
+    spy.mockRestore();
+    expect(await 卡数(乙.id)).toBe(0);
+    expect(await 卡数(老板.id)).toBe(1);
+    for (const t of ["11:31", "11:32", "12:30"]) expect(await 扫(京(`2026-12-02 ${t}`))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect(await 卡数(老板.id)).toBe(1);
+    expect(await 状态(id)).toMatchObject({ pending: "销售终验" });
+  });
+
+  it("判卡住前销售已提交异议（pending 不再是销售终验）：不发「没能自动落定」（单 4 建议 E）", async () => {
+    const id = await 备终验卡住();
+    const mod = await import("@/lib/project/lead-verify");
+    const spy = vi.spyOn(mod, "到期落定").mockImplementation(async () => {
+      await 记有效沟通(id);
+      expect((await 销售终验(乙, id, false, "坚持无效")).ok).toBe(true);
+      return { ok: false, error: "缺必填", 卡住: true };
+    });
+    await 扫(京("2026-12-02 11:00"));
+    const r = await 扫(京("2026-12-02 11:30"));
+    spy.mockRestore();
+    expect(r.没落成).toBe(1);
+    expect(await 卡数(乙.id)).toBe(0);
+    expect(await 卡数(老板.id)).toBe(0);
+    expect(await 状态(id)).toMatchObject({ pending: "总管理终判", salesAck: "提交异议" });
+  });
+
+  it("Setting 坏值：本钟坏值警告只打一次，超时转生效时刻坏值有日志且只一次（单 4 建议 F）", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await setSetting(验证时限生效key, "坏值-本钟-F");
+    await setSetting(超时转生效key, "坏值-转-F");
+    invalidateSettingsCache();
+    for (const t of ["09:00", "09:01", "09:02"]) await 验证时限扫一遍(京(`2026-12-02 ${t}`));
+    const 日志 = warn.mock.calls.map((c) => String(c[0]));
+    warn.mockRestore();
+    expect(日志.filter((m) => m.includes(验证时限生效key))).toHaveLength(1);
+    expect(日志.filter((m) => m.includes(超时转生效key))).toHaveLength(1);
+  });
+
   it("待分配的线索不走到期落定（扫描查询带 awaitAssignAt: null）", async () => {
     const id = await 项目({ awaitAssignAt: 京("2026-12-02 08:00") });
     await 初判无效于(id, 京("2026-12-02 09:00")).catch(() => {});

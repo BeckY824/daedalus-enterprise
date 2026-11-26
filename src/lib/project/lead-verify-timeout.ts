@@ -19,7 +19,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织 } from "@/lib/enterprise/org";
 import { notify } from "@/lib/enterprise/notify";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
-import { 该做, 不执行, 超时提醒到期, 超时转出安排, 超时自动转开着, 超时提醒分钟, 超时转出分钟, 超时转生效时刻 } from "@/lib/enterprise/reply-overdue";
+import { 该做, 不执行, 超时提醒到期, 超时转出安排, 超时自动转开着, 超时提醒分钟, 超时转出分钟, 超时转生效时刻, 超时转生效key } from "@/lib/enterprise/reply-overdue";
 import { 重复咨询来源 } from "./system-created";
 import { 有效线索节点 } from "./stage-gates";
 import { 实际待, 无效交给, 被等的人们, 到期落定, type 待哪步 } from "./lead-verify";
@@ -44,9 +44,18 @@ async function 本钟生效时刻(现在: Date): Promise<Date> {
   const t = typeof v === "string" ? new Date(v) : null;
   if (t && !Number.isNaN(t.getTime())) return t;
   if (v == null) await setSetting(验证时限生效key, 现在.toISOString());
-  else console.warn(`[验证时限] ${验证时限生效key} 存的值解析不出时刻，不覆盖，先按现在算`);
+  else {
+    // 钟一分钟一遍：同一个坏值只报一次（照 reply-overdue 记过坏生效值）
+    const 坏 = JSON.stringify(v);
+    if (记过坏本钟值 !== 坏) {
+      记过坏本钟值 = 坏;
+      console.warn(`[验证时限] ${验证时限生效key} 存的值解析不出时刻，不覆盖，先按现在算；请系统管理员改成 ISO 时刻`);
+    }
+  }
   return 现在;
 }
+let 记过坏本钟值: string | null = null;
+let 记过坏转生效值: string | null = null;
 
 /** 没人可通知时的落定时刻：该提醒的那刻当作提醒已发，照 超时转出安排 往后排（落在不执行时段 = 下个工作日重新计时再 +30 分钟） */
 export function 兜底落定时刻(起: Date): Date {
@@ -69,7 +78,16 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
   try {
     if (!(await 超时自动转开着())) return 明细;
     if (await 视图中跳过()) return 明细;
-    const 生效 = new Date(Math.max((await 本钟生效时刻(现在)).getTime(), (await 超时转生效时刻(现在)).getTime()));
+    const 转生效 = await 超时转生效时刻(现在);
+    // 超时转生效时刻存坏了会回「现在」，起钟都早于它 = 这一遍全跳过：打一行日志（同一个坏值只一次），别静默
+    if (转生效.getTime() === 现在.getTime()) {
+      const 原 = await getSetting<unknown>(超时转生效key);
+      if (原 != null && JSON.stringify(原) !== 记过坏转生效值) {
+        记过坏转生效值 = JSON.stringify(原);
+        console.warn(`[验证时限] ${超时转生效key} 存的值解析不出时刻，这一遍按现在算、所有在等的线索都不提醒不落定；请系统管理员改成 ISO 时刻`);
+      }
+    }
+    const 生效 = new Date(Math.max((await 本钟生效时刻(现在)).getTime(), 转生效.getTime()));
     const 行们 = await 看全部(() => prisma.entLeadVerify.findMany({
       where: {
         pending: { in: ["市场复核", "销售终验", "总管理终判"] },
@@ -122,13 +140,23 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
         if (!r.ok) {
           明细.没落成++;
           if (r.卡住) {
-            await notify([v.project.ownerId], {
+            // 判卡住前再读一眼：读状态到事务开始之间销售点了提交异议（pending 已不是销售终验）= 不是卡住，静默跳过
+            const 现行 = await prisma.entLeadVerify.findUnique({ where: { projectId: v.projectId }, select: { pending: true } });
+            if (现行?.pending !== "销售终验") continue;
+            const 通知 = {
               kind: 验证时限通知种类,
               title: `线索验证到期没能自动落定：${v.project.name}`,
-              body: `这条重复咨询线索等${步}超过时限，系统想按上一步判定替你落定，但被拦住了：${r.error}。请处理后自己点终验，系统不会再自动重试。`,
+              body: `这条重复咨询线索等${步}超过时限，系统想按上一步判定替负责人落定，但被拦住了：${r.error}。请处理后自己点终验，系统不会再自动重试。`,
               link: 链接,
               key: `${头}:卡住`,
-            });
+            };
+            // 负责人停用 / 不存在记不上：同一个 key 改发给系统管理员一次，卡住标记才记得住，下一分钟不再重推重拦
+            if ((await notify([v.project.ownerId], 通知)) === 0) {
+              const 管理员们 = await 被等的人们(v.projectId, "总管理终判");
+              if ((await notify(管理员们, { ...通知, body: `${通知.body}（负责人已不在或已停用，改由系统管理员处理）` })) === 0) {
+                console.warn(`[验证时限] ${v.projectId} 到期没能自动落定，负责人和系统管理员都没通知上，下一遍还会再试`);
+              }
+            }
           }
           continue;
         }
