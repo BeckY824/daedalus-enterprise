@@ -79,6 +79,7 @@
 .mrq-count .is-over { color: var(--danger-text); }
 /* 手机（≤767）：一张一块卡片，「项 值」一行一项 */
 .mrq-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.mrq-list.mrq-narrow { display: none; }
 .mrq-item { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--panel); }
 .mrq-item.is-done { color: var(--text-muted); }
 .mrq-kv { display: grid; grid-template-columns: 4em minmax(0, 1fr); gap: var(--s2); align-items: baseline; min-width: 0; }
@@ -151,6 +152,8 @@
   /* 「已并入」那一行的撤回、知道了，历史变更里的撤回 */
   .mrg-into-r > .ant-btn, .mrg-order-h > .ant-btn { min-height: var(--hit-touch); }
   /* 合并申请页卡片里的同意 / 拒绝、撤回申请：整行平分、点击区 ≥ --hit-touch */
+  .mrq-wide { display: none; }
+  .mrq-list.mrq-narrow { display: flex; }
   .mrq-item .mrq-ops { margin-top: var(--s1); }
   .mrq-item .mrq-ops > .ant-btn, .mrq-item .mrq-ops > .mrq-ro { flex: 1 1 0; }
   .mrq-item .mrq-ops .ant-btn, .mrq-item .ls-at-op .ant-btn { width: 100%; min-height: var(--hit-touch); }

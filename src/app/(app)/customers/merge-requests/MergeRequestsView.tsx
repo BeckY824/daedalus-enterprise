@@ -7,7 +7,6 @@ import type { ColumnsType } from "antd/es/table";
 import { PageHead } from "@/components/ui";
 import InlineConfirm from "@/components/InlineConfirm";
 import { useViewAs } from "@/components/ViewAsContext";
-import { useNarrow } from "@/lib/roster";
 import { dayjs } from "@/lib/utils";
 import { 撤回客户合并申请, 处理客户合并申请, type 合并申请一条 } from "../merge-actions";
 import { 凭叫法, 等待工作日, 撤回天数, 拒绝原因上限, 看别人视角话 } from "../merge-request-words";
@@ -33,7 +32,11 @@ export function 等了几天(发起: Date | string, 现在 = Date.now()): string
   const n = Math.floor((现在 - new Date(发起).getTime()) / 天);
   return n <= 0 ? "今天发起" : `已等 ${n} 天`;
 }
-const 状态色: Record<string, string> = { 待同意: "blue", 执行中: "blue", 已合并: "green", 已拒绝: "red", 已失效: "default", 已撤回: "default", 已同意: "blue" };
+const 状态色: Record<string, string> = { 待同意: "blue", 执行中: "blue", 已合并: "green", 已拒绝: "red", 已失效: "default", 已作废: "default", 已撤回: "default", 已同意: "blue" };
+
+/** 我发起的一行：服务端可带「显示状态」（作废在库里是已失效，界面和通知都写已作废），没带就用状态 */
+type 带显示 = 合并申请一条 & { 显示状态?: string };
+const 显示状态 = (r: 带显示) => r.显示状态 ?? r.状态;
 
 /** 一位同意人：「张三 同意」「李四 待同意」「王五 拒绝：原因」 */
 const 同意人话 = (x: 合并申请一条["同意人"][number]) => `${x.名} ${x.状态}${x.状态 === "拒绝" && x.一句 ? `：${x.一句}` : ""}`;
@@ -71,7 +74,7 @@ type 框 = { 种: "同意" | "拒绝"; 行: 合并申请一条 };
 
 /**
  * 合并申请（第二批 2b-3）：等我同意的一张（同意 / 拒绝），我发起的一张（待同意时可撤回申请）。
- * 电脑：表格固定列宽、单元格省略号（悬停看全），放不下在表格里横滚；手机（≤767）每张一块卡片、一项一行，按钮整行 ≥ 触屏点击区。
+ * 表格和卡片两套都渲染、CSS @media 显隐（不靠 JS 判宽，首屏不闪）。电脑：表格固定列宽、单元格省略号（悬停看全），放不下在表格里横滚；手机（≤767）每张一块卡片、一项一行，按钮整行 ≥ 触屏点击区。
  * 同意弹确认框（按我站哪边说后果，最后一位多一句）；拒绝弹框写原因（选填、≤100 字，超了点不了）。
  * 办成了这一行留在表里、置灰写结果（刷新后从「等我同意」里去掉）；没办成原因写在框里、框不关。
  * 只读身份（只读管理员、销售教练、设了只看某人、切换视图在看别人）：列表照常，按钮置灰、悬停写原因；服务端本来就拦
@@ -79,7 +82,6 @@ type 框 = { 种: "同意" | "拒绝"; 行: 合并申请一条 };
 export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因 = null }: { 等我: 合并申请一条[]; 我发起: 合并申请一条[]; 我: string; 只读原因?: string | null }) {
   const router = useRouter();
   const 切换视图 = useViewAs();
-  const 窄 = useNarrow("(max-width: 767px)");
   const 不能写 = 只读原因 ?? (切换视图 ? 看别人视角话 : null);
   const [忙, set忙] = useState<string | null>(null);
   /** 撤回没办成的原因：就地写在那一行的操作格里；办成了刷新后这一行变成已撤回 */
@@ -165,8 +167,8 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
     </div>
   );
 
-  // 办过的留在表里（置灰、写结果），刷新后它已不在「等我同意」里也照样留着，直到离开这一页
-  const 等我行 = [...等我.filter((r) => !办了[r.id]), ...Object.values(办了).map((x) => x.行)];
+  // 办过的留在原位（置灰、写结果），不挪到表底；刷新后已不在「等我同意」里的补到末尾，直到离开这一页
+  const 等我行 = [...等我.map((r) => 办了[r.id]?.行 ?? r), ...Object.values(办了).map((x) => x.行).filter((x) => !等我.some((r) => r.id === x.id))];
   const 待处理数 = 等我.filter((r) => !办了[r.id]).length;
   /** 剩一天（含不足一天）标橙 */
   const 剩 = (r: 合并申请一条) => {
@@ -187,7 +189,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
   const 我发起时间全 = (r: 合并申请一条) => `${时刻(r.发起)} 发起${r.原因 ? `；${r.原因}` : ""}`;
   const 我发起列: ColumnsType<合并申请一条> = [
     { title: "合并", key: "两家", width: 260, ...省略, render: (_, r) => <span title={两家话(r)}>{两家话(r)}</span> },
-    { title: "状态", dataIndex: "状态", width: 90, render: (v: string) => <Tag color={状态色[v] ?? "default"}>{v}</Tag> },
+    { title: "状态", key: "状态", width: 90, render: (_, r) => <Tag color={状态色[显示状态(r)] ?? "default"}>{显示状态(r)}</Tag> },
     { title: "同意人", key: "同意人", width: 260, ...省略, render: (_, r) => { const 话 = r.同意人.map(同意人话).join("，"); return <span title={话}>{话}</span>; } },
     { title: "时间", key: "时间", width: 170, ...省略, render: (_, r) => <span title={我发起时间全(r)}>{我发起时间(r)}</span> },
     { title: "", key: "op", width: 150, render: (_, r) => 撤回钮(r) },
@@ -213,7 +215,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
   const 我发起卡 = (r: 合并申请一条) => (
     <li key={r.id} className="mrq-item" data-testid="merge-req-mine-item">
       {项("合并", 一行(两家话(r)))}
-      {项("状态", <Tag color={状态色[r.状态] ?? "default"}>{r.状态}</Tag>)}
+      {项("状态", <Tag color={状态色[显示状态(r)] ?? "default"}>{显示状态(r)}</Tag>)}
       {项("同意人", 一行(r.同意人.map(同意人话).join("，")))}
       {项("时间", <span className="mrg-one" title={我发起时间全(r)}>{我发起时间(r)}</span>)}
       {撤回钮(r)}
@@ -230,16 +232,22 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
         {不能写 && <Alert type="info" showIcon title={`${不能写}：列表照常显示，同意、拒绝、撤回按钮都点不了`} data-testid="merge-req-ro" />}
         <Card title={<span>等我同意{待处理数 ? <span className="mrq-cnt">{待处理数} 张等你处理</span> : null}</span>} size="small">
           {等我行.length
-            ? 窄
-              ? <ul className="mrq-list" data-testid="merge-req-wait">{等我行.map(等我卡)}</ul>
-              : <Table rowKey="id" size="small" columns={等我列} dataSource={等我行} pagination={false} tableLayout="fixed" scroll={{ x: 1080 }} rowClassName={(r) => (办了[r.id] ? "mrq-done" : "")} data-testid="merge-req-wait" />
+            ? (
+              <>
+                <div className="mrq-wide"><Table rowKey="id" size="small" columns={等我列} dataSource={等我行} pagination={false} tableLayout="fixed" scroll={{ x: 1080 }} rowClassName={(r) => (办了[r.id] ? "mrq-done" : "")} data-testid="merge-req-wait" /></div>
+                <ul className="mrq-list mrq-narrow" data-testid="merge-req-wait-list">{等我行.map(等我卡)}</ul>
+              </>
+            )
             : <Empty description="没有等你同意的合并申请" />}
         </Card>
         <Card title="我发起的" size="small">
           {我发起.length
-            ? 窄
-              ? <ul className="mrq-list" data-testid="merge-req-mine">{我发起.map(我发起卡)}</ul>
-              : <Table rowKey="id" size="small" columns={我发起列} dataSource={我发起} pagination={false} tableLayout="fixed" scroll={{ x: 930 }} data-testid="merge-req-mine" />
+            ? (
+              <>
+                <div className="mrq-wide"><Table rowKey="id" size="small" columns={我发起列} dataSource={我发起} pagination={false} tableLayout="fixed" scroll={{ x: 930 }} data-testid="merge-req-mine" /></div>
+                <ul className="mrq-list mrq-narrow" data-testid="merge-req-mine-list">{我发起.map(我发起卡)}</ul>
+              </>
+            )
             : <Empty description="还没发过合并申请" />}
         </Card>
       </div>

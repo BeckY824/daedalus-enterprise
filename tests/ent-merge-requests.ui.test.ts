@@ -67,15 +67,17 @@ async function open(width: number, 补: object = {}, 视图 = false, 设: Record
   await page.getByText("等我同意").first().waitFor();
   return { page, 错 };
 }
+/** 表格和卡片两套都在 DOM 里、CSS 显隐：按钮、结果这些按可见那份找 */
+const 见 = (page: Page, id: string) => page.locator(`[data-testid="${id}"]:visible`);
 const 调 = (page: Page) => page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调 ?? []);
 const 横滚 = (page: Page) => page.evaluate(() => document.documentElement.scrollWidth > innerWidth);
-const 框 = (page: Page) => page.getByTestId("merge-request-box");
+const 框 = (page: Page) => 见(page, "merge-request-box");
 const 截图 = (page: Page, 名: string) => process.env.MERGE_SHOT_DIR ? page.screenshot({ path: path.join(process.env.MERGE_SHOT_DIR, 名), fullPage: true }) : Promise.resolve();
 
 it("同意：并掉那家这边说「N 个项目挪到留下那家，仍归你」、还差几位；确认后这一行留着写「你已同意，还差 1 位」；长客户名一行省略悬停看全", async () => {
   const { page, 错 } = await open(1280);
   try {
-    const 表 = page.getByTestId("merge-req-wait");
+    const 表 = 见(page, "merge-req-wait");
     expect(await 表.locator(".ant-table-row").count()).toBe(2);
     expect(await page.locator(".mrq-cnt").innerText()).toBe("2 张等你处理");
     const 合并格 = 表.locator(".ant-table-row").first().locator("td").first().locator("span[title]");
@@ -86,21 +88,21 @@ it("同意：并掉那家这边说「N 个项目挪到留下那家，仍归你�
     await 表.getByTestId("merge-request-agree").first().click();
     await 框(page).waitFor();
     expect(await page.locator(".mrg-modal .ant-modal-title").innerText()).toBe("同意这张合并申请？");
-    expect(await page.getByTestId("merge-request-effect").innerText()).toBe("同意后，你的 2 个项目挪到留下那家，仍归你。");
+    expect(await 见(page, "merge-request-effect").innerText()).toBe("同意后，你的 2 个项目挪到留下那家，仍归你。");
     expect(await 框(page).innerText()).toContain("还差 1 位同意才合并。");
-    expect(await page.getByTestId("merge-request-last").count()).toBe(0);
+    expect(await 见(page, "merge-request-last").count()).toBe(0);
     // 框里两家各一行，长名省略、悬停看全
     const 并掉行 = 框(page).locator(".mrq-two-r").nth(1).locator(".mrg-one");
     expect(await 并掉行.evaluate((e) => [e.scrollWidth > e.clientWidth, e.getAttribute("title")])).toEqual([true, 长名]);
     await 截图(page, "合并申请-同意框-1280.png");
-    await page.getByTestId("merge-request-agree-ok").click();
-    await page.getByTestId("merge-request-done").first().waitFor();
+    await 见(page, "merge-request-agree-ok").click();
+    await 见(page, "merge-request-done").first().waitFor();
     expect(await 调(page)).toEqual([["处理", "w1", "同意", undefined]]);
-    const 完 = page.getByTestId("merge-request-done").first();
+    const 完 = 见(page, "merge-request-done").first();
     expect(await 完.innerText()).toMatch(/已同意\s*你已同意，还差 1 位/);
     expect(await page.locator(".mrq-cnt").innerText()).toBe("1 张等你处理");
-    // 办过的那行沉到最后、不再有同意 / 拒绝
-    expect(await 表.locator(".ant-table-row").last().getByTestId("merge-request-agree").count()).toBe(0);
+    // 办过的那行留在原位（第 1 行）、不再有同意 / 拒绝
+    expect(await 表.locator(".ant-table-row").first().getByTestId("merge-request-agree").count()).toBe(0);
     expect(await page.evaluate(() => (window as unknown as { __刷?: number }).__刷)).toBe(1);
     expect(错).toEqual([]);
   } finally { await page.close(); }
@@ -109,13 +111,13 @@ it("同意：并掉那家这边说「N 个项目挪到留下那家，仍归你�
 it("同意：留下那家的同事说「项目不动、多出联系人和沟通」；最后一位多一句立即合并、30 天内可撤回；合并了写「已合并 · 30 天内发起人可撤回」", async () => {
   const { page, 错 } = await open(1440, {}, false, { __处理结果: { w2: { ok: true, 状态: "已合并", mergeId: "mg1" } } });
   try {
-    await page.getByTestId("merge-request-agree").nth(1).click();
+    await 见(page, "merge-request-agree").nth(1).click();
     await 框(page).waitFor();
-    expect(await page.getByTestId("merge-request-effect").innerText()).toBe("同意后，你的项目不动，客户会多出另一家的联系人和沟通。");
-    expect(await page.getByTestId("merge-request-last").innerText()).toBe("你是最后一位：同意后立即合并，30 天内发起人可撤回。");
-    await page.getByTestId("merge-request-agree-ok").click();
-    await page.getByTestId("merge-request-done").waitFor();
-    expect(await page.getByTestId("merge-request-done").innerText()).toMatch(/已合并\s*已合并 · 30 天内发起人可撤回/);
+    expect(await 见(page, "merge-request-effect").innerText()).toBe("同意后，你的项目不动，客户会多出另一家的联系人和沟通。");
+    expect(await 见(page, "merge-request-last").innerText()).toBe("你是最后一位：同意后立即合并，30 天内发起人可撤回。");
+    await 见(page, "merge-request-agree-ok").click();
+    await 见(page, "merge-request-done").waitFor();
+    expect(await 见(page, "merge-request-done").innerText()).toMatch(/已合并\s*已合并 · 30 天内发起人可撤回/);
     expect(错).toEqual([]);
   } finally { await page.close(); }
 });
@@ -123,28 +125,28 @@ it("同意：留下那家的同事说「项目不动、多出联系人和沟通�
 it("拒绝：原因选填、超 100 字点不了并写超出几字；带原因确认后写「你已拒绝：…」；没办成的原因写在框里、框不关", async () => {
   const { page, 错 } = await open(1280, {}, false, { __处理结果: { w2: { ok: false, error: "超过 5 个工作日没有全部同意，申请已失效，要重新发起" } } });
   try {
-    await page.getByTestId("merge-request-reject").first().click();
+    await 见(page, "merge-request-reject").first().click();
     await 框(page).waitFor();
     expect(await page.locator(".mrg-modal .ant-modal-title").innerText()).toBe("拒绝这张合并申请");
-    expect(await page.getByTestId("merge-request-effect").count()).toBe(0);
-    const 确认 = page.getByTestId("merge-request-reject-ok");
+    expect(await 见(page, "merge-request-effect").count()).toBe(0);
+    const 确认 = 见(page, "merge-request-reject-ok");
     expect(await 确认.isDisabled()).toBe(false); // 选填：不写也能拒
-    await page.getByTestId("merge-request-why").fill("字".repeat(101));
+    await 见(page, "merge-request-why").fill("字".repeat(101));
     expect(await 确认.isDisabled()).toBe(true);
     expect(await 框(page).innerText()).toContain("超出 1 字");
     expect(await 框(page).innerText()).toContain("101 / 100");
-    await page.getByTestId("merge-request-why").fill("  这家还在我手上跟进  ");
+    await 见(page, "merge-request-why").fill("  这家还在我手上跟进  ");
     expect(await 确认.isDisabled()).toBe(false);
     await 确认.click();
-    await page.getByTestId("merge-request-done").waitFor();
+    await 见(page, "merge-request-done").waitFor();
     expect(await 调(page)).toEqual([["处理", "w1", "拒绝", "这家还在我手上跟进"]]);
-    expect(await page.getByTestId("merge-request-done").innerText()).toMatch(/已拒绝\s*你已拒绝：这家还在我手上跟进（已通知发起人和其余同意人）/);
+    expect(await 见(page, "merge-request-done").innerText()).toMatch(/已拒绝\s*你已拒绝：这家还在我手上跟进（已通知发起人和其余同意人）/);
 
     // 第二张：服务端说已失效 → 框不关、原因写在框里
-    await page.getByTestId("merge-request-agree").first().click();
-    await page.getByTestId("merge-request-agree-ok").click();
-    await page.getByTestId("merge-request-err").waitFor();
-    expect(await page.getByTestId("merge-request-err").innerText()).toContain("申请已失效");
+    await 见(page, "merge-request-agree").first().click();
+    await 见(page, "merge-request-agree-ok").click();
+    await 见(page, "merge-request-err").waitFor();
+    expect(await 见(page, "merge-request-err").innerText()).toContain("申请已失效");
     expect(await 框(page).isVisible()).toBe(true);
     expect(错).toEqual([]);
   } finally { await page.close(); }
@@ -154,11 +156,11 @@ it("只读管理员 / 切换视图在看别人：列表照常显示，同意、�
   for (const [补, 视图, 话] of [[{ 只读原因: "只读管理员不能替人同意或拒绝" }, false, "只读管理员不能替人同意或拒绝"], [{}, true, "正在看别人的视角，只能看"]] as const) {
     const { page, 错 } = await open(1280, 补, 视图);
     try {
-      expect(await page.getByTestId("merge-req-wait").locator(".ant-table-row").count()).toBe(2);
-      expect(await page.getByTestId("merge-req-mine").locator(".ant-table-row").count()).toBe(2);
-      expect(await page.getByTestId("merge-req-ro").innerText()).toContain(话);
+      expect(await 见(page, "merge-req-wait").locator(".ant-table-row").count()).toBe(2);
+      expect(await 见(page, "merge-req-mine").locator(".ant-table-row").count()).toBe(2);
+      expect(await 见(page, "merge-req-ro").innerText()).toContain(话);
       for (const id of ["merge-request-agree", "merge-request-reject", "merge-request-withdraw"]) {
-        const 钮 = page.getByTestId(id).first();
+        const 钮 = 见(page, id).first();
         expect(await 钮.isDisabled()).toBe(true);
         expect(await 钮.evaluate((e) => e.closest(".mrq-ro")?.getAttribute("title"))).toBe(话);
       }
@@ -175,9 +177,9 @@ it("手机 390：一张一块卡片、一项一行，同意 / 拒绝、撤回申
   try {
     const 卡 = page.getByTestId("merge-req-wait-item");
     expect(await 卡.count()).toBe(2);
-    expect(await page.locator(".ant-table").count()).toBe(0);
+    expect(await page.locator(".ant-table:visible").count()).toBe(0);
     for (const id of ["merge-request-agree", "merge-request-reject", "merge-request-withdraw"]) {
-      const h = await page.getByTestId(id).first().evaluate((e) => e.getBoundingClientRect().height);
+      const h = await 见(page, id).first().evaluate((e) => e.getBoundingClientRect().height);
       expect(h, id).toBeGreaterThanOrEqual(44);
     }
     const 名 = 卡.first().locator(".mrq-v .mrg-one").first();
@@ -185,10 +187,10 @@ it("手机 390：一张一块卡片、一项一行，同意 / 拒绝、撤回申
     expect(await 横滚(page)).toBe(false);
     await 截图(page, "合并申请-390.png");
     // 手机上同意框照样弹、按钮 ≥ 44px
-    await page.getByTestId("merge-request-agree").first().click();
+    await 见(page, "merge-request-agree").first().click();
     await 框(page).waitFor();
     // 弹框入场动画在缩放：量 offsetHeight（不受 transform 影响）
-    expect(await page.getByTestId("merge-request-agree-ok").evaluate((e) => (e as HTMLElement).offsetHeight)).toBeGreaterThanOrEqual(44);
+    expect(await 见(page, "merge-request-agree-ok").evaluate((e) => (e as HTMLElement).offsetHeight)).toBeGreaterThanOrEqual(44);
     expect(await 横滚(page)).toBe(false);
     await 截图(page, "合并申请-同意框-390.png");
     expect(错).toEqual([]);
@@ -197,4 +199,24 @@ it("手机 390：一张一块卡片、一项一行，同意 / 拒绝、撤回申
     const { page } = await open(w);
     try { expect(await 横滚(page), String(w)).toBe(false); } finally { await page.close(); }
   }
+});
+
+it("处理第 1 张后它仍在第 1 行（3 张里），不跳到表底；状态标签读「显示状态」，作废显示「已作废」", async () => {
+  const w3 = { ...等我[1], id: "w3", 留下: { id: "A5", 名: "示例客户戊" }, 并掉: { id: "B5", 名: "示例客户己" } };
+  const 作废 = { ...我发起[1], id: "m3", 状态: "已失效", 显示状态: "已作废" };
+  const { page, 错 } = await open(1280, { 等我: [等我[0], 等我[1], w3], 我发起: [...我发起, 作废] });
+  try {
+    const 表 = 见(page, "merge-req-wait");
+    await 见(page, "merge-request-agree").first().click();
+    await 见(page, "merge-request-agree-ok").click();
+    await 见(page, "merge-request-done").waitFor();
+    const 行 = 表.locator(".ant-table-row");
+    expect(await 行.count()).toBe(3);
+    expect(await 行.first().innerText()).toContain("你已同意，还差 1 位");
+    expect(await 行.nth(1).getByTestId("merge-request-agree").count()).toBe(1);
+    expect(await 行.nth(2).getByTestId("merge-request-agree").count()).toBe(1);
+    const 发起 = 见(page, "merge-req-mine").locator(".ant-table-row");
+    expect(await 发起.last().locator(".ant-tag").first().innerText()).toBe("已作废");
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
 });
