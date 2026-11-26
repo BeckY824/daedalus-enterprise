@@ -1552,7 +1552,7 @@ export default function ProjectDetail({
                   {p.已开票.记录.map((r) => <div key={r.id} className="muted">{开票记录字(r)}</div>)}
                   {/* 只摆最近几条：全部的在客户名下那一行的「历史变更」（同一页的入口，点它就是；受限客户详情没有入口、不摆） */}
                   {嵌入 && !嵌入.进程变更卡 && (
-                    <Button type="link" size="small" style={{ paddingInline: 0 }} data-testid="proj-invoiced-log-all"
+                    <Button type="link" size="small" className="proj-inv-all" data-testid="proj-invoiced-log-all"
                       onClick={() => document.querySelector<HTMLButtonElement>('[data-testid="history-entry"]')?.click()}>全部见历史变更</Button>
                   )}
                 </div>
