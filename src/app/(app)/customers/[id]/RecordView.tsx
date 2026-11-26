@@ -225,6 +225,7 @@ export default function RecordView({
   转让原因,
   待办计划 = [],
   醒目条 = null,
+  换人箭头 = null,
   项目区 = null,
   项目联系人 = null,
   项目页签们 = null,
@@ -1286,6 +1287,8 @@ export default function RecordView({
             </button>
           </span>
         )}
+        {/* 「上一条 / 下一条」（E-332）：这一行右端，按进来前那张客户列表的顺序换人（CustomerStep.tsx） */}
+        {换人箭头}
       </div>
       <div className="rec-head">
         {/* 名单不在时（窗口太窄收成抽屉，或者人自己点了收起），最左边补一颗侧栏图标把它叫回来（components/PaneToggle.tsx） */}

@@ -13,7 +13,8 @@ import { 可选渠道 } from "@/lib/options";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 离职交接入口 } from "@/lib/enterprise/offboard-handover";
 import { llmEnabled } from "@/lib/llm";
-import { 客户筛选条件, 客户行字段, 成列表行, 客户金额分页, 在看子集, 只按页签, 关键词分页, 按序取客户行 } from "./query";
+import { 客户筛选条件, 客户行字段, 成列表行, 客户金额分页, 在看子集, 只按页签, 关键词分页, 按序取客户行, 客户排序 } from "./query";
+import type { Prisma } from "@/generated/prisma";
 import { 规整币种 } from "@/lib/currency";
 import { 号码藏着 } from "@/lib/search-keyword";
 import { 自动掉公海, 客户页签数 } from "@/lib/pool-db";
@@ -272,13 +273,8 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   const 能按号码筛 = !号藏;
   const 行P = 看板视图 ? Promise.resolve([]) : 快 ? 按序取客户行(快.ids) : sort ? 客户金额分页(where!, sort, sortCurrency, page, pageSize) : prisma.customer.findMany({
       where: where!,
-      orderBy: 等级排序
-        ? [{ extra: { level: { sort: 等级排序 === "level-asc" ? "asc" : "desc", nulls: "last" } } }, { createdAt: "desc" }, { id: "desc" }]
-        : 跟进排序 === "follow-asc"
-          ? [{ lastFollowAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }, { id: "asc" }]
-          : 跟进排序 === "follow-desc"
-            ? [{ lastFollowAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }]
-            : 创建排序 === "created-asc" ? [{ createdAt: "asc" }, { id: "asc" }] : [{ createdAt: "desc" }, { id: "desc" }],
+      // 顺序和详情页「上一条 / 下一条」同一份（query.ts 客户排序；金额的上面另走）
+      orderBy: 客户排序(等级排序 || 跟进排序 || 创建排序) as Prisma.CustomerOrderByWithRelationInput[],
       skip: (page - 1) * pageSize,
       take: pageSize,
       select: 客户行字段,
