@@ -16,6 +16,8 @@
 .dp-sub, .dp-by { color: var(--text-muted); font-size: var(--fs-note); }
 .dp-one { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dp-ops { display: flex; align-items: center; gap: var(--s2); justify-content: flex-end; }
+.dp-hint { grid-column: 1 / -1; display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.dp-note { color: var(--text-muted); font-size: var(--fs-note); flex: 0 1 auto; }
 .dp-ro { display: inline-flex; cursor: not-allowed; }
 .dp-ro > .ant-btn { pointer-events: none; }
 .dp-err { grid-column: 1 / -1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--danger-text); }
