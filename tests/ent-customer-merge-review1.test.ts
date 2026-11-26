@@ -18,7 +18,6 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 挂靠联系人不能合成, 只有一位联系人不能合成 } from "@/lib/enterprise/merge-hints";
 import { 合并预览, 执行合并, 撤回合并, 合成联系人, 刚被改过话 } from "@/lib/enterprise/customer-merge";
 import { 项目换客户, 项目换客户预览, 撤销换客户, 挂靠说明 } from "@/lib/enterprise/project-move-customer";
 
@@ -166,17 +165,6 @@ describe("M7 / 建议 1 单独合成联系人", () => {
     expect((await raw.followUp.findUniqueOrThrow({ where: { id: 删了的沟通.id } })).contactId).toBe(留);
     expect((await raw.project.findUniqueOrThrow({ where: { id: 删了的项目 } })).contactId).toBe(留);
     expect(await raw.projectContact.findMany({ where: { projectId: 删了的项目 }, select: { contactId: true } })).toEqual([{ contactId: 留 }]);
-  });
-
-  it("两位不在同一位客户名下：服务端拒绝话带界面置灰那句（merge-hints 同一个常量）", async () => {
-    const a = await 客户(乙.id);
-    const b = await 客户(乙.id);
-    const 留 = await 主联系人(a);
-    const 外 = await 主联系人(b);
-    const r = await 合成联系人(prisma, 留, 外, 乙);
-    expect(r).toMatchObject({ ok: false, error: expect.stringContaining(挂靠联系人不能合成) });
-    expect(挂靠联系人不能合成).toBe("挂靠过来的联系人请到他所属的客户里合成");
-    expect(只有一位联系人不能合成).toBe("这位客户只有一位自己的联系人，没有可合成的");
   });
 
   it("客户在转让交接中、标了无效：不让合成（同合并客户）", async () => {

@@ -56,7 +56,7 @@ import ContactForm from "./ContactForm";
 import ContactAttachments from "./ContactAttachments";
 import FollowAttachments from "@/components/FollowAttachments";
 import ContactLinks from "./ContactLinks";
-import { 合并桥, type 合并请求, type 合成候选人, 挂靠联系人不能合成, 只有一位联系人不能合成 } from "./merge-bridge";
+import { 合并桥, type 合并请求, type 合成候选人 } from "./merge-bridge";
 import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
@@ -1046,12 +1046,10 @@ export default function RecordView({
     顺序和分组不变：关键 → 本项目 → 这位客户的其他联系人（P-界面-16）；刚新建的那位排在其余里最前（看得见）。
     「挂到别的客户 / 换主客户」收进「⋯」（M4-c），挂靠那几行、就地填的格子由 ContactLinks 接在组里
   */
-  /** 和另一位合成（合并客户第一批）：同一位客户名下、不是挂靠过来的才行。有权的人（合并口、能合并.联系人、不只读）每位都摆这一项：
-   *  挂靠过来的、客户只有一位自家联系人时置灰写原因（12-02，ContactLinks 合成灰）；服务端 合成两位联系人 照旧拦 */
+  /** 和另一位合成（合并客户第一批）：同一位客户名下、不是挂靠过来的才行；只有一位时不摆 */
   const 合成人 = (c: ContactRow): 合成候选人 => ({ id: c.id, name: c.name, 职务: c.position, 关键: c.isPrimary, 号: c.号码们?.[0]?.value ?? c.phone ?? null });
   const 可合成的人 = contacts.filter((c) => !c.挂靠).map(合成人);
-  const 有合成权 = !!合并口 && !!能合并?.联系人 && !联系人只读;
-  const 合成灰因 = (c: ContactRow) => (!有合成权 ? undefined : c.挂靠 ? 挂靠联系人不能合成 : 可合成的人.length < 2 ? 只有一位联系人不能合成 : undefined);
+  const 能合成联系人 = !!合并口 && !!能合并?.联系人 && !联系人只读 && 可合成的人.length > 1;
   const 首位联系人 = 排好的联系人[0];
   const 企业联系人序 = 首位联系人 ? [首位联系人, ...刚加的排前(排好的联系人.slice(1), 刚加的联系人)] : [];
   const 先露几位 = 3;
@@ -1060,7 +1058,7 @@ export default function RecordView({
     <Fragment key={c.id}>
       {c.id === 其他起点 && <div className="rec-contact-sub">这位客户的其他联系人</div>}
       <div className={`rec-contact rec-cg${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`} data-contact={c.id}>
-        <ContactLinks customerId={customer.id} c={c} 只读={联系人只读} 头={(更多) => 联系人头(c, 更多)} 合成={有合成权 && !合成灰因(c) ? () => 开合并({ 种: "联系人", 留: 合成人(c), 们: 可合成的人 }) : undefined} 合成灰={合成灰因(c)}>
+        <ContactLinks customerId={customer.id} c={c} 只读={联系人只读} 头={(更多) => 联系人头(c, 更多)} 合成={能合成联系人 && !c.挂靠 ? () => 开合并({ 种: "联系人", 留: 合成人(c), 们: 可合成的人 }) : undefined}>
           {联系人身(c)}
         </ContactLinks>
       </div>
