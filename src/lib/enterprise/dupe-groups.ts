@@ -314,14 +314,22 @@ export function 清单空页(me: 看的人, org: 组织 | null): 清单页 {
 }
 
 /** 客户详情顶部那一行提示：这位客户在登录的人的清单里和几家同名（0 = 不提示）。读缓存里同名键那几家，不整库成组 */
-export async function 本客户疑似重复数(db: 库, me: 看的人, org: 组织 | null, customerId: string): Promise<number> {
+export async function 本客户疑似重复(db: 库, me: 看的人, org: 组织 | null, customerId: string): Promise<{ 数: number; 只公海: boolean }> {
+  const 无 = { 数: 0, 只公海: false };
   const 底 = await 读底(db);
   const 这位 = 底.按id.get(customerId);
-  if (!这位) return 0;
+  if (!这位) return 无;
   const 行们 = 底.按键.get(名键(这位.name));
-  if (!行们 || 行们.length < 2) return 0;
-  const g = 成组(行们, await 标着的对(db, 行们.map((r) => r.id)), 看法of(me, org)).find((x) => x.们.some((r) => r.id === customerId));
-  return g ? g.们.length - 1 : 0;
+  if (!行们 || 行们.length < 2) return 无;
+  // 系统管理员同名键下可同时有普通组和公海组（12-15 D3a 审查建议 1）：命中的几组成员按 id 去重合起来数，不算自己
+  const 命中 = 成组(行们, await 标着的对(db, 行们.map((r) => r.id)), 看法of(me, org)).filter((x) => x.们.some((r) => r.id === customerId));
+  const 别家 = new Set(命中.flatMap((g) => g.们.map((r) => r.id)));
+  别家.delete(customerId);
+  return { 数: 别家.size, 只公海: 命中.length > 0 && 命中.every((g) => !!g.公海组) };
+}
+
+export async function 本客户疑似重复数(db: 库, me: 看的人, org: 组织 | null, customerId: string): Promise<number> {
+  return (await 本客户疑似重复(db, me, org, customerId)).数;
 }
 
 /**

@@ -290,3 +290,22 @@ it("一家公海一家有主：行上写「公海里那家先领出来再并」�
     expect(管.错).toEqual([]);
   } finally { await 管.page.close(); }
 }, 60_000);
+
+it("公海栏（12-15 D3a 审查）：翻页的地址带 tab=pool（不跳回普通栏）；普通栏翻页不带；公海「太多」组的淡链去 /pool?keyword=，普通组仍 /customers?keyword=", async () => {
+  const 池组们 = Array.from({ length: 2 }, (_, i) => ({ 键: `pp${i}`, 组名: "同名测试客户", 家数: 2, 们: [池成员(`p${i}a`, "NO.1"), 池成员(`p${i}b`, "NO.2")], 留下: `p${i}a`, 并掉: `p${i}b`, 对们: [`p${i}a__p${i}b`], 太多: false, 公海组: true, 先领: [], 能并: true }));
+  const 太多池组 = { 键: "pbig", 组名: "同名测试客户", 家数: 31, 们: [], 留下: "", 并掉: "", 对们: [], 太多: true, 公海组: true, 先领: [], 能并: false };
+  const { page, 错 } = await open(1280, "清单", { 清单: { ...管清单([...池组们, 太多池组], 45, 45), 每页: 20 }, 栏: "公海" });
+  try {
+    await page.getByTestId("dupe-toomany-link").waitFor();
+    expect(await page.getByTestId("dupe-toomany-link").getAttribute("href")).toBe(`/pool?keyword=${encodeURIComponent("同名测试客户")}`);
+    await page.locator(".dp-pager").getByTitle("2").click();
+    expect(await page.evaluate(() => (window as unknown as { __去?: string }).__去)).toBe("/customers/dupes?tab=pool&page=2");
+  } finally { await page.close(); }
+  const 普 = await open(1280, "清单", { 清单: { ...清单, 共: 45 } });
+  try {
+    await 普.page.locator(".dp-pager").waitFor();
+    await 普.page.locator(".dp-pager").getByTitle("2").click();
+    expect(await 普.page.evaluate(() => (window as unknown as { __去?: string }).__去)).toBe("/customers/dupes?page=2");
+    expect(错).toEqual([]);
+  } finally { await 普.page.close(); }
+}, 60_000);

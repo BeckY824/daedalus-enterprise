@@ -173,7 +173,7 @@ const 链接白名单: { 文件: string; 参数: string; 理由: string }[] = [
   { 文件: "src/app/(app)/channels/RosterNote.tsx", 参数: "去.公海", 理由: "「N 条在公海」：链到公海页" },
   { 文件: "src/app/(app)/overview/ProjectStatsView.tsx", 参数: "链(`/leads", 理由: "复盘统计里的人名链到线索列表（按负责人筛）" },
   { 文件: "src/app/(app)/overview/ProjectStatsView.tsx", 参数: "带批次(\"/pool", 理由: "复盘统计里的数字链到公海页（带批次筛选）" },
-  { 文件: "src/app/(app)/customers/[id]/RecordView.tsx", 参数: "疑似重复页", 理由: "客户页顶上「去疑似重复清单 ›」：链到清单页（/customers/dupes），不去详情" },
+  { 文件: "src/app/(app)/customers/[id]/RecordView.tsx", 参数: "疑似重复只公海 ? 疑似重复公海页 : 疑似重复页", 理由: "客户页顶上「去疑似重复清单 ›」：链到清单页（/customers/dupes），不去详情" },
   { 文件: "src/components/CustomerRoster.tsx", 参数: "底句.href", 理由: "名单底下「看全部」那句：/customers?scope=…（lib/enterprise/customer-scope.ts 名单底句）" },
   { 文件: "src/components/BackToList.tsx", 参数: "href", 理由: "详情页头的「回列表」：只回各模块的列表页" },
 ];

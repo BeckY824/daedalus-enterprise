@@ -20,7 +20,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 成组, 疑似重复页, 忘掉疑似重复缓存, 标不是同一个人, 对id, type 成员行 } from "@/lib/enterprise/dupe-groups";
+import { 成组, 疑似重复页, 本客户疑似重复, 忘掉疑似重复缓存, 标不是同一个人, 对id, type 成员行 } from "@/lib/enterprise/dupe-groups";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 定时分配扫一遍 } from "@/lib/enterprise/scheduled-assign";
@@ -252,5 +252,25 @@ describe("标「不是同一个人」只标当前栏里的对（12-15 D）", () 
     await 进公海(a2);
     expect(await 标不是同一个人(prisma, 总, await 权限组织(), [a1, a2], "普通")).toMatchObject({ ok: false });
     expect(await 标了()).toEqual([]);
+  });
+});
+
+describe("客户详情那一行提示：同名键下既有普通组又有公海组（12-15 D3a 审查建议 1）", () => {
+  it("管理员：两组都有的客户把两组成员按 id 去重合起来数；只在公海组里的客户标「只公海」，链接要带 ?tab=pool", async () => {
+    // 无业务线的 X 和 p1（外贸）都在公海成公海组；X 和 a1（内贸、有负责人）成普通组；p1 和 a1 业务线冲突不成对
+    const X = await 客户("星河展具", 甲.id);
+    const p1 = await 客户("星河展具", 甲.id);
+    const a1 = await 客户("星河展具", 甲.id);
+    await raw.customer.update({ where: { id: p1 }, data: { bizLine: "外贸" } });
+    await raw.customer.update({ where: { id: a1 }, data: { bizLine: "内贸" } });
+    await 进公海(X);
+    await 进公海(p1);
+    await raw.customer.update({ where: { id: a1 }, data: { salesOwnerId: 甲.id } });
+    const org = await 权限组织();
+    expect(await 本客户疑似重复(prisma, 总, org, X)).toEqual({ 数: 2, 只公海: false });
+    expect(await 本客户疑似重复(prisma, 总, org, p1)).toEqual({ 数: 1, 只公海: true });
+    expect(await 本客户疑似重复(prisma, 总, org, a1)).toEqual({ 数: 1, 只公海: false });
+    // 负责人看不到公海组：X 对甲只剩普通组那一家
+    expect(await 本客户疑似重复(prisma, 甲, org, X)).toEqual({ 数: 1, 只公海: false });
   });
 });

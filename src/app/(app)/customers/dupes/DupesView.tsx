@@ -124,7 +124,7 @@ export default function DupesView({ 清单, 已标, 只读原因 = null, 栏 = "
           <div className="dp-head">
             {一行(g.组名, "dp-name")}
             <span className="dp-cnt">同名 {g.家数} 家，太多请逐家处理</span>
-            <Link href={`/customers?keyword=${encodeURIComponent(g.组名)}`} className="dp-cnt dp-link" data-testid="dupe-toomany-link">去客户列表按名字找 ›<LinkPending /></Link>
+            <Link href={`${栏 === "公海" ? "/pool" : "/customers"}?keyword=${encodeURIComponent(g.组名)}`} className="dp-cnt dp-link" data-testid="dupe-toomany-link">{栏 === "公海" ? "去公海按名字找" : "去客户列表按名字找"} ›<LinkPending /></Link>
           </div>
         </li>
       );
@@ -204,7 +204,7 @@ export default function DupesView({ 清单, 已标, 只读原因 = null, 栏 = "
         ? <>
             <ul className="dp-list" data-testid="dupe-list">{清单.组们.map(组行)}</ul>
             {清单.共 > 清单.每页 && (
-              <Pagination className="dp-pager" size="small" current={清单.页} pageSize={清单.每页} total={清单.共} showSizeChanger={false} onChange={(p) => 去({ page: p })} />
+              <Pagination className="dp-pager" size="small" current={清单.页} pageSize={清单.每页} total={清单.共} showSizeChanger={false} onChange={(p) => 去({ tab: 栏 === "公海" ? "pool" : undefined, page: p })} />
             )}
           </>
         : <Empty description={栏 === "公海" ? "公海里没有同名的客户" : "没有疑似重复的客户"} />)}
