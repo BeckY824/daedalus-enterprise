@@ -43,14 +43,16 @@ it.each([true,false])("L-112 hosted=%s 每次布局只加载一次实际用于�
  state.hosted=hosted;state.queries=[];const layout=await AppLayout({children:null,pane:null,modal:null});
  expect(state.queries.sort()).toEqual(["customer","favorites"]);
  const props=找壳(layout)!;
- expect(props.计数).toEqual({"/customers":1});expect(props.收藏).toEqual([]);
+ // 11-26 起 layout 不等这个数：传的是 Promise，壳先出、数到了再填（components/LateCount.tsx）
+ const 计数=props.计数 as Record<string,unknown>;expect(计数["/customers"]).toBeInstanceOf(Promise);expect(await 计数["/customers"]).toBe(1);expect(props.收藏).toEqual([]);
+ expect(props.要跟).toBeInstanceOf(Promise);expect(await props.要跟).toEqual({逾期:0,今天:0});
 });
 
-it("企业版项目模式左栏不画商机，也就不数", async () => {
+it("企业版项目模式左栏不画商机，也就不数；客户总数左栏不摆（AppShell 10-30），layout 也不数（11-26，客户页自己数）", async () => {
   state.hosted = false; state.queries = []; state.business = { projectMode: true }; vi.stubEnv("CRM_ENTERPRISE", "1");
   try {
     const layout = await AppLayout({ children: null, pane: null, modal: null });
-    expect(state.queries.sort()).toEqual(["customer", "favorites", "project-favorites"]);
-    expect(找壳(layout)).toBeTruthy();
+    expect(state.queries.sort()).toEqual(["favorites", "project-favorites"]);
+    expect(找壳(layout)?.计数).toBeUndefined();
   } finally { state.business = {}; }
 });
