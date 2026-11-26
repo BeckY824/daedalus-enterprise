@@ -52,6 +52,14 @@
 .mrg-check { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s2) var(--s3); border: 1px solid var(--danger-line); border-radius: var(--r-ctl); background: var(--danger-bg); }
 
 /* 联系人配对：并进来那位 | 配留下这家的谁 | 是同一个人 */
+/* 合并申请（第二批 2b-3）：同事负责的候选后面的标；预览底部「要同意的人」，名字一行、身份一行，放不下省略悬停看全 */
+.mrg-cand-ask { flex: 0 0 auto; padding: 0 var(--s1); border-radius: var(--r-tag); background: var(--warning-bg); color: var(--warning-text); font-size: var(--fs-min); white-space: nowrap; }
+/* 合并申请页（customers/merge-requests）：两张卡上下排 */
+.mrq-stack { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; }
+.mrg-ask { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.mrg-ask-l { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+.mrg-ask-r { display: grid; grid-template-columns: minmax(0, 160px) minmax(0, 1fr); gap: var(--s3); align-items: baseline; min-width: 0; }
+.mrg-ask-s { color: var(--text-muted); font-size: var(--fs-note); }
 .mrg-ppl { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
 .mrg-ppl-r { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 220px) auto; gap: var(--s3); align-items: center; min-width: 0; }
 .mrg-ppl-b { display: flex; flex-direction: column; min-width: 0; }

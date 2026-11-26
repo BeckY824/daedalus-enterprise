@@ -254,10 +254,15 @@ async function 数条数(db: Tx | 库, id: string): Promise<合并条数> {
 }
 
 /** 合并预览：A = 留下那家，B = 要并掉的那家 */
-export async function 合并预览(db: 库, 留下id: string, 并掉id: string, me: 合并人): Promise<合并预览结果> {
+/**
+ * 合并预览。按申请（第二批 2b 发合并申请前的预览，merge-request.ts 合并申请预览）：只判数据拦法；
+ * 同事那家不超过挂靠只读卡（方案第二批第 11 件第 3 条）：联系人只给姓名、职务，不给号码；并排不给地址
+ */
+export async function 合并预览(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 按申请?: boolean } = {}): Promise<合并预览结果> {
   const org = await 权限组织();
   const [A, B] = await Promise.all([读客户(db, 留下id), 读客户(db, 并掉id)]);
-  const 原因 = await 拦的原因(db, A, B, me, org);
+  const 按申请 = !!opt.按申请;
+  const 原因 = await 拦的原因(db, A, B, me, org, 按申请);
   if (!A || !B) return { 能并: false, 原因, 并排: [], 条数: null, 要勾选: false, 补空: [], 号格留下有值: [], 联系人们: { 留下: [], 并掉: [] } };
   const 人 = await 人名们(db, [A.salesOwnerId, B.salesOwnerId, A.creator?.userId, B.creator?.userId]);
   const 日 = (d: Date) => d.toISOString().slice(0, 10);
@@ -273,12 +278,13 @@ export async function 合并预览(db: 库, 留下id: string, 并掉id: string, 
     行("业务线", A.bizLine ?? "", B.bizLine ?? ""),
     行("客户类型", A.customerType ?? "", B.customerType ?? ""),
     行("客户属性", A.customerAttr ?? "", B.customerAttr ?? ""),
-    行("客户地址", 地址(A), 地址(B)),
+    ...(按申请 ? [] : [行("客户地址", 地址(A), 地址(B))]),
     行("客户状态", A.custStatus ?? "", B.custStatus ?? ""),
     行("建档时间", 日(A.createdAt), 日(B.createdAt)),
   ];
   // 拦住的不给联系人明细（只给能并的人看两家的人和号）
-  const 联系人们 = 原因.length ? { 留下: [], 并掉: [] } : { 留下: await 预览联系人们(db, A.id, me), 并掉: await 预览联系人们(db, B.id, me) };
+  const 不给号 = (们: 预览联系人[]) => (按申请 ? 们.map((c) => ({ ...c, 号: [] })) : 们);
+  const 联系人们 = 原因.length ? { 留下: [], 并掉: [] } : { 留下: 不给号(await 预览联系人们(db, A.id, me)), 并掉: 不给号(await 预览联系人们(db, B.id, me)) };
   return { 能并: 原因.length === 0, 原因, 并排, 条数: await 数条数(db, B.id), 要勾选: 来源或创建人不同(A, B), 补空: 补空叫法(算补空(A, B)), 号格留下有值: 号格留下有值(A, B), 联系人们 };
 }
 

@@ -23,11 +23,12 @@ import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 撤回合并 } from "@/lib/enterprise/customer-merge";
 import {
   算同意人, 发起人问题, 到期时刻, 比四项, 发起合并申请, 处理合并申请, 撤回合并申请, 扫过期合并申请, 到期话, 申请状态,
-  钟上扫过期合并申请, type 快照,
+  钟上扫过期合并申请, 等待工作日, 直接并话, type 快照,
 } from "@/lib/enterprise/merge-request";
 import {
-  发起客户合并申请, 处理客户合并申请, 撤回客户合并申请, 作废客户合并申请, 等我同意的合并申请, 我发起的合并申请,
+  发起客户合并申请, 处理客户合并申请, 撤回客户合并申请, 作废客户合并申请, 等我同意的合并申请, 我发起的合并申请, 预览合并申请,
 } from "@/app/(app)/customers/merge-actions";
+import { 等待工作日 as 界面等待工作日 } from "@/app/(app)/customers/merge-request-words";
 import type { 组织 } from "@/lib/enterprise/org";
 
 type 人 = { id: string; name: string; role: string };
@@ -423,6 +424,35 @@ describe("动作层（customers/merge-actions.ts）", () => {
     if (!r.ok) throw new Error(r.error);
     return { a, b, id: r.requestId };
   }
+
+  it("申请预览（2b-3 合并客户框）：判法同发起；能发时给要同意的人和身份，同事那家联系人不给号码、并排不给地址；不写库", async () => {
+    const a = await 客户(乙.id), b = await 客户(丙.id);
+    const p = await 项目(丁.id, a);
+    以(乙);
+    const r = await 预览合并申请(a, b);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.预览).toMatchObject({ 能发: true, 原因: [], 等待工作日: 5 });
+    expect(r.预览.同意人).toEqual([
+      { userId: 丙.id, 名: "丙", 凭: ["被并客户负责人"], 项目: [] },
+      { userId: 丁.id, 名: "丁", 凭: ["项目负责人"], 项目: [{ id: p, name: expect.any(String), customerId: a }] },
+    ]);
+    expect(r.预览.预览!.联系人们.并掉.length).toBe(1);
+    expect(r.预览.预览!.联系人们.并掉.every((c) => c.号.length === 0)).toBe(true);
+    expect(r.预览.预览!.并排.map((x) => x.格)).not.toContain("客户地址");
+    expect(await raw.entMergeRequest.count()).toBe(0);
+    // 别的销售：发不了，摆原因；两家都是自己的、没有同事项目：说直接并
+    以(丁);
+    expect(await 预览合并申请(a, b)).toMatchObject({ ok: true, 预览: { 能发: false, 原因: ["只有留下那家的客户负责人能发合并申请"], 预览: null } });
+    const c = await 客户(乙.id), d = await 客户(乙.id);
+    以(乙);
+    expect(await 预览合并申请(c, d)).toMatchObject({ ok: true, 预览: { 能发: false, 原因: [直接并话] } });
+    // 同一家已挂着一张：预览就说
+    expect((await 发起客户合并申请(a, b)).ok).toBe(true);
+    expect(await 预览合并申请(a, b)).toMatchObject({ ok: true, 预览: { 能发: false, 原因: [expect.stringContaining("已有一张合并申请在等同意")] } });
+    expect(await 预览合并申请(a, "x".repeat(65))).toMatchObject({ ok: false, error: "参数不对，刷新再试" });
+    // 界面那份等多久和数据层一致
+    expect(界面等待工作日).toBe(等待工作日);
+  });
 
   it("发起：留下那家的负责人能发；别的销售发被拒；同一家传两次是坏参数", async () => {
     const a = await 客户(乙.id), b = await 客户(丙.id);

@@ -9,7 +9,7 @@
  *   - 项目换客户：lib/enterprise/project-move-customer.ts；换完 8 秒撤销条上的「撤销」= 撤销换客户（按那次日志反着做，只认自己刚换的那一次）
  *   - 项目合并（第二批 2a，同负责人的两个线索）：lib/enterprise/project-merge.ts；撤回同一张合并单表（kind = 项目），撤回合并单 也认
  *   - 跨负责人合并申请（第二批 2b）：lib/enterprise/merge-request.ts；发起 / 同意或拒绝 / 撤回 / 系统管理员作废，等我同意的、我发起的两张列表
- *   - 搜要并的那家：只搜自己能并的（负责人是自己、不在公海），系统管理员不限（E-277 f2：免得变成全公司查号）
+ *   - 搜要并的那家：系统管理员不限；别人搜看得到、不在公海的（同事负责的标要申请），看不到的同事客户只按完整号码精确命中（第二批 2b-3；E-277 f2：免得变成全公司查号）
  * 首页 AI 不给这些动作（合并是结构性改动，要人在预览里核对、勾选）：lib/ai 不引这个文件。
  */
 import { revalidatePath } from "next/cache";
@@ -36,9 +36,11 @@ import {
   type 项目合并预览结果, type 项目合并完, type 撤回项目合并完, type 项目合并单一条, type 并进候选,
 } from "@/lib/enterprise/project-merge";
 import {
-  发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 申请状态, 同意状态,
-  type 发起完, type 处理完, type 快照, type 凭, type 涉及项目,
+  发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 申请状态, 同意状态, 合并申请预览,
+  type 发起完, type 处理完, type 快照, type 凭, type 涉及项目, type 合并申请预览结果,
 } from "@/lib/enterprise/merge-request";
+import { 全公司查号 } from "@/lib/enterprise/contact-dedupe";
+import { 验号码 } from "@/lib/enterprise/contact-format";
 
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -72,24 +74,82 @@ function 规整对们(v: unknown): 同一个人[] | null {
   return out;
 }
 
-export type 合并候选 = { id: string; name: string; 编号: string | null; 负责人: string | null };
+export type 合并候选 = {
+  id: string; name: string; 编号: string | null; 负责人: string | null;
+  /** 同事负责（第二批 2b）：不能直接并，要发合并申请；界面标「同事负责 · 要申请」 */
+  要申请?: boolean;
+  /** 看不到的同事客户、按完整号码搜到的：只给编号和负责人（name 空），预览时带上这个号让服务端再核一次 */
+  按号?: string;
+};
 
-/** 搜要并进来的那家（不含留下那家自己）。不是企业版、词太短给空 */
+/** 搜到的看不到的同事客户最多几家（按完整号码精确命中，一个号通常只有一家） */
+const 按号最多 = 3;
+
+/**
+ * 关键词是不是一个完整号码（手机号或邮箱，规整后能当查重键）：是就给 全公司查号 用的三样，不是给 null。
+ * 方案第二批第 11 件第 3 条：看不到的同事客户只按完整号码精确命中，不按客户编号、不按片段
+ */
+function 完整号码(词: string): { 类型: "手机号" | "邮箱"; 值: string; 键: string } | null {
+  const 类型 = 词.includes("@") ? "邮箱" as const : "手机号" as const;
+  const r = 验号码(类型, 词);
+  return r.ok && r.键 ? { 类型, 值: r.值, 键: r.键 } : null;
+}
+
+/**
+ * 搜要并进来的那家（不含留下那家自己）。不是企业版、词太短给空。
+ * 系统管理员不限；别人（第二批 2b）：先搜自己看得到、不在公海的（同事负责的标 要申请），
+ * 看不到的同事客户只在词是完整号码、精确撞上时才列，只给编号和负责人（E-277 f2：不变成全公司查客户）
+ */
 export async function 搜合并候选(留下id: string, 关键词: string): Promise<合并候选[]> {
   const me = await requireUser();
   if (!企业版() || !是id(留下id) || typeof 关键词 !== "string") return [];
   const 词 = 搜索词(关键词.trim().slice(0, 50));
   if (!词) return [];
-  const 管 = 是系统管理员(me, await 权限组织());
+  const org = await 权限组织();
+  const 管 = 是系统管理员(me, org);
+  const 能写 = !!org && !只读角色(me, org) && !只看的人(org, me.id);
   const 条件 = await 客户关键词条件(词, true, me.id);
-  if (!Object.keys(条件).length) return [];
-  const 们 = await 看全部(() => prisma.customer.findMany({
-    where: { AND: [条件, { id: { not: 留下id } }, ...(管 ? [] : [{ salesOwnerId: me.id, pool: null }])] },
-    orderBy: [{ lastFollowAt: "desc" }, { createdAt: "desc" }, { id: "desc" }],
-    take: 10,
-    select: { ...显名列, salesOwner: { select: { name: true } } },
+  const 选列 = { ...显名列, salesOwnerId: true, salesOwner: { select: { name: true } } } as const;
+  const 排 = [{ lastFollowAt: "desc" as const }, { createdAt: "desc" as const }, { id: "desc" as const }];
+  // 系统管理员看全部；别人走带限定的 prisma（= 看得到的），只读 / 只看某人的照旧只列自己负责的（反正并不了、也发不了申请）
+  const 们 = Object.keys(条件).length
+    ? await (管 ? 看全部 : <T,>(f: () => T) => f())(() => prisma.customer.findMany({
+        where: { AND: [条件, { id: { not: 留下id } }, ...(管 ? [] : [{ pool: null }, ...(能写 ? [] : [{ salesOwnerId: me.id }])])] },
+        orderBy: 排, take: 10, select: 选列,
+      }))
+    : [];
+  const 出 = 们.map((c): 合并候选 => ({
+    id: c.id, name: 客户显名(c), 编号: 客户编号文字(c.customerNo) ?? null, 负责人: c.salesOwner?.name ?? null,
+    ...(!管 && c.salesOwnerId !== me.id ? { 要申请: true } : {}),
   }));
-  return 们.map((c) => ({ id: c.id, name: 客户显名(c), 编号: 客户编号文字(c.customerNo) ?? null, 负责人: c.salesOwner?.name ?? null }));
+  const 号 = !管 && 能写 ? 完整号码(词) : null;
+  if (号) {
+    const 已有 = new Set([留下id, ...出.map((c) => c.id)]);
+    const ids = (await 全公司查号(prisma, 号.类型, 号.值, 号.键)).filter((id) => !已有.has(id));
+    if (ids.length) {
+      const 撞的 = await 看全部(() => prisma.customer.findMany({
+        where: { id: { in: ids }, pool: null, deletedAt: null, NOT: { salesOwnerId: me.id } },
+        orderBy: 排, take: 按号最多, select: { id: true, customerNo: true, salesOwner: { select: { name: true } } },
+      }));
+      for (const c of 撞的) 出.push({ id: c.id, name: "", 编号: 客户编号文字(c.customerNo) ?? null, 负责人: c.salesOwner?.name ?? null, 要申请: true, 按号: 词 });
+    }
+  }
+  return 出;
+}
+
+/**
+ * 发合并申请前的预览（第二批 2b-3）：留下那家要看得到；并进来那家看得到，或带着搜到它的那个完整号码、服务端再核一次撞得上
+ * （免得拿 id 挨个探同事的客户）。判法、给多少都在 merge-request.ts 合并申请预览
+ */
+export async function 预览合并申请(留下id: string, 并掉id: string, 按号?: string): Promise<结果<{ 预览: 合并申请预览结果 }>> {
+  const me = await 我();
+  if (!是id(留下id) || !是id(并掉id) || (按号 !== undefined && typeof 按号 !== "string")) return 坏参数;
+  if (!(await 都看得到([留下id]))) return 看不到;
+  if (!(await 都看得到([并掉id]))) {
+    const 号 = 按号 ? 完整号码(搜索词(按号.trim().slice(0, 50)) ?? "") : null;
+    if (!号 || !(await 全公司查号(prisma, 号.类型, 号.值, 号.键)).includes(并掉id)) return 看不到;
+  }
+  return { ok: true, 预览: await 合并申请预览(prisma, 留下id, 并掉id, me) };
 }
 
 /** 登录的人能不能并 / 换到同事的客户（= 系统管理员）：界面只用来挑说法（搜不到时那句、后果框谁能撤），谁能做照旧在数据层判 */
