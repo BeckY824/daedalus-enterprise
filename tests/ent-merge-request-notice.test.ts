@@ -11,6 +11,19 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 const 登录 = vi.hoisted(() => ({ 人: null as null | { id: string; name: string; role: string } }));
+/** 执行那一刻才进交接：从第 从第几次 次查「交接中的客户」起，把 客户id 算进交接中（0 = 照原样查） */
+const 交接钩 = vi.hoisted(() => ({ 客户id: "", 从第几次: 0, 已查: 0 }));
+vi.mock("@/lib/enterprise/handover-db", async (orig) => {
+  const 原 = await orig<typeof import("@/lib/enterprise/handover-db")>();
+  return {
+    ...原,
+    交接中的客户: async (...a: Parameters<typeof 原.交接中的客户>) => {
+      const 中 = await 原.交接中的客户(...a);
+      if (交接钩.从第几次 && ++交接钩.已查 >= 交接钩.从第几次 && a[0].includes(交接钩.客户id)) 中.add(交接钩.客户id);
+      return 中;
+    },
+  };
+});
 vi.mock("@/lib/auth", async (orig) => ({ ...(await orig<object>()), requireUser: async () => ({ email: "", title: "", ...登录.人! }) }));
 
 import { prisma, defaultClient as raw } from "@/lib/prisma";
@@ -19,9 +32,9 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 合并通知种类, 撤回期限天数 } from "@/lib/enterprise/customer-merge";
+import { 合并通知种类, 撤回期限天数, 并掉看不到话 } from "@/lib/enterprise/customer-merge";
 import {
-  发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 扫过期合并申请, 申请状态, 合并申请通知种类, 看不到那家叫法, 申请两家话, 给发起人藏名,
+  发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 扫过期合并申请, 申请状态, 合并申请通知种类, 看不到那家叫法, 申请两家话, 给发起人藏名, 到期话,
 } from "@/lib/enterprise/merge-request";
 import { 发起客户合并申请, 处理客户合并申请, 我发起的合并申请, 等我同意的合并申请 } from "@/app/(app)/customers/merge-actions";
 import { 合并申请页, 撤回天数, 拒绝原因上限 } from "@/app/(app)/customers/merge-request-words";
@@ -66,6 +79,7 @@ beforeEach(async () => {
   await setSetting("business", { projectMode: true });
 });
 afterEach(async () => {
+  Object.assign(交接钩, { 客户id: "", 从第几次: 0, 已查: 0 });
   await 等通知推完();
   vi.unstubAllEnvs();
   忘掉企业版范围();
@@ -222,7 +236,108 @@ describe("按号放行进来、发起人看不到的那家", () => {
   });
 });
 
+describe("按号进来、发起后那家状态变了：失效 / 作废原因不带它的名字和状态（2b-3 第二段审查第 1、2 条）", () => {
+  /** 乙按号发起：B（丙负责、乙看不到、名下有丙的项目）并进 A（乙负责）→ 只等丙同意 */
+  async function 按号一张() {
+    const a = await 客户(乙.id);
+    const b = await 客户(丙.id, { name: "编造的看不到客户", customerNo: 42 });
+    const p = (await raw.project.create({ data: { name: "编造的保密项目", customerId: b, ownerId: 丙.id, creatorId: 丙.id } })).id;
+    await setSetting(规则.按组织看客户.key, true);
+    忘掉企业版范围();
+    登录.人 = 乙;
+    const 号 = (await raw.contact.findFirstOrThrow({ where: { customerId: b } })).phone!;
+    const id = await 以谁的身份(乙.id, async () => {
+      expect(await prisma.customer.count({ where: { id: b } })).toBe(0);
+      const r = await 发起客户合并申请(a, b, { 按号: 号 });
+      if (!r.ok) throw new Error(r.error);
+      return r.requestId;
+    });
+    // 发起后 B 改了名
+    await raw.customer.update({ where: { id: b }, data: { name: "编造的改后名字" } });
+    return { a, b, p, id };
+  }
+  const 漏了 = /编造的看不到客户|编造的改后名字|转让交接|编造的保密项目/;
+  async function 发起人那边都没漏(a: string, b: string, p: string, id: string) {
+    const 乙收 = await 收到(乙);
+    expect(乙收.at(-1)).toMatchObject({ title: expect.stringMatching(/已作废$/), body: `${并掉看不到话}，申请已失效` });
+    expect(JSON.stringify(乙收)).not.toMatch(漏了);
+    const 单 = await raw.entMergeRequest.findUniqueOrThrow({ where: { id } });
+    expect(单.reason).toBe(`${并掉看不到话}，申请已失效`);
+    const 日志 = await raw.auditLog.findMany({ where: { entityId: { in: [a, b] }, action: "merge-request-void" } });
+    expect(日志).toHaveLength(2);
+    expect(JSON.stringify(日志)).not.toMatch(漏了);
+    登录.人 = 乙;
+    const 我的 = await 以谁的身份(乙.id, () => 我发起的合并申请());
+    expect(我的[0]).toMatchObject({ id, 状态: 申请状态.已失效, 显示状态: "已作废", 原因: `${并掉看不到话}，申请已失效` });
+    const 串 = JSON.stringify(我的);
+    expect(串).not.toMatch(漏了);
+    expect(串).not.toContain(p);
+    expect(串).not.toContain(`"customerId":"${b}"`);
+  }
+
+  it("看不到那家进了转让交接、改了名：同意那一刻判出作废，发起人的通知、「我发起的」、两家日志都不写它的名字和状态", async () => {
+    const { a, b, p, id } = await 按号一张();
+    await raw.entHandover.create({ data: { kind: "转让", fromUserId: 丙.id, toUserId: 丁.id, byUserId: 老板.id, customerIds: JSON.stringify([b]) } });
+    expect(await 处理合并申请(prisma, id, 丙, "同意")).toEqual({ ok: false, error: `${并掉看不到话}，申请已失效` });
+    await 发起人那边都没漏(a, b, p, id);
+  });
+
+  it("最后一位同意、再判过了、执行时才被拦（这时进了交接）：作废通知、原因、日志都不写它的名字和状态", async () => {
+    const { a, b, p, id } = await 按号一张();
+    // 第 1 次查交接是同意那一刻的再判，第 2 次是执行合并事务里那一遍
+    Object.assign(交接钩, { 客户id: b, 从第几次: 2, 已查: 0 });
+    expect(await 处理合并申请(prisma, id, 丙, "同意")).toEqual({ ok: false, error: `${并掉看不到话}，申请已失效` });
+    expect(交接钩.已查).toBe(2);
+    expect(await raw.customer.count({ where: { id: b, deletedAt: null } })).toBe(1);
+    await 发起人那边都没漏(a, b, p, id);
+  });
+
+  it("「我发起的」：同意人涉及的项目在看不到那家名下 → 项目给 []、项目数照实；同意人那边照常列", async () => {
+    const { p, id } = await 按号一张();
+    登录.人 = 乙;
+    const 我的 = await 以谁的身份(乙.id, () => 我发起的合并申请());
+    expect(我的[0].同意人).toMatchObject([{ userId: 丙.id, 项目: [], 项目数: 1 }]);
+    expect(JSON.stringify(我的)).not.toMatch(漏了);
+    expect(JSON.stringify(我的)).not.toContain(p);
+    登录.人 = 丙;
+    const 等我 = await 等我同意的合并申请();
+    expect(等我.find((x) => x.id === id)!.同意人[0]).toMatchObject({ 项目: [{ id: p, name: "编造的保密项目" }], 项目数: 1 });
+  });
+});
+
+describe("显示状态：已失效里分出已作废（2b-3 第二段审查第 4 条）", () => {
+  it("到期 = 已失效；系统管理员作废、四项有变 = 已作废；拒绝、待同意同 状态", async () => {
+    const 到期 = await 一张(周五下午);
+    await 扫过期合并申请(prisma, new Date("2026-12-04T07:00:00Z"));
+    const 管作废 = await 一张();
+    await 作废合并申请(prisma, 管作废.id, 老板);
+    const 有变 = await 一张();
+    const pid = (await raw.project.findFirstOrThrow({ where: { customerId: 有变.a } })).id;
+    await raw.entProjectPayment.create({ data: { projectId: pid, paidAt: new Date(), currency: "CNY", amount: 1 } });
+    await 处理合并申请(prisma, 有变.id, 丙, "同意");
+    const 拒 = await 一张();
+    await 处理合并申请(prisma, 拒.id, 丙, "拒绝");
+    const 等 = await 一张();
+    登录.人 = 乙;
+    const 们 = new Map((await 以谁的身份(乙.id, () => 我发起的合并申请())).map((x) => [x.id, x]));
+    expect(们.get(到期.id)).toMatchObject({ 状态: 申请状态.已失效, 显示状态: 申请状态.已失效, 原因: 到期话 });
+    expect(们.get(管作废.id)).toMatchObject({ 状态: 申请状态.已失效, 显示状态: "已作废" });
+    expect(们.get(有变.id)).toMatchObject({ 状态: 申请状态.已失效, 显示状态: "已作废" });
+    expect(们.get(拒.id)).toMatchObject({ 状态: 申请状态.已拒绝, 显示状态: 申请状态.已拒绝 });
+    expect(们.get(等.id)).toMatchObject({ 状态: 申请状态.待同意, 显示状态: 申请状态.待同意 });
+  });
+});
+
 describe("界面常量和服务端一致；拒绝原因上限服务端也拦", () => {
+  it("数据层 处理合并申请 也按上限拒收、回同一句话，不截断；100 字原样存", async () => {
+    const { id } = await 一张();
+    expect(await 处理合并申请(prisma, id, 丙, "拒绝", { 原因: "字".repeat(拒绝原因上限 + 1) })).toEqual({ ok: false, error: "拒绝原因最多 100 字" });
+    expect((await raw.entMergeRequest.findUniqueOrThrow({ where: { id } })).status).toBe(申请状态.待同意);
+    expect(await 处理合并申请(prisma, id, 丙, "拒绝", { 原因: `  ${"字".repeat(拒绝原因上限)}  ` })).toMatchObject({ ok: true, 状态: 申请状态.已拒绝 });
+    const 行 = await raw.entMergeApprover.findFirstOrThrow({ where: { requestId: id, userId: 丙.id } });
+    expect(行.note).toBe("字".repeat(拒绝原因上限));
+  });
+
   it("撤回天数 = 撤回期限天数；拒绝原因超 100 字动作层拒、不悄悄截，100 字照收", async () => {
     expect(撤回天数).toBe(撤回期限天数);
     const { id } = await 一张();

@@ -32,7 +32,7 @@ import { 是项目线 } from "./assign-line";
 import { 工作日数, 加天 } from "./tri-state";
 import { 通知里的客户名 } from "./notice-mask";
 import { notify } from "./notify";
-import { 合并申请页, 凭叫法 } from "@/app/(app)/customers/merge-request-words";
+import { 合并申请页, 凭叫法, 拒绝原因上限 } from "@/app/(app)/customers/merge-request-words";
 import {
   读客户, 申请拦的原因, 来源或创建人不同, 执行合并, 合并事务选项, 并发失败话, 已核对话, 刚被改过话, 合并预览, 并掉看不到话,
   撤回期限天数, type 客户行, type 合并人, type 同一个人, type 合并预览结果,
@@ -65,7 +65,15 @@ export type 同意人 = { userId: string; 凭: 凭[]; 项目: 涉及项目[] };
  */
 export type 给发起人的同意人 = 同意人 & { 项目数: number };
 
+/** 拒绝原因超了上限：动作层、数据层都拦这一句，不悄悄截（2b-3 第二段审查第 7 条） */
+export const 拒绝原因超话 = `拒绝原因最多 ${拒绝原因上限} 字`;
 export const 到期话 = `超过 ${等待工作日} 个工作日没有全部同意，申请已失效，要重新发起`;
+/**
+ * 给人看的状态：库里只有「已失效」一种结束，界面分开说——到期没同意完叫「已失效」；
+ * 作废的（系统管理员作废有 endedById；四项有变、执行时被拦是系统判的，原因不是 到期话）叫「已作废」；其余同 status（2b-3 第二段审查第 4 条）
+ */
+export const 显示状态of = (r: { status: string; reason: string | null; endedById: string | null }): string =>
+  r.status === 申请状态.已失效 && (r.endedById || r.reason !== 到期话) ? "已作废" : r.status;
 export const 变动话 = (项: readonly 变动项[]) => `两家的${项.join("、")}有变，申请已失效，要重新发起`;
 
 const 名 = (c: Pick<客户行, "name" | "shortName" | "customerNo" | "id">) => 通知里的客户名(c);
@@ -452,6 +460,7 @@ export async function 处理合并申请(
   const org = await 权限组织();
   if (!org) return { ok: false, error: "只有企业版有合并申请" };
   if (只读身份(me, org)) return { ok: false, error: `你现在是只读身份，不能${结论}合并申请` };
+  if (结论 === "拒绝" && (opt.原因?.trim().length ?? 0) > 拒绝原因上限) return { ok: false, error: 拒绝原因超话 };
   let 失效: string | null = null;
   let 该执行 = false;
   let 我的行 = "";
@@ -472,7 +481,7 @@ export async function 处理合并申请(
         return 申请状态.已失效;
       }
       if (结论 === "拒绝") {
-        const 一句 = opt.原因?.trim().slice(0, 200) || null;
+        const 一句 = opt.原因?.trim() || null;
         await tx.entMergeApprover.update({ where: { id: 我的.id }, data: { status: 同意状态.拒绝, note: 一句, decidedAt: 现在 } });
         await 结束(tx, r, 申请状态.已拒绝, `${me.name}拒绝${一句 ? `：${一句}` : ""}`, me, "merge-reject", 现在);
         事后 = { 事: "拒绝", 原因: 一句 ?? "" };
@@ -518,9 +527,10 @@ export async function 处理合并申请(
  * 执行前再判（在同意那一刻、事务里）：数据拦法照第一批；四项比合并前快照；同意人重算对不上算负责人变了。
  * 返回失效原因，null = 照旧
  */
-async function 再判(tx: Tx, r: { fromId: string; intoId: string; byUserId: string; snapshot: string; approvers: { userId: string }[] }, me: 合并人, org: 组织): Promise<string | null> {
+async function 再判(tx: Tx, r: { fromId: string; intoId: string; byUserId: string; snapshot: string; choices: string; approvers: { userId: string }[] }, me: 合并人, org: 组织): Promise<string | null> {
   const [A, B] = [await 读客户(tx, r.intoId), await 读客户(tx, r.fromId)];
-  const 原因 = await 申请拦的原因(tx, A, B, me, org);
+  // 发起人看不到并进来那家：失效原因存进库、写进日志、发给发起人，不带那家的现名和状态（2b-3 第二段审查第 1 条）
+  const 原因 = await 申请拦的原因(tx, A, B, me, org, { 并掉看不到: !!读选择(r.choices).并掉看不到 });
   if (原因.length) return `${原因.join("；")}，申请已失效`;
   const 旧 = JSON.parse(r.snapshot) as 快照;
   const 新 = await 读快照(tx, A!, B!);
@@ -557,7 +567,7 @@ async function 执行申请(db: 库, requestId: string, 我的行: string, me: �
     结 = 发
       ? await 执行合并(db, r.intoId, r.fromId, 发, {
           已核对: 选.已核对, 同一个人: 选.同一个人 ?? [], 现在,
-          申请: { 经过: JSON.stringify(经过), 已另通知: [r.byUserId, ...r.approvers.map((x) => x.userId)] },
+          申请: { 经过: JSON.stringify(经过), 已另通知: [r.byUserId, ...r.approvers.map((x) => x.userId)], 并掉看不到: !!选.并掉看不到 },
         })
       : { ok: false, error: "发起人已不在系统里" };
   } catch (e) {

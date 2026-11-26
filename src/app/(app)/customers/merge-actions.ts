@@ -36,7 +36,7 @@ import {
   type 项目合并预览结果, type 项目合并完, type 撤回项目合并完, type 项目合并单一条, type 并进候选,
 } from "@/lib/enterprise/project-merge";
 import {
-  发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 申请状态, 同意状态, 合并申请预览, 给发起人藏名, 读选择, 看不到那家叫法,
+  发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 申请状态, 同意状态, 合并申请预览, 给发起人藏名, 读选择, 看不到那家叫法, 显示状态of, 拒绝原因超话,
   type 发起完, type 处理完, type 快照, type 凭, type 涉及项目, type 合并申请预览结果,
 } from "@/lib/enterprise/merge-request";
 import { 全公司查号 } from "@/lib/enterprise/contact-dedupe";
@@ -422,7 +422,7 @@ export async function 发起客户合并申请(
 export async function 处理客户合并申请(requestId: string, 结论: "同意" | "拒绝", 原因?: string): Promise<结果<处理完>> {
   const me = await 我();
   if (!是id(requestId) || (结论 !== "同意" && 结论 !== "拒绝") || (原因 !== undefined && typeof 原因 !== "string")) return 坏参数;
-  if (原因 && 原因.trim().length > 拒绝原因上限) return { ok: false, error: `拒绝原因最多 ${拒绝原因上限} 字` };
+  if (原因 && 原因.trim().length > 拒绝原因上限) return { ok: false, error: 拒绝原因超话 };
   const r = await 处理合并申请(prisma, requestId, me, 结论, { 原因 });
   if (r.ok) await 刷新申请(requestId);
   return r;
@@ -446,11 +446,15 @@ export async function 作废客户合并申请(requestId: string): Promise<结�
   return r;
 }
 
+/**
+ * 显示状态：见 merge-request.ts 显示状态of（「已失效」里分出「已作废」，2b-3 第二段审查第 4 条）。
+ * 同意人.项目 / 项目数：给发起人时，他涉及的项目里有发起人看不到的（或在看不到那家名下的）给 []，项目数照实（同 merge-request.ts 给发起人看）
+ */
 export type 合并申请一条 = {
-  id: string; 状态: string; 原因: string | null;
+  id: string; 状态: string; 显示状态: string; 原因: string | null;
   留下: { id: string; 名: string }; 并掉: { id: string; 名: string };
   发起人: string; 发起: Date; 到期: Date; 结束: Date | null; mergeId: string | null;
-  同意人: { userId: string; 名: string; 凭: 凭[]; 项目: 涉及项目[]; 状态: string; 一句: string | null; 处理: Date | null }[];
+  同意人: { userId: string; 名: string; 凭: 凭[]; 项目: 涉及项目[]; 项目数: number; 状态: string; 一句: string | null; 处理: Date | null }[];
 };
 
 const 读JSON = <T,>(v: string, 缺: T): T => { try { return JSON.parse(v) as T; } catch { return 缺; } };
@@ -466,16 +470,24 @@ async function 申请们(where: Prisma.EntMergeRequestWhereInput, 给发起人 =
   const 人ids = [...new Set(行们.flatMap((r) => [r.byUserId, ...r.approvers.map((x) => x.userId)]))];
   const 人们 = 人ids.length ? await 看全部(() => prisma.user.findMany({ where: { id: { in: 人ids } }, select: { id: true, name: true } })) : [];
   const 叫 = new Map(人们.map((u) => [u.id, u.name]));
+  // 给发起人：同意人涉及的项目只留发起人看得到的（用带限定的 prisma 查，不包 看全部）
+  const 项目ids = 给发起人 ? [...new Set(行们.flatMap((r) => r.approvers.flatMap((x) => 读JSON<涉及项目[]>(x.projects, []).map((p) => p.id))))] : [];
+  const 看得到项目 = new Set(项目ids.length ? (await prisma.project.findMany({ where: { id: { in: 项目ids } }, select: { id: true } })).map((p) => p.id) : []);
   return 行们.map((r) => {
     const 快 = 读JSON<快照>(r.snapshot, { 客户: {}, 项目: {} });
     const 藏 = 给发起人 && 读选择(r.choices).并掉看不到;
+    const 能看 = (p: 涉及项目) => 看得到项目.has(p.id) && !(藏 && p.customerId === r.fromId);
+    const 项目们 = (v: string) => {
+      const 们 = 读JSON<涉及项目[]>(v, []);
+      return { 项目: !给发起人 || 们.every(能看) ? 们 : [], 项目数: 们.length };
+    };
     const 客 = (id: string) => ({ id, 名: 藏 && id === r.fromId ? 看不到那家叫法(读选择(r.choices).并掉编号) : 快.客户?.[id]?.名 ?? "已不在的客户" });
     const 话 = (v: string | null) => (v && 藏 ? 给发起人藏名(r, v) : v);
     return {
-      id: r.id, 状态: r.status, 原因: 话(r.reason), 留下: 客(r.intoId), 并掉: 客(r.fromId),
+      id: r.id, 状态: r.status, 显示状态: 显示状态of(r), 原因: 话(r.reason), 留下: 客(r.intoId), 并掉: 客(r.fromId),
       发起人: 叫.get(r.byUserId) ?? "同事", 发起: r.at, 到期: r.expiresAt, 结束: r.endedAt, mergeId: r.mergeId,
       同意人: r.approvers.map((x) => ({
-        userId: x.userId, 名: 叫.get(x.userId) ?? "同事", 凭: 读JSON<凭[]>(x.why, []), 项目: 读JSON<涉及项目[]>(x.projects, []),
+        userId: x.userId, 名: 叫.get(x.userId) ?? "同事", 凭: 读JSON<凭[]>(x.why, []), ...项目们(x.projects),
         状态: x.status, 一句: 话(x.note), 处理: x.decidedAt,
       })),
     };

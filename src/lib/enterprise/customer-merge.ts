@@ -382,9 +382,9 @@ async function 查同一个人(tx: Tx, A: string, B: string, 对们: readonly �
 /**
  * 执行合并：B 并进 A。已核对 = 预览里要勾选时勾过了；同一个人 = 勾了「是同一个人」的几对联系人，合成一位。
  * 申请（第二批 2b，merge-request.ts 全同意后调）：me = 发起人，不判「是不是自己负责」（同意人已经同意过），
- * 申请经过（JSON）记进合并单的 approvals 那一格
+ * 申请经过（JSON）记进合并单的 approvals 那一格；申请.并掉看不到 = 并进来那家发起人看不到（按号放行进来的），拦话照 拦的原因 收窄
  */
-export async function 执行合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 已核对?: boolean; 现在?: Date; 同一个人?: readonly 同一个人[]; 申请?: { 经过: string; 已另通知?: readonly string[] } } = {}): Promise<结果<合并完>> {
+export async function 执行合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 已核对?: boolean; 现在?: Date; 同一个人?: readonly 同一个人[]; 申请?: { 经过: string; 已另通知?: readonly string[]; 并掉看不到?: boolean } } = {}): Promise<结果<合并完>> {
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   const 开 = await 客户状态自动();
@@ -395,7 +395,8 @@ export async function 执行合并(db: 库, 留下id: string, 并掉id: string, 
       看全部(() =>
         db.$transaction(async (tx) => {
           const [A, B] = [await 读客户(tx, 留下id), await 读客户(tx, 并掉id)];
-          const 原因 = await 拦的原因(tx, A, B, me, org, !!opt.申请);
+          // 按申请且并进来那家发起人看不到：拦话收窄（拦下的话会存成申请的失效原因、发给发起人，2b-3 第二段审查第 1 条）
+          const 原因 = await 拦的原因(tx, A, B, me, org, !!opt.申请, !!opt.申请?.并掉看不到);
           if (原因.length) throw new 拦下(原因.join("；"));
           if (来源或创建人不同(A!, B!) && !opt.已核对) throw new 拦下(`两家的来源或创建人不一样，请先勾选「${已核对话}」`);
           const 对们 = opt.同一个人 ?? [];
