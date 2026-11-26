@@ -168,6 +168,11 @@ export async function 能并进的项目(db: 库, 并掉id: string, me: 合并�
   const org = await 权限组织();
   if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return [];
   if (!是系统管理员(me, org) && B.ownerId !== me.id) return [];
+  return 能并进的候选们(db, B);
+}
+
+/** 候选那一句（同客户、同负责人、线索阶段在推的）：调用方手里已有这个项目的行（项目详情的 load.ts）就直接用，省一次读项目 */
+export async function 能并进的候选们(db: 库, B: { id: string; customerId: string; ownerId: string }): Promise<{ id: string; name: string; node: string }[]> {
   return 看全部(() => db.project.findMany({
     where: { customerId: B.customerId, ownerId: B.ownerId, id: { not: B.id }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null, phase: { in: [...能并的阶段.留下] } },
     orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, name: true, node: true },
