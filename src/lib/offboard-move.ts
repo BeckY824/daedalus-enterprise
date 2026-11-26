@@ -31,7 +31,7 @@ export async function 离职转给接手人(
   收同事待分配?: 同事待分配条[],
 ): Promise<string[]> {
   // 同事待分配的项目：转之前记下各自的负责人（转完负责人就是接手人了）
-  const 同事待分配们 = 收同事待分配 && 分.清待分配.length
+  const 同事待分配们 = 收同事待分配 && 分.清待分配.length && 分.项目.length
     ? await tx.project.findMany({ where: { id: { in: 分.清待分配 }, ownerId: { notIn: [id, 接手人, ""] } }, select: { id: true, ownerId: true, customerId: true } })
     : [];
   await tx.customer.updateMany({ where: { id: { in: 分.客户 } }, data: { salesOwnerId: 接手人 } });
