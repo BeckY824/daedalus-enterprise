@@ -212,7 +212,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
   async function 发申请() {
     if (!申 || !预 || !并掉 || !能点) return;
     const 们 = 申.同意人;
-    const 结: { 单号: string | null } = { 单号: null };
+    const 结: { 单号: string | null; 人数: number } = { 单号: null, 人数: 们.length };
     const n = 预.条数;
     const 成 = await 问后果({
       题: `发合并申请：把「${B名}」并进「${客户名}」？`,
@@ -228,7 +228,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
       ],
       做: async () => {
         const r = await 发起客户合并申请(customerId, 并掉.id, { 已核对: 预.要勾选 ? 勾 : undefined, 同一个人: 对们 });
-        if (r.ok) 结.单号 = r.requestId;
+        if (r.ok) { 结.单号 = r.requestId; 结.人数 = r.同意人.length; }
         return r;
       },
     });
@@ -237,7 +237,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
     关();
     router.refresh();
     showUndo({
-      话: `合并申请已发出，等 ${们.length} 位同意`,
+      话: `合并申请已发出，等 ${结.人数} 位同意`,
       毫秒: 8000,
       撤销: async () => {
         const u = await 撤回客户合并申请(id);

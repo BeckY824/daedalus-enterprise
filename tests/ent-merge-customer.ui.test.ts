@@ -22,7 +22,7 @@ const 动作 = `
   export const 撤销换客户=async(id)=>{记('撤销换',id);return {ok:true}};
   export const 能并同事的=async()=>{if(window.__管卡)await new Promise(()=>{});return window.__管===true};
   export const 预览合并申请=async(a,b,号)=>{记('申预览',a,b,号);return {ok:true,预览:window.__申预览??{能发:false,原因:['只有留下那家的客户负责人能发合并申请'],预览:null,同意人:[],等待工作日:5}}};
-  export const 发起客户合并申请=async(a,b,o)=>{记('发申请',a,b,o);return {ok:true,requestId:'r1',同意人:[],expiresAt:''}};
+  export const 发起客户合并申请=async(a,b,o)=>{记('发申请',a,b,o);return {ok:true,requestId:'r1',同意人:window.__发同意人??[],expiresAt:''}};
   export const 撤回客户合并申请=async(id)=>{记('撤申请',id);return {ok:true}};`;
 const plugin: Plugin = { name: "merge-customer", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
@@ -316,6 +316,7 @@ it("同事负责的候选标「要申请」：读申请预览、底部列要同�
   const { page, 错 } = await open(390, { 种: "客户" }, {
     __候选: [{ id: "b", name: "", 编号: "NO.00012", 负责人: "同事乙", 要申请: true, 按号: "13800000000" }],
     __申预览: 申预览,
+    __发同意人: [{ userId: "u2" }, { userId: "u3" }],
   });
   try {
     await page.getByLabel("搜客户").fill("13800000000");
@@ -349,6 +350,30 @@ it("同事负责的候选标「要申请」：读申请预览、底部列要同�
     await page.locator(".undo-btn").last().click();
     await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "撤申请"));
     expect((await 调(page)).find((x) => x[0] === "撤申请")).toEqual(["撤申请", "r1"]);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("发合并申请成了：撤销条的人数用发起返回的同意人数，不用预览时数的（两边不一样时跟着发起返回）", async () => {
+  const 申预览 = {
+    能发: true, 原因: [], 等待工作日: 5, 预览: 预览({ 要勾选: false }),
+    同意人: [
+      { userId: "u2", 名: "同事乙", 凭: ["项目负责人"], 项目: [] },
+      { userId: "u3", 名: "同事丙", 凭: ["项目负责人"], 项目: [] },
+    ],
+  };
+  const { page, 错 } = await open(1280, { 种: "客户" }, {
+    __候选: [{ id: "b", name: "", 编号: "NO.00012", 负责人: "同事乙", 要申请: true, 按号: "13800000000" }],
+    __申预览: 申预览,
+    __发同意人: [{ userId: "u2" }],
+  });
+  try {
+    await page.getByLabel("搜客户").fill("13800000000");
+    await page.getByTestId("merge-candidate").click();
+    await page.getByTestId("merge-request-go").click();
+    await page.locator(".csq").locator(".csq-foot .ant-btn-primary").click();
+    await page.locator(".undo-bar").waitFor();
+    expect(await page.locator(".undo-t").innerText()).toBe("合并申请已发出，等 1 位同意");
     expect(错).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
