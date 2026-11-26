@@ -560,6 +560,8 @@ export type 项目合并单一条 = {
   能撤: boolean;
   /** 已合并、这会儿不能撤的原因（历史变更里摆在按钮的位置）；能撤、已撤回的不给 */
   不能撤因?: string;
+  /** 过了撤回期限（由判定函数明确给，界面不比文案）；过期一定 不能撤因 = 项目合并撤回过期话 */
+  过期?: boolean;
   没还原?: Pick<没还原, "类" | "原因">[];
 };
 
@@ -596,7 +598,7 @@ export async function 项目的合并单(db: 库, projectId: string, me: 合并�
     return {
       id: m.id, 方向: m.intoId === projectId ? "并进来" as const : "并出去" as const, 从: m.fromName, 到: A?.name ?? 留下名, 从id: m.fromId, 到id: m.intoId,
       at: m.at.toISOString(), status: m.status, 谁: 人名.get(m.byUserId) ?? "", 能撤,
-      ...(m.status === "已合并" && !能撤 ? { 不能撤因: 不能撤因of(m, A, B, me, 管, 能写, 线) } : {}),
+      ...(m.status === "已合并" && !能撤 ? { 不能撤因: 不能撤因of(m, A, B, me, 管, 能写, 线), ...(m.at.getTime() < 线 ? { 过期: true } : {}) } : {}),
       ...(撤 ? { 没还原: 撤.没还原.map((x) => ({ 类: x.类, 原因: x.原因 })) } : {}),
     };
   });

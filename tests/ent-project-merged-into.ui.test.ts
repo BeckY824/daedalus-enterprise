@@ -102,14 +102,14 @@ for (const 宽 of [1280, 390]) {
       expect(错).toEqual([]);
     } finally { await page.close(); }
     // 过了撤回期限（过期话，load.ts 带；谁看都一样，系统管理员也不能代撤）：按钮的位置写明为什么没有撤回，一行不横滚、那句不省略
-    const 过 = await open(宽, 单({ 能撤: false, 过期话: "合并已超过 30 天，不能撤回" }), {}, 宽 < 768);
+    const 过 = await open(宽, 单({ 能撤: false, 过期话: "（任意文案，界面照标记出话）" }), {}, 宽 < 768);
     try {
       const 话 = 过.page.getByTestId("project-merged-expired");
       await 话.waitFor();
-      expect(await 话.innerText()).toBe("合并已超过 30 天，不能撤回");
+      expect(await 话.innerText()).toBe("（任意文案，界面照标记出话）");
       expect(await 话.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
       expect(await 过.page.getByTestId("project-merged-undo").count()).toBe(0);
-      expect(await 过.page.getByTestId("project-merged-into-text").getAttribute("title")).toMatch(/；合并已超过 30 天，不能撤回$/);
+      expect(await 过.page.getByTestId("project-merged-into-text").getAttribute("title")).toMatch(/；（任意文案，界面照标记出话）$/);
       const [行框, 话框] = await Promise.all([过.page.getByTestId("project-merged-into").boundingBox(), 话.boundingBox()]);
       expect(话框!.x + 话框!.width).toBeLessThanOrEqual(行框!.x + 行框!.width);
       expect(await 横滚(过.page)).toBe(false);

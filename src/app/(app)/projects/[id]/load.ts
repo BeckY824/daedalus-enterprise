@@ -553,7 +553,7 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
  *  谁看都一样，系统管理员也不能代撤。没权的其他原因（不是合并的人、转给了别人……）照旧不写） */
 async function 已并入of(me: SessionUser, projectId: string): Promise<项目详情["已并入"]> {
   const m = (await 项目的合并单(prisma, projectId, me)).find((x) => x.方向 === "并出去" && x.status === "已合并");
-  return m ? { mergeId: m.id, 到id: m.到id, 到: m.到, at: m.at, 谁: m.谁, 能撤: m.能撤, ...(m.不能撤因 === 项目合并撤回过期话 ? { 过期话: 项目合并撤回过期话 } : {}) } : null;
+  return m ? { mergeId: m.id, 到id: m.到id, 到: m.到, at: m.at, 谁: m.谁, 能撤: m.能撤, ...(m.过期 ? { 过期话: 项目合并撤回过期话 } : {}) } : null;
 }
 
 /** 「并进另一个项目」那一项：null = 不摆；灰 = 摆着灰、悬停写原因（候选同 能并进的项目：同客户、同负责人、在推的；灰着列的候选也算有，框里写原因） */

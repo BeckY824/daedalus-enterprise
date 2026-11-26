@@ -69,7 +69,7 @@ beforeAll(async () => {
     // 12-02：有权但合成不了的照样摆「和另一位合成」、置灰写原因（挂靠过来的、客户只有一位联系人）
     window.__合成灰=()=>root.render(壳(<div>
       <div data-t='挂来的'><ContactLinks customerId='k0' 只读={false} 头={头('王五')} 合成灰='挂靠过来的联系人请到他所属的客户里合成' c={{...人,挂靠:{linkId:'L1',note:null,主客户Id:'k1',主客户名:'主客户甲',主客户看得到:true,能改:false}}}><div>号码行</div></ContactLinks></div>
-      <div data-t='只一位'><ContactLinks customerId='k0' 只读={false} 头={头('王五二')} 合成灰='只有一位联系人，没有可合成的' c={{...人,id:'c2'}}><div>号码行二</div></ContactLinks></div>
+      <div data-t='只一位'><ContactLinks customerId='k0' 只读={false} 头={头('王五二')} 合成灰='这位客户只有一位自己的联系人，没有可合成的' c={{...人,id:'c2'}}><div>号码行二</div></ContactLinks></div>
     </div>));
     window.__新建=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{window.__存好=1}} customerId='k0' record={null} 号码种类={种类}
       存法={async(x)=>{(window.__存=window.__存||[]).push(x);return {ok:true}}}/>));
@@ -426,7 +426,7 @@ for (const 宽 of [1024, 390]) {
   it(`[12-02] ${宽}：「和另一位合成」合成不了照样摆、置灰写原因（挂靠过来的、只有一位）；${宽 < 768 ? "手机没有悬停，灰项下面一行小字" : "电脑悬停看原因，不另占一行"}；点了不开框`, async () => {
     for (const [t, 因, 前] of [
       ["挂来的", "挂靠过来的联系人请到他所属的客户里合成", ["加说明", "解除挂靠"]],
-      ["只一位", "只有一位联系人，没有可合成的", ["挂到别的客户", "换主客户"]],
+      ["只一位", "这位客户只有一位自己的联系人，没有可合成的", ["挂到别的客户", "换主客户"]],
     ] as const) {
       const page = await open("__合成灰", 宽);
       try {
@@ -435,7 +435,13 @@ for (const 宽 of [1024, 390]) {
         const 项 = 菜单.getByRole("menuitem").filter({ hasText: "和另一位合成" });
         await 项.waitFor();
         expect(await 项.getAttribute("aria-disabled")).toBe("true");
-        expect(await 项.locator(".menu-2l").getAttribute("title")).toBe(因);
+        // 悬停提示挂在菜单项本身（盖满整项），不只挂里层
+        expect(await 项.getAttribute("title")).toBe(因);
+        // 电脑上和同菜单其他项一样高（不套 menu-2l 的上下 2px / 行高 1.4）
+        if (宽 >= 768) {
+          const [高灰, 高他] = await Promise.all([项.boundingBox(), 菜单.getByRole("menuitem").first().boundingBox()]);
+          expect(Math.abs(高灰!.height - 高他!.height)).toBeLessThanOrEqual(0.5);
+        }
         const 注 = 项.locator(".mrg-gray-note");
         expect(await 注.evaluate((e) => getComputedStyle(e).display)).toBe(宽 < 768 ? "block" : "none");
         if (宽 < 768) expect(await 注.innerText()).toBe(因);

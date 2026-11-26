@@ -97,8 +97,8 @@ export default function ContactLinks({ customerId, c, 只读, 头, children, 合
     ? [{ type: "divider" as const, key: "d2" }, { key: "合成", label: "和另一位合成" }]
     : 合成灰
       ? [{ type: "divider" as const, key: "d2" }, {
-          key: "合成", disabled: true,
-          label: <div className="menu-2l" title={合成灰}><div>和另一位合成</div><div className="menu-2l-note mrg-gray-note">{合成灰}</div></div>,
+          key: "合成", disabled: true, title: 合成灰,
+          label: <div className="menu-2l mrg-gray-item"><div>和另一位合成</div><div className="menu-2l-note mrg-gray-note">{合成灰}</div></div>,
         }]
       : [];
   const 菜单项: NonNullable<MenuProps["items"]> = 只读

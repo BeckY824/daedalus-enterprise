@@ -32,6 +32,7 @@ import { 客户编号文字 } from "@/lib/customer-no";
 import { 同事项目几个话 } from "@/lib/carry-over";
 import { 忘掉企业版范围 } from "./visibility";
 import { 合成一对, 拆开一对, 类叫 } from "./contact-merge";
+import { 挂靠联系人不能合成 } from "./merge-hints";
 import { 号码脱敏器 } from "./phone-mask";
 import { 撞上别的写入 } from "@/lib/check-then-write";
 import { 序号撞了 } from "./repeat-inquiry";
@@ -733,7 +734,7 @@ export async function 合成联系人(db: 库, 留id: string, 并id: string, me:
         const 留 = 们.find((c) => c.id === 留id);
         const 并 = 们.find((c) => c.id === 并id);
         if (!留 || !并) throw new 拦下("联系人不存在或已删除，刷新看看");
-        if (留.customerId !== 并.customerId) throw new 拦下("只能合成同一位客户名下的两位联系人；挂靠过来的联系人请到他的主客户上合成");
+        if (留.customerId !== 并.customerId) throw new 拦下(`只能合成同一位客户名下的两位联系人；${挂靠联系人不能合成}`);
         const c = await tx.customer.findFirst({ where: { id: 留.customerId, deletedAt: null }, select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, poolInvalidAt: true, pool: { select: { customerId: true } } } });
         if (!c) throw new 拦下("客户不存在或已删除，刷新看看");
         if (!org || 只读角色(me, org) || 只看的人(org, me.id)) throw new 拦下("你只能看，不能合成联系人");

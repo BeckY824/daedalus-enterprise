@@ -1495,7 +1495,7 @@ it("[12-02] 联系人「和另一位合成」：有权时每位都递——自�
     await page.getByTestId("merge-probe").getByRole("button").click();
     // 一位自家的 + 一位挂靠过来的：都递置灰原因，点了不开框
     await 画(page, { 合并: { 客户: false, 联系人: true }, 挂一位: true });
-    expect(await 探("c1").getAttribute("data-gray")).toBe("只有一位联系人，没有可合成的");
+    expect(await 探("c1").getAttribute("data-gray")).toBe("这位客户只有一位自己的联系人，没有可合成的");
     expect(await 探("c2").getAttribute("data-gray")).toBe("挂靠过来的联系人请到他所属的客户里合成");
     await 探("c1").evaluate((e) => (e as HTMLElement).click());
     expect(await page.getByTestId("merge-probe").count()).toBe(0);
