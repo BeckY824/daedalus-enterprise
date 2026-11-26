@@ -4,7 +4,8 @@
  *   选项多于 6 个：点开即聚焦到输入框，打字按包含过滤（不分大小写、去首尾空格），清空输入恢复全部
  *   键盘：打字后上下键挑、回车选上（值照旧走 onChange）、Esc 关
  *   没对上：「没有匹配的选项」
- *   选项不多于 6 个：不出输入框，照旧点选
+ *   出不出输入框：桌面宽（≥768）一律出，3 个也能打字；手机宽（390）选项不多于 6 个才不出，照旧点选
+ *   页面在顶层给的 filterOption / onSearch 照用，不被组件自带的比法盖掉
  *   摆在外面选中后变「名：值 ×」标签（CustomFilters 外露项）照旧，标签里也能打字换值；收在「更多筛选」里的也能搜
  *   390 宽：点开打字页面不横滚
  */
@@ -36,8 +37,11 @@ beforeAll(async () => {
         {键:'status',名:'状态',宽:130,默认外露:true,有值:!!f.status,渲染:(style)=><FilterSelect style={style} placeholder="全部状态" allowClear aria-label="状态" value={f.status||undefined} onChange={(v)=>setF({...f,status:v??''})} options={['跟进中','已成交','已流失'].map(x=>({value:x,label:x}))}/>},
         {键:'src',名:'来源',宽:140,默认外露:false,有值:!!f.src,渲染:(style)=><FilterSelect style={style} placeholder="全部来源" allowClear aria-label="来源" value={f.src||undefined} onChange={(v)=>setF({...f,src:v??''})} options={['展会','官网','老客户介绍','广告','邮件','电话','社媒'].map(x=>({value:x,label:x}))}/>},
       ]);
+      // 顶层给 filterOption / onSearch：按值的开头比（不比看得见的字），打的字记到 __搜词
+      const 自定=<FilterSelect style={{width:140}} placeholder="全部类型" aria-label="自定比法" onSearch={(v)=>{window.__搜词=v;}}
+        filterOption={(输入,o)=>String(o?.value??'').startsWith(输入)} options={[{value:'b1',label:'甲'},{value:'b2',label:'乙'},{value:'c1',label:'丙'}]}/>;
       return <div style={{padding:16}}>
-        <div className="list-bar"><Space wrap size={[10,10]}>{外露}{更多按钮}</Space></div>
+        <div className="list-bar"><Space wrap size={[10,10]}>{外露}{更多按钮}{自定}</Space></div>
       </div>;
     }
     createRoot(document.getElementById('root')).render(<MotionTheme><App><页/></App></MotionTheme>);
@@ -122,13 +126,39 @@ it("键盘：打字后下键挑、回车选上（值照旧走 onChange），变�
   await page.context().close();
 });
 
-it("不多于 6 个：不出输入框，照旧点选", async () => {
-  const { page, errors } = await 打开();
+it("390 宽、不多于 6 个：不出输入框，照旧点选", async () => {
+  const { page, errors } = await 打开(390);
   const 框 = page.getByRole("combobox", { name: "状态" });
   expect(await 框.evaluate((e) => (e as HTMLInputElement).readOnly)).toBe(true);
   await 框.click();
   await page.getByTitle("已成交", { exact: true }).last().click();
   await expect.poll(() => 值(page).then((x) => x.status)).toBe("已成交");
+  expect(errors).toEqual([]);
+  await page.context().close();
+});
+
+it("1280 宽、只有 3 个选项也出输入框，能打字", async () => {
+  const { page, errors } = await 打开();
+  const 框 = page.getByRole("combobox", { name: "状态" });
+  expect(await 框.evaluate((e) => (e as HTMLInputElement).readOnly)).toBe(false);
+  await 框.click();
+  await expect.poll(() => 框.evaluate((e) => e === document.activeElement)).toBe(true);
+  await page.keyboard.type("成");
+  await expect.poll(() => 看得见的项(page)).toEqual(["已成交"]);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => 值(page).then((x) => x.status)).toBe("已成交");
+  expect(errors).toEqual([]);
+  await page.context().close();
+});
+
+it("顶层给的 filterOption / onSearch 照用，不被组件自带的比法盖掉", async () => {
+  const { page, errors } = await 打开();
+  const 框 = page.getByRole("combobox", { name: "自定比法" });
+  await 框.click();
+  await page.keyboard.type("b");
+  // 自带的比法比看得见的字（甲乙丙），对不上「b」；页面的比法按值开头，对上 b1、b2
+  await expect.poll(() => 看得见的项(page)).toEqual(["甲", "乙"]);
+  expect(await page.evaluate(() => (window as unknown as { __搜词?: string }).__搜词)).toBe("b");
   expect(errors).toEqual([]);
   await page.context().close();
 });
