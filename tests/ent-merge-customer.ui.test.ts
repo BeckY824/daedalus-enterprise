@@ -346,7 +346,7 @@ it("同事负责的候选标「要申请」：读申请预览、底部列要同�
     await 框.locator(".csq-foot .ant-btn-primary").click();
     await page.locator(".undo-bar").waitFor();
     expect(await page.locator(".undo-t").innerText()).toBe("合并申请已发出，等 2 位同意");
-    expect((await 调(page)).find((x) => x[0] === "发申请")).toEqual(["发申请", "a", "b", { 同一个人: [] }]);
+    expect((await 调(page)).find((x) => x[0] === "发申请")).toEqual(["发申请", "a", "b", { 同一个人: [], 按号: "13800000000" }]);
     await page.locator(".undo-btn").last().click();
     await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "撤申请"));
     expect((await 调(page)).find((x) => x[0] === "撤申请")).toEqual(["撤申请", "r1"]);

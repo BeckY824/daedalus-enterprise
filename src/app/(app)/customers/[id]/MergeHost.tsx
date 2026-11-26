@@ -227,7 +227,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
         { 标: "可撤回申请", 话: `都同意之前，你可以在「合并申请」页撤回` },
       ],
       做: async () => {
-        const r = await 发起客户合并申请(customerId, 并掉.id, { 已核对: 预.要勾选 ? 勾 : undefined, 同一个人: 对们 });
+        const r = await 发起客户合并申请(customerId, 并掉.id, { 已核对: 预.要勾选 ? 勾 : undefined, 同一个人: 对们, 按号: 并掉.按号 });
         if (r.ok) { 结.单号 = r.requestId; 结.人数 = r.同意人.length; }
         return r;
       },
