@@ -41,9 +41,9 @@ describe("重复咨询线索的验证时限", () => {
   const 初判无效于 = (id: string, 时: Date) => 销售初判(乙, id, "无效", { invalidReason: "联系方式无效", verifyNote: "打了三次" }, 时);
 
   // 通知的 createdAt 是真实时钟，钟上读它当「提醒发出的时刻」：每扫一遍把这一遍新记的通知改成模拟的那一刻
-  const 扫 = async (时: Date) => {
+  const 扫 = async (时: Date, 上限?: number) => {
     const 旧 = new Set((await prisma.entNotice.findMany({ select: { id: true } })).map((n) => n.id));
-    const r = await 验证时限扫一遍(时);
+    const r = await 验证时限扫一遍(时, 上限);
     const 新 = (await prisma.entNotice.findMany({ select: { id: true } })).map((n) => n.id).filter((i) => !旧.has(i));
     if (新.length) await prisma.entNotice.updateMany({ where: { id: { in: 新 } }, data: { createdAt: 时 } });
     return r;
@@ -378,7 +378,8 @@ describe("重复咨询线索的验证时限", () => {
     await 扫(京("2026-12-02 11:00"));
     const r = await 扫(京("2026-12-02 11:30"));
     spy.mockRestore();
-    expect(r.没落成).toBe(1);
+    // 销售已提交异议 = 不是卡住，不算没落成（单 5 小瑕疵）
+    expect(r.没落成).toBe(0);
     expect(await 卡数(乙.id)).toBe(0);
     expect(await 卡数(老板.id)).toBe(0);
     expect(await 状态(id)).toMatchObject({ pending: "总管理终判", salesAck: "提交异议" });
@@ -424,5 +425,31 @@ describe("重复咨询线索的验证时限", () => {
     expect(await 状态(id)).toMatchObject({ pending: "总管理终判", salesAck: "提交异议" });
     expect((await 痕(id)).some((l) => l.userId === "system")).toBe(false);
     expect(await prisma.projectNodeLog.count({ where: { projectId: id, userId: "system" } })).toBe(0);
+  });
+
+  it("负责人只是被停用（真改停用字段）：卡住通知改发系统管理员一次，同一个 key，下一分钟不再推（单 5 建议 2）", async () => {
+    const id = await 备终验卡住();
+    await prisma.user.update({ where: { id: 乙.id }, data: { active: false } });
+    await 扫(京("2026-12-02 11:00"));
+    await 扫(京("2026-12-02 11:30"));
+    expect(await 卡数(乙.id)).toBe(0);
+    expect(await 卡数(老板.id)).toBe(1);
+    const 条 = await prisma.entNotice.findFirstOrThrow({ where: { userId: 老板.id, title: { startsWith: "线索验证到期没能自动落定" } } });
+    expect(条.body).toContain("负责人已不在或已停用");
+    for (const t of ["11:31", "11:32", "12:30"]) expect(await 扫(京(`2026-12-02 ${t}`))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect(await 卡数(老板.id)).toBe(1);
+    expect(await 状态(id)).toMatchObject({ pending: "销售终验" });
+  });
+
+  it("卡住行积满扫描上限：新进来的行仍被扫到落定（按 updatedAt 倒序，卡住的沉底，单 5 建议 1）", async () => {
+    const 卡住们 = [await 备终验卡住(), await 备终验卡住()];
+    const 新 = await 项目();
+    await 初判无效于(新, 京("2026-12-02 10:00"));
+    // 卡住行的 updatedAt 比新行老
+    await prisma.entLeadVerify.updateMany({ where: { projectId: { in: 卡住们 } }, data: { updatedAt: new Date("2026-01-01T00:00:00Z") } });
+    await 扫(京("2026-12-02 11:00"), 2);
+    await 扫(京("2026-12-02 11:30"), 2);
+    expect((await 现(新)).result).toBe("线索流失");
+    expect(await 状态(新)).toMatchObject({ pending: null });
   });
 });

@@ -72,7 +72,10 @@ const 已记兜底 = new Set<string>();
 
 const 键头 = (id: string, 起: Date) => `verify-timeout:${id}:${起.toISOString()}`;
 
-export async function 验证时限扫一遍(现在: Date = new Date()): Promise<验证时限明细> {
+/** 一遍最多扫多少行（测试里传小的） */
+export const 扫描上限 = 500;
+
+export async function 验证时限扫一遍(现在: Date = new Date(), 上限: number = 扫描上限): Promise<验证时限明细> {
   const 明细: 验证时限明细 = { 提醒: 0, 落定: 0, 没落成: 0 };
   if (!企业版() || 不执行(现在)) return 明细;
   try {
@@ -91,14 +94,15 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
     const 行们 = await 看全部(() => prisma.entLeadVerify.findMany({
       where: {
         pending: { in: ["市场复核", "销售终验", "总管理终判"] },
-        // 生效前就在等的、卡住的行不进扫描，不占那 500 个名额：起钟时刻只会是这三列之一（起钟时刻），三列都早于生效的一定不走钟
+        // 生效前就在等的行不进扫描，不占名额：起钟时刻只会是这三列之一（起钟时刻），三列都早于生效的一定不走钟
         // （updatedAt 每步虽都会更新，但它是库写入时刻、起钟列是传入的业务时刻，直接比起钟列更准）
+        // 生效后进来、pending 停在销售终验等负责人手动处理的卡住行没被排除，仍在扫描里：靠下面按 updatedAt 倒序沉底，新行排前面，积满上限也不挤掉新进来的
         OR: [{ verifiedAt: { gte: 生效 } }, { reviewedAt: { gte: 生效 } }, { ackedAt: { gte: 生效 } }],
         project: { source: 重复咨询来源, phase: "线索", node: 有效线索节点, result: null, pooledAt: null, awaitAssignAt: null, deletedAt: null },
       },
       include: { project: { select: { id: true, name: true, ownerId: true } } },
-      orderBy: { updatedAt: "asc" },
-      take: 500,
+      orderBy: { updatedAt: "desc" },
+      take: 上限,
     }));
     if (!行们.length) return 明细;
     const org = await 读组织();
@@ -138,11 +142,13 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
         }
         const r = await 到期落定(v.projectId, 步, 现在);
         if (!r.ok) {
-          明细.没落成++;
+          // 判卡住前再读一眼：读状态到事务开始之间销售点了提交异议（pending 已不是销售终验）= 不是卡住，静默跳过、也不算没落成
           if (r.卡住) {
-            // 判卡住前再读一眼：读状态到事务开始之间销售点了提交异议（pending 已不是销售终验）= 不是卡住，静默跳过
             const 现行 = await prisma.entLeadVerify.findUnique({ where: { projectId: v.projectId }, select: { pending: true } });
             if (现行?.pending !== "销售终验") continue;
+          }
+          明细.没落成++;
+          if (r.卡住) {
             const 通知 = {
               kind: 验证时限通知种类,
               title: `线索验证到期没能自动落定：${v.project.name}`,
@@ -151,7 +157,8 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
               key: `${头}:卡住`,
             };
             // 负责人停用 / 不存在记不上：同一个 key 改发给系统管理员一次，卡住标记才记得住，下一分钟不再重推重拦
-            if ((await notify([v.project.ownerId], 通知)) === 0) {
+            // notify 不查停用、EntNotice 无外键，负责人只是被停用时照样记上 1 条；读好的 org.成员 只含在职成员（建组织 跳过 active=false），不在里面直接改发管理员
+            if (!org.成员.has(v.project.ownerId) || (await notify([v.project.ownerId], 通知)) === 0) {
               const 管理员们 = await 被等的人们(v.projectId, "总管理终判");
               if ((await notify(管理员们, { ...通知, body: `${通知.body}（负责人已不在或已停用，改由系统管理员处理）` })) === 0) {
                 console.warn(`[验证时限] ${v.projectId} 到期没能自动落定，负责人和系统管理员都没通知上，下一遍还会再试`);
