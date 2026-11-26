@@ -16,6 +16,7 @@ import { 连库, 清空业务数据, 造模拟数据 } from "./mock-data";
 // AI 接入那几步只留一份：ai-dock 和 import 两组也要装同一个假模型
 import { 配好AI } from "./fake-llm";
 import { 企业版 } from "./owner-pick";
+import { 等流式出页落定 } from "./stream-settle";
 
 const 账号 = { 用户名: "zhangsan", 密码: "admin123" };
 /** 只有管理员能改 AI 接入 */
@@ -621,9 +622,9 @@ test("输入框：字多了就长高，长到头才在框内滚——不是永�
   await 登录(page);
   await page.goto("/dashboard");
   const ta = page.locator(".cli-input textarea");
-  // 流式出页时 body 下有一份藏着的同样内容：等只剩真的那一份再量
-  await expect(ta).toHaveCount(1);
-  // 剩下那一份可能还没显示出来（流式出页换真内容那一刻），看得见了再量，不然 boundingBox 是 null
+  // 流式出页时 body 下有一份藏着的同样内容：先等看得见的那份，再等只剩它一份再量（只等数到 1 不够：
+  // 先到的可能正是藏着的那份，随后客户端重画出看得见的一份，两份同在约 300ms，见 stream-settle.ts）
+  await 等流式出页落定(ta);
   await expect(ta).toBeVisible();
   const 一行 = (await ta.boundingBox())!.height;
 
