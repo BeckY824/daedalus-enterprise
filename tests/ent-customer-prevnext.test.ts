@@ -6,6 +6,8 @@
  *   - 可见范围走限定层：别人的客户不进相邻、拿别人的客户 id 来问 = null
  *   - 看板视图、不是客户列表的地址、这一位不在那一页 = null（详情页不摆箭头）
  *   - lib/list-return.ts 定详情来源：只认从客户列表进来、按箭头换过来、刷新 / 后退回来的
+ *   - 带关键词、默认排序：相邻走 关键词分页 那条快路，顺序和它给的 ids 逐位一致（PR #492 审查必改 1）
+ *   - 地址上的页码越界（page=99）：照列表页钳到末页，跨页页码从末页往前推（必改 2）
  * 箭头的样子（电脑 / 手机 390、到头置灰）见 tests/ent-customer-prevnext.ui.test.ts
  */
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
@@ -14,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null },
   看法: "" as string,
   在请求: false,
+  /** 关键词分页 接住了几次、客户筛选条件（老路）拼了几次：看相邻走的哪条路 */
+  计数: { 快: 0, 老: 0 },
 }));
 // 只在问的那一下像在请求里（造数据、清库时照真的一样抛，限定层靠它认出是测试自己）
 vi.mock("next/headers", async (原) => ({
@@ -35,6 +39,14 @@ vi.mock("@/lib/business", async (原) => {
   const m = await 原<typeof import("@/lib/business")>();
   return { ...m, getBusiness: async () => ({ ...(await m.getBusiness()), projectMode: true }) };
 });
+vi.mock("@/app/(app)/customers/query", async (原) => {
+  const m = await 原<typeof import("@/app/(app)/customers/query")>();
+  return {
+    ...m,
+    关键词分页: async (...a: Parameters<typeof m.关键词分页>) => { const r = await m.关键词分页(...a); if (r) mocks.计数.快++; return r; },
+    客户筛选条件: async (...a: Parameters<typeof m.客户筛选条件>) => { mocks.计数.老++; return m.客户筛选条件(...a); },
+  };
+});
 vi.mock("@/app/(app)/customers/CustomersView", () => ({ default: () => null }));
 vi.mock("@/app/(app)/customers/HandoverPending", () => ({ default: () => null }));
 
@@ -45,7 +57,8 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import CustomersPage from "@/app/(app)/customers/page";
 import { 相邻客户 } from "@/app/(app)/customers/[id]/adjacent-actions";
 import { 找相邻, 查询串of, 每页条数 } from "@/app/(app)/customers/[id]/adjacent";
-import { 客户排序 } from "@/app/(app)/customers/query";
+import { 客户排序, 关键词分页 } from "@/app/(app)/customers/query";
+import { 生效客户范围 } from "@/lib/enterprise/customer-scope";
 import { 定详情来源, 读详情来源, 记详情来源, 清详情来源 } from "@/lib/list-return";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
@@ -137,6 +150,62 @@ describe("相邻两位 = 列表同一顺序", () => {
   it("按建档旧的在前：和列表一样", async () => {
     await 逐位核对(甲, "sort=created-asc");
   });
+
+  it("按金额（高的在前 / 低的在前，含金额相同的并列）：逐位和列表页一样", async () => {
+    const 甲的 = await prisma.customer.findMany({ where: { salesOwnerId: 甲.id }, orderBy: { createdAt: "asc" }, select: { id: true } });
+    // 一半有签约（几位金额相同），一半 0：并列的按建档新的在前
+    for (let i = 0; i < 甲的.length; i += 2) await prisma.contract.create({ data: { customerId: 甲的[i].id, amount: 1000 * (i % 3), signedAt: new Date() } });
+    expect((await 逐位核对(甲, "sort=amount-desc")).length).toBe(25);
+    expect((await 逐位核对(甲, "sort=amount-asc")).length).toBe(25);
+  });
+
+  it("按最近跟进（含 lastFollowAt 为空的并列）：两个方向都逐位和列表页一样", async () => {
+    const 新到旧 = await 逐位核对(甲, "sort=follow-desc");
+    expect(新到旧.length).toBe(25);
+    const 旧到新 = await 逐位核对(甲, "sort=follow-asc");
+    expect(旧到新.length).toBe(25);
+    // 空的那一截真有并列（不然没测到 nulls first / last 和建档时间兜底）
+    const 没跟进 = await prisma.customer.count({ where: { salesOwnerId: 甲.id, lastFollowAt: null } });
+    expect(没跟进).toBeGreaterThan(1);
+  });
+});
+
+describe("关键词快路、越界页（PR #492 审查）", () => {
+  it("带关键词、默认排序：相邻的顺序和 关键词分页 给的 ids 逐位一致（跨页也是）", async () => {
+    const 词 = "相邻客户";
+    const 全: { id: string; page: number }[] = [];
+    for (let p = 1; p <= 3; p++) {
+      const 快 = await 在请求里(甲, () => 关键词分页({ keyword: 词, scope: 生效客户范围(undefined, false) }, p, 10));
+      expect(快, "甲这张列表接得住快路").not.toBeNull();
+      expect(快!.page).toBe(p);
+      全.push(...快!.ids.map((id) => ({ id, page: p })));
+    }
+    expect(全.length).toBe(25);
+    // 相邻走的是快路：每次都是 关键词分页 接住，一次也没拼老路的 客户筛选条件（它里头那遍不限范围的 GLOB 就是慢的来源）
+    mocks.计数 = { 快: 0, 老: 0 };
+    for (let i = 0; i < 全.length; i++) {
+      const { id, page } = 全[i];
+      const 邻 = await 在请求里(甲, () => 相邻客户({ href: `/customers?keyword=${encodeURIComponent(词)}&pageSize=10&page=${page}`, page }, id));
+      expect(邻, `第 ${i} 位`).toEqual({ 上: 全[i - 1] ?? null, 下: 全[i + 1] ?? null });
+    }
+    expect(mocks.计数.快).toBeGreaterThanOrEqual(全.length);
+    expect(mocks.计数.老).toBe(0);
+  });
+
+  it("page=99：拿到末页的相邻，跨页页码从末页往前推（默认、关键词快路、按金额、按等级各一遍）", async () => {
+    for (const 查询 of ["", `keyword=${encodeURIComponent("相邻客户")}&`, "sort=amount-desc&", "sort=level-desc&"]) {
+      const 越界 = `/customers?${查询}pageSize=10&page=99`;
+      // 列表页自己钳到第 3 页（25 位每页 10）
+      const 末页 = await 列表页ids(甲, 越界);
+      expect(末页, 查询).toEqual(await 列表页ids(甲, `/customers?${查询}pageSize=10&page=3`));
+      expect(末页.length, 查询).toBe(5);
+      const 第二页 = await 列表页ids(甲, `/customers?${查询}pageSize=10&page=2`);
+      const 头 = await 在请求里(甲, () => 相邻客户({ href: 越界, page: 99 }, 末页[0]));
+      expect(头, 查询).toEqual({ 上: { id: 第二页[9], page: 2 }, 下: { id: 末页[1], page: 3 } });
+      const 尾 = await 在请求里(甲, () => 相邻客户({ href: 越界, page: 99 }, 末页[4]));
+      expect(尾, 查询).toEqual({ 上: { id: 末页[3], page: 3 }, 下: null });
+    }
+  });
 });
 
 describe("看不到、对不上的不摆", () => {
@@ -175,6 +244,15 @@ describe("纯函数", () => {
     expect(await 找相邻("a", 1, 取页)).toEqual({ 上: null, 下: { id: "b", page: 1 } });
     expect(await 找相邻("g", 3, 取页)).toEqual({ 上: { id: "f", page: 2 }, 下: null });
     expect(await 找相邻("z", 1, 取页)).toBeNull();
+  });
+
+  it("找相邻：取页钳了页码（越界）就从钳过的那页往前后推", async () => {
+    const 页们: Record<number, string[]> = { 1: ["a", "b"], 2: ["c", "d"] };
+    const 取了: number[] = [];
+    const 取页 = async (p: number) => { 取了.push(p); const page = Math.min(p, 2); return { ids: 页们[page], 还有下页: page < 2, page }; };
+    expect(await 找相邻("c", 99, 取页)).toEqual({ 上: { id: "b", page: 1 }, 下: { id: "d", page: 2 } });
+    expect(取了.sort((x, y) => x - y)).toEqual([1, 99]);
+    expect(await 找相邻("d", 99, 取页)).toEqual({ 上: { id: "c", page: 2 }, 下: null });
   });
 
   it("客户排序：金额另走；默认、等级、跟进、建档各一份；每页条数照列表 10–100", () => {
