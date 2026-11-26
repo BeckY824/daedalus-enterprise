@@ -1235,7 +1235,7 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
 /* 并入提示也在这一行：它已经顶到右边，箭头紧跟在它后面 */
 .mrg-landed + .rec-step { margin-left: 0; }
 .rec-step-b { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--r-ctl); background: none;
-  color: var(--text-muted); font-size: 12px; text-decoration: none; cursor: pointer; transition: background-color var(--t-press) var(--ease), color var(--t-press) var(--ease); }
+  color: var(--text-muted); font-size: var(--fs-min); text-decoration: none; cursor: pointer; transition: background-color var(--t-press) var(--ease), color var(--t-press) var(--ease); }
 a.rec-step-b:hover { background: var(--row-hover); color: var(--ink); }
 .rec-step-b:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 .rec-step-b:disabled { color: var(--text-faint); cursor: default; }
