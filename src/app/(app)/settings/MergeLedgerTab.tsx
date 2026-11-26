@@ -41,8 +41,8 @@ const 预设 = () => {
   ];
 };
 
-const 表头 = ["合并时间", "发起人", "客户", "留下项目", "被并项目", "留下项目负责人", "被并项目负责人", "开票自查勾选人", "开票自查时间", "状态", "撤回人", "撤回时间"] as const;
-const 成格 = (r: 台账行) => [时(r.at), r.发起人, r.客户, r.留下项目, r.被并项目, r.留下负责人, r.被并负责人, r.自查人, 时(r.自查时间), r.状态, r.撤回人, 时(r.撤回时间)];
+const 表头 = ["类型", "合并时间", "发起人", "客户", "留下项目", "被并项目", "留下项目负责人", "被并项目负责人", "开票自查勾选人", "开票自查时间", "状态", "撤回人", "撤回时间"] as const;
+const 成格 = (r: 台账行) => [r.类型, 时(r.at), r.发起人, r.客户, r.留下项目, r.被并项目, r.留下负责人, r.被并负责人, r.自查人, 时(r.自查时间), r.状态, r.撤回人, 时(r.撤回时间)];
 
 /** 一格：一行、放不下省略号，悬停看全文 */
 const 一行 = (v: string) => <span className="ml-cell" title={v}>{v || "—"}</span>;
@@ -103,7 +103,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
     try {
       const r = await 导出(已查).catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "导出没能完成，请重试") }));
       if (!r.ok) return void 就地.error(r.error);
-      const bytes = 写xlsx([{ 名: "合并台账", 表头, 行: r.行们.map(成格), 列宽: [17, 10, 24, 24, 24, 12, 12, 12, 17, 8, 10, 17] }]);
+      const bytes = 写xlsx([{ 名: "合并台账", 表头, 行: r.行们.map(成格), 列宽: [12, 17, 10, 24, 24, 24, 12, 12, 12, 17, 8, 10, 17] }]);
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const a = document.createElement("a");
       a.href = url;
@@ -126,7 +126,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
         type="info"
         showIcon
         className="ml-tip"
-        title="项目合并一单一行，只读"
+        title="项目合并、公海客户合并一单一行，只读"
         description="每周一拿它和财务开票清单对一遍：开票自查勾错的，30 天内到被并项目详情里撤回（点项目名在新标签页打开）。只有系统管理员看得到。"
       />
       <div className="ml-bar">
@@ -167,7 +167,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
         loading={行 === null}
         dataSource={行 ?? []}
         tableLayout="fixed"
-        scroll={{ x: 1340 }}
+        scroll={{ x: 1436 }}
         pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
         locale={{
           emptyText: 读不到 ? (
@@ -175,17 +175,18 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
               {读不到}
               <Button type="link" size="small" onClick={() => 重拉(范围, 词)}>重试</Button>
             </span>
-          ) : 范围 || 词 ? "这个范围里没有项目合并" : "还没有项目合并",
+          ) : 范围 || 词 ? "这个范围里没有合并单" : "还没有项目合并或公海客户合并",
         }}
         columns={[
+          { title: "类型", dataIndex: "类型", width: 96, ellipsis: true, render: 一行 },
           { title: "合并时间", dataIndex: "at", width: 140, ellipsis: true, render: (v: string) => 一行(时(v)) },
           { title: "发起人", dataIndex: "发起人", width: 96, ellipsis: true, render: 一行 },
           {
             title: "客户", dataIndex: "客户", width: 150, ellipsis: true,
             render: (v: string, r) => (r.客户id && r.客户状态 !== "已删" ? <a href={`/customers/${r.客户id}`} target="_blank" rel="noopener" className="ml-cell" title={v}>{v}</a> : 一行(v)),
           },
-          { title: "留下项目", dataIndex: "留下项目", width: 150, ellipsis: true, render: (v: string, r) => 项目格(r.留下id, v) },
-          { title: "被并项目", dataIndex: "被并项目", width: 150, ellipsis: true, render: (v: string, r) => 项目格(r.被并id, v) },
+          { title: "留下项目", dataIndex: "留下项目", width: 150, ellipsis: true, render: (v: string, r) => (r.类型 === "项目合并" ? 项目格(r.留下id, v) : 一行("")) },
+          { title: "被并项目", dataIndex: "被并项目", width: 150, ellipsis: true, render: (v: string, r) => (r.类型 === "项目合并" ? 项目格(r.被并id, v) : 一行("")) },
           { title: "留下项目负责人", dataIndex: "留下负责人", width: 110, ellipsis: true, render: 一行 },
           { title: "被并项目负责人", dataIndex: "被并负责人", width: 110, ellipsis: true, render: 一行 },
           {

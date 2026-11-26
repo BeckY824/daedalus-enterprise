@@ -367,9 +367,9 @@ function 能写(me: 看的人, org: 组织 | null): string | null {
 
 /**
  * 标「不是同一个人」：传一组里的几家（清单上那一行），按登录的人重新成组，只标这几家之间、他清单上还列着的那几对
- * （负责人只标自己名下有份的，系统管理员全标）。一对都没有 = 回原因。两家客户上各记一条操作日志
+ * （负责人只标自己名下有份的，系统管理员标当前栏的：普通栏不连带两家都在公海的对，公海栏只标公海对）。一对都没有 = 回原因。两家客户上各记一条操作日志
  */
-export async function 标不是同一个人(db: 库, me: 看的人, org: 组织 | null, ids: string[]): Promise<写结果<{ 对们: string[] }>> {
+export async function 标不是同一个人(db: 库, me: 看的人, org: 组织 | null, ids: string[], 栏: 清单栏 = "普通"): Promise<写结果<{ 对们: string[] }>> {
   const 不能 = 能写(me, org);
   if (不能) return { ok: false, error: 不能 };
   const 要 = [...new Set(ids)];
@@ -384,7 +384,8 @@ export async function 标不是同一个人(db: 库, me: 看的人, org: 组织 
     const 标着 = new Set((await tx.customerNotDupe.findMany({
       where: { undoneAt: null, OR: [{ customerId: { in: 要 } }, { otherId: { in: 要 } }] }, select: { id: true },
     })).map((x) => x.id));
-    const 对们 = 成组(行们, 标着, 看法of(me, org)).flatMap((g) => g.对们);
+    // 只标当前栏里显示的对（12-15 D）：普通栏不带两家都在公海的对（公海组），公海栏只标公海组的对
+    const 对们 = 成组(行们, 标着, 看法of(me, org)).filter((g) => !!g.公海组 === (栏 === "公海")).flatMap((g) => g.对们);
     if (!对们.length) return { ok: false as const, error: "这几家已经标过了，或者不是你名下的，刷新再看" };
     const 名 = new Map(行们.map((r) => [r.id, r.name.trim()]));
     for (const id of 对们) {

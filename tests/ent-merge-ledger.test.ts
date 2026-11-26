@@ -10,6 +10,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 执行项目合并, 撤回项目合并 } from "@/lib/enterprise/project-merge";
+import { 执行合并, 撤回合并 } from "@/lib/enterprise/customer-merge";
 import { 读合并台账, 导出合并台账, 只有系统管理员能看台账 } from "@/lib/enterprise/merge-ledger";
 
 type 人 = { id: string; name: string; role: string };
@@ -194,5 +195,45 @@ describe("客户已删", () => {
     expect(按("戊留下")).toMatchObject({ 客户: "编造测试客户戊", 客户状态: "在", 客户id: c1 });
     expect(按("己留下")).toMatchObject({ 客户: "编造测试客户己（已删除）", 客户状态: "回收站", 客户id: c2 });
     expect(按("庚留下")).toMatchObject({ 客户: "（已删除的客户）", 客户状态: "已删" });
+  });
+});
+
+describe("公海客户合并进台账（P-合并-07）", () => {
+  async function 公海客户(name: string) {
+    const id = (await raw.customer.create({ data: { name, phone: "", salesOwnerId: 老板.id } })).id;
+    await raw.customerPool.create({ data: { customerId: id } });
+    return id;
+  }
+
+  it("管理员并两家公海客户：台账多一行「公海客户合并」、项目格留空、导出也有；撤回后状态已撤回", async () => {
+    const a = await 公海客户("编造公海甲");
+    const b = await 公海客户("编造公海乙");
+    const c = await 客户("编造有主客户");
+    await 并(await 项目(c, "项目留"), await 项目(c, "项目并"), 乙);
+    const r = await 执行合并(prisma, a, b, 老板);
+    if (!r.ok) throw new Error(r.error);
+    const 列 = await 读合并台账(prisma, 老板, {});
+    if (!列.ok) throw new Error(列.error);
+    expect(列.行们.map((x) => x.类型).sort()).toEqual(["公海客户合并", "项目合并"]);
+    const 行 = 列.行们.find((x) => x.类型 === "公海客户合并")!;
+    expect(行).toMatchObject({ id: r.mergeId, 客户: "编造公海甲", 被并客户: "编造公海乙", 留下项目: "", 被并项目: "", 发起人: "老板", 状态: "已合并" });
+    expect(await 读合并台账(prisma, 老板, { 词: "公海乙" })).toMatchObject({ ok: true, 行们: [expect.objectContaining({ id: r.mergeId })] });
+    const 导 = await 导出合并台账(prisma, 老板, {});
+    expect(导.ok && 导.行们.map((x) => x.类型).sort()).toEqual(["公海客户合并", "项目合并"]);
+    expect((await 读合并台账(prisma, 乙, {})).ok).toBe(false);
+    expect((await 撤回合并(prisma, r.mergeId, 老板)).ok).toBe(true);
+    const 后 = await 读合并台账(prisma, 老板, {});
+    expect(后.ok && 后.行们.find((x) => x.id === r.mergeId)).toMatchObject({ 类型: "公海客户合并", 状态: "已撤回", 撤回人: "老板" });
+  });
+
+  it("销售并自己名下两家客户：台账不多行", async () => {
+    const a = await 客户("编造销售甲");
+    const b = await 客户("编造销售乙");
+    const r = await 执行合并(prisma, a, b, 乙);
+    if (!r.ok) throw new Error(r.error);
+    const 列 = await 读合并台账(prisma, 老板, {});
+    expect(列.ok && 列.行们).toEqual([]);
+    const 单 = await raw.entCustomerMerge.findUniqueOrThrow({ where: { id: r.mergeId } });
+    expect(单.detail).not.toContain("公海");
   });
 });

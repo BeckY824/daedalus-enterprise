@@ -44,11 +44,11 @@ export async function 核对清单合并(留下id: string, 并掉id: string): Pr
 }
 
 /** 一组标「不是同一个人」：传那一行的几家客户 id；回标了的几对（撤销条上的「撤销」用） */
-export async function 标为不是同一个人(ids: string[]): Promise<结果<{ 对们: string[] }>> {
+export async function 标为不是同一个人(ids: string[], 栏?: "普通" | "公海"): Promise<结果<{ 对们: string[] }>> {
   const me = await requireUser();
   if (!企业版()) return 不是企业版;
   if (!是id们(ids, 一组最多)) return 坏参数;
-  const r = await 标不是同一个人(prisma, me, await 权限组织(), ids);
+  const r = await 标不是同一个人(prisma, me, await 权限组织(), ids, 栏 === "公海" ? "公海" : "普通");
   if (r.ok) 刷新();
   return r;
 }

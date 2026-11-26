@@ -69,7 +69,7 @@ export default function DupesView({ 清单, 已标, 只读原因 = null, 栏 = "
 
   async function 标(g: 清单组) {
     set忙(g.键); set行错(null);
-    const r = await 标为不是同一个人(g.们.map((m) => m.id)).catch((e) => ({ ok: false as const, error: 动作出错话(e, "没标上，请再试一次") }));
+    const r = await 标为不是同一个人(g.们.map((m) => m.id), 栏).catch((e) => ({ ok: false as const, error: 动作出错话(e, "没标上，请再试一次") }));
     set忙(null);
     if (!r.ok) { set行错({ 键: g.键, 话: r.error }); return; }
     router.refresh();

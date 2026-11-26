@@ -344,6 +344,8 @@ type 合并明细 = {
   审批人: { id: string; 原: string | null; 新: string | null }[];
   补空: 补空;
   退回次数: number;
+  /** 两家都在公海（系统管理员并）：合并台账靠它把这张客户合并单列进去（P-合并-07） */
+  公海?: true;
   /** A 有备注、B 也有（不一样）：A 的照旧，B 的记在这里可查（合并单列表读得出） */
   被并备注?: string;
 };
@@ -552,6 +554,7 @@ async function 挪(tx: Tx, A: 客户行, B: 客户行, me: 合并人, 现在: Da
   if (B.pool) {
     const 行 = await tx.customerPool.findUnique({ where: { customerId: B.id } });
     if (行) { await tx.customerPool.delete({ where: { customerId: B.id } }); 明.删掉.customerPool.push(行); }
+    if (A.pool) 明.公海 = true;
   }
 
   // B 只软删、不连带（子行都已挪走）

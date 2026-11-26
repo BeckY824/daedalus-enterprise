@@ -19,6 +19,9 @@ import { 权限组织 } from "./org";
 import { 是系统管理员 } from "./permissions";
 import { 客户显名, 显名列 } from "./customer-title";
 import { 项目单 } from "./project-merge-guard";
+
+/** 客户合并单 kind（同 customer-merge.ts 客户单；这里另写一份免得引它的值） */
+const 客户合并单 = "客户";
 import { recordAudit } from "@/lib/audit";
 import { 是日期, 创建时间段 } from "@/lib/custom-date-range";
 import type { 合并人 } from "./customer-merge";
@@ -36,6 +39,9 @@ export const 只有系统管理员能看台账 = "只有系统管理员能看合
 export type 台账条件 = { 起?: string | null; 止?: string | null; 词?: string | null };
 export type 台账行 = {
   id: string;
+  /** 项目合并 / 公海客户合并（两家都在公海的客户合并，P-合并-07）；公海客户合并行：客户 = 留下的客户、留下 / 被并项目格留空、被并客户见 被并客户 */
+  类型: "项目合并" | "公海客户合并";
+  被并客户: string;
   at: string;
   发起人: string;
   客户id: string | null;
@@ -55,7 +61,7 @@ export type 台账行 = {
   撤回时间: string | null;
 };
 
-type 明细 = { 留下名?: unknown; 客户?: unknown; 负责人?: unknown; 自查?: { 谁?: unknown; 时间?: unknown } };
+type 明细 = { 公海?: unknown; 留下名?: unknown; 客户?: unknown; 负责人?: unknown; 自查?: { 谁?: unknown; 时间?: unknown } };
 function 读明细(detail: string): 明细 {
   try {
     const v = JSON.parse(detail) as unknown;
@@ -74,6 +80,9 @@ const 日 = (v: unknown): string | null => (是日期(v) ? v : null);
 /** 搜：去空白、不分大小写，客户名、留下项目名、被并项目名任一包含就算 */
 const 规整 = (s: string) => s.replace(/\s+/g, "").toLowerCase();
 
+/** 这行说的客户：项目合并是留下项目所属客户（明细.客户），公海客户合并是留下的那家（intoId） */
+const 客户idOf = (m: { kind: string; intoId: string }, 明: 明细) => (m.kind === 客户合并单 ? m.intoId : 字(明.客户));
+
 export async function 能看合并台账(me: 合并人): Promise<boolean> {
   return 企业版() && 是系统管理员(me, await 权限组织());
 }
@@ -85,11 +94,11 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
   const 段 = 创建时间段(日(条件?.起) ?? undefined, 日(条件?.止) ?? undefined);
   const 词 = 规整(字(条件?.词)).slice(0, 60);
   const 单们 = await 看全部(() => db.entCustomerMerge.findMany({
-    where: { kind: 项目单, status: { in: [...台账状态] }, ...(段 ? { at: { ...(段.gte ? { gte: 段.gte } : {}), ...(段.lte ? { lte: 段.lte } : {}) } } : {}) },
+    where: { OR: [{ kind: 项目单 }, { kind: 客户合并单, detail: { contains: '"公海":true' } }], status: { in: [...台账状态] }, ...(段 ? { at: { ...(段.gte ? { gte: 段.gte } : {}), ...(段.lte ? { lte: 段.lte } : {}) } } : {}) },
     orderBy: [{ at: "desc" }, { id: "desc" }],
     // 有搜索词时先多拿一些再筛（名字不在列上）；没词直接按上限拿、多拿一条判截断
     take: 词 ? 台账上限 * 4 : 台账上限 + 1,
-    select: { id: true, fromId: true, intoId: true, fromName: true, fromOwnerId: true, byUserId: true, status: true, detail: true, at: true, undoneAt: true, undoneById: true },
+    select: { id: true, kind: true, fromId: true, intoId: true, fromName: true, fromOwnerId: true, byUserId: true, status: true, detail: true, at: true, undoneAt: true, undoneById: true },
   }));
   const 明们 = new Map(单们.map((m) => [m.id, 读明细(m.detail)]));
   const 人ids = new Set<string>();
@@ -97,7 +106,8 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
   for (const m of 单们) {
     const 明 = 明们.get(m.id)!;
     for (const id of [m.byUserId, m.undoneById, m.fromOwnerId, 字(明.负责人)]) if (id) 人ids.add(id);
-    if (字(明.客户)) 客户ids.add(字(明.客户));
+    const 客id = 客户idOf(m, 明);
+    if (客id) 客户ids.add(客id);
   }
   const [人们, 客户们] = await Promise.all([
     人ids.size ? db.user.findMany({ where: { id: { in: [...人ids] } }, select: { id: true, name: true } }) : [],
@@ -107,33 +117,37 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
   const 人名 = (id: string | null | undefined) => (id ? 叫.get(id) ?? "（已删除的账号）" : "");
   const 客们 = new Map(客户们.map((c) => [c.id, c]));
 
-  const 全部 = 单们.map((m): 台账行 => {
+  const 全部 = 单们.flatMap((m): 台账行[] => {
     const 明 = 明们.get(m.id)!;
-    const 客户id = 字(明.客户) || null;
+    const 公海单 = m.kind === 客户合并单;
+    if (公海单 && 明.公海 !== true) return [];
+    const 客户id = 客户idOf(m, 明) || null;
     const 客 = 客户id ? 客们.get(客户id) : undefined;
     const 客户状态 = !客户id || (客 && !客.deletedAt) ? "在" : 客 ? "回收站" : "已删";
     const 自查时间 = 读时刻(明.自查?.时间);
-    return {
+    return [{
       id: m.id,
+      类型: 公海单 ? "公海客户合并" : "项目合并",
+      被并客户: 公海单 ? m.fromName : "",
       at: m.at.toISOString(),
       发起人: 人名(m.byUserId),
       客户id,
       客户: !客户id ? "" : 客 ? `${客户显名(客)}${客.deletedAt ? "（已删除）" : ""}` : "（已删除的客户）",
       客户状态,
       留下id: m.intoId,
-      留下项目: 字(明.留下名) || "未命名项目",
+      留下项目: 公海单 ? "" : 字(明.留下名) || "未命名项目",
       被并id: m.fromId,
-      被并项目: m.fromName || "未命名项目",
-      留下负责人: 人名(字(明.负责人)),
-      被并负责人: 人名(m.fromOwnerId),
+      被并项目: 公海单 ? "" : m.fromName || "未命名项目",
+      留下负责人: 公海单 ? "" : 人名(字(明.负责人)),
+      被并负责人: 公海单 ? "" : 人名(m.fromOwnerId),
       自查人: 字(明.自查?.谁),
       自查时间: 自查时间 ? 自查时间.toISOString() : null,
       状态: m.status,
       撤回人: m.status === "已撤回" ? 人名(m.undoneById) : "",
       撤回时间: m.status === "已撤回" && m.undoneAt ? m.undoneAt.toISOString() : null,
-    };
+    }];
   });
-  const 筛 = 词 ? 全部.filter((r) => [r.客户, r.留下项目, r.被并项目].some((x) => 规整(x).includes(词))) : 全部;
+  const 筛 = 词 ? 全部.filter((r) => [r.客户, r.留下项目, r.被并项目, r.被并客户].some((x) => 规整(x).includes(词))) : 全部;
   return { ok: true, 行们: 筛.slice(0, 台账上限), 截断: 筛.length > 台账上限 || (!!词 && 单们.length >= 台账上限 * 4) };
 }
 

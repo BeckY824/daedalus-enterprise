@@ -20,7 +20,7 @@ import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 成组, 疑似重复页, 忘掉疑似重复缓存, type 成员行 } from "@/lib/enterprise/dupe-groups";
+import { 成组, 疑似重复页, 忘掉疑似重复缓存, 标不是同一个人, 对id, type 成员行 } from "@/lib/enterprise/dupe-groups";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 定时分配扫一遍 } from "@/lib/enterprise/scheduled-assign";
@@ -214,5 +214,43 @@ describe("两家都在公海，管理员并", () => {
     const 日志 = await raw.auditLog.findMany({ where: { action: "merge", entity: "Customer" } });
     expect(日志.map((l) => l.entityId).sort()).toEqual([a, b].sort());
     expect(日志.every((l) => l.userId === 总.id)).toBe(true);
+  });
+});
+
+describe("标「不是同一个人」只标当前栏里的对（12-15 D）", () => {
+  async function 三家() {
+    const a1 = await 客户("星河展具", 甲.id);
+    const a2 = await 客户("星河展具", 甲.id);
+    const a3 = await 客户("星河展具", 甲.id);
+    await 进公海(a1);
+    await 进公海(a2);
+    return { a1, a2, a3 };
+  }
+  const 标了 = async () => (await raw.customerNotDupe.findMany({ where: { undoneAt: null }, select: { id: true } })).map((x) => x.id).sort();
+
+  it("管理员在普通栏标「两家公海 + 一家有主」那组：只标有主那两对，公海那对不连带", async () => {
+    const { a1, a2, a3 } = await 三家();
+    const r = await 标不是同一个人(prisma, 总, await 权限组织(), [a1, a2, a3], "普通");
+    expect(r).toEqual({ ok: true, 对们: [对id(a1, a3), 对id(a2, a3)].sort() });
+    expect(await 标了()).toEqual([对id(a1, a3), 对id(a2, a3)].sort());
+    // 公海栏那一对还在
+    expect((await 页(总, "公海")).组们.map((g) => g.对们)).toEqual([[对id(a1, a2)]]);
+  });
+
+  it("管理员在公海栏标：只标公海那一对，有主的对不动", async () => {
+    const { a1, a2, a3 } = await 三家();
+    const r = await 标不是同一个人(prisma, 总, await 权限组织(), [a1, a2, a3], "公海");
+    expect(r).toEqual({ ok: true, 对们: [对id(a1, a2)] });
+    expect(await 标了()).toEqual([对id(a1, a2)]);
+    expect((await 页(总, "普通")).组们.map((g) => g.对们.length)).toEqual([2]);
+  });
+
+  it("普通栏只有公海对时回「已经标过了」类原因、什么都不写", async () => {
+    const a1 = await 客户("星河展具", 甲.id);
+    const a2 = await 客户("星河展具", 甲.id);
+    await 进公海(a1);
+    await 进公海(a2);
+    expect(await 标不是同一个人(prisma, 总, await 权限组织(), [a1, a2], "普通")).toMatchObject({ ok: false });
+    expect(await 标了()).toEqual([]);
   });
 });
