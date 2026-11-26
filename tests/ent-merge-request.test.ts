@@ -5,12 +5,15 @@
  *   - 5 个工作日到期失效（跨周末）；到期那一刻点同意也失效；扫过期
  *   - 执行前只比四项：负责人、阶段、回款或提成、被判无效各自触发；节点、客户状态、名字变了不重判
  *   - 全同意后照第一批执行合并，申请经过和合并前快照进合并单、两家操作日志
+ *   - 动作层（customers/merge-actions.ts）：发起 / 同意拒绝 / 撤回 / 作废 / 两张列表按登录的人判；每分钟的钟扫过期
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
+const 登录 = vi.hoisted(() => ({ 人: null as null | { id: string; name: string; role: string } }));
+vi.mock("@/lib/auth", async (orig) => ({ ...(await orig<object>()), requireUser: async () => ({ email: "", title: "", ...登录.人! }) }));
 
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -20,8 +23,11 @@ import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 撤回合并 } from "@/lib/enterprise/customer-merge";
 import {
   算同意人, 发起人问题, 到期时刻, 比四项, 发起合并申请, 处理合并申请, 撤回合并申请, 扫过期合并申请, 到期话, 申请状态,
-  type 快照,
+  钟上扫过期合并申请, type 快照,
 } from "@/lib/enterprise/merge-request";
+import {
+  发起客户合并申请, 处理客户合并申请, 撤回客户合并申请, 作废客户合并申请, 等我同意的合并申请, 我发起的合并申请,
+} from "@/app/(app)/customers/merge-actions";
 import type { 组织 } from "@/lib/enterprise/org";
 
 type 人 = { id: string; name: string; role: string };
@@ -312,3 +318,90 @@ describe("全同意后执行、留痕", () => {
     expect((await 申请(r.requestId)).status).toBe(申请状态.已失效);
   });
 });
+
+describe("动作层（customers/merge-actions.ts）", () => {
+  const 以 = (u: 人) => { 登录.人 = u; };
+  async function 一张() {
+    const a = await 客户(乙.id), b = await 客户(丙.id);
+    以(乙);
+    const r = await 发起客户合并申请(a, b);
+    if (!r.ok) throw new Error(r.error);
+    return { a, b, id: r.requestId };
+  }
+
+  it("发起：留下那家的负责人能发；别的销售发被拒；同一家传两次是坏参数", async () => {
+    const a = await 客户(乙.id), b = await 客户(丙.id);
+    以(丁);
+    expect(await 发起客户合并申请(a, b)).toMatchObject({ ok: false, error: expect.stringMatching(/./) });
+    expect(await raw.entMergeRequest.count()).toBe(0);
+    以(乙);
+    expect(await 发起客户合并申请(a, a)).toMatchObject({ ok: false, error: "参数不对，刷新再试" });
+    const r = await 发起客户合并申请(a, b);
+    expect(r).toMatchObject({ ok: true, 同意人: [{ userId: 丙.id }] });
+  });
+
+  it("同意 / 拒绝：不是同意人的被拒；同意人同意后执行合并", async () => {
+    const { b, id } = await 一张();
+    以(丁);
+    expect(await 处理客户合并申请(id, "同意")).toEqual({ ok: false, error: "你不是这张合并申请要同意的人" });
+    以(丙);
+    expect(await 处理客户合并申请(id, "随便" as "同意")).toMatchObject({ ok: false, error: "参数不对，刷新再试" });
+    expect(await 处理客户合并申请(id, "同意")).toMatchObject({ ok: true, 状态: 申请状态.已合并 });
+    expect((await raw.customer.findUniqueOrThrow({ where: { id: b } })).deletedAt).not.toBeNull();
+  });
+
+  it("拒绝带一句原因：整张已拒绝", async () => {
+    const { id } = await 一张();
+    以(丙);
+    expect(await 处理客户合并申请(id, "拒绝", "不是同一家")).toMatchObject({ ok: true, 状态: 申请状态.已拒绝 });
+    expect(await 申请(id)).toMatchObject({ status: 申请状态.已拒绝, reason: "丙拒绝：不是同一家" });
+  });
+
+  it("撤回：同意人撤不了，发起人能撤", async () => {
+    const { id } = await 一张();
+    以(丙);
+    expect(await 撤回客户合并申请(id)).toEqual({ ok: false, error: "只有发起人能撤回合并申请" });
+    以(乙);
+    expect(await 撤回客户合并申请(id)).toEqual({ ok: true });
+    expect((await 申请(id)).status).toBe(申请状态.已撤回);
+  });
+
+  it("作废：销售（发起人也不行）被拒，系统管理员能作废，记已失效、写明谁作废的", async () => {
+    const { id } = await 一张();
+    expect(await 作废客户合并申请(id)).toEqual({ ok: false, error: "只有系统管理员能作废合并申请" });
+    以(老板);
+    expect(await 作废客户合并申请(id)).toEqual({ ok: true });
+    expect(await 申请(id)).toMatchObject({ status: 申请状态.已失效, reason: "系统管理员老板作废了申请", endedById: 老板.id });
+    expect(await 作废客户合并申请(id)).toMatchObject({ ok: false, error: expect.stringMatching(/已失效，不能作废/) });
+  });
+
+  it("两张列表：等我同意的只给同意人、处理过就不在；我发起的只给发起人；客户名取快照", async () => {
+    const { a, b, id } = await 一张();
+    以(丙);
+    const 等 = await 等我同意的合并申请();
+    expect(等).toHaveLength(1);
+    expect(等[0]).toMatchObject({ id, 发起人: "乙", 状态: 申请状态.待同意, 留下: { id: a, 名: expect.stringMatching(/^测试客户/) }, 并掉: { id: b }, 同意人: [{ userId: 丙.id, 名: "丙", 凭: ["被并客户负责人"], 状态: "待同意" }] });
+    expect(await 我发起的合并申请()).toEqual([]);
+    以(丁);
+    expect(await 等我同意的合并申请()).toEqual([]);
+    以(乙);
+    expect((await 我发起的合并申请()).map((x) => x.id)).toEqual([id]);
+    以(丙);
+    await 处理客户合并申请(id, "拒绝");
+    expect(await 等我同意的合并申请()).toEqual([]);
+    以(乙);
+    expect(await 我发起的合并申请()).toMatchObject([{ id, 状态: 申请状态.已拒绝 }]);
+  });
+
+  it("每分钟的钟：钟上扫过期合并申请 把过了到期时刻的改已失效，没到的不动", async () => {
+    const a = await 客户(乙.id), b = await 客户(丙.id), c = await 客户(丁.id);
+    const r1 = await 发起合并申请(prisma, a, b, 乙, { 现在: 周五下午 });
+    const r2 = await 发起合并申请(prisma, c, await 客户(丙.id), 丁, { 现在: new Date("2026-12-01T07:00:00Z") });
+    if (!r1.ok || !r2.ok) throw new Error("发起失败");
+    expect(await 钟上扫过期合并申请(new Date("2026-12-04T07:00:00Z"))).toBe(1);
+    expect(await 申请(r1.requestId)).toMatchObject({ status: 申请状态.已失效, reason: 到期话 });
+    expect((await 申请(r2.requestId)).status).toBe(申请状态.待同意);
+    expect(await raw.auditLog.count({ where: { action: "merge-request-void", entityId: { in: [a, b] } } })).toBe(2);
+  });
+});
+

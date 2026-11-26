@@ -8,10 +8,12 @@
  *   - 合成联系人（同一位客户下两位是同一个人）：同上，合成单 kind = 联系人
  *   - 项目换客户：lib/enterprise/project-move-customer.ts；换完 8 秒撤销条上的「撤销」= 撤销换客户（按那次日志反着做，只认自己刚换的那一次）
  *   - 项目合并（第二批 2a，同负责人的两个线索）：lib/enterprise/project-merge.ts；撤回同一张合并单表（kind = 项目），撤回合并单 也认
+ *   - 跨负责人合并申请（第二批 2b）：lib/enterprise/merge-request.ts；发起 / 同意或拒绝 / 撤回 / 系统管理员作废，等我同意的、我发起的两张列表
  *   - 搜要并的那家：只搜自己能并的（负责人是自己、不在公海），系统管理员不限（E-277 f2：免得变成全公司查号）
  * 首页 AI 不给这些动作（合并是结构性改动，要人在预览里核对、勾选）：lib/ai 不引这个文件。
  */
 import { revalidatePath } from "next/cache";
+import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { requireUser } from "@/lib/auth";
 import { 看全部 } from "@/lib/team-scope";
@@ -33,6 +35,10 @@ import {
   项目合并预览, 执行项目合并, 撤回项目合并, 能并进的项目, 项目的合并单,
   type 项目合并预览结果, type 项目合并完, type 撤回项目合并完, type 项目合并单一条, type 并进候选,
 } from "@/lib/enterprise/project-merge";
+import {
+  发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 申请状态, 同意状态,
+  type 发起完, type 处理完, type 快照, type 凭, type 涉及项目,
+} from "@/lib/enterprise/merge-request";
 
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
@@ -316,4 +322,95 @@ function 被并备注of(detail: string): { 被并备注?: string } {
     const v = (JSON.parse(detail) as { 被并备注?: unknown }).被并备注;
     return typeof v === "string" && v ? { 被并备注: v } : {};
   } catch { return {}; }
+}
+
+/* ───────────────────────── 合并申请（第二批 2b）───────────────────────── */
+
+/** 申请动过就刷两家详情和客户列表；最后一位同意执行了合并，同第一批合并客户 */
+async function 刷新申请(requestId: string) {
+  const r = await 看全部(() => prisma.entMergeRequest.findUnique({ where: { id: requestId }, select: { fromId: true, intoId: true } }));
+  if (r) 刷新(r.intoId, r.fromId);
+}
+
+/** 发合并申请：把 并掉id 并进 留下id，要两家负责人、名下没结束项目的负责人都同意。勾选同第一批合并预览 */
+export async function 发起客户合并申请(留下id: string, 并掉id: string, opt: { 已核对?: boolean; 同一个人?: unknown } = {}): Promise<结果<发起完>> {
+  const me = await 我();
+  if (!是id(留下id) || !是id(并掉id) || 留下id === 并掉id) return 坏参数;
+  const 对们 = 规整对们(opt?.同一个人);
+  if (!对们) return 坏参数;
+  const r = await 发起合并申请(prisma, 留下id, 并掉id, me, { 已核对: opt?.已核对 === true, 同一个人: 对们 });
+  if (r.ok) 刷新(留下id, 并掉id);
+  return r;
+}
+
+/** 同意人同意 / 拒绝。拒绝可带一句原因（最多 200 字，数据层截） */
+export async function 处理客户合并申请(requestId: string, 结论: "同意" | "拒绝", 原因?: string): Promise<结果<处理完>> {
+  const me = await 我();
+  if (!是id(requestId) || (结论 !== "同意" && 结论 !== "拒绝") || (原因 !== undefined && typeof 原因 !== "string")) return 坏参数;
+  const r = await 处理合并申请(prisma, requestId, me, 结论, { 原因 });
+  if (r.ok) await 刷新申请(requestId);
+  return r;
+}
+
+/** 发起人撤回（只在待同意时） */
+export async function 撤回客户合并申请(requestId: string): Promise<结果> {
+  const me = await 我();
+  if (!是id(requestId)) return 坏参数;
+  const r = await 撤回合并申请(prisma, requestId, me);
+  if (r.ok) await 刷新申请(requestId);
+  return r;
+}
+
+/** 系统管理员作废一张待同意的申请（同意人停用、等不到人时） */
+export async function 作废客户合并申请(requestId: string): Promise<结果> {
+  const me = await 我();
+  if (!是id(requestId)) return 坏参数;
+  const r = await 作废合并申请(prisma, requestId, me);
+  if (r.ok) await 刷新申请(requestId);
+  return r;
+}
+
+export type 合并申请一条 = {
+  id: string; 状态: string; 原因: string | null;
+  留下: { id: string; 名: string }; 并掉: { id: string; 名: string };
+  发起人: string; 发起: Date; 到期: Date; 结束: Date | null; mergeId: string | null;
+  同意人: { userId: string; 名: string; 凭: 凭[]; 项目: 涉及项目[]; 状态: string; 一句: string | null; 处理: Date | null }[];
+};
+
+const 读JSON = <T,>(v: string, 缺: T): T => { try { return JSON.parse(v) as T; } catch { return 缺; } };
+
+/**
+ * 两张列表共用：客户名取发起那一刻的快照（同意人多半看不到对方那家，免得为显名去读别人的客户），
+ * 人名现查。最多 50 张，新的在前
+ */
+async function 申请们(where: Prisma.EntMergeRequestWhereInput): Promise<合并申请一条[]> {
+  if (!企业版()) return [];
+  const 行们 = await 看全部(() => prisma.entMergeRequest.findMany({ where, include: { approvers: { orderBy: { createdAt: "asc" } } }, orderBy: { at: "desc" }, take: 50 }));
+  const 人ids = [...new Set(行们.flatMap((r) => [r.byUserId, ...r.approvers.map((x) => x.userId)]))];
+  const 人们 = 人ids.length ? await 看全部(() => prisma.user.findMany({ where: { id: { in: 人ids } }, select: { id: true, name: true } })) : [];
+  const 叫 = new Map(人们.map((u) => [u.id, u.name]));
+  return 行们.map((r) => {
+    const 快 = 读JSON<快照>(r.snapshot, { 客户: {}, 项目: {} });
+    const 客 = (id: string) => ({ id, 名: 快.客户?.[id]?.名 ?? "已不在的客户" });
+    return {
+      id: r.id, 状态: r.status, 原因: r.reason, 留下: 客(r.intoId), 并掉: 客(r.fromId),
+      发起人: 叫.get(r.byUserId) ?? "同事", 发起: r.at, 到期: r.expiresAt, 结束: r.endedAt, mergeId: r.mergeId,
+      同意人: r.approvers.map((x) => ({
+        userId: x.userId, 名: 叫.get(x.userId) ?? "同事", 凭: 读JSON<凭[]>(x.why, []), 项目: 读JSON<涉及项目[]>(x.projects, []),
+        状态: x.status, 一句: x.note, 处理: x.decidedAt,
+      })),
+    };
+  });
+}
+
+/** 等我同意的：还在待同意、我那一行也还没处理 */
+export async function 等我同意的合并申请(): Promise<合并申请一条[]> {
+  const me = await requireUser();
+  return 申请们({ status: 申请状态.待同意, approvers: { some: { userId: me.id, status: 同意状态.待同意 } } });
+}
+
+/** 我发起的：各种状态都列（结束了的看结果） */
+export async function 我发起的合并申请(): Promise<合并申请一条[]> {
+  const me = await requireUser();
+  return 申请们({ byUserId: me.id });
 }

@@ -15,6 +15,7 @@
  *   - 同一个钟顺带发三态提醒（lib/enterprise/tri-state-notice.ts）：北京 08:00 起一天一遍，一人一天一条汇总；停机只补当天这一条
  *   - 同一个钟顺带发「指定回复时间」提醒（lib/enterprise/reply-notice.ts，11-17）：每分钟一遍，客户要求的联系时间前 30 分钟提醒负责人；
  *     停机按状态补（截止没到的照常提醒、过了截止的不补），不用水位
+ *   - 同一个钟顺带扫过期的合并申请（lib/enterprise/merge-request.ts，11-26）：每分钟一遍，待同意过了到期时刻的记「已失效」；停机按状态补
  *   - 同一个钟顺带执行定时分配（lib/enterprise/scheduled-assign.ts，11-17）：每分钟一遍，先作废状态不对的定时，再执行到点的；
  *     停机按状态补（开机那遍把过了点、还没执行的全部执行，通知写晚了多久），不用水位
  *   - 同一个钟顺带做超时未跟进自动转（lib/enterprise/reply-overdue.ts，11-17）：指定回复时间过 1 小时没记有效沟通提醒，再 30 分钟自动转下一位；
@@ -42,6 +43,7 @@ import { 钟上指定回复提醒 } from "@/lib/enterprise/reply-notice";
 import { 钟上定时分配, type 定时分配明细 } from "@/lib/enterprise/scheduled-assign";
 import { 钟上超时自动转, type 超时转明细 } from "@/lib/enterprise/reply-overdue";
 import { 收拾卡住的推送 } from "@/lib/enterprise/feishu-push";
+import { 钟上扫过期合并申请 } from "@/lib/enterprise/merge-request";
 import { dayjs } from "../utils";
 
 export const 夜扫时刻 = { 时: 0, 分: 5 } as const;
@@ -148,6 +150,9 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       // 挂靠申请 24 小时没人处理往上转一级，到总管理为止（P-挂靠-02）：自己不抛，这里再兜一道
       .then(() => 挂靠超时转上级(现在))
       .then(() => undefined, (e) => console.error("[挂靠审批] 出错，下一遍再试", e))
+      // 合并申请 5 个工作日没全部同意的记「已失效」（合并客户第二批 2b）
+      .then(() => 钟上扫过期合并申请(现在))
+      .then(() => undefined, (e) => console.error("[合并申请] 扫过期出错，下一遍再试", e))
       // 飞书推送卡在「待推 / 推送中」的（进程重启、批次出错）记成失败，不重推（M-公海-33）；每 10 分钟最多一次
       .then(() => 收拾卡住的推送(现在))
       .then(() => undefined, (e) => console.error("[飞书推送] 收拾卡住的行出错，下一遍再试", e))

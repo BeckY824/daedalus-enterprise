@@ -479,7 +479,34 @@ export async function 撤回合并申请(db: 库, requestId: string, me: 合并�
   }
 }
 
-/** 到期扫一遍：待同意、过了到期时刻的都记已失效（同意 / 拒绝那一刻也会当场判；挂钟由界面阶段接） */
+/** 系统管理员作废一张待同意的申请（同意人停用、等不到人时收尾）：记「已失效」、写明谁作废的 */
+export async function 作废合并申请(db: 库, requestId: string, me: 合并人, 现在: Date = new Date()): Promise<结果> {
+  if (!企业版()) return { ok: false, error: "只有企业版有合并申请" };
+  const org = await 权限组织();
+  if (!org || !是系统管理员of(org, me.id)) return { ok: false, error: "只有系统管理员能作废合并申请" };
+  try {
+    return await 看全部(() => db.$transaction(async (tx) => {
+      const r = await tx.entMergeRequest.findUnique({ where: { id: requestId } });
+      if (!r) throw new 拦下("找不到这张合并申请");
+      if (r.status !== 申请状态.待同意) throw new 拦下(`这张合并申请${r.status}，不能作废`);
+      if (!(await 结束(tx, r, 申请状态.已失效, `系统管理员${me.name}作废了申请`, me, "merge-request-void", 现在))) throw new 拦下("这张合并申请刚被处理过，刷新看看");
+      return { ok: true as const };
+    }, 合并事务选项));
+  } catch (e) {
+    if (e instanceof 拦下) return { ok: false, error: e.message };
+    const 话 = 并发失败话(e);
+    if (话) return { ok: false, error: 话 };
+    throw e;
+  }
+}
+
+/** 挂在每分钟的钟上（lib/project/nightly.ts）：用默认库扫一遍过期申请 */
+export async function 钟上扫过期合并申请(现在: Date = new Date()): Promise<number> {
+  const { prisma } = await import("@/lib/prisma");
+  return 扫过期合并申请(prisma, 现在);
+}
+
+/** 到期扫一遍：待同意、过了到期时刻的都记已失效（同意 / 拒绝那一刻也会当场判；每分钟的钟调 钟上扫过期合并申请） */
 export async function 扫过期合并申请(db: 库, 现在: Date = new Date()): Promise<number> {
   if (!企业版()) return 0;
   const 们 = await db.entMergeRequest.findMany({ where: { status: 申请状态.待同意, expiresAt: { lte: 现在 } }, select: { id: true, fromId: true, intoId: true, byUserId: true } });
