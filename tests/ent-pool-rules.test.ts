@@ -822,6 +822,25 @@ describe("默认：线索公海的项目能单独领，客户不动（11-09，M-
     expect(await 负责人(c)).toBe(经理.id);
     expect(await prisma.auditLog.count({ where: { summary: { contains: "撤销分配：1 个项目放回线索公海" } } })).toBe(1);
   });
+
+  it("P-公海-10 撤销整包：项目一个没撤成、客户那一半撤成了——ok、提示里带客户那句（小修 1126-g 第 1 条）", async () => {
+    const c = await 客户(乙.id);
+    const p = await 项目(乙.id, c);
+    当(乙);
+    expect(await 放进公海([c], "客户主动终止")).toMatchObject({ ok: true });
+    当(老板);
+    const r = await 分配公海项目([p], 丙.id);
+    if (!r.ok || !r.整包) throw new Error("没整包");
+    // 分完主管把项目转给了经理：项目那边撤不动，客户还归丙
+    await prisma.project.update({ where: { id: p }, data: { ownerId: 经理.id } });
+    expect(await 撤销公海项目("分配", r.分到, 丙.id, r.整包)).toEqual({
+      ok: true, updated: 0, unchanged: 1, 提示: "已撤销 1 位客户",
+    });
+    // 客户那一半照撤：回客户公海、不再归丙；项目还在经理名下
+    expect(await 在客户公海(c)).toBe(true);
+    expect(await 负责人(c)).not.toBe(丙.id);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(经理.id);
+  });
 });
 
 describe("开关：项目能单独领 = false（10-31 晚那条，11-09 起默认不再这样）", () => {

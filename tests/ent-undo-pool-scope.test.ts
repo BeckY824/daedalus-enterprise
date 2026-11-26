@@ -16,6 +16,19 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
+// 撤销放进公海发「回到你名下」通知那一刻，操作日志里有没有「撤销了刚才的放进公海」（小修 1126-g 第 2 条）
+const 通知时 = vi.hoisted(() => ({ 日志数: [] as number[] }));
+vi.mock("@/lib/enterprise/notice-sources", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/notice-sources")>();
+  return {
+    ...m,
+    客户撤销放回通知: async (...a: Parameters<typeof m.客户撤销放回通知>) => {
+      const { prisma: db } = await import("@/lib/prisma");
+      通知时.日志数.push(await db.auditLog.count({ where: { summary: { startsWith: "撤销了刚才的放进公海" } } }));
+      return m.客户撤销放回通知(...a);
+    },
+  };
+});
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -197,6 +210,35 @@ describe("撤销放进公海：没撤成的要说出来", () => {
     expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toEqual({ ok: true, updated: 0, unchanged: 0, 没权限: 0, 已撤回: 1, 提示: "这位刚才已经撤回了" });
     expect(await 归谁(c.id)).toBe(小李.id);
     expect(await 在公海(c.id)).toBe(false);
+  });
+
+  it("撤销放进公海：操作日志先记、再发通知（另一个标签页同时撤时按日志认已撤回，窗口缩小，小修 1126-g 第 2 条）", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    await 放进公海([c.id], "客户主动终止");
+    通知时.日志数.length = 0;
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toMatchObject({ ok: true, updated: 1 });
+    expect(通知时.日志数).toEqual([1]);
+  });
+
+  it("批量再撤销：撤回之后动没动过按每位自己的撤回时刻比，合成一次查后照旧（小修 1126-g 第 2 条）", async () => {
+    const a = await 客户(小李.id);
+    const b = await 客户(小李.id);
+    const d = await 客户(小李.id);
+    当(小李);
+    await 放进公海([a.id, b.id, d.id], "客户主动终止");
+    expect(await 撤销公海("放进", [{ id: a.id, 值: "" }])).toMatchObject({ ok: true, updated: 1 });
+    expect(await 撤销公海("放进", [b, d].map((x) => ({ id: x.id, 值: "" })))).toMatchObject({ ok: true, updated: 2 });
+    // a 那条撤销日志挪到 10 分钟前；a 撤回之后（5 分钟前）有一条领取记录 → a 算动过；
+    // b 的换负责人记录也在 5 分钟前，但在 b 自己撤回（刚才）之前 → b 仍算已撤回
+    const 分前 = (n: number) => new Date(Date.now() - n * 60_000);
+    await prisma.auditLog.updateMany({ where: { summary: { startsWith: "撤销了刚才的放进公海：1 位" } }, data: { at: 分前(10) } });
+    await prisma.customerClaim.create({ data: { customerId: a.id, userId: 小王.id, at: 分前(5) } });
+    await prisma.customerOwnerLog.create({ data: { customerId: b.id, userId: 小王.id, fromOwnerId: 小李.id, toOwnerId: 小李.id, at: 分前(5) } });
+    expect(await 撤销公海("放进", [a, b, d].map((x) => ({ id: x.id, 值: "" })))).toEqual({
+      ok: true, updated: 0, unchanged: 1, 没权限: 0, 已撤回: 2, 有没撤成: true,
+      提示: "2 位刚才已经撤回了；1 位已经被人领走或分走了，这次没有撤销",
+    });
   });
 
   it("撤回之后又放进公海、被同事领走了：再撤销照旧说被人领走", async () => {

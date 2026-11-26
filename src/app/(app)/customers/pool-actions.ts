@@ -586,14 +586,16 @@ async function 刚撤回过的(我: string, 客户们: string[]): Promise<Set<st
     if (!Array.isArray(们)) continue;
     for (const id of 们) if (typeof id === "string" && 要.has(id) && !撤回于.has(id)) 撤回于.set(id, l.at);
   }
-  const 是 = new Set<string>();
-  for (const [id, at] of 撤回于) {
-    const 之后动过 = await 看全部(async () =>
-      (await prisma.customerClaim.count({ where: { customerId: id, at: { gt: at } } })) +
-      (await prisma.customerOwnerLog.count({ where: { customerId: id, at: { gt: at } } })));
-    if (!之后动过) 是.add(id);
-  }
-  return 是;
+  if (!撤回于.size) return new Set();
+  // 撤回之后有没有领取 / 换负责人记录：两张表各查一次（小修 1126-g 第 2 条，原来逐位各 count 两次），按每位自己的撤回时刻比
+  const 这几位 = [...撤回于.keys()];
+  const 最早 = new Date(Math.min(...[...撤回于.values()].map((d) => d.getTime())));
+  const [领, 换] = await 看全部(() => Promise.all([
+    prisma.customerClaim.findMany({ where: { customerId: { in: 这几位 }, at: { gt: 最早 } }, select: { customerId: true, at: true } }),
+    prisma.customerOwnerLog.findMany({ where: { customerId: { in: 这几位 }, at: { gt: 最早 } }, select: { customerId: true, at: true } }),
+  ]));
+  const 动过 = new Set([...领, ...换].filter((x) => x.at > 撤回于.get(x.customerId)!).map((x) => x.customerId));
+  return new Set(这几位.filter((id) => !动过.has(id)));
 }
 /** 撞的是公海那一行的主键（customerPool.customerId）：先到的那次已经放回公海。别的表的唯一约束照旧抛（同 repeat-inquiry.ts 序号撞了） */
 function 公海行撞了(e: unknown): boolean {
@@ -661,14 +663,16 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
     }
     if (r.count) {
       忘掉企业版范围();
-      await 记退回(撤, -1);
-      // 前面那条「放回了公海」已经发给原负责人了：告诉他客户回来了
-      await 客户撤销放回通知(me, 撤);
+      // 操作日志紧跟着事务记（小修 1126-g 第 2 条）：另一个标签页同时撤、事务里没认到的，按这条认「刚才已经撤回了」（刚撤回过的）；
+      // 记在退回计数、发通知之后，中间这段对面查不到，会说成「被人领走或分走了」
       await recordAudit({
         user: me, action: "pool", entity: "Customer", entityId: 撤.length === 1 ? 撤[0] : null,
         summary: `${撤销放进摘要}：${r.count} 位客户回到原负责人名下`,
         detail: { ids: 撤 },
       });
+      await 记退回(撤, -1);
+      // 前面那条「放回了公海」已经发给原负责人了：告诉他客户回来了
+      await 客户撤销放回通知(me, 撤);
     }
     刷新(ids);
     // 没撤成的要说出来，口径同撤销领取 / 分配（复审 11-26 M1）：一位都没撤成回 ok:false + 原因，撤成一部分带 有没撤成 + 整句。

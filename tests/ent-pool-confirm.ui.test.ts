@@ -449,3 +449,24 @@ it.each([
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+// 小修 1126-g 第 1 条：只勾项目行（分配走整包撤销）时项目一个都没撤成、客户那一半撤成了，服务端在 提示 里带回客户那句——
+// 不再报「撤销不了」（ok:false），按「撤成一部分」写
+it("只勾项目行撤销：项目 0 个撤成、整包客户那一半撤成了，不报撤销不了", async () => {
+  const { page, errors } = await open();
+  try {
+    await page.evaluate(() => { const w = window as unknown as W; w.__撤项目 = { ok: true, updated: 0, unchanged: 1, 提示: "已撤销 1 位客户" }; w.__render({ 项目行: true }); });
+    await 行(page, "p1").waitFor();
+    await 行(page, "p1").locator(".ant-checkbox-input").check();
+    const 条 = page.locator(".list-sel");
+    await 条.getByRole("button", { name: /^领\s*取$/ }).click();
+    await 条.getByRole("button", { name: /确认领取/ }).click();
+    await expect.poll(() => 调(page, "领取")).toBe(1);
+    await expect.poll(() => 撤销条(page).count()).toBe(1);
+    await 撤销条(page).getByRole("button", { name: /撤销/ }).click();
+    await expect.poll(() => 撤销条(page).getAttribute("data-state")).toBe("半");
+    expect(await 撤销条(page).locator(".undo-t").innerText()).toBe("已撤销 1 位客户；1 个项目刚才有人动过，这次没有撤销");
+    expect(await 撤销条(page).innerText()).not.toContain("撤销不了");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
