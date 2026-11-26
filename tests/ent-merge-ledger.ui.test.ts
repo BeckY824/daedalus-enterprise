@@ -139,3 +139,52 @@ it("客户在回收站标（已删除）仍有链接；彻底删除只显示（�
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it("连续两次改日期范围、第一次的请求后回来：列表显示第二次条件的结果", async () => {
+  const { page, errors } = await 开页(browser, bundle, props(true), 1440, "?tab=merges");
+  try {
+    await page.addStyleTag({ content: "body{margin:0}" });
+    // 止=2026-11-26 的请求 700ms 后才回（「止26」），止=2026-10-03 的马上回（「止03」）；先发 26、后发 03
+    await page.evaluate(`var 长=${JSON.stringify(长)};window.__act=(n,c)=>{if(n!=='查合并台账')return {ok:true};
+      const r=(名)=>({ok:true,截断:false,行们:[(${行.toString()})(0)].map(x=>({...x,客户:名,客户id:null}))});
+      if(c?.止==='2026-11-26')return new Promise(f=>setTimeout(()=>f(r('止26')),700));
+      return c?.止==='2026-10-03'?r('止03'):r('初始');};`);
+    await page.getByRole("tab", { name: /合并台账/ }).click();
+    const 搜 = page.getByRole("searchbox", { name: "按客户名或项目名搜" });
+    await 搜.fill("x");
+    await 搜.fill("");
+    await page.locator("[data-testid=合并台账] .ant-table-row").first().waitFor();
+    const 起 = page.getByRole("textbox", { name: "合并时间范围" }).first();
+    const 止 = page.getByRole("textbox", { name: "合并时间范围" }).nth(1);
+    await 起.click();
+    await 起.fill("2026-10-01");
+    await 起.press("Enter");
+    await 止.fill("2026-11-26");
+    await 止.press("Enter");
+    // 第一次发出后立刻第二次：点面板里的 10-03，弹层不收（焦点跳回开始框），不点外面也要发出
+    await 止.click();
+    await page.locator('.ant-picker-dropdown:visible td[title="2026-10-03"]').first().click();
+    await page.getByText("止03", { exact: true }).waitFor();
+    await page.waitForTimeout(1000);
+    expect(await page.getByText("止26", { exact: true }).count()).toBe(0);
+    expect(await page.getByText("止03", { exact: true }).count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("日期范围有「上周 / 本周 / 近 30 天」预设，真点「近 30 天」发出的起止是北京日期串且相隔 29 天", async () => {
+  const { page, errors } = await 开页(browser, bundle, props(true), 1440, "?tab=merges");
+  try {
+    await page.addStyleTag({ content: "body{margin:0}" });
+    await page.getByRole("tab", { name: /合并台账/ }).click();
+    await page.getByRole("textbox", { name: "合并时间范围" }).first().click();
+    for (const t of ["上周", "本周", "近 30 天"]) await page.locator(".ant-picker-presets").getByText(t, { exact: true }).waitFor({ state: "visible" });
+    await page.locator(".ant-picker-presets").getByText("近 30 天", { exact: true }).click();
+    await page.waitForFunction(() => ((window as unknown as { __calls?: [string, [{ 起?: string }]][] }).__calls ?? []).some(([n, a]) => n === "查合并台账" && !!a[0].起));
+    const 查 = (await 调用们(page)).filter(([n, a]) => n === "查合并台账" && !!(a[0] as { 起?: string }).起).pop()![1][0] as { 起: string; 止: string };
+    expect(查.起).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(查.止).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect((Date.parse(查.止) - Date.parse(查.起)) / 86_400_000).toBe(29);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

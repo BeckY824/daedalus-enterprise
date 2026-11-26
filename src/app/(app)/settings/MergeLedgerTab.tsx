@@ -5,6 +5,7 @@ import { Alert, Button, Input, Table, Tag } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import type { Dayjs } from "dayjs";
 import { dayjs } from "@/lib/utils";
+import { businessDayjs } from "@/lib/business-clock";
 import { 写xlsx } from "@/lib/xlsx-write";
 import { 出错原话 } from "@/lib/stale-deploy";
 import { useSettingsNote } from "./InlineNote";
@@ -32,7 +33,7 @@ function 周一(d: Dayjs) {
   return d.subtract((d.day() + 6) % 7, "day").startOf("day");
 }
 const 预设 = () => {
-  const 今 = dayjs();
+  const 今 = businessDayjs();
   return [
     { label: "上周", value: [周一(今).subtract(7, "day"), 周一(今).subtract(1, "day")] as [Dayjs, Dayjs] },
     { label: "本周", value: [周一(今), 今] as [Dayjs, Dayjs] },
@@ -60,6 +61,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
   // 初次进来 行 本来就是 null（转圈）；用户改条件时先清成 null 再查，见 重拉
   // 请求号：只认最后一次发出的结果，早发的后回来直接丢（读写 ref 都放在 then 回调里）
   const 请求号 = useRef(0);
+  const 末发 = useRef(JSON.stringify(条件of(null, "")));
   const 拉 = (范: 段, w: string) => {
     const 条件 = 条件of(范, w);
     const 号 = (请求号.current += 1);
@@ -83,8 +85,17 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在进来时拉一次，之后由 重拉 按用户改的条件查
   }, []);
   const 重拉 = (范: 段, w: string) => {
+    末发.current = JSON.stringify(条件of(范, w));
     set行(null);
     void 拉(范, w);
+  };
+  // 日期范围：rc-picker 改了结束日期后焦点会跳回开始框、弹层不收，onChange 要等弹层关了才来，
+  // 所以范围凑齐（或清空）就由 onCalendarChange 立刻发；onChange 再来一次同条件的不重发
+  const 改范围 = (v: 段) => {
+    const 新 = v ?? null;
+    if (新 && (!新[0] || !新[1])) return;
+    set范围(新);
+    if (JSON.stringify(条件of(新, 词)) !== 末发.current) 重拉(新, 词);
   };
 
   async function 导() {
@@ -125,11 +136,8 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
           value={范围}
           presets={预设()}
           allowClear
-          onChange={(v) => {
-            const 新 = (v as 段) ?? null;
-            set范围(新);
-            重拉(新, 词);
-          }}
+          onChange={(v) => 改范围(v as 段)}
+          onCalendarChange={(v) => 改范围(v as 段)}
         />
         <Input.Search
           aria-label="按客户名或项目名搜"
