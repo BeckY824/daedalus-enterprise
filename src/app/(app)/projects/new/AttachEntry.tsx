@@ -3,7 +3,8 @@
 /**
  * 新建客户查重撞了的「申请挂靠」入口（P-挂靠-01，2026-11-10）：同名和撞号同一套。
  * 有人在跟的 → 给「申请挂靠」（记进撞号台账、通知负责人，负责人不变）；同组的 → 说在哪个项目组、不给申请；
- * 自己名下的 → 给「打开它」。第一期不做强录，这里没有「仍然新建」。
+ * 自己名下的 → 给「打开它」；建档弹窗里另给「记到这位客户上」（12-15 第三批 E 件：项目和首条沟通挂到这位已有客户，不新建客户，
+ * 走老客户新增项目同一个服务端动作 给客户建项目，权限都在那里判）。第一期不做强录，这里没有「仍然新建」。
  */
 import { useState } from "react";
 import Link from "next/link";
@@ -16,8 +17,15 @@ import { 动作出错话 } from "@/lib/stale-deploy";
 /** 姓名 · 级别 · 状态（和服务端 负责人一行 同一个写法；那个文件连着数据库，客户端不引） */
 export const 负责人说法 = (r: 负责人露出) => [r.姓名, r.级别, r.状态].filter(Boolean).join(" · ") + (r.离职找 ? `（请联系 ${r.离职找}）` : "");
 
-export function 我名下入口({ 客户id }: { 客户id: string }) {
-  return <Link href={`/customers/${客户id}`}><Button size="small">打开它</Button><LinkPending /></Link>;
+/** 记到 = 建档弹窗里能挑老客户时才给（整页向导没有老客户那一段，只给「打开它」） */
+export function 我名下入口({ 客户id, 记到 }: { 客户id: string; 记到?: () => void }) {
+  return (
+    <Space size={8} wrap>
+      {记到 && <Button size="small" type="primary" data-testid="attach-to-mine" onClick={记到}>记到这位客户上</Button>}
+      <Link href={`/customers/${客户id}`}><Button size="small">打开它</Button><LinkPending /></Link>
+      {记到 && <span className="cr-hint">项目和这次沟通记到这位客户上，不新建客户</span>}
+    </Space>
+  );
 }
 
 /** 不给打开 = 外面已经摆了「打开它」（号码撞号面板） */

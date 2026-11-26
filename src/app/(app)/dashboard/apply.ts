@@ -19,6 +19,9 @@ import { 自动推进话of } from "@/lib/project/auto-advance-text";
 import { 短沟通话of } from "@/lib/enterprise/tri-state-quota";
 import { saveLead } from "../leads/actions";
 import { 建档向导 } from "../projects/actions";
+import { 给客户建项目, type 给客户建项目输入 } from "../customers/[id]/project-actions";
+import { 落到渠道 } from "@/lib/enterprise/channel-main";
+import type { 名撞结论 } from "@/lib/enterprise/dupe-ledger";
 import { 新建分配方式数据 } from "@/lib/project/after-create-assign";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 卡片刚记的能撤, 卡片撤销放行, 卡片撤销过时话 } from "@/lib/enterprise/follow-perm";
@@ -67,7 +70,12 @@ export type 附件去处 = { contactId: string } | { leadId: string };
  * 建成项目照建档向导同一套签一张首条附件票给录入人（lib/enterprise/first-follow-ticket.ts），浏览器凭票把截图传到这条首条沟通上
  */
 export type 首条附件票 = { followUpId: string; 票: string };
-export type 确认选项 = { 首条附件?: boolean };
+/**
+ * 记到客户：新线索卡的客户名撞上自己名下的客户（12-15 第三批 E 件），卡上点「记到这位客户上」再确认时交那位客户的 id：
+ * 不新建客户，卡上的项目和首条沟通走 给客户建项目 挂到这位客户上（限定层、同事只读、公海先领取、只读角色都在那里判）；
+ * 卡上的联系人和号码不带过去（要加到这位客户的联系人里，去客户页加）
+ */
+export type 确认选项 = { 首条附件?: boolean; 记到客户?: string };
 /**
  * 同事号：市场成员撞上同事名下的客户（重复咨询第一步 · 出口 C），卡上给「在 X 名下新建线索」（customers/repeat-inquiry-actions.ts）；
  * 交销售 = 负责人接不了指定分配，键写「新建线索交销售」（按区域自动分给销售、客户不动）
@@ -75,11 +83,13 @@ export type 确认选项 = { 首条附件?: boolean };
  * 后售：带了在推个数的（同一道可见条件）、撞上的本机客户名下有交付结清的项目（11-25，P-界面-63），卡上「当前进程」的潜客培育那一项写后售培育；存的照旧潜客培育（ai-lead-dedupe.ts）
  */
 export type 同事号 = { 类型: string; 值: string; 负责人名: string; 交销售?: true };
+/** 我名下客户：新线索卡的客户名撞上自己名下的客户（建档向导回的 撞号.我名下），卡上给「记到这位客户上」（确认选项.记到客户） */
+export type 我名下客户 = { id: string; 名: string };
 /** 提示：这条沟通不算有效沟通的那句（E-259，已去掉「已保存。」），卡上落印下面一行；推进那句另走 推进，这里不带 */
 /** 推进：写进去时顺带按必填把项目推了一格，推到哪（卡上落印下面那一行，不悄悄推，11-20） */
 export type ApplyResult = { ok: true; message: string; 撤销?: 撤销凭据; 附件去处?: 附件去处; 项目?: string; 首条附件票?: 首条附件票; 推进?: string; 提示?: string;
   /** 卡上「查看」去的项目：项目 id → 项目页会跳去的最终地址（只放跳客户页的，跳转优化 PR-A；ProposalCard 查看去处 用） */
-  直达?: Record<string, string> } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号; 在推个数?: number; 后售?: true };
+  直达?: Record<string, string> } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号; 在推个数?: number; 后售?: true; 我名下客户?: 我名下客户 };
 
 /**
  * 确认一张 AI 建议卡，把它真的写进去。
@@ -272,7 +282,7 @@ export async function applyProposal(input: Proposal, 选项?: 确认选项): Pro
   记下确认过(卡键);
   let r: ApplyResult | undefined;
   try {
-    r = await 做这张卡(input, me, 选项?.首条附件 === true);
+    r = await 做这张卡(input, me, 选项?.首条附件 === true, typeof 选项?.记到客户 === "string" && 选项.记到客户 && 选项.记到客户.length <= 256 ? 选项.记到客户 : undefined);
     // 算不出来不挡：写已经成了，「查看」照旧去项目页
     if (r.ok) r = { ...r, ...(await 查看直达(me, input, r.项目).catch(() => ({}))) };
     return r;
@@ -300,7 +310,7 @@ async function 查看直达(me: { id: string; role: string }, p: Proposal, 建�
  * 建之前按全部联系方式查重（10-27 会议，ai-lead-dedupe.ts）：电话加备注里认得出的邮箱 / 微信 / 阿里国际站ID，撞了不建、提醒原负责人。
  * 不撞：创建人 = 录入人；负责人按分配方式（指定 → 那位销售，客户跟着走；自动 → 建在我名下再按业务线分；暂不分配 / 个人自持 → 自己）
  */
-async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }, 要传附件 = false): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号; 在推个数?: number; 后售?: true }> {
+async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }, 要传附件 = false, 记到客户?: string): Promise<{ ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号; 在推个数?: number; 后售?: true; 我名下客户?: 我名下客户 }> {
   const meId = me.id;
   const { 号们: 备注号们, 剩 } = 认出备注里的号码(p.remark || "");
   /*
@@ -319,7 +329,8 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
     return 类型 ? { 类型, 值: r.value, 键: r.numberKey } : null;
   };
   const 号们 = 行们.map(建档号).filter((h) => h !== null);
-  const 撞了 = await AI建档查重详(号们, me, { 入口: "AI建档", 来源: p.source, 内容: 剩 });
+  // 记到已有客户：卡上的号不记进任何地方，不再查重（上一次确认已查过、没撞号，撞的是客户名）
+  const 撞了 = 记到客户 ? null : await AI建档查重详(号们, me, { 入口: "AI建档", 来源: p.source, 内容: 剩 });
   if (撞了) return { ok: false, error: 撞了.话, ...(撞了.回收站 ? { 回收站号: { 类型: 撞了.回收站.类型, 值: 撞了.回收站.值 } } : {}), ...(撞了.公海 ? { 公海号: { 类型: 撞了.公海.类型, 值: 撞了.公海.值 } } : {}), ...(撞了.同事 ? { 同事号: { 类型: 撞了.同事.类型, 值: 撞了.同事.值, 负责人名: 撞了.同事.负责人名, ...(撞了.同事.交销售 ? { 交销售: true as const } : {}) } } : {}), ...(撞了.在推 != null ? { 在推个数: 撞了.在推 } : {}), ...(撞了.后售 ? { 后售: true as const } : {}) };
   // 客户只有一格企业号码：有手机放手机；没手机按邮箱 → 微信 → 阿里国际站ID（类型值还叫旺旺ID）放第一个（新建客户企业号码不是手机号才免填电话）。
   // 全部几行都记进联系人的联系方式（建档向导 联系人.号码们）；一个都占不了企业号码的（只有座机、WhatsApp…）客户电话空着，联系人带着号
@@ -358,6 +369,13 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   const 我的线 = (await prisma.entMember.findUnique({ where: { userId: meId }, select: { line: true } }))?.line;
   // 指定分配给了别人：项目归那人；客户归谁由 建档向导 定（企业版客户留在我名下，市场给销售才转，P-转-03、X-18）。其余先建在我名下，建好再转
   const 项目负责人 = (p.分配方式 === 0 || p.分配方式 === undefined) && p.ownerId ? p.ownerId : meId;
+  const 跟进 = {
+    type: "OTHER", content: 渠道 ? `在首页对话里新建的线索，渠道：${渠道.name}` : `在首页对话里新建的线索，渠道触点：${触点}`, occurredAt: new Date().toISOString(),
+    下一步时间: p.nextAt || null,
+    ...(p.下一步?.trim() ? { 下一步: p.下一步.trim() } : {}),
+    节点: p.节点 ?? 企业版字典.节点们.线索[0],
+  };
+  if (记到客户) return 记到已有客户(p, me, 记到客户, { 项目负责人, 业务线: p.业务线 ?? (是业务线(我的线) ? 我的线 : "暂不分配"), 渠道id: 渠道?.id ?? null, 进项目, 跟进, 要传附件 });
   const r = await 建档向导({
     客户: {
       name: p.name, phone: 号, 企业号码: 企业号 ? { 类型: 企业号.类型, 值: 企业号.值 } : null,
@@ -388,12 +406,7 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
       // 分配方向（11-18）：市场成员卡上改过才有；建档向导只在市场成员选自动分配时认，没有按默认顺序算
       ...(p.分配方向 ? { 分配方向: p.分配方向 } : {}),
     },
-    跟进: {
-      type: "OTHER", content: 渠道 ? `在首页对话里新建的线索，渠道：${渠道.name}` : `在首页对话里新建的线索，渠道触点：${触点}`, occurredAt: new Date().toISOString(),
-      下一步时间: p.nextAt || null,
-      ...(p.下一步?.trim() ? { 下一步: p.下一步.trim() } : {}),
-      节点: p.节点 ?? 企业版字典.节点们.线索[0],
-    },
+    跟进,
     // 卡上勾了把对话里的截图存成附件：建档向导签首条附件票给录入人（只认他 + 这条首条沟通，15 分钟；附件的一般规矩不放宽）
     ...(要传附件 ? { 要传附件: true } : {}),
   });
@@ -406,12 +419,47 @@ async function 建成项目(p: Extract<Proposal, { kind: "add_lead" }>, me: { id
   }
   // 开了超时回收：首条跟进要填下一步时间（卡上「下一步」那格）
   if (r.error === 要下一步时间) return { ok: false, error: "开了超时回收，新线索要填「下一步」时间" };
+  // 客户名撞上自己名下的客户（saveCustomer 按名字挡，12-15 第三批 E 件）：带上这位，卡上给「记到这位客户上」
+  const 名撞 = "撞号" in r ? (r.撞号 as 名撞结论 | undefined) : undefined;
+  if (名撞 && "我名下" in 名撞) return { ok: false, error: r.error, 我名下客户: { id: 名撞.我名下.客户id, 名: 名撞.我名下.客户名 } };
   return { ok: false, error: r.error };
+}
+
+/**
+ * 新线索卡「记到这位客户上」（12-15 第三批 E 件）：卡上的项目和首条沟通走 给客户建项目（同建档弹窗挑了老客户、客户页「新增项目」），不新建客户。
+ * 权限都在 给客户建项目 里判：看不到的客户查不到、同事 / 虚线下属的只读、公海里的先领取、管理员和销售教练只读；切换视图期间整个服务端只读。
+ * 渠道照卡上认出的落（只有主渠道的占位先落成真渠道，同建档向导）；只认出触点 = 项目来源跟客户
+ */
+async function 记到已有客户(
+  p: Extract<Proposal, { kind: "add_lead" }>, me: { id: string; name: string }, customerId: string,
+  卡: { 项目负责人: string; 业务线: string; 渠道id: string | null; 进项目: ReturnType<typeof 线索卡地址>["项目"]; 跟进: 给客户建项目输入["跟进"]; 要传附件: boolean },
+): Promise<{ ok: true; 项目?: string; 提示?: string; 首条附件票?: 首条附件票 } | { ok: false; error: string }> {
+  const 落 = await 落到渠道(卡.渠道id, me);
+  if (!落.ok) return { ok: false, error: 落.error };
+  const r = await 给客户建项目({
+    customerId,
+    项目: {
+      name: p.name.trim(), ownerId: 卡.项目负责人,
+      ...(p.分配方式 !== undefined ? { 分配方式: p.分配方式 } : {}),
+      业务线: 卡.业务线,
+      ...(落.id ? { channelId: 落.id } : {}),
+      ...(卡.进项目 ? { 所在地: 卡.进项目 } : {}),
+      指定回复开始: p.指定回复开始 ?? null, 指定回复结束: p.指定回复结束 ?? null,
+      ...(p.定时分配 ? { 定时分配: p.定时分配 } : {}),
+      ...(p.分配方向 ? { 分配方向: p.分配方向 } : {}),
+    },
+    跟进: 卡.跟进,
+    ...(卡.要传附件 ? { 要传附件: true } : {}),
+  });
+  if (!r.ok) return { ok: false, error: r.error === 要下一步时间 ? "开了超时回收，新线索要填「下一步」时间" : r.error };
+  const 走了 = !!r.转走 || !!r.看不到客户了;
+  const 提示 = ["记到了已有客户上，没新建客户；卡上的联系人和号码没带过去，要加请到客户页", r.提示].filter(Boolean).join("；");
+  return { ok: true, ...(走了 ? {} : { 项目: r.projectId }), 提示, ...(r.附件票 ? { 首条附件票: r.附件票 } : {}) };
 }
 
 const 卡上来源 = (v: unknown) => (typeof v === "string" ? v.trim().slice(0, 60) : "");
 
-async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requireUser>>, 要传附件 = false): Promise<ApplyResult> {
+async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requireUser>>, 要传附件 = false, 记到客户?: string): Promise<ApplyResult> {
   const b = await getBusiness();
   // 全页面 AI 的项目类卡（推进节点、卡点、回款、验证、联系人、删客户）：在 lib/agent/apply-project.ts，同样只转给页面上的 server action
   if (是项目卡(input?.kind)) {
@@ -489,10 +537,10 @@ async function 做这张卡(input: Proposal, me: Awaited<ReturnType<typeof requi
   if (只用项目 && p.kind === "add_contract") return { ok: false, error: "这里成交记在项目上：请到项目页把它推到成交" };
 
   /** 提示 进 message（推话 + 短话）；短话 单独给卡上落印那一行（推话卡上走 推进） */
-  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票; 推进?: string; 短话?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号; 在推个数?: number; 后售?: true };
+  let done: { ok: true; 附件去处?: 附件去处; 项目?: string; 提示?: string; 首条附件票?: 首条附件票; 推进?: string; 短话?: string } | { ok: false; error: string; 回收站号?: { 类型: string; 值: string }; 公海号?: { 类型: string; 值: string }; 同事号?: 同事号; 在推个数?: number; 后售?: true; 我名下客户?: 我名下客户 };
   let 撤销: 撤销凭据 | undefined;
   if (只用项目 && p.kind === "add_lead") {
-    done = await 建成项目(p, me, 要传附件);
+    done = await 建成项目(p, me, 要传附件, 记到客户);
   } else if (p.kind === "update_customer") {
     done = await 改档案(p.customerId, p.changes);
   } else if (p.kind === "add_contract") {

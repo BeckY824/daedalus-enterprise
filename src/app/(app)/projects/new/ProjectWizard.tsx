@@ -540,13 +540,21 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
       set老客户区域(r ? { id: c.id, 线: r.客户有地址 ? r.客户区域线 : null, 电话线: r.客户电话线 ?? null, 渠道: r.客户渠道 ?? null, ...(r.客户有交付结清 ? { 后售: true } : {}) } : null);
     }, () => {});
   };
-  const 挑老 = (id: string) => {
-    const c = 候选.find((x) => x.id === id);
-    if (!c) return;
+  const 挑中 = (c: 可挑客户) => {
     set老客户(c);
     set带项目(true);
     set名查(null);
     带客户业务线(c);
+  };
+  const 挑老 = (id: string) => {
+    const c = 候选.find((x) => x.id === id);
+    if (c) 挑中(c);
+  };
+  // 名字撞上自己名下的客户（12-15 第三批 E 件）：「记到这位客户上」= 挑中这位老客户，客户段收成一行，项目和首条沟通照填、走 给客户建项目。
+  // 项目名没填就带客户名（同挑好老客户进来的 起名，能改）；号码、联系人那几格留在稿里不交，点「换」回来还在
+  const 记到我名下 = (c: { 客户id: string; 客户名: string }) => {
+    if (!d.项目.name.trim() && c.客户名) 改("项目", { name: c.客户名.slice(0, 项目名上限) });
+    挑中({ id: c.客户id, name: c.客户名 || d.客户.name.trim(), 附注: null });
   };
   // 从选框里挑好老客户进来的（pr.old）：一打开就按挑中那一位带业务线（项目开关是「开」，带项目本来就开着）
   const 起手带过 = useRef(false);
@@ -1060,7 +1068,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
               showIcon
               className="cr-wide cr-wrap"
               title={名查.提示}
-              description={"我名下" in 名查.撞 ? <div className="cr-gap"><我名下入口 客户id={名查.撞.我名下.客户id} /></div> : <AttachEntry key={名查.撞.撞.撞号id ?? 名查.名} 露出={名查.撞.撞} />}
+              description={"我名下" in 名查.撞 ? <div className="cr-gap"><我名下入口 客户id={名查.撞.我名下.客户id} 记到={能挑老客户 ? 记到我名下.bind(null, 名查.撞.我名下) : undefined} /></div> : <AttachEntry key={名查.撞.撞.撞号id ?? 名查.名} 露出={名查.撞.撞} />}
             />
           )}
           {一格("联系人", "联系人姓名", <Input aria-label="联系人姓名" status={红("联系人")} value={d.联系人.name} onChange={(e) => 改("联系人", { name: e.target.value })} />, !企业)}

@@ -224,6 +224,45 @@ describe("不撞：建成", () => {
   });
 });
 
+describe("客户名撞上自己名下的客户：「记到这位客户上」（12-15 第三批 E 件）", () => {
+  it("第一次确认：不建，回 我名下客户；带着这位再确认：不新建客户，项目和首条沟通挂到这位名下，卡上的号不记", async () => {
+    const 老客户 = await 甲先建({ phone: "13700001234" });
+    const 联系人数 = await prisma.contact.count();
+    const 卡面 = 卡({ name: "老客户", phone: "13700005678" });
+    const r = await applyProposal(卡面 as never);
+    expect(r).toMatchObject({ ok: false, 我名下客户: { id: 老客户.id, 名: "老客户" } });
+    expect(await prisma.customer.count()).toBe(1);
+    const 记 = await applyProposal(卡面 as never, { 记到客户: 老客户.id });
+    expect(记).toMatchObject({ ok: true, 项目: expect.any(String) });
+    expect(记.ok && 记.message).toContain("记到了已有客户上");
+    expect(await prisma.customer.count()).toBe(1);
+    const 新项目 = await prisma.project.findUniqueOrThrow({ where: { id: (记 as { 项目: string }).项目 } });
+    expect(新项目).toMatchObject({ customerId: 老客户.id, ownerId: 甲.id, phase: "线索", name: "老客户" });
+    expect(await prisma.project.count({ where: { customerId: 老客户.id } })).toBe(2);
+    expect(await prisma.contact.count()).toBe(联系人数);
+    expect(await prisma.contactMethod.count({ where: { value: { contains: "5678" } } })).toBe(0);
+    expect(await prisma.followUp.count({ where: { customerId: 老客户.id } })).toBe(2);
+  });
+
+  it("同事拿别人名下客户的 id 硬交 记到客户（按真实可见范围跑）：服务端拦下，不建项目；销售教练（只读）同样拦", async () => {
+    await setSetting(规则.按组织看客户.key, true);
+    const 老客户 = await 甲先建({ phone: "13700001234" });
+    const 项目数 = await prisma.project.count();
+    当(乙);
+    忘掉企业版范围();
+    const 拦 = await 以谁的身份(乙.id, () => applyProposal(卡({ name: "随便一家", phone: "13700002222" }) as never, { 记到客户: 老客户.id }));
+    expect(拦).toEqual({ ok: false, error: "这位客户已经不在了（或你看不到），刷新看看" });
+    const 教练 = await 造人("coach", "教练丙");
+    await prisma.entMember.create({ data: { userId: 教练.id, bizRole: "coach" } });
+    忘掉企业版范围();
+    当(教练);
+    const 拦2 = await 以谁的身份(教练.id, () => applyProposal(卡({ name: "随便二家", phone: "13700003333", 分配方式: 0, ownerId: 甲.id }) as never, { 记到客户: 老客户.id }));
+    expect(拦2).toEqual({ ok: false, error: "销售教练只能看，不能改任何数据" });
+    expect(await prisma.project.count()).toBe(项目数);
+    expect(await prisma.customer.count()).toBe(1);
+  });
+});
+
 describe("认图出的卡：微信、邮箱、国家有自己的格（2026-11-01）", () => {
   it("微信、邮箱格进联系人和查重，国家城市进客户地址，WhatsApp 记进联系人的联系方式（11-17 起不写进备注）", async () => {
     当(乙);
