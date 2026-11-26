@@ -98,8 +98,6 @@ export type RecordProps = {
   历史变更?: ReactNode;
   /** 摆在整页最上面的提醒条（客户详情顶上的同号再次录入醒目条，11-03 B6-9）；没有就不摆 */
   醒目条?: ReactNode;
-  /** 「← 回到客户列表」那一行右端的「上一条 / 下一条」（E-332，CustomerStep.tsx，页面画好递进来）；不给 = 不摆 */
-  换人箭头?: ReactNode;
   /** 原始转化线索；没有关联或已删除时为空，不用推荐关系推断。 */
   sourceLead?: import("@/lib/customer-lead-origin").CustomerLeadOrigin | null;
   /** 这位在不在我左栏的「收藏的客户」里（lib/favorites.ts） */
