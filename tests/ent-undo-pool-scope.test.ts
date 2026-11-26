@@ -241,6 +241,19 @@ describe("撤销放进公海：没撤成的要说出来", () => {
     });
   });
 
+  // 小修 1126-g 第 3 条：判法只认领取 / 换负责人两张表。市场分配、离职交接、超时自动转、撤回交接换负责人不写换负责人记录，
+  // 撤回之后被这几条路换走的，照样认成已撤回（只影响那句话，不写库）。钉住现状，改判法时这条要跟着改
+  it("判法局限：撤回之后负责人被不写换负责人记录的路换走，照样说刚才已经撤回了、不动负责人", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    await 放进公海([c.id], "客户主动终止");
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toMatchObject({ ok: true, updated: 1 });
+    await prisma.customer.update({ where: { id: c.id }, data: { salesOwnerId: 小王.id } });
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toEqual({ ok: true, updated: 0, unchanged: 0, 没权限: 0, 已撤回: 1, 提示: "这位刚才已经撤回了" });
+    expect(await 归谁(c.id)).toBe(小王.id);
+    expect(await 在公海(c.id)).toBe(false);
+  });
+
   it("撤回之后又放进公海、被同事领走了：再撤销照旧说被人领走", async () => {
     const c = await 客户(小李.id);
     当(小李);

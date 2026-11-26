@@ -381,8 +381,9 @@ export default function PoolView({ 行, 总数, 分项, 当前页, pageSize, 快
       if (项目到.length) {
         const r = await 撤销公海项目(动作, 项目到, 给谁?.id, 整包);
         // 只勾项目行的分配走整包：客户那一半的话（已撤回 / 没撤成）在 提示 里带回来（S1）
+        // 另一个标签页先撤回了的（已撤回）也算撤了，服务端在 提示 里说「刚才已经撤回公海了」，不按「有人动过」算（小修 1126-g 第 4 条）
         if (r.ok) {
-          项目撤了 = r.updated;
+          项目撤了 = r.updated + (r.已撤回 ?? 0);
           项目话 = r.提示;
           if (r.有没撤成) 有没撤成 = true;
         } else 项目错 = r.error;
