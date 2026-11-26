@@ -9,9 +9,6 @@
  */
 import { createContext } from "react";
 
-/** 联系人「⋯」里「和另一位合成」置灰的原因（12-02，RecordView 合成灰因；电脑悬停、手机灰项下面一行小字） */
-export { 挂靠联系人不能合成, 只有一位联系人不能合成 } from "@/lib/enterprise/merge-hints";
-
 export type 合成候选人 = { id: string; name: string; 职务: string | null; 关键: boolean; 号: string | null };
 
 export type 合并请求 =

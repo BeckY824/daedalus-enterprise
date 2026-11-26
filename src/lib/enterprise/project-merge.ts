@@ -40,8 +40,6 @@ type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 export const 项目合并通知种类 = "合并项目";
 /** 撤回项目合并时给被并掉的项目在线索验证记录里留的那一步（EntLeadVerifyLog.step）；合并那一步「项目合并验证步」在 project-merge-guard */
 export const 撤回项目合并验证步 = "撤回项目合并";
-/** 过了撤回期限的那句：撤回拦话、历史变更「不能撤因」、项目详情顶上「已并入」那一行都用这一句（天数引 项目合并撤回天数） */
-export const 项目合并撤回过期话 = `合并已超过 ${项目合并撤回天数} 天，不能撤回`;
 
 /* ───────────────────────── 读两个项目 ───────────────────────── */
 
@@ -469,7 +467,7 @@ export async function 撤回项目合并(db: 库, mergeId: string, me: 合并人
           if (!m || m.kind !== 项目单) throw new 拦下("找不到这张合并单");
           if (m.status !== "已合并") throw new 拦下("这张合并单已经撤回过了");
           if (!org || 只读角色(me, org) || 只看的人(org, me.id) || (m.byUserId !== me.id && !是系统管理员(me, org))) throw new 拦下("只有合并的人或系统管理员能撤回合并");
-          if (现在.getTime() - m.at.getTime() > 项目合并撤回天数 * 86_400_000) throw new 拦下(项目合并撤回过期话);
+          if (现在.getTime() - m.at.getTime() > 项目合并撤回天数 * 86_400_000) throw new 拦下(`合并已超过 ${项目合并撤回天数} 天，不能撤回`);
           const A = await 读项目(tx, m.intoId, true);
           if (A && !是系统管理员(me, org) && (A.pooledAt || A.ownerId !== me.id)) throw new 拦下(`「${名(A)}」现在不归你负责，请找系统管理员撤回`);
           const r = await 在事务里撤回项目合并(tx, m, me, 现在, 开, true);
@@ -590,8 +588,6 @@ export type 项目合并单一条 = {
   能撤: boolean;
   /** 已合并、这会儿不能撤的原因（历史变更里摆在按钮的位置）；能撤、已撤回的不给 */
   不能撤因?: string;
-  /** 过了撤回期限（由判定函数明确给，界面不比文案）；过期一定 不能撤因 = 项目合并撤回过期话 */
-  过期?: boolean;
   没还原?: Pick<没还原, "类" | "原因">[];
 };
 
@@ -600,7 +596,7 @@ function 不能撤因of(
   m: { at: Date; byUserId: string }, A: { name: string; ownerId: string | null; pooledAt: Date | null; deletedAt: Date | null } | undefined,
   B: { name: string; deletedAt: Date | null } | undefined, me: 合并人, 管: boolean, 能写: boolean, 线: number,
 ): string {
-  if (m.at.getTime() < 线) return 项目合并撤回过期话;
+  if (m.at.getTime() < 线) return `合并已超过 ${项目合并撤回天数} 天，不能撤回`;
   if (!能写 || (m.byUserId !== me.id && !管)) return "只有合并的人或系统管理员能撤回合并";
   if (!A || !B) return "项目已彻底删除，不能撤回合并";
   for (const p of [A, B]) if (p.deletedAt) return `「${名(p)}」在回收站里，先恢复再撤回合并`;
@@ -628,7 +624,7 @@ export async function 项目的合并单(db: 库, projectId: string, me: 合并�
     return {
       id: m.id, 方向: m.intoId === projectId ? "并进来" as const : "并出去" as const, 从: m.fromName, 到: A?.name ?? 留下名, 从id: m.fromId, 到id: m.intoId,
       at: m.at.toISOString(), status: m.status, 谁: 人名.get(m.byUserId) ?? "", 能撤,
-      ...(m.status === "已合并" && !能撤 ? { 不能撤因: 不能撤因of(m, A, B, me, 管, 能写, 线), ...(m.at.getTime() < 线 ? { 过期: true } : {}) } : {}),
+      ...(m.status === "已合并" && !能撤 ? { 不能撤因: 不能撤因of(m, A, B, me, 管, 能写, 线) } : {}),
       ...(撤 ? { 没还原: 撤.没还原.map((x) => ({ 类: x.类, 原因: x.原因 })) } : {}),
     };
   });
