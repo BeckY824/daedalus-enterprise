@@ -13,6 +13,7 @@ import { 不能当负责人 } from "../owners";
 import { 查完再写 } from "../check-then-write";
 import { 作废补位 } from "@/lib/enterprise/invalid-makeup";
 import { 改节点问题, 原因上限, 要写原因, 终止结局, 下一步, 节点序号, 字典of, 本套位置, 本套名, 同名们, 是交付, 结局叫法, type 位置 } from "./nodes";
+import { 被并项目拦 } from "@/lib/enterprise/project-merge-guard";
 import { 还差, 必填叫法, 节点推进生效, 项目按必填走, 节点推进管, 只管新建之后, 节点必填, 有效线索判定, 有效沟通还差, type 必填数据 } from "./required";
 import { 规整项目, 规整沟通, type 向导项目, type 向导跟进 } from "./wizard";
 import { 持有上限of, 负责人可推, type 组织规则 } from "./org-rules";
@@ -349,6 +350,9 @@ export async function 改节点(
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+    // 合并客户第二批 2a：被并掉的项目 30 天内不能重启、改结局（要动先撤回合并，免得撤回对不上；project-merge-guard.ts）
+    const 已并入 = await 被并项目拦(tx, p.id);
+    if (已并入) return { ok: false as const, error: 已并入 };
     // 「仅上级推」开着（企业版组织规则）：负责人自己推不动，直属上级只给往前推这一步，别的照旧只给负责人（11-01 闭环）
     const 上级代推 = !能改节点(me, p, org) && 上级只推(me, p, 推的组织, 规则);
     if (!能改节点(me, p, org) && !上级代推) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
