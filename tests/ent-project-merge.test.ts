@@ -18,6 +18,8 @@ vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
+import { 字段权限key } from "@/lib/enterprise/field-perm";
+import { 规则 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 项目合并预览, 执行项目合并, 撤回项目合并, 能并进的项目, 项目的合并单, 项目合并通知种类, 阶段和钱拦, 项目合并验证步 } from "@/lib/enterprise/project-merge";
@@ -135,7 +137,7 @@ describe("前提：谁能并、哪些拦", () => {
     expect(阶段和钱拦({ name: "x", phase: "订单" }, "留下", { 回款: 0, 提成: 0 })).toEqual([expect.stringContaining("订单阶段")]);
   });
 
-  it("[E-331] 合同已生效的拦（被并的、留下的都拦，执行也拦）；别的合同状态、空着不拦；候选里不列已签合同的", async () => {
+  it("[E-331] 合同已生效的拦（被并的、留下的都拦，执行也拦）；别的合同状态、空着不拦；候选里已签合同的灰着列出、不能选", async () => {
     const c = await 客户(乙.id);
     const a = await 项目(乙.id, c);
     const 签了 = await 项目(乙.id, c, { contractStatus: "已生效" });
@@ -330,6 +332,21 @@ describe("挪 / 不挪", () => {
     expect(B志组员).toHaveLength(2);
     await 等通知推完();
     expect(await raw.entNotice.count({ where: { kind: 项目合并通知种类 } })).toBe(0);
+  });
+
+  it("[E-331] 电话「藏」的角色看合并预览：号码不够 11 位尾号为空并带号藏；够 11 位才给尾号", async () => {
+    await setSetting(规则.字段权限.key, true);
+    await setSetting(字段权限key, { 电话: { sales: "藏" } });
+    invalidateSettingsCache();
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
+    const 短 = (await raw.contact.create({ data: { name: "联系人短", customerId: c, phone: "12345678" } })).id;
+    const 长 = (await raw.contact.create({ data: { name: "联系人长", customerId: c, phone: "13900001234" } })).id;
+    await raw.projectContact.createMany({ data: [{ projectId: a, contactId: 短 }, { projectId: b, contactId: 长 }] });
+    expect((await 项目合并预览(prisma, a, b, 乙)).联系人).toEqual({
+      留下: [{ id: 短, name: "联系人短", 尾号: "", 号藏: true }], 并掉: [{ id: 长, name: "联系人长", 尾号: "1234" }],
+    });
   });
 
   it("[E-331] 预览带两边项目联系人（被并的只列留下那边没有的）；号码相同的两位照样列、合并时只按联系人 id 去重，不按号码去重", async () => {

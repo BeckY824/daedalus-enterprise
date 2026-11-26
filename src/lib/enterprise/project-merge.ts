@@ -19,6 +19,7 @@ import type { PrismaClient, Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
 import { 企业版 } from "./switch";
+import { 字段权限of } from "./field-perm";
 import { 权限组织, type 组织 } from "./org";
 import { 是系统管理员, 只读角色, 只看的人 } from "./permissions";
 import { 交接中的客户, 离职交接中的项目 } from "./handover-db";
@@ -137,7 +138,7 @@ export type 项目合并预览结果 = {
   联系人: { 留下: 合并联系人[]; 并掉: 合并联系人[] };
 };
 /** 尾号 = 号码后四位（老号码列优先，没有取联系方式里第一个手机号）；没留号码是空串 */
-export type 合并联系人 = { id: string; name: string; 尾号: string };
+export type 合并联系人 = { id: string; name: string; 尾号: string; /** 电话权限是「藏」：尾号不给、界面写「号码看不到」 */ 号藏?: true };
 const 没联系人 = { 留下: [], 并掉: [] };
 
 async function 数条数(db: Tx | 库, B: string): Promise<项目合并条数> {
@@ -153,13 +154,19 @@ async function 数条数(db: Tx | 库, B: string): Promise<项目合并条数> {
   return { 沟通, 附件, 录音, 点评, 联系人, 关联客户, 卡点 };
 }
 
-async function 两边联系人(db: Tx | 库, A: string, B: string): Promise<项目合并预览结果["联系人"]> {
-  const 行 = await 看全部(() => db.projectContact.findMany({
-    where: { projectId: { in: [A, B] }, contact: { deletedAt: null } }, orderBy: { createdAt: "asc" },
-    select: { projectId: true, contact: { select: { id: true, name: true, phone: true, contactMethods: { where: { kind: "phone" }, orderBy: { createdAt: "asc" }, take: 1, select: { value: true } } } } },
-  }));
+async function 两边联系人(db: Tx | 库, A: string, B: string, me: 合并人): Promise<项目合并预览结果["联系人"]> {
+  const [行, 级别] = await Promise.all([
+    看全部(() => db.projectContact.findMany({
+      where: { projectId: { in: [A, B] }, contact: { deletedAt: null } }, orderBy: { createdAt: "asc" },
+      select: { projectId: true, contact: { select: { id: true, name: true, phone: true, contactMethods: { where: { kind: "phone" }, orderBy: { createdAt: "asc" }, take: 1, select: { value: true } } } } },
+    })),
+    字段权限of(me.id),
+  ]);
+  const 藏 = 级别("电话") === "藏";
   const 位 = ({ contact: c }: (typeof 行)[number]): 合并联系人 => {
     const 数字 = (c.phone || c.contactMethods[0]?.value || "").replace(/\D/g, "");
+    // 电话「藏」：号码够 11 位才给尾号，不然给空并标「号藏」，界面不能把「看不到」说成「没留号码」
+    if (藏) return 数字.length >= 11 ? { id: c.id, name: c.name, 尾号: 数字.slice(-4) } : { id: c.id, name: c.name, 尾号: "", 号藏: true };
     return { id: c.id, name: c.name, 尾号: 数字.length >= 4 ? 数字.slice(-4) : "" };
   };
   const 留下 = 行.filter((x) => x.projectId === A).map(位);
@@ -182,7 +189,7 @@ export async function 项目合并预览(db: 库, 留下id: string, 并掉id: st
   const 原因 = await 拦的原因(db, A, B, me, org);
   const 两个 = { 留下: A ? { id: A.id, name: A.name } : null, 并掉: B ? { id: B.id, name: B.name } : null };
   if (原因.length || !A || !B) return { 能并: false, 原因, ...两个, 条数: null, 组员: [], 联系人: 没联系人 };
-  const [条数, 组员, 联系人] = await Promise.all([数条数(db, B.id), 组员们(db, B.id, true), 两边联系人(db, A.id, B.id)]);
+  const [条数, 组员, 联系人] = await Promise.all([数条数(db, B.id), 组员们(db, B.id, true), 两边联系人(db, A.id, B.id, me)]);
   return { 能并: true, 原因: [], ...两个, 条数, 组员: 组员.map(({ userId, name }) => ({ userId, name })), 联系人 };
 }
 
