@@ -263,6 +263,26 @@ describe("前提：谁能并、哪些拦", () => {
     expect(await 项目合并预览(prisma, b, a, 乙)).toMatchObject({ 能并: true });
   });
 
+  it("留下的在等复核 / 终验 / 终判 / 认领也拦（P-合并-09）；刚分来还没初判（pending 空）不拦；候选里灰着写原因", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
+    // 等销售初判 = 刚分来、没有验证行或 pending 空：不拦
+    expect(await 项目合并预览(prisma, a, b, 乙)).toMatchObject({ 能并: true });
+    await raw.entLeadVerify.create({ data: { projectId: a, verdict: "暂未判定" } });
+    expect(await 项目合并预览(prisma, a, b, 乙)).toMatchObject({ 能并: true });
+    expect((await 能并进的项目(prisma, b, 乙)).列).toEqual([expect.objectContaining({ id: a })]);
+    expect((await 能并进的项目(prisma, b, 乙)).列[0].不能).toBeUndefined();
+    for (const 等 of ["市场复核", "销售终验", "总管理终判", "销售认领"]) {
+      await raw.entLeadVerify.update({ where: { projectId: a }, data: { pending: 等 } });
+      const r = await 项目合并预览(prisma, a, b, 乙);
+      expect(r.能并).toBe(false);
+      expect(r.原因.join()).toContain(`留下的项目`);
+      expect(r.原因.join()).toContain(`在等${等}，判完再并`);
+      expect((await 能并进的项目(prisma, b, 乙)).列).toEqual([expect.objectContaining({ id: a, 不能: `在等${等}，判完再并` })]);
+    }
+  });
+
   it("只读角色（管理员类）不能并、不能撤，合并单不摆撤回", async () => {
     const 丁 = await 造人("ding", "丁", "SALES");
     await raw.entMember.create({ data: { userId: 丁.id, bizRole: "admin" } });

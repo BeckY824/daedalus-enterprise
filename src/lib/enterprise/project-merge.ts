@@ -93,6 +93,9 @@ export function 业务线不同的原因(A: { bizLine?: string | null }, B: { bi
   return 有值(A.bizLine) && 有值(B.bizLine) && A.bizLine !== B.bizLine ? `两个项目业务线不同（${A.bizLine} / ${B.bizLine}），不能合并` : null;
 }
 
+/** 留下的项目在线索验证里等人判：预览和候选的灰着列共用这一句 */
+export const 留下在等的原因 = (p: { name?: string | null }, 等: string) => `留下的项目「${名(p as 项目行)}」在等${等}，判完再并`;
+
 /** 不能并的原因（空 = 能并）。A = 留下，B = 并掉 */
 async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | null, me: 合并人, org: 组织 | null): Promise<string[]> {
   if (!企业版()) return ["只有企业版能合并项目"];
@@ -119,6 +122,9 @@ async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | nu
     因.push(...阶段和钱拦(p, 角色, await 钱(db as Tx, p.id)));
   }
   // 被并掉的那个：线索验证判过有效、在等复核 / 终验 / 终判 / 认领、已判无效的都拦（再记一遍重复线索会盖掉原结局）
+  // 留下的那个也一样（P-合并-09）：在等复核 / 终验 / 终判 / 认领不能把别的并进来。「等销售初判」= 刚分来还没初判，pending 是 null（lead-verify.ts 只有初判无效才写 pending = 复核 / 终判），不拦
+  const 留 = await 看全部(() => db.entLeadVerify.findUnique({ where: { projectId: A.id }, select: { pending: true } }));
+  if (留?.pending) 因.push(留下在等的原因(A, 留.pending));
   const v = await 看全部(() => db.entLeadVerify.findUnique({ where: { projectId: B.id }, select: { verdict: true, finalResult: true, pending: true } }));
   if (v?.pending) 因.push(`「${名(B)}」在等${v.pending}，判完再并`);
   else if (v?.verdict === "有效线索" || v?.finalResult === "有效线索") 因.push(`「${名(B)}」线索验证判过有效，不能并掉；要并请把它留下、并另一个`);
@@ -243,10 +249,11 @@ export async function 能并进的候选们(db: 库, B: { id: string; customerId
   // 业务线：和 业务线不同的原因 同一规则（两边都有值、不一样才算不同），翻成查询条件，两边互补
   const 线不同: Prisma.ProjectWhereInput[] = 有值(B.bizLine) ? [{ AND: [{ bizLine: { not: null } }, { bizLine: { not: "" } }, { bizLine: { not: B.bizLine } }] }] : [];
   const 线同或空: Prisma.ProjectWhereInput[] = 有值(B.bizLine) ? [{ OR: [{ bizLine: null }, { bizLine: "" }, { bizLine: B.bizLine }] }] : [];
+  const 验证中: Prisma.ProjectWhereInput = { entLeadVerify: { is: { pending: { not: null } } } };
   const 没签合同: Prisma.ProjectWhereInput = { OR: [{ contractStatus: null }, { contractStatus: { not: 生效的合同状态 } }] };
-  const 能选的条件: Prisma.ProjectWhereInput = { ...底, AND: [没签合同, { phase: { in: [...能并的阶段.留下] } }, ...线同或空] };
-  const 灰的条件: Prisma.ProjectWhereInput = { ...底, OR: [{ contractStatus: 生效的合同状态 }, { phase: { notIn: [...能并的阶段.留下] } }, ...线不同] };
-  const 选 = { id: true, name: true, node: true, phase: true, contractStatus: true, bizLine: true } satisfies Prisma.ProjectSelect;
+  const 能选的条件: Prisma.ProjectWhereInput = { ...底, AND: [没签合同, { NOT: 验证中 }, { phase: { in: [...能并的阶段.留下] } }, ...线同或空] };
+  const 灰的条件: Prisma.ProjectWhereInput = { ...底, OR: [验证中, { contractStatus: 生效的合同状态 }, { phase: { notIn: [...能并的阶段.留下] } }, ...线不同] };
+  const 选 = { id: true, name: true, node: true, phase: true, contractStatus: true, bizLine: true, entLeadVerify: { select: { pending: true } } } satisfies Prisma.ProjectSelect;
   const [能, 灰, 灰共] = await 看全部(() => Promise.all([
     db.project.findMany({ where: 能选的条件, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], select: 选 }),
     db.project.findMany({ where: 灰的条件, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], take: 灰着列的上限, select: 选 }),
@@ -254,7 +261,7 @@ export async function 能并进的候选们(db: 库, B: { id: string; customerId
   ]));
   const 列 = [
     ...能.map(({ id, name, node }): 并进候选 => ({ id, name, node })),
-    ...灰.map(({ id, name, node, contractStatus, phase, bizLine }): 并进候选 => ({ id, name, node, 不能: 签了合同({ contractStatus }) ? 已签合同的项目不能合并 : !能并的阶段.留下.includes(phase) ? 到商机订单不能合并 : 业务线不同的原因({ bizLine }, B) ?? 到商机订单不能合并 })),
+    ...灰.map(({ id, name, node, contractStatus, phase, bizLine, entLeadVerify }): 并进候选 => ({ id, name, node, 不能: entLeadVerify?.pending ? `在等${entLeadVerify.pending}，判完再并` : 签了合同({ contractStatus }) ? 已签合同的项目不能合并 : !能并的阶段.留下.includes(phase) ? 到商机订单不能合并 : 业务线不同的原因({ bizLine }, B) ?? 到商机订单不能合并 })),
   ];
   return { 列, 灰共 };
 }
