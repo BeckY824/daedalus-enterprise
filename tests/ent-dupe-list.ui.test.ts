@@ -142,6 +142,20 @@ it("超 30 家的组折叠成「同名 N 家，太多请逐家处理」，不列
     expect(await page.getByTestId("dupe-not-same").count()).toBe(0);
     expect(await page.getByTestId("dupe-merge").count()).toBe(0);
     expect(await page.getByTestId("dupe-member").count()).toBe(0);
+    expect(await page.getByTestId("dupe-toomany-link").getAttribute("href")).toBe(`/customers?keyword=${encodeURIComponent("同名测试客户")}`);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("三家里只标部分对时，确认文案写「会标 M 对」而不是两两全对", async () => {
+  const 组 = { 键: "p", 们: [成员("c", "NO.1"), 成员("d", "NO.2"), 成员("e", "NO.3")], 留下: "c", 并掉: "d", 对们: ["c__e", "d__e"], 太多: false };
+  const { page, 错 } = await open(1280, "清单", { 清单: { 组们: [组], 共: 1, 页: 1, 每页: 20, 管: false } });
+  try {
+    await page.getByTestId("dupe-group").first().waitFor();
+    await page.getByTestId("dupe-not-same").first().click();
+    const 框 = page.locator(".ant-modal-confirm");
+    await 框.waitFor();
+    expect(await 框.innerText()).toContain("这 3 家里会标 2 对互不是同一位；其中有同一位的请先合并");
     expect(错).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);

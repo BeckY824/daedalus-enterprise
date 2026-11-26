@@ -11,7 +11,7 @@ import "./dupes.css";
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Empty, Modal, Pagination, Segmented } from "antd";
+import { App, Button, Empty, Pagination, Segmented } from "antd";
 import { PageHead } from "@/components/ui";
 import { LinkPending } from "@/components/NavProgress";
 import { useViewAs } from "@/components/ViewAsContext";
@@ -33,6 +33,7 @@ const 成员话 = (m: 清单成员) => [m.编号, `负责人 ${谁负责(m)}`, `
 
 export default function DupesView({ 清单, 已标, 只读原因 = null }: { 清单: 清单页; 已标: 已标一对[] | null; 只读原因?: string | null }) {
   const router = useRouter();
+  const { modal } = App.useApp();
   const 切换视图 = useViewAs();
   const 不能写 = 只读原因 ?? (切换视图 ? 看别人视角话 : null);
   const [忙, set忙] = useState<string | null>(null);
@@ -50,9 +51,12 @@ export default function DupesView({ 清单, 已标, 只读原因 = null }: { 清
   /** 三家及以上先确认：一次标掉的是两两所有对，其中有同一位的要先合并（12-15 C 审查建议 5） */
   function 点不是同一个人(g: 清单组) {
     if (g.们.length < 3) { void 标(g); return; }
-    Modal.confirm({
+    const 全对 = g.们.length * (g.们.length - 1) / 2;
+    modal.confirm({
       title: "确认都不是同一个人？",
-      content: `这 ${g.们.length} 家两两都不是同一位；其中有同一位的请先合并`,
+      content: g.对们.length === 全对
+        ? `这 ${g.们.length} 家两两都不是同一位；其中有同一位的请先合并`
+        : `这 ${g.们.length} 家里会标 ${g.对们.length} 对互不是同一位；其中有同一位的请先合并`,
       okText: "都不是同一位，标上",
       cancelText: "取消",
       onOk: () => 标(g),
@@ -99,6 +103,7 @@ export default function DupesView({ 清单, 已标, 只读原因 = null }: { 清
           <div className="dp-head">
             {一行(g.们[0].名, "dp-name")}
             <span className="dp-cnt">同名 {g.们.length} 家，太多请逐家处理</span>
+            <Link href={`/customers?keyword=${encodeURIComponent(g.们[0].名)}`} className="dp-cnt dp-link" data-testid="dupe-toomany-link">去客户列表按名字找 ›<LinkPending /></Link>
           </div>
         </li>
       );
