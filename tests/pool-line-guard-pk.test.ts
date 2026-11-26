@@ -123,7 +123,7 @@ describe("公海别线的：按主键取，结果和改前同一批行", () => {
 
 describe("公海别线的：真发出去的四句走主键", () => {
   type 句 = { query: string; params: string };
-  const 截 = new PrismaClient({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
+  const 截 = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
   const 句们: 句[] = [];
   (截 as unknown as { $on: (e: "query", f: (q: 句) => void) => void }).$on("query", (q) => 句们.push({ query: q.query, params: q.params }));
   const 限 = 加上限定(截);

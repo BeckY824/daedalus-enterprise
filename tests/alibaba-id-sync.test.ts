@@ -60,7 +60,7 @@ function 跑迁移(f: string) {
 }
 
 async function 开(f: string): Promise<PrismaClient> {
-  const db = new PrismaClient({ datasourceUrl: `file:${f}?connection_limit=1` });
+  const db = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${f}?connection_limit=1` });
   开着.push(db);
   await db.$queryRawUnsafe("PRAGMA journal_mode = WAL");
   for (const t of ["AiConversation", "AiProject", "Setting", "AuditLog", "ImportBatch", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead"]) {
@@ -157,7 +157,7 @@ it("新 → 旧 → 升级：老版本收到带阿里 ID 的档案不报错、�
   await 旧.$disconnect();
   跑迁移(旧库);
   跑迁移(旧库);
-  const 升级后 = new PrismaClient({ datasourceUrl: `file:${旧库}?connection_limit=1` });
+  const 升级后 = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${旧库}?connection_limit=1` });
   开着.push(升级后);
   await 装触发器(升级后);
   expect(await 列们(升级后)).toContain("alibabaId");

@@ -91,7 +91,7 @@ describe("迁移 137 的索引", () => {
 
 describe("查询计划：Prisma 实际发出的语句", () => {
   type 句 = { query: string; params: string };
-  const 截 = new PrismaClient({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
+  const 截 = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
   const 句们: 句[] = [];
   (截 as unknown as { $on: (e: "query", f: (q: 句) => void) => void }).$on("query", (q) => 句们.push({ query: q.query, params: q.params }));
   const 限 = 加上限定(截);
@@ -305,7 +305,7 @@ describe("查询计划：Prisma 实际发出的语句", () => {
 });
 
 describe("查询计划：第三轮（11-14）客户详情时间线、跟进数", () => {
-  const 截 = new PrismaClient({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
+  const 截 = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
   const 句们: { query: string; params: string }[] = [];
   (截 as unknown as { $on: (e: "query", f: (q: { query: string; params: string }) => void) => void }).$on("query", (q) => 句们.push(q));
   const 限 = 加上限定(截);

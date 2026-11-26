@@ -21,7 +21,7 @@ const 临时 = vi.hoisted(() => {
 });
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@/generated/prisma");
-  return { prisma: new PrismaClient({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}` }) };
+  return { prisma: new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}` }) };
 });
 
 import { PrismaClient } from "@/generated/prisma";
@@ -120,7 +120,7 @@ beforeAll(async () => {
   // 乙另拷一份再自己清：从甲的库文件拷会拷到还没落盘（还在 -wal 里）的旧数据，全量跑时偶发多出别的用例留下的行
   fs.copyFileSync(path.resolve(__dirname, "../prisma/test.db"), path.join(临时.dir, "B.db"));
   if (fs.existsSync(path.resolve(__dirname, "../prisma/test.db-wal"))) fs.copyFileSync(path.resolve(__dirname, "../prisma/test.db-wal"), path.join(临时.dir, "B.db-wal"));
-  乙 = new PrismaClient({ datasourceUrl: `file:${path.join(临时.dir, "B.db")}` });
+  乙 = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${path.join(临时.dir, "B.db")}` });
   await 清空种模板(乙);
 });
 

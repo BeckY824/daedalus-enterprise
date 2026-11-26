@@ -69,7 +69,7 @@ describe("公海分组计数短时缓存", () => {
   it("交互式事务：事务里写 → 提交前另一条连接读到旧数存进缓存 → 提交后再读拿到新数", async () => {
     process.env.CRM_ENTERPRISE = "1";
     // 另一处读：自己一条连接，只看得到已提交的
-    const 别处 = new PrismaClient({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1` });
+    const 别处 = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1` });
     try {
       const 数 = () => 缓存分组数("TX", [], () => 别处.setting.count({ where: { key: { startsWith: "pool-cache-tx-" } } }));
       expect(await 数()).toBe(0);

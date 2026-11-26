@@ -22,7 +22,7 @@ let 长名客户 = "";
 
 test.beforeAll(async () => {
   种 = 读种子();
-  db = new PrismaClient({ datasources: { db: { url: `file:${ENT_DB}` } } });
+  db = new PrismaClient<import("../src/generated/prisma").Prisma.PrismaClientOptions>({ datasources: { db: { url: `file:${ENT_DB}` } } });
   const 销售甲 = await db.user.findFirstOrThrow({ where: { email: 账号.销售1 } });
   // 企业版客户没有电话（E-260）：号记在主要联系人上，客户电话那格空串（同 global-setup.ts）
   const 主联系人 = (phone: string) => ({ create: { name: "", phone, isPrimary: true } });
