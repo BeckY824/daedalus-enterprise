@@ -181,7 +181,12 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
       const r = await 预览合并申请(customerId, c.id, c.按号);
       if (这次 !== 读次.current) return;
       if (!r.ok) { set读错(r.error); return; }
-      if (!r.预览.能发 && 直接拦) { set预(直接拦); return; }
+      if (!r.预览.能发 && 直接拦) {
+        // 申请那边的原因全都是直接合并那边也有的（数据拦法，两边一样）才摆直接合并的；否则摆申请自己的原因（已挂着一张、5 张上限等）
+        const 同 = r.预览.原因.length > 0 && r.预览.原因.every((x) => 直接拦.原因.includes(x));
+        if (同) set预(直接拦); else set申(r.预览);
+        return;
+      }
       set申(r.预览);
       if (r.预览.预览) { set预(r.预览.预览); 先配(r.预览.预览); }
     };
@@ -393,7 +398,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
                   );
                 })}
               </ul>
-              <p className="mrg-note">并进来那家是同事的：联系人只显示姓名、职务，号码不显示。</p>
+              <p className="mrg-note" data-testid="merge-ask-note">{并掉?.要申请 ? "并进来那家是同事的：联系人只显示姓名、职务，号码不显示。" : "走申请时两家联系人都只显示姓名、职务，号码不显示。"}</p>
             </section>
           )}
         </div>
