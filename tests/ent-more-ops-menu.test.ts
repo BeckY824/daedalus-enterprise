@@ -7,7 +7,7 @@
  * 不开浏览器，只看返回的 items 结构。
  */
 import { describe, expect, it } from "vitest";
-import { 更多操作菜单, 项目忙说法, type 项目菜单项 } from "@/app/(app)/projects/[id]/project-menu";
+import { 更多操作菜单, 项目忙说法, 项目菜单项们, 并进说明, type 项目菜单项 } from "@/app/(app)/projects/[id]/project-menu";
 
 type 项 = { type?: string; key?: string; disabled?: boolean; danger?: boolean; children?: 项[] };
 /** 摊成一串：组写「#key」，组里的项接着排；分隔线「—」；灰着的前面加 ⊘、危险的加 ! */
@@ -60,5 +60,22 @@ describe("更多操作菜单", () => {
     // 不给 点（受限页在 Dropdown menu.onClick 里按 key 接）：项上不挂 onClick
     const 无 = 更多操作菜单({ 项目: 项目(), 客户: [] }) as (项 & { onClick?: unknown })[];
     expect(无[0].children!.slice(1).every((x) => !("onClick" in x))).toBe(true);
+  });
+});
+
+describe("项目菜单项们 · 并进另一个项目（合并客户第二批 2a）", () => {
+  type 参 = Parameters<typeof 项目菜单项们>[0];
+  const 项目了 = (改: object) => 项目菜单项们({ p: { 企业版: true, pooled: false, 能删: true, ...改 } as unknown as 参["p"], 候选: [] });
+  it("服务端给了 并进 才摆，排在换客户后、删除项目前；能点的悬停看说明、灰着的写原因", () => {
+    expect(项目了({}).some((x) => x.key === "merge")).toBe(false);
+    expect(项目了({ 并进: null }).some((x) => x.key === "merge")).toBe(false);
+    const 们 = 项目了({ 能换客户: true, 并进: {} });
+    expect(们.map((x) => x.key)).toEqual(["move", "merge", "delete"]);
+    expect(们[1]).toEqual({ key: "merge", 字: "并进另一个项目", 注: 并进说明, 灰: undefined });
+    const 灰 = 项目了({ 并进: { 灰: "在商机阶段，只有线索阶段的项目能并进另一个项目" } }).find((x) => x.key === "merge")!;
+    expect(灰.灰).toBe("在商机阶段，只有线索阶段的项目能并进另一个项目");
+    // 进「更多操作 ▾」：灰着的 disabled、下面一行写原因
+    const 菜单 = 更多操作菜单({ 项目: 项目({ 项们: [灰] }), 客户: [] }) as { children?: { key: string; disabled?: boolean }[] }[];
+    expect(菜单[0].children?.find((x) => x.key === "merge")?.disabled).toBe(true);
   });
 });

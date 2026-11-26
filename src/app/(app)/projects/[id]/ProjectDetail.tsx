@@ -2,7 +2,7 @@
 
 import { 留落地话 } from "@/lib/landing-note";
 import { 位置文字, 换人文字, type 放回方式 } from "@/lib/project/node-log-text";
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
 import Link from "next/link";
@@ -52,7 +52,8 @@ import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
 import { 填法表, 客户格, type 窗外去处, type 草稿们, type 已签收格 } from "@/lib/project/required-fill";
 import ProjectStages from "./ProjectStages";
 import ProjectStarButton from "./ProjectStarButton";
-import { 两行, 等复核说法, 能项目转让, type 项目动作键 } from "./project-menu";
+import { 两行, 等复核说法, 能项目转让, 并进说明, type 项目动作键 } from "./project-menu";
+import { 合并桥, type 合并请求 } from "../../customers/[id]/merge-bridge";
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
 import { clearJob, runJob } from "@/lib/ai-jobs";
@@ -143,6 +144,8 @@ export type 项目详情 = {
   能删?: boolean;
   /** 摆不摆「换客户」（合并客户第一批，11-25）：企业版、看得到客户、客户负责人本人（能删客户的角色）或系统管理员；拦不拦在预览里说 */
   能换客户?: boolean;
+  /** 摆不摆「并进另一个项目」（合并客户第二批 2a，load.ts 并进菜单）：负责人本人或系统管理员才有；灰 = 摆着灰、悬停写原因；拦不拦整套在预览里说 */
+  并进?: { 灰?: string } | null;
   /** 这个项目是怎么到这位客户名下的：「从 NO.xxxxx「B」并入」（合并客户 / 项目换客户，customer-merge.ts 项目来历）；没有 = 不摆那一行 */
   并入自?: { 话: string; 怎么来: "合并客户" | "项目换客户"; at: string } | null;
   /** 企业版后售培育（P-界面-63，after-sale.ts）：停在潜客培育、客户名下有交付结清的；进程条第一格、「现在在」写后售培育。存的仍是潜客培育，不是 = 不带 */
@@ -594,8 +597,12 @@ export type 嵌在客户页 = {
 };
 
 export default function ProjectDetail({
-  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 教练主题 = null, 嵌入,
-}: 项目详情Props & { 嵌入?: 嵌在客户页 }) {
+  p, 能改, 候选, 在职, 联系人们, 角色们, 类别们, 卡点 = null, 教练主题 = null, 嵌入, 合并口 = null,
+}: 项目详情Props & { 嵌入?: 嵌在客户页; /** 项目详情页（不嵌在客户页）的「并进另一个项目」框（page.tsx 递 MergeHost 进来，同客户页 合并口）；不给 = 不摆那一项 */ 合并口?: ReactNode }) {
+  // 合并客户第二批 2a：项目详情页「⋯」里的「并进另一个项目」，点了经 merge-bridge 叫 合并口 开框（客户页走 RecordView 那份，不经这里）
+  const [并进请, set并进请] = useState<(合并请求 & { 次: number }) | null>(null);
+  const 并进桥 = useMemo(() => ({ 请求: 并进请, 收: () => set并进请(null) }), [并进请]);
+  const 摆并进 = !嵌入 && !!合并口 && !!p.企业版 && !!p.并进;
   // 无意义沟通（F-052）：沟通列表里就地改内容那一行要的判定，一页取一次（FollowMeaningLine 读共用那份）
   useFollowJudge(p.企业版);
   const router = useRouter();
@@ -2078,12 +2085,19 @@ export default function ProjectDetail({
   const 放回钮 = p.能放公海 && (等复核
     ? <Tooltip title={`${等复核文字}，暂时不能退回公海`}><Button size={钮号} disabled>项目退回公海</Button></Tooltip>
     : <Button size={钮号} disabled={忙} onClick={放回问} title={嵌入 ? "只退回当前页签的项目，客户不动" : undefined}>项目退回公海</Button>);
-  const 删钮 = p.能删 && (
-    <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{ items: [{ key: "delete", danger: true, label: "删除项目" }], onClick: () => 删问() }}>
+  const 删钮 = (p.能删 || 摆并进) && (
+    <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{
+      items: [
+        // 灰着的下面一行写原因（同客户页「更多操作 ▾」），能点的悬停看说明
+        ...(摆并进 ? [{ key: "merge", disabled: !!p.并进?.灰, label: p.并进?.灰 ? 两行("并进另一个项目", p.并进.灰) : <span title={并进说明}>并进另一个项目</span> }] : []),
+        ...(p.能删 ? [{ key: "delete", danger: true, label: "删除项目" }] : []),
+      ],
+      onClick: ({ key }) => (key === "merge" ? set并进请({ 种: "并项目", projectId: p.id, 名: p.name, 次: Date.now() }) : 删问()),
+    }}>
       <Button size={钮号} icon={<MoreOutlined />} aria-label="项目的更多操作">{嵌入 ? null : "更多"}</Button>
     </Dropdown>
   );
-  const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海 || !!p.能删) && (
+  const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海 || !!p.能删 || 摆并进) && (
     <Space wrap>
       {领取钮}
       {转给钮}
@@ -2375,6 +2389,7 @@ export default function ProjectDetail({
           <PaneToggle 栏="roster" 位置="主区" 名="项目列表" />
           {页头}
         </div>
+        {摆并进 && <合并桥.Provider value={并进桥}>{合并口}</合并桥.Provider>}
         </>
       ) : (
         页头

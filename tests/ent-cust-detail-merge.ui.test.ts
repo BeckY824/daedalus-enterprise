@@ -1451,6 +1451,38 @@ it("[合并客户第一批 11-25] 「更多操作 ▾」客户组有「合并客
   } finally { await page.close(); }
 });
 
+it("[合并客户第二批 2a] 项目组有「并进另一个项目」（服务端给了 并进 才摆）：能并的点了经 merge-bridge 交给客户页的框（种 并项目）；不能并的灰着、下面一行写原因；没给 合并口 的不摆", async () => {
+  for (const 宽 of [1280, 390]) {
+    const { page, errors } = await 开(宽, { 合并: { 客户: false, 联系人: false }, 项目改: { 能换客户: true, 并进: {} } });
+    try {
+      const 项们 = await 菜单项们(await 开菜单(page, "更多操作"));
+      // 在换客户后、客户组前
+      const i = 项们.findIndex((x) => x.startsWith("并进另一个项目"));
+      expect(i, String(项们)).toBeGreaterThan(项们.findIndex((x) => x.startsWith("换客户")));
+      expect(i).toBeLessThan(项们.indexOf("#客户"));
+      await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) li.ant-dropdown-menu-item").filter({ hasText: "并进另一个项目" }).click();
+      const 请求 = JSON.parse(await page.getByTestId("merge-probe").innerText().then((t) => t.replace(/收$/, "")));
+      expect([请求.种, 请求.projectId]).toEqual(["并项目", "p1"]);
+      expect(请求.名).toMatch(/^项目一/);
+      await page.getByTestId("merge-probe").getByRole("button").click();
+      // 不能并：灰着，下面一行写原因
+      await 画(page, { 合并: { 客户: false, 联系人: false }, 项目改: { 并进: { 灰: "这位客户名下没有同一位负责人、线索阶段在推的别的项目" } } });
+      await 开菜单(page, "更多操作");
+      const 灰 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) li.ant-dropdown-menu-item").filter({ hasText: "并进另一个项目" });
+      expect(await 灰.getAttribute("aria-disabled")).toBe("true");
+      expect(await 灰.innerText()).toContain("没有同一位负责人、线索阶段在推的别的项目");
+      await page.keyboard.press("Escape");
+      // 服务端没给（不是负责人本人）/ 没给 合并口：都不摆
+      await 画(page, { 合并: { 客户: false, 联系人: false }, 项目改: { 并进: null } });
+      expect((await 菜单项们(await 开菜单(page, "更多操作"))).some((x) => x.startsWith("并进另一个项目"))).toBe(false);
+      await page.keyboard.press("Escape");
+      await 画(page, { 项目改: { 并进: {} } });
+      expect((await 菜单项们(await 开菜单(page, "更多操作"))).some((x) => x.startsWith("并进另一个项目"))).toBe(false);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 90_000);
+
 it("[合并客户第一批 11-25] ?merged= 旧链接进来：「已并入」那句摆在「← 回到客户列表」一行右端，一行省略、不推版面（那一行还是 24 高、页头不下移），能关、关了地址去掉 merged", async () => {
   const 话 = "NO.00012「" + "超长的被并客户名称".repeat(5) + "」已并入这位客户，原来的链接都会跳到这里";
   for (const 宽 of [390, 1024, 1280]) {

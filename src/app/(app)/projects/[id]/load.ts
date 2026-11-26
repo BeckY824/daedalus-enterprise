@@ -17,6 +17,7 @@ import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选, 是系统管理员, 只读角色, 只看的人, type 权限项目 } from "@/lib/enterprise/permissions";
 import { 项目来历 } from "@/lib/enterprise/customer-merge";
+import { 能并进的项目, 能并的阶段 } from "@/lib/enterprise/project-merge";
 import { 客户事项挡, 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
 import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
 import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -377,6 +378,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
     // 「换客户」：看得到客户、客户负责人本人（能删客户的角色）或系统管理员才摆；同事负责没结束的、交接中、业务线不同……在预览里说（同 project-move-customer.ts 拦的原因）
     能换客户: 看得到客户.has(p.customerId) && !!org && !只读角色(me, org) && !只看的人(org, me.id)
       && (是系统管理员(me, org) || (!p.customer.pool && 能删除(me, org, p.customer.salesOwnerId) && (!!p.result || 公海 || !p.ownerId || p.ownerId === me.id))),
+    // 合并客户第二批 2a「并进另一个项目」：只摆给负责人本人或系统管理员（同 能并进的项目）；结束了、不在线索阶段、没有可并进的项目时灰着写原因。能不能并整套在预览里再判
+    ...(企业 && !占位 ? { 并进: await 并进菜单(me, org, p) } : {}),
     已立项天数: 已立项天数(p.createdAt),
     ...(能改 ? { 渠道们: await 可选渠道们(p.channelId) } : {}),
     aiEnabled: (能记沟通 || 能记售后回访) && 露 ? await llmEnabled() : false,
@@ -542,4 +545,16 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
     种: "有", customerId: p.customerId, 露, 客户入口,
     props: { 卡点, 教练主题, p: 详情, 能改, 候选, 在职, 联系人们, 角色们: 角色们.map((r) => ({ id: r.id, name: r.name, active: r.active })), 类别们: 类别们.filter((c) => c.active).map((c) => ({ id: c.id, name: c.name })) },
   };
+}
+
+/** 「并进另一个项目」那一项：null = 不摆；灰 = 摆着灰、悬停写原因（候选同 能并进的项目：同客户、同负责人、线索阶段在推的） */
+async function 并进菜单(
+  me: SessionUser, org: Awaited<ReturnType<typeof 权限组织>>,
+  p: { id: string; ownerId: string | null; phase: string; result: string | null; pooledAt: Date | null; awaitAssignAt: Date | null },
+): Promise<{ 灰?: string } | null> {
+  if (!org || 只读角色(me, org) || 只看的人(org, me.id) || p.pooledAt || p.awaitAssignAt) return null;
+  if (!是系统管理员(me, org) && p.ownerId !== me.id) return null;
+  if (p.result) return { 灰: `项目已经结束（${p.result}），不能再并` };
+  if (!能并的阶段.并掉.includes(p.phase)) return { 灰: `在${p.phase}阶段，只有${能并的阶段.并掉.join("、")}阶段的项目能并进另一个项目` };
+  return (await 能并进的项目(prisma, p.id, me)).length ? {} : { 灰: "这位客户名下没有同一位负责人、线索阶段在推的别的项目" };
 }
