@@ -241,6 +241,7 @@ export async function 项目挂件(tx: Tx, id: string, 批次Id: string): Promis
       nextStepText: true,
       balanceSettled: true,
       acceptancePassed: true,
+      invoiced: true,
       exceptionCategoryId: true,
       _count: { select: { followUps: true, members: true } },
     },
@@ -256,6 +257,7 @@ export async function 项目挂件(tx: Tx, id: string, 批次Id: string): Promis
     !!p.contactId && !!(await tx.entImportRow.findFirst({ where: { batchId: 批次Id, entity: "contact", targetId: p.contactId, kind: "create" }, select: { id: true } }));
   if ((p.contactId && !自己的联系人) || p.nextStepAt || p.nextStepText || p.exceptionCategoryId) return "导入之后又补过项目（联系人、下一步、异常类别）";
   if (p.balanceSettled || p.acceptancePassed) return "项目勾过尾款结清或验收通过";
+  if (p.invoiced) return "项目勾过已开票";
   return null;
 }
 

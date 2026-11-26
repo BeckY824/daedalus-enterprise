@@ -43,6 +43,11 @@ export type 组织 = {
    */
   无主线索复核人?: string | null;
   /**
+   * 可标已开票（12-15 第三批，客户 E-337「系统管理员能勾，并可给指定的人开『可标已开票』，不新增角色」）：系统管理员之外能勾项目「已开票」的人。
+   * Setting enterprise.invoice_markers（JSON 数组 userId），org.ts 读组织 填；只留在职的。取消勾选不看这份（只有系统管理员，lib/project/invoiced.ts）
+   */
+  可标已开票?: ReadonlySet<string>;
+  /**
    * 「线索分配」规则开关（Setting enterprise.rule.lead_assign，认法同 rules-table.ts 开关值开着、visibility.ts 数据层）。org.ts 读组织 填；
    * 没填（测试里手搭的组织）= 关。能看项目 的待分配本线放开（await-assign-open.ts）按它判，和数据层同一口径（P-转-42 审查）
    */
@@ -58,6 +63,8 @@ export const 只看某人键 = "enterprise.watch_only";
 export const 系统管理员标记键 = "enterprise.sysadmin_flag";
 /** 无主线索复核人存的 Setting 键（JSON 字符串 userId）：设置页「组织架构」里配，默认空（= 系统管理员） */
 export const 无主线索复核人键 = "enterprise.orphan_lead_reviewer";
+/** 可标已开票名单存的 Setting 键（JSON 数组 userId）：设置页「组织架构」里配，默认空（= 只有系统管理员能勾） */
+export const 可标已开票键 = "enterprise.invoice_markers";
 
 /** Setting 原文：JSON 解得开就解（setSetting 存的），解不开当原样字符串（库里手写的逗号串） */
 function 解码(v: string | null | undefined): unknown {
@@ -80,11 +87,12 @@ function 解名单(v: string | null | undefined, org: 组织): Set<string> {
  * 读完 Setting 后补上组织里的几份名单（org.ts 读组织、visibility.ts 算 共用）：回收站副手（逗号串）、只看某人（JSON）、系统管理员标记（JSON 数组）。
  * 标记没传（undefined）= 不动 org 上原有的，传 null = 没设
  */
-export function 填组织设置(org: 组织, 副手: string | null | undefined, 只看: string | null | undefined, 标记?: string | null, 无主复核人?: string | null): 组织 {
+export function 填组织设置(org: 组织, 副手: string | null | undefined, 只看: string | null | undefined, 标记?: string | null, 无主复核人?: string | null, 可标?: string | null): 组织 {
   org.回收站副手 = 解名单(副手, org);
   org.只看某人 = 规整只看某人(只看, org);
   if (标记 !== undefined) org.系统管理员标记 = 解名单(标记, org);
   if (无主复核人 !== undefined) org.无主线索复核人 = 解一个人(无主复核人, org);
+  if (可标 !== undefined) org.可标已开票 = 解名单(可标, org);
   return org;
 }
 

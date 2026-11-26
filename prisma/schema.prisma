@@ -974,6 +974,12 @@ model Project {
   acceptancePassed     Boolean                   @default(false)
   acceptancePassedById String?
   acceptancePassedAt   DateTime?
+  /// 已开票（企业版 12-15 第三批，迁移 176，客户 E-335 / E-337 / E-363）：谁勾的、何时。勾了这个项目不能做项目合并（两边任一勾了都拦）。
+  /// 能勾 = 系统管理员 + 设置「组织架构 → 可标已开票」名单里的人；取消 = 勾后 30 天内只有系统管理员，过了 30 天谁都不能改（lib/project/invoiced.ts）。
+  /// 勾、取消各记一条操作日志（AuditLog entity Project，action invoice / invoice-undo），客户详情「历史变更」项目块按它列
+  invoiced             Boolean                   @default(false)
+  invoicedById         String?
+  invoicedAt           DateTime?
   amount               Float                     @default(0)
   currency             String                    @default("CNY")
   remark               String?

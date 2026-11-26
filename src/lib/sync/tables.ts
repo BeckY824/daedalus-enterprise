@@ -164,6 +164,7 @@ export const 指向人的列: [string, string][] = [
   ["Project", "ownerId"],
   ["Project", "creatorId"],
   ["Project", "balanceSettledById"],
+  ["Project", "invoicedById"],
   ["Project", "acceptancePassedById"],
   ["ProjectMember", "userId"],
   ["ProjectMember", "invitedById"],

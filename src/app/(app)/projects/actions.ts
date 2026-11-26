@@ -28,6 +28,7 @@ import { 规整向导, 规整沟通, 向导接着建, 规整只建客户, 只建
 import { 补潜客培育 } from "@/lib/project/nurture";
 import { 客户状态自动, 跟着项目重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 带待办勾 } from "@/lib/project/carry-tasks";
+import { 勾已开票 } from "@/lib/project/invoiced";
 import { 读必填数据, 有效沟通差of, 补全期不给, 往前推不给, 能改节点, 上级只推, 直属才推, 只有负责人改进程, 改节点, 终止进程, 勾交付, 加角色, 改角色, 加异常类别, 改异常类别, 删项目, 交付项们, 改项目, type 编辑项目改动, 加组员, 回邀请, 换组员角色, 移出组员, 放回公海, 领取公海项目, 持有上限起点, 写前核上限, 整批超上限, 记项目沟通, 超时预览, 公海超时收回, 超时成员线, 超时线, 补回收起点留痕, 回收认的最近跟进, 能管项目, type 交付项 } from "@/lib/project/db";
 import { 合上改动, 三态改动摘要, 负责人可推, type 规则改动 } from "@/lib/project/org-rules";
 import { 组织规则改动摘要 } from "@/lib/project/org-rules-diff";
@@ -711,6 +712,23 @@ export async function 勾项目交付(projectId: string, 项: 交付项, 勾: bo
         summary: `项目「${p?.name ?? ""}」${勾 ? "勾上" : "取消"}「${交付项们[项]}」`,
       });
       await 记这个项目的自动推进(me, projectId, r.自动推到);
+      刷新项目(projectId, p?.customerId);
+    }
+    return r;
+  } catch (e) { return 不在了(e); }
+}
+
+/**
+ * 勾 / 取消项目「已开票」（12-15 第三批，lib/project/invoiced.ts）：能勾 = 系统管理员 + 可标已开票名单；取消 = 30 天内只有系统管理员。
+ * 权限、期限、操作日志都在 勾已开票 里（日志和改项目同一个事务），这里只管登录、开关、刷新
+ */
+export async function 勾项目已开票(projectId: string, 勾: boolean) {
+  try {
+    const me = await requireUser();
+    if (!(await 开着())) return 没开;
+    const r = await 勾已开票(me, projectId, 勾 === true);
+    if (r.ok && r.变了) {
+      const p = await prisma.project.findUnique({ where: { id: projectId }, select: { customerId: true } });
       刷新项目(projectId, p?.customerId);
     }
     return r;
