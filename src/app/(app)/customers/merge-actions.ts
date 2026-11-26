@@ -144,12 +144,18 @@ export async function 搜合并候选(留下id: string, 关键词: string): Prom
 export async function 预览合并申请(留下id: string, 并掉id: string, 按号?: string): Promise<结果<{ 预览: 合并申请预览结果 }>> {
   const me = await 我();
   if (!是id(留下id) || !是id(并掉id) || (按号 !== undefined && typeof 按号 !== "string")) return 坏参数;
-  if (!(await 都看得到([留下id]))) return 看不到;
-  if (!(await 都看得到([并掉id]))) {
-    const 号 = 按号 ? 完整号码(搜索词(按号.trim().slice(0, 50)) ?? "") : null;
-    if (!号 || !(await 全公司查号(prisma, 号.类型, 号.值, 号.键)).includes(并掉id)) return 看不到;
-  }
+  if (!(await 都看得到([留下id])) || !(await 并掉那家放行(并掉id, 按号))) return 看不到;
   return { ok: true, 预览: await 合并申请预览(prisma, 留下id, 并掉id, me) };
+}
+
+/**
+ * 并进来那家放行（预览合并申请、发起客户合并申请共用一个判法）：看得到；看不到的，要带着搜到它的那个完整号码、服务端再核一次撞得上。
+ * 不放行一律回「看不到」，不往下走数据层（数据层跑在 看全部 里，拦下的原因会带出客户名、业务线、交接状态）
+ */
+async function 并掉那家放行(并掉id: string, 按号?: string): Promise<boolean> {
+  if (await 都看得到([并掉id])) return true;
+  const 号 = 按号 ? 完整号码(搜索词(按号.trim().slice(0, 50)) ?? "") : null;
+  return !!号 && (await 全公司查号(prisma, 号.类型, 号.值, 号.键)).includes(并掉id);
 }
 
 /** 登录的人能不能并 / 换到同事的客户（= 系统管理员）：界面只用来挑说法（搜不到时那句、后果框谁能撤），谁能做照旧在数据层判 */
@@ -392,12 +398,20 @@ async function 刷新申请(requestId: string) {
   if (r) 刷新(r.intoId, r.fromId);
 }
 
-/** 发合并申请：把 并掉id 并进 留下id，要两家负责人、名下没结束项目的负责人都同意。勾选同第一批合并预览 */
-export async function 发起客户合并申请(留下id: string, 并掉id: string, opt: { 已核对?: boolean; 同一个人?: unknown } = {}): Promise<结果<发起完>> {
+/**
+ * 发合并申请：把 并掉id 并进 留下id，要两家负责人、名下没结束项目的负责人都同意。勾选同第一批合并预览。
+ * 两家看不看得到同预览合并申请（按号 = 搜到那家时用的完整号码，见 并掉那家放行）：不能绕过预览拿 id 直接发
+ */
+export async function 发起客户合并申请(
+  留下id: string, 并掉id: string, opt: { 已核对?: boolean; 同一个人?: unknown; 按号?: string } = {},
+): Promise<结果<发起完>> {
   const me = await 我();
   if (!是id(留下id) || !是id(并掉id) || 留下id === 并掉id) return 坏参数;
+  const 按号 = opt?.按号;
+  if (按号 !== undefined && typeof 按号 !== "string") return 坏参数;
   const 对们 = 规整对们(opt?.同一个人);
   if (!对们) return 坏参数;
+  if (!(await 都看得到([留下id])) || !(await 并掉那家放行(并掉id, 按号))) return 看不到;
   const r = await 发起合并申请(prisma, 留下id, 并掉id, me, { 已核对: opt?.已核对 === true, 同一个人: 对们 });
   if (r.ok) 刷新(留下id, 并掉id);
   return r;

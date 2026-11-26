@@ -18,9 +18,10 @@ vi.mock("@/lib/auth", async (orig) => ({ ...(await orig<object>()), requireUser:
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
-import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibility";
+import { 规则 } from "@/lib/enterprise/rules";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 撤回合并 } from "@/lib/enterprise/customer-merge";
+import { 撤回合并, 合并预览 } from "@/lib/enterprise/customer-merge";
 import {
   算同意人, 发起人问题, 到期时刻, 比四项, 发起合并申请, 处理合并申请, 撤回合并申请, 扫过期合并申请, 到期话, 申请状态,
   钟上扫过期合并申请, 等待工作日, 直接并话, type 快照,
@@ -439,6 +440,10 @@ describe("动作层（customers/merge-actions.ts）", () => {
     expect(r.预览.预览!.联系人们.并掉.length).toBe(1);
     expect(r.预览.预览!.联系人们.并掉.every((c) => c.号.length === 0)).toBe(true);
     expect(r.预览.预览!.并排.map((x) => x.格)).not.toContain("客户地址");
+    // 不超过挂靠只读卡（只读卡不给负责人、级别、状态）：按申请也不给客户状态；建档时间照给。直接并的预览照旧有这两格
+    expect(r.预览.预览!.并排.map((x) => x.格)).not.toContain("客户状态");
+    expect(r.预览.预览!.并排.map((x) => x.格)).toContain("建档时间");
+    expect((await 合并预览(prisma, a, b, 乙)).并排.map((x) => x.格)).toEqual(expect.arrayContaining(["客户地址", "客户状态", "建档时间"]));
     expect(await raw.entMergeRequest.count()).toBe(0);
     // 别的销售：发不了，摆原因；两家都是自己的、没有同事项目：说直接并
     以(丁);
@@ -463,6 +468,33 @@ describe("动作层（customers/merge-actions.ts）", () => {
     expect(await 发起客户合并申请(a, a)).toMatchObject({ ok: false, error: "参数不对，刷新再试" });
     const r = await 发起客户合并申请(a, b);
     expect(r).toMatchObject({ ok: true, 同意人: [{ userId: 丙.id }] });
+  });
+
+  it("发起也判看不看得到（2b-3 审查单 A 第 1 条）：看不到的同事客户拿 id 直接发被拦、不露名；带搜到它的那个完整号码放行；带别家的号照拦", async () => {
+    const a = await 客户(乙.id);
+    const b = await 客户(丙.id, { name: "看不到的同事客户", bizLine: "内贸" });
+    const 别家 = await 客户(丁.id);
+    const 号 = async (id: string) => (await raw.contact.findFirstOrThrow({ where: { customerId: id } })).phone!;
+    const 看不到话 = { ok: false, error: "客户不存在或你看不到，刷新看看" };
+    以(乙);
+    await setSetting(规则.按组织看客户.key, true);
+    忘掉企业版范围();
+    // 按组织看客户开着、按乙的范围（限定层认 以谁的身份）：销售看不到丙负责的客户
+    await 以谁的身份(乙.id, async () => {
+      expect(await prisma.customer.count({ where: { id: b } })).toBe(0);
+      const 直接 = await 发起客户合并申请(a, b);
+      expect(直接).toEqual(看不到话);
+      expect(JSON.stringify(直接)).not.toMatch(/看不到的同事客户|内贸|交接/);
+      expect(await 发起客户合并申请(a, b, { 按号: await 号(别家) })).toEqual(看不到话);
+      expect(await 发起客户合并申请(a, b, { 按号: "不是号码" })).toEqual(看不到话);
+      expect(await 发起客户合并申请(a, b, { 按号: 1 as unknown as string })).toEqual({ ok: false, error: "参数不对，刷新再试" });
+      // 预览同一个判法
+      expect(await 预览合并申请(a, b, await 号(别家))).toEqual(看不到话);
+      expect(await raw.entMergeRequest.count()).toBe(0);
+      const 对 = await 发起客户合并申请(a, b, { 按号: await 号(b) });
+      expect(对).toMatchObject({ ok: true, 同意人: [{ userId: 丙.id }] });
+    });
+    expect(await raw.entMergeRequest.count()).toBe(1);
   });
 
   it("同意 / 拒绝：不是同意人的被拒；同意人同意后执行合并", async () => {
