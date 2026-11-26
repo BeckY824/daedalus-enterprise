@@ -185,6 +185,72 @@ describe("撤销放进公海：没撤成的要说出来", () => {
     expect(await 归谁(c.id)).toBe(小王.id);
   });
 
+  /*
+    A 标签页已经撤回了，B 标签页再点撤销（PR 472 审查第 3 条）：原来走「不在公海」报「被人领走或分走了」、ok:false。
+    其实是自己刚才撤回的：算撤成、说「刚才已经撤回了」（同撤销领取 / 分配的已撤回）
+  */
+  it("放进公海 → 撤销 → 再撤销：第二次说「这位刚才已经撤回了」，算撤成", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    expect(await 放进公海([c.id], "客户主动终止")).toMatchObject({ ok: true, updated: 1 });
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toEqual({ ok: true, updated: 1, unchanged: 0, 没权限: 0 });
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toEqual({ ok: true, updated: 0, unchanged: 0, 没权限: 0, 已撤回: 1, 提示: "这位刚才已经撤回了" });
+    expect(await 归谁(c.id)).toBe(小李.id);
+    expect(await 在公海(c.id)).toBe(false);
+  });
+
+  it("撤回之后又放进公海、被同事领走了：再撤销照旧说被人领走", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    await 放进公海([c.id], "客户主动终止");
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toMatchObject({ ok: true, updated: 1 });
+    await 放进公海([c.id], "客户主动终止");
+    当(小王);
+    expect(await 领取([c.id])).toMatchObject({ ok: true, updated: 1 });
+    当(小李);
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toEqual({ ok: false, error: "这位已经被人领走或分走了，这次没有撤销" });
+    expect(await 归谁(c.id)).toBe(小王.id);
+  });
+
+  it("撤销条的撤回不认别人的操作日志：同事撤回过同一位，不算我撤回的", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    await 放进公海([c.id], "客户主动终止");
+    await 撤销公海("放进", [{ id: c.id, 值: "" }]);
+    当(小王);
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toEqual({ ok: false, error: "这位已经被人领走或分走了，这次没有撤销" });
+  });
+
+  it("批量退回公海后的撤销条再点一次：两位都说已撤回，算撤成", async () => {
+    const a = await 客户(小李.id);
+    const b = await 客户(小李.id);
+    当(小李);
+    expect(await 放进公海([a.id, b.id], "客户主动终止")).toMatchObject({ ok: true, updated: 2 });
+    const 原 = [{ id: a.id, 值: "" }, { id: b.id, 值: "" }];
+    expect(await 撤销公海("放进", 原)).toEqual({ ok: true, updated: 2, unchanged: 0, 没权限: 0 });
+    expect(await 撤销公海("放进", 原)).toEqual({ ok: true, updated: 0, unchanged: 0, 没权限: 0, 已撤回: 2, 提示: "2 位刚才已经撤回了" });
+  });
+
+  it("批量里撤成、已撤回、被领走混着：撤成的照撤，拼成一句、带 有没撤成", async () => {
+    const a = await 客户(小李.id);
+    const b = await 客户(小李.id);
+    const d = await 客户(小李.id);
+    当(小李);
+    expect(await 放进公海([a.id, b.id, d.id], "客户主动终止")).toMatchObject({ ok: true, updated: 3 });
+    expect(await 撤销公海("放进", [{ id: a.id, 值: "" }])).toMatchObject({ ok: true, updated: 1 });
+    当(小王);
+    await 领取([b.id]);
+    当(小李);
+    expect(await 撤销公海("放进", [a, b, d].map((x) => ({ id: x.id, 值: "" })))).toEqual({
+      ok: true, updated: 1, unchanged: 1, 没权限: 0, 已撤回: 1, 有没撤成: true,
+      提示: "已撤销 1 位；1 位刚才已经撤回了；1 位已经被人领走或分走了，这次没有撤销",
+    });
+    expect(await 归谁(a.id)).toBe(小李.id);
+    expect(await 归谁(b.id)).toBe(小王.id);
+    expect(await 归谁(d.id)).toBe(小李.id);
+    expect(await 在公海(d.id)).toBe(false);
+  });
+
   it("过了撤销时限：还在公海里，ok:false 说过了时限", async () => {
     const c = await 客户(小李.id);
     当(小李);

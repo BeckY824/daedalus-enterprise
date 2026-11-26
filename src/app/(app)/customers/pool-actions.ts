@@ -564,6 +564,37 @@ function 撤销公海话(共: number, 撤成: number, 已撤回: number, 改过:
  * 或者过了撤销时限、不是这一下领 / 换过来的。原来不说，撤销条照样「已撤销」，客户其实还在名下
  */
 const 不在撤销范围 = (动作: "领取" | "分配") => `${动作 === "分配" ? "已经不归分到的人、不是你刚才分的" : "已经不归你"}、原负责人已停用或过了撤销时限，这次没有撤销`;
+/** 撤销放进公海那条操作日志的开头：刚撤回过的 按它认「是我自己刚才撤回的」，两处要对上 */
+const 撤销放进摘要 = "撤销了刚才的放进公海";
+/**
+ * 撤销放进公海时「不在公海」的那几位里，哪几位是我自己刚才已经撤回的（PR 472 审查第 3 条）：A 标签页撤回了，B 标签页再点撤销，
+ * 原来报「被人领走或分走了」。撤回时进公海那条 pool-release 删掉了、前端也只传 id（值 是空），只能按撤销那条操作日志认：
+ * 时限内我记的「撤销了刚才的放进公海」带着这位，且那之后没人领过、负责人没再换过（还在撤回时还给的、进公海前那位名下）。
+ * 包 看全部：被别人领走、换给别人的，限定着查不到那几条记录，会被错认成已撤回
+ */
+async function 刚撤回过的(我: string, 客户们: string[]): Promise<Set<string>> {
+  if (!客户们.length) return new Set();
+  const 要 = new Set(客户们);
+  const 日志 = await prisma.auditLog.findMany({
+    where: { userId: 我, action: "pool", entity: "Customer", at: { gte: new Date(Date.now() - 撤销时限毫秒) }, summary: { startsWith: 撤销放进摘要 } },
+    orderBy: { at: "desc" }, select: { at: true, detail: true },
+  });
+  const 撤回于 = new Map<string, Date>();
+  for (const l of 日志) {
+    let 们: unknown;
+    try { 们 = (JSON.parse(l.detail ?? "{}") as { ids?: unknown }).ids; } catch { continue; }
+    if (!Array.isArray(们)) continue;
+    for (const id of 们) if (typeof id === "string" && 要.has(id) && !撤回于.has(id)) 撤回于.set(id, l.at);
+  }
+  const 是 = new Set<string>();
+  for (const [id, at] of 撤回于) {
+    const 之后动过 = await 看全部(async () =>
+      (await prisma.customerClaim.count({ where: { customerId: id, at: { gt: at } } })) +
+      (await prisma.customerOwnerLog.count({ where: { customerId: id, at: { gt: at } } })));
+    if (!之后动过) 是.add(id);
+  }
+  return 是;
+}
 /** 撞的是公海那一行的主键（customerPool.customerId）：先到的那次已经放回公海。别的表的唯一约束照旧抛（同 repeat-inquiry.ts 序号撞了） */
 function 公海行撞了(e: unknown): boolean {
   if (!e || typeof e !== "object" || (e as { code?: unknown }).code !== "P2002") return false;
@@ -635,26 +666,36 @@ export async function 撤销公海(动作: "放进" | "领取" | "分配", 原: 
       await 客户撤销放回通知(me, 撤);
       await recordAudit({
         user: me, action: "pool", entity: "Customer", entityId: 撤.length === 1 ? 撤[0] : null,
-        summary: `撤销了刚才的放进公海：${r.count} 位客户回到原负责人名下`,
+        summary: `${撤销放进摘要}：${r.count} 位客户回到原负责人名下`,
         detail: { ids: 撤 },
       });
     }
     刷新(ids);
     // 没撤成的要说出来，口径同撤销领取 / 分配（复审 11-26 M1）：一位都没撤成回 ok:false + 原因，撤成一部分带 有没撤成 + 整句。
-    // 不在公海了 = 被人领走 / 分走；还在公海 = 过了时限，或那一行不是我放的（系统补记、别人放的）
+    // 不在公海了 = 我自己刚才已经撤回（另一个标签页撤过，PR 472 审查第 3 条），或被人领走 / 分走；
+    // 还在公海 = 过了时限，或那一行不是我放的（系统补记、别人放的）
     const 撤了 = new Set(撤);
     const 没撤 = [...new Set(ids)].filter((id) => !撤了.has(id));
     if (!没撤.length) return { ok: true, updated: r.count, unchanged: ids.length - r.count, 没权限: 0 };
     const 还在 = new Set((await 看全部(() => prisma.customerPool.findMany({ where: { customerId: { in: 没撤 } }, select: { customerId: true } }))).map((x) => x.customerId));
     const 位 = (n: number) => (ids.length === 1 ? "这位" : `${n} 位`);
-    const 走了 = 没撤.length - 还在.size;
+    const 已撤回 = (await 刚撤回过的(me.id, 没撤.filter((id) => !还在.has(id)))).size;
+    const 走了 = 没撤.length - 还在.size - 已撤回;
+    const 没撤成 = 走了 + 还在.size;
     const 话 = [
       r.count && `已撤销 ${r.count} 位`,
+      已撤回 && `${位(已撤回)}刚才已经撤回了`,
       走了 && `${位(走了)}已经被人领走或分走了，这次没有撤销`,
       还在.size && `${位(还在.size)}过了撤销时限或不是你放进公海的，这次没有撤销`,
     ].filter(Boolean).join("；");
-    if (!r.count) return { ok: false, error: 话 };
-    return { ok: true, updated: r.count, unchanged: ids.length - r.count, 没权限: 0, 提示: 话, 有没撤成: true };
+    // 刚才已经撤回的算撤成（同撤销领取 / 分配的「已撤回」）：一位都没撤成、也没有已撤回的才回 ok:false
+    if (!r.count && !已撤回) return { ok: false, error: 话 };
+    return {
+      ok: true, updated: r.count, unchanged: ids.length - r.count - 已撤回, 没权限: 0,
+      ...(已撤回 ? { 已撤回 } : {}),
+      提示: 话,
+      ...(没撤成 ? { 有没撤成: true as const } : {}),
+    };
   }
   const 还归我 = await prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: 现, pool: null }, select: { id: true } });
   const 在职的 = new Set((await prisma.user.findMany({ where: { id: { in: 原.map((x) => x.值) }, OR: [{ active: true }, { email: 无负责人占位邮箱 }] }, select: { id: true } })).map((u) => u.id));
