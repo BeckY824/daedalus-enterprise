@@ -36,7 +36,8 @@ export function 对id(a: string, b: string): string {
 }
 
 export type 成员行 = { id: string; name: string; bizLine: string | null; salesOwnerId: string | null; 在公海: boolean; 建档: number };
-export type 组 = { 键: string; 们: 成员行[]; 对们: string[] };
+/** 太多：同名原始家数超过 一组最多 的名键不两两比（O(k²)），整组列出、对们为空，界面只提示逐家处理（12-15 C 复审 C3 建议 C） */
+export type 组 = { 键: string; 们: 成员行[]; 对们: string[]; 太多?: boolean };
 
 const 有值 = (v: string | null | undefined) => !!v && v.trim() !== "";
 const 业务线冲突 = (a: 成员行, b: 成员行) => 有值(a.bizLine) && 有值(b.bizLine) && a.bizLine!.trim() !== b.bizLine!.trim();
@@ -59,6 +60,13 @@ export function 成组(行们: 成员行[], 标着: Set<string>, 看: { 管: boo
   const 出: 组[] = [];
   for (const [键, 们] of 按键) {
     if (们.length < 2) continue;
+    if (们.length > 一组最多) {
+      // 太多：不两两比。看得到的条件放宽成「有一家不在公海（管理员），不是管理员再要有一家是我的」
+      if (们.every((r) => r.在公海)) continue;
+      if (!看.管 && !们.some((r) => 我的(r, 看.我))) continue;
+      出.push({ 键, 们: [...们].sort((x, y) => x.建档 - y.建档 || (x.id < y.id ? -1 : 1)), 对们: [], 太多: true });
+      continue;
+    }
     const 对们: string[] = [];
     const 在 = new Set<string>();
     for (let i = 0; i < 们.length; i++) {
@@ -92,28 +100,42 @@ type 裸行 = { id: string; name: string | null; bizLine: string | null; salesOw
 const 转行 = (r: 裸行): 成员行 => ({ id: r.id, name: r.name ?? "", bizLine: r.bizLine, salesOwnerId: r.salesOwnerId, 在公海: !!Number(r.inPool), 建档: 毫秒(r.createdAt) });
 // 按 id 取的几家（标、撤、合并放行）不带 NOT INDEXED：走主键，别顺表扫（12-15 C 审查建议 9）；整表读才用 整表SQL
 const 选列SQL = `SELECT c.id, c."name", c."bizLine", c."salesOwnerId", c."createdAt", EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) AS inPool FROM "Customer" c`;
+// 增量取行：带 deletedAt（软删的要从缓存移出）；updatedAt 没索引，扫一遍但只回改过的几行
+const 增量SQL = `SELECT c.id, c."name", c."bizLine", c."salesOwnerId", c."createdAt", c."deletedAt", EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) AS inPool FROM "Customer" c WHERE c."updatedAt" >= ?`;
 const 整表SQL = `SELECT c.id, c."name", c."bizLine", c."salesOwnerId", c."createdAt", EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) AS inPool FROM "Customer" c NOT INDEXED WHERE c."deletedAt" IS NULL AND length(trim(c."name")) >= 2`;
 
 /**
  * 名键底数据（id、全称、业务线、负责人、在不在公海、建档）的进程内短缓存：清单页、客户详情那一行提示、合并申请放行三处共用，
- * 不再每次整表扫一遍、把名字全取进 JS（12-15 C 审查建议 2、3）。失效看一句指纹：在用客户数 + 客户 max(updatedAt) + 公海行数 + 公海 max(at)
+ * 不再每次整表扫一遍、把名字全取进 JS（12-15 C 审查建议 2、3）。失效看一句指纹：在用客户数（名键够长的）+ 客户 max(updatedAt) + 公海行数 + 公海 max(at)
  * （改名、换负责人、新增、删除都动 updatedAt 或条数；进出公海动公海行数 / 时刻）。标着的对不在缓存里，每次现读（有索引、行少）。
- * 一个进程一份；指纹读完到底数据读完之间有人写，缓存的是更新的数据挂旧指纹，下一次指纹对不上会重读，不会读到比库旧的
+ * 按 db 实例分开（WeakMap，C3 建议 B）；指纹读完到底数据读完之间有人写，缓存的是更新的数据挂旧指纹，下一次指纹对不上会重读，不会读到比库旧的。
+ *
+ * 增量补（C3 必改 A）：记跟进、状态自动改写都动 Customer.updatedAt，上班时指纹几乎总变，不能每次整表重装（约 8.5 万行）。
+ * 指纹变了先只取 updatedAt >= 已见最大 的行（含软删、名字变短的：移出；其余按 id 覆盖，重建两张索引）；公海那两项变了只重读公海表；
+ * 增量取到的行超过 增量最多 条、或增量后的在用数和指纹里的对不上，才整表重装。
+ * 已知空子：进程外脚本改名不动 updatedAt、同一时刻一删一增条数不变，缓存不会知道（总控写进 crm-data-migration，用 忘掉疑似重复缓存 清）
  */
 type 底 = { 行们: 成员行[]; 按id: Map<string, 成员行>; 按键: Map<string, 成员行[]> };
-let 缓存: { 指纹: string; 底P: Promise<底> } | null = null;
+type 指纹们 = { 串: string; n: number; u: unknown; 池串: string };
+type 缓存项 = { 指纹: 指纹们; 底P: Promise<底> };
+let 缓存们 = new WeakMap<object, 缓存项>();
+/** 一次增量最多取几行，超了整表重装（改了很多行，增量不比整表省） */
+export const 增量最多 = 2000;
+/** 测试看的：整表装载、增量补的次数 */
+export const 缓存计数 = { 整表: 0, 增量: 0 };
 /** 测试 / 导入脚本整库换数据后手动清（正常写入靠指纹自动失效） */
-export function 忘掉疑似重复缓存() { 缓存 = null; }
+export function 忘掉疑似重复缓存() { 缓存们 = new WeakMap(); }
 
-async function 读指纹(db: 库): Promise<string> {
+async function 读指纹(db: 库): Promise<指纹们> {
   const [r] = await db.$queryRawUnsafe<{ n: unknown; u: unknown; pn: unknown; pa: unknown }[]>(
-    `SELECT (SELECT count(*) FROM "Customer" WHERE "deletedAt" IS NULL) AS n, (SELECT max("updatedAt") FROM "Customer") AS u, (SELECT count(*) FROM "CustomerPool") AS pn, (SELECT max("at") FROM "CustomerPool") AS pa`,
+    `SELECT (SELECT count(*) FROM "Customer" WHERE "deletedAt" IS NULL AND length(trim("name")) >= 2) AS n, (SELECT max("updatedAt") FROM "Customer") AS u, (SELECT count(*) FROM "CustomerPool") AS pn, (SELECT max("at") FROM "CustomerPool") AS pa`,
   );
-  return [r?.n, r?.u, r?.pn, r?.pa].map((v) => String(v instanceof Date ? v.getTime() : v)).join("|");
+  const 串 = (v: unknown) => String(v instanceof Date ? v.getTime() : v);
+  const 池串 = [r?.pn, r?.pa].map(串).join("|");
+  return { 串: `${串(r?.n)}|${串(r?.u)}|${池串}`, n: Number(r?.n ?? 0), u: r?.u instanceof Date ? r.u.getTime() : r?.u, 池串 };
 }
 
-async function 装底(db: 库): Promise<底> {
-  const 行们 = (await db.$queryRawUnsafe<裸行[]>(整表SQL)).map(转行);
+function 建索引(行们: 成员行[]): 底 {
   const 按键 = new Map<string, 成员行[]>();
   for (const r of 行们) {
     const k = 名键(r.name);
@@ -124,14 +146,47 @@ async function 装底(db: 库): Promise<底> {
   return { 行们, 按id: new Map(行们.map((r) => [r.id, r])), 按键 };
 }
 
+async function 装底(db: 库): Promise<底> {
+  缓存计数.整表++;
+  return 建索引((await db.$queryRawUnsafe<裸行[]>(整表SQL)).map(转行));
+}
+
+/** 增量补；回 null = 不合适，调用方整表重装 */
+async function 补底(db: 库, 旧: 底, 旧指: 指纹们, 新指: 指纹们): Promise<底 | null> {
+  if (新指.u == null || 旧指.u == null || 毫秒(新指.u) < 毫秒(旧指.u)) return null;
+  const 客户变 = 新指.串.split("|").slice(0, 2).join("|") !== 旧指.串.split("|").slice(0, 2).join("|");
+  const 池变 = 新指.池串 !== 旧指.池串;
+  let 行们 = 旧.行们;
+  if (客户变) {
+    const 增 = await db.$queryRawUnsafe<(裸行 & { deletedAt: unknown })[]>(`${增量SQL} LIMIT ${增量最多 + 1}`, 旧指.u);
+    if (增.length > 增量最多) return null;
+    const 表 = new Map(旧.行们.map((r) => [r.id, r]));
+    for (const r of 增) {
+      if (r.deletedAt != null || (r.name ?? "").trim().length < 2) 表.delete(r.id);
+      else 表.set(r.id, 转行(r));
+    }
+    行们 = [...表.values()];
+  }
+  if (池变) {
+    const 池 = new Set((await db.$queryRawUnsafe<{ customerId: string }[]>(`SELECT "customerId" FROM "CustomerPool"`)).map((p) => p.customerId));
+    行们 = 行们.map((r) => (r.在公海 === 池.has(r.id) ? r : { ...r, 在公海: 池.has(r.id) }));
+  }
+  if (行们.length !== 新指.n) return null;
+  缓存计数.增量++;
+  return 建索引(行们);
+}
+
 async function 读底(db: 库): Promise<底> {
   const 指纹 = await 读指纹(db);
-  if (缓存?.指纹 === 指纹) return 缓存.底P;
-  const 底P = 装底(db);
+  const 旧 = 缓存们.get(db);
+  if (旧?.指纹.串 === 指纹.串) return 旧.底P;
+  const 底P = 旧
+    ? 旧.底P.then((旧底) => 补底(db, 旧底, 旧.指纹, 指纹), () => null).then((补) => 补 ?? 装底(db), () => 装底(db))
+    : 装底(db);
   const 这份 = { 指纹, 底P };
-  缓存 = 这份;
+  缓存们.set(db, 这份);
   // 读失败不留着：下一次重读
-  底P.catch(() => { if (缓存 === 这份) 缓存 = null; });
+  底P.catch(() => { if (缓存们.get(db) === 这份) 缓存们.delete(db); });
   return 底P;
 }
 
@@ -191,7 +246,7 @@ async function 补全(db: 库, 组们: 组[], 看: { 管: boolean; 我: string }
         在公海: r.在公海, 我的: 我, 建档: r.建档, 项目数: 数.get(r.id) ?? 0, 要申请: !看.管 && !我 && !r.在公海,
       };
     });
-    return { 键: g.键, 们, ...挑留并(们, 看.管, g.对们), 对们: g.们.length > 一组最多 ? [] : g.对们, 太多: g.们.length > 一组最多 };
+    return { 键: g.键, 们, ...挑留并(们, 看.管, g.对们), 对们: g.太多 ? [] : g.对们, 太多: !!g.太多 };
   });
 }
 
@@ -233,7 +288,7 @@ export async function 两家在我清单成对(db: 库, me: 看的人, org: 组�
   const 留 = 底.按id.get(留下id), 并 = 底.按id.get(并掉id);
   if (!留 || !并) return false;
   const 行们 = [留, 并];
-  if (!留 || !我的(留, me.id)) return false;
+  if (!我的(留, me.id)) return false;
   if (new Set(行们.map((r) => 名键(r.name))).size !== 1) return false;
   const 对们 = 成组(行们, await 标着的对(db, [留下id, 并掉id]), 看法of(me, org)).flatMap((g) => g.对们);
   return 对们.includes(对id(留下id, 并掉id));

@@ -18,7 +18,7 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 只看某人键 } from "@/lib/enterprise/org-core";
 import {
-  成组, 对id, 疑似重复页, 本客户疑似重复数, 标不是同一个人, 撤销不是同一个人, 已标的对, 两家在我清单成对, 清单空页, 忘掉疑似重复缓存, type 成员行,
+  成组, 对id, 疑似重复页, 本客户疑似重复数, 标不是同一个人, 撤销不是同一个人, 已标的对, 两家在我清单成对, 清单空页, 忘掉疑似重复缓存, 缓存计数, 增量最多, type 成员行,
 } from "@/lib/enterprise/dupe-groups";
 
 type 人 = { id: string; name: string; role: string };
@@ -320,6 +320,78 @@ describe("名键底数据缓存（C 审查建议 2、3、9）", () => {
     expect(await 两家在我清单成对(prisma, 甲, org, a1, a2)).toBe(true);
     await 标不是同一个人(prisma, 甲, org, [a1, a2]);
     expect(await 名们(甲)).toEqual([]);
+  });
+
+  it("增量补（C3 必改 A）：记跟进这类只动 updatedAt 的写不整表重装；改名 / 软删 / 新增 / 进公海经增量后结果对", async () => {
+    const a1 = await 客户("增量星河", 甲.id);
+    const a2 = await 客户("增量别名", 甲.id);
+    const 路人 = await 客户("路人客户", 乙.id);
+    const org = await 权限组织();
+    expect(await 名们(甲)).toEqual([]);
+    const 整表0 = 缓存计数.整表, 增量0 = 缓存计数.增量;
+    // 路人被记了跟进：只动 updatedAt
+    await 隔一毫秒();
+    await raw.customer.update({ where: { id: 路人 }, data: { remark: "记了一条跟进" } });
+    expect(await 本客户疑似重复数(prisma, 甲, org, a1)).toBe(0);
+    expect(缓存计数.整表).toBe(整表0);
+    expect(缓存计数.增量).toBe(增量0 + 1);
+    // 改名成同名
+    await 隔一毫秒();
+    await raw.customer.update({ where: { id: a2 }, data: { name: "增量星河" } });
+    expect(await 名们(甲)).toEqual([[a1, a2].sort()]);
+    // 新增第三家
+    const a3 = await 客户("增量星河", 甲.id);
+    expect(await 本客户疑似重复数(prisma, 甲, org, a1)).toBe(2);
+    // 软删一家
+    await 隔一毫秒();
+    await raw.customer.update({ where: { id: a3 }, data: { deletedAt: new Date() } });
+    expect(await 名们(甲)).toEqual([[a1, a2].sort()]);
+    // 改成一个字（不够长）：移出
+    await 隔一毫秒();
+    await raw.customer.update({ where: { id: a2 }, data: { name: "星" } });
+    expect(await 名们(甲)).toEqual([]);
+    // 进公海只重读公海表
+    await raw.customer.update({ where: { id: a2 }, data: { name: "增量星河" } });
+    expect(await 名们(甲)).toEqual([[a1, a2].sort()]);
+    await 进公海(a2);
+    expect(await 两家在我清单成对(prisma, 甲, org, a1, a2)).toBe(true);
+    await 进公海(a1);
+    expect(await 名们(甲)).toEqual([]);
+    expect(缓存计数.整表).toBe(整表0);
+  });
+
+  it("增量取到的行超过上限才整表重装", async () => {
+    const a1 = await 客户("上限星河", 甲.id);
+    await 客户("上限星河", 甲.id);
+    await 名们(甲);
+    const 整表0 = 缓存计数.整表;
+    await raw.customer.createMany({ data: Array.from({ length: 增量最多 + 1 }, (_, i) => ({ name: `批量${i}号客户`, phone: "", salesOwnerId: 乙.id })) });
+    expect(await 名们(甲)).toHaveLength(1);
+    expect(缓存计数.整表).toBe(整表0 + 1);
+    expect(await 本客户疑似重复数(prisma, 甲, await 权限组织(), a1)).toBe(1);
+  });
+
+  it("缓存按 db 实例分开：换一个 db 对象不共用", async () => {
+    await 客户("分库星河", 甲.id);
+    await 客户("分库星河", 甲.id);
+    const org = await 权限组织();
+    await 疑似重复页(prisma, 甲, org, 1);
+    const 整表0 = 缓存计数.整表;
+    await 疑似重复页(prisma, 甲, org, 1);
+    expect(缓存计数.整表).toBe(整表0);
+    await 疑似重复页(Object.create(prisma), 甲, org, 1);
+    expect(缓存计数.整表).toBe(整表0 + 1);
+  });
+
+  it("一个名键 200 家：清单回「太多」不报错、不两两比（C3 建议 C）；不相干的负责人看不到", async () => {
+    await raw.customer.createMany({ data: Array.from({ length: 200 }, (_, i) => ({ name: "太多星河", phone: "", salesOwnerId: i === 0 ? 甲.id : 乙.id, createdAt: new Date(Date.UTC(2026, 0, 2, 0, 0, i)) })) });
+    const r = await 页(甲);
+    expect(r.组们).toHaveLength(1);
+    expect(r.组们[0]).toMatchObject({ 太多: true, 对们: [] });
+    expect(r.组们[0].们).toHaveLength(200);
+    expect((await 页(总)).组们[0]).toMatchObject({ 太多: true });
+    const 丙 = await 造人("bing", "丙");
+    expect((await 页(丙)).组们).toHaveLength(0);
   });
 
   it("按 id 取的几家（标、放行）不带 NOT INDEXED，只有整表读带；「已标」页签不成组", async () => {
