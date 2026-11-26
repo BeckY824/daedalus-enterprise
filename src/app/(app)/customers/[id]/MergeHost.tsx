@@ -526,6 +526,8 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
   const [预, set预] = useState<并项目预览 | null>(null);
   const [读错, set读错] = useState<string | null>(null);
   const 读次 = useRef(0);
+  // E-335 一.4：两个项目都还没开票的自查，不勾不能并；换了留下的项目要重新核对
+  const [没开票, set没开票] = useState(false);
 
   useEffect(() => {
     let 还在 = true;
@@ -536,7 +538,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
 
   function 挑(id: string) {
     const 这次 = ++读次.current;
-    set留下(id); set预(null); set读错(null);
+    set留下(id); set预(null); set读错(null); set没开票(false);
     预览项目合并(id, projectId).then((r) => {
       if (这次 !== 读次.current) return;
       if (!r.ok) { set读错(r.error); return; }
@@ -547,6 +549,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
   const A = 预?.留下?.name || 候选?.find((c) => c.id === 留下)?.name || "留下的项目";
   const B = 预?.并掉?.name || 项目名 || "这个项目";
   const 撤回句 = `${撤回天数} 天内可在「历史变更」里撤回`;
+  const 没开票话 = "我已核对：这两个项目都还没开票";
   const 清单 = 预?.能并 && 预.条数 ? [
     { 标: "挪过去", 话: 挪话(预.条数), 级: "警" as const },
     { 标: "联系人", 话: `${预.条数.联系人} 位项目联系人、${预.条数.关联客户} 位关联客户一起过去，同一位联系人只留一份`, 级: "常" as const },
@@ -559,7 +562,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
   ] : [];
 
   async function 并() {
-    if (!留下 || !预?.能并) return;
+    if (!留下 || !预?.能并 || !没开票) return;
     const 留 = 留下;
     const 结: { 单号: string | null } = { 单号: null };
     const 成 = await 问后果({
@@ -569,10 +572,11 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
       是: "并过去",
       后果: [
         ...清单.filter((x) => x.标 !== "结束" && x.标 !== "不变"),
+        { 标: "自查", 话: 没开票话, 级: "常" as const },
         { 标: "结束", 话: `这个项目将结束为重复线索，不退还已占线索名额，${撤回天数} 天内可撤回${管 ? "" : 并撤回谁话}`, 级: "警" as const },
       ],
       做: async () => {
-        const r = await 合并项目(留, projectId);
+        const r = await 合并项目(留, projectId, true);
         if (r.ok) 结.单号 = r.mergeId;
         return r;
       },
@@ -608,7 +612,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
         <div className="mrg-foot">
           <span className="mrg-foot-sp" />
           <Button onClick={关}>取消</Button>
-          <Button type="primary" disabled={!预?.能并} onClick={() => void 并()} data-testid="pmerge-go">并过去</Button>
+          <Button type="primary" disabled={!预?.能并 || !没开票} title={预?.能并 && !没开票 ? "请先勾选「我已核对：这两个项目都还没开票」" : undefined} onClick={() => void 并()} data-testid="pmerge-go">并过去</Button>
         </div>
       }
     >
@@ -646,6 +650,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
             <ul className="mrg-out" data-testid="pmerge-list">
               {清单.map((x) => <li key={x.标} data-testid={`pmerge-${x.标}`} className={x.标 === "核实" ? "mrg-out-chk" : undefined}><span className="mrg-out-k">{x.标}</span>{x.话}</li>)}
             </ul>
+            <Checkbox className="mrg-nobill" checked={没开票} onChange={(e) => set没开票(e.target.checked)} data-testid="pmerge-nobill">{没开票话}</Checkbox>
           </>
         )}
       </div>

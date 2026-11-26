@@ -189,10 +189,10 @@ export async function 预览项目合并(留下id: string, 并掉id: string): Pr
 }
 
 /** 被并项目的组员不并进留下的项目（E-331），没有勾选；谁能并数据层判 */
-export async function 合并项目(留下id: string, 并掉id: string): Promise<结果<项目合并完>> {
+export async function 合并项目(留下id: string, 并掉id: string, 已核未开票 = false): Promise<结果<项目合并完>> {
   const me = await 我();
   if (!是id(留下id) || !是id(并掉id)) return 坏参数;
-  const r = await 执行项目合并(prisma, 留下id, 并掉id, me);
+  const r = await 执行项目合并(prisma, 留下id, 并掉id, me, { 已核未开票 });
   if (r.ok) await 刷新项目(留下id, 并掉id);
   return r;
 }

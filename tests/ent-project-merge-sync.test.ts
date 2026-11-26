@@ -76,7 +76,7 @@ describe("项目合并之后再同步被并项目的老商机", () => {
     const ref = await prisma.entExternalRef.findFirstOrThrow({ where: { entity: "opportunity", externalId: "O2" } });
     expect(ref.targetId).toBe(b.id);
 
-    const r = await 执行项目合并(prisma, a.id, b.id, 张伟);
+    const r = await 执行项目合并(prisma, a.id, b.id, 张伟, { 已核未开票: true });
     if (!r.ok) throw new Error(r.error);
     expect((await prisma.entExternalRef.findUniqueOrThrow({ where: { id: ref.id } })).targetId).toBe(a.id);
     const A前 = await 项("留下的线索");
