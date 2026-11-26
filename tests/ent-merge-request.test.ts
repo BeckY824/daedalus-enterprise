@@ -538,6 +538,10 @@ describe("动作层（customers/merge-actions.ts）", () => {
         // 库里照存（同意人那边要列他涉及的项目）
         const 单 = await 申请(发.requestId);
         expect(单.approvers.find((x) => x.userId === 丙.id)!.projects).toContain("编造的机密项目甲");
+        // 留下那家历史变更里的摘要不写对方客户名（发起人看不到）
+        const 记 = await raw.auditLog.findFirstOrThrow({ where: { action: "merge-request", entityId: a } });
+        expect(记.summary).not.toContain("看不到的同事客户");
+        expect(记.summary).toContain("同事负责的客户（号码撞上）");
       });
     });
 

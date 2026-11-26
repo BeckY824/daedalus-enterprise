@@ -314,7 +314,7 @@ export async function 发起合并申请(
       const detail = JSON.stringify({ requestId: 单.id, 留下: A!.id, 并掉: B!.id, 同意人: 人们, 到期: expiresAt.toISOString() });
       await tx.auditLog.createMany({
         data: [
-          { userId: me.id, userName: me.name, action: "merge-request", entity: "Customer", entityId: A!.id, at: 现在, summary: `发合并申请：把「${名(B!)}」并进这位客户，等 ${谁们} 同意（${等待工作日} 个工作日内）`, detail },
+          { userId: me.id, userName: me.name, action: "merge-request", entity: "Customer", entityId: A!.id, at: 现在, summary: `发合并申请：把「${并掉看得到 ? 名(B!) : `同事负责的客户（号码撞上）${B!.customerNo ? ` ${B!.customerNo}` : ""}`}」并进这位客户，等 ${谁们} 同意（${等待工作日} 个工作日内）`, detail },
           { userId: me.id, userName: me.name, action: "merge-request", entity: "Customer", entityId: B!.id, at: 现在, summary: `发合并申请：这位客户并进「${名(A!)}」，等 ${谁们} 同意（${等待工作日} 个工作日内）`, detail },
         ],
       });
