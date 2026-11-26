@@ -7,6 +7,8 @@
  *   - 没有列表上下文（直接开链接）、服务端说不在那一页：不摆
  *   - 按箭头换了人、新结果没到：上一位的两颗留着灰着，反方向那颗先摆成上一位；新结果到了才换；连点只用最后一次（上一次 abort）
  *   - 服务端出错：收起，warn 一行（客户 id + 状态码）；abort 的不报
+ *   - 游标的收尾（审查 A1 / A2，按真页面那样换人重挂）：到站后经直接链接回到路过的某位，相邻按当前这位重算；
+ *     连点到一半离开详情、再开别的客户，不执行旧排队；换了登录人，排着的不走、游标作废
  *   - 手机 390：放得下、不横滚、点击区 36；并入提示同在这一行时箭头紧跟在它后面；电脑各档宽也不横滚
  * 顺序、可见范围的服务端那半见 tests/ent-customer-prevnext.test.ts
  */
@@ -28,14 +30,25 @@ beforeAll(async () => {
     import React from 'react';import {createRoot} from 'react-dom/client';
     import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';
     import BackToList from '@/components/BackToList';import CustomerStep from '@/app/(app)/customers/[id]/CustomerStep';
-    import {记地址,记进入} from '@/lib/list-return';
+    import {记地址,记进入,设列表主人} from '@/lib/list-return';
     const w=window;
-    // 换人：像点了 Link 那样改地址、报给 记进入，再换 customerId
+    // 换人：像点了 Link 那样改地址、报给 记进入，再换 customerId。
+    // __重挂：像真页面那样按 customerId 重挂（RecordView key = 客户 id）；__离开(href) 卸掉详情去别的页，__开(href) 再开一位；__重开() 同一位原地重挂
     function 详情(){
       const [id,set]=React.useState(location.pathname.split('/').pop());
-      React.useEffect(()=>{ w.__到=(href)=>{ history.replaceState(null,'',href); 记进入(href); set(href.split('/').pop()); }; },[]);
-      return <CustomerStep customerId={id} />;
+      const [在,set在]=React.useState(true);
+      const [次,set次]=React.useState(0);
+      React.useEffect(()=>{
+        const 去=(href)=>{ history.replaceState(null,'',href); 记进入(href); };
+        w.__到=(href)=>{ 去(href); set(href.split('/').pop()); };
+        w.__离开=(href)=>{ 去(href); set在(false); };
+        w.__开=(href)=>{ 去(href); set(href.split('/').pop()); set在(true); };
+        w.__重开=()=>set次((n)=>n+1);
+      },[]);
+      return 在 ? <CustomerStep key={w.__重挂 ? id + ':' + 次 : undefined} customerId={id} /> : null;
     }
+    w.__设主人 = 设列表主人;
+    if (w.__主人) 设列表主人(w.__主人);
     if (w.__列表) 记地址('客户', w.__列表);
     if (w.__从) 记进入(w.__从);
     记进入(location.pathname);
@@ -54,7 +67,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 设 = { id?: string; 从?: string; 列表?: string; 邻?: unknown; 并入?: string; 宽?: number; 预存?: string; 错?: number; 手动?: boolean };
+type 设 = { id?: string; 从?: string; 列表?: string; 邻?: unknown; 并入?: string; 宽?: number; 预存?: string; 错?: number; 手动?: boolean; 重挂?: boolean; 链长?: number; 主人?: string };
 async function 开(设: 设): Promise<{ page: Page; errors: string[]; warns: string[] }> {
   const 宽 = 设.宽 ?? 1280;
   const page = await browser.newPage({ viewport: { width: 宽, height: 800 } }); page.setDefaultTimeout(5000);
@@ -64,7 +77,9 @@ async function 开(设: 设): Promise<{ page: Page; errors: string[]; warns: str
   await page.goto(`http://step.test/customers/${设.id ?? "c2"}`);
   await page.evaluate((s) => {
     const w = window as unknown as Record<string, unknown>;
-    w.__从 = s.从; w.__列表 = s.列表; w.__邻 = s.邻; w.__并入 = s.并入; w.__错 = s.错; w.__手动 = s.手动;
+    w.__从 = s.从; w.__列表 = s.列表; w.__邻 = s.邻; w.__并入 = s.并入; w.__错 = s.错; w.__手动 = s.手动; w.__重挂 = s.重挂; w.__主人 = s.主人;
+    // 链长：c1…cN 一条直链，平时按这位立刻回它的上下两位（不用 __邻）
+    const 链 = (id: string) => { const i = Number(id.slice(1)), n = s.链长!; return { 上: i > 1 ? { id: `c${i - 1}`, page: 1 } : null, 下: i < n ? { id: `c${i + 1}`, page: 1 } : null }; };
     if (s.预存) sessionStorage.setItem("crm:list-return-nav:v1", s.预存);
     /*
       fetch 桩（GET /api/customers/adjacent）：__问 记 [{href, page}, id]；平时按 __邻 立刻回（__错 = 状态码就回那个错），
@@ -78,7 +93,7 @@ async function 开(设: 设): Promise<{ page: Page; errors: string[]; warns: str
       const id = q.get("id")!;
       ((w.__问 as unknown[][]) ||= []).push([{ href: q.get("href"), page: Number(q.get("page")) }, id]);
       if (w.__错) return Promise.resolve(new Response("x", { status: w.__错 as number }));
-      if (!w.__手动) return Promise.resolve(答(w.__邻));
+      if (!w.__手动) return Promise.resolve(答(s.链长 ? 链(id) : w.__邻));
       return new Promise((res, rej) => {
         init?.signal?.addEventListener("abort", () => rej(new DOMException("aborted", "AbortError")));
         列.push({ id, 收: (邻) => res(答(邻)), 弃: () => !!init?.signal?.aborted });
@@ -289,4 +304,110 @@ it("电脑各档宽：箭头 24、靠这一行右端、不横滚", async () => {
     expect(errors).toEqual([]);
     await page.close();
   }
+});
+
+type 换 = { __到: (h: string) => void; __离开: (h: string) => void; __开: (h: string) => void; __重开: () => void; __设主人: (id: string) => void };
+const 换 = (page: Page, 怎么: "__到" | "__离开" | "__开", href: string) => page.evaluate(([k, h]) => (window as unknown as 换)[k as "__到"](h), [怎么, href] as const);
+const 问过 = (page: Page) => page.evaluate(() => ((window as unknown as 窗).__问 ?? []).map((x) => (x as [unknown, string])[1]));
+const 指向 = (page: Page, t: string, href: string) => page.waitForFunction(([t, h]) => document.querySelector(`[data-testid=${t}]`)?.getAttribute("href") === h, [t, href] as const);
+
+it("A1：按「下一条」到 c2、c3 都到站，再经直接链接（所属客户、搜索）回 c1：相邻按 c1 重算，不沿用 c3 的游标", async () => {
+  const { page, errors, warns } = await 开({ id: "c1", 从: "/customers", 列表: "/customers", 链长: 9, 重挂: true });
+  await 指向(page, "rec-step-next", "/customers/c2");
+  await page.getByTestId("rec-step-next").click();
+  await 指向(page, "rec-step-next", "/customers/c3");
+  await page.getByTestId("rec-step-next").click();
+  await 指向(page, "rec-step-next", "/customers/c4");
+  expect(await page.evaluate(() => location.pathname)).toBe("/customers/c3");
+  // 在 c3 的详情里点一个指向 c1 的普通链接（前一页是客户详情、c1 是来时路过的）
+  await 换(page, "__到", "/customers/c1");
+  await page.waitForFunction(() => document.querySelector("[data-testid=rec-step-prev]")?.tagName === "BUTTON");
+  expect(await 颗(page, "rec-step-prev")).toEqual({ tag: "BUTTON", href: null, 灰: true, 等: null });
+  expect(await 颗(page, "rec-step-next")).toEqual({ tag: "A", href: "/customers/c2", 灰: false, 等: null });
+  expect(await 问过(page)).toEqual(["c1", "c2", "c3", "c1"]);
+  // 回到 c1 以后再按「下一条」：按 c1 走到 c2，不是 c3 的下一位
+  await page.getByTestId("rec-step-next").click();
+  await 指向(page, "rec-step-next", "/customers/c3");
+  expect(await page.evaluate(() => location.pathname)).toBe("/customers/c2");
+  expect(errors).toEqual([]);
+  expect(warns).toEqual([]);
+  await page.close();
+});
+
+it("A2：连点两下（第二下在排队）随即离开详情，之后从列表开 c9：不执行旧排队、不跳到旧邻居；在途请求已 abort", async () => {
+  const { page, errors, warns } = await 开({ id: "c1", 从: "/customers", 列表: "/customers", 手动: true, 重挂: true });
+  const 链 = 长链(20);
+  await page.waitForFunction(() => (window as unknown as 窗).__待.length === 1);
+  await 收(page, 0, 链("c1"));
+  await 指向(page, "rec-step-next", "/customers/c2");
+  await page.getByTestId("rec-step-next").click();
+  await page.waitForFunction(() => (window as unknown as 窗).__待.length === 2);
+  await page.getByTestId("rec-step-next").click();
+  expect(await page.evaluate(() => location.pathname)).toBe("/customers/c2");
+  // 点「回到客户列表」：详情卸掉
+  await 换(page, "__离开", "/customers");
+  await page.waitForFunction(() => !document.querySelector("[data-testid=rec-step]"));
+  await page.waitForFunction(() => (window as unknown as 窗).__待[1].弃());
+  // 就算 c2 的相邻晚到也不用
+  await 收(page, 1, 链("c2"));
+  await page.waitForTimeout(50);
+  await 换(page, "__开", "/customers/c9");
+  await page.waitForFunction(() => (window as unknown as 窗).__待.length === 3);
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => location.pathname)).toBe("/customers/c9");
+  expect(await 问过(page)).toEqual(["c1", "c2", "c9"]);
+  await 收(page, 2, 链("c9"));
+  await 指向(page, "rec-step-next", "/customers/c10");
+  expect(await 颗(page, "rec-step-prev")).toEqual({ tag: "A", href: "/customers/c8", 灰: false, 等: null });
+  // 来源没被旧游标改写：c9 记的是第 1 页，没有 c3
+  expect(JSON.parse(await page.evaluate(() => sessionStorage.getItem("crm:list-return-nav:v1") ?? "{}")).位).toEqual({ c9: 1 });
+  expect(errors).toEqual([]);
+  expect(warns).toEqual([]);
+  await page.close();
+});
+
+it("A2：换了登录人，上一个人排着的点击不走、游标作废（重挂也不再摆上一个人的箭头）", async () => {
+  const { page, errors, warns } = await 开({ id: "c1", 从: "/customers", 列表: "/customers", 手动: true, 重挂: true, 主人: "u1" });
+  const 链 = 长链(20);
+  await page.waitForFunction(() => (window as unknown as 窗).__待.length === 1);
+  await 收(page, 0, 链("c1"));
+  await 指向(page, "rec-step-next", "/customers/c2");
+  await page.getByTestId("rec-step-next").click();
+  await page.waitForFunction(() => (window as unknown as 窗).__待.length === 2);
+  await page.getByTestId("rec-step-next").click();
+  await page.evaluate(() => (window as unknown as 换).__设主人("u2"));
+  await 收(page, 1, 链("c2"));
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => location.pathname)).toBe("/customers/c2");
+  expect(await 问过(page)).toEqual(["c1", "c2"]);
+  expect(await page.getByTestId("rec-step").count()).toBe(0);
+  // 同一位原地重挂（前一页是客户详情、这位在路径里）：也不认上一个人的游标
+  await page.evaluate(() => (window as unknown as 换).__重开());
+  await page.waitForTimeout(100);
+  expect(await page.getByTestId("rec-step").count()).toBe(0);
+  expect(await 问过(page)).toEqual(["c1", "c2"]);
+  expect(errors).toEqual([]);
+  expect(warns).toEqual([]);
+  await page.close();
+});
+
+it("按真页面那样重挂：连点 5 次落到第 6 位，不丢点击", async () => {
+  const { page, errors, warns } = await 开({ id: "c1", 从: "/customers", 列表: "/customers", 手动: true, 重挂: true });
+  const 链 = 长链(20);
+  await page.waitForFunction(() => (window as unknown as 窗).__待.length === 1);
+  await 收(page, 0, 链("c1"));
+  await 指向(page, "rec-step-next", "/customers/c2");
+  for (let i = 0; i < 5; i++) { await page.getByTestId("rec-step-next").click(); await page.waitForTimeout(30); }
+  for (let k = 0; k < 5; k++) {
+    await page.waitForFunction((n) => (window as unknown as 窗).__待.length === n, k + 2);
+    expect(await page.evaluate(() => !!document.querySelector("[data-testid=rec-step-prev]") && !!document.querySelector("[data-testid=rec-step-next]"))).toBe(true);
+    const id = await page.evaluate((n) => (window as unknown as 窗).__待[n].id, k + 1);
+    await 收(page, k + 1, 链(id));
+  }
+  await 指向(page, "rec-step-next", "/customers/c7");
+  expect(await page.evaluate(() => location.pathname)).toBe("/customers/c6");
+  expect(await 问过(page)).toEqual(["c1", "c2", "c3", "c4", "c5", "c6"]);
+  expect(errors).toEqual([]);
+  expect(warns).toEqual([]);
+  await page.close();
 });

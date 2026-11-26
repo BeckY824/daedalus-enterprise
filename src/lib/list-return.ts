@@ -82,6 +82,8 @@ let 主人 = "";
 export function 设列表主人(id: string | null | undefined) {
   主人 = id ?? "";
 }
+/** 现在报的是谁（客户详情「上一条 / 下一条」的游标记下它，换了人就作废） */
+export const 列表主人 = (): string => 主人;
 /** 这个人的键：本模块的三份记忆、list-keep 的会话偏好（useListKeep）都走它 */
 export const 带人 = (键: string): string => (主人 ? `${键}@${主人}` : 键);
 
