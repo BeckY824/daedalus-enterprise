@@ -272,6 +272,8 @@ const 派生: Record<string, Record<string, string>> = {
     otherId: "另一位，同上",
     userId: "谁标的，标的时候打上",
     at: "标的那一刻，系统打上",
+    undoneAt: "撤销标记的那一刻（企业版疑似重复清单），撤的时候打上；再标时清空",
+    undoneById: "谁撤的标记，撤的时候打上；再标时清空",
   },
   ContractOwner: {
     contractId: "哪一笔签约，saveContract 新登记时一起建",

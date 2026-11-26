@@ -627,6 +627,10 @@ model CustomerNotDupe {
   /// 谁标的。不建外键，同 AuditLog
   userId     String
   at         DateTime @default(now())
+  /// 撤销「不是同一个人」的时刻（迁移 177，企业版疑似重复清单）：空 = 标着；撤了这一对重新列出来，再标时清空
+  undoneAt   DateTime?
+  /// 谁撤的。不建外键，同 userId
+  undoneById String?
 
   @@index([customerId])
   @@index([otherId])

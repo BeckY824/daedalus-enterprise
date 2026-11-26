@@ -1,0 +1,30 @@
+/*
+ * 疑似重复清单（12-15 第三批 C，DupesView.tsx）。电脑：每组一行，左客户名、中间组里每家一行、右两颗按钮；
+ * 手机（≤767）：每组一张卡，上下三段，按钮各占半行、触控高度。全部一行省略、悬停看全（企业版全站规矩），不横滚
+ */
+.dp-page { display: flex; flex-direction: column; gap: var(--s3); min-width: 0; }
+.dp-tabs { align-self: flex-start; max-width: 100%; }
+.dp-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.dp-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) auto; gap: var(--s2) var(--s4); align-items: start; min-width: 0;
+  padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--panel); }
+.dp-head { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+.dp-name { font-weight: 600; }
+.dp-cnt { flex: none; color: var(--text-muted); font-size: var(--fs-note); }
+.dp-mems { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+.dp-mem { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+.dp-mem > .dp-one:first-child { flex: 0 1 auto; max-width: 45%; }
+.dp-sub, .dp-by { color: var(--text-muted); font-size: var(--fs-note); }
+.dp-one { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dp-ops { display: flex; align-items: center; gap: var(--s2); justify-content: flex-end; }
+.dp-ro { display: inline-flex; cursor: not-allowed; }
+.dp-ro > .ant-btn { pointer-events: none; }
+.dp-err { grid-column: 1 / -1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-note); color: var(--danger-text); }
+.dp-pager { align-self: flex-end; }
+@media (max-width: 767px) {
+  .dp-row { grid-template-columns: minmax(0, 1fr); }
+  .dp-mem { flex-direction: column; gap: 0; }
+  .dp-mem > .dp-one:first-child { max-width: 100%; }
+  .dp-ops > .ant-btn, .dp-ops > .dp-ro { flex: 1 1 0; }
+  .dp-ops .ant-btn { width: 100%; min-height: var(--hit-touch); }
+  .dp-pager { align-self: center; }
+}

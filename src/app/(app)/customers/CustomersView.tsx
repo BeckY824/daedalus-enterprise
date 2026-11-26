@@ -11,6 +11,7 @@ import { 量变形起点, 放变形 } from "../projects/view-morph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
+import { 疑似重复页 } from "./dupe-words";
 import { Button, Space, Dropdown, Tag, Segmented, Tooltip, type MenuProps, type SelectProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
@@ -1400,6 +1401,10 @@ export default function CustomersView({
               <Tooltip key="export" title={视图中 ? 视图外部话 : 导出说明}>
                 <Button className="cust-head-io" aria-label="导出" icon={<DownloadOutlined />} loading={导出中} disabled={视图中} onClick={导出做}>导出</Button>
               </Tooltip>
+            )}
+            {/* 疑似重复清单（12-15 第三批 C，P-合并-06）：企业版、不是市场视图；谁看哪些组服务端判（负责人只看自己名下有份的，系统管理员全部）。切换视图里照样能进去看 */}
+            {企业 && !市场视图 && !空库 && (
+              <Button key="dupes" className="cust-head-dupe" onClick={() => 去页.push(疑似重复页)} data-testid="cust-dupes">疑似重复</Button>
             )}
             {离职交接钮}
             {新建钮}

@@ -3,6 +3,7 @@ import { 后售项目们 } from "@/lib/project/after-sale";
 import { 负责人显示名 } from "@/lib/pool";
 import { notFound, redirect } from "next/navigation";
 import { 并入去向, 并入后去处, 并入提示 } from "@/lib/enterprise/customer-merge";
+import { 本客户疑似重复数 } from "@/lib/enterprise/dupe-groups";
 import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 历史负责人of, 我放出去的公海客户 } from "@/lib/owner-log-db";
@@ -293,6 +294,7 @@ export default async function CustomerDetailPage({
         return { 客户: 管 || 本人, 联系人: 管 || 本人 };
       })() : null}
       并入话={企 && typeof sp.merged === "string" ? await 并入提示(prisma, customer.id, sp.merged) : null}
+      疑似重复数={企 ? await 本客户疑似重复数(prisma, me, await 权限组织(), customer.id) : 0}
       历史变更={历史摘要 ? <HistoryChanges customerId={customer.id} 摘要={历史摘要} 当前项目={项目区?.当前?.p.id ?? null} 客户名={[customer.name.trim() || customer.shortName, 客户编号文字(customer.customerNo)].filter(Boolean).join(" · ")} /> : null}
       sourceLead={sourceLead}
       users={users}

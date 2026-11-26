@@ -224,6 +224,8 @@ export type RecordProps = {
   能合并?: { 客户: boolean; 联系人: boolean } | null;
   /** 打开的是已并入的 B 的旧链接（?merged=B）：顶上那句「NO.xxxxx「B」已并入这位客户」（customer-merge.ts 并入提示）；对不上 = null */
   并入话?: string | null;
+  /** 疑似重复清单（12-15 第三批 C）：这位客户在登录的人的清单里和几家同名（0 / 不给 = 不提示）；有就在醒目条之后一行提示，链到清单 */
+  疑似重复数?: number;
   /** 项目区正在提交：「更多操作 ▾」里对当前项目的几项灰着、写「正在处理」 */
   项目忙?: boolean;
   /**
