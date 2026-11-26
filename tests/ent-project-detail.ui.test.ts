@@ -3226,6 +3226,8 @@ it("已开票：能勾的点了先弹后果框，确认才调动作；不能勾�
     await 记.waitFor();
     expect(await 记.innerText()).toContain("2026-12-01 10:00 开票人 标为已开票（负责人 编造负责人）");
     expect(await 记.innerText()).toContain("撤回已开票（负责人 编造负责人；原来 开票人 2026-11-29 10:00 勾的）");
+    // 「全部见历史变更」只在客户详情嵌入版摆（点的是客户名下那一行的「历史变更」入口）；这里是独立挂载，不摆
+    expect(await 记.getByTestId("proj-invoiced-log-all").count()).toBe(0);
     await page.keyboard.press("Escape");
     await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: "开票人", 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: null } }));
     await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).waitFor();

@@ -1550,6 +1550,11 @@ export default function ProjectDetail({
                 <div className="pd-fill-pop-body" data-testid="proj-invoiced-log-list">
                   <div className="pd-fill-pop-t">已开票变更记录（最近 {p.已开票.记录.length} 条）</div>
                   {p.已开票.记录.map((r) => <div key={r.id} className="muted">{开票记录字(r)}</div>)}
+                  {/* 只摆最近几条：全部的在客户名下那一行的「历史变更」（同一页的入口，点它就是；受限客户详情没有入口、不摆） */}
+                  {嵌入 && !嵌入.进程变更卡 && (
+                    <Button type="link" size="small" style={{ paddingInline: 0 }} data-testid="proj-invoiced-log-all"
+                      onClick={() => document.querySelector<HTMLButtonElement>('[data-testid="history-entry"]')?.click()}>全部见历史变更</Button>
+                  )}
                 </div>
               )}>
               <Button type="link" size="small" data-testid="proj-invoiced-log" aria-haspopup="dialog">变更记录</Button>
