@@ -25,7 +25,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@/generated/prisma");
   const { 加上限定 } = await import("@/lib/team-scope");
-  const raw = new PrismaClient({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
+  const raw = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
   (raw as unknown as { $on: (e: string, f: (x: { query: string }) => void) => void }).$on("query", (e) => { if (临时.开) 临时.句.push(e.query); });
   return { prisma: 加上限定(raw), defaultClient: raw };
 });

@@ -66,7 +66,7 @@ describe("组员客户编号 = 原来的 组员的客户 条件", () => {
 
   it("查询计划：从 ProjectMember 的 userId 索引出发、按主键找项目，不扫客户表", async () => {
     type 句 = { query: string; params: string };
-    const 截 = new PrismaClient({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
+    const 截 = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
     const 句们: 句[] = [];
     (截 as unknown as { $on: (e: "query", f: (q: 句) => void) => void }).$on("query", (q) => 句们.push(q));
     try {

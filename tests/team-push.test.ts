@@ -19,7 +19,7 @@ import { 加上限定, 在同步里, 忘掉限定 } from "@/lib/team-scope";
 
 const 目录 = fs.mkdtempSync(path.join(os.tmpdir(), "crm-team-push-"));
 const 原 = { dir: process.env.CRM_DATA_DIR, local: process.env.DESKTOP_LOCAL };
-const raw = new PrismaClient();
+const raw = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>();
 const db = 加上限定(raw);
 const 写一下 = () => db.customer.updateMany({ where: { id: "没有这一位" }, data: { remark: "x" } });
 /** 让 setTimeout 回调里的动态 import 和 then 跑完 */

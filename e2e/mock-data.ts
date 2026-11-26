@@ -14,7 +14,7 @@ import { PrismaClient } from "../src/generated/prisma";
 const E2E_DB = path.resolve(__dirname, "../prisma/e2e.db");
 
 export function 连库() {
-  return new PrismaClient({ datasourceUrl: `file:${E2E_DB}` });
+  return new PrismaClient<import("../src/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${E2E_DB}` });
 }
 
 /** 清空全部业务数据，保留账号 */

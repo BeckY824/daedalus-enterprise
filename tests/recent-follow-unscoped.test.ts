@@ -24,7 +24,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock("@/lib/prisma", async () => {
   const { PrismaClient } = await import("@/generated/prisma");
   const { 加上限定 } = await import("@/lib/team-scope");
-  const raw = new PrismaClient({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=1` });
+  const raw = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=1` });
   return { prisma: 加上限定(raw), defaultClient: raw };
 });
 
@@ -181,7 +181,7 @@ describe("学员名单「最近 50 位」：只有真不限定的人走新路，
 
 describe("计划：新那句走 (lastFollowAt, createdAt, id)；名下不到 50 位的销售那几句不被它抢走", () => {
   type 句 = { query: string; params: string };
-  const 截 = new PrismaClient({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
+  const 截 = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${path.join(临时.dir, "A.db")}?connection_limit=1`, log: [{ emit: "event", level: "query" }] });
   const 句们: 句[] = [];
   (截 as unknown as { $on: (e: "query", f: (q: 句) => void) => void }).$on("query", (q) => 句们.push({ query: q.query, params: q.params }));
   const 限 = 加上限定(截);

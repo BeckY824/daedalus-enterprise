@@ -123,7 +123,7 @@ describe("库指纹", () => {
     expect(t).not.toBe(b);
 
     // 别的连接（等于别的进程）写
-    const 另 = new PrismaClient({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1` });
+    const 另 = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `${process.env.DATABASE_URL}?connection_limit=1` });
     try {
       await 另.customer.update({ where: { id: c.id }, data: { name: "别人改" } });
     } finally {

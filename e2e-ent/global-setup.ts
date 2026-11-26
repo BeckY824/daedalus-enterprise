@@ -39,7 +39,7 @@ export default async function setup() {
   execFileSync("npx", ["prisma", "db", "push", "--skip-generate", "--accept-data-loss"], { cwd: ROOT, env, stdio: "pipe" });
   execFileSync("npx", ["tsx", "prisma/seed.ts"], { cwd: ROOT, env, stdio: "pipe" });
 
-  const db = new PrismaClient({ datasources: { db: { url: `file:${ENT_DB}` } } });
+  const db = new PrismaClient<import("../src/generated/prisma").Prisma.PrismaClientOptions>({ datasources: { db: { url: `file:${ENT_DB}` } } });
   try {
     writeFileSync(SEED_JSON, JSON.stringify(await 灌数据(db, 密码), null, 2));
   } finally {

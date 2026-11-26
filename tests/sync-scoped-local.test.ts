@@ -55,7 +55,7 @@ describe("清理失权副本", () => {
   beforeAll(async () => {
     fs.copyFileSync(path.resolve(__dirname, "../prisma/test.db"), path.join(dir, "t.db"));
     if (fs.existsSync(path.resolve(__dirname, "../prisma/test.db-wal"))) fs.copyFileSync(path.resolve(__dirname, "../prisma/test.db-wal"), path.join(dir, "t.db-wal"));
-    db = new PrismaClient({ datasourceUrl: `file:${path.join(dir, "t.db")}` });
+    db = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${path.join(dir, "t.db")}` });
     for (const t of ["AiMessage", "AiConversation", "Setting", "AuditLog", "ImportRow", "ImportBatch", "Attachment", "QuoteLine", "Quote", "ContractWin", "ContractMoney", "ContractOwner", "OpportunityMoney", "OpportunityClose", "CustomerExtra", "CustomerMerge", "CustomerNotDupe", "Task", "FollowPlan", "FollowUpSource", "FollowUp", "Contract", "Opportunity", "Contact", "UnassignedContact", "Lead", "CustomerPool"]) await db.$executeRawUnsafe(`DELETE FROM "${t}"`);
     await db.$executeRawUnsafe('UPDATE "Customer" SET referrerCustomerId = NULL, attributionCustomerId = NULL');
     await db.$executeRawUnsafe('DELETE FROM "Customer"');
@@ -189,7 +189,7 @@ describe("擦净删除残留：库文件被别人占着时有限等待、记欠�
   let db: PrismaClient;
   beforeAll(async () => {
     fs.copyFileSync(path.resolve(__dirname, "../prisma/test.db"), f);
-    db = new PrismaClient({ datasourceUrl: `file:${f}?connection_limit=1` });
+    db = new PrismaClient<import("@/generated/prisma").Prisma.PrismaClientOptions>({ datasourceUrl: `file:${f}?connection_limit=1` });
     await db.$queryRawUnsafe("PRAGMA journal_mode = WAL");
     await 建同步表(db);
   });
