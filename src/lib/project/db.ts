@@ -46,7 +46,7 @@ import { FOLLOW_RECORD_STATUSES, FOLLOW_TYPE_MAP } from "../constants";
 import { 记沟通编号 } from "./followup-meta";
 import { 下一步文字上限 } from "./project-fields";
 import { 节点变了的提成 } from "./commission-db";
-import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示, 无效客户项目不能转提示 } from "@/lib/enterprise/pool-rules";
+import { 公海规则, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示, 无效客户项目不能转提示, 客户在公海不能改回话 } from "@/lib/enterprise/pool-rules";
 import { 单项目客户跟进公海, 单项目客户跟着领, 领项目连带超上限 } from "@/lib/enterprise/pool-link";
 import { 交接中的客户 } from "@/lib/enterprise/handover-db";
 import { 字段权限of, 改不了的话, 项目列字段 } from "@/lib/enterprise/field-perm";
@@ -103,8 +103,8 @@ export function 能加组员(me: 谁, p: { ownerId: string; pooledAt?: Date | nu
 /** 节点这一块和别的内容一个口径（11-01 起直属上级、总管理不再代推，C2） */
 export const 能改节点 = 能管项目;
 export const 只有负责人改进程 = "只有项目负责人或系统管理员能改进程（上级、条线总管理只能看、转让）";
-/** 客户整体进了公海：有结局的项目（交付结清、丢单……pooledAt 永远空，不跟客户进公海）不能改回进程，不然公海客户名下冒出在推项目（同 记售后回访 按客户判公海） */
-export const 客户在公海不能改回话 = "这位客户在公海里，先领取或分配，再改回进程";
+/** 客户整体进了公海：有结局的项目（交付结清、丢单……pooledAt 永远空，不跟客户进公海）不能改回进程，不然公海客户名下冒出在推项目（同 记售后回访 按客户判公海）。话放在 pool-rules（项目页灰按钮也用） */
+export { 客户在公海不能改回话 };
 
 /**
  * 企业版 D-37：负责人有直属上级时，手动往前推节点只给这位直属上级、老板和组织里的总管理员；负责人本人、隔级上级、
