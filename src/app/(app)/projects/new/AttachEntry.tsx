@@ -23,7 +23,7 @@ export function 我名下入口({ 客户id, 记到 }: { 客户id: string; 记到
     <Space size={8} wrap>
       {记到 && <Button size="small" type="primary" data-testid="attach-to-mine" onClick={记到}>记到这位客户上</Button>}
       <Link href={`/customers/${客户id}`}><Button size="small">打开它</Button><LinkPending /></Link>
-      {记到 && <span className="cr-hint">项目和这次沟通记到这位客户上，不新建客户</span>}
+      {记到 && <span className="cr-hint">项目和这次沟通记到这位客户上，不新建客户；联系人和号码不带过去</span>}
     </Space>
   );
 }

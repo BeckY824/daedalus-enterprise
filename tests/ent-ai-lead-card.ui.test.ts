@@ -199,6 +199,21 @@ it("渠道只能选、不能手填：输入清单外的字回车后仍是原来�
   } finally { await page.close(); }
 });
 
+it("撞上自己名下客户后改了卡上客户名：「记到这位客户上」按钮消失", async () => {
+  const 填齐 = { 分配方式: 0, ownerId: "u1", 业务线: "外贸", 下一步: "发报价单", 区域去处: ["客户"] };
+  const { page, errors } = await open(1280, 900, 填齐);
+  try {
+    await page.evaluate(() => Reflect.set(window, "__回", { ok: false, error: "你名下已有同名客户", 我名下客户: { id: "c7", 名: "示例客户" } }));
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+    await page.locator(".prop-ok").click();
+    const 钮 = page.getByTestId("prop-attach-mine");
+    await 钮.waitFor();
+    await 格(page, "客户名称（组织 / 公司）").locator("input").fill("另一家示例客户");
+    await 钮.waitFor({ state: "detached" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
 // 11-18 员工反馈「录入的时候还是添加不了截图」：对话框里带的截图摆在新线索卡上，默认勾上存成附件，确认时凭首条附件票传（服务端见 ent-ai-lead-screenshot.test.ts）
 it("对话里带了截图：缩略图 + 默认勾上「存成这条线索的附件」，确认交 首条附件、凭票传到首条沟通；不横撑（1024 / 1280 / 1366）", async () => {
   const 填齐 = { 分配方式: 0, ownerId: "u1", 业务线: "外贸", 下一步: "发报价单", 区域去处: ["客户"] };

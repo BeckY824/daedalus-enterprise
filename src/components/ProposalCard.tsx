@@ -203,6 +203,8 @@ export default function ProposalCard({
   const [在推个数, set在推个数] = useState<number | null>(null);
   // 新线索卡的客户名撞上自己名下的客户（12-15 第三批 E 件）：错误下面给「记到这位客户上」，点了带着这位再确认一次（apply.ts 记到已有客户）
   const [我名下客户, set我名下客户] = useState<{ id: string; 名: string } | null>(null);
+  // 撞上那次交上去的客户名：卡上客户名一变，按钮就不再算数（否则会拿新名字挂到旧客户上）
+  const [撞上客户名, set撞上客户名] = useState<string | null>(null);
   /**
    * 查重撞上的本机客户名下有交付结清的项目（11-25，P-界面-63）：「当前进程」的潜客培育那一项写后售培育（value 照旧潜客培育，存的不变）。
    * 再点确认时不先清（写入中那一下不来回跳字），以服务端这次回的为准。
@@ -275,6 +277,7 @@ export default function ProposalCard({
   const 号码签 = draft.kind === "add_lead" ? JSON.stringify([线索号码行(draft), 认出备注里的号码(draft.remark || "").号们.map((h) => h.键)]) : "";
   const 撞上后售 = 撞上后售签 !== null && 撞上后售签 === 号码签;
   const 停用卡 = draft.kind === "add_opportunity";
+  const 撞上我名下 = 我名下客户 && 撞上客户名 !== null && draft.kind === "add_lead" && draft.name === 撞上客户名 ? 我名下客户 : null;
   const 能确认 = state !== "saving" && !停用卡 && missing.length === 0 && 勾了.length > 0;
 
   /* 销售选自动分配：分出去自己就看不到了。原来点确认后再弹一次框问（两次点击才是一次决定），
@@ -288,6 +291,7 @@ export default function ProposalCard({
 
   async function 提交(记到客户?: string): Promise<boolean> {
     const 交时号码签 = 号码签;
+    const 交时客户名 = draft.kind === "add_lead" ? draft.name : null;
     setState("saving");
     setErr("");
     set回收站号(null);
@@ -295,6 +299,7 @@ export default function ProposalCard({
     set同事号(null);
     set在推个数(null);
     set我名下客户(null);
+    set撞上客户名(null);
     // 确认完这张卡就没有输入框了：焦点原来在卡里的，送回对话框，让人接着说下一句
     const 焦点在卡里 = !!根.current?.contains(document.activeElement);
     const 对话框 = 找对话框(根.current);
@@ -346,6 +351,7 @@ export default function ProposalCard({
     set同事号(r.同事号 ?? null);
     set在推个数(r.在推个数 ?? null);
     set我名下客户(r.我名下客户 ?? null);
+    set撞上客户名(r.我名下客户 ? 交时客户名 : null);
     set撞上后售签(r.后售 ? 交时号码签 : null);
     return false;
   }
@@ -900,10 +906,10 @@ export default function ProposalCard({
         <div className="prop-err">
           {err}
           {在推个数 != null && <div className="prop-err-act prop-err-note">{查重提示.在推个数(在推个数)}</div>}
-          {我名下客户 && 要提交的.kind === "add_lead" && (
+          {撞上我名下 && 要提交的.kind === "add_lead" && (
             <div className="prop-err-act">
               <Space size={8} wrap>
-                <Button size="small" type="primary" data-testid="prop-attach-mine" onClick={() => void 提交(我名下客户.id)}>记到这位客户上</Button>
+                <Button size="small" type="primary" data-testid="prop-attach-mine" onClick={() => void 提交(撞上我名下.id)}>记到这位客户上</Button>
                 <span className="prop-err-note">卡上的项目和首条沟通记到这位客户上，不新建客户；联系人和号码不带过去</span>
               </Space>
             </div>
