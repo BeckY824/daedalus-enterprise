@@ -184,7 +184,11 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
       if (!r.预览.能发 && 直接拦) {
         // 申请那边的原因全都是直接合并那边也有的（数据拦法，两边一样）才摆直接合并的；否则摆申请自己的原因（已挂着一张、5 张上限等）
         const 同 = r.预览.原因.length > 0 && r.预览.原因.every((x) => 直接拦.原因.includes(x));
-        if (同) set预(直接拦); else set申(r.预览);
+        if (同) {
+          // 直接合并那组里「可以发合并申请」的句子会把人引去发一个发不了的申请：去掉再摆（去空了就摆申请这边的原因）
+          const 去后 = 直接拦.原因.filter((x) => !x.includes("可以发合并申请"));
+          set预({ ...直接拦, 原因: 去后.length ? 去后 : r.预览.原因 });
+        } else set申(r.预览);
         return;
       }
       set申(r.预览);
@@ -389,7 +393,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
               <p className="mrg-sec-t">要同意的人 <span className="mrg-sec-c">他们都同意了才合并；{等待工作日} 个工作日内没全部同意，申请失效</span></p>
               <ul className="mrg-ask-l">
                 {申!.同意人.map((x) => {
-                  const 身份 = [...x.凭.map((v) => 凭叫法[v]), ...(x.项目.length ? [`${x.项目.length} 个项目：${x.项目.map((p) => p.name).join("、")}`] : [])].join("；");
+                  const 身份 = [...x.凭.map((v) => 凭叫法[v]), ...(x.项目.length ? [`${x.项目.length} 个项目：${x.项目.map((p) => p.name).join("、")}`] : ((x as { 项目数?: number }).项目数 ?? 0) > 0 ? [`${(x as { 项目数?: number }).项目数} 个项目`] : [])].join("；");
                   return (
                     <li key={x.userId} className="mrg-ask-r" data-testid="merge-approver">
                       {一行(x.名, x.名, "mrg-ask-n")}
