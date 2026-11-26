@@ -276,6 +276,42 @@ export async function 同事待分配随客户通知(操作人: string, 新: str
   });
 }
 
+/**
+ * 离职交接把在职同事名下「还在待分配」的项目随客户交给了接手人（E-339）：告诉这位同事，写明是待分配被接手、不是项目被拿走。
+ * 他在这些客户上的待办和计划不搬、还在他名下。离职的人本人、接手人、已停用的不发；一位同事一条（带走多个合成「N 个待分配项目」）
+ */
+export async function 离职带走待分配通知(离职者: string, 接手人: string, 条们: readonly 同事待分配条[]): Promise<void> {
+  await 稳("离职带走待分配通知", async () => {
+    const 按人 = new Map<string, 同事待分配条[]>();
+    for (const x of 条们) if (x.原 && x.原 !== 离职者 && x.原 !== 接手人) 按人.set(x.原, [...(按人.get(x.原) ?? []), x]);
+    if (!按人.size) return;
+    const 人们 = await prisma.user.findMany({ where: { id: { in: [...按人.keys(), 接手人, 离职者] } }, select: { id: true, name: true, active: true } });
+    const 人 = new Map(人们.map((u) => [u.id, u]));
+    const 全部 = [...按人.values()].flat();
+    const [项目们, 客户们] = await 看全部(() => Promise.all([
+      prisma.project.findMany({ where: { id: { in: 全部.map((x) => x.id) } }, select: { id: true, name: true } }),
+      prisma.customer.findMany({ where: { id: { in: [...new Set(全部.map((x) => x.customerId))] } }, select: 显名列 }),
+    ]));
+    const 项目名 = new Map(项目们.map((x) => [x.id, x.name]));
+    const 客户名 = new Map(客户们.map((x) => [x.id, 客户显名(x)]));
+    const 接手名 = 人.get(接手人)?.name ?? "";
+    const 离职名 = 人.get(离职者)?.name ?? "离职同事";
+    for (const [原, 们] of 按人) {
+      if (!人.get(原)?.active) continue;
+      const 客户 = [...new Set(们.map((x) => 客户名.get(x.customerId) ?? "（一位客户）"))];
+      const 客户串 = 客户.slice(0, 3).map((c) => `「${c}」`).join("、") + (客户.length > 3 ? ` 等 ${客户.length} 位客户` : "");
+      const 项目说 = 们.length === 1 ? `待分配项目「${项目名.get(们[0].id) ?? "（一个项目）"}」` : `${们.length} 个待分配项目`;
+      await notify([原], {
+        kind: "交接",
+        title: `你建的${项目说}随 ${离职名} 的离职交接（客户${客户串}）由 ${接手名} 接手`,
+        body: "这是待分配的项目换了接手人，不是你的项目被拿走；这些客户上你的待办和计划还在你名下，没做完的可以照常勾完成。",
+        link: 们.length === 1 ? `/projects/${们[0].id}` : "/projects",
+        key: `offboard-awaiting:${原}:${们.map((x) => x.id).sort().join(",").slice(0, 300)}:${分钟()}`,
+      });
+    }
+  });
+}
+
 /* ───────────────────────── 线索验证（P12） ───────────────────────── */
 
 const 验证标题: Record<待哪步, (项目: string) => string> = {
