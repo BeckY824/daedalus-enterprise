@@ -13,6 +13,7 @@
 import "../../customers/merge.css";
 import { useState } from "react";
 import Link from "next/link";
+import { LinkPending } from "@/components/NavProgress";
 import { useRouter } from "next/navigation";
 import { Button } from "antd";
 import { InfoCircleOutlined } from "@ant-design/icons";
@@ -67,7 +68,7 @@ export default function MergedIntoLine({ 单, 项目名, 去, 嵌入 }: Props) {
           <InfoCircleOutlined className="mrg-into-i" aria-hidden />
           {/* 一行省略、悬停看全；手机没有悬停，点一下这句展开 / 收起（点项目名照常跳过去） */}
           <span className={`mrg-into-t${全 ? " is-full" : ""}`} title={全话} data-testid="project-merged-into-text" onClick={() => set全((x) => !x)}>
-            已并入 → {去 ? <Link href={去} className="mrg-into-a" onClick={(e) => e.stopPropagation()} data-testid="project-merged-into-link">「{A}」</Link> : `「${A}」`}
+            已并入 → {去 ? <Link href={去} className="mrg-into-a" onClick={(e) => e.stopPropagation()} data-testid="project-merged-into-link">「{A}」<LinkPending /></Link> : `「${A}」`}
             <span className="mrg-into-s">（{谁时}）</span>
           </span>
           {m.能撤 && <Button size="small" onClick={撤} data-testid="project-merged-undo">撤回</Button>}
