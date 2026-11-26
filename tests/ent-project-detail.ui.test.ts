@@ -2919,20 +2919,51 @@ describe("设计语言 D4：进程卡、沟通、卡点", () => {
     } finally { await page.close(); }
   });
 
-  it.each([1024, 1280, 390])("#402 实操 %ipx：沟通条目头一行字多（带提醒）时，时间和 ⋮ 不折到第二行，左边那段自己折行让位", async (w) => {
-    const { page, errors } = await 覆盖(w, { 可改沟通: true, 可删沟通: true, followUps: [{ id: "f1", type: "PHONE", method: "手机通话", initiator: "我方发起", content: "跟进", occurredAt: "2026-10-03T02:00:00.000Z", who: "冯某某某", node: "潜客培育", code: "FUL0001", 提醒: { 级别: "拿捏", 文字: "下一步 11-24" }, 版本: "v" }] });
+  /*
+    #402 实操：头一行字多时时间和 ⋮ 不折到第二行。11-25（方案-售后回访 第五节）起左边那段也不折：全站一行 + 省略号 + 悬停，
+    放不下先省方式（再省发起、谁，最后提醒标），售后回访、阶段两块标不缩；手机（≤767）售后回访标排最前。390 / 768 / 1024 / 1199 / 1200 / 1240 / 1280 / 1440 / 1536 都不横滚（横滚 / 溢出类扫全宽）
+  */
+  it.each([390, 768, 1024, 1199, 1200, 1240, 1280, 1440, 1536])("沟通条目头一行 %ipx：带售后回访 + 发起 + 阶段（或提醒）字多也只占一行，放不下的「…」、悬停看全；标都完整，时间和 ⋮ 在这一行右边", async (w) => {
+    const 长方式 = "企业微信视频会议加屏幕共享演示";
+    const 条 = (id: string, 加: Record<string, unknown>) => ({ id, type: "PHONE", method: 长方式, initiator: "客户主动发起联系", content: "跟进", occurredAt: "2026-10-03T02:00:00.000Z", who: "冯某某某", node: "潜客培育", code: "FUL0001", 提醒: null, 版本: "v", ...加 });
+    const { page, errors } = await 覆盖(w, { 可改沟通: true, 可删沟通: true, followUps: [条("f1", { 售后回访: true, node: "交付结清" }), 条("f2", { 提醒: { 级别: "拿捏", 文字: "下一步 11-24" } })] });
     try {
-      const 头 = page.locator(".proj-fu-m").first();
-      const 上 = (sel: string) => 头.locator(sel).first().evaluate(e => e.getBoundingClientRect().top);
-      const 左顶 = await 上(".proj-fu-l");
-      const 头盒 = (await 头.boundingBox())!;
-      for (const sel of [".proj-fu-t", ".proj-fu-kb"]) {
-        // 都在第一行（顶和左段第一行齐，差不过 4px）、不出头这一行的右边
-        expect(Math.abs((await 上(sel)) - 左顶), sel).toBeLessThanOrEqual(4);
-        const 盒 = (await 头.locator(sel).first().boundingBox())!;
-        expect(盒.x + 盒.width).toBeLessThanOrEqual(头盒.x + 头盒.width + 1);
+      for (const id of ["f1", "f2"]) {
+        const 头 = page.locator(`#follow-${id} .proj-fu-m`);
+        const 左 = 头.locator(".proj-fu-l");
+        const 量 = await 头.evaluate((h) => {
+          const l = h.querySelector(".proj-fu-l")!;
+          const 顶 = (e: Element) => e.getBoundingClientRect().top;
+          const 子顶 = [...l.children].map(顶);
+          const lr = l.getBoundingClientRect(), hr = h.getBoundingClientRect();
+          // 谁 / 发起还没缩到最小宽度（还有余量可让）
+          const 有余量 = [".proj-fu-who", ".proj-fu-ini"].some((s) => { const e = l.querySelector(s) as HTMLElement | null; return !!e && e.getBoundingClientRect().width > parseFloat(getComputedStyle(e).minWidth) + 1; });
+          return {
+            左段高: lr.height,
+            子顶差: Math.max(...子顶) - Math.min(...子顶),
+            // 售后回访、阶段两块标不缩；提醒标最后才缩：谁、发起还有余量时它必须完整，到底了才「…」（缩了有自己的悬停 title），都不出这一段
+            标: [...l.querySelectorAll(".ant-tag")].map((t) => ({ 字: t.textContent, 全: t.classList.contains("proj-fu-rem") ? t.getAttribute("title") === t.textContent && (!有余量 || t.scrollWidth <= t.clientWidth) : t.scrollWidth <= t.clientWidth + 1, 在段内: t.getBoundingClientRect().right <= lr.right + 1 })),
+            右: [".proj-fu-t", ".proj-fu-kb"].map((s) => { const r = h.querySelector(s)!.getBoundingClientRect(); return { 同行: Math.abs(r.top - lr.top) <= 4, 不出头: r.right <= hr.right + 1 }; }),
+          };
+        });
+        expect(量.左段高, `${id} 左段一行`).toBeLessThanOrEqual(26);
+        expect(量.子顶差, `${id} 左段的字和标同一行`).toBeLessThanOrEqual(4);
+        for (const t of 量.标) expect(t, `${id} 标「${t.字}」完整`).toEqual({ 字: t.字, 全: true, 在段内: true });
+        for (const r of 量.右) expect(r).toEqual({ 同行: true, 不出头: true });
+        expect(await 左.getAttribute("title"), `${id} 悬停看全文`).toContain(长方式);
+        expect(await 左.getAttribute("title")).toContain("客户主动发起联系");
       }
-      expect(await 头.locator(".proj-fu-t").evaluate(e => e.getClientRects().length)).toBe(1);
+      const 售后 = page.locator("#follow-f1 .proj-fu-m");
+      const x = (sel: string) => 售后.locator(sel).first().evaluate((e) => e.getBoundingClientRect().left);
+      const 方式 = 售后.locator(".proj-fu-way");
+      if (w === 390) {
+        // 放不下：方式「…」，售后回访标排到最前（在谁前面）
+        expect(await 方式.evaluate((e) => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth])).toEqual(["ellipsis", true]);
+        expect(await x("[data-testid='follow-after-sale']")).toBeLessThan(await x(".proj-fu-who"));
+      } else {
+        // 电脑：方式后面带标
+        expect(await x("[data-testid='follow-after-sale']")).toBeGreaterThan(await x(".proj-fu-way"));
+      }
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
       expect(errors).toEqual([]);
     } finally { await page.close(); }

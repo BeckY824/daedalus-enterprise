@@ -364,3 +364,52 @@ it("撞号没写进去：服务端带了在推个数（市场成员）错误下�
     } finally { await page.close(); }
   }
 });
+
+/* 后售培育（11-25，P-界面-63）：查重撞上的客户名下有交付结清的项目，服务端带 后售，「当前进程」那格写后售培育；交上去的照旧潜客培育。不带照旧潜客培育 */
+it("撞号没写进去：服务端带了后售，当前进程写后售培育、交的值照旧潜客培育；不带照旧潜客培育", async () => {
+  for (const [回, 该写] of [
+    [{ ok: false, error: "销售甲某已有该客户信息，请及时核对", 后售: true }, "后售培育"],
+    [{ ok: false, error: "销售甲某已有该客户信息，请及时核对" }, "潜客培育"],
+  ] as const) {
+    const { page, errors } = await open(1280);
+    try {
+      await page.evaluate((r) => { Object.assign(window, { __回: r }); }, 回);
+      const 进程 = 格(page, "当前进程").locator(".ant-select-content");
+      expect(await 进程.innerText()).toBe("潜客培育");
+      await 选(page, "分配方式", "自动分配");
+      await 格(page, "国家 / 城市填到").getByText("客户", { exact: false }).first().click();
+      if (await 格(page, "业务线").locator(".ant-select-selection-placeholder").count()) await 选(page, "业务线", "外贸");
+      await 格(page, "下一步计划").locator("input").fill("发报价单");
+      await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+      await page.locator(".prop-ok").click();
+      await page.locator(".prop-err").getByText("销售甲某已有该客户信息").waitFor();
+      expect(await 进程.innerText()).toBe(该写);
+      expect(await page.evaluate(() => Reflect.get(window, "__交") as Record<string, unknown>)).toMatchObject({ 节点: "潜客培育" });
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+/* 撞号后改了号码 / 联系方式：撞上的不一定还是那位客户，「当前进程」回到潜客培育（下次确认以服务端为准） */
+it("撞号带后售之后改了号码，当前进程回到潜客培育", async () => {
+  const { page, errors } = await open(1280);
+  try {
+    await page.evaluate(() => { Object.assign(window, { __回: { ok: false, error: "销售甲某已有该客户信息，请及时核对", 后售: true } }); });
+    const 进程 = 格(page, "当前进程").locator(".ant-select-content");
+    await 选(page, "分配方式", "自动分配");
+    await 格(page, "国家 / 城市填到").getByText("客户", { exact: false }).first().click();
+    if (await 格(page, "业务线").locator(".ant-select-selection-placeholder").count()) await 选(page, "业务线", "外贸");
+    await 格(page, "下一步计划").locator("input").fill("发报价单");
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+    await page.locator(".prop-ok").click();
+    await page.locator(".prop-err").getByText("销售甲某已有该客户信息").waitFor();
+    expect(await 进程.innerText()).toBe("后售培育");
+    // 改别的格（下一步）不清
+    await 格(page, "下一步计划").locator("input").fill("发报价单和样品");
+    expect(await 进程.innerText()).toBe("后售培育");
+    const 号 = 格(page, "联系方式").getByLabel("号码", { exact: true }).first();
+    await 号.fill("13900001111");
+    await expect.poll(() => 进程.innerText()).toBe("潜客培育");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
