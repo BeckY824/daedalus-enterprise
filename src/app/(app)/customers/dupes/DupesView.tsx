@@ -11,7 +11,7 @@ import "./dupes.css";
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Button, Empty, Pagination, Segmented } from "antd";
+import { Button, Empty, Modal, Pagination, Segmented } from "antd";
 import { PageHead } from "@/components/ui";
 import { LinkPending } from "@/components/NavProgress";
 import { useViewAs } from "@/components/ViewAsContext";
@@ -47,6 +47,18 @@ export default function DupesView({ 清单, 已标, 只读原因 = null }: { 清
     router.push(s ? `${疑似重复页}?${s}` : 疑似重复页);
   };
 
+  /** 三家及以上先确认：一次标掉的是两两所有对，其中有同一位的要先合并（12-15 C 审查建议 5） */
+  function 点不是同一个人(g: 清单组) {
+    if (g.们.length < 3) { void 标(g); return; }
+    Modal.confirm({
+      title: "确认都不是同一个人？",
+      content: `这 ${g.们.length} 家两两都不是同一位；其中有同一位的请先合并`,
+      okText: "都不是同一位，标上",
+      cancelText: "取消",
+      onOk: () => 标(g),
+    });
+  }
+
   async function 标(g: 清单组) {
     set忙(g.键); set行错(null);
     const r = await 标为不是同一个人(g.们.map((m) => m.id)).catch((e) => ({ ok: false as const, error: 动作出错话(e, "没标上，请再试一次") }));
@@ -80,6 +92,17 @@ export default function DupesView({ 清单, 已标, 只读原因 = null }: { 清
   const 组行 = (g: 清单组) => {
     const 留 = g.们.find((m) => m.id === g.留下)!;
     const 并 = g.们.find((m) => m.id === g.并掉)!;
+    if (g.太多) {
+      // 超一组上限：不列成员、不给一键标（也省掉两两成对的开销），逐家去客户详情处理
+      return (
+        <li key={g.键} className="dp-row" data-testid="dupe-group-toomany">
+          <div className="dp-head">
+            {一行(g.们[0].名, "dp-name")}
+            <span className="dp-cnt">同名 {g.们.length} 家，太多请逐家处理</span>
+          </div>
+        </li>
+      );
+    }
     return (
       <li key={g.键} className="dp-row" data-testid="dupe-group">
         <div className="dp-head">
@@ -96,7 +119,7 @@ export default function DupesView({ 清单, 已标, 只读原因 = null }: { 清
         </ul>
         <div className="dp-ops">
           {钮(<Button size="small" type="primary" disabled={!!不能写 || 忙 === g.键} onClick={() => set合({ 留下: 留, 并掉: 并 })} data-testid="dupe-merge">合并</Button>)}
-          {钮(<Button size="small" disabled={!!不能写} loading={忙 === g.键} onClick={() => 标(g)} data-testid="dupe-not-same">不是同一个人</Button>)}
+          {钮(<Button size="small" disabled={!!不能写} loading={忙 === g.键} onClick={() => 点不是同一个人(g)} data-testid="dupe-not-same">不是同一个人</Button>)}
         </div>
         {行错?.键 === g.键 && <div className="dp-err" role="alert" title={行错.话}>{行错.话}</div>}
       </li>

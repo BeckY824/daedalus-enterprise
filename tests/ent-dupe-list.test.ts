@@ -127,6 +127,19 @@ describe("谁看哪些组", () => {
     expect((await 页(总)).组们[0].们.every((m) => !m.要申请)).toBe(true);
   });
 
+  it("「合并」并进来那家只在和留下成对的里挑：不成对的那家项目再多也不挑（C 审查建议 7）", async () => {
+    const m = await 客户("星河展具", 甲.id, { bizLine: "内贸" });
+    const y = await 客户("星河展具", 乙.id, { bizLine: "外贸" });
+    const z = await 客户("星河展具", 乙.id);
+    for (const [i, c] of [[1, m], [2, m], [3, y]] as const) await raw.project.create({ data: { name: `P${i}`, customerId: c, ownerId: 乙.id, creatorId: 乙.id } });
+    const g = (await 页(总)).组们[0];
+    expect(g.们.length).toBe(3);
+    expect(g.留下).toBe(m);
+    expect(g.对们.sort()).toEqual([对id(m, z), 对id(y, z)].sort());
+    // y 项目比 z 多，但和 m 业务线冲突、不成对：并进来的是 z
+    expect(g.并掉).toBe(z);
+  });
+
   it("含公海那家（一家在公海、一家有负责人）：列给负责人，公海那家负责人写空", async () => {
     const a1 = await 客户("星河展具", 甲.id);
     const a2 = await 客户("星河展具", 乙.id);
@@ -198,6 +211,46 @@ describe("标 / 撤「不是同一个人」", () => {
     expect(await 撤销不是同一个人(prisma, 丁, org2, [对id(a1, a2)])).toMatchObject({ ok: false });
     for (const me of [管理员, 教练]) expect(await 撤销不是同一个人(prisma, me, org2, [对id(a1, a2)])).toMatchObject({ ok: false });
     expect(await raw.customerNotDupe.count({ where: { undoneAt: null } })).toBe(1);
+  });
+
+  it("同名超过 30 家：服务端不标、回「太多请逐家处理」；清单上这组带「太多」", async () => {
+    const ids: string[] = [];
+    for (let i = 0; i < 31; i++) ids.push(await 客户("星河展具", 甲.id));
+    const org = await 权限组织();
+    const r = await 标不是同一个人(prisma, 甲, org, ids);
+    expect(r).toMatchObject({ ok: false });
+    expect((r as { error: string }).error).toContain("太多请逐家处理");
+    expect(await raw.customerNotDupe.count()).toBe(0);
+    expect((await 页(甲)).组们[0]).toMatchObject({ 太多: true });
+    expect((await 标不是同一个人(prisma, 甲, org, ids.slice(0, 30))).ok).toBe(true);
+  });
+
+  it("撤销只撤还标着的：updateMany 带 undoneAt: null，别人刚撤过的 0 行、不再记日志、不改撤的人（C 审查建议 8）", async () => {
+    const a1 = await 客户("星河展具", 甲.id);
+    const a2 = await 客户("星河展具", 乙.id);
+    const org = await 权限组织();
+    await 标不是同一个人(prisma, 甲, org, [a1, a2]);
+    expect(await 撤销不是同一个人(prisma, 乙, org, [对id(a1, a2)])).toMatchObject({ ok: true, 撤了: 1 });
+    // 模拟先读后写的间隙：读到的还是「标着」的旧行（代理把 findMany 换成旧结果），写这一步仍按 undoneAt: null 过滤
+    const 旧 = [{ id: 对id(a1, a2), customerId: [a1, a2].sort()[0], otherId: [a1, a2].sort()[1] }];
+    const 代理 = new Proxy(prisma, { get: (t, k, r) => k === "customerNotDupe"
+      ? new Proxy(t.customerNotDupe, { get: (n, kk) => kk === "findMany" ? async () => 旧 : (n as never)[kk] })
+      : Reflect.get(t, k, r) }) as typeof prisma;
+    expect(await 撤销不是同一个人(代理, 甲, org, [对id(a1, a2)])).toMatchObject({ ok: false });
+    expect(await raw.auditLog.count({ where: { action: "not-dupe-undo" } })).toBe(2);
+    expect(await raw.customerNotDupe.findUnique({ where: { id: 对id(a1, a2) } })).toMatchObject({ undoneById: 乙.id });
+  });
+
+  it("标记在事务里重判成组：两人同时标同一组，只有一份标记和日志", async () => {
+    const a1 = await 客户("星河展具", 甲.id);
+    const a2 = await 客户("星河展具", 甲.id);
+    const org = await 权限组织();
+    const 结 = await Promise.all([标不是同一个人(prisma, 甲, org, [a1, a2]), 标不是同一个人(prisma, 总, org, [a1, a2])]);
+    expect(结.filter((x) => x.ok).length).toBeGreaterThanOrEqual(1);
+    expect(await raw.customerNotDupe.count({ where: { undoneAt: null } })).toBe(1);
+    const 日志 = await raw.auditLog.count({ where: { action: "not-dupe" } });
+    expect(日志).toBe(结.filter((x) => x.ok).length * 2);
+    expect(await 名们(甲)).toEqual([]);
   });
 
   it("名字已经不一样了、有一家不在了：拦", async () => {

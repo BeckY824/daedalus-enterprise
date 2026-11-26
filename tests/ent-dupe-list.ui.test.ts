@@ -47,8 +47,8 @@ const 预览 = {
 const 成员 = (id: string, 编号: string, 我的 = true) => ({ id, 名: "同名测试客户", 编号, 负责人: "QA", 在公海: false, 我的, 建档: 1_700_000_000_000, 项目数: 2, 要申请: false });
 const 清单 = {
   组们: [
-    { 键: "g1", 们: [成员("a", "NO.00001"), 成员("b", "NO.00012")], 留下: "a", 并掉: "b" },
-    { 键: "g2", 们: [成员("c", "NO.00020"), 成员("d", "NO.00021"), 成员("e", "NO.00022")], 留下: "c", 并掉: "d" },
+    { 键: "g1", 们: [成员("a", "NO.00001"), 成员("b", "NO.00012")], 留下: "a", 并掉: "b", 对们: ["a__b"], 太多: false },
+    { 键: "g2", 们: [成员("c", "NO.00020"), 成员("d", "NO.00021"), 成员("e", "NO.00022")], 留下: "c", 并掉: "d", 对们: ["c__d", "c__e", "d__e"], 太多: false },
   ],
   共: 2, 页: 1, 每页: 20, 管: false,
 };
@@ -108,6 +108,40 @@ it("清单：两个页签、每组「合并」「不是同一个人」；点合�
     await page.locator(".undo-btn").last().click();
     await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "撤标"));
     expect((await 调(page)).find((x) => x[0] === "撤标")).toEqual(["撤标", ["a__b"]]);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("三家及以上点「不是同一个人」先弹确认（写明两两都不是同一位），取消不标、确认才标；两家照旧一键", async () => {
+  const { page, 错 } = await open(1280, "清单");
+  try {
+    await page.getByTestId("dupe-group").first().waitFor();
+    await page.getByTestId("dupe-not-same").nth(1).click();
+    const 框 = page.locator(".ant-modal-confirm");
+    await 框.waitFor();
+    expect(await 框.innerText()).toContain("这 3 家两两都不是同一位；其中有同一位的请先合并");
+    expect((await 调(page)).some((x) => x[0] === "标")).toBe(false);
+    await 框.getByRole("button", { name: /取\s*消/ }).click();
+    await page.waitForFunction(() => !document.querySelector(".ant-modal-confirm"));
+    expect((await 调(page)).some((x) => x[0] === "标")).toBe(false);
+    await page.getByTestId("dupe-not-same").nth(1).click();
+    await 框.waitFor();
+    await 框.getByRole("button", { name: "都不是同一位，标上" }).click();
+    await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "标"));
+    expect((await 调(page)).find((x) => x[0] === "标")).toEqual(["标", ["c", "d", "e"]]);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("超 30 家的组折叠成「同名 N 家，太多请逐家处理」，不列成员、没有合并和不是同一个人按钮", async () => {
+  const 多 = Array.from({ length: 31 }, (_, i) => 成员(`m${i}`, `NO.${i}`));
+  const { page, 错 } = await open(1280, "清单", { 清单: { 组们: [{ 键: "big", 们: 多, 留下: "m0", 并掉: "m1", 对们: [], 太多: true }], 共: 1, 页: 1, 每页: 20, 管: false } });
+  try {
+    await page.getByTestId("dupe-group-toomany").waitFor();
+    expect(await page.getByTestId("dupe-group-toomany").innerText()).toContain("同名 31 家，太多请逐家处理");
+    expect(await page.getByTestId("dupe-not-same").count()).toBe(0);
+    expect(await page.getByTestId("dupe-merge").count()).toBe(0);
+    expect(await page.getByTestId("dupe-member").count()).toBe(0);
     expect(错).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);

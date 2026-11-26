@@ -151,21 +151,25 @@ export type 清单成员 = {
   /** 清单上「合并」并进来那家要不要走第二批合并申请（同事负责的，系统管理员不用） */
   要申请: boolean;
 };
-export type 清单组 = { 键: string; 们: 清单成员[]; 留下: string; 并掉: string };
+export type 清单组 = { 键: string; 们: 清单成员[]; 留下: string; 并掉: string; 对们: string[]; 太多: boolean };
 export type 清单页 = { 组们: 清单组[]; 共: number; 页: number; 每页: number; 管: boolean };
 
 /**
  * 「合并」默认哪家留下、哪家并进来（框里还能「换一家」）：留下的先挑我负责的（系统管理员不挑）、不在公海的，再挑项目多的、建档早的；
  * 并进来的挑剩下里同样排第一的。服务端照旧按这两家重新判能不能并
  */
-function 挑留并(们: 清单成员[], 管: boolean): { 留下: string; 并掉: string } {
+function 挑留并(们: 清单成员[], 管: boolean, 对们: string[]): { 留下: string; 并掉: string } {
+  const 在对 = new Set(对们);
   const 分 = (m: 清单成员) => [m.在公海 ? 1 : 0, 管 || m.我的 ? 0 : 1, -m.项目数, m.建档];
   const 排 = [...们].sort((a, b) => {
     const x = 分(a), y = 分(b);
     for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
     return a.id < b.id ? -1 : 1;
   });
-  return { 留下: 排[0].id, 并掉: 排[1].id };
+  // 并进来那家只在和留下这家成对的里挑（不成对的合并框里服务端也不放行；12-15 C 审查建议 7）
+  const 留 = 排[0];
+  const 并 = 排.find((m) => m.id !== 留.id && 在对.has(对id(留.id, m.id))) ?? 排[1];
+  return { 留下: 留.id, 并掉: 并.id };
 }
 
 /** 把几组的成员补上负责人名、编号、项目数 */
@@ -187,7 +191,7 @@ async function 补全(db: 库, 组们: 组[], 看: { 管: boolean; 我: string }
         在公海: r.在公海, 我的: 我, 建档: r.建档, 项目数: 数.get(r.id) ?? 0, 要申请: !看.管 && !我 && !r.在公海,
       };
     });
-    return { 键: g.键, 们, ...挑留并(们, 看.管) };
+    return { 键: g.键, 们, ...挑留并(们, 看.管, g.对们), 对们: g.对们, 太多: g.们.length > 一组最多 };
   });
 }
 
@@ -251,17 +255,20 @@ export async function 标不是同一个人(db: 库, me: 看的人, org: 组织 
   const 不能 = 能写(me, org);
   if (不能) return { ok: false, error: 不能 };
   const 要 = [...new Set(ids)];
-  if (要.length < 2 || 要.length > 一组最多) return { ok: false, error: "参数不对，刷新再试" };
-  const 行们 = (await db.$queryRawUnsafe<裸行[]>(`${选列SQL} WHERE c."deletedAt" IS NULL AND c.id IN (${要.map(() => "?").join(",")})`, ...要)).map(转行);
-  if (行们.length !== 要.length) return { ok: false, error: "有客户已经不在了（合并或删除），刷新再看" };
-  const 键们 = new Set(行们.map((r) => 名键(r.name)));
-  if (键们.size !== 1) return { ok: false, error: "这几家名字已经不一样了，刷新再看" };
-  const 组们 = 成组(行们, await 标着的对(db, 要), 看法of(me, org));
-  const 对们 = 组们.flatMap((g) => g.对们);
-  if (!对们.length) return { ok: false, error: "这几家已经标过了，或者不是你名下的，刷新再看" };
-  const 名 = new Map(行们.map((r) => [r.id, r.name.trim()]));
+  if (要.length > 一组最多) return { ok: false, error: `同名超过 ${一组最多} 家，太多请逐家处理` };
+  if (要.length < 2) return { ok: false, error: "参数不对，刷新再试" };
   const 现在 = new Date();
-  await db.$transaction(async (tx) => {
+  // 读行、重判成组、写标记同在一个事务里：判完到写之间别人标过 / 改过名的，按事务里读到的为准（12-15 C 审查建议 8）
+  const r = await db.$transaction(async (tx) => {
+    const 行们 = (await tx.$queryRawUnsafe<裸行[]>(`${选列SQL} WHERE c."deletedAt" IS NULL AND c.id IN (${要.map(() => "?").join(",")})`, ...要)).map(转行);
+    if (行们.length !== 要.length) return { ok: false as const, error: "有客户已经不在了（合并或删除），刷新再看" };
+    if (new Set(行们.map((r) => 名键(r.name))).size !== 1) return { ok: false as const, error: "这几家名字已经不一样了，刷新再看" };
+    const 标着 = new Set((await tx.customerNotDupe.findMany({
+      where: { undoneAt: null, OR: [{ customerId: { in: 要 } }, { otherId: { in: 要 } }] }, select: { id: true },
+    })).map((x) => x.id));
+    const 对们 = 成组(行们, 标着, 看法of(me, org)).flatMap((g) => g.对们);
+    if (!对们.length) return { ok: false as const, error: "这几家已经标过了，或者不是你名下的，刷新再看" };
+    const 名 = new Map(行们.map((r) => [r.id, r.name.trim()]));
     for (const id of 对们) {
       const [a, b] = id.split("__");
       await tx.customerNotDupe.upsert({
@@ -276,7 +283,10 @@ export async function 标不是同一个人(db: 库, me: 看的人, org: 组织 
         })),
       });
     }
+    return { ok: true as const, 对们 };
   });
+  if (!r.ok) return r;
+  const 对们 = r.对们;
   return { ok: true, 对们 };
 }
 
@@ -299,9 +309,13 @@ export async function 撤销不是同一个人(db: 库, me: 看的人, org: 组�
   const 能撤 = 行.filter((r) => 管 || 是我的(r.customerId) || 是我的(r.otherId));
   if (!能撤.length) return { ok: false, error: "没有能撤的标记（已经撤过，或者不是你名下的），刷新再看" };
   const 现在 = new Date();
+  // 只撤还标着的：updateMany 带 undoneAt: null，别人刚撤过的 0 行、跳过不记日志（12-15 C 审查建议 8）。标着的对不进缓存，撤完不用清缓存
+  let 撤了 = 0;
   await db.$transaction(async (tx) => {
     for (const r of 能撤) {
-      await tx.customerNotDupe.update({ where: { id: r.id }, data: { undoneAt: 现在, undoneById: me.id } });
+      const { count } = await tx.customerNotDupe.updateMany({ where: { id: r.id, undoneAt: null }, data: { undoneAt: 现在, undoneById: me.id } });
+      if (count === 0) continue;
+      撤了++;
       await tx.auditLog.createMany({
         data: [[r.customerId, r.otherId], [r.otherId, r.customerId]].map(([这, 那]) => ({
           userId: me.id, userName: me.name ?? "", action: "not-dupe-undo", entity: "Customer", entityId: 这, at: 现在,
@@ -310,7 +324,8 @@ export async function 撤销不是同一个人(db: 库, me: 看的人, org: 组�
       });
     }
   });
-  return { ok: true, 撤了: 能撤.length };
+  if (!撤了) return { ok: false, error: "没有能撤的标记（已经撤过，或者不是你名下的），刷新再看" };
+  return { ok: true, 撤了 };
 }
 
 export type 已标一对 = { id: string; 两家: { id: string; 名: string; 负责人: string | null; 我的: boolean }[]; 谁标: string | null; 标于: number };
