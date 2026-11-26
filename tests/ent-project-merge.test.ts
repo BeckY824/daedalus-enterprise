@@ -221,6 +221,23 @@ describe("前提：谁能并、哪些拦", () => {
     expect((await 能并进的项目(prisma, b, 乙)).灰共).toBe(60);
   });
 
+  it("候选阶段就把业务线不同的归到灰的一组，写和合并框同一句；被并的没填业务线、候选没填的按现有规则（不算不同）", async () => {
+    const c = await 客户(乙.id);
+    const b = await 项目(乙.id, c, { bizLine: "外贸" });
+    const 同 = await 项目(乙.id, c, { bizLine: "外贸" });
+    const 空 = await 项目(乙.id, c);
+    const 异 = await 项目(乙.id, c, { bizLine: "内贸" });
+    const r = await 能并进的项目(prisma, b, 乙);
+    expect(r.列.filter((x) => !x.不能).map((x) => x.id).sort()).toEqual([同, 空].sort());
+    expect(r.列.filter((x) => x.不能)).toEqual([expect.objectContaining({ id: 异, 不能: "两个项目业务线不同（内贸 / 外贸），不能合并" })]);
+    expect(r.灰共).toBe(1);
+    // 和合并框同一句（框里 A = 留下、B = 并掉，同样的两个值）
+    expect((await 项目合并预览(prisma, 异, b, 乙)).原因).toEqual([r.列.find((x) => x.id === 异)!.不能]);
+    // 被并的自己没填业务线：谁都不算不同，3 个都能选
+    const 无线 = await 项目(乙.id, c);
+    expect((await 能并进的项目(prisma, 无线, 乙)).列.filter((x) => !x.不能)).toHaveLength(4);
+  });
+
   it("业务线不同拦下（对齐第一批客户合并，2a 审查）；一边空着不拦", async () => {
     const c = await 客户(乙.id);
     const a = await 项目(乙.id, c, { bizLine: "外贸" });
