@@ -91,3 +91,51 @@ for (const w of [390, 1024, 1440]) {
     } finally { await page.close(); }
   });
 }
+
+it("条件连改两次、早发的后回来：界面只认最后发出的那次", async () => {
+  const { page, errors } = await 开页(browser, bundle, props(true), 1024, "?tab=merges");
+  try {
+    await page.addStyleTag({ content: "body{margin:0}" });
+    // 词「慢」的请求 600ms 后才回（回一行「慢的」），词「快」的马上回（回一行「快的」）：先发慢、后发快，慢的后到
+    await page.evaluate(`var 长=${JSON.stringify(长)};window.__act=(n,c)=>{if(n!=='查合并台账')return {ok:true};
+      const r=(名)=>({ok:true,截断:false,行们:[(${行.toString()})(0)].map(x=>({...x,客户:名,客户id:null}))});
+      if(c?.词==='慢')return new Promise(f=>setTimeout(()=>f(r('慢的')),600));
+      return c?.词==='快'?r('快的'):r('初始');};`);
+    await page.getByRole("tab", { name: /合并台账/ }).click();
+    const 搜 = page.getByRole("searchbox", { name: "按客户名或项目名搜" });
+    await 搜.fill("x");
+    await 搜.fill("");
+    await page.locator("[data-testid=合并台账] .ant-table-row").first().waitFor();
+    await 搜.fill("慢");
+    await page.keyboard.press("Enter");
+    await 搜.fill("快");
+    await page.keyboard.press("Enter");
+    await page.getByText("快的", { exact: true }).waitFor();
+    await page.waitForTimeout(900);
+    expect(await page.getByText("慢的", { exact: true }).count()).toBe(0);
+    expect(await page.getByText("快的", { exact: true }).count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("客户在回收站标（已删除）仍有链接；彻底删除只显示（已删除的客户）、不出链接", async () => {
+  const { page, errors } = await 开页(browser, bundle, props(true), 1024, "?tab=merges");
+  try {
+    await page.addStyleTag({ content: "body{margin:0}" });
+    await page.evaluate(`var 长=${JSON.stringify(长)};window.__act=(n,c)=>{if(n!=='查合并台账')return {ok:true};
+      const m=(${行.toString()});
+      const a=m(0),b=m(1),d=m(2);
+      return {ok:true,截断:false,行们:[{...a,客户状态:'在'},{...b,客户:'编造客户1（已删除）',客户状态:'回收站'},{...d,客户:'（已删除的客户）',客户状态:'已删'}]};};`);
+    await page.getByRole("tab", { name: /合并台账/ }).click();
+    const 搜 = page.getByRole("searchbox", { name: "按客户名或项目名搜" });
+    await 搜.fill("x");
+    await 搜.fill("");
+    await page.locator("[data-testid=合并台账] .ant-table-row").first().waitFor();
+    const 链 = (t: string) => page.locator(`[data-testid=合并台账] a[title="${t}"]`);
+    expect(await 链("编造客户0").count()).toBe(1);
+    expect(await 链("编造客户1（已删除）").count()).toBe(1);
+    expect(await 链("（已删除的客户）").count()).toBe(0);
+    expect(await page.locator("[data-testid=合并台账] span.ml-cell[title=\"（已删除的客户）\"]").count()).toBe(1);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});

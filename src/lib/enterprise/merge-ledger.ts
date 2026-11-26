@@ -40,6 +40,8 @@ export type 台账行 = {
   发起人: string;
   客户id: string | null;
   客户: string;
+  /** 客户现在的状态：在 / 回收站（名字后带「（已删除）」、还能点开恢复）/ 已删（彻底删除，不出链接） */
+  客户状态: "在" | "回收站" | "已删";
   留下id: string;
   留下项目: string;
   被并id: string;
@@ -99,22 +101,25 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
   }
   const [人们, 客户们] = await Promise.all([
     人ids.size ? db.user.findMany({ where: { id: { in: [...人ids] } }, select: { id: true, name: true } }) : [],
-    客户ids.size ? 看全部(() => 看已删(() => db.customer.findMany({ where: { id: { in: [...客户ids] } }, select: 显名列 }))) : [],
+    客户ids.size ? 看全部(() => 看已删(() => db.customer.findMany({ where: { id: { in: [...客户ids] } }, select: { ...显名列, deletedAt: true } }))) : [],
   ]);
   const 叫 = new Map(人们.map((u) => [u.id, u.name]));
   const 人名 = (id: string | null | undefined) => (id ? 叫.get(id) ?? "（已删除的账号）" : "");
-  const 客名 = new Map(客户们.map((c) => [c.id, 客户显名(c)]));
+  const 客们 = new Map(客户们.map((c) => [c.id, c]));
 
   const 全部 = 单们.map((m): 台账行 => {
     const 明 = 明们.get(m.id)!;
     const 客户id = 字(明.客户) || null;
+    const 客 = 客户id ? 客们.get(客户id) : undefined;
+    const 客户状态 = !客户id || (客 && !客.deletedAt) ? "在" : 客 ? "回收站" : "已删";
     const 自查时间 = 读时刻(明.自查?.时间);
     return {
       id: m.id,
       at: m.at.toISOString(),
       发起人: 人名(m.byUserId),
       客户id,
-      客户: 客户id ? 客名.get(客户id) ?? "（已删除的客户）" : "",
+      客户: !客户id ? "" : 客 ? `${客户显名(客)}${客.deletedAt ? "（已删除）" : ""}` : "（已删除的客户）",
+      客户状态,
       留下id: m.intoId,
       留下项目: 字(明.留下名) || "未命名项目",
       被并id: m.fromId,

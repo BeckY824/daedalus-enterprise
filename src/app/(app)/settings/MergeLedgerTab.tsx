@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Input, Table, Tag } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import type { Dayjs } from "dayjs";
@@ -58,11 +58,15 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
   const [已查, set已查] = useState<台账条件>({ 起: null, 止: null, 词: null });
 
   // 初次进来 行 本来就是 null（转圈）；用户改条件时先清成 null 再查，见 重拉
+  // 请求号：只认最后一次发出的结果，早发的后回来直接丢（读写 ref 都放在 then 回调里）
+  const 请求号 = useRef(0);
   const 拉 = (范: 段, w: string) => {
     const 条件 = 条件of(范, w);
+    const 号 = (请求号.current += 1);
     return 查(条件)
       .catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "合并台账没读出来") }))
       .then((r) => {
+        if (号 !== 请求号.current) return;
         if (!r.ok) {
           set读不到(r.error);
           set行([]);
@@ -169,7 +173,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
           { title: "发起人", dataIndex: "发起人", width: 96, ellipsis: true, render: 一行 },
           {
             title: "客户", dataIndex: "客户", width: 150, ellipsis: true,
-            render: (v: string, r) => (r.客户id ? <a href={`/customers/${r.客户id}`} target="_blank" rel="noopener" className="ml-cell" title={v}>{v}</a> : 一行(v)),
+            render: (v: string, r) => (r.客户id && r.客户状态 !== "已删" ? <a href={`/customers/${r.客户id}`} target="_blank" rel="noopener" className="ml-cell" title={v}>{v}</a> : 一行(v)),
           },
           { title: "留下项目", dataIndex: "留下项目", width: 150, ellipsis: true, render: (v: string, r) => 项目格(r.留下id, v) },
           { title: "被并项目", dataIndex: "被并项目", width: 150, ellipsis: true, render: (v: string, r) => 项目格(r.被并id, v) },

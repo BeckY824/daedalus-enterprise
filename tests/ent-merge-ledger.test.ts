@@ -177,3 +177,22 @@ describe("一单一行", () => {
     expect(r.ok && r.行们).toEqual([]);
   });
 });
+
+describe("客户已删", () => {
+  it("客户在回收站：名字后标（已删除）、状态回收站；彻底删除：只回（已删除的客户）、状态已删；在的状态是在", async () => {
+    const c1 = await 客户("编造测试客户戊");
+    const c2 = await 客户("编造测试客户己");
+    const c3 = await 客户("编造测试客户庚");
+    await 并(await 项目(c1, "戊留下"), await 项目(c1, "戊被并"), 乙);
+    await 并(await 项目(c2, "己留下"), await 项目(c2, "己被并"), 乙);
+    await 并(await 项目(c3, "庚留下"), await 项目(c3, "庚被并"), 乙);
+    await raw.customer.update({ where: { id: c2 }, data: { deletedAt: new Date() } });
+    await raw.customer.delete({ where: { id: c3 } });
+    const r = await 读合并台账(prisma, 老板, {});
+    if (!r.ok) throw new Error(r.error);
+    const 按 = (项: string) => r.行们.find((x) => x.留下项目 === 项)!;
+    expect(按("戊留下")).toMatchObject({ 客户: "编造测试客户戊", 客户状态: "在", 客户id: c1 });
+    expect(按("己留下")).toMatchObject({ 客户: "编造测试客户己（已删除）", 客户状态: "回收站", 客户id: c2 });
+    expect(按("庚留下")).toMatchObject({ 客户: "（已删除的客户）", 客户状态: "已删" });
+  });
+});
