@@ -133,6 +133,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
         <DatePicker.RangePicker
           aria-label="合并时间范围"
           className="ml-range"
+          classNames={{ popup: { root: "ml-range-pop" } }}
           value={范围}
           presets={预设()}
           allowClear

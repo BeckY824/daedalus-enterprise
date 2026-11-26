@@ -92,6 +92,32 @@ for (const w of [390, 1024, 1440]) {
   });
 }
 
+for (const w of [390, 768, 1024, 1280]) {
+  it(`${w} 宽：日期范围弹层整块在视口内，起止两天点得到`, async () => {
+    const { page, errors } = await 开页(browser, bundle, props(true), w, "?tab=merges");
+    try {
+      await page.addStyleTag({ content: "body{margin:0}" });
+      await page.evaluate(装假);
+      await page.getByRole("tab", { name: /合并台账/ }).click();
+      const 框 = page.getByRole("textbox", { name: "合并时间范围" });
+      const 量 = () => page.evaluate(() => {
+        const r = document.querySelector(".ant-picker-dropdown:not(.ant-picker-dropdown-hidden)")!.getBoundingClientRect();
+        return { left: r.left, right: r.right, vw: innerWidth };
+      });
+      await 框.first().click();
+      await page.locator(".ant-picker-dropdown:not(.ant-picker-dropdown-hidden) .ant-picker-cell-in-view").first().waitFor();
+      await page.waitForTimeout(400);
+      const a = await 量();
+      expect(a.left).toBeGreaterThanOrEqual(0);
+      expect(a.right).toBeLessThanOrEqual(a.vw);
+      await page.locator(".ant-picker-dropdown:not(.ant-picker-dropdown-hidden) .ant-picker-cell-in-view").nth(2).click();
+      await page.locator(".ant-picker-dropdown:not(.ant-picker-dropdown-hidden) .ant-picker-cell-in-view").nth(9).click();
+      await page.waitForFunction(() => ((window as unknown as { __calls?: [string, [{ 起?: string; 止?: string }]][] }).__calls ?? []).some(([n, a]) => n === "查合并台账" && !!a[0].起 && !!a[0].止));
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}
+
 it("条件连改两次、早发的后回来：界面只认最后发出的那次", async () => {
   const { page, errors } = await 开页(browser, bundle, props(true), 1024, "?tab=merges");
   try {
