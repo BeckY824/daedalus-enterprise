@@ -624,7 +624,7 @@ const 派生: Record<string, Record<string, string>> = {
     entry: "从哪儿推的（完成节点 / 看板拖动 / 首页AI 等），系统写", onBehalf: "直属上级代推被拦，系统按「仅上级推」判",
   },
   EntCustomerMerge: {
-    kind: "客户 / 项目（第二批），合并时系统写（lib/enterprise/customer-merge.ts，迁移 171）", fromId: "被并掉的那位，合并时系统写", intoId: "留下的那位，合并时系统写",
+    kind: "客户 / 联系人 / 项目（第二批 2a 项目合并，lib/enterprise/project-merge.ts），合并时系统写（lib/enterprise/customer-merge.ts，迁移 171）", fromId: "被并掉的那位，合并时系统写", intoId: "留下的那位，合并时系统写",
     parentId: "第二批项目合并挂在哪张客户合并单下，系统写；这一批不写", status: "已合并 / 已撤回，合并、撤回时系统写", byUserId: "谁并的，当前登录账号",
     approvals: "第二批合并申请要同意的人和结论，系统写；这一批不写", fromName: "被并那位当时的名字，系统照抄", fromNo: "被并那位的客户编号，系统照抄",
     fromOwnerId: "被并那位当时的负责人，系统照抄", fromCreatorId: "被并那位的创建人，系统照抄（E-280 创建人记在合并单里可查）", fromChannelId: "被并那位的主渠道，系统照抄",
