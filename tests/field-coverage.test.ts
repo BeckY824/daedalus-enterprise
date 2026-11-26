@@ -631,6 +631,18 @@ const 派生: Record<string, Record<string, string>> = {
     fromTouchpoint: "被并那位的渠道触点，系统照抄", counts: "各类挪了几条，合并时系统数", detail: "挪动明细（撤回用），合并时系统写",
     at: "合并的那一刻，系统写", undoneAt: "撤回的那一刻，系统写", undoneById: "谁撤回的，当前登录账号", undoLeft: "撤回时没还原的那几条和原因，系统写",
   },
+  EntMergeRequest: {
+    fromId: "被并掉的那家，发起合并申请时系统写（lib/enterprise/merge-request.ts，迁移 174）", intoId: "留下的那家，发起时系统写", byUserId: "谁发起的，当前登录账号",
+    status: "待同意 / 执行中 / 已合并 / 已拒绝 / 已失效 / 已撤回，系统按同意、拒绝、到期、再判、撤回写", reason: "拒绝、失效、撤回的一句原因，系统写",
+    choices: "申请时勾的已核对、「是同一个人」，发起时系统照存", snapshot: "合并前两家和名下项目的快照，发起时系统写（再判、留痕用）",
+    at: "发起的那一刻，系统写", expiresAt: "发起后第 5 个工作日的同一时刻，系统算", endedAt: "结束的那一刻，系统写", endedById: "谁结束的（系统判失效时空），当前登录账号",
+    mergeId: "执行后的合并单，系统写", approvers: "关系字段",
+  },
+  EntMergeApprover: {
+    requestId: "哪张申请，发起时系统写", request: "关系字段", userId: "要谁同意，系统按两家负责人和同事项目负责人算", why: "凭什么要他同意，系统写",
+    projects: "他涉及的项目，系统写", status: "待同意 / 同意 / 拒绝，本人点", note: "拒绝时本人写的一句话", decidedAt: "本人同意 / 拒绝的那一刻，系统写",
+    fromUserId: "超时转上级时从谁转来，通知升级链定了再写；这一阶段不写", transferredAt: "超时转上级的那一刻，同上不写", createdAt: "系统写",
+  },
   EntReplyOverdue: {
     projectId: "哪个项目，超时未跟进那条链起头时系统建（迁移 150）", anchorAt: "起链时的超时基准，系统按指定回复时间写", holderId: "链上眼下这一位，系统写",
     since: "这一位的计时起点，系统写", overdueAt: "超时提醒发出的那一刻，钟上系统写", tried: "这一轮超时过的人，自动转时系统写",

@@ -116,8 +116,12 @@ async function 离职交接拦(db: Pick<Tx, "entHandover" | "project">, 两家: 
   return 因;
 }
 
-/** 不能并的原因（空 = 能并）。A = 留下，B = 并掉 */
-async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null): Promise<string[]> {
+/**
+ * 不能并的原因（空 = 能并）。A = 留下，B = 并掉。
+ * 按申请（第二批 2b 跨负责人合并申请，merge-request.ts）：只判数据拦法（交接中、公海、无效、业务线不同），
+ * 「是不是自己负责」那层不判——申请模式下改成算要同意的人、全同意了才执行
+ */
+async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null, 按申请 = false): Promise<string[]> {
   if (!企业版()) return ["只有企业版能合并客户"];
   if (!A || !B) return ["客户不存在或已删除，刷新看看"];
   if (A.id === B.id) return ["不能和自己合并，请选另一位客户"];
@@ -127,7 +131,7 @@ async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | nu
   const 在公海 = (c: 客户行) => !!c.pool;
   if (在公海(A) !== 在公海(B)) 因.push(`「${名(在公海(A) ? A : B)}」在公海里，先领出来再并`);
   else if (在公海(A) && !管) 因.push("两家都在公海里，只有系统管理员能合并");
-  if (!管 && !在公海(A)) {
+  if (!管 && !在公海(A) && !按申请) {
     const 不是我的 = [A, B].filter((c) => !能删除(me, org, c.salesOwnerId));
     if (不是我的.length) 因.push(`${不是我的.map((c) => `「${名(c)}」`).join("")}不是你负责的，只能合并两家都由你负责的客户；要并同事的客户，请找系统管理员代并`);
     else
@@ -142,6 +146,11 @@ async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | nu
   for (const c of [A, B]) if (c.poolInvalidAt) 因.push(`「${名(c)}」标了无效客户，先由系统管理员恢复再并`);
   if (有值(A.bizLine) && 有值(B.bizLine) && A.bizLine !== B.bizLine) 因.push(`两家业务线不同（${A.bizLine} / ${B.bizLine}），不能合并`);
   return 因;
+}
+
+/** 第二批 2b 合并申请发起前判数据拦法（不判「是不是自己负责」，见 拦的原因） */
+export async function 申请拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null): Promise<string[]> {
+  return 拦的原因(db, A, B, me, org, true);
 }
 
 /* ───────────────────────── 只补空 ───────────────────────── */
@@ -219,7 +228,7 @@ async function 人名们(db: Pick<Tx, "user">, ids: (string | null | undefined)[
   return new Map((await db.user.findMany({ where: { id: { in: 们 } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
 }
 
-function 来源或创建人不同(A: 客户行, B: 客户行): boolean {
+export function 来源或创建人不同(A: 客户行, B: 客户行): boolean {
   return (A.channelId ?? null) !== (B.channelId ?? null) || (A.touchpoint ?? null) !== (B.touchpoint ?? null) || (A.creator?.userId ?? null) !== (B.creator?.userId ?? null);
 }
 
@@ -342,8 +351,12 @@ async function 查同一个人(tx: Tx, A: string, B: string, 对们: readonly �
   return null;
 }
 
-/** 执行合并：B 并进 A。已核对 = 预览里要勾选时勾过了；同一个人 = 勾了「是同一个人」的几对联系人，合成一位 */
-export async function 执行合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 已核对?: boolean; 现在?: Date; 同一个人?: readonly 同一个人[] } = {}): Promise<结果<合并完>> {
+/**
+ * 执行合并：B 并进 A。已核对 = 预览里要勾选时勾过了；同一个人 = 勾了「是同一个人」的几对联系人，合成一位。
+ * 申请（第二批 2b，merge-request.ts 全同意后调）：me = 发起人，不判「是不是自己负责」（同意人已经同意过），
+ * 申请经过（JSON）记进合并单的 approvals 那一格
+ */
+export async function 执行合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 已核对?: boolean; 现在?: Date; 同一个人?: readonly 同一个人[]; 申请?: { 经过: string } } = {}): Promise<结果<合并完>> {
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   const 开 = await 客户状态自动();
@@ -354,7 +367,7 @@ export async function 执行合并(db: 库, 留下id: string, 并掉id: string, 
       看全部(() =>
         db.$transaction(async (tx) => {
           const [A, B] = [await 读客户(tx, 留下id), await 读客户(tx, 并掉id)];
-          const 原因 = await 拦的原因(tx, A, B, me, org);
+          const 原因 = await 拦的原因(tx, A, B, me, org, !!opt.申请);
           if (原因.length) throw new 拦下(原因.join("；"));
           if (来源或创建人不同(A!, B!) && !opt.已核对) throw new 拦下(`两家的来源或创建人不一样，请先勾选「${已核对话}」`);
           const 对们 = opt.同一个人 ?? [];
@@ -363,6 +376,7 @@ export async function 执行合并(db: 库, 留下id: string, 并掉id: string, 
           // 先读好每对两位当时的样子（关键标、主客户），挪完再合成
           const 两位 = new Map((await tx.contact.findMany({ where: { id: { in: 对们.flatMap((x) => [x.留, x.并]) } }, select: { id: true, name: true, customerId: true, isPrimary: true, deletedAt: true } })).map((c) => [c.id, c]));
           const 结 = await 挪(tx, A!, B!, me, 现在, 开);
+          if (opt.申请) await tx.entCustomerMerge.update({ where: { id: 结.mergeId }, data: { approvals: opt.申请.经过 } });
           for (const x of 对们) {
             // 挪的时候 B 的关键标可能已经去掉了：按挪完的样子合成
             const 现 = await tx.contact.findMany({ where: { id: { in: [x.留, x.并] } }, select: { id: true, name: true, customerId: true, isPrimary: true, deletedAt: true } });

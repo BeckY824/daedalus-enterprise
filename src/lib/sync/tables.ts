@@ -110,6 +110,8 @@ export const 不同步表 = [
   "EntRequiredBlock",
   // 企业版合并客户的合并单（2026-11-25，迁移 171）：同上；挪动明细只对这台库里的行 id 有意义，撤回也只在这台做
   "EntCustomerMerge",
+  // 企业版跨负责人合并申请和同意人（2026-11-26，迁移 174）：同上；申请执行时调的是这台库里的合并，也只在这台做
+  "EntMergeRequest", "EntMergeApprover",
 ] as const;
 
 /**
@@ -248,6 +250,11 @@ export const 指向人的列: [string, string][] = [
   ["EntCustomerMerge", "fromOwnerId"],
   ["EntCustomerMerge", "fromCreatorId"],
   ["EntCustomerMerge", "undoneById"],
+  // 企业版合并申请（2026-11-26）：谁发起、谁结束的，要谁同意、从谁转来；不建外键
+  ["EntMergeRequest", "byUserId"],
+  ["EntMergeRequest", "endedById"],
+  ["EntMergeApprover", "userId"],
+  ["EntMergeApprover", "fromUserId"],
 ];
 
 /**
