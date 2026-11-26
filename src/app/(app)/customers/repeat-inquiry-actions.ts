@@ -272,6 +272,16 @@ export async function 出口C建线索(类型: string, 值: string, 沟通: 查�
     });
     await 分配通知(me, [{ projectId: 项目id, toUserId: 谁 }], true,
       `老客户重复咨询：${me.name} 查号码撞上这位${b.customer}，原负责人接不了，按区域自动分给你这条新线索（创建人记 ${me.name}，${b.customer}负责人不变），这次的沟通记在它上面。如与原项目同一需求，线索验证时选「重复线索」`);
+    // P-公海-16：客户负责人也收一条（照旧看不到这条线索：链接只到客户页，不带线索）。他就是接手人 / 发起人本人不重复发；停用 / 离职的不发
+    if (负责人 !== 谁 && 负责人 !== me.id && (await prisma.user.findUnique({ where: { id: 负责人 }, select: { active: true } }))?.active) {
+      await notify([负责人], {
+        kind: "分配",
+        title: `你的${b.customer}来了一条重复咨询：${客户编号显示(客户)}`,
+        body: `这位${b.customer}来了一条重复咨询，已交给 ${接手人名} 跟进（${b.customer}负责人不变）。线索在 ${接手人名} 名下，你这边看不到它。`,
+        link: `/customers/${客户.id}`,
+        key: `repeat-owner:${项目id}`,
+      });
+    }
     await 存沟通后重算三态(客户.id);
     revalidatePath("/projects");
     revalidatePath("/leads");
