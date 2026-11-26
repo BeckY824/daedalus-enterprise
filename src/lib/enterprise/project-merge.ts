@@ -196,35 +196,56 @@ export async function 项目合并预览(db: 库, 留下id: string, 并掉id: st
 
 /** 留下的候选一项：不能 = 灰着列、不能选，写原因（已签合同 / 到商机订单）；选不选得了执行时照样整套再判 */
 export type 并进候选 = { id: string; name: string; node: string; 不能?: string };
+/** 候选的一份结果：列 = 能选的全部在前、灰的只列前 灰着列的上限 个在后；灰共 = 灰的总数（没列出的 = 灰共 − 列里灰的个数） */
+export type 并进候选们 = { 列: 并进候选[]; 灰共: number };
+/** 灰着列的个数上限：能选的一个不少，灰的只是告诉人「为什么没法选」，列前几个、写明总数 */
+export const 灰着列的上限 = 20;
 
 /**
  * 从这个项目（被并掉的那个）出发，同一位客户名下留下的候选：同负责人、没结束、不在公海。
  * 阶段对不上、已签合同的也列，灰着写原因（E-331 必改 5）；只是给选择框列候选，执行时照样整套再判
  */
-export async function 能并进的项目(db: 库, 并掉id: string, me: 合并人): Promise<并进候选[]> {
-  if (!企业版()) return [];
+export async function 能并进的项目(db: 库, 并掉id: string, me: 合并人): Promise<并进候选们> {
+  const 无: 并进候选们 = { 列: [], 灰共: 0 };
+  if (!企业版()) return 无;
   const B = await 读项目(db, 并掉id);
-  if (!B || B.pooledAt || B.result) return [];
+  if (!B || B.pooledAt || B.result) return 无;
   const org = await 权限组织();
-  if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return [];
-  if (!是系统管理员(me, org) && B.ownerId !== me.id) return [];
+  if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return 无;
+  if (!是系统管理员(me, org) && B.ownerId !== me.id) return 无;
   return 能并进的候选们(db, B);
+}
+
+const 候选底 = (B: { id: string; customerId: string; ownerId: string }) =>
+  ({ customerId: B.customerId, ownerId: B.ownerId, id: { not: B.id }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null }) satisfies Prisma.ProjectWhereInput;
+
+/** 菜单只问有没有候选（能选的、灰的都算）：一次查询，不取全列表 */
+export async function 有并进的候选(db: 库, B: { id: string; customerId: string; ownerId: string }): Promise<boolean> {
+  return !!(await 看全部(() => db.project.findFirst({ where: 候选底(B), select: { id: true } })));
 }
 
 /**
  * 候选那一句（同客户、同负责人、在推的）：能选的排前，灰的（已签合同 / 不在线索阶段）排后。
+ * 取数分两次：能选的不设上限（同一客户同一负责人下本来有限，不能被灰的挤掉），灰的另取前 灰着列的上限 个并数总数。
+ * 判定还是 签了合同 / 能并的阶段.留下 那一套，这里只把它翻成查询条件，两边条件互补。
  * 调用方手里已有这个项目的行（项目详情的 load.ts）就直接用，省一次读项目；菜单只看有没有（灰的也算，点开框里写原因）
  */
-export async function 能并进的候选们(db: 库, B: { id: string; customerId: string; ownerId: string }): Promise<并进候选[]> {
-  const 行 = await 看全部(() => db.project.findMany({
-    where: { customerId: B.customerId, ownerId: B.ownerId, id: { not: B.id }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null },
-    orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, name: true, node: true, phase: true, contractStatus: true },
-  }));
-  const 列 = 行.map(({ id, name, node, phase, contractStatus }): 并进候选 => {
-    const 不能 = 签了合同({ contractStatus }) ? 已签合同的项目不能合并 : !能并的阶段.留下.includes(phase) ? 到商机订单不能合并 : undefined;
-    return 不能 ? { id, name, node, 不能 } : { id, name, node };
-  });
-  return [...列.filter((x) => !x.不能), ...列.filter((x) => x.不能)];
+export async function 能并进的候选们(db: 库, B: { id: string; customerId: string; ownerId: string }): Promise<并进候选们> {
+  const 底 = 候选底(B);
+  const 没签合同: Prisma.ProjectWhereInput = { OR: [{ contractStatus: null }, { contractStatus: { not: 生效的合同状态 } }] };
+  const 能选的条件: Prisma.ProjectWhereInput = { ...底, AND: [没签合同, { phase: { in: [...能并的阶段.留下] } }] };
+  const 灰的条件: Prisma.ProjectWhereInput = { ...底, OR: [{ contractStatus: 生效的合同状态 }, { phase: { notIn: [...能并的阶段.留下] } }] };
+  const 选 = { id: true, name: true, node: true, phase: true, contractStatus: true } satisfies Prisma.ProjectSelect;
+  const [能, 灰, 灰共] = await 看全部(() => Promise.all([
+    db.project.findMany({ where: 能选的条件, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], select: 选 }),
+    db.project.findMany({ where: 灰的条件, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], take: 灰着列的上限, select: 选 }),
+    db.project.count({ where: 灰的条件 }),
+  ]));
+  const 列 = [
+    ...能.map(({ id, name, node }): 并进候选 => ({ id, name, node })),
+    ...灰.map(({ id, name, node, contractStatus }): 并进候选 => ({ id, name, node, 不能: 签了合同({ contractStatus }) ? 已签合同的项目不能合并 : 到商机订单不能合并 })),
+  ];
+  return { 列, 灰共 };
 }
 
 /* ───────────────────────── 执行 ───────────────────────── */

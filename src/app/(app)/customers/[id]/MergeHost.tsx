@@ -546,7 +546,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
     }).catch((e) => { if (这次 === 读次.current) set读错(动作出错话(e, "没读到合并预览，请再试一次")); });
   }
 
-  const A = 预?.留下?.name || 候选?.find((c) => c.id === 留下)?.name || "留下的项目";
+  const A = 预?.留下?.name || 候选?.列.find((c) => c.id === 留下)?.name || "留下的项目";
   const B = 预?.并掉?.name || 项目名 || "这个项目";
   const 撤回句 = `${撤回天数} 天内可在「历史变更」里撤回`;
   const 没开票话 = "我已核对：这两个项目都还没开票";
@@ -598,7 +598,9 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
   }
 
   // 已签合同、到商机 / 订单的也列，灰着不能选、旁边写原因（E-331 必改 5，别像功能坏了）；服务端照样拦
-  const 选项 = (候选 ?? []).map((c) => ({ value: c.id, label: c.name || "（没写名称）", node: c.node, 不能: c.不能 ?? "", disabled: !!c.不能 }));
+  const 列 = 候选?.列 ?? [];
+  const 没列的灰 = 候选 ? Math.max(0, 候选.灰共 - 列.filter((c) => c.不能).length) : 0;
+  const 选项 = 列.map((c) => ({ value: c.id, label: c.name || "（没写名称）", node: c.node, 不能: c.不能 ?? "", disabled: !!c.不能 }));
   const 都灰 = 选项.length > 0 && 选项.every((o) => o.disabled);
   return (
     <Modal
@@ -620,9 +622,9 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
         <p className="mrg-note">选留下的项目（同一位客户、同一位负责人、线索阶段在推的）：这个项目的沟通、附件、联系人都挪过去，它结束为重复线索；{撤回句}。</p>
         {!候选 && !候选错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
         {候选错 && <p role="alert" className="mrg-err">{候选错}</p>}
-        {候选 && 候选.length === 0 && <p className="mrg-empty" data-testid="pmerge-empty">这位客户名下没有同一位负责人在推的别的项目，没有能并进的。</p>}
+        {候选 && 列.length === 0 && <p className="mrg-empty" data-testid="pmerge-empty">这位客户名下没有同一位负责人在推的别的项目，没有能并进的。</p>}
         {都灰 && <p className="mrg-empty" data-testid="pmerge-allgrey">没有能选的项目，点开看各自为什么不能并。</p>}
-        {候选 && 候选.length > 0 && (
+        {候选 && 列.length > 0 && (
           <Select
             className="mrg-psel"
             aria-label="留下的项目"
@@ -641,6 +643,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
             data-testid="pmerge-pick"
           />
         )}
+        {没列的灰 > 0 && <p className="mrg-empty" data-testid="pmerge-greymore">灰着的项目共 {候选!.灰共} 个，还有 {没列的灰} 个没列出；它们都不能并，不影响上面能选的。</p>}
         {留下 && !预 && !读错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
         {留下 && 读错 && <p role="alert" className="mrg-err">{读错}</p>}
         {留下 && 预 && !预.能并 && <原因块 原因={预.原因} />}

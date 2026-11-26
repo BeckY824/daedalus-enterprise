@@ -98,8 +98,8 @@ describe("前提：谁能并、哪些拦", () => {
     expect(await 项目合并预览(prisma, a, b, 乙)).toMatchObject({ 能并: true, 原因: [] });
     expect(await 项目合并预览(prisma, a, b, 丙)).toMatchObject({ 能并: false, 原因: [expect.stringContaining("不是你负责的")] });
     expect(await 项目合并预览(prisma, a, b, 老板)).toMatchObject({ 能并: true });
-    expect(await 能并进的项目(prisma, b, 乙)).toEqual([expect.objectContaining({ id: a })]);
-    expect(await 能并进的项目(prisma, b, 丙)).toEqual([]);
+    expect((await 能并进的项目(prisma, b, 乙)).列).toEqual([expect.objectContaining({ id: a })]);
+    expect(await 能并进的项目(prisma, b, 丙)).toEqual({ 列: [], 灰共: 0 });
 
     const 丙的 = await 项目(丙.id, c);
     expect(await 项目合并预览(prisma, a, 丙的, 老板)).toMatchObject({ 能并: false, 原因: [expect.stringContaining("负责人不同")] });
@@ -150,7 +150,7 @@ describe("前提：谁能并、哪些拦", () => {
     const 起草 = await 项目(乙.id, c, { contractStatus: "起草中" });
     expect(await 项目合并预览(prisma, 起草, a, 乙)).toMatchObject({ 能并: true });
     // 候选（留下的那个）：已签合同的灰着列在后面、写原因（E-331 必改 5）；空着、起草中的照常能选
-    const 候 = await 能并进的项目(prisma, a, 乙);
+    const 候 = (await 能并进的项目(prisma, a, 乙)).列;
     expect(候).toEqual([expect.objectContaining({ id: 起草 }), expect.objectContaining({ id: 签了, 不能: "已签合同的项目不能合并" })]);
     expect(候[0].不能).toBeUndefined();
     // 项目详情「并进另一个项目」菜单：自己签了合同的灰着写原因（同一个 签了合同 判法）
@@ -175,7 +175,7 @@ describe("前提：谁能并、哪些拦", () => {
       if (r.种 !== "有") throw new Error("没读到项目");
       return r.props.p.并进;
     };
-    expect((await 能并进的项目(prisma, b, 乙)).map((x) => [x.id, x.不能])).toEqual(expect.arrayContaining([[商机, "到商机 / 订单的项目暂不能合并"], [订单, "到商机 / 订单的项目暂不能合并"]]));
+    expect((await 能并进的项目(prisma, b, 乙)).列.map((x) => [x.id, x.不能])).toEqual(expect.arrayContaining([[商机, "到商机 / 订单的项目暂不能合并"], [订单, "到商机 / 订单的项目暂不能合并"]]));
     expect(await 菜单(b)).toEqual({});
     // 列出来不等于放行：预览、执行照样拦
     expect((await 项目合并预览(prisma, 商机, b, 乙)).原因.join()).toContain("商机阶段");
@@ -183,7 +183,7 @@ describe("前提：谁能并、哪些拦", () => {
     expect(await raw.entCustomerMerge.count()).toBe(0);
     // 能选的排前
     const a = await 项目(乙.id, c);
-    const 候 = await 能并进的项目(prisma, b, 乙);
+    const 候 = (await 能并进的项目(prisma, b, 乙)).列;
     expect(候.map((x) => x.id)).toEqual([a, expect.any(String), expect.any(String)]);
     expect(候.slice(1).map((x) => x.id).sort()).toEqual([订单, 商机].sort());
     expect(候[0].不能).toBeUndefined();
@@ -191,10 +191,34 @@ describe("前提：谁能并、哪些拦", () => {
     await 项目(乙.id, c, { result: "线索流失" });
     await 项目(乙.id, c, { pooledAt: new Date() });
     await 项目(丙.id, c);
-    expect(await 能并进的项目(prisma, b, 乙)).toHaveLength(3);
+    expect((await 能并进的项目(prisma, b, 乙)).列).toHaveLength(3);
     // 一个在推的别的项目都没有：菜单灰
     const 孤 = await 项目(乙.id, await 客户(乙.id));
     expect(await 菜单(孤)).toEqual({ 灰: "这位客户名下没有同一位负责人在推的别的项目" });
+  });
+
+  it("[2a 待办 a] 候选不被灰的挤掉：同客户同负责人 60 个灰的 + 3 个能选的，3 个都在；灰的只列前 20 个、写明总数 60", async () => {
+    const c = await 客户(乙.id);
+    const b = await 项目(乙.id, c);
+    const 能 = [await 项目(乙.id, c), await 项目(乙.id, c, { contractStatus: "起草中" }), await 项目(乙.id, c, { contractStatus: null })];
+    // 灰的 60 个（商机阶段 / 已签合同各一半），updatedAt 都比能选的新：旧的 take: 50 会把能选的整个挤掉
+    const 新 = new Date(Date.now() + 3600_000);
+    for (let i = 0; i < 60; i++) {
+      await 项目(乙.id, c, i % 2 ? { phase: "商机", node: "需求确认", updatedAt: 新 } : { contractStatus: "已生效", updatedAt: 新 });
+    }
+    const r = await 能并进的项目(prisma, b, 乙);
+    expect(r.灰共).toBe(60);
+    const 能列 = r.列.filter((x) => !x.不能);
+    expect(能列.map((x) => x.id).sort()).toEqual([...能].sort());
+    // 能选的全排在灰的前面；灰的只列 20 个，都带原因
+    expect(r.列.slice(0, 3).every((x) => !x.不能)).toBe(true);
+    const 灰列 = r.列.filter((x) => x.不能);
+    expect(灰列).toHaveLength(20);
+    expect(灰列.every((x) => x.不能 === "已签合同的项目不能合并" || x.不能 === "到商机 / 订单的项目暂不能合并")).toBe(true);
+    // 别的负责人 / 结束的 / 公海的不进总数
+    await 项目(丙.id, c, { phase: "商机", node: "需求确认" });
+    await 项目(乙.id, c, { result: "线索流失", phase: "商机", node: "需求确认" });
+    expect((await 能并进的项目(prisma, b, 乙)).灰共).toBe(60);
   });
 
   it("业务线不同拦下（对齐第一批客户合并，2a 审查）；一边空着不拦", async () => {

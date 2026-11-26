@@ -12,7 +12,7 @@ let browser: Browser, bundle: string;
 const 长名 = "超长的测试项目名称用来看会不会撑破".repeat(2) + "出来的项目四"; // 40 个汉字
 const 动作 = `
   const 记=(...a)=>(window.__调??=[]).push(a);
-  export const 项目合并候选=async(id)=>{记('候选',id);return window.__候选??[]};
+  export const 项目合并候选=async(id)=>{记('候选',id);const 列=window.__候选??[];return {列,灰共:window.__灰共??列.filter(x=>x.不能).length}};
   export const 预览项目合并=async(a,b)=>{记('预览',a,b);return {ok:true,预览:window.__预览}};
   export const 合并项目=async(a,b,c)=>{记('合并',a,b,c);return window.__合并结果??{ok:true,mergeId:'pm1',条数:{}}};
   export const 撤回项目合并单=async(id)=>{记('撤回',id);return {ok:true,没还原:[]}};
@@ -199,10 +199,19 @@ for (const 宽 of [1280, 390]) it(`[E-331] ${宽}：已签合同、到商机 / �
     expect((await 调(page)).some((x) => x[0] === "预览")).toBe(false);
     expect(await page.getByTestId("pmerge-go").isDisabled()).toBe(true);
     expect(await page.getByTestId("pmerge-allgrey").count()).toBe(0);
+    expect(await page.getByTestId("pmerge-greymore").count()).toBe(0);
     expect(await 横滚(page)).toEqual([false, false]);
     await 截图(page, `并项目-灰候选-${宽}.png`);
     expect(错).toEqual([]);
   } finally { await page.close(); }
+  // 灰的只列前几个：总数比列出的多，写明还有几个没列出；没多的不写
+  const 多 = await open(宽, { __候选: [...候选, ...灰], __灰共: 62 });
+  try {
+    await 多.page.getByTestId("pmerge-greymore").waitFor();
+    expect(await 多.page.getByTestId("pmerge-greymore").innerText()).toBe("灰着的项目共 62 个，还有 60 个没列出；它们都不能并，不影响上面能选的。");
+    expect(await 横滚(多.page)).toEqual([false, false]);
+    expect(多.错).toEqual([]);
+  } finally { await 多.page.close(); }
   const 全灰 = await open(宽, { __候选: 灰 });
   try {
     await 全灰.page.getByTestId("pmerge-allgrey").waitFor();
