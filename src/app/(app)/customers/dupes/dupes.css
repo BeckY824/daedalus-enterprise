@@ -28,3 +28,5 @@
   .dp-ops .ant-btn { width: 100%; min-height: var(--hit-touch); }
   .dp-pager { align-self: center; }
 }
+.dp-link:hover { color: var(--brand-deep); }
+.dp-link:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: 4px; }

@@ -36,13 +36,20 @@ export function 对id(a: string, b: string): string {
 }
 
 export type 成员行 = { id: string; name: string; bizLine: string | null; salesOwnerId: string | null; 在公海: boolean; 建档: number };
-/** 太多：同名原始家数超过 一组最多 的名键不两两比（O(k²)），整组列出、对们为空，界面只提示逐家处理（12-15 C 复审 C3 建议 C） */
+/** 太多：同名家数（非管理员先粗筛，见 粗筛）超过 一组最多 的名键不两两比（O(k²)），整组列出、对们为空，界面只提示逐家处理（12-15 C 复审 C3 建议 C） */
 export type 组 = { 键: string; 们: 成员行[]; 对们: string[]; 太多?: boolean };
 
 const 有值 = (v: string | null | undefined) => !!v && v.trim() !== "";
 const 业务线冲突 = (a: 成员行, b: 成员行) => 有值(a.bizLine) && 有值(b.bizLine) && a.bizLine!.trim() !== b.bizLine!.trim();
 /** 这位是不是我负责、不在公海的 */
 const 我的 = (r: 成员行, 我: string) => !r.在公海 && r.salesOwnerId === 我;
+
+/** 超限的同名几家，非管理员先粗筛：只留我的 + 和我的某一家业务线不冲突、这一对没标过的（公海的不会是我的，两家都在公海的对本来就不列） */
+function 粗筛(们: 成员行[], 标着: Set<string>, 我: string): 成员行[] {
+  const 我们 = 们.filter((r) => 我的(r, 我));
+  if (!我们.length) return [];
+  return 们.filter((r) => 我的(r, 我) || 我们.some((m) => !业务线冲突(m, r) && !标着.has(对id(m.id, r.id))));
+}
 
 /**
  * 成组（纯函数，测试直接调）：同名键的几家里，两两看是不是要列的一对——业务线不冲突、没标着「不是同一个人」、不是两家都在公海（D 再列）；
@@ -60,18 +67,23 @@ export function 成组(行们: 成员行[], 标着: Set<string>, 看: { 管: boo
   const 出: 组[] = [];
   for (const [键, 们] of 按键) {
     if (们.length < 2) continue;
+    let 候 = 们;
     if (们.length > 一组最多) {
-      // 太多：不两两比。看得到的条件放宽成「有一家不在公海（管理员），不是管理员再要有一家是我的」
-      if (们.every((r) => r.在公海)) continue;
-      if (!看.管 && !们.some((r) => 我的(r, 看.我))) continue;
-      出.push({ 键, 们: [...们].sort((x, y) => x.建档 - y.建档 || (x.id < y.id ? -1 : 1)), 对们: [], 太多: true });
-      continue;
+      // 超限先粗筛（C5 必改 1）：管理员沿用原始家数；其余人只留我的 + 和我的某一家业务线不冲突、这一对没标过的，别人名下对不上的不算进家数、不露面
+      if (!看.管) 候 = 粗筛(们, 标着, 看.我);
+      if (候.length < 2) continue;
+      if (候.length > 一组最多) {
+        // 粗筛后仍超限才「太多」：不两两比。看得到的条件放宽成「有一家不在公海（管理员），不是管理员再要有一家是我的」（粗筛后必有我的）
+        if (候.every((r) => r.在公海)) continue;
+        出.push({ 键, 们: [...候].sort((x, y) => x.建档 - y.建档 || (x.id < y.id ? -1 : 1)), 对们: [], 太多: true });
+        continue;
+      }
     }
     const 对们: string[] = [];
     const 在 = new Set<string>();
-    for (let i = 0; i < 们.length; i++) {
-      for (let j = i + 1; j < 们.length; j++) {
-        const a = 们[i], b = 们[j];
+    for (let i = 0; i < 候.length; i++) {
+      for (let j = i + 1; j < 候.length; j++) {
+        const a = 候[i], b = 候[j];
         if (a.在公海 && b.在公海) continue;
         if (业务线冲突(a, b)) continue;
         if (!看.管 && !我的(a, 看.我) && !我的(b, 看.我)) continue;
@@ -81,7 +93,7 @@ export function 成组(行们: 成员行[], 标着: Set<string>, 看: { 管: boo
       }
     }
     if (!对们.length) continue;
-    出.push({ 键, 们: 们.filter((r) => 在.has(r.id)).sort((x, y) => x.建档 - y.建档 || (x.id < y.id ? -1 : 1)), 对们 });
+    出.push({ 键, 们: 候.filter((r) => 在.has(r.id)).sort((x, y) => x.建档 - y.建档 || (x.id < y.id ? -1 : 1)), 对们 });
   }
   const 最晚 = (g: 组) => Math.max(...g.们.map((r) => r.建档));
   return 出.sort((x, y) => 最晚(y) - 最晚(x) || (x.键 < y.键 ? -1 : x.键 > y.键 ? 1 : 0));
@@ -101,7 +113,7 @@ const 转行 = (r: 裸行): 成员行 => ({ id: r.id, name: r.name ?? "", bizLin
 // 按 id 取的几家（标、撤、合并放行）不带 NOT INDEXED：走主键，别顺表扫（12-15 C 审查建议 9）；整表读才用 整表SQL
 const 选列SQL = `SELECT c.id, c."name", c."bizLine", c."salesOwnerId", c."createdAt", EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) AS inPool FROM "Customer" c`;
 // 增量取行：带 deletedAt（软删的要从缓存移出）；updatedAt 没索引，扫一遍但只回改过的几行
-const 增量SQL = `SELECT c.id, c."name", c."bizLine", c."salesOwnerId", c."createdAt", c."deletedAt", EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) AS inPool FROM "Customer" c WHERE c."updatedAt" >= ?`;
+const 增量SQL = `SELECT c.id, c."name", c."bizLine", c."salesOwnerId", c."createdAt", c."deletedAt", length(trim(c."name")) >= 2 AS ok, EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) AS inPool FROM "Customer" c WHERE c."updatedAt" >= ?`;
 const 整表SQL = `SELECT c.id, c."name", c."bizLine", c."salesOwnerId", c."createdAt", EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id) AS inPool FROM "Customer" c NOT INDEXED WHERE c."deletedAt" IS NULL AND length(trim(c."name")) >= 2`;
 
 /**
@@ -158,11 +170,11 @@ async function 补底(db: 库, 旧: 底, 旧指: 指纹们, 新指: 指纹们): 
   const 池变 = 新指.池串 !== 旧指.池串;
   let 行们 = 旧.行们;
   if (客户变) {
-    const 增 = await db.$queryRawUnsafe<(裸行 & { deletedAt: unknown })[]>(`${增量SQL} LIMIT ${增量最多 + 1}`, 旧指.u);
+    const 增 = await db.$queryRawUnsafe<(裸行 & { deletedAt: unknown; ok: number | bigint | boolean })[]>(`${增量SQL} LIMIT ${增量最多 + 1}`, 旧指.u);
     if (增.length > 增量最多) return null;
     const 表 = new Map(旧.行们.map((r) => [r.id, r]));
     for (const r of 增) {
-      if (r.deletedAt != null || (r.name ?? "").trim().length < 2) 表.delete(r.id);
+      if (r.deletedAt != null || !Number(r.ok)) 表.delete(r.id);
       else 表.set(r.id, 转行(r));
     }
     行们 = [...表.values()];
@@ -171,7 +183,10 @@ async function 补底(db: 库, 旧: 底, 旧指: 指纹们, 新指: 指纹们): 
     const 池 = new Set((await db.$queryRawUnsafe<{ customerId: string }[]>(`SELECT "customerId" FROM "CustomerPool"`)).map((p) => p.customerId));
     行们 = 行们.map((r) => (r.在公海 === 池.has(r.id) ? r : { ...r, 在公海: 池.has(r.id) }));
   }
-  if (行们.length !== 新指.n) return null;
+  if (行们.length !== 新指.n) {
+    // 读指纹和增量查询之间有人新建 / 软删：先重读一次指纹再比，还对不上才整表重装（C5 建议 2）
+    if (行们.length !== (await 读指纹(db)).n) return null;
+  }
   缓存计数.增量++;
   return 建索引(行们);
 }
@@ -206,7 +221,8 @@ export type 清单成员 = {
   /** 清单上「合并」并进来那家要不要走第二批合并申请（同事负责的，系统管理员不用） */
   要申请: boolean;
 };
-export type 清单组 = { 键: string; 们: 清单成员[]; 留下: string; 并掉: string; 对们: string[]; 太多: boolean };
+/** 太多的组：们 为空、留下 / 并掉 为空串，只给 组名 和 家数（不带每家编号、负责人、项目数、建档；C5 必改 1）；普通组的 组名 是组里最早建档那家的全称 */
+export type 清单组 = { 键: string; 组名: string; 家数: number; 们: 清单成员[]; 留下: string; 并掉: string; 对们: string[]; 太多: boolean };
 export type 清单页 = { 组们: 清单组[]; 共: number; 页: number; 每页: number; 管: boolean };
 
 /**
@@ -229,15 +245,16 @@ function 挑留并(们: 清单成员[], 管: boolean, 对们: string[]): { 留�
 
 /** 把几组的成员补上负责人名、编号、项目数 */
 async function 补全(db: 库, 组们: 组[], 看: { 管: boolean; 我: string }): Promise<清单组[]> {
-  const ids = [...new Set(组们.flatMap((g) => g.们.map((r) => r.id)))];
-  if (!ids.length) return [];
-  const [客户们, 项目数们] = await 看全部(() => Promise.all([
+  const ids = [...new Set(组们.filter((g) => !g.太多).flatMap((g) => g.们.map((r) => r.id)))];
+  const [客户们, 项目数们] = ids.length ? await 看全部(() => Promise.all([
     db.customer.findMany({ where: { id: { in: ids } }, select: { id: true, customerNo: true, salesOwner: { select: { name: true } } } }),
     db.project.groupBy({ by: ["customerId"], where: { customerId: { in: ids }, deletedAt: null }, _count: { _all: true } }),
-  ]));
+  ])) : [[], []] as [{ id: string; customerNo: number | null; salesOwner: { name: string } | null }[], { customerId: string; _count: { _all: number } }[]];
   const 客 = new Map(客户们.map((c) => [c.id, c]));
   const 数 = new Map(项目数们.map((p) => [p.customerId, p._count._all]));
   return 组们.map((g) => {
+    const 组名 = (g.们[0]?.name ?? "").trim();
+    if (g.太多) return { 键: g.键, 组名, 家数: g.们.length, 们: [], 留下: "", 并掉: "", 对们: [], 太多: true };
     const 们 = g.们.map((r): 清单成员 => {
       const c = 客.get(r.id);
       const 我 = 我的(r, 看.我);
@@ -246,7 +263,7 @@ async function 补全(db: 库, 组们: 组[], 看: { 管: boolean; 我: string }
         在公海: r.在公海, 我的: 我, 建档: r.建档, 项目数: 数.get(r.id) ?? 0, 要申请: !看.管 && !我 && !r.在公海,
       };
     });
-    return { 键: g.键, 们, ...挑留并(们, 看.管, g.对们), 对们: g.太多 ? [] : g.对们, 太多: !!g.太多 };
+    return { 键: g.键, 组名, 家数: 们.length, 们, ...挑留并(们, 看.管, g.对们), 对们: g.对们, 太多: false };
   });
 }
 

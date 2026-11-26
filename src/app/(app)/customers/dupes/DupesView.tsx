@@ -94,20 +94,20 @@ export default function DupesView({ 清单, 已标, 只读原因 = null }: { 清
     能点 ? <Link href={`/customers/${m.id}`} className="dp-one dp-link" title={m.名}>{m.名}<LinkPending /></Link> : 一行(m.名);
 
   const 组行 = (g: 清单组) => {
-    const 留 = g.们.find((m) => m.id === g.留下)!;
-    const 并 = g.们.find((m) => m.id === g.并掉)!;
     if (g.太多) {
       // 超一组上限：不列成员、不给一键标（也省掉两两成对的开销），逐家去客户详情处理
       return (
         <li key={g.键} className="dp-row" data-testid="dupe-group-toomany">
           <div className="dp-head">
-            {一行(g.们[0].名, "dp-name")}
-            <span className="dp-cnt">同名 {g.们.length} 家，太多请逐家处理</span>
-            <Link href={`/customers?keyword=${encodeURIComponent(g.们[0].名)}`} className="dp-cnt dp-link" data-testid="dupe-toomany-link">去客户列表按名字找 ›<LinkPending /></Link>
+            {一行(g.组名, "dp-name")}
+            <span className="dp-cnt">同名 {g.家数} 家，太多请逐家处理</span>
+            <Link href={`/customers?keyword=${encodeURIComponent(g.组名)}`} className="dp-cnt dp-link" data-testid="dupe-toomany-link">去客户列表按名字找 ›<LinkPending /></Link>
           </div>
         </li>
       );
     }
+    const 留 = g.们.find((m) => m.id === g.留下)!;
+    const 并 = g.们.find((m) => m.id === g.并掉)!;
     return (
       <li key={g.键} className="dp-row" data-testid="dupe-group">
         <div className="dp-head">

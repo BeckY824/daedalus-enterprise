@@ -388,10 +388,41 @@ describe("名键底数据缓存（C 审查建议 2、3、9）", () => {
     const r = await 页(甲);
     expect(r.组们).toHaveLength(1);
     expect(r.组们[0]).toMatchObject({ 太多: true, 对们: [] });
-    expect(r.组们[0].们).toHaveLength(200);
-    expect((await 页(总)).组们[0]).toMatchObject({ 太多: true });
+    expect(r.组们[0]).toMatchObject({ 组名: "太多星河", 家数: 200, 们: [], 留下: "", 并掉: "" });
+    expect((await 页(总)).组们[0]).toMatchObject({ 太多: true, 家数: 200 });
     const 丙 = await 造人("bing", "丙");
     expect((await 页(丙)).组们).toHaveLength(0);
+  });
+
+  it("C5：我名下 1 家外贸 + 别人 35 家内贸同名：粗筛后只剩我一家，清单为空、详情提示 0、看不到同事的资料", async () => {
+    const 我家 = await 客户("粗筛星河", 甲.id, { bizLine: "外贸" });
+    await raw.customer.createMany({ data: Array.from({ length: 35 }, (_, i) => ({ name: "粗筛星河", phone: "", bizLine: "内贸", salesOwnerId: 乙.id, createdAt: new Date(Date.UTC(2026, 0, 3, 0, i)) })) });
+    expect((await 页(甲)).组们).toHaveLength(0);
+    expect(await 本客户疑似重复数(prisma, 甲, await 权限组织(), 我家)).toBe(0);
+    expect((await 页(总)).组们[0]).toMatchObject({ 太多: true, 家数: 36 });
+  });
+
+  it("C5：同名原始 35 家、对我能成对的只有 5 家：给普通组，可合并可标；业务线冲突的那 29 家不露面", async () => {
+    const 我家 = await 客户("粗筛北辰", 甲.id, { bizLine: "内贸" });
+    const 能 = [];
+    for (let i = 0; i < 5; i++) 能.push(await 客户("粗筛北辰", 乙.id, { bizLine: "内贸" }));
+    await raw.customer.createMany({ data: Array.from({ length: 29 }, (_, i) => ({ name: "粗筛北辰", phone: "", bizLine: "外贸", salesOwnerId: 乙.id, createdAt: new Date(Date.UTC(2026, 0, 3, 0, i)) })) });
+    const r = await 页(甲);
+    expect(r.组们).toHaveLength(1);
+    expect(r.组们[0].太多).toBe(false);
+    expect(r.组们[0].们.map((m) => m.id).sort()).toEqual([我家, ...能].sort());
+    expect(r.组们[0].对们).toHaveLength(5);
+    expect(await 本客户疑似重复数(prisma, 甲, await 权限组织(), 我家)).toBe(5);
+    expect(await 标不是同一个人(prisma, 甲, await 权限组织(), r.组们[0].们.map((m) => m.id))).toMatchObject({ ok: true });
+    expect((await 页(甲)).组们).toHaveLength(0);
+  });
+
+  it("C5：「太多」组页面数据里只有组名和家数，没有成员编号、负责人、项目数、建档", async () => {
+    await raw.customer.createMany({ data: Array.from({ length: 40 }, (_, i) => ({ name: "粗筛银河", phone: "", salesOwnerId: i < 2 ? 甲.id : 乙.id, createdAt: new Date(Date.UTC(2026, 0, 2, 0, i)) })) });
+    const g = (await 页(甲)).组们[0];
+    expect(g).toMatchObject({ 太多: true, 组名: "粗筛银河", 家数: 40, 们: [], 留下: "", 并掉: "", 对们: [] });
+    expect(Object.keys(g).sort()).toEqual(["家数", "们", "对们", "并掉", "留下", "组名", "键", "太多"].sort());
+    expect(JSON.stringify(g)).not.toMatch(/customerNo|NO\.|项目数|建档|负责人/);
   });
 
   it("按 id 取的几家（标、放行）不带 NOT INDEXED，只有整表读带；「已标」页签不成组", async () => {
