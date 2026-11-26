@@ -283,28 +283,27 @@ export function 记本地页(表: string, href: string, 当前: number, 每页: 
 }
 
 /*
-  客户详情「上一条 / 下一条」（E-332）：从客户列表 / 公海点进客户详情时，记下那张列表（种 + 当时的完整地址）和这一位在第几页；
-  按箭头换到的那几位也记进 位（id → 第几页），刷新、后退回到它们照样认。别处进来（项目、搜索、通知、直接开链接）一律清掉、不摆箭头。
-  和上面三份记忆同一个前缀，退出时 清列表记忆 一并清
+  客户详情「上一条 / 下一条」（E-332）：从客户列表点进客户详情时，记下那张列表当时的完整地址和这一位在第几页；
+  按箭头换到的那几位也记进 位（id → 第几页），刷新、后退回到它们照样认。别处进来（公海、项目、搜索、通知、直接开链接）一律清掉、不摆箭头。
+  这一期只做客户列表（客户口径）。和上面三份记忆同一个前缀，退出时 清列表记忆 一并清
 */
 const 详情来源键 = "crm:list-return-nav:v1";
-export type 详情来源种 = "客户" | "公海";
-export type 详情来源 = { 种: 详情来源种; href: string; 位: Record<string, number> };
+export type 详情来源 = { href: string; 位: Record<string, number> };
 const 位上限 = 300;
 
 export function 读详情来源(): 详情来源 | null {
   const v = 解析<Record<string, unknown>>(读(详情来源键));
-  const 种 = v.种;
-  if ((种 !== "客户" && 种 !== "公海") || !合法地址(种, v.href) || !v.位 || typeof v.位 !== "object") return null;
+  if (!合法地址("客户", v.href) || !v.位 || typeof v.位 !== "object" || Array.isArray(v.位)) return null;
   const 位: Record<string, number> = {};
   for (const [id, p] of Object.entries(v.位 as Record<string, unknown>)) if (typeof p === "number" && Number.isSafeInteger(p) && p > 0) 位[id] = p;
-  return { 种, href: v.href as string, 位 };
+  return { href: v.href as string, 位 };
 }
 
+/** 记下来源；位 只留最近的 位上限 位（一直按箭头翻也不无限长） */
 export function 记详情来源(v: 详情来源) {
   const ids = Object.keys(v.位);
   const 位 = ids.length > 位上限 ? Object.fromEntries(ids.slice(-位上限).map((id) => [id, v.位[id]])) : v.位;
-  写(详情来源键, JSON.stringify({ 种: v.种, href: v.href, 位 }));
+  写(详情来源键, JSON.stringify({ href: v.href, 位 }));
 }
 
 export function 清详情来源() {
@@ -320,16 +319,15 @@ export function 进来的前一页(pathname: string): { 从: string | null; 刷�
 }
 
 /**
- * 这一位客户详情算不算「从列表进来的」，算的话是哪张列表（纯函数，单测直接调）：
- *   - 前一页是客户列表 / 公海：新记一份，这一位在那张列表地址上的那一页
+ * 这一位客户详情算不算「从客户列表进来的」，算的话是哪张列表（纯函数，单测直接调）：
+ *   - 前一页是客户列表：新记一份，这一位在那张列表地址上的那一页
  *   - 前一页是客户详情（按箭头换过来的）或刷新 / 后退：记的里头有这一位才认
- *   - 别的（项目、搜索、首页、新开的链接）：不算
+ *   - 别的（公海、项目、搜索、首页、新开的链接）：不算
  */
 export function 定详情来源(id: string, 前: { 从: string | null; 刷新或后退: boolean }, 记的: 详情来源 | null, 地址们: 列表地址们): 详情来源 | null {
-  const 种 = 前.从 === 列表路径.客户 ? "客户" : 前.从 === 列表路径.公海 ? "公海" : null;
-  if (种) {
-    const href = 地址们[种] ?? 列表路径[种];
-    return { 种, href, 位: { [id]: 页码of(href) } };
+  if (前.从 === 列表路径.客户) {
+    const href = 地址们.客户 ?? 列表路径.客户;
+    return { href, 位: { [id]: 页码of(href) } };
   }
   const 从详情 = !!前.从 && /^\/customers\/[^/]+$/.test(前.从);
   if (记的 && 记的.位[id] && (从详情 || 前.刷新或后退)) return 记的;

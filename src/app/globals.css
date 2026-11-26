@@ -1228,6 +1228,19 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   /* 关掉的 ✕ 点击区放大到 36，用负外边距吃回去，那一行还是 24 高 */
   .mrg-landed-x { width: 36px; height: 36px; margin: -6px -6px -6px 0; }
 }
+/* 客户详情「上一条 / 下一条」（E-332，customers/[id]/CustomerStep.tsx）：「← 回到客户列表」那一行右端两颗箭头，不缩、不占新行；到头那颗灰着 */
+.rec-step { display: inline-flex; flex: none; align-items: center; gap: 2px; margin-left: auto; padding-left: var(--s2); }
+/* 并入提示也在这一行：它已经顶到右边，箭头紧跟在它后面 */
+.mrg-landed + .rec-step { margin-left: 0; }
+.rec-step-b { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--r-ctl); background: none;
+  color: var(--text-muted); font-size: 12px; text-decoration: none; cursor: pointer; transition: background-color var(--t-press) var(--ease), color var(--t-press) var(--ease); }
+a.rec-step-b:hover { background: var(--row-hover); color: var(--ink); }
+.rec-step-b:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+.rec-step-b:disabled { color: var(--text-faint); cursor: default; }
+@media (max-width: 767px) {
+  /* 手机点击区放大到 36，上下负外边距吃回去，那一行还是 24 高 */
+  .rec-step-b { width: 36px; height: 36px; margin: -6px 0; }
+}
 /* 回收站「已并入 → A」：恢复、彻底删除灰着，悬停说明 */
 .mrg-trash-into { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--brand); font-size: var(--fs-min); }
 .mrg-trash-acts { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
