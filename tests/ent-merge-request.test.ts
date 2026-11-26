@@ -527,6 +527,8 @@ describe("动作层（customers/merge-actions.ts）", () => {
           { userId: 丁.id, 名: "丁", 凭: ["项目负责人"], 项目: [], 项目数: 1 },
         ]);
         expect(预.预览.预览!.并排.map((x) => x.格)).not.toContain("业务线");
+        expect(JSON.stringify(预)).not.toContain("看不到的同事客户");
+        expect(预.预览.预览!.并排.find((x) => x.格 === "客户名称")!.并掉).toBe("同事负责的客户（号码撞上）");
         const 发 = await 发起客户合并申请(a, b, { 按号: await 号(b) });
         if (!发.ok) throw new Error(发.error);
         expect(JSON.stringify(发)).not.toMatch(/编造的机密项目/);
