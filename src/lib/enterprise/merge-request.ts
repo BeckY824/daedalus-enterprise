@@ -23,6 +23,7 @@ import { 在推项目条件 } from "@/lib/project/active";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 企业版 } from "./switch";
 import { 权限组织, 直属上级of, 是系统管理员of, type 组织 } from "./org";
+import { 只读角色, 只看的人 } from "./permissions";
 import { 接手问题, type 线 } from "./lead-assign";
 import { 是项目线 } from "./assign-line";
 import { 工作日数, 加天 } from "./tri-state";
@@ -402,6 +403,12 @@ async function 结束(tx: Tx, r: { id: string; fromId: string; intoId: string; b
 }
 
 /**
+ * 只读身份（只读管理员、销售教练、设了「只看某人」的切换视图）写不了合并申请：同意 / 拒绝、撤回、作废进事务前先拦，
+ * 判法同 merge-actions.ts 搜合并候选的 能写、customer-merge.ts 拦的原因（2b-3 审查单 A 第 4 条）
+ */
+const 只读身份 = (me: 合并人, org: 组织 | null) => !!org && (只读角色(me, org) || !!只看的人(org, me.id));
+
+/**
  * 同意人处理申请。同意：先看到没到期、再判四项和数据拦法（判出来就失效），都过了记下同意；最后一位同意了就执行。
  * 拒绝：整张申请「已拒绝」，可写一句原因
  */
@@ -412,6 +419,7 @@ export async function 处理合并申请(
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   if (!org) return { ok: false, error: "只有企业版有合并申请" };
+  if (只读身份(me, org)) return { ok: false, error: `你现在是只读身份，不能${结论}合并申请` };
   let 失效: string | null = null;
   let 该执行 = false;
   let 我的行 = "";
@@ -539,6 +547,7 @@ async function 执行申请(db: 库, requestId: string, 我的行: string, 现�
 /** 发起人撤回申请（只在待同意时） */
 export async function 撤回合并申请(db: 库, requestId: string, me: 合并人, 现在: Date = new Date()): Promise<结果> {
   if (!企业版()) return { ok: false, error: "只有企业版有合并申请" };
+  if (只读身份(me, await 权限组织())) return { ok: false, error: "你现在是只读身份，不能撤回合并申请" };
   try {
     return await 看全部(() => db.$transaction(async (tx) => {
       const r = await tx.entMergeRequest.findUnique({ where: { id: requestId } });
@@ -560,6 +569,7 @@ export async function 撤回合并申请(db: 库, requestId: string, me: 合并�
 export async function 作废合并申请(db: 库, requestId: string, me: 合并人, 现在: Date = new Date()): Promise<结果> {
   if (!企业版()) return { ok: false, error: "只有企业版有合并申请" };
   const org = await 权限组织();
+  if (只读身份(me, org)) return { ok: false, error: "你现在是只读身份，不能作废合并申请" };
   if (!org || !是系统管理员of(org, me.id)) return { ok: false, error: "只有系统管理员能作废合并申请" };
   try {
     return await 看全部(() => db.$transaction(async (tx) => {

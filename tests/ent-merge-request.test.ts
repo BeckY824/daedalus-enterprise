@@ -20,6 +20,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
+import { 只看某人键 } from "@/lib/enterprise/org-core";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 撤回合并, 合并预览 } from "@/lib/enterprise/customer-merge";
 import {
@@ -495,6 +496,35 @@ describe("动作层（customers/merge-actions.ts）", () => {
       expect(对).toMatchObject({ ok: true, 同意人: [{ userId: 丙.id }] });
     });
     expect(await raw.entMergeRequest.count()).toBe(1);
+  });
+
+  it("只读身份写不了合并申请（2b-3 审查单 A 第 4 条）：只读角色同意 / 拒绝、只看某人撤回、只看某人的系统管理员作废都被拦，申请状态不变", async () => {
+    const { id } = await 一张();
+    const 状态 = async () => (await 申请(id)).status;
+    // 同意人丙变成只读管理员
+    await raw.entMember.update({ where: { userId: 丙.id }, data: { bizRole: "admin" } });
+    忘掉企业版范围();
+    以(丙);
+    expect(await 处理客户合并申请(id, "同意")).toEqual({ ok: false, error: "你现在是只读身份，不能同意合并申请" });
+    expect(await 处理客户合并申请(id, "拒绝", "不是同一家")).toEqual({ ok: false, error: "你现在是只读身份，不能拒绝合并申请" });
+    expect(await 状态()).toBe(申请状态.待同意);
+    expect((await 申请(id)).approvers.every((x) => x.status === "待同意")).toBe(true);
+    // 发起人乙、系统管理员老板设了「只看某人」（切换视图）
+    await setSetting(只看某人键, { [乙.id]: 丁.id, [老板.id]: 丁.id });
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    以(乙);
+    expect(await 撤回客户合并申请(id)).toEqual({ ok: false, error: "你现在是只读身份，不能撤回合并申请" });
+    以(老板);
+    expect(await 作废客户合并申请(id)).toEqual({ ok: false, error: "你现在是只读身份，不能作废合并申请" });
+    expect(await 状态()).toBe(申请状态.待同意);
+    expect(await raw.auditLog.count({ where: { action: { in: ["merge-request-withdraw", "merge-request-void"] } } })).toBe(0);
+    // 去掉只看某人：照旧能撤
+    await setSetting(只看某人键, {});
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    以(乙);
+    expect(await 撤回客户合并申请(id)).toEqual({ ok: true });
   });
 
   it("同意 / 拒绝：不是同意人的被拒；同意人同意后执行合并", async () => {
