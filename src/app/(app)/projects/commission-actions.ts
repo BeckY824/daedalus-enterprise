@@ -81,7 +81,7 @@ export async function 存提成分配(projectId: string, 分: 分配) {
       const ids = [...new Set([...Object.keys(后), ...Object.keys(r.前 ?? {})])];
       const 名 = new Map((await 看全部(() => prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }))).map((u) => [u.id, u.name]));
       const 给出去 = Object.values(后).reduce((a, v) => a + Math.round(v * 100), 0) / 100;
-      const 说 = [...Object.entries(后).map(([uid, v]) => `${名.get(uid) ?? "已不在的成员"} ${v}%`), `组长 ${Math.round((100 - 给出去) * 100) / 100}%`].join("，");
+      const 说 = [...Object.entries(后).map(([uid, v]) => `${名.get(uid) ?? "已不在的成员"} ${v}%`), `项目负责人 ${Math.round((100 - 给出去) * 100) / 100}%`].join("，");
       await recordAudit({
         user: me, action: "update", entity: "EntCommission", entityId: projectId,
         summary: `项目「${r.name ?? ""}」的提成分配：${说}`,

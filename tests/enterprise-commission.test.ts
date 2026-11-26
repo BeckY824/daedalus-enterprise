@@ -154,7 +154,7 @@ describe("项目底价和分配", () => {
     expect(t.组员).toEqual([{ userId: 丙, name: "丙" }]);
     expect(await 记录()).toEqual([
       { entity: "EntCommission", entityId: 项目id, summary: "项目「一期」的项目底价：空 → 100000" },
-      { entity: "EntCommission", entityId: 项目id, summary: "项目「一期」的提成分配：丙 30%，组长 70%" },
+      { entity: "EntCommission", entityId: 项目id, summary: "项目「一期」的提成分配：丙 30%，项目负责人 70%" },
     ]);
   });
 
@@ -168,13 +168,13 @@ describe("项目底价和分配", () => {
   it("只能分给已进组的人：没同意邀请的、组长自己都拦", async () => {
     当(乙, "SALES");
     expect(await 存提成分配(项目id, { [丁]: 10 })).toMatchObject({ ok: false, error: expect.stringContaining("已经进组") });
-    expect(await 存提成分配(项目id, { [乙]: 10 })).toMatchObject({ ok: false, error: expect.stringContaining("组长自己") });
+    expect(await 存提成分配(项目id, { [乙]: 10 })).toMatchObject({ ok: false, error: expect.stringContaining("项目负责人自己") });
     expect(await prisma.entCommissionSplit.count()).toBe(0);
   });
 
   it("组长以外的销售（哪怕是组员）改不了分配、底价", async () => {
     当(丙, "SALES");
-    expect(await 存提成分配(项目id, { [丙]: 90 })).toMatchObject({ ok: false, error: expect.stringContaining("只有组长") });
+    expect(await 存提成分配(项目id, { [丙]: 90 })).toMatchObject({ ok: false, error: expect.stringContaining("只有项目负责人") });
     expect(await 存项目底价(项目id, 1)).toMatchObject({ ok: false });
     expect(await prisma.entCommissionSplit.count()).toBe(0);
     expect(await prisma.entCommission.count()).toBe(0);
