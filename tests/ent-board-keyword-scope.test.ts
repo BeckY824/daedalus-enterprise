@@ -41,7 +41,7 @@ import { resetDb } from "./reset";
 import { 都等齐 } from "./query-log";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { 读项目列表, 绑定名单长度, 设客户名单一次取全线 } from "@/lib/project/list";
+import { 读项目列表, 绑定名单长度, 测试用设客户名单一次取全线, 测试用设一次取全行数上限 } from "@/lib/project/list";
 import { 客户页看板条件 } from "@/app/(app)/customers/board-query";
 import { 客户筛选条件, 只按页签 } from "@/app/(app)/customers/query";
 import { 市场成员key } from "@/lib/enterprise/market";
@@ -59,10 +59,11 @@ async function 数句<T>(fn: () => Promise<T>): Promise<{ 句: { query: string; 
   try { const r = await fn(); await 都等齐(记.们, 记.句); return { 句: 记.句, r }; } finally { 记.开 = false; }
 }
 
-/** 一次客户页看板：新 = 现在的写法（收窄的名单 + 一句取全）；老 = 不收窄的名单 + 分列各取（改前的写法） */
-async function 看板(谁: 人, sp: Record<string, string>, 新: boolean, 要列表页 = false, 量?: { 句: { query: string; 参: number }[] }) {
+/** 一次客户页看板：新 = 现在的写法（收窄的名单 + 一句取全）；老 = 不收窄的名单 + 分列各取（改前的写法）；上限 = 一次取全最多几个项目（超过退回分列各取） */
+async function 看板(谁: 人, sp: Record<string, string>, 新: boolean, 要列表页 = false, 量?: { 句: { query: string; 参: number }[] }, 上限 = 50000) {
   return 作为(谁, async () => {
-    设客户名单一次取全线(新 ? 0 : 1e9);
+    测试用设客户名单一次取全线(新 ? 0 : 1e9);
+    测试用设一次取全行数上限(上限);
     try {
       const b = await 客户页看板条件(sp);
       const { phase: _p, node: _n, page: _pg, pageSize: _ps, sort: _s, ...客户的 } = sp;
@@ -78,7 +79,7 @@ async function 看板(谁: 人, sp: Record<string, string>, 新: boolean, 要列
         行: d.行.map((r) => r.id),
         名单: 绑定名单长度(客户),
       };
-    } finally { 设客户名单一次取全线(2000); }
+    } finally { 测试用设客户名单一次取全线(2000); 测试用设一次取全行数上限(50000); }
   });
 }
 
@@ -212,5 +213,47 @@ describe("查询条数、绑定参数", () => {
       expect(带名单(新.句).length).toBeLessThanOrEqual(1);
     }
     console.log(报.join("\n"));
+  });
+});
+
+describe("一次取全的上限、金额合计取整", () => {
+  const 句们 = () => ({ 句: [] as { query: string; 参: number }[] });
+  const 有分列groupBy = (句: { query: string }[]) => 句.some((s) => /GROUP BY[\s\S]*phase/i.test(s.query));
+
+  it("匹配项目超过上限：退回分列各取，结果和一次取全一样", async () => {
+    for (const 谁 of ["管理员", "总管", "甲"]) for (const 要列表页 of [false, true]) {
+      const sp = { keyword: "测试客户", page: "2", pageSize: "10" };
+      const 量全 = 句们(), 量退 = 句们();
+      const 全 = await 看板(人们[谁], sp, true, 要列表页, 量全);
+      const 退 = await 看板(人们[谁], sp, true, 要列表页, 量退, 3);
+      expect(全.总数, 谁).toBeGreaterThan(3);
+      expect(退, `${谁} ${要列表页}`).toEqual(全);
+      // 一次取全不走列头 groupBy；超过上限的那次走了
+      expect(有分列groupBy(量全.句), 谁).toBe(false);
+      expect(有分列groupBy(量退.句), 谁).toBe(true);
+    }
+  });
+
+  it("非整数金额：一次取全（内存相加）和分列各取（库里 SUM）合计一样，按分取整", async () => {
+    const 甲客 = await prisma.customer.findFirstOrThrow({ where: { name: "甲测试客户1" } });
+    // 单开一个币种（这一组只有这几个）；一次取全按默认序（更新时间新的在前）逐行相加 = 照这个序相加 = 1235.2299999999998，不取整就和库里 SUM 对不上
+    const 金额们 = [0.1, 0.2, 0.3, 1234.56, 0.07];
+    expect(金额们.reduce((n, x) => n + x, 0)).not.toBe(1235.23);
+    const 起 = Date.now();
+    await prisma.project.createMany({
+      data: 金额们.map((amount, i) => ({ name: `甲小数${i}`, customerId: 甲客.id, ownerId: 人们.甲.id, creatorId: 人们.甲.id, phase: "商机", node: "方案敲定", currency: "EUR", amount, updatedAt: new Date(起 - i * 60_000) })),
+    });
+    for (const 谁 of ["管理员", "经理", "甲"]) {
+      const 老 = await 看板(人们[谁], { keyword: "测试客户" }, false);
+      const 新 = await 看板(人们[谁], { keyword: "测试客户" }, true);
+      const 退 = await 看板(人们[谁], { keyword: "测试客户" }, true, false, undefined, 3);
+      const { 名单: _a, ...老比 } = 老;
+      const { 名单: _b, ...新比 } = 新;
+      const { 名单: _c, ...退比 } = 退;
+      expect(新比, 谁).toEqual(老比);
+      expect(退比, 谁).toEqual(老比);
+      // 方案敲定 + EUR 那一组：5 个、合计到分
+      expect(新.合计, 谁).toContain("商机|方案敲定|null|EUR|5|1235.23");
+    }
   });
 });

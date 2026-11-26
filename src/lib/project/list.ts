@@ -196,9 +196,18 @@ export function 绑定名单长度(w: unknown): number {
   for (const [k, v] of Object.entries(w)) n += (k === "in" || k === "notIn") && Array.isArray(v) ? v.length : 绑定名单长度(v);
   return n;
 }
-/** 名单短于这个数（窄词）照原来的分列各取；测试里可以调小（设客户名单一次取全线） */
+/** 名单短于这个数（窄词）照原来的分列各取；测试里可以调小（测试用设客户名单一次取全线） */
 let 客户名单一次取全线 = 2000;
-export function 设客户名单一次取全线(n: number) { 客户名单一次取全线 = n; }
+/**
+  一次取全最多取这么多个项目：看全部的人搜宽词、匹配几万个项目时，一次取全会把几万行搬进内存，
+  c2 只有 8G、按 30 人同时用算，一个请求不能占这么多；超过就退回分列各取（列头 groupBy、每列 take，内存不随匹配数涨）。
+  取 上限 + 1 行来判断，不另数一遍（另数一遍又要把整串编号绑一次）。测试里可以调小（测试用设一次取全行数上限）
+*/
+let 一次取全行数上限 = 50000;
+export function 测试用设客户名单一次取全线(n: number) { 客户名单一次取全线 = n; }
+export function 测试用设一次取全行数上限(n: number) { 一次取全行数上限 = n; }
+/** 看板列头的金额合计按分取整：一次取全在内存里逐行相加、分列各取是库里 SUM，相加顺序不同、非整数金额末位会差，取整后两条路一样 */
+const 到分 = (x: number) => Math.round(x * 100) / 100;
 function 排序of(排: 项目排序): Prisma.ProjectOrderByWithRelationInput[] {
   if (排 === "created-asc") return [{ createdAt: "asc" }, { id: "asc" }];
   if (排 === "created-desc") return [{ createdAt: "desc" }, { id: "desc" }];
@@ -688,6 +697,10 @@ export async function 读项目列表(
   };
   // 收回次数、3 天内回公海：库里写不出，取回全部候选（只要几列）逐个算，再按序切这一页（后筛候选）
   const 后筛 = !!收回筛 || 卡 === "due-soon";
+  // 宽词看板先试一次取全（按默认序只取分列要的几列，最多 上限 + 1 行）：超过 一次取全行数上限 退回最后那条分列各取的路
+  const 全 = !后筛 && 看板 && 绑定名单长度(sp.客户) > 客户名单一次取全线
+    ? await prisma.project.findMany({ where, orderBy: 默认序, take: 一次取全行数上限 + 1, select: { id: true, phase: true, node: true, result: true, currency: true, amount: true } })
+    : null;
   if (后筛) {
     const 剩 = await 后筛候选(条件, 排, 超时线们);
     总数 = 剩.length;
@@ -704,14 +717,13 @@ export async function 读项目列表(
       组.set(k, g);
     }
     看板合计 = [...组.values()];
-  } else if (看板 && 绑定名单长度(sp.客户) > 客户名单一次取全线) {
+  } else if (全 && 全.length <= 一次取全行数上限) {
     /*
-      客户页看板筛的客户带着一长串编号（宽关键词，customers/board-query.ts → 客户关键词条件 的编号名单，11-26）：
+      客户页看板筛的客户带着一长串编号（宽关键词，customers/board-query.ts → query.ts 看得到的关键词条件，11-26）：
       下面那条路 groupBy、每个大列、带 include 的各一句，每句都把这串编号重新绑一遍（上万个参数、每句一两百 ms）。
       这里一句按默认序只取分列要的几列，列头的数、每列前 每列条数 个都在内存里算（和下面那条路同一个序、同一个落列），
       卡片另按 id 一句取（按序取行，只几十个 id）；列表页那几行（能分配时）照下面那条路的写法取
     */
-    const 全 = await prisma.project.findMany({ where, orderBy: 默认序, select: { id: true, phase: true, node: true, result: true, currency: true, amount: true } });
     const 组 = new Map<string, 看板合计组>();
     for (const r of 全) {
       const k = JSON.stringify([r.phase, r.node, r.result, r.currency]);
@@ -772,6 +784,7 @@ export async function 读项目列表(
       大列.forEach((k, i) => 列ids!.set(k, 大ids[i]));
     }
   }
+  看板合计 = 看板合计.map((g) => ({ ...g, amount: 到分(g.amount) }));
   // 列表页的行 + 看板每列的卡片：同一个项目只取一次
   const 要的ids = [...new Set([...列表ids, ...(列ids ? [...列ids.values()].flat() : [])])];
   const rows: 行带include[] = 直接取 ?? (await 按序取行(要的ids, include, 条件.今));
