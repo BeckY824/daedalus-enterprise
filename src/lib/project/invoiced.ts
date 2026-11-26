@@ -14,24 +14,17 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能标已开票, 取消已开票不给, type 谁 } from "@/lib/enterprise/permissions";
 import { dayjs } from "@/lib/utils";
+import { 已开票撤回天数, 不能标已开票话, type 已开票格 } from "./invoiced-words";
+
+export { 已开票撤回天数, 不能标已开票话, 已开票不能合并, 已开票拦合并, type 已开票格 } from "./invoiced-words";
 
 type 结果 = { ok: true; 变了: boolean } | { ok: false; error: string };
 
-/** 撤回期限（E-363 四②「30 天内误勾只有系统管理员能撤回，过 30 天谁都不能改」） */
-export const 已开票撤回天数 = 30;
 /** 操作日志的动作名：勾上 / 撤回（AuditTab 动作叫法、历史变更项目块都认这两个） */
 export const 已开票动作 = "invoice";
 export const 撤回已开票动作 = "invoice-undo";
 export const 已开票动作们 = [已开票动作, 撤回已开票动作] as const;
 
-/** 不能勾的那一句（能标已开票 为假时） */
-export const 不能标已开票话 = "只有系统管理员或被指定「可标已开票」的人能勾";
-/** 项目合并拦话：「X」已开票，不能合并（和「已签合同，不能合并」同一个说法） */
-export const 已开票不能合并 = (名: string) => `「${名 || "未命名项目"}」已开票，不能合并`;
-/** 项目合并用：两边任一勾了都拦，回拦话（空 = 不拦）。project-merge.ts 阶段和钱拦 里和已签合同并列调 */
-export function 已开票拦合并(p: { name: string; invoiced?: boolean | null }): string[] {
-  return p.invoiced ? [已开票不能合并(p.name)] : [];
-}
 
 /** 勾的时刻写成「YYYY-MM-DD HH:mm」（按进程时区，生产是北京时间）：历史变更、操作日志摘要里用 */
 const 时刻字 = (d: Date) => dayjs(d).format("YYYY-MM-DD HH:mm");
@@ -73,8 +66,6 @@ export async function 勾已开票(me: 谁 & { name: string }, projectId: string
   });
 }
 
-/** 项目详情要的那一格：勾没勾、谁何时、我能不能勾、能不能取消（不能 = 那一句，悬停写） */
-export type 已开票格 = { 勾了: boolean; 谁: string | null; 何时: string | null; 能勾: boolean; 取消不给: string | null };
 
 /** 项目详情 load.ts 用：org 由调用方传（同一次渲染已经读过） */
 export function 已开票格of(me: 谁, org: Parameters<typeof 能标已开票>[1], p: { invoiced: boolean; invoicedAt: Date | null }, 谁勾的: string | null, 现在: Date = new Date()): 已开票格 {

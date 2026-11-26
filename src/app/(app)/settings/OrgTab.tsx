@@ -16,7 +16,7 @@ import { 父关着打不开 } from "@/lib/enterprise/switch-table";
 import { 字段, 字段名们, 字段级别of, 推荐字段配置, 教练字段级别, type 字段配置, type 字段名 } from "@/lib/enterprise/field-perm-table";
 import { 设置项, 设置项们, 谁能改, type 改权限配置, type 能改的人, type 设置项名 } from "@/lib/enterprise/edit-perm-table";
 import { 市场部门们 } from "@/lib/enterprise/market";
-import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, 设市场部门, 设只看某人, 设回收站副手, 设无主线索复核人, type 成员改动 } from "./org-actions";
+import { 建部门, 改部门, 删部门, 设成员, 设规则, 设字段权限, 设改权限, 设市场部门, 设只看某人, 设回收站副手, 设可标已开票, 设无主线索复核人, type 成员改动 } from "./org-actions";
 import { 设不设配额, type 分配情况 } from "../leads/assign-actions";
 import LeadAssignCard from "./LeadAssignCard";
 import LineDeptCard from "./LineDeptCard";
@@ -54,6 +54,8 @@ export type 组织架构 = {
   回收站副手?: string[];
   /** 无主线索复核人（11-18）：市场复核找不到建的人、客户创建人那两条链时由他复核；null = 没设，交系统管理员 */
   无主线索复核人?: string | null;
+  /** 可标已开票（12-15 第三批）：系统管理员之外能勾项目「已开票」的人；取消仍只有系统管理员（30 天内） */
+  可标已开票?: string[];
 };
 type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string; 要确认?: string }>;
 
@@ -250,6 +252,10 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const [副手草稿, set副手草稿] = useState<{ 基于: string; 人: string[] } | null>(null);
   const 副手 = 副手草稿 && 副手草稿.基于 === 页面副手 ? 副手草稿.人 : (value.回收站副手 ?? []);
   const 副手改了 = JSON.stringify(副手) !== 页面副手;
+  const 页面开票 = JSON.stringify(value.可标已开票 ?? []);
+  const [开票草稿, set开票草稿] = useState<{ 基于: string; 人: string[] } | null>(null);
+  const 开票人 = 开票草稿 && 开票草稿.基于 === 页面开票 ? 开票草稿.人 : (value.可标已开票 ?? []);
+  const 开票改了 = JSON.stringify(开票人) !== 页面开票;
   const 页面无主 = value.无主线索复核人 ?? null;
   const [无主草稿, set无主草稿] = useState<{ 基于: string | null; 人: string | null } | null>(null);
   const 无主 = 无主草稿 && 无主草稿.基于 === 页面无主 ? 无主草稿.人 : 页面无主;
@@ -472,6 +478,20 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
           <Space wrap style={{ marginTop: 12 }}>
             <SaveButton disabled={!副手改了 || 忙("副手")} data-testid="org-trash-helpers-save" 做={() => 存("副手", () => 设回收站副手(副手))}>保存</SaveButton>
             <Button disabled={!副手改了 || 忙("副手")} onClick={() => set副手草稿(null)}>放弃修改</Button>
+          </Space>
+        )}
+      </Card>
+
+      <Card title="可标已开票" extra={只看} data-testid="org-invoice-markers" data-set-find="已开票 开票">
+        <p className="muted">系统管理员之外，这些人也能在项目上勾「已开票」（勾了的项目不能合并）；撤回仍只有系统管理员，限勾上后 30 天内，过了 30 天谁都不能改。只读管理员、销售教练、设了「只看某人」的人不能选。</p>
+        <Select mode="multiple" allowClear className="org-pick" aria-label="可标已开票" disabled={!能改 || 忙("开票")}
+          placeholder="没有（只有系统管理员能勾）" optionFilterProp="label"
+          value={开票人} onChange={(v: string[]) => set开票草稿({ 基于: 页面开票, 人: v })}
+          options={人选项} />
+        {能改 && (
+          <Space wrap className="org-save-row">
+            <SaveButton disabled={!开票改了 || 忙("开票")} data-testid="org-invoice-markers-save" 做={() => 存("开票", () => 设可标已开票(开票人))}>保存</SaveButton>
+            <Button disabled={!开票改了 || 忙("开票")} onClick={() => set开票草稿(null)}>放弃修改</Button>
           </Space>
         )}
       </Card>

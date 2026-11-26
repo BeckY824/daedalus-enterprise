@@ -216,6 +216,7 @@ export default async function SettingsBody() {
           只看某人: Object.fromEntries(org.只看某人 ?? []),
           回收站副手: [...(org.回收站副手 ?? [])],
           无主线索复核人: org.无主线索复核人 ?? null,
+          可标已开票: [...(org.可标已开票 ?? [])],
         };
       })()
     : null;
