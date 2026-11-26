@@ -705,10 +705,10 @@ export default function CustomersView({
   const 选排序 = (键: string, 方向: "asc" | "desc") =>
     apply({ sort: 键 ? `${键}-${方向}` : "", ...(键 === "amount" ? { sortCurrency: f.sortCurrency || b.currency } : {}) });
   const 排序菜单项: MenuProps["items"] = [
-    ...排序字段们.map((x) => ({ key: x.键, label: x.名, icon: 当前排序字段?.键 === x.键 ? <CheckOutlined /> : <span style={{ display: "inline-block", width: 14 }} /> })),
+    ...排序字段们.map((x) => ({ key: x.键, label: x.名, icon: 当前排序字段?.键 === x.键 ? <CheckOutlined /> : <span className="cust-sort-gap" /> })),
     { type: "divider" as const },
-    { key: "dir-asc", label: "升序", disabled: !当前排序字段, icon: 当前排序方向 === "asc" ? <CheckOutlined /> : <span style={{ display: "inline-block", width: 14 }} /> },
-    { key: "dir-desc", label: "降序", disabled: !当前排序字段, icon: 当前排序方向 === "desc" ? <CheckOutlined /> : <span style={{ display: "inline-block", width: 14 }} /> },
+    { key: "dir-asc", label: "升序", disabled: !当前排序字段, icon: 当前排序方向 === "asc" ? <CheckOutlined /> : <span className="cust-sort-gap" /> },
+    { key: "dir-desc", label: "降序", disabled: !当前排序字段, icon: 当前排序方向 === "desc" ? <CheckOutlined /> : <span className="cust-sort-gap" /> },
     { type: "divider" as const },
     { key: "default", label: "默认排序", disabled: !当前排序字段 },
   ];
