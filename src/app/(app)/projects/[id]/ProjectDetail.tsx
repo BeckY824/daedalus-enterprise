@@ -67,7 +67,7 @@ import { 定时时刻格 } from "@/components/ScheduleAssignInput";
 import { 改定时分配, 取消定时分配, 定时分配现在分 } from "../../leads/schedule-actions";
 import { 指定回复文字, 北京墙钟转时刻, 回复晚于回收, 短时刻, 客户在谁名下话 } from "@/lib/project/time-fields";
 import { 成交需求上限, 详细地址上限, 详细地址提示, 项目区域, type 项目成交钱 } from "@/lib/project/profile-rules";
-import { 已开票撤回天数, 不能标已开票话, type 已开票格 } from "@/lib/project/invoiced-words";
+import { 已开票撤回天数, 不能标已开票话, type 已开票格, type 已开票记录 } from "@/lib/project/invoiced-words";
 import { 合同状态们, 痛点标注上限, 备货状态们, 物流单号上限, 默认运输中, type 合同状态, type 备货状态 } from "@/lib/project/proj-fields";
 import { 备注上限 } from "@/lib/project/wizard";
 import { 文字格改动, 沟通正文改动, type 钱格值 } from "@/lib/project/inline-edit";
@@ -289,6 +289,8 @@ export type 项目详情 = {
 const 行样: React.CSSProperties = { display: "flex", gap: 12, alignItems: "center", marginBottom: 8, minWidth: 0 };
 /** 「已开票」那一格后面的「谁 · 何时 / 未开票」灰字（行内样式闸门：用模块常量） */
 const 开票人样: React.CSSProperties = { color: "var(--text-muted)" };
+/** 已开票变更记录一条：「何时 谁 标为已开票（负责人 X；原来 Y 何时 勾的）」 */
+const 开票记录字 = (r: 已开票记录) => `${fmtDateTime(r.何时)} ${r.谁} ${r.文}${r.因.length ? `（${r.因.join("；")}）` : ""}`;
 /** 「已开票」后面那句：勾了写谁 · 何时，没勾写「未开票」 */
 const 开票字 = (g: 已开票格) => (g.勾了 ? [g.谁 ?? "已不在的成员", g.何时 ? fmtDateTime(g.何时) : null].filter(Boolean).join(" · ") : "未开票");
 /** 详情页顶上提示条和下面隔开（行内样式闸门：新加的提示条用模块常量） */
@@ -1044,7 +1046,7 @@ export default function ProjectDetail({
         ? [
           { 标: "不能并", 话: "勾上后这个项目不能做项目合并", 级: "警" },
           { 标: "撤回", 话: `${已开票撤回天数} 天内只有系统管理员能撤回，过了 ${已开票撤回天数} 天谁都不能改`, 级: "危" },
-          { 标: "留痕", 话: "谁勾的、何时记进历史变更和操作日志" },
+          { 标: "留痕", 话: "谁勾的、何时、项目负责人是谁记进历史变更和操作日志，负责人打开项目看得到" },
         ]
         : [
           { 标: "之后", 话: "撤回后这个项目又能合并；要标回来得重新勾" },
@@ -1532,7 +1534,7 @@ export default function ProjectDetail({
         <div {...资料行()} data-testid="proj-invoiced">
           <span {...键}>已开票</span>
           {/* 悬停原因挂在外面这层：灰着的 input 不出 title */}
-          <span title={p.已开票.勾了 ? p.已开票.取消不给 ?? undefined : p.已开票.能勾 ? undefined : p.已开票.不能勾因 ?? 不能标已开票话} data-testid="proj-invoiced-box">
+          <span title={p.已开票.勾了 ? p.已开票.取消不给 ?? undefined : p.已开票.能勾 ? undefined : 不能标已开票话} data-testid="proj-invoiced-box">
             <Checkbox
               aria-label="已开票"
               checked={p.已开票.勾了}
@@ -1541,6 +1543,18 @@ export default function ProjectDetail({
             />
           </span>
           <span className="proj-one" style={开票人样} title={开票字(p.已开票)} data-testid="proj-invoiced-by">{开票字(p.已开票)}</span>
+          {/* 变更记录（E-373 ③）：最近几条谁勾 / 撤回、负责人是谁；负责人打开自己的项目就看得到别人勾的。点开（手机没有悬停），框样式同「完成节点」补填框 */}
+          {!!p.已开票.记录?.length && (
+            <Popover trigger="click" placement="bottomRight" arrow={false} destroyOnHidden classNames={{ root: "pd-fill-pop" }}
+              content={(
+                <div className="pd-fill-pop-body" data-testid="proj-invoiced-log-list">
+                  <div className="pd-fill-pop-t">已开票变更记录（最近 {p.已开票.记录.length} 条）</div>
+                  {p.已开票.记录.map((r) => <div key={r.id} className="muted">{开票记录字(r)}</div>)}
+                </div>
+              )}>
+              <Button type="link" size="small" data-testid="proj-invoiced-log" aria-haspopup="dialog">变更记录</Button>
+            </Popover>
+          )}
         </div>
       )}
       {p.企业版 && (

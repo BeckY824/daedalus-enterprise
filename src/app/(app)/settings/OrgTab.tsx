@@ -7,7 +7,7 @@ import { Button, Card, Checkbox, Input, Select, Space, Switch, Tag } from "antd"
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
-import { 角色名, 业务角色, 部门最多层数, 角色组合问题, 是只读角色们 } from "@/lib/sync/dept-policy";
+import { 角色名, 业务角色, 部门最多层数, 角色组合问题 } from "@/lib/sync/dept-policy";
 import BizRoleSelect, { 总管级 } from "./BizRoleSelect";
 import { 部门树, type 组织部门 } from "@/lib/enterprise/org-tree";
 import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
@@ -56,6 +56,8 @@ export type 组织架构 = {
   无主线索复核人?: string | null;
   /** 可标已开票（12-15 第三批）：系统管理员之外能勾项目「已开票」的人；取消仍只有系统管理员（30 天内） */
   可标已开票?: string[];
+  /** 能进「可标已开票」名单的人（E-373 ②：系统管理员和财务部门的，服务端 permissions.ts 能进开票名单 算好）；不在里面的不出现在下拉，已在名单里的标「不能标，请去掉」 */
+  可标已开票候选?: string[];
 };
 type 结果 = Promise<{ ok: boolean; error?: string; 提示?: string; 要确认?: string }>;
 
@@ -256,10 +258,10 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const [开票草稿, set开票草稿] = useState<{ 基于: string; 人: string[] } | null>(null);
   const 开票人 = 开票草稿 && 开票草稿.基于 === 页面开票 ? 开票草稿.人 : (value.可标已开票 ?? []);
   const 开票改了 = JSON.stringify(开票人) !== 页面开票;
-  // 可标已开票的候选：只读管理员、销售教练、设了「只看某人」的人不能选（服务端 设可标已开票 照拦）。
-  // 已经在名单里的（选进去之后才改了角色 / 设了只看某人）照留一项、标明，好让人去掉，不显示成一串编号
-  const 不能标开票 = (m: 组织架构["成员"][number]) => 是只读角色们(拆角色(m.bizRole)) || !!只看表[m.id];
-  const 开票选项 = value.成员.filter((m) => !不能标开票(m) || 开票人.includes(m.id)).map((m) => ({ value: m.id, label: 不能标开票(m) ? `${m.name}（不能标，请去掉）` : m.name }));
+  // 可标已开票的候选（E-373 ②）：只列系统管理员和财务部门的人（服务端算好的 可标已开票候选，设可标已开票 照拦）。
+  // 已经在名单里、后来不再符合的（调出了财务、改了角色、设了只看某人）照留一项、标明，好让人去掉，不显示成一串编号
+  const 开票候选 = new Set(value.可标已开票候选 ?? []);
+  const 开票选项 = value.成员.filter((m) => 开票候选.has(m.id) || 开票人.includes(m.id)).map((m) => ({ value: m.id, label: 开票候选.has(m.id) ? m.name : `${m.name}（不能标，请去掉）` }));
   const 页面无主 = value.无主线索复核人 ?? null;
   const [无主草稿, set无主草稿] = useState<{ 基于: string | null; 人: string | null } | null>(null);
   const 无主 = 无主草稿 && 无主草稿.基于 === 页面无主 ? 无主草稿.人 : 页面无主;
@@ -487,7 +489,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
       </Card>
 
       <Card title="可标已开票" extra={只看} data-testid="org-invoice-markers" data-set-find="已开票 开票">
-        <p className="muted">系统管理员之外，这些人也能在项目上勾「已开票」（勾了的项目不能合并）；撤回仍只有系统管理员，限勾上后 30 天内，过了 30 天谁都不能改。只读管理员、销售教练、设了「只看某人」的人不能选。</p>
+        <p className="muted">系统管理员之外，这些人也能在项目上勾「已开票」，看得到的项目都能勾（勾了的项目不能合并）；撤回仍只有系统管理员，限勾上后 30 天内，过了 30 天谁都不能改。只能选系统管理员和财务部门（部门名含「财务」）的人。点名字上的 × 再保存就收回，他之前勾的照旧留在项目和历史变更里。</p>
         <Select mode="multiple" allowClear className="org-pick" aria-label="可标已开票" disabled={!能改 || 忙("开票")}
           placeholder="没有（只有系统管理员能勾）" optionFilterProp="label"
           value={开票人} onChange={(v: string[]) => set开票草稿({ 基于: 页面开票, 人: v })}

@@ -19,7 +19,7 @@ import { 规则开着, 规则名们 } from "@/lib/enterprise/rules";
 import { 同名带邮箱 } from "@/lib/utils";
 import { 读组织, 直属上级of, 虚线上级of, 权限组织 } from "@/lib/enterprise/org";
 import { 拆角色, 是系统管理员of } from "@/lib/enterprise/org-core";
-import { 能进设置, 是总管理 } from "@/lib/enterprise/permissions";
+import { 能进设置, 是总管理, 能进开票名单 } from "@/lib/enterprise/permissions";
 import { 设置范围of } from "@/lib/enterprise/settings-scope";
 import { 规整字段配置, 字段权限key } from "@/lib/enterprise/field-perm";
 import { 市场部门key, 市场成员key, 规整市场部门 } from "@/lib/enterprise/market";
@@ -217,6 +217,8 @@ export default async function SettingsBody() {
           回收站副手: [...(org.回收站副手 ?? [])],
           无主线索复核人: org.无主线索复核人 ?? null,
           可标已开票: [...(org.可标已开票 ?? [])],
+          // 下拉只列系统管理员和财务部门的人（E-373 ②，同服务端 设可标已开票）
+          可标已开票候选: [...org.成员.keys()].filter((id) => 能进开票名单(id, org)),
         };
       })()
     : null;

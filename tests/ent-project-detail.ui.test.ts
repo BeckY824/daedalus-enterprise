@@ -3214,10 +3214,19 @@ it("已开票：能勾的点了先弹后果框，确认才调动作；不能勾�
     await 框.waitFor({ state: "hidden" });
     await page.locator(".pd-note", { hasText: "已经是未开票了" }).waitFor();
     expect(await page.locator(".pd-note").innerText()).not.toContain("已撤回已开票");
-    // 名单里的人对只能看的项目：灰着，悬停写只能看那句（不是「只有系统管理员或被指定」）
-    await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: false, 谁: null, 何时: null, 能勾: false, 取消不给: null, 不能勾因: "改不了：这个项目你只能看，勾不了已开票" } }));
-    await page.waitForFunction(() => document.querySelector("[data-testid=proj-invoiced-box]")?.getAttribute("title") === "改不了：这个项目你只能看，勾不了已开票");
-    expect(await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).isDisabled()).toBe(true);
+    // 没有勾 / 撤回过：不摆「变更记录」
+    expect(await page.getByTestId("proj-invoiced-log").count()).toBe(0);
+    // 有记录（E-373 ③）：点「变更记录」列最近几条，写清谁勾的 / 撤回的、负责人是谁（负责人打开自己的项目看得到）
+    await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: "开票人", 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: "勾上 30 天内只有系统管理员能撤回", 记录: [
+      { id: "a2", 何时: "2026-12-01T02:00:00.000Z", 谁: "开票人", 文: "标为已开票", 因: ["负责人 编造负责人"] },
+      { id: "a1", 何时: "2026-11-30T02:00:00.000Z", 谁: "测试管", 文: "撤回已开票", 因: ["负责人 编造负责人", "原来 开票人 2026-11-29 10:00 勾的"] },
+    ] } }));
+    await page.getByTestId("proj-invoiced-log").click();
+    const 记 = page.getByTestId("proj-invoiced-log-list");
+    await 记.waitFor();
+    expect(await 记.innerText()).toContain("2026-12-01 10:00 开票人 标为已开票（负责人 编造负责人）");
+    expect(await 记.innerText()).toContain("撤回已开票（负责人 编造负责人；原来 开票人 2026-11-29 10:00 勾的）");
+    await page.keyboard.press("Escape");
     await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: "开票人", 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: null } }));
     await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).waitFor();
     await page.waitForFunction(() => !(document.querySelector("[data-testid=proj-invoiced] input[type=checkbox]") as HTMLInputElement | null)?.disabled);
@@ -3240,7 +3249,8 @@ it.each([390, 768])("已开票 %ipx：超长勾的人名一行「…」、悬停
   const { page } = await open(true, w);
   try {
     const 长名 = "开票人" + "超长名字".repeat(20);
-    await page.evaluate((n) => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: n, 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: null } }), 长名);
+    // 带「变更记录」：按钮挤在一行里也不横出（E-373 ③）
+    await page.evaluate((n) => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: n, 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: null, 记录: [{ id: "a1", 何时: "2026-12-01T02:00:00.000Z", 谁: n, 文: "标为已开票", 因: [`负责人 ${n}`] }] } }), 长名);
     const 字 = page.getByTestId("proj-invoiced-by");
     await 字.waitFor();
     expect(await 字.getAttribute("title")).toBe(`${长名} · 2026-12-01 10:00`);
@@ -3249,5 +3259,13 @@ it.each([390, 768])("已开票 %ipx：超长勾的人名一行「…」、悬停
     expect(Math.round(行!.height)).toBeLessThanOrEqual(34);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     expect(await page.getByTestId("proj-invoiced").evaluate((el) => el.scrollWidth <= el.clientWidth + 1)).toBe(true);
+    // 点开的记录框在屏里、长名折行不横出
+    await page.getByTestId("proj-invoiced-log").click();
+    const 记 = page.getByTestId("proj-invoiced-log-list");
+    await 记.waitFor();
+    const 框 = (await 记.boundingBox())!;
+    expect(框.x).toBeGreaterThanOrEqual(0);
+    expect(框.x + 框.width).toBeLessThanOrEqual(w);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   } finally { await page.close(); }
 });

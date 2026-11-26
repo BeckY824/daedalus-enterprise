@@ -35,7 +35,7 @@ import { 节点字 } from "@/lib/project/customer-list-projects";
 import { 动作叫法 } from "@/lib/project/blocker-rules";
 import { 逐个号码, 号码数字 } from "@/lib/enterprise/notice-mask";
 import { 认放回 } from "../../projects/[id]/load";
-import { 已开票动作们, 已开票历史文 } from "@/lib/project/invoiced";
+import { 已开票动作们, 已开票历史文, 已开票明细人 } from "@/lib/project/invoiced";
 import { 客户页项目列表, 能看的项目, 看不到的在推数 } from "./project-zone";
 import { 历史每页, type 历史筛选, type 历史事件, type 历史行, type 历史游标, type 建档格, type 历史页, type 项目概要, type 历史摘要 } from "./history-types";
 
@@ -350,17 +350,6 @@ export async function 历史项目们(me: SessionUser, customerId: string, 号: 
   };
 }
 
-/** 撤回已开票那条明细里记的原勾的人（要一起查名字） */
-function 已开票原勾的人(detail: string | null): string[] {
-  try {
-    const v: unknown = detail ? JSON.parse(detail) : null;
-    const id = v && typeof v === "object" ? (v as { 原勾的人?: unknown }).原勾的人 : null;
-    return typeof id === "string" ? [id] : [];
-  } catch {
-    return [];
-  }
-}
-
 /** 项目建档那一格：建档时间、建档人、怎么来的、首个节点、首任负责人；库里有的才摆 */
 async function 项目建档(projectId: string): Promise<建档格 | null> {
   const [p, 首节点, 首换人, 导入, 建档痕] = await 看全部(() => Promise.all([
@@ -447,7 +436,7 @@ export async function 项目历史页(projectId: string, 号: 号码器, before?
       }),
     })),
     ...开票.map((a): 原 => ({
-      at: a.at, id: a.id, 人: [a.userId, ...已开票原勾的人(a.detail)],
+      at: a.at, id: a.id, 人: [a.userId, ...已开票明细人(a.detail)],
       做: (叫) => {
         const { 文, 因 } = 已开票历史文(a, 叫);
         return { id: a.id, at: a.at.toISOString(), 标: "开票", 文, 谁: 叫(a.userId) ?? a.userName ?? "已不在的成员", 因 };

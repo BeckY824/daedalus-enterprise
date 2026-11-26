@@ -408,12 +408,36 @@ export function 能恢复(me: 谁, org: 组织 | null): boolean {
 }
 
 /**
- * 勾项目「已开票」（12-15 第三批，客户 E-337）：系统管理员 + 设置「组织架构 → 可标已开票」名单里的人（org.可标已开票，不新增角色）。
- * 只读管理员、销售教练、设了「只看某人」的人一律不给（名单里有也不给）；切换视图期间写库在 lib/team-scope.ts 统一拦。不是企业版没有这一项
+ * 财务的人（客户 E-373「开这个权限的人只限系统管理员和财务，别摊到销售」）：所在部门或往上任一级部门名含「财务」。
+ * 只认部门（系统管理员在组织架构里设、或飞书 / 钉钉同步来的）；不认账号的「职位」——那一格本人在「个人资料」里自己就能改，认它等于谁都能把自己写成财务
+ */
+export function 财务的(org: 组织 | null, id: string): boolean {
+  if (!org) return false;
+  const 走过 = new Set<string>();
+  for (let d = org.成员.get(id)?.deptId ?? null; d && !走过.has(d); d = org.部门.get(d)?.parentId ?? null) {
+    走过.add(d);
+    if (org.部门.get(d)?.name.includes("财务")) return true;
+  }
+  return false;
+}
+
+/**
+ * 能不能进「可标已开票」名单（E-373 ②）：在职、系统管理员或财务的人（财务的）；只读管理员、销售教练、设了「只看某人」的人不能进。
+ * 设置页下拉候选、服务端 设可标已开票 都按这个；勾的时候 能标已开票 按当下再判一遍（进了名单后调出财务部门的勾不了）
+ */
+export function 能进开票名单(id: string, org: 组织 | null): boolean {
+  if (老() || !org || !org.成员.has(id) || 只读角色({ id }, org) || 只看的人(org, id)) return false;
+  return 是系统管理员({ id }, org) || 财务的(org, id);
+}
+
+/**
+ * 勾项目「已开票」（12-15 第三批，客户 E-337 / E-373）：系统管理员 + 设置「组织架构 → 可标已开票」名单里、当下还是财务的人（org.可标已开票，不新增角色）。
+ * 只读管理员、销售教练、设了「只看某人」的人一律不给（名单里有也不给）；切换视图期间写库在 lib/team-scope.ts 统一拦。不是企业版没有这一项。
+ * 看得到的项目都能勾（E-373 ①，lib/project/invoiced.ts 先按读范围核、再越过写范围写）
  */
 export function 能标已开票(me: 谁, org: 组织 | null): boolean {
   if (老() || !org || 只读角色(me, org) || 只看的人(org, me.id)) return false;
-  return 是系统管理员(me, org) || (org.成员.has(me.id) && !!org.可标已开票?.has(me.id));
+  return 是系统管理员(me, org) || (!!org.可标已开票?.has(me.id) && 能进开票名单(me.id, org));
 }
 
 /**

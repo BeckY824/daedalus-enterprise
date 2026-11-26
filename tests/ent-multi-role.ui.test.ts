@@ -32,10 +32,11 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 长=${JSON.stringify(长名)};
     const 人=(id,name,bizRole)=>({id,name,deptId:null,bizRole,line:null,managerId:null,dottedManagerId:null});
-    // 开票：「可标已开票」卡（12-15 第三批）多摆几位不能选的人——管理员、销售教练、只看某人的，外加一位已在名单里后来改成教练的
+    // 开票：「可标已开票」卡（12-15 第三批）多摆几位不能选的人——销售、管理员、销售教练、只看某人的，外加一位已在名单里后来改成教练的；
+    // 候选（系统管理员和财务的，E-373 ②）由服务端算好给：a 当系统管理员、g 当财务部门的
     window.__render=({是老板,开票})=>root.render(<App><div style={{maxWidth:1100}}><OrgTab value={{
-      部门:[],成员:[人('a',长,'sales_mgr,marketing_mgr'),人('b','小王','sales'),...(开票?[人('c','管理员甲','admin'),人('d','教练甲','coach'),人('e','只看甲','sales'),人('f','旧名单人','coach')]:[])],能改:true,是老板,
-      ...(开票?{只看某人:{e:'b'},可标已开票:['f']}:{}),
+      部门:[],成员:[人('a',长,'sales_mgr,marketing_mgr'),人('b','小王','sales'),...(开票?[人('c','管理员甲','admin'),人('d','教练甲','coach'),人('e','只看甲','sales'),人('f','旧名单人','coach'),人('g','财务甲','sales')]:[])],能改:true,是老板,
+      ...(开票?{只看某人:{e:'b'},可标已开票:['f'],可标已开票候选:['a','g']}:{}),
       规则开着:{按组织看客户:false,线索分配:false,字段权限:false,市场复核:true,超时自动转:true},字段权限:{},字段权限挡:null,改权限:{},线索分配:null}}/></div></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -124,7 +125,7 @@ it.each([1024, 1280, 1366])("Windows %ipx：多个标签和超长名字不横向
   } finally { await page.close(); }
 });
 
-it("可标已开票：只读管理员、销售教练、设了只看某人的人不在选项里；已在名单里后来不能选的照留一项、标明请去掉", async () => {
+it("可标已开票：只列系统管理员和财务（服务端给的候选），销售、只读管理员、销售教练、只看某人的人不在选项里；已在名单里后来不能选的照留一项、标明请去掉", async () => {
   const { page, errors } = await open(true, 1366, true);
   try {
     const 卡 = page.getByTestId("org-invoice-markers");
@@ -137,8 +138,8 @@ it("可标已开票：只读管理员、销售教练、设了只看某人的人�
       await 选项.first().waitFor({ timeout: 3_000 }).catch(() => {});
       字 = await 选项.allInnerTexts();
       return 字;
-    }, { timeout: 30_000, interval: 300 }).toContain("小王");
-    expect(字).toEqual([长名, "小王", "旧名单人（不能标，请去掉）"]);
+    }, { timeout: 30_000, interval: 300 }).toContain("财务甲");
+    expect(字).toEqual([长名, "旧名单人（不能标，请去掉）", "财务甲"]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 }, 慢);
