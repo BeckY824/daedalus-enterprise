@@ -119,9 +119,11 @@ async function 离职交接拦(db: Pick<Tx, "entHandover" | "project">, 两家: 
 /**
  * 不能并的原因（空 = 能并）。A = 留下，B = 并掉。
  * 按申请（第二批 2b 跨负责人合并申请，merge-request.ts）：只判数据拦法（交接中、公海、无效、业务线不同），
- * 「是不是自己负责」那层不判——申请模式下改成算要同意的人、全同意了才执行
+ * 「是不是自己负责」那层不判——申请模式下改成算要同意的人、全同意了才执行。
+ * 并掉看不到（按申请、并进来那家发起人看不到，靠完整号码放行进来的，PR #506 审查第 3、4 条）：拦话不超过挂靠只读卡——
+ * 那家的交接中、离职交接、标了无效统一说 并掉看不到话、不点名原因也不报名字；业务线不同只说「两家业务线不同」、不列值
  */
-async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null, 按申请 = false): Promise<string[]> {
+async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null, 按申请 = false, 并掉看不到 = false): Promise<string[]> {
   if (!企业版()) return ["只有企业版能合并客户"];
   if (!A || !B) return ["客户不存在或已删除，刷新看看"];
   if (A.id === B.id) return ["不能和自己合并，请选另一位客户"];
@@ -141,17 +143,34 @@ async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | nu
         if (n) 因.push(`「${名(c)}」名下${同事项目几个话(n)}，不能直接合并；可以发合并申请，要同意的人都同意后合并`);
       }
   }
+  const 藏B = 按申请 && 并掉看不到;
+  let 说过B = false;
+  /** B 的状态拦话：看不到时只说一次 并掉看不到话 */
+  const 拦B = (话: string) => {
+    if (!藏B) return void 因.push(话);
+    if (!说过B) 因.push(并掉看不到话);
+    说过B = true;
+  };
   const 交接 = await 交接中的客户([A.id, B.id], db as Tx);
-  for (const c of [A, B]) if (交接.has(c.id)) 因.push(`「${名(c)}」正在转让交接中，等接手人确认或撤回交接后再并`);
-  因.push(...(await 离职交接拦(db as Tx, [A, B], "并")));
-  for (const c of [A, B]) if (c.poolInvalidAt) 因.push(`「${名(c)}」标了无效客户，先由系统管理员恢复再并`);
-  if (有值(A.bizLine) && 有值(B.bizLine) && A.bizLine !== B.bizLine) 因.push(`两家业务线不同（${A.bizLine} / ${B.bizLine}），不能合并`);
+  if (交接.has(A.id)) 因.push(`「${名(A)}」正在转让交接中，等接手人确认或撤回交接后再并`);
+  if (交接.has(B.id)) 拦B(`「${名(B)}」正在转让交接中，等接手人确认或撤回交接后再并`);
+  因.push(...(await 离职交接拦(db as Tx, [A], "并")));
+  for (const 话 of await 离职交接拦(db as Tx, [B], "并")) 拦B(话);
+  if (A.poolInvalidAt) 因.push(`「${名(A)}」标了无效客户，先由系统管理员恢复再并`);
+  if (B.poolInvalidAt) 拦B(`「${名(B)}」标了无效客户，先由系统管理员恢复再并`);
+  if (有值(A.bizLine) && 有值(B.bizLine) && A.bizLine !== B.bizLine) 因.push(藏B ? "两家业务线不同，不能合并" : `两家业务线不同（${A.bizLine} / ${B.bizLine}），不能合并`);
   return 因;
 }
 
-/** 第二批 2b 合并申请发起前判数据拦法（不判「是不是自己负责」，见 拦的原因） */
-export async function 申请拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null): Promise<string[]> {
-  return 拦的原因(db, A, B, me, org, true);
+/** 并进来那家发起人看不到时，它自己的状态（交接中、无效、没负责人、挂着别的申请）拦下统一这一句，不点名原因（PR #506 审查第 3 条） */
+export const 并掉看不到话 = "这家暂时不能并，请联系它的负责人";
+
+/**
+ * 第二批 2b 合并申请发起前判数据拦法（不判「是不是自己负责」，见 拦的原因）。
+ * 并掉看不到 = 并进来那家发起人看不到（按完整号码放行进来的）：拦话收窄，见 拦的原因
+ */
+export async function 申请拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null, opt: { 并掉看不到?: boolean } = {}): Promise<string[]> {
+  return 拦的原因(db, A, B, me, org, true, !!opt.并掉看不到);
 }
 
 /* ───────────────────────── 只补空 ───────────────────────── */
@@ -259,11 +278,13 @@ async function 数条数(db: Tx | 库, id: string): Promise<合并条数> {
  * 同事那家不超过挂靠只读卡（方案第二批第 11 件第 3 条）：联系人只给姓名、职务，不给号码；并排不给地址、客户状态（只读卡不给负责人、级别、状态）。
  * 建档时间照给：方案那条只列了条数、来源和创建人，没点名建档时间，只读卡也没这格；一个日期不露联系方式、帮着判是不是同一家，先留（2b-3 审查单 A 第 2 条）
  */
-export async function 合并预览(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 按申请?: boolean } = {}): Promise<合并预览结果> {
+export async function 合并预览(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 按申请?: boolean; 并掉看不到?: boolean } = {}): Promise<合并预览结果> {
   const org = await 权限组织();
   const [A, B] = await Promise.all([读客户(db, 留下id), 读客户(db, 并掉id)]);
   const 按申请 = !!opt.按申请;
-  const 原因 = await 拦的原因(db, A, B, me, org, 按申请);
+  // 按申请且并进来那家看不到（按完整号码放行）：并排再去掉业务线（只读卡没这格，PR #506 审查第 4 条），拦话收窄见 拦的原因
+  const 藏B = 按申请 && !!opt.并掉看不到;
+  const 原因 = await 拦的原因(db, A, B, me, org, 按申请, 藏B);
   if (!A || !B) return { 能并: false, 原因, 并排: [], 条数: null, 要勾选: false, 补空: [], 号格留下有值: [], 联系人们: { 留下: [], 并掉: [] } };
   const 人 = await 人名们(db, [A.salesOwnerId, B.salesOwnerId, A.creator?.userId, B.creator?.userId]);
   const 日 = (d: Date) => d.toISOString().slice(0, 10);
@@ -276,7 +297,7 @@ export async function 合并预览(db: 库, 留下id: string, 并掉id: string, 
     行("来源渠道", A.channel?.name ?? "", B.channel?.name ?? "", true),
     行("渠道触点", A.touchpoint ?? "", B.touchpoint ?? "", true),
     行("创建人", 人.get(A.creator?.userId ?? "") ?? "", 人.get(B.creator?.userId ?? "") ?? "", true),
-    行("业务线", A.bizLine ?? "", B.bizLine ?? ""),
+    ...(藏B ? [] : [行("业务线", A.bizLine ?? "", B.bizLine ?? "")]),
     行("客户类型", A.customerType ?? "", B.customerType ?? ""),
     行("客户属性", A.customerAttr ?? "", B.customerAttr ?? ""),
     ...(按申请 ? [] : [行("客户地址", 地址(A), 地址(B)), 行("客户状态", A.custStatus ?? "", B.custStatus ?? "")]),

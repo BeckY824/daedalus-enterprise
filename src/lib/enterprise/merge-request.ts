@@ -29,7 +29,7 @@ import { 是项目线 } from "./assign-line";
 import { 工作日数, 加天 } from "./tri-state";
 import { 通知里的客户名 } from "./notice-mask";
 import {
-  读客户, 申请拦的原因, 来源或创建人不同, 执行合并, 合并事务选项, 并发失败话, 已核对话, 刚被改过话, 合并预览,
+  读客户, 申请拦的原因, 来源或创建人不同, 执行合并, 合并事务选项, 并发失败话, 已核对话, 刚被改过话, 合并预览, 并掉看不到话,
   type 客户行, type 合并人, type 同一个人, type 合并预览结果,
 } from "./customer-merge";
 
@@ -54,6 +54,11 @@ export type 变动项 = (typeof 四项)[number];
 export type 凭 = "留下客户负责人" | "被并客户负责人" | "项目负责人";
 export type 涉及项目 = { id: string; name: string; customerId: string };
 export type 同意人 = { userId: string; 凭: 凭[]; 项目: 涉及项目[] };
+/**
+ * 给发起人看的同意人（发起返回、申请预览；PR #506 审查第 1 条）：项目数照实；他涉及的项目里有发起人看不到的
+ * （并进来那家看不到时它名下的一律算看不到）项目给空数组、不露名字和 id，都看得到的照旧、项目数 = 项目.length
+ */
+export type 给发起人的同意人 = 同意人 & { 项目数: number };
 
 export const 到期话 = `超过 ${等待工作日} 个工作日没有全部同意，申请已失效，要重新发起`;
 export const 变动话 = (项: readonly 变动项[]) => `两家的${项.join("、")}有变，申请已失效，要重新发起`;
@@ -262,7 +267,21 @@ class 拦下 extends Error {}
 
 /* ───────────────────────── 发起 ───────────────────────── */
 
-export type 发起完 = { requestId: string; 同意人: 同意人[]; expiresAt: Date };
+export type 发起完 = { requestId: string; 同意人: 给发起人的同意人[]; expiresAt: Date };
+
+/**
+ * 发起人看得到哪些（PR #506 审查第 1、3、4 条）：用调用方传进来的带限定 db 直接查（不包 看全部，限定层按登录的人收）。
+ * 并掉 = 并进来那家看得到（看不到 = 靠完整号码放行进来的，merge-actions.ts 并掉那家放行）
+ */
+async function 发起人看得到的并掉(db: 库, 并掉id: string): Promise<boolean> {
+  return (await db.customer.count({ where: { id: 并掉id } })) === 1;
+}
+async function 给发起人看(db: 库, 人们: readonly 同意人[], 并掉id: string, 并掉看得到: boolean): Promise<给发起人的同意人[]> {
+  const ids = [...new Set(人们.flatMap((x) => x.项目.map((p) => p.id)))];
+  const 看得到 = new Set(ids.length ? (await db.project.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((p) => p.id) : []);
+  const 能看 = (p: 涉及项目) => 看得到.has(p.id) && (并掉看得到 || p.customerId !== 并掉id);
+  return 人们.map((x) => ({ ...x, 项目: x.项目.every(能看) ? x.项目 : [], 项目数: x.项目.length }));
+}
 
 /** 发合并申请：B 并进 A。已核对 / 同一个人 同第一批预览里的勾选，存进申请、执行时照用 */
 export async function 发起合并申请(
@@ -273,10 +292,11 @@ export async function 发起合并申请(
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   if (!org) return { ok: false, error: "只有企业版能发合并申请" };
+  const 并掉看得到 = await 发起人看得到的并掉(db, 并掉id);
   try {
     const r = await 看全部(() => db.$transaction(async (tx) => {
       const [A, B] = [await 读客户(tx, 留下id), await 读客户(tx, 并掉id)];
-      const 判 = await 发起前判(tx, A, B, me, org);
+      const 判 = await 发起前判(tx, A, B, me, org, !并掉看得到);
       if (!判.ok) throw new 拦下(判.原因.join("；"));
       const 人们 = 判.人们;
       if (来源或创建人不同(A!, B!) && !opt.已核对) throw new 拦下(`两家的来源或创建人不一样，请先勾选「${已核对话}」`);
@@ -300,7 +320,7 @@ export async function 发起合并申请(
       });
       return { requestId: 单.id, 同意人: 人们, expiresAt };
     }, 合并事务选项));
-    return { ok: true, ...r };
+    return { ok: true, ...r, 同意人: await 给发起人看(db, r.同意人, 并掉id, 并掉看得到) };
   } catch (e) {
     if (e instanceof 拦下) return { ok: false, error: e.message };
     const 话 = 并发失败话(e);
@@ -314,13 +334,15 @@ export async function 发起合并申请(
  * 要谁同意（没人要同意 = 直接并）→ 同意人没停用 → 两家没挂着别的申请 → 发起人挂着的不超过上限。
  * 「来源或创建人不同要勾已核对」不在这里：预览只提示要勾，发起时判
  */
-async function 发起前判(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织): Promise<{ ok: true; 人们: 同意人[] } | { ok: false; 原因: string[] }> {
+async function 发起前判(
+  db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织, 并掉看不到: boolean,
+): Promise<{ ok: true; 人们: 同意人[] } | { ok: false; 原因: string[] }> {
   const 不行 = (...原因: string[]) => ({ ok: false as const, 原因 });
-  const 原因 = await 申请拦的原因(db, A, B, me, org);
+  const 原因 = await 申请拦的原因(db, A, B, me, org, { 并掉看不到 });
   if (原因.length) return 不行(...原因);
   const 问 = 发起人问题(org, me, A!.salesOwnerId, A!.bizLine);
   if (问) return 不行(问);
-  if (!(await 有负责人(db, B!.salesOwnerId))) return 不行(`「${名(B!)}」没有负责人，没人可以同意；请找系统管理员代并`);
+  if (!(await 有负责人(db, B!.salesOwnerId))) return 不行(并掉看不到 ? 并掉看不到话 : `「${名(B!)}」没有负责人，没人可以同意；请找系统管理员代并`);
   const 人们 = await 现算同意人(db, me.id, A!, B!);
   if (!人们.length) return 不行(直接并话);
   const 停了 = 人们.filter((x) => !org.成员.has(x.userId));
@@ -334,6 +356,7 @@ async function 发起前判(db: Tx | 库, A: 客户行 | null, B: 客户行 | nu
   });
   if (挂着) {
     const 哪家 = [A!, B!].find((c) => c.id === 挂着.fromId || c.id === 挂着.intoId)!;
+    if (哪家.id === B!.id && 并掉看不到) return 不行(并掉看不到话);
     return 不行(`「${名(哪家)}」已有一张合并申请在等同意，先撤回那张再发`);
   }
   if ((await db.entMergeRequest.count({ where: { byUserId: me.id, status: 申请状态.待同意 } })) >= 每人最多待同意)
@@ -344,7 +367,8 @@ async function 发起前判(db: Tx | 库, A: 客户行 | null, B: 客户行 | nu
 /** 两家和名下没结束的项目都归发起人：不用申请（发起前判 那一句；界面见到这句就回到直接合并） */
 export const 直接并话 = "两家和名下没结束的项目都由你负责，直接合并即可，不用发申请";
 
-export type 申请预览同意人 = { userId: string; 名: string; 凭: 凭[]; 项目: 涉及项目[] };
+/** 项目 / 项目数 同 给发起人的同意人：涉及发起人看不到的项目时 项目 = []、项目数照实 */
+export type 申请预览同意人 = { userId: string; 名: string; 凭: 凭[]; 项目: 涉及项目[]; 项目数: number };
 export type 合并申请预览结果 = {
   能发: boolean;
   原因: string[];
@@ -363,13 +387,14 @@ export async function 合并申请预览(db: 库, 留下id: string, 并掉id: st
   if (!企业版()) return 空(["只有企业版能发合并申请"]);
   const org = await 权限组织();
   if (!org) return 空(["只有企业版能发合并申请"]);
+  const 并掉看得到 = await 发起人看得到的并掉(db, 并掉id);
   const [A, B] = await 看全部(() => Promise.all([读客户(db, 留下id), 读客户(db, 并掉id)]));
-  const 判 = await 看全部(() => 发起前判(db, A, B, me, org));
+  const 判 = await 看全部(() => 发起前判(db, A, B, me, org, !并掉看得到));
   if (!判.ok) return 空(判.原因);
-  const 预览 = await 看全部(() => 合并预览(db, 留下id, 并掉id, me, { 按申请: true }));
+  const 预览 = await 看全部(() => 合并预览(db, 留下id, 并掉id, me, { 按申请: true, 并掉看不到: !并掉看得到 }));
   if (!预览.能并) return 空(预览.原因);
-  const 叫 = await 人名们(db, 判.人们.map((x) => x.userId));
-  return { 能发: true, 原因: [], 预览, 同意人: 判.人们.map((x) => ({ ...x, 名: 叫.get(x.userId) ?? "同事" })), 等待工作日 };
+  const [叫, 们] = await Promise.all([人名们(db, 判.人们.map((x) => x.userId)), 给发起人看(db, 判.人们, 并掉id, 并掉看得到)]);
+  return { 能发: true, 原因: [], 预览, 同意人: 们.map((x) => ({ ...x, 名: 叫.get(x.userId) ?? "同事" })), 等待工作日 };
 }
 
 /** 负责人是真人（不空、不是公海占位） */

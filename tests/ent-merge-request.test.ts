@@ -22,7 +22,7 @@ import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibil
 import { 规则 } from "@/lib/enterprise/rules";
 import { 只看某人键 } from "@/lib/enterprise/org-core";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 撤回合并, 合并预览 } from "@/lib/enterprise/customer-merge";
+import { 撤回合并, 合并预览, 并掉看不到话 } from "@/lib/enterprise/customer-merge";
 import {
   算同意人, 发起人问题, 到期时刻, 比四项, 发起合并申请, 处理合并申请, 撤回合并申请, 扫过期合并申请, 到期话, 申请状态,
   钟上扫过期合并申请, 等待工作日, 直接并话, type 快照,
@@ -435,9 +435,11 @@ describe("动作层（customers/merge-actions.ts）", () => {
     if (!r.ok) throw new Error(r.error);
     expect(r.预览).toMatchObject({ 能发: true, 原因: [], 等待工作日: 5 });
     expect(r.预览.同意人).toEqual([
-      { userId: 丙.id, 名: "丙", 凭: ["被并客户负责人"], 项目: [] },
-      { userId: 丁.id, 名: "丁", 凭: ["项目负责人"], 项目: [{ id: p, name: expect.any(String), customerId: a }] },
+      { userId: 丙.id, 名: "丙", 凭: ["被并客户负责人"], 项目: [], 项目数: 0 },
+      { userId: 丁.id, 名: "丁", 凭: ["项目负责人"], 项目: [{ id: p, name: expect.any(String), customerId: a }], 项目数: 1 },
     ]);
+    // 看得到的同事那家：并排照旧有业务线
+    expect(r.预览.预览!.并排.map((x) => x.格)).toContain("业务线");
     expect(r.预览.预览!.联系人们.并掉.length).toBe(1);
     expect(r.预览.预览!.联系人们.并掉.every((c) => c.号.length === 0)).toBe(true);
     expect(r.预览.预览!.并排.map((x) => x.格)).not.toContain("客户地址");
@@ -496,6 +498,88 @@ describe("动作层（customers/merge-actions.ts）", () => {
       expect(对).toMatchObject({ ok: true, 同意人: [{ userId: 丙.id }] });
     });
     expect(await raw.entMergeRequest.count()).toBe(1);
+  });
+
+  describe("按号放行进来、看不到的同事客户：不超过挂靠只读卡（PR #506 审查第 1、3、4 条）", () => {
+    const 号 = async (id: string) => (await raw.contact.findFirstOrThrow({ where: { customerId: id } })).phone!;
+    async function 开范围() {
+      以(乙);
+      await setSetting(规则.按组织看客户.key, true);
+      忘掉企业版范围();
+    }
+
+    it("预览、发起返回值不露对方名下项目名和 id：项目给空数组、项目数照实；并排不给业务线；库里同意人照存项目", async () => {
+      const a = await 客户(乙.id);
+      const b = await 客户(丙.id, { name: "看不到的同事客户", bizLine: "内贸" });
+      const p1 = await 项目(丙.id, b, { name: "编造的机密项目甲" });
+      const p2 = await 项目(丁.id, b, { name: "编造的机密项目乙" });
+      await 开范围();
+      await 以谁的身份(乙.id, async () => {
+        expect(await prisma.customer.count({ where: { id: b } })).toBe(0);
+        const 预 = await 预览合并申请(a, b, await 号(b));
+        if (!预.ok) throw new Error(预.error);
+        expect(预.预览.能发).toBe(true);
+        expect(JSON.stringify(预)).not.toMatch(/编造的机密项目|内贸/);
+        expect(JSON.stringify(预)).not.toContain(p1);
+        expect(JSON.stringify(预)).not.toContain(p2);
+        expect(预.预览.同意人).toEqual([
+          { userId: 丙.id, 名: "丙", 凭: ["被并客户负责人", "项目负责人"], 项目: [], 项目数: 1 },
+          { userId: 丁.id, 名: "丁", 凭: ["项目负责人"], 项目: [], 项目数: 1 },
+        ]);
+        expect(预.预览.预览!.并排.map((x) => x.格)).not.toContain("业务线");
+        const 发 = await 发起客户合并申请(a, b, { 按号: await 号(b) });
+        if (!发.ok) throw new Error(发.error);
+        expect(JSON.stringify(发)).not.toMatch(/编造的机密项目/);
+        expect(JSON.stringify(发)).not.toContain(p1);
+        expect(发.同意人).toEqual([
+          { userId: 丙.id, 凭: ["被并客户负责人", "项目负责人"], 项目: [], 项目数: 1 },
+          { userId: 丁.id, 凭: ["项目负责人"], 项目: [], 项目数: 1 },
+        ]);
+        // 库里照存（同意人那边要列他涉及的项目）
+        const 单 = await 申请(发.requestId);
+        expect(单.approvers.find((x) => x.userId === 丙.id)!.projects).toContain("编造的机密项目甲");
+      });
+    });
+
+    it("那家交接中、挂着别的申请：拦话统一一句、不点名原因也不报名字；看得到时照旧点名", async () => {
+      const a = await 客户(乙.id);
+      const b = await 客户(丙.id, { name: "看不到的同事客户" });
+      const h = await raw.entHandover.create({ data: { kind: "转让", fromUserId: 丙.id, toUserId: 丁.id, byUserId: 老板.id, customerIds: JSON.stringify([b]) } });
+      await 开范围();
+      await 以谁的身份(乙.id, async () => {
+        expect(await 预览合并申请(a, b, await 号(b))).toMatchObject({ ok: true, 预览: { 能发: false, 原因: [并掉看不到话] } });
+        const 发 = await 发起客户合并申请(a, b, { 按号: await 号(b) });
+        expect(发).toEqual({ ok: false, error: 并掉看不到话 });
+      });
+      await raw.entHandover.delete({ where: { id: h.id } });
+      // b 已挂着一张（丙发起、并进 b 的）
+      const c = await 客户(丙.id);
+      await raw.entMergeRequest.create({ data: { fromId: c, intoId: b, byUserId: 丙.id, snapshot: "{}", expiresAt: new Date(Date.now() + 86_400_000) } });
+      await 以谁的身份(乙.id, async () => {
+        const 预 = await 预览合并申请(a, b, await 号(b));
+        expect(预).toMatchObject({ ok: true, 预览: { 能发: false, 原因: [并掉看不到话] } });
+        expect(JSON.stringify(预)).not.toMatch(/看不到的同事客户|合并申请在等同意/);
+        expect(await 发起客户合并申请(a, b, { 按号: await 号(b) })).toEqual({ ok: false, error: 并掉看不到话 });
+      });
+      // 看得到（范围关掉）：照旧点名
+      await setSetting(规则.按组织看客户.key, false);
+      忘掉企业版范围();
+      expect(await 预览合并申请(a, b)).toMatchObject({ ok: true, 预览: { 能发: false, 原因: [expect.stringMatching(/^「看不到的同事客户」已有一张合并申请在等同意/)] } });
+    });
+
+    it("业务线不同：看不到时只说两家业务线不同、不列值；看得到照旧列", async () => {
+      const a = await 客户(乙.id, { bizLine: "外贸" });
+      const b = await 客户(丙.id, { bizLine: "内贸" });
+      await 开范围();
+      await 以谁的身份(乙.id, async () => {
+        const 预 = await 预览合并申请(a, b, await 号(b));
+        expect(预).toMatchObject({ ok: true, 预览: { 能发: false, 原因: ["两家业务线不同，不能合并"] } });
+        expect(await 发起客户合并申请(a, b, { 按号: await 号(b) })).toEqual({ ok: false, error: "两家业务线不同，不能合并" });
+      });
+      await setSetting(规则.按组织看客户.key, false);
+      忘掉企业版范围();
+      expect(await 预览合并申请(a, b)).toMatchObject({ ok: true, 预览: { 能发: false, 原因: ["两家业务线不同（外贸 / 内贸），不能合并"] } });
+    });
   });
 
   it("只读身份写不了合并申请（2b-3 审查单 A 第 4 条）：只读角色同意 / 拒绝、只看某人撤回、只看某人的系统管理员作废都被拦，申请状态不变", async () => {
