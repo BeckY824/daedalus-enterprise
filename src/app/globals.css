@@ -6998,3 +6998,17 @@ button.proj-miss-chip { cursor: pointer; }
 .fu-as-date { width: 200px; }
 .done-plan-as { margin-top: 6px; }
 .pd-as-btn { margin-top: 8px; }
+
+/* 客户列表「排序」按钮（E-332）：筛选行一行放不下就折两行（1024 宽差 1px 都会折），所以按钮窄于 1600 只留图标、搜索框让出一点宽；
+   宽屏（≥1600）带「排序」两个字；手机宽（<768）另起一排，字照留 */
+.cust-sort-btn { flex: none; }
+@media (min-width: 768px) and (max-width: 1599px) {
+  .cust-sort-btn .cust-sort-txt { display: none; }
+  .cust-sort-btn.ant-btn { min-width: 32px; padding-inline: 0; }
+}
+@media (min-width: 768px) and (max-width: 1199px) {
+  .list-bar:has(> .cust-sort-btn) > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 104px !important; }
+}
+@media (min-width: 1200px) {
+  .list-bar:has(> .cust-sort-btn) > .ant-space > .ant-space-item > .ant-input-affix-wrapper { max-width: 216px; }
+}

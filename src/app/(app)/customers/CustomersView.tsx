@@ -1507,8 +1507,11 @@ export default function CustomersView({
                 一个要再点一下才算数的筛选栏，会让人以为自己已经筛了其实没有。
                 「重置」只在真筛了东西的时候看得见；位置一直留着，筛的那一下表格不往下跳（M17） */}
             <ResetFilters 显示={筛了 > 0} onClick={重置} />
-            {/* 排序按钮（E-332）：和表头点排序同一个 sort 参数，选了和点表头一样；手机宽没有表头，这里是唯一入口。看板视图的客户排序不起作用，不摆 */}
-            {看板体 === undefined && (
+          </Space>
+          {看板体 !== undefined && <div className="list-bar-end" ref={set工具位} />}
+          </>
+        }
+        排序钮={看板体 === undefined ? (
               <Dropdown trigger={["click"]} open={排序单开着}
                 onOpenChange={(开, info) => { if (!开 && info.source === "menu") return; set排序单开着(开); }}
                 menu={{
@@ -1521,13 +1524,9 @@ export default function CustomersView({
                     选排序(k, 当前排序方向 ?? "desc");
                   },
                 }}>
-                <Button icon={<SwapOutlined rotate={90} />} aria-label="排序" className="cust-sort-btn">排序</Button>
+                <Button icon={<SwapOutlined rotate={90} />} aria-label="排序" title="排序" className="cust-sort-btn"><span className="cust-sort-txt">排序</span></Button>
               </Dropdown>
-            )}
-          </Space>
-          {看板体 !== undefined && <div className="list-bar-end" ref={set工具位} />}
-          </>
-        }
+            ) : undefined}
         批量={(selected, 清空, 选中行) => {
           const 全领不回 = 选中行.some((r) => r.pool) && 选中行.filter((r) => r.pool).every((r) => 领不回.has(r.id));
           return (
