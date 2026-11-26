@@ -5248,6 +5248,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 @media (max-width: 767px) { .dc-claim-grid { grid-template-columns: minmax(0, 1fr); } }
 .dc-claim-foot { display: flex; justify-content: flex-end; gap: var(--s2); }
 .prop-err-act { margin-top: var(--s2); }
+/* 「记到这位客户上」手机（≤767 或触屏）点击区 ≥ 44（--hit-touch），电脑宽不动 */
+@media (max-width: 767px), (pointer: coarse) { :root:root .prop-err-act .ant-btn { min-height: var(--hit-touch); } }
 /* 撞号的在推个数是提示，不是错误：不跟 .prop-err 的红字 */
 .prop-err-note { color: var(--text-muted); }
 .cu-said-warn { color: var(--warning-text); }
