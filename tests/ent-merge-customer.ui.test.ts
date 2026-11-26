@@ -20,7 +20,10 @@ const 动作 = `
   export const 预览项目换客户=async(p,t)=>{记('换预览',p,t);return {ok:true,预览:window.__换预览}};
   export const 给项目换客户=async(p,t)=>{记('换',p,t);return {ok:true,沟通:4,挂靠:2,logId:'L1'}};
   export const 撤销换客户=async(id)=>{记('撤销换',id);return {ok:true}};
-  export const 能并同事的=async()=>window.__管===true;`;
+  export const 能并同事的=async()=>{if(window.__管卡)await new Promise(()=>{});return window.__管===true};
+  export const 预览合并申请=async(a,b,号)=>{记('申预览',a,b,号);return {ok:true,预览:window.__申预览??{能发:false,原因:['只有留下那家的客户负责人能发合并申请'],预览:null,同意人:[],等待工作日:5}}};
+  export const 发起客户合并申请=async(a,b,o)=>{记('发申请',a,b,o);return {ok:true,requestId:'r1',同意人:window.__发同意人??[],expiresAt:''}};
+  export const 撤回客户合并申请=async(id)=>{记('撤申请',id);return {ok:true}};`;
 const plugin: Plugin = { name: "merge-customer", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/(^|\/)merge-actions$/, 补全动作桩("src/app/(app)/customers/merge-actions.ts", 动作));
@@ -147,7 +150,7 @@ it("两家来源、创建人一样：不出「已核对」勾选，直接能点�
     expect(await page.locator(".mrg-cmp-r.is-red").count()).toBe(0);
     expect(await page.getByTestId("merge-go").isDisabled()).toBe(false);
     // 换一家 → 拦下的
-    await page.evaluate(() => { (window as unknown as Record<string, unknown>).__预览 = { 能并: false, 原因: ["「乙」名下有 1 个同事负责、还没结束的项目，不能直接合并；请找系统管理员代并", "两家业务线不同（内贸 / 外贸），不能合并"], 并排: [], 条数: null, 要勾选: false, 补空: [], 联系人们: { 留下: [], 并掉: [] } }; });
+    await page.evaluate(() => { (window as unknown as Record<string, unknown>).__申预览 = { 能发: false, 原因: ["两家业务线不同（内贸 / 外贸），不能合并"], 预览: null, 同意人: [], 等待工作日: 5 }; (window as unknown as Record<string, unknown>).__预览 = { 能并: false, 原因: ["「乙」名下有 1 个同事负责、还没结束的项目，不能直接合并；可以发合并申请，要同意的人都同意后合并", "两家业务线不同（内贸 / 外贸），不能合并"], 并排: [], 条数: null, 要勾选: false, 补空: [], 联系人们: { 留下: [], 并掉: [] } }; });
     await page.getByRole("button", { name: "换一家" }).click();
     await page.getByLabel("搜客户").fill("乙");
     await page.getByTestId("merge-candidate").first().click();
@@ -245,13 +248,13 @@ it("项目换客户：搜目标 → 预览列明订单阶段、回款几笔、�
   } finally { await page.close(); }
 }, 60_000);
 
-it("搜不到：不是系统管理员写明只列自己负责、不在公海的、要并同事的找系统管理员；系统管理员照旧，后果框也不补谁能撤", async () => {
+it("搜不到：不是系统管理员写明只列看得到、不在公海的，看不到的同事客户要输完整号码；系统管理员照旧，后果框也不补谁能撤", async () => {
   const { page, 错 } = await open(390, { 种: "客户" }, { __候选: [] });
   try {
     await page.getByLabel("搜客户").fill("没有的");
     const 空 = page.getByTestId("merge-cand-empty");
     await 空.waitFor();
-    expect(await 空.innerText()).toBe("只列你负责、不在公海的客户；要并同事的客户请找系统管理员");
+    expect(await 空.innerText()).toBe("没搜到：只列你看得到、不在公海的客户；看不到的同事客户，请输入完整的手机号或邮箱");
     expect(await 横滚(page)).toEqual([false, false]);
     expect(错).toEqual([]);
   } finally { await page.close(); }
@@ -297,6 +300,177 @@ it("手机 390：联系人配对下拉打开后，长「名字 · 职务」不�
     expect(await 字.evaluate((e) => [getComputedStyle(e).textOverflow, e.scrollWidth > e.clientWidth])).toEqual(["ellipsis", true]);
     expect(await 长项.getAttribute("title")).toContain("超长的职务名称");
     await 截图(page, "合并-配对下拉-390.png");
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("同事负责的候选标「要申请」：读申请预览、底部列要同意的人、按钮写发合并申请（要 N 位同意）；发出后撤销条的撤销 = 撤回申请", async () => {
+  const 申预览 = {
+    能发: true, 原因: [], 等待工作日: 5,
+    预览: 预览({ 要勾选: false, 联系人们: { 留下: [{ id: "a1", name: "张三", position: "采购", 关键: true, 号: [] }], 并掉: [{ id: "b1", name: "张三", position: "采购经理", 关键: true, 号: [] }] } }),
+    同意人: [
+      { userId: "u2", 名: "同事乙", 凭: ["被并客户负责人", "项目负责人"], 项目: [{ id: "p1", name: "超长的项目名称".repeat(5), customerId: "b" }] },
+      { userId: "u3", 名: "同事丙".repeat(6), 凭: ["项目负责人"], 项目: [{ id: "p2", name: "展台", customerId: "a" }] },
+    ],
+  };
+  const { page, 错 } = await open(390, { 种: "客户" }, {
+    __候选: [{ id: "b", name: "", 编号: "NO.00012", 负责人: "同事乙", 要申请: true, 按号: "13800000000" }],
+    __申预览: 申预览,
+    __发同意人: [{ userId: "u2" }, { userId: "u3" }],
+  });
+  try {
+    await page.getByLabel("搜客户").fill("13800000000");
+    const 候 = page.getByTestId("merge-candidate");
+    await 候.waitFor();
+    expect(await 候.innerText()).toContain("同事负责的客户（号码撞上）");
+    expect(await page.getByTestId("merge-cand-ask").innerText()).toBe("同事负责 · 要申请");
+    await 候.click();
+    const 发 = page.getByTestId("merge-request-go");
+    await 发.waitFor();
+    expect(await 发.innerText()).toBe("发合并申请（要 2 位同意）");
+    expect(await page.getByTestId("merge-go").count()).toBe(0);
+    // 要申请的直接读申请预览，不读直接合并预览；带上搜到它的那个号
+    expect((await 调(page)).filter((x) => x[0] === "预览")).toEqual([]);
+    expect((await 调(page)).find((x) => x[0] === "申预览")).toEqual(["申预览", "a", "b", "13800000000"]);
+    const 人 = page.getByTestId("merge-approver");
+    expect(await 人.count()).toBe(2);
+    expect(await 人.nth(0).innerText()).toContain("并进来那家的客户负责人；项目负责人；1 个项目");
+    expect(await 横滚(page)).toEqual([false, false]);
+    await 截图(page, "合并申请-预览-390.png");
+    await 发.click();
+    const 框 = page.locator(".csq");
+    await 框.waitFor();
+    const 话 = await 框.innerText();
+    expect(话).toContain("都同意了才合并");
+    expect(话).toContain("5 个工作日内没有全部同意，申请失效");
+    await 框.locator(".csq-foot .ant-btn-primary").click();
+    await page.locator(".undo-bar").waitFor();
+    expect(await page.locator(".undo-t").innerText()).toBe("合并申请已发出，等 2 位同意");
+    expect((await 调(page)).find((x) => x[0] === "发申请")).toEqual(["发申请", "a", "b", { 同一个人: [], 按号: "13800000000" }]);
+    await page.locator(".undo-btn").last().click();
+    await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "撤申请"));
+    expect((await 调(page)).find((x) => x[0] === "撤申请")).toEqual(["撤申请", "r1"]);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("发合并申请成了：撤销条的人数用发起返回的同意人数，不用预览时数的（两边不一样时跟着发起返回）", async () => {
+  const 申预览 = {
+    能发: true, 原因: [], 等待工作日: 5, 预览: 预览({ 要勾选: false }),
+    同意人: [
+      { userId: "u2", 名: "同事乙", 凭: ["项目负责人"], 项目: [] },
+      { userId: "u3", 名: "同事丙", 凭: ["项目负责人"], 项目: [] },
+    ],
+  };
+  const { page, 错 } = await open(1280, { 种: "客户" }, {
+    __候选: [{ id: "b", name: "", 编号: "NO.00012", 负责人: "同事乙", 要申请: true, 按号: "13800000000" }],
+    __申预览: 申预览,
+    __发同意人: [{ userId: "u2" }],
+  });
+  try {
+    await page.getByLabel("搜客户").fill("13800000000");
+    await page.getByTestId("merge-candidate").click();
+    await page.getByTestId("merge-request-go").click();
+    await page.locator(".csq").locator(".csq-foot .ant-btn-primary").click();
+    await page.locator(".undo-bar").waitFor();
+    expect(await page.locator(".undo-t").innerText()).toBe("合并申请已发出，等 1 位同意");
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("自己负责的两家、直接合并拦下（名下有同事在推的项目）：改读申请预览；申请那边的原因也是数据拦法（两边一样）时摆直接合并那边的", async () => {
+  const 拦 = { ...预览(), 能并: false, 原因: ["「乙」名下有 1 个同事负责、还没结束的项目，不能直接合并", "两家业务线不同（内贸 / 外贸），不能合并"], 联系人们: { 留下: [], 并掉: [] } };
+  const { page, 错 } = await open(1280, { 种: "客户" }, { __预览: 拦, __申预览: { 能发: false, 原因: ["两家业务线不同（内贸 / 外贸），不能合并"], 预览: null, 同意人: [], 等待工作日: 5 } });
+  try {
+    await page.getByLabel("搜客户").fill("乙");
+    await page.getByTestId("merge-candidate").click();
+    await page.locator(".mrg-why").waitFor();
+    expect(await page.locator(".mrg-why").innerText()).toContain("同事负责、还没结束的项目");
+    expect((await 调(page)).map((x) => x[0]).filter((x) => x === "预览" || x === "申预览")).toEqual(["预览", "申预览"]);
+    expect(await page.getByTestId("merge-request-go").count()).toBe(0);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("自己负责的两家、直接合并被拦、申请因「已有 5 张在等同意」发不了：摆申请那条原因，不摆直接合并那句「可以发合并申请」", async () => {
+  const 拦 = { ...预览(), 能并: false, 原因: ["「乙」名下有 1 个同事负责、还没结束的项目，不能直接合并；可以发合并申请，要同意的人都同意后合并"], 联系人们: { 留下: [], 并掉: [] } };
+  const { page, 错 } = await open(1280, { 种: "客户" }, { __预览: 拦, __申预览: { 能发: false, 原因: ["你已有 5 张合并申请在等同意，先等它们办完"], 预览: null, 同意人: [], 等待工作日: 5 } });
+  try {
+    await page.getByLabel("搜客户").fill("乙");
+    await page.getByTestId("merge-candidate").click();
+    await page.locator(".mrg-why").waitFor();
+    expect(await page.locator(".mrg-why").innerText()).toContain("已有 5 张合并申请在等同意");
+    expect(await page.getByText("可以发合并申请").count()).toBe(0);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("要同意的人那段说明：同事的客户走申请 = 并进来那家是同事的；两家自己的走申请 = 两家都只显示姓名、职务", async () => {
+  const 申预览 = { 能发: true, 原因: [], 等待工作日: 5, 预览: 预览({ 要勾选: false, 联系人们: { 留下: [], 并掉: [] } }), 同意人: [{ userId: "u2", 名: "同事乙", 凭: ["项目负责人"], 项目: [] }] };
+  for (const [要申请, 句] of [[true, "并进来那家是同事的：联系人只显示姓名、职务，号码不显示。"], [false, "走申请时两家联系人都只显示姓名、职务，号码不显示。"]] as const) {
+    const { page, 错 } = await open(1280, { 种: "客户" }, { __候选: [{ id: "b", name: "乙", 编号: "NO.00012", 负责人: "同事乙", 要申请, 按号: "13800000000" }], __申预览: 申预览, __预览: { ...预览(), 能并: false, 原因: ["「乙」名下有 1 个同事负责、还没结束的项目，不能直接合并"], 联系人们: { 留下: [], 并掉: [] } } });
+    try {
+      await page.getByLabel("搜客户").fill("乙");
+      await page.getByTestId("merge-candidate").click();
+      await page.getByTestId("merge-ask-note").waitFor();
+      expect(await page.getByTestId("merge-ask-note").innerText()).toBe(句);
+      expect(错).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 120_000);
+
+it("要申请的候选、申请预览发不了：不再留「正在读取…」，只摆原因块", async () => {
+  const { page, 错 } = await open(1280, { 种: "客户" }, {
+    __候选: [{ id: "b", name: "乙", 编号: "NO.00012", 负责人: "同事乙", 要申请: true, 按号: "13800000000" }],
+  });
+  try {
+    await page.getByLabel("搜客户").fill("13800000000");
+    await page.getByTestId("merge-candidate").click();
+    await page.locator(".mrg-why").waitFor();
+    expect(await page.locator(".mrg-why").innerText()).toContain("只有留下那家的客户负责人能发合并申请");
+    expect(await page.getByText("正在读取…").count()).toBe(0);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("系统管理员身份还没读到（管 为 null）：自己负责的直接合并被拦下，照样去读申请预览", async () => {
+  const 拦 = { ...预览(), 能并: false, 原因: ["「乙」名下有 1 个同事负责、还没结束的项目，不能直接合并"], 联系人们: { 留下: [], 并掉: [] } };
+  const { page, 错 } = await open(1280, { 种: "客户" }, { __预览: 拦, __管卡: true });
+  try {
+    await page.getByLabel("搜客户").fill("乙");
+    await page.getByTestId("merge-candidate").click();
+    await page.locator(".mrg-why").waitFor();
+    expect((await 调(page)).map((x) => x[0]).filter((x) => x === "预览" || x === "申预览")).toEqual(["预览", "申预览"]);
+    expect(await page.locator(".mrg-why").innerText()).toContain("只有留下那家的客户负责人能发合并申请");
+    expect(await page.getByText("可以发合并申请，要同意的人都同意后合并").count()).toBe(0);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("要同意的人：服务端说有 2 个项目但发起人看不到名字（项目 [] 、项目数 2）：只写「2 个项目」，不带冒号和名字", async () => {
+  const 申预览 = { 能发: true, 原因: [], 等待工作日: 5, 预览: 预览({ 要勾选: false, 联系人们: { 留下: [], 并掉: [] } }), 同意人: [{ userId: "u2", 名: "同事乙", 凭: ["项目负责人"], 项目: [], 项目数: 2 }] };
+  const { page, 错 } = await open(1280, { 种: "客户" }, { __候选: [{ id: "b", name: "乙", 编号: "NO.00012", 负责人: "同事乙", 要申请: true, 按号: "13800000000" }], __申预览: 申预览 });
+  try {
+    await page.getByLabel("搜客户").fill("乙");
+    await page.getByTestId("merge-candidate").click();
+    await page.getByTestId("merge-approver").waitFor();
+    const 话 = await page.getByTestId("merge-approver").innerText();
+    expect(话).toContain("项目负责人；2 个项目");
+    expect(话).not.toContain("：");
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("自己负责的两家、直接合并被拦、申请也发不了且原因是直接合并原因的子集：摆直接合并那组但去掉「可以发合并申请」那句", async () => {
+  const 拦 = { ...预览(), 能并: false, 原因: ["「乙」名下有 1 个同事负责、还没结束的项目，不能直接合并；可以发合并申请，要同意的人都同意后合并", "正在转让交接中"], 联系人们: { 留下: [], 并掉: [] } };
+  const { page, 错 } = await open(1280, { 种: "客户" }, { __预览: 拦, __申预览: { 能发: false, 原因: ["正在转让交接中"], 预览: null, 同意人: [], 等待工作日: 5 } });
+  try {
+    await page.getByLabel("搜客户").fill("乙");
+    await page.getByTestId("merge-candidate").click();
+    await page.locator(".mrg-why").waitFor();
+    const 话 = await page.locator(".mrg-why").innerText();
+    expect(话).toContain("正在转让交接中");
+    expect(话).not.toContain("可以发合并申请");
     expect(错).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);

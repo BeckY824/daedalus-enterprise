@@ -79,7 +79,7 @@ describe("谁能并", () => {
     await 项目("", a, { pooledAt: new Date() });
     expect((await 合并预览(prisma, a, b, 乙)).能并).toBe(true);
     await 项目(丙.id, a);
-    expect(await 不能(乙, a, b)).toMatch(/名下有 1 个同事在推的项目，不能直接合并；请找系统管理员代并/);
+    expect(await 不能(乙, a, b)).toMatch(/名下有 1 个同事在推的项目，不能直接合并；可以发合并申请，要同意的人都同意后合并/);
     expect(await 执行合并(prisma, a, b, 乙)).toMatchObject({ ok: false });
     expect((await raw.customer.findUniqueOrThrow({ where: { id: b } })).deletedAt).toBeNull();
   });
@@ -88,7 +88,8 @@ describe("谁能并", () => {
     const a = await 客户(乙.id);
     const b = await 客户(丙.id);
     const 丙的 = await 项目(丙.id, b);
-    expect(await 不能(乙, a, b)).toMatch(/不是你负责的/);
+    expect(await 不能(乙, a, b)).toMatch(/不是你负责的，只能直接合并两家都由你负责的客户；要并同事的客户，可以发合并申请/);
+    expect(await 不能(乙, a, b)).not.toMatch(/代并/);
     const r = await 执行合并(prisma, a, b, 老板);
     expect(r.ok).toBe(true);
     expect(await raw.project.findUniqueOrThrow({ where: { id: 丙的 } })).toMatchObject({ customerId: a, ownerId: 丙.id });
