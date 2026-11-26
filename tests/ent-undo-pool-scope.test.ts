@@ -168,3 +168,78 @@ describe("公海撤销只撤自己刚才那一下", () => {
     expect(await 在公海(c.id)).toBe(false);
   });
 });
+
+/**
+ * 撤销放进公海也照领取 / 分配的口径（复审 11-26 M1）：一位都没撤成回 ok:false + 原因，撤销条不再报「已撤销」；
+ * 撤成一部分带 有没撤成 + 整句提示。原来放进这一支照旧回 ok:true, updated:0，客户早被人领走了界面还说「已撤销」
+ */
+describe("撤销放进公海：没撤成的要说出来", () => {
+  it("放进去之后被同事领走了：一位都没撤成，ok:false 说清原因，客户还归领走的人", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    expect(await 放进公海([c.id], "客户主动终止")).toMatchObject({ ok: true, updated: 1 });
+    当(小王);
+    expect(await 领取([c.id])).toMatchObject({ ok: true, updated: 1 });
+    当(小李);
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toEqual({ ok: false, error: "这位已经被人领走或分走了，这次没有撤销" });
+    expect(await 归谁(c.id)).toBe(小王.id);
+  });
+
+  it("过了撤销时限：还在公海里，ok:false 说过了时限", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    await 放进公海([c.id], "客户主动终止");
+    await prisma.customerPool.updateMany({ where: { customerId: c.id }, data: { at: new Date(Date.now() - 31 * 60_000) } });
+    expect(await 撤销公海("放进", [{ id: c.id, 值: "" }])).toEqual({ ok: false, error: "这位过了撤销时限或不是你放进公海的，这次没有撤销" });
+    expect(await 在公海(c.id)).toBe(true);
+  });
+
+  it("两位里一位被领走：撤成的照撤，带 有没撤成 + 整句提示", async () => {
+    const a = await 客户(小李.id);
+    const b = await 客户(小李.id);
+    当(小李);
+    expect(await 放进公海([a.id, b.id], "客户主动终止")).toMatchObject({ ok: true, updated: 2 });
+    当(小王);
+    await 领取([b.id]);
+    当(小李);
+    expect(await 撤销公海("放进", [{ id: a.id, 值: "" }, { id: b.id, 值: "" }])).toEqual({
+      ok: true, updated: 1, unchanged: 1, 没权限: 0, 有没撤成: true, 提示: "已撤销 1 位；1 位已经被人领走或分走了，这次没有撤销",
+    });
+    expect(await 归谁(a.id)).toBe(小李.id);
+    expect(await 在公海(a.id)).toBe(false);
+    expect(await 归谁(b.id)).toBe(小王.id);
+  });
+
+  /*
+    批量里有没放的（本来就在公海、被拦下的）：放进公海 回 放了（这次真放进去的那几位），撤销条只拿它们撤（复审 M1）。
+    原来撤销按勾选的全部撤，没放的那几位落进「没撤成」，撤销条按出错样式报「被人领走 / 过了时限」
+  */
+  it("批量里一位已在公海、一位没权限：放了 只有真放的那位，按它撤干净，不报没撤成", async () => {
+    const 放的 = await 客户(小李.id);
+    const 已在 = await 客户(小王.id);
+    const 别人的 = await 客户(小王.id);
+    当(小王);
+    await 放进公海([已在.id], "客户主动终止");
+    当(小李);
+    const r = await 放进公海([放的.id, 已在.id, 别人的.id], "客户主动终止");
+    expect(r).toMatchObject({ ok: true, updated: 1, unchanged: 1, 没权限: 1, 放了: [放的.id] });
+    if (!r.ok) throw new Error("没放成");
+    expect(await 撤销公海("放进", r.放了!.map((id) => ({ id, 值: "" })))).toEqual({ ok: true, updated: 1, unchanged: 0, 没权限: 0 });
+    expect(await 归谁(放的.id)).toBe(小李.id);
+    expect(await 在公海(已在.id)).toBe(true);
+    expect(await 归谁(别人的.id)).toBe(小王.id);
+  });
+
+  it("勾选里有 30 分钟内我自己放进去的那位：这次没放他，撤销不把他一起拿回来", async () => {
+    const 早放 = await 客户(小李.id);
+    const 这次 = await 客户(小李.id);
+    当(小李);
+    await 放进公海([早放.id], "客户主动终止");
+    const r = await 放进公海([早放.id, 这次.id], "客户主动终止");
+    expect(r).toMatchObject({ ok: true, updated: 1, unchanged: 1, 放了: [这次.id] });
+    if (!r.ok) throw new Error("没放成");
+    expect(await 撤销公海("放进", r.放了!.map((id) => ({ id, 值: "" })))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 在公海(早放.id)).toBe(true);
+    expect(await 在公海(这次.id)).toBe(false);
+  });
+});

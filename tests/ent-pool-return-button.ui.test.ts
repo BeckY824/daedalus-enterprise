@@ -20,7 +20,7 @@ const 列表桩: Plugin = { name: "import-perm-boundaries", setup(b) {
   stub(/^next\/link$/, "export default function L({prefetch,...p}){return <a {...p}/>}");
   stub(/^\.\/ImportDrawer$/, "export default function D({open}){return <div data-testid='import-drawer' data-open={String(open)}/>}");
   stub(/^\.\/export-client$/, "export const 完整导出=async()=>({ok:true});");
-  stub(/^\.\/pool-actions$/, `const f=${空跑};export const 放进公海=async(ids)=>{window.__放=ids;return{ok:true,updated:1,unchanged:0,没权限:ids.length-1}},领取=f,分配公海=f,撤销公海=f,退回原因选项=async()=>[];`);
+  stub(/^\.\/pool-actions$/, `const f=${空跑};export const 放进公海=async(ids)=>{window.__放=ids;return{ok:true,updated:1,unchanged:0,没权限:ids.length-1,放了:ids.slice(0,1)}},领取=f,分配公海=f,撤销公海=async(动作,原)=>{window.__撤=[动作,原];return{ok:true}},退回原因选项=async()=>[];`);
   stub(/^@\/app\/\(app\)\/demo-data$/, "export const 查演示数据状态=async()=>({可灌:false,可清:false}),灌一套演示数据=async()=>({ok:true}),清除演示数据=灌一套演示数据;");
   stub(/^\.\/CustomerPick$/, "export default function C(){return null}");
   // 表单那两份料点开才取（11-15，form-data-action.ts）：首屏给了 channels 的用例用不上；没给的点开拿这一份
@@ -147,6 +147,18 @@ it("客户列表批量条：勾的里有放得了的就摆，不撑出页面、�
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }
+});
+
+it("客户列表批量退回后点撤销：只撤这次真放进去的（服务端回的 放了），没放的不交上去（复审 M1）", async () => {
+  const { page, errors } = await 开(列表包, {}, 1280, "tr.ant-table-row");
+  try {
+    await 勾(page, ["c1", "c2", "c3"]);
+    await 批量放回(page).click();
+    await page.getByRole("dialog").getByRole("button", { name: "退回公海" }).click();
+    await page.locator(".undo-bar").getByRole("button", { name: /撤销/ }).click();
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __撤?: unknown }).__撤 ?? null)).toEqual(["放进", [{ id: "c1", 值: "" }]]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
 });
 
 it("客户列表：没传 放不了ids（都放得了）照旧摆", async () => {
