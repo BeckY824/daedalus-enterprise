@@ -12,6 +12,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { DownOutlined, UpOutlined } from "@ant-design/icons";
+import { LinkPending } from "@/components/NavProgress";
 import { 地址快照, 定详情来源, 解析地址们, 记详情来源, 读详情来源, 清详情来源, 进来的前一页, type 详情来源 } from "@/lib/list-return";
 import { 相邻客户 } from "./adjacent-actions";
 import type { 相邻 } from "./adjacent";
@@ -62,6 +63,7 @@ export default function CustomerStep({ customerId }: { customerId: string }) {
         onClick={() => 记详情来源({ href: 来源.href, 位: { ...来源.位, [到.id]: 到.page } })}
       >
         {图}
+        <LinkPending />
       </Link>
     );
   };
