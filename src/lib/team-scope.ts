@@ -277,6 +277,18 @@ export async function 改得了线索(db: PrismaClient, id: string): Promise<boo
   return (await db.lead.count({ where: 条件 ? { AND: [{ id }, 条件] } : { id } })) > 0;
 }
 
+/**
+ * 这个项目改不改得了：和 改得了线索 同一道（只读管理员一律拒，再按 加上限定 里 Project 写的那一支数）。
+ * 读得到、改不到的（虚线下属的、待分配对本线放开的、市场成员相关的、只因进了项目组看得到的、原负责人回避挡住的）回 false。
+ * 切换视图不在这里（写库时 视图拦 统一拒）。给项目详情「已开票」那一格灰着用（lib/project/invoiced.ts）；db 传底层 defaultClient
+ */
+export async function 改得了项目(db: PrismaClient, id: string): Promise<boolean> {
+  if (await 只读的话(db)) return false;
+  const x = await 现在的限定(db);
+  const 条件 = x.我 ? 写范围条件("Project", { ...x, 我: x.我 }) : x.公海回避 ? 只回避条件("Project", x.公海回避) : null;
+  return (await db.project.count({ where: 条件 ? { AND: [{ id }, 条件] } : { id } })) > 0;
+}
+
 /** 选中的里有虚线下属的、市场成员相关的客户：挡下时给人看的那句；没有回 null */
 export async function 虚线只读挡(db: PrismaClient, ids: string[]): Promise<string | null> {
   const 中 = await 虚线只读的(db, ids);

@@ -14,9 +14,11 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能标已开票, 取消已开票不给, type 谁 } from "@/lib/enterprise/permissions";
 import { dayjs } from "@/lib/utils";
-import { 已开票撤回天数, 不能标已开票话, type 已开票格 } from "./invoiced-words";
+import { 改得了项目 } from "@/lib/team-scope";
+import { defaultClient } from "@/lib/prisma";
+import { 已开票撤回天数, 不能标已开票话, 只能看勾不了话, 只能看撤回不了话, type 已开票格 } from "./invoiced-words";
 
-export { 已开票撤回天数, 不能标已开票话, 已开票不能合并, 已开票拦合并, type 已开票格 } from "./invoiced-words";
+export { 已开票撤回天数, 不能标已开票话, 只能看勾不了话, 只能看撤回不了话, 已开票不能合并, 已开票拦合并, type 已开票格 } from "./invoiced-words";
 
 type 结果 = { ok: true; 变了: boolean } | { ok: false; error: string };
 
@@ -48,12 +50,19 @@ export async function 勾已开票(me: 谁 & { name: string }, projectId: string
       const 不给 = 取消已开票不给(me, org, p.invoicedAt, 现在, 已开票撤回天数);
       if (不给) return { ok: false as const, error: 不给 };
     }
-    // 条件更新：两个人同时点，后到的那下改到 0 行，按「没变」回（不重复记日志）
+    // 条件更新。限定层（按组织看客户开着时）对 findUnique 用读范围、对 updateMany 用写范围：
+    // 改到 0 行有两种——别人刚勾过（已是目标值，按「没变」回、不重复记日志），或这个项目只能看（虚线下属的、待分配对本线放开的、
+    // 市场成员相关的、原负责人回避挡住的）：同一事务里再读一次分开，后一种回错误，不能让界面说「已标为已开票」而库里没动
     const 改 = await tx.project.updateMany({
       where: { id: p.id, invoiced: !勾 },
       data: { invoiced: 勾, invoicedById: 勾 ? me.id : null, invoicedAt: 勾 ? 现在 : null },
     });
-    if (!改.count) return { ok: true as const, 变了: false };
+    if (!改.count) {
+      const 现 = await tx.project.findUnique({ where: { id: p.id }, select: { invoiced: true } });
+      if (!现) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
+      if (现.invoiced === 勾) return { ok: true as const, 变了: false };
+      return { ok: false as const, error: 勾 ? 只能看勾不了话 : 只能看撤回不了话 };
+    }
     const 原勾的人 = !勾 && p.invoicedById ? (await tx.user.findUnique({ where: { id: p.invoicedById }, select: { name: true } }))?.name ?? "已不在的成员" : null;
     await tx.auditLog.create({
       data: {
@@ -67,14 +76,23 @@ export async function 勾已开票(me: 谁 & { name: string }, projectId: string
 }
 
 
-/** 项目详情 load.ts 用：org 由调用方传（同一次渲染已经读过） */
-export function 已开票格of(me: 谁, org: Parameters<typeof 能标已开票>[1], p: { invoiced: boolean; invoicedAt: Date | null }, 谁勾的: string | null, 现在: Date = new Date()): 已开票格 {
+/**
+ * 项目详情 load.ts 用：org 由调用方传（同一次渲染已经读过）。
+ * 身份上能勾 / 能撤的，再看这个项目写不写得了（改得了项目，同限定层写的那一支）：只能看的灰着、悬停写 只能看勾不了话 / 只能看撤回不了话，
+ * 不让人点了才报错。身份上就不给的不多查这一句（项目详情查询条数）
+ */
+export async function 已开票格of(me: 谁, org: Parameters<typeof 能标已开票>[1], p: { id: string; invoiced: boolean; invoicedAt: Date | null }, 谁勾的: string | null, 现在: Date = new Date()): Promise<已开票格> {
+  const 身份能勾 = 能标已开票(me, org);
+  const 身份取消不给 = p.invoiced ? 取消已开票不给(me, org, p.invoicedAt, 现在, 已开票撤回天数) : null;
+  const 要看写 = p.invoiced ? !身份取消不给 : 身份能勾;
+  const 写得了 = !要看写 || (await 改得了项目(defaultClient, p.id));
   return {
     勾了: p.invoiced,
     谁: p.invoiced ? 谁勾的 : null,
     何时: p.invoiced && p.invoicedAt ? p.invoicedAt.toISOString() : null,
-    能勾: 能标已开票(me, org),
-    取消不给: p.invoiced ? 取消已开票不给(me, org, p.invoicedAt, 现在, 已开票撤回天数) : null,
+    能勾: 身份能勾 && (p.invoiced || 写得了),
+    取消不给: p.invoiced ? 身份取消不给 ?? (写得了 ? null : 只能看撤回不了话) : null,
+    ...(!p.invoiced && 身份能勾 && !写得了 ? { 不能勾因: 只能看勾不了话 } : {}),
   };
 }
 

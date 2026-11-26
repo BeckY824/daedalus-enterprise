@@ -3205,6 +3205,22 @@ it("已开票：能勾的点了先弹后果框，确认才调动作；不能勾�
     await 框.getByRole("button", { name: "撤回已开票" }).click();
     await 框.waitFor({ state: "hidden" });
     expect(await page.evaluate(() => (window as unknown as 开票窗).__开票)).toEqual([["p1", true], ["p1", false]]);
+    expect(await page.locator(".pd-note").innerText()).toContain("已撤回已开票");
+    // 别人刚撤过（变了:false）：不说「已撤回」，照实说已经是未开票了
+    await page.evaluate(() => { (window as unknown as 开票窗).__开票回 = { ok: true, 变了: false }; });
+    await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).click();
+    await 框.waitFor();
+    await 框.getByRole("button", { name: "撤回已开票" }).click();
+    await 框.waitFor({ state: "hidden" });
+    await page.locator(".pd-note", { hasText: "已经是未开票了" }).waitFor();
+    expect(await page.locator(".pd-note").innerText()).not.toContain("已撤回已开票");
+    // 名单里的人对只能看的项目：灰着，悬停写只能看那句（不是「只有系统管理员或被指定」）
+    await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: false, 谁: null, 何时: null, 能勾: false, 取消不给: null, 不能勾因: "改不了：这个项目你只能看，勾不了已开票" } }));
+    await page.waitForFunction(() => document.querySelector("[data-testid=proj-invoiced-box]")?.getAttribute("title") === "改不了：这个项目你只能看，勾不了已开票");
+    expect(await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).isDisabled()).toBe(true);
+    await page.evaluate(() => (window as unknown as 开票窗).__over({ 已开票: { 勾了: true, 谁: "开票人", 何时: "2026-12-01T02:00:00.000Z", 能勾: true, 取消不给: null } }));
+    await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).waitFor();
+    await page.waitForFunction(() => !(document.querySelector("[data-testid=proj-invoiced] input[type=checkbox]") as HTMLInputElement | null)?.disabled);
     // 没成：原因写在框里、框不关
     await page.evaluate(() => { const w = window as unknown as 开票窗; w.__开票回 = { ok: false, error: "勾上已超过 30 天，谁都不能取消" }; });
     await page.getByTestId("proj-invoiced").getByRole("checkbox", { name: "已开票" }).click();

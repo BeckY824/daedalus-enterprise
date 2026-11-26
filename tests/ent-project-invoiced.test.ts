@@ -6,8 +6,13 @@
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
-const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null } }));
+const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null }, 视图中: false }));
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+// 切换视图期间：写库那一道（team-scope 视图拦 → 视图写拦）照真实的抛 视图只读错误（code CRM_READONLY）；不在视图里照原样
+vi.mock("@/lib/enterprise/view-as", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/view-as")>();
+  return { ...m, 视图写拦: async (动作?: string) => { if (mocks.视图中) throw new m.视图只读错误(); return m.视图写拦(动作); } };
+});
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
@@ -18,7 +23,9 @@ import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 可标已开票键, 只看某人键 } from "@/lib/enterprise/org";
-import { 勾已开票, 已开票撤回天数, 已开票拦合并, 不能标已开票话 } from "@/lib/project/invoiced";
+import { 勾已开票, 已开票撤回天数, 已开票拦合并, 不能标已开票话, 只能看勾不了话, 已开票格of } from "@/lib/project/invoiced";
+import { 权限组织 } from "@/lib/enterprise/org";
+import { 视图只读话 } from "@/lib/enterprise/view-as-words";
 import { 勾项目已开票 } from "@/app/(app)/projects/actions";
 import { 设可标已开票 } from "@/app/(app)/settings/org-actions";
 import { 项目历史页, 历史变更摘要 } from "@/app/(app)/customers/[id]/history-data";
@@ -57,7 +64,7 @@ beforeEach(async () => {
   invalidateSettingsCache();
   忘掉企业版范围();
 });
-afterEach(() => { vi.unstubAllEnvs(); invalidateSettingsCache(); });
+afterEach(() => { mocks.视图中 = false; vi.unstubAllEnvs(); invalidateSettingsCache(); });
 
 describe("谁能勾", () => {
   it("系统管理员能勾：记谁、何时，同一事务写一条操作日志；再勾一次不变、不重记", async () => {
@@ -161,5 +168,43 @@ describe("项目合并拦话", () => {
   it("勾了回「已开票，不能合并」，没勾不拦", () => {
     expect(已开票拦合并({ name: "编造项目一", invoiced: true })).toEqual(["「编造项目一」已开票，不能合并"]);
     expect(已开票拦合并({ name: "编造项目一", invoiced: false })).toEqual([]);
+  });
+});
+
+describe("能看不能写的项目、并发、切换视图（#509 审查）", () => {
+  it("名单里的虚线上级：看得到虚线下属的项目但写不了——勾回只能看那句，库不动、不记日志；项目详情那一格灰着、悬停写同一句", async () => {
+    const 虚线 = await 造人("dm", "测试虚线上级", "SALES", "sales_mgr");
+    await prisma.entMember.update({ where: { userId: 被指定.id }, data: { dottedManagerId: 虚线.id } });
+    await setSetting(可标已开票键, [虚线.id]);
+    invalidateSettingsCache();
+    忘掉企业版范围();
+    // 读范围里有：先钉住「看得到」，免得测成「看不到」那种
+    expect(await 以(虚线, () => prisma.project.count({ where: { id: 项目id } }))).toBe(1);
+    expect(await 以(虚线, () => 勾项目已开票(项目id, true))).toEqual({ ok: false, error: 只能看勾不了话 });
+    expect(await 读(项目id)).toEqual({ invoiced: false, invoicedById: null, invoicedAt: null });
+    expect(await 日志(项目id)).toHaveLength(0);
+    const 格 = await 以(虚线, async () => 已开票格of(虚线, await 权限组织(), { id: 项目id, invoiced: false, invoicedAt: null }, null));
+    expect(格).toMatchObject({ 能勾: false, 不能勾因: 只能看勾不了话 });
+    // 写得了的人那一格照旧能勾、不带原因
+    const 自己 = await 以(管, async () => 已开票格of(管, await 权限组织(), { id: 项目id, invoiced: false, invoicedAt: null }, null));
+    expect(自己).toEqual({ 勾了: false, 谁: null, 何时: null, 能勾: true, 取消不给: null });
+  });
+
+  it("两人同时勾：只有一下真改了，后一下回 变了:false，日志只一条", async () => {
+    const rs = await Promise.all([
+      以谁的身份(管.id, () => 勾已开票(管, 项目id, true)),
+      以谁的身份(被指定.id, () => 勾已开票(被指定, 项目id, true)),
+    ]);
+    expect(rs.map((r) => (r.ok ? r.变了 : r.error)).sort()).toEqual([false, true]);
+    expect((await 读(项目id)).invoiced).toBe(true);
+    expect(await 日志(项目id)).toHaveLength(1);
+  });
+
+  it("切换视图期间点勾：回只读那句（底下是 CRM_READONLY），不抛 500，库不动、不记日志", async () => {
+    mocks.视图中 = true;
+    await expect(以(管, () => 勾已开票(管, 项目id, true))).rejects.toMatchObject({ code: "CRM_READONLY" });
+    expect(await 以(管, () => 勾项目已开票(项目id, true))).toEqual({ ok: false, error: 视图只读话 });
+    expect((await 读(项目id)).invoiced).toBe(false);
+    expect(await 日志(项目id)).toHaveLength(0);
   });
 });

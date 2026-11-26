@@ -32,19 +32,21 @@ beforeAll(async () => {
     const root=createRoot(document.getElementById('root'));
     const 长=${JSON.stringify(长名)};
     const 人=(id,name,bizRole)=>({id,name,deptId:null,bizRole,line:null,managerId:null,dottedManagerId:null});
-    window.__render=({是老板})=>root.render(<App><div style={{maxWidth:1100}}><OrgTab value={{
-      部门:[],成员:[人('a',长,'sales_mgr,marketing_mgr'),人('b','小王','sales')],能改:true,是老板,
+    // 开票：「可标已开票」卡（12-15 第三批）多摆几位不能选的人——管理员、销售教练、只看某人的，外加一位已在名单里后来改成教练的
+    window.__render=({是老板,开票})=>root.render(<App><div style={{maxWidth:1100}}><OrgTab value={{
+      部门:[],成员:[人('a',长,'sales_mgr,marketing_mgr'),人('b','小王','sales'),...(开票?[人('c','管理员甲','admin'),人('d','教练甲','coach'),人('e','只看甲','sales'),人('f','旧名单人','coach')]:[])],能改:true,是老板,
+      ...(开票?{只看某人:{e:'b'},可标已开票:['f']}:{}),
       规则开着:{按组织看客户:false,线索分配:false,字段权限:false,市场复核:true,超时自动转:true},字段权限:{},字段权限挡:null,改权限:{},线索分配:null}}/></div></App>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(是老板: boolean, width = 1366) {
+async function open(是老板: boolean, width = 1366, 开票 = false) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   const errors: string[] = []; page.on("pageerror", e => errors.push(e.message));
   await page.route("http://role.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://role.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
-  await page.evaluate(x => (window as unknown as { __render: (x: { 是老板: boolean }) => void }).__render(x), { 是老板 });
+  await page.evaluate(x => (window as unknown as { __render: (x: { 是老板: boolean; 开票: boolean }) => void }).__render(x), { 是老板, 开票 });
   await page.getByTestId("org-members").waitFor();
   return { page, errors };
 }
@@ -121,3 +123,22 @@ it.each([1024, 1280, 1366])("Windows %ipx：多个标签和超长名字不横向
     expect(点中).toBe(true);
   } finally { await page.close(); }
 });
+
+it("可标已开票：只读管理员、销售教练、设了只看某人的人不在选项里；已在名单里后来不能选的照留一项、标明请去掉", async () => {
+  const { page, errors } = await open(true, 1366, true);
+  try {
+    const 卡 = page.getByTestId("org-invoice-markers");
+    expect(await 卡.locator(".ant-select-selection-item").allInnerTexts()).toEqual(["旧名单人（不能标，请去掉）"]);
+    const 框 = page.getByLabel("可标已开票");
+    const 选项 = page.locator(".ant-select-dropdown:visible .ant-select-item-option");
+    let 字: string[] = [];
+    await expect.poll(async () => {
+      if ((await 框.getAttribute("aria-expanded")) !== "true") await 框.click();
+      await 选项.first().waitFor({ timeout: 3_000 }).catch(() => {});
+      字 = await 选项.allInnerTexts();
+      return 字;
+    }, { timeout: 30_000, interval: 300 }).toContain("小王");
+    expect(字).toEqual([长名, "小王", "旧名单人（不能标，请去掉）"]);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+}, 慢);

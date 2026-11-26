@@ -7,7 +7,7 @@ import { Button, Card, Checkbox, Input, Select, Space, Switch, Tag } from "antd"
 import { useConsequence } from "@/components/ConsequenceDialog";
 import InlineConfirm from "@/components/InlineConfirm";
 import SaveButton from "@/components/SaveButton";
-import { 角色名, 业务角色, 部门最多层数, 角色组合问题 } from "@/lib/sync/dept-policy";
+import { 角色名, 业务角色, 部门最多层数, 角色组合问题, 是只读角色们 } from "@/lib/sync/dept-policy";
 import BizRoleSelect, { 总管级 } from "./BizRoleSelect";
 import { 部门树, type 组织部门 } from "@/lib/enterprise/org-tree";
 import { 拆角色, 合角色 } from "@/lib/enterprise/org-core";
@@ -256,6 +256,10 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
   const [开票草稿, set开票草稿] = useState<{ 基于: string; 人: string[] } | null>(null);
   const 开票人 = 开票草稿 && 开票草稿.基于 === 页面开票 ? 开票草稿.人 : (value.可标已开票 ?? []);
   const 开票改了 = JSON.stringify(开票人) !== 页面开票;
+  // 可标已开票的候选：只读管理员、销售教练、设了「只看某人」的人不能选（服务端 设可标已开票 照拦）。
+  // 已经在名单里的（选进去之后才改了角色 / 设了只看某人）照留一项、标明，好让人去掉，不显示成一串编号
+  const 不能标开票 = (m: 组织架构["成员"][number]) => 是只读角色们(拆角色(m.bizRole)) || !!只看表[m.id];
+  const 开票选项 = value.成员.filter((m) => !不能标开票(m) || 开票人.includes(m.id)).map((m) => ({ value: m.id, label: 不能标开票(m) ? `${m.name}（不能标，请去掉）` : m.name }));
   const 页面无主 = value.无主线索复核人 ?? null;
   const [无主草稿, set无主草稿] = useState<{ 基于: string | null; 人: string | null } | null>(null);
   const 无主 = 无主草稿 && 无主草稿.基于 === 页面无主 ? 无主草稿.人 : 页面无主;
@@ -487,7 +491,7 @@ export default function OrgTab({ value }: { value: 组织架构 }) {
         <Select mode="multiple" allowClear className="org-pick" aria-label="可标已开票" disabled={!能改 || 忙("开票")}
           placeholder="没有（只有系统管理员能勾）" optionFilterProp="label"
           value={开票人} onChange={(v: string[]) => set开票草稿({ 基于: 页面开票, 人: v })}
-          options={人选项} />
+          options={开票选项} />
         {能改 && (
           <Space wrap className="org-save-row">
             <SaveButton disabled={!开票改了 || 忙("开票")} data-testid="org-invoice-markers-save" 做={() => 存("开票", () => 设可标已开票(开票人))}>保存</SaveButton>

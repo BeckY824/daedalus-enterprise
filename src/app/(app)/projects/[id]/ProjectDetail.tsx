@@ -1054,7 +1054,8 @@ export default function ProjectDetail({
       危: !勾,
       做: async () => {
         const r = await 勾项目已开票(p.id, 勾);
-        if (r.ok) { 就地.success(勾 ? "已标为已开票" : "已撤回已开票"); router.refresh(); }
+        // 变了 为假 = 别人刚勾过 / 撤过（已是这个值），不说「已标为」，照实说、刷新看最新
+        if (r.ok) { if (r.变了) 就地.success(勾 ? "已标为已开票" : "已撤回已开票"); else 就地.info(勾 ? "已经是已开票了" : "已经是未开票了"); router.refresh(); }
         return r;
       },
     });
@@ -1531,7 +1532,7 @@ export default function ProjectDetail({
         <div {...资料行()} data-testid="proj-invoiced">
           <span {...键}>已开票</span>
           {/* 悬停原因挂在外面这层：灰着的 input 不出 title */}
-          <span title={p.已开票.勾了 ? p.已开票.取消不给 ?? undefined : p.已开票.能勾 ? undefined : 不能标已开票话} data-testid="proj-invoiced-box">
+          <span title={p.已开票.勾了 ? p.已开票.取消不给 ?? undefined : p.已开票.能勾 ? undefined : p.已开票.不能勾因 ?? 不能标已开票话} data-testid="proj-invoiced-box">
             <Checkbox
               aria-label="已开票"
               checked={p.已开票.勾了}
