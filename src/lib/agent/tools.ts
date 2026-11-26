@@ -1161,6 +1161,11 @@ export const TOOLS: Tool[] = [
       }
       // 企业版「客户」表不带页面筛选时不含公海里的（P-看-03，同 search_customers）；公海里的客户查「公海」表
       else if (规格.表 === "客户" && 企业版()) where = { AND: [where, { pool: { is: null } }] };
+      // 跟进记录按跟进可见条件收（P-看-12，同 search_followups）：同一客户下同事负责、我看不到的项目上的沟通不给，计数、分组、取行共用这个 where；不是企业版 = null 不变
+      if (规格.表 === "跟进记录") {
+        const 可见跟进 = await 跨客户跟进可见条件(await 读我(ctx.userId));
+        if (可见跟进) where = { AND: [where, 可见跟进] };
+      }
       const 表定义 = 查询表(规格.表, ctx.b);
       /*
         回款、线索验证、提成这几张表不在团队限定层里（lib/team-scope.ts 只管客户、项目那一串），

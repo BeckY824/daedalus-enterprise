@@ -1,6 +1,6 @@
 /**
  * 首页 AI 读跟进按跟进可见条件过滤（P-看-12：客户负责人看不到同一客户下同事负责的项目，lib/agent/tools.ts）。
- * 钉的是：客户负责人甲经 get_customer / search_followups 读不到同事乙负责的项目上的沟通，条数、上次跟进不含它；
+ * 钉的是：客户负责人甲经 get_customer / search_followups / query_records（跟进记录表）读不到同事乙负责的项目上的沟通，条数、上次跟进不含它；
  * 实线上级（销售管理）、总管理、系统管理员读得到；不是企业版照旧全给。
  * 乙（只负责项目的人）这位客户不在他的客户限定范围里（「仅项目」块另走），首页 AI 本来就读不到这位客户的跟进，这里不钉。
  */
@@ -31,6 +31,8 @@ const 以 = <T,>(me: 人, fn: () => Promise<T>) => 以谁的身份(me.id, fn);
 type 读 = { summary: string; data?: unknown; 上次跟进?: string };
 const 编号们 = (r: 读) => JSON.stringify(r.data);
 const 搜到 = (r: 读) => (r.data as { 记录: { 内容: string }[]; 总数: number });
+const 查到 = (r: 读) => (r.data as { 结果?: { 内容: string }[]; 总数: number });
+const 查跟进 = (me: 人, 只计数 = false) => 以(me, () => 跑("query_records", { 表: "跟进记录", 条件: [{ 字段: "内容", 运算: "包含", 值: "预算" }], 只计数 }, me)) as Promise<读>;
 
 async function 记(ownerId: string, content: string, 天前: number, projectId?: string) {
   const f = await prisma.followUp.create({ data: { customerId: 客户, ownerId, type: "PHONE", title: "", content, occurredAt: dayjs().subtract(天前, "day").toDate() } });
@@ -78,6 +80,19 @@ describe("首页 AI 读跟进按跟进可见条件", () => {
     const r = 搜到((await 以(甲, () => 跑("search_followups", { keyword: "预算" }, 甲))) as 读);
     expect(r.总数).toBe(2);
     expect(r.记录.map((x) => x.内容)).toEqual(["甲聊预算", "老跟进说过预算"]);
+  });
+
+  it("客户负责人甲：query_records 查跟进记录不含它，取行、只计数的总数都不算", async () => {
+    const r = 查到(await 查跟进(甲));
+    expect(r.总数).toBe(2);
+    expect(r.结果!.map((x) => x.内容).sort()).toEqual(["老跟进说过预算", "甲聊预算"].sort());
+    expect(查到(await 查跟进(甲, true)).总数).toBe(2);
+  });
+
+  it("总管理：query_records 查跟进记录照常读到同事项目上的", async () => {
+    const r = 查到(await 查跟进(老板));
+    expect(r.总数).toBe(3);
+    expect(r.结果!.map((x) => x.内容)).toContain("乙聊预算机密");
   });
 
   it("实线上级（销售管理）、总管理、系统管理员读得到", async () => {
