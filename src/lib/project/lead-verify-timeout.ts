@@ -19,7 +19,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织 } from "@/lib/enterprise/org";
 import { notify } from "@/lib/enterprise/notify";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
-import { 该做, 不执行, 超时自动转开着, 超时提醒分钟, 超时转出分钟, 超时转生效时刻 } from "@/lib/enterprise/reply-overdue";
+import { 该做, 不执行, 超时提醒到期, 超时转出安排, 超时自动转开着, 超时提醒分钟, 超时转出分钟, 超时转生效时刻 } from "@/lib/enterprise/reply-overdue";
 import { 重复咨询来源 } from "./system-created";
 import { 有效线索节点 } from "./stage-gates";
 import { 实际待, 无效交给, 被等的人们, 到期落定, type 待哪步 } from "./lead-verify";
@@ -48,6 +48,19 @@ async function 本钟生效时刻(现在: Date): Promise<Date> {
   return 现在;
 }
 
+/** 没人可通知时的落定时刻：该提醒的那刻当作提醒已发，照 超时转出安排 往后排（落在不执行时段 = 下个工作日重新计时再 +30 分钟） */
+export function 兜底落定时刻(起: Date): Date {
+  let 虚 = 超时提醒到期(起);
+  for (let i = 0; i < 20; i++) {
+    const 安排 = 超时转出安排(虚);
+    if (安排.种 === "转") return 安排.时;
+    虚 = 安排.时;
+  }
+  return 虚;
+}
+/** 兜底那行日志每条线索只打一次（进程内） */
+const 已记兜底 = new Set<string>();
+
 const 键头 = (id: string, 起: Date) => `verify-timeout:${id}:${起.toISOString()}`;
 
 export async function 验证时限扫一遍(现在: Date = new Date()): Promise<验证时限明细> {
@@ -60,6 +73,9 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
     const 行们 = await 看全部(() => prisma.entLeadVerify.findMany({
       where: {
         pending: { in: ["市场复核", "销售终验", "总管理终判"] },
+        // 生效前就在等的、卡住的行不进扫描，不占那 500 个名额：起钟时刻只会是这三列之一（起钟时刻），三列都早于生效的一定不走钟
+        // （updatedAt 每步虽都会更新，但它是库写入时刻、起钟列是传入的业务时刻，直接比起钟列更准）
+        OR: [{ verifiedAt: { gte: 生效 } }, { reviewedAt: { gte: 生效 } }, { ackedAt: { gte: 生效 } }],
         project: { source: 重复咨询来源, phase: "线索", node: 有效线索节点, result: null, pooledAt: null, awaitAssignAt: null, deletedAt: null },
       },
       include: { project: { select: { id: true, name: true, ownerId: true } } },
@@ -94,9 +110,13 @@ export async function 验证时限扫一遍(现在: Date = new Date()): Promise<
           });
           明细.提醒 += n;
           if (n > 0) continue;
-          // 被等的人为空 / 通知一条没记上：overdueAt 永远 null，不然每分钟回到提醒、永远落不了。按起钟 + 1.5 小时直接落定
-          console.warn(`[验证时限] ${v.projectId} 等${步}但没有可通知的人（或通知没记上），到起钟 + ${(超时提醒分钟 + 超时转出分钟) / 60} 小时直接落定`);
-          if (现在.getTime() < 起.getTime() + (超时提醒分钟 + 超时转出分钟) * 60_000) continue;
+          // 被等的人为空 / 通知一条没记上：overdueAt 永远 null，不然每分钟回到提醒、永远落不了。
+          // 兜底也走顺延钟：该提醒的那一刻当作提醒发出，再 30 分钟落定；夜里 / 周末 / 节假日顺延重新计时（P-线索-05）
+          if (!已记兜底.has(头)) {
+            已记兜底.add(头);
+            console.warn(`[验证时限] ${v.projectId} 等${步}但没有可通知的人（或通知没记上），按顺延钟在提醒时刻后 ${超时转出分钟} 分钟直接落定`);
+          }
+          if (现在.getTime() < 兜底落定时刻(起).getTime()) continue;
         }
         const r = await 到期落定(v.projectId, 步, 现在);
         if (!r.ok) {

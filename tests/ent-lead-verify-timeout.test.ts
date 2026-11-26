@@ -18,6 +18,7 @@ import { 验证时限生效key } from "@/lib/project/lead-verify-timeout";
 import { 超时转生效key } from "@/lib/enterprise/reply-overdue";
 import { 月份 } from "@/lib/enterprise/lead-assign";
 import { 记有效沟通 } from "./helpers/ent-valid-followup";
+import { 默认组织规则 } from "@/lib/project/org-rules";
 
 type 人 = { id: string; role: string };
 // 北京 2026-12-02（周三）10:00 = 02:00Z；每个时刻都按北京写
@@ -256,6 +257,22 @@ describe("重复咨询线索的验证时限", () => {
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
+  it("被等的人为空且周五晚进入：兜底也走顺延钟，周一上班提醒时刻后过 30 分钟才落定，不在周一第一分钟当场落（单 3 建议 C）", async () => {
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-04 21:30"));
+    await prisma.entMember.deleteMany({ where: { userId: { in: [老板.id, 总管.id, 市场.id] } } });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    for (const t of ["2026-12-04 23:00", "2026-12-05 11:00", "2026-12-06 11:00", "2026-12-07 08:00", "2026-12-07 08:01", "2026-12-07 09:00", "2026-12-07 09:29"]) {
+      expect((await 扫(京(t))).落定).toBe(0);
+    }
+    expect((await 现(id)).result).toBeNull();
+    expect((await 扫(京("2026-12-07 09:30"))).落定).toBe(1);
+    expect((await 现(id)).result).toBe("线索流失");
+    // 日志每条线索只打一次
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("没有可通知的人")).length).toBe(1);
+    warn.mockRestore();
+  });
+
   it("销售终验到期：系统代推，节点变更的操作人是系统、验证痕是系统，不写必填拦截（必改 2）", async () => {
     const id = await 项目();
     await 初判无效于(id, 京("2026-12-02 09:00"));
@@ -269,6 +286,38 @@ describe("重复咨询线索的验证时限", () => {
     expect(((await 痕(id)).at(-1))).toMatchObject({ step: "销售终验", userId: "system", note: 到期落定话 });
     expect(await prisma.entRequiredBlock.count()).toBe(0);
     expect((await 读线索验证(老板, await 现(id)))?.痕.at(-1)?.谁).toBe("系统");
+  });
+
+  // 系统代推不受「谁能推」四道闸管：字段权限（阶段只读，系统身份不在成员里会一律「藏」）、仅上级推、需求补全期（单 3 必改 A）
+  async function 终验到期照落定(开: () => Promise<void>) {
+    await 开();
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 09:00"));
+    expect((await 市场复核(市场, id, true)).ok).toBe(true);
+    await prisma.entLeadVerify.update({ where: { projectId: id }, data: { reviewedAt: 京("2026-12-02 10:00") } });
+    await 记有效沟通(id);
+    await 扫(京("2026-12-02 11:00"));
+    const r = await 扫(京("2026-12-02 11:30"));
+    expect(r).toMatchObject({ 落定: 1, 没落成: 0 });
+    expect(await prisma.entNotice.count({ where: { title: { contains: "不能改商机阶段" } } })).toBe(0);
+    expect((await prisma.projectNodeLog.findFirstOrThrow({ where: { projectId: id }, orderBy: { at: "desc" } })).userId).toBe("system");
+    expect(((await 痕(id)).at(-1))).toMatchObject({ step: "销售终验", userId: "system" });
+  }
+  it("字段权限规则开着：系统代推照样落定，不被「你的角色不能改商机阶段」拦（单 3 必改 A）", async () => {
+    await 终验到期照落定(async () => { await setSetting("enterprise.rule.field_perm", true); invalidateSettingsCache(); });
+  });
+  it("「仅上级推」开着：系统代推照样落定（单 3 必改 A）", async () => {
+    await 终验到期照落定(async () => {
+      await setSetting("enterprise.rule.org_scope", true);
+      await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 推进权限: "仅上级推" } });
+      invalidateSettingsCache();
+    });
+  });
+  it("需求补全期开着：系统代推照样落定（单 3 必改 A）", async () => {
+    await 终验到期照落定(async () => {
+      await setSetting("orgRules", { ...默认组织规则, 阶段: { ...默认组织规则.阶段, 需求补全期: true } });
+      invalidateSettingsCache();
+    });
   });
 
   it("销售终验到期被拦（缺沟通 / 必填）：只通知负责人一次、不写必填拦截、下一分钟不重试（必改 2）", async () => {
