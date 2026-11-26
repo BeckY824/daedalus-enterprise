@@ -31,7 +31,7 @@ import { 项目单 } from "@/lib/enterprise/project-merge-guard";
 import { 项目换客户预览, 项目换客户, 撤销换客户 as 撤销换客户库, type 换客户预览结果, type 换完 } from "@/lib/enterprise/project-move-customer";
 import {
   项目合并预览, 执行项目合并, 撤回项目合并, 能并进的项目, 项目的合并单,
-  type 项目合并预览结果, type 项目合并完, type 撤回项目合并完, type 项目合并单一条, type 并进候选,
+  type 项目合并预览结果, type 项目合并完, type 撤回项目合并完, type 项目合并单一条, type 并进候选们,
 } from "@/lib/enterprise/project-merge";
 
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -174,10 +174,10 @@ async function 项目都看得到(ids: string[]): Promise<boolean> {
 }
 const 项目看不到 = { ok: false as const, error: "项目不存在或你看不到，刷新看看" };
 
-/** 从被并掉的那个项目出发，留下的候选（同客户、同负责人、没结束；已签合同、到商机 / 订单的灰着带原因） */
-export async function 项目合并候选(并掉id: string): Promise<并进候选[]> {
+/** 从被并掉的那个项目出发，留下的候选（同客户、同负责人、没结束；已签合同、到商机 / 订单的灰着带原因，灰的只列前几个、带总数） */
+export async function 项目合并候选(并掉id: string): Promise<并进候选们> {
   const me = await 我();
-  if (!是id(并掉id) || !(await 项目都看得到([并掉id]))) return [];
+  if (!是id(并掉id) || !(await 项目都看得到([并掉id]))) return { 列: [], 灰共: 0 };
   return 能并进的项目(prisma, 并掉id, me);
 }
 
