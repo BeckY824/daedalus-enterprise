@@ -42,6 +42,7 @@ import { 钟上三态提醒 } from "@/lib/enterprise/tri-state-notice";
 import { 钟上指定回复提醒 } from "@/lib/enterprise/reply-notice";
 import { 钟上定时分配, type 定时分配明细 } from "@/lib/enterprise/scheduled-assign";
 import { 钟上超时自动转, type 超时转明细 } from "@/lib/enterprise/reply-overdue";
+import { 钟上验证时限 } from "./lead-verify-timeout";
 import { 收拾卡住的推送 } from "@/lib/enterprise/feishu-push";
 import { 钟上扫过期合并申请 } from "@/lib/enterprise/merge-request";
 import { dayjs } from "../utils";
@@ -145,6 +146,9 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       .then(() => 钟上超时自动转(现在))
       .then((x) => { r.超时转 = x; })
       .then(() => undefined, (e) => console.error("[超时自动转] 出错，下一遍再试", e))
+      // 重复咨询线索的验证时限（P-线索-05）：同一个钟，等验证的 1 小时提醒、再 30 分钟自动落定；自己不抛，这里再兜一道
+      .then(() => 钟上验证时限(现在))
+      .then(() => undefined, (e) => console.error("[验证时限] 出错，下一遍再试", e))
       .then(() => 挂起移交作废(现在))
       .then(() => undefined, (e) => console.error("[移交作废] 出错，下一遍再试", e))
       // 挂靠申请 24 小时没人处理往上转一级，到总管理为止（P-挂靠-02）：自己不抛，这里再兜一道

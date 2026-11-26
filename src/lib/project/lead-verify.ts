@@ -18,6 +18,8 @@ import { 看全部 } from "../team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 管理员类别们of, 能市场复核, 市场复核要读的, type 复核看的项目, type 组织 } from "@/lib/enterprise/org";
+import { 市场复核人们, 是系统管理员of } from "@/lib/enterprise/org-core";
+import { 系统 } from "./timeout";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
@@ -328,6 +330,48 @@ export async function 销售认领(me: 谁, projectId: string, 继续: boolean):
   if (!r.ok) return r;
   await 看全部(() => prisma.entLeadVerifyLog.create({ data: { projectId: 核.p.id, step: "销售认领", verdict: "退回公海", userId: me.id, at: 时 } }));
   return { ok: true };
+}
+
+/** 验证时限到期自动落定写进变更历史 / 验证记录的话（P-线索-05） */
+export const 到期落定话 = "验证时限到期自动落定";
+
+/** 这一步现在谁被等着（P-线索-05 提醒、通知用）：市场复核 = 能复核的人们；销售终验 = 负责人；总管理终判 = 系统管理员们 */
+export async function 被等的人们(projectId: string, 步: "市场复核" | "销售终验" | "总管理终判"): Promise<string[]> {
+  const { p, org } = await 读当前(projectId);
+  if (!p) return [];
+  if (步 === "销售终验") return [p.ownerId];
+  if (步 === "市场复核") return 市场复核人们(org, p);
+  return [...org.成员.keys()].filter((id) => 是系统管理员of(org, id));
+}
+
+/**
+ * 验证时限到期自动落定（P-线索-05）：按链上最近一次判定落定，写来源「验证时限到期自动落定」。
+ *   市场复核 / 总管理终判在等 = 上一步是销售初判无效（或销售异议）→ 按无效判死（照常记判无效待补）；
+ *   销售终验在等 = 上一步是市场复核有效 → 按接受复核落定（推到线索推进）。
+ * 只落「现在还在等这一步」的：别人先判了回「已被别人判过」、一行不写
+ */
+export async function 到期落定(projectId: string, 步: "市场复核" | "销售终验" | "总管理终判", 现在: Date = new Date()): Promise<结果> {
+  if (!企业版()) return 开不了;
+  const { p, v, 待, 已并入 } = await 读当前(projectId);
+  if (!p) return { ok: false, error: "这个项目已经不在了" };
+  if (已并入) return { ok: false, error: 已并入 };
+  if (待 !== 步) return 判过了;
+  if (!在验证(p)) return 作废;
+  const 读 = 快照(v);
+  const 系统人: 谁 = { id: 系统.id, role: "ADMIN" };
+  if (步 === "销售终验") {
+    // 改节点只认负责人 / 系统管理员（企业版 C2）：推进程这一下替负责人做（等的就是他的终验），验证记录里的人仍记「系统」
+    const 负责人 = await 看全部(() => prisma.user.findUnique({ where: { id: p.ownerId }, select: { id: true, role: true } }));
+    if (!负责人) return { ok: false, error: "负责人不在了" };
+    const r = await 改节点(负责人, p.id, { phase: "线索", node: MQL合格去 }, undefined, { 验证放行: true, 入口: "线索验证判定" });
+    if (!r.ok) return r;
+    return 写状态(p.id, 读, { salesAck: "接受复核", ackedAt: 现在, verdict: "有效线索", finalResult: "有效线索", pending: null }, { step: "销售终验", verdict: "接受复核", note: 到期落定话, userId: 系统人.id });
+  }
+  const 说明 = `${到期落定话}（按上一步判定：无效）`;
+  const 段 = 步 === "市场复核"
+    ? { reviewResult: "无效", reviewNote: 说明, reviewedById: null, reviewedAt: 现在 }
+    : { finalNote: 说明, finalById: null, finalAt: 现在 };
+  return 判死(系统人, p.id, 读, 步, 说明, 段);
 }
 
 /** 撤回验证（X-77「验证中不能改派，要改先撤回验证」）：提交验证的人（初判无效交复核的那位）、系统管理员能撤 */
