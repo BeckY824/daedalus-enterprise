@@ -131,6 +131,17 @@ describe("前提：谁能并、哪些拦", () => {
     expect(阶段和钱拦({ name: "x", phase: "订单" }, "留下", { 回款: 0, 提成: 0 })).toEqual([expect.stringContaining("订单阶段")]);
   });
 
+  it("业务线不同拦下（对齐第一批客户合并，2a 审查）；一边空着不拦", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c, { bizLine: "外贸" });
+    const b = await 项目(乙.id, c, { bizLine: "内贸" });
+    expect(await 项目合并预览(prisma, a, b, 乙)).toMatchObject({ 能并: false, 原因: ["两个项目业务线不同（外贸 / 内贸），不能合并"] });
+    expect(await 执行项目合并(prisma, a, b, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("业务线不同") });
+    expect(await raw.entCustomerMerge.count()).toBe(0);
+    const 空 = await 项目(乙.id, c, { bizLine: null });
+    expect(await 项目合并预览(prisma, a, 空, 乙)).toMatchObject({ 能并: true });
+  });
+
   it("被并掉的判过有效、在等复核、已判无效都拦；留下的那个判过有效照样能并", async () => {
     const c = await 客户(乙.id);
     const a = await 项目(乙.id, c);
@@ -467,6 +478,10 @@ describe("字段覆盖守卫：库里带项目 id 的表都定过挪不挪", () 
       "EntLeadMakeup.projectId", "EntLeadMakeup.usedProjectId", "EntReplyOverdue.projectId", "EntRequiredBlock.projectId", "EntProjectCold.projectId",
       "EntProjectPayment.projectId", "EntCommission.projectId", "EntCommissionSplit.projectId", "FollowPlan.afterSaleProjectId", "AiConversation.projectId",
     ];
+    // 这里只扫列名带 projectId 的。不叫 projectId、也会指项目的几处（2a 审查人工核过，处理写在 project-merge.ts 去重表旁边）：
+    //   多态 targetId —— EntExternalRef（opportunity 的挪，再同步记冲突不写）、EntImportRow（不挪，整批撤回跳过合并单里的项目）、
+    //   EntConflict（不挪，改指后去定按过时）、EntTrash（指已删的项目，删了的不能并，不涉及）；
+    //   EntHandover.projectIds（JSON，不挪，离职交接待确认的合并、撤回都拦）。新加这类多态 / JSON 列也要在那里补一行
     expect(列们.filter((x) => ![...挪, ...勾, ...不挪].includes(x)), "新表带项目 id：在 project-merge.ts 决定挪不挪，再补进这里").toEqual([]);
     expect([...挪, ...勾, ...不挪].filter((x) => !列们.includes(x)), "表里没有了，从清单删掉").toEqual([]);
   });

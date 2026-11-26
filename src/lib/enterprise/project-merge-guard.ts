@@ -69,3 +69,30 @@ export async function 换客户合并拦(db: 读单, projectId: string, 现在: 
   if (!单) return null;
   return 单.我是 === "被并" ? 已并入拦话(单.留下名) : 留下换客户拦话(单.被并名);
 }
+
+/** 合并单明细「改指」里老系统对照那一组的键（同 project-merge.ts 挪表 entExternalRef.targetId） */
+const 对照改指键 = "entExternalRef.targetId";
+/** 同步碰到被项目合并改指过的老商机对照：整条记冲突、不写，冲突里这句说明（导入页冲突列表照写） */
+export const 对照已随合并话 = (留下名: string) =>
+  `这条老商机已随项目合并并入${留下名 ? `「${留下名}」` : "另一个项目"}，原系统这次的改动没有写，请人工核`;
+
+/**
+ * 老系统对照（EntExternalRef）是不是被一张没撤回的项目合并单改指过（明细「改指」里有这个对照 id）：是 → 留下的项目名，不是 null。
+ * 不按 30 天算：过了 30 天合并就定了，对照照样指着留下的项目，原系统再同步过来照「我们没动过」覆盖一样会出错。
+ * 先用 detail 文本含这个 id 粗筛（cuid 不会撞），再解开明细核一遍。不是企业版 null
+ */
+export async function 对照被项目合并改指(db: 读单, refId: string): Promise<{ 留下名: string } | null> {
+  if (!企业版() || !refId) return null;
+  const 们 = await db.entCustomerMerge.findMany({
+    where: { kind: 项目单, status: "已合并", detail: { contains: refId } },
+    orderBy: { at: "desc" },
+    select: { detail: true },
+  });
+  for (const m of 们) {
+    try {
+      const 改指 = (JSON.parse(m.detail) as { 改指?: Record<string, unknown> }).改指?.[对照改指键];
+      if (Array.isArray(改指) && 改指.includes(refId)) return { 留下名: 留下名of(m.detail) };
+    } catch { /* 明细读不出来的单不算 */ }
+  }
+  return null;
+}

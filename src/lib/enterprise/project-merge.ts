@@ -42,7 +42,7 @@ export const 撤回项目合并验证步 = "撤回项目合并";
 
 const 项目列 = {
   id: true, name: true, customerId: true, ownerId: true, creatorId: true, phase: true, node: true, result: true, closedAt: true,
-  pooledAt: true, awaitAssignAt: true, deletedAt: true, channelId: true, channel: { select: { channelOwnerId: true } },
+  pooledAt: true, awaitAssignAt: true, deletedAt: true, channelId: true, bizLine: true, channel: { select: { channelOwnerId: true } },
 } satisfies Prisma.ProjectSelect;
 type 项目行 = Prisma.ProjectGetPayload<{ select: typeof 项目列 }>;
 
@@ -50,6 +50,7 @@ async function 读项目(db: Pick<Tx, "project">, id: string, 连删的 = false)
   return 看全部(() => db.project.findFirst({ where: { id, ...(连删的 ? {} : { deletedAt: null }) }, select: 项目列 }));
 }
 const 名 = (p: Pick<项目行, "name">) => p.name || "未命名项目";
+const 有值 = (v: unknown) => v !== null && v !== undefined && v !== "";
 
 /* ───────────────────────── 能不能并 ───────────────────────── */
 
@@ -85,6 +86,8 @@ async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | nu
   const 管 = 是系统管理员(me, org);
   const 因: string[] = [];
   if (A.customerId !== B.customerId) 因.push("两个项目不在同一位客户名下；先「项目换客户」或先合并客户再并");
+  // 业务线不同不能并（对齐第一批客户合并 customer-merge.ts 拦的原因：两边都有值、不一样才拦）；预览里同一句，框里「并过去」灰着
+  if (有值(A.bizLine) && 有值(B.bizLine) && A.bizLine !== B.bizLine) 因.push(`两个项目业务线不同（${A.bizLine} / ${B.bizLine}），不能合并`);
   let 公海 = false;
   for (const p of [A, B]) {
     if (p.pooledAt) { 因.push(`「${名(p)}」在线索公海里，先领出来再并`); 公海 = true; }
@@ -186,6 +189,15 @@ const 挪表 = [
   ["entExternalRef", "id", "targetId", { entity: "opportunity" }],
 ] as const;
 const 去重表 = [["projectContact", "contactId"], ["projectCustomer", "customerId"]] as const;
+/*
+ * 字段覆盖守卫（tests/ent-project-merge.test.ts「字段覆盖守卫」）只扫列名带 projectId 的。下面几处指项目不叫 projectId，2a 审查人工核过：
+ *   - EntExternalRef.targetId（多态）：只有 entity=opportunity 的指项目 → 挪表里改指留下的项目；之后原系统再同步这条商机，
+ *     apply.ts 对照 整条记冲突、不写（project-merge-guard 对照被项目合并改指）。客户 / 联系人 / 沟通的对照不指项目，不涉及
+ *   - EntImportRow.targetId（多态，导入记录）：不挪；整批撤回时这一批的项目在合并单里（被并或留下）跳过不撤，报告写明（revert.ts 项目已并入未撤话）
+ *   - EntConflict.targetId（多态，同步冲突）：不挪；被并项目上没定的冲突，对照改指后 targetId 对不上，去定按过时（resolve.ts 过时了）
+ *   - EntTrash.targetId（多态，整批撤回删掉的记录）：指的是已删的项目，删了的项目不能并（读项目 deletedAt: null），不涉及
+ *   - EntHandover.projectIds（JSON 数组）：不挪；离职交接待确认里的项目合并、撤回都拦（离职交接中的项目），确认过的是历史不动
+ */
 const 主键of: Record<string, string> = Object.fromEntries([...挪表.map(([t, 键]) => [t, 键]), ...去重表.map(([t]) => [t, "id"])]);
 const 类叫: Record<string, string> = {
   followUpProject: "沟通", entFollowUpMark: "沟通标记", entFollowUpMeta: "沟通编号", attachment: "附件", entCoachRecording: "录音", entCoachTopic: "点评",
