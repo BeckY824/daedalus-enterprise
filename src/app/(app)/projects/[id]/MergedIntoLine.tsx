@@ -4,7 +4,7 @@
  * 项目详情顶上「已并入 → 留下的项目」一行（合并客户第二批 2a，规划「被并掉的项目详情显示已并入」）。
  *
  * 被并掉的项目（合并单没撤回）打开时：并进了哪个项目（点得过去）、谁、何时并的；能撤的人（load.ts 已并入of，和历史变更同一个预判）旁边带「撤回」，
- * 没权的、过了 30 天的不摆按钮。留下的项目上不摆。电脑和手机（≤767）同一个组件：一行放不下省略号，悬停看全，手机点一下展开看全。
+ * 没权的不摆按钮；过了撤回期限（单.过期话，load.ts 带，谁看都一样、系统管理员也不能代撤）在按钮的位置写「合并已超过 N 天，不能撤回」。留下的项目上不摆。电脑和手机（≤767）同一个组件：一行放不下省略号，悬停看全，手机点一下展开看全。
  *
  * 页面（客户页 page.tsx 的项目区、项目详情页 page.tsx）当槽递给 ProjectDetail，不让 ProjectDetail 直接引服务端动作
  * （项目详情那十几个界面测试打包 ProjectDetail 时不用各自再桩一份 merge-actions）。
@@ -54,7 +54,7 @@ export default function MergedIntoLine({ 单, 项目名, 去, 嵌入 }: Props) {
   const m = 单!;
   const A = m.到 || "另一个项目";
   const 谁时 = `${m.谁 ? `${m.谁} ` : ""}${fmtDateTime(m.at)} 并入`;
-  const 全话 = `已并入 → 「${A}」（${谁时}）`;
+  const 全话 = `已并入 → 「${A}」（${谁时}）${m.过期话 ? `；${m.过期话}` : ""}`;
   const 撤 = () => void 问后果(项目合并撤回后果(项目名 || "这个项目", A, async () => {
     const r = await 撤回项目合并单(m.mergeId);
     if (!r.ok) return r;
@@ -72,6 +72,7 @@ export default function MergedIntoLine({ 单, 项目名, 去, 嵌入 }: Props) {
             <span className="mrg-into-s">（{谁时}）</span>
           </span>
           {m.能撤 && <Button size="small" onClick={撤} data-testid="project-merged-undo">撤回</Button>}
+          {!m.能撤 && m.过期话 && <span className="mrg-into-x" data-testid="project-merged-expired">{m.过期话}</span>}
         </div>
       </div>
       {后果框}

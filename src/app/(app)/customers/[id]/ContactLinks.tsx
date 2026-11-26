@@ -28,10 +28,13 @@ const 客户链接 = (x: { id: string; name: string; 看得到: boolean }) =>
  * 收进一颗常显的「⋯」交给 头 摆在组头右端，不再在卡上摆一排蓝链接；children 是组里那几行，挂靠的行、就地填的格子接在它们后面。
  * 「改到这位名下」「解除挂靠」点了照旧就地问一句再做（不弹框）
  */
-export default function ContactLinks({ customerId, c, 只读, 头, children, 合成 }: {
+export default function ContactLinks({ customerId, c, 只读, 头, children, 合成, 合成灰 }: {
   customerId: string; c: ContactRow; 只读: boolean; 头?: (更多: ReactNode) => ReactNode; children?: ReactNode;
   /** 「和另一位合成」（合并客户第一批，11-25）：给了才摆，点了交给客户页开框（MergeHost）；挂靠过来的不给 */
   合成?: () => void;
+  /** 「和另一位合成」摆着、置灰的原因（12-02：挂靠过来的、客户只有一位联系人）：电脑悬停看（title），手机（≤767）没有悬停，灰项下面一行小字（merge.css .mrg-gray-note；merge.css 随 MergeHost 进客户页，没 合并口 就没这一项）。
+   *  给了 合成 就不看这个；两个都没给（没权、只读）照旧不摆这一项。服务端合成照旧拦 */
+  合成灰?: string;
 }) {
   /** 做没做成就地写一行（原型 g.notice，不弹顶部提示）：错的 role=alert 留 6 秒，成了 role=status 留 3 秒 */
   const [话, set话] = useState<{ 话: string; 错?: boolean } | null>(null);
@@ -90,6 +93,14 @@ export default function ContactLinks({ customerId, c, 只读, 头, children, 合
   }
 
   const 另挂 = c.另挂 ?? [];
+  const 合成项: NonNullable<MenuProps["items"]> = 合成
+    ? [{ type: "divider" as const, key: "d2" }, { key: "合成", label: "和另一位合成" }]
+    : 合成灰
+      ? [{ type: "divider" as const, key: "d2" }, {
+          key: "合成", disabled: true, title: 合成灰,
+          label: <div className="menu-2l mrg-gray-item"><div>和另一位合成</div><div className="menu-2l-note mrg-gray-note">{合成灰}</div></div>,
+        }]
+      : [];
   const 菜单项: NonNullable<MenuProps["items"]> = 只读
     ? []
     : 挂
@@ -98,11 +109,12 @@ export default function ContactLinks({ customerId, c, 只读, 头, children, 合
           ...(挂.能改 ? [{ key: "改到", label: "改到这位名下" }] : []),
           { type: "divider" as const, key: "d" },
           { key: "解除", label: "解除挂靠", danger: true },
+          ...合成项,
         ]
       : [
           { key: "挂", label: "挂到别的客户" },
           { key: "换", label: "换主客户" },
-          ...(合成 ? [{ type: "divider" as const, key: "d2" }, { key: "合成", label: "和另一位合成" }] : []),
+          ...合成项,
         ];
   const 更多 = 头 && 菜单项.length > 0 && (
     <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 菜单项, onClick: ({ key }) => (key === "合成" ? 合成?.() : 开(key as "挂" | "换" | "说明" | "改到" | "解除")) }}>

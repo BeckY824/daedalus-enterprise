@@ -17,7 +17,7 @@ import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选, 是系统管理员, 只读角色, 只看的人, type 权限项目 } from "@/lib/enterprise/permissions";
 import { 项目来历 } from "@/lib/enterprise/customer-merge";
-import { 能并进的候选们, 能并的阶段, 签了合同, 已签合同的项目不能合并, 项目的合并单 } from "@/lib/enterprise/project-merge";
+import { 能并进的候选们, 能并的阶段, 签了合同, 已签合同的项目不能合并, 项目的合并单, 项目合并撤回过期话 } from "@/lib/enterprise/project-merge";
 import { 客户事项挡, 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
 import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
 import { 要挂项目的类型 } from "@/lib/project/follow-needs-project-text";
@@ -549,10 +549,11 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   };
 }
 
-/** 这个项目并进了别的项目、合并单没撤回：那一张（能撤 和历史变更同一个预判；过了 30 天照样写已并入，只是不带撤回） */
+/** 这个项目并进了别的项目、合并单没撤回：那一张（能撤 和历史变更同一个预判；过了撤回期限照样写已并入，不带撤回、写明「合并已超过 N 天，不能撤回」——
+ *  谁看都一样，系统管理员也不能代撤。没权的其他原因（不是合并的人、转给了别人……）照旧不写） */
 async function 已并入of(me: SessionUser, projectId: string): Promise<项目详情["已并入"]> {
   const m = (await 项目的合并单(prisma, projectId, me)).find((x) => x.方向 === "并出去" && x.status === "已合并");
-  return m ? { mergeId: m.id, 到id: m.到id, 到: m.到, at: m.at, 谁: m.谁, 能撤: m.能撤 } : null;
+  return m ? { mergeId: m.id, 到id: m.到id, 到: m.到, at: m.at, 谁: m.谁, 能撤: m.能撤, ...(m.过期 ? { 过期话: 项目合并撤回过期话 } : {}) } : null;
 }
 
 /** 「并进另一个项目」那一项：null = 不摆；灰 = 摆着灰、悬停写原因（候选同 能并进的项目：同客户、同负责人、在推的；灰着列的候选也算有，框里写原因） */
