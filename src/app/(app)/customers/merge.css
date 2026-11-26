@@ -71,6 +71,10 @@
 
 /* 并进另一个项目（第二批 2a，MergeHost ProjectMergeDialog）：留下的项目选择框通栏、可输入搜 */
 .mrg-psel { width: 100%; min-width: 0; }
+/* 灰着列的候选（已签合同 / 到商机订单，E-331）：名称一行省略，原因整句不缩；窄到名称不足 8 字时原因折到下一行 */
+.mrg-popt { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--s2); min-width: 0; }
+.mrg-popt > .mrg-one { flex: 1 1 8em; }
+.mrg-popt-no { flex: none; color: var(--text-muted); font-size: var(--fs-note); }
 
 /* 历史变更里的合并单 */
 .mrg-orders { margin: 0 0 var(--s3); padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }

@@ -1466,11 +1466,11 @@ it("[合并客户第二批 2a] 项目组有「并进另一个项目」（服务�
       expect(请求.名).toMatch(/^项目一/);
       await page.getByTestId("merge-probe").getByRole("button").click();
       // 不能并：灰着，下面一行写原因
-      await 画(page, { 合并: { 客户: false, 联系人: false }, 项目改: { 并进: { 灰: "这位客户名下没有同一位负责人、线索阶段在推的别的项目" } } });
+      await 画(page, { 合并: { 客户: false, 联系人: false }, 项目改: { 并进: { 灰: "这位客户名下没有同一位负责人在推的别的项目" } } });
       await 开菜单(page, "更多操作");
       const 灰 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) li.ant-dropdown-menu-item").filter({ hasText: "并进另一个项目" });
       expect(await 灰.getAttribute("aria-disabled")).toBe("true");
-      expect(await 灰.innerText()).toContain("没有同一位负责人、线索阶段在推的别的项目");
+      expect(await 灰.innerText()).toContain("没有同一位负责人在推的别的项目");
       await page.keyboard.press("Escape");
       // 服务端没给（不是负责人本人）/ 没给 合并口：都不摆
       await 画(page, { 合并: { 客户: false, 联系人: false }, 项目改: { 并进: null } });

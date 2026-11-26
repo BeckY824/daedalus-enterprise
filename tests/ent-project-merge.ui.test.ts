@@ -155,13 +155,58 @@ for (const 宽 of [1280, 1024, 768, 390]) {
     const 空 = await open(宽, { __候选: [] });
     try {
       await 空.page.getByTestId("pmerge-empty").waitFor();
-      expect(await 空.page.getByTestId("pmerge-empty").innerText()).toContain("没有同一位负责人、线索阶段在推的别的项目");
+      expect(await 空.page.getByTestId("pmerge-empty").innerText()).toContain("没有同一位负责人在推的别的项目");
       expect(await 空.page.getByLabel("留下的项目").count()).toBe(0);
       expect(await 空.page.getByTestId("pmerge-go").isDisabled()).toBe(true);
       expect(空.错).toEqual([]);
     } finally { await 空.page.close(); }
   }, 60_000);
 }
+
+for (const 宽 of [1280, 390]) it(`[E-331] ${宽}：已签合同、到商机 / 订单的候选灰着列、不能选，旁边写原因；全是灰的写一句点开看原因`, async () => {
+  const 灰 = [
+    { id: "pd", name: "已经签了合同的那个项目".repeat(3), node: "签约", 不能: "已签合同的项目不能合并" },
+    { id: "pe", name: "到了商机阶段的项目", node: "需求确认", 不能: "到商机 / 订单的项目暂不能合并" },
+  ];
+  const { page, 错 } = await open(宽, { __候选: [...候选, ...灰] });
+  try {
+    await page.getByLabel("留下的项目").click();
+    const 项 = page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option");
+    await expect.poll(() => 项.count()).toBe(4);
+    const 禁 = 项.filter({ has: page.locator(".mrg-popt-no") });
+    expect(await 禁.count()).toBe(2);
+    for (let i = 0; i < 2; i++) {
+      const x = 禁.nth(i);
+      expect(await x.evaluate((e) => e.classList.contains("ant-select-item-option-disabled"))).toBe(true);
+      expect(await x.locator(".mrg-popt-no").innerText()).toBe(灰[i].不能);
+      // 名称一行省略，原因整句露着
+      const [名宽, 名满, 因右, 框右, 字] = await x.evaluate((e) => {
+        const n = e.querySelector(".mrg-one")!, r = e.querySelector(".mrg-popt-no")!;
+        return [n.clientWidth, n.scrollWidth, r.getBoundingClientRect().right, e.getBoundingClientRect().right, parseFloat(getComputedStyle(n).fontSize)];
+      });
+      // 名称至少露 7 个字（窄屏原因折到下一行），不被原因挤没
+      expect(名宽).toBeGreaterThanOrEqual(字 * 7);
+      if (i === 0) expect(名满).toBeGreaterThan(名宽);
+      expect(因右).toBeLessThanOrEqual(框右 + 0.5);
+    }
+    await 禁.first().dispatchEvent("click");
+    await page.waitForTimeout(200);
+    expect((await 调(page)).some((x) => x[0] === "预览")).toBe(false);
+    expect(await page.getByTestId("pmerge-go").isDisabled()).toBe(true);
+    expect(await page.getByTestId("pmerge-allgrey").count()).toBe(0);
+    expect(await 横滚(page)).toEqual([false, false]);
+    await 截图(page, `并项目-灰候选-${宽}.png`);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+  const 全灰 = await open(宽, { __候选: 灰 });
+  try {
+    await 全灰.page.getByTestId("pmerge-allgrey").waitFor();
+    expect(await 全灰.page.getByTestId("pmerge-allgrey").innerText()).toBe("没有能选的项目，点开看各自为什么不能并。");
+    expect(await 全灰.page.getByTestId("pmerge-empty").count()).toBe(0);
+    expect(await 全灰.page.getByTestId("pmerge-go").isDisabled()).toBe(true);
+    expect(全灰.错).toEqual([]);
+  } finally { await 全灰.page.close(); }
+}, 60_000);
 
 it("[E-331] 联系人核实：只有一边有人（或被并的那位留下那边也有）不提示；多位写「这几位里」、每边最多列 3 位；没留号码照写", async () => {
   const 人 = (n: number, 前: string) => Array.from({ length: n }, (_, i) => ({ id: `${前}${i}`, name: `${前}${i}`, 尾号: i ? `00${i}0` : "" }));

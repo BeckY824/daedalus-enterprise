@@ -64,8 +64,8 @@ const 钱也能有: Record<"留下" | "并掉", boolean> = { 留下: false, 并�
 /** 已签合同（合同状态 = 已生效，proj-fields 生效的合同状态）：两边都拦（客户 E-331 必改 1）。开票库里没有字段，不判 */
 export const 已签合同的项目不能合并 = "已签合同的项目不能合并";
 export const 签了合同 = (p: { contractStatus?: string | null }) => p.contractStatus === 生效的合同状态;
-/** 候选那一句（Prisma where）：合同没生效的（空着的也算没生效；SQL 里 NULL <> x 不成立，所以要 OR） */
-const 没签合同 = { OR: [{ contractStatus: null }, { contractStatus: { not: 生效的合同状态 } }] } satisfies Prisma.ProjectWhereInput;
+/** 候选里灰着列的那句：留下的那个到了商机 / 订单（能并的阶段.留下 之外），客户 E-331 必改 5「别让人以为功能坏了」 */
+export const 到商机订单不能合并 = "到商机 / 订单的项目暂不能合并";
 export function 阶段和钱拦(p: Pick<项目行, "name" | "phase"> & { contractStatus?: string | null }, 角色: "留下" | "并掉", 钱: { 回款: number; 提成: number }): string[] {
   const 因: string[] = [];
   if (!能并的阶段[角色].includes(p.phase)) 因.push(`「${名(p)}」在${p.phase}阶段，只有${能并的阶段[角色].join("、")}阶段的项目能合并`);
@@ -186,11 +186,14 @@ export async function 项目合并预览(db: 库, 留下id: string, 并掉id: st
   return { 能并: true, 原因: [], ...两个, 条数, 组员: 组员.map(({ userId, name }) => ({ userId, name })), 联系人 };
 }
 
+/** 留下的候选一项：不能 = 灰着列、不能选，写原因（已签合同 / 到商机订单）；选不选得了执行时照样整套再判 */
+export type 并进候选 = { id: string; name: string; node: string; 不能?: string };
+
 /**
- * 从这个项目（被并掉的那个）出发，同一位客户名下能并进去的项目（留下的候选）：同负责人、没结束、不在公海、阶段对得上。
- * 只是给选择框列候选，执行时照样整套再判
+ * 从这个项目（被并掉的那个）出发，同一位客户名下留下的候选：同负责人、没结束、不在公海。
+ * 阶段对不上、已签合同的也列，灰着写原因（E-331 必改 5）；只是给选择框列候选，执行时照样整套再判
  */
-export async function 能并进的项目(db: 库, 并掉id: string, me: 合并人): Promise<{ id: string; name: string; node: string }[]> {
+export async function 能并进的项目(db: 库, 并掉id: string, me: 合并人): Promise<并进候选[]> {
   if (!企业版()) return [];
   const B = await 读项目(db, 并掉id);
   if (!B || B.pooledAt || B.result) return [];
@@ -200,12 +203,20 @@ export async function 能并进的项目(db: 库, 并掉id: string, me: 合并�
   return 能并进的候选们(db, B);
 }
 
-/** 候选那一句（同客户、同负责人、线索阶段在推的、没签合同的）：调用方手里已有这个项目的行（项目详情的 load.ts）就直接用，省一次读项目 */
-export async function 能并进的候选们(db: 库, B: { id: string; customerId: string; ownerId: string }): Promise<{ id: string; name: string; node: string }[]> {
-  return 看全部(() => db.project.findMany({
-    where: { customerId: B.customerId, ownerId: B.ownerId, id: { not: B.id }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null, phase: { in: [...能并的阶段.留下] }, ...没签合同 },
-    orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, name: true, node: true },
+/**
+ * 候选那一句（同客户、同负责人、在推的）：能选的排前，灰的（已签合同 / 不在线索阶段）排后。
+ * 调用方手里已有这个项目的行（项目详情的 load.ts）就直接用，省一次读项目；菜单只看有没有（灰的也算，点开框里写原因）
+ */
+export async function 能并进的候选们(db: 库, B: { id: string; customerId: string; ownerId: string }): Promise<并进候选[]> {
+  const 行 = await 看全部(() => db.project.findMany({
+    where: { customerId: B.customerId, ownerId: B.ownerId, id: { not: B.id }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null },
+    orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, name: true, node: true, phase: true, contractStatus: true },
   }));
+  const 列 = 行.map(({ id, name, node, phase, contractStatus }): 并进候选 => {
+    const 不能 = 签了合同({ contractStatus }) ? 已签合同的项目不能合并 : !能并的阶段.留下.includes(phase) ? 到商机订单不能合并 : undefined;
+    return 不能 ? { id, name, node, 不能 } : { id, name, node };
+  });
+  return [...列.filter((x) => !x.不能), ...列.filter((x) => x.不能)];
 }
 
 /* ───────────────────────── 执行 ───────────────────────── */

@@ -555,7 +555,7 @@ async function 已并入of(me: SessionUser, projectId: string): Promise<项目�
   return m ? { mergeId: m.id, 到id: m.到id, 到: m.到, at: m.at, 谁: m.谁, 能撤: m.能撤 } : null;
 }
 
-/** 「并进另一个项目」那一项：null = 不摆；灰 = 摆着灰、悬停写原因（候选同 能并进的项目：同客户、同负责人、线索阶段在推的） */
+/** 「并进另一个项目」那一项：null = 不摆；灰 = 摆着灰、悬停写原因（候选同 能并进的项目：同客户、同负责人、在推的；灰着列的候选也算有，框里写原因） */
 async function 并进菜单(
   me: SessionUser, org: Awaited<ReturnType<typeof 权限组织>>,
   p: { id: string; customerId: string; ownerId: string | null; phase: string; result: string | null; pooledAt: Date | null; awaitAssignAt: Date | null; contractStatus: string | null },
@@ -565,5 +565,5 @@ async function 并进菜单(
   if (p.result) return { 灰: `项目已经结束（${p.result}），不能再并` };
   if (!能并的阶段.并掉.includes(p.phase)) return { 灰: `在${p.phase}阶段，只有${能并的阶段.并掉.join("、")}阶段的项目能并进另一个项目` };
   if (签了合同(p)) return { 灰: 已签合同的项目不能合并 };
-  return (await 能并进的候选们(prisma, { id: p.id, customerId: p.customerId, ownerId: p.ownerId ?? "" })).length ? {} : { 灰: "这位客户名下没有同一位负责人、线索阶段在推的别的项目" };
+  return (await 能并进的候选们(prisma, { id: p.id, customerId: p.customerId, ownerId: p.ownerId ?? "" })).length ? {} : { 灰: "这位客户名下没有同一位负责人在推的别的项目" };
 }

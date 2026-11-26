@@ -147,8 +147,10 @@ describe("前提：谁能并、哪些拦", () => {
     for (const s of ["起草中", "我方修改中", "已终止", null]) expect(阶段和钱拦({ name: "x", phase: "线索", contractStatus: s }, "留下", { 回款: 0, 提成: 0 }), String(s)).toEqual([]);
     const 起草 = await 项目(乙.id, c, { contractStatus: "起草中" });
     expect(await 项目合并预览(prisma, 起草, a, 乙)).toMatchObject({ 能并: true });
-    // 候选（留下的那个）不列已签合同的；空着、起草中的照列
-    expect((await 能并进的项目(prisma, a, 乙)).map((x) => x.id).sort()).toEqual([起草].sort());
+    // 候选（留下的那个）：已签合同的灰着列在后面、写原因（E-331 必改 5）；空着、起草中的照常能选
+    const 候 = await 能并进的项目(prisma, a, 乙);
+    expect(候).toEqual([expect.objectContaining({ id: 起草 }), expect.objectContaining({ id: 签了, 不能: "已签合同的项目不能合并" })]);
+    expect(候[0].不能).toBeUndefined();
     // 项目详情「并进另一个项目」菜单：自己签了合同的灰着写原因（同一个 签了合同 判法）
     const 菜单 = async (id: string) => {
       登录.user = { ...乙, email: "yi", title: "", avatar: null };
@@ -158,6 +160,39 @@ describe("前提：谁能并、哪些拦", () => {
     };
     expect(await 菜单(签了)).toEqual({ 灰: "已签合同的项目不能合并" });
     expect(await 菜单(a)).toEqual({});
+  });
+
+  it("[E-331] 留下的候选：到商机 / 订单的、已签合同的灰着列在能选的后面、写原因；预览、执行照样拦；只剩灰的菜单照开，一个都没有才灰", async () => {
+    const c = await 客户(乙.id);
+    const b = await 项目(乙.id, c);
+    const 商机 = await 项目(乙.id, c, { phase: "商机", node: "需求确认" });
+    const 订单 = await 项目(乙.id, c, { phase: "订单", node: "签约" });
+    const 菜单 = async (id: string) => {
+      登录.user = { ...乙, email: "yi", title: "", avatar: null };
+      const r = await 读项目详情(登录.user as never, id);
+      if (r.种 !== "有") throw new Error("没读到项目");
+      return r.props.p.并进;
+    };
+    expect((await 能并进的项目(prisma, b, 乙)).map((x) => [x.id, x.不能])).toEqual(expect.arrayContaining([[商机, "到商机 / 订单的项目暂不能合并"], [订单, "到商机 / 订单的项目暂不能合并"]]));
+    expect(await 菜单(b)).toEqual({});
+    // 列出来不等于放行：预览、执行照样拦
+    expect((await 项目合并预览(prisma, 商机, b, 乙)).原因.join()).toContain("商机阶段");
+    expect(await 执行项目合并(prisma, 订单, b, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("订单阶段") });
+    expect(await raw.entCustomerMerge.count()).toBe(0);
+    // 能选的排前
+    const a = await 项目(乙.id, c);
+    const 候 = await 能并进的项目(prisma, b, 乙);
+    expect(候.map((x) => x.id)).toEqual([a, expect.any(String), expect.any(String)]);
+    expect(候.slice(1).map((x) => x.id).sort()).toEqual([订单, 商机].sort());
+    expect(候[0].不能).toBeUndefined();
+    // 结束的、在公海的、别人负责的不列
+    await 项目(乙.id, c, { result: "线索流失" });
+    await 项目(乙.id, c, { pooledAt: new Date() });
+    await 项目(丙.id, c);
+    expect(await 能并进的项目(prisma, b, 乙)).toHaveLength(3);
+    // 一个在推的别的项目都没有：菜单灰
+    const 孤 = await 项目(乙.id, await 客户(乙.id));
+    expect(await 菜单(孤)).toEqual({ 灰: "这位客户名下没有同一位负责人在推的别的项目" });
   });
 
   it("业务线不同拦下（对齐第一批客户合并，2a 审查）；一边空着不拦", async () => {

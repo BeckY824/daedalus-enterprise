@@ -520,7 +520,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
   const 去页 = useShellNavGo();
   const [问后果, 后果框] = useConsequence();
   const 管 = useMerge管();
-  const [候选, set候选] = useState<{ id: string; name: string; node: string }[] | null>(null);
+  const [候选, set候选] = useState<Awaited<ReturnType<typeof 项目合并候选>> | null>(null);
   const [候选错, set候选错] = useState<string | null>(null);
   const [留下, set留下] = useState<string | null>(null);
   const [预, set预] = useState<并项目预览 | null>(null);
@@ -593,7 +593,9 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
     });
   }
 
-  const 选项 = (候选 ?? []).map((c) => ({ value: c.id, label: c.name || "（没写名称）", node: c.node }));
+  // 已签合同、到商机 / 订单的也列，灰着不能选、旁边写原因（E-331 必改 5，别像功能坏了）；服务端照样拦
+  const 选项 = (候选 ?? []).map((c) => ({ value: c.id, label: c.name || "（没写名称）", node: c.node, 不能: c.不能 ?? "", disabled: !!c.不能 }));
+  const 都灰 = 选项.length > 0 && 选项.every((o) => o.disabled);
   return (
     <Modal
       open
@@ -614,7 +616,8 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
         <p className="mrg-note">选留下的项目（同一位客户、同一位负责人、线索阶段在推的）：这个项目的沟通、附件、联系人都挪过去，它结束为重复线索；{撤回句}。</p>
         {!候选 && !候选错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
         {候选错 && <p role="alert" className="mrg-err">{候选错}</p>}
-        {候选 && 候选.length === 0 && <p className="mrg-empty" data-testid="pmerge-empty">这位客户名下没有同一位负责人、线索阶段在推的别的项目，没有能并进的。</p>}
+        {候选 && 候选.length === 0 && <p className="mrg-empty" data-testid="pmerge-empty">这位客户名下没有同一位负责人在推的别的项目，没有能并进的。</p>}
+        {都灰 && <p className="mrg-empty" data-testid="pmerge-allgrey">没有能选的项目，点开看各自为什么不能并。</p>}
         {候选 && 候选.length > 0 && (
           <Select
             className="mrg-psel"
@@ -624,7 +627,12 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
             value={留下 ?? undefined}
             onChange={挑}
             options={选项}
-            optionRender={(o) => 一行(<>{o.label}{o.data.node && <span className="mrg-ppl-s"> · {o.data.node}</span>}</>, [o.data.label, o.data.node].filter(Boolean).join(" · "))}
+            optionRender={(o) => (
+              <span className="mrg-popt">
+                {一行(<>{o.label}{o.data.node && <span className="mrg-ppl-s"> · {o.data.node}</span>}</>, [o.data.label, o.data.node, o.data.不能].filter(Boolean).join(" · "))}
+                {o.data.不能 && <span className="mrg-popt-no">{o.data.不能}</span>}
+              </span>
+            )}
             notFoundContent="没有名称对得上的项目"
             data-testid="pmerge-pick"
           />
