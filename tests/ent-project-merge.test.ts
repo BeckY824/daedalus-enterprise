@@ -297,6 +297,30 @@ describe("挪 / 不挪", () => {
     expect(await raw.entNotice.count({ where: { kind: 项目合并通知种类 } })).toBe(0);
   });
 
+  it("[E-331] 预览带两边项目联系人（被并的只列留下那边没有的）；号码相同的两位照样列、合并时只按联系人 id 去重，不按号码去重", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
+    const 甲 = (await raw.contact.create({ data: { name: "联系人甲", customerId: c, phone: "139-0000-1234" } })).id;
+    const 同号 = (await raw.contact.create({ data: { name: "联系人乙", customerId: c, phone: "13900001234" } })).id;
+    const 都有 = (await raw.contact.create({ data: { name: "联系人丙", customerId: c } })).id;
+    await raw.contactMethod.create({ data: { customerId: c, contactId: 都有, kind: "phone", value: "13800005678", numberKey: "13800005678" } });
+    const 没号 = (await raw.contact.create({ data: { name: "联系人丁", customerId: c } })).id;
+    // 只有共有的那一位：被并那边没有新的人，不提示
+    await raw.projectContact.createMany({ data: [{ projectId: a, contactId: 甲 }, { projectId: a, contactId: 都有 }, { projectId: b, contactId: 都有 }] });
+    expect((await 项目合并预览(prisma, a, b, 乙)).联系人).toEqual({
+      留下: [{ id: 甲, name: "联系人甲", 尾号: "1234" }, { id: 都有, name: "联系人丙", 尾号: "5678" }], 并掉: [],
+    });
+    await raw.projectContact.createMany({ data: [{ projectId: b, contactId: 同号 }, { projectId: b, contactId: 没号 }] });
+    expect((await 项目合并预览(prisma, a, b, 乙)).联系人.并掉).toEqual([{ id: 同号, name: "联系人乙", 尾号: "1234" }, { id: 没号, name: "联系人丁", 尾号: "" }]);
+    // 拦下的预览不带
+    expect((await 项目合并预览(prisma, a, b, 丙)).联系人).toEqual({ 留下: [], 并掉: [] });
+    await 并(a, b, 乙);
+    // 同号的联系人乙没被当成联系人甲去掉：四位都挂在留下的项目上；共有的那位只留一行
+    expect((await raw.projectContact.findMany({ where: { projectId: a } })).map((x) => x.contactId).sort()).toEqual([甲, 同号, 都有, 没号].sort());
+    expect(await raw.contact.count({ where: { id: { in: [甲, 同号] } } })).toBe(2);
+  });
+
   it("系统管理员代并：负责人收一条通知", async () => {
     const c = await 客户(乙.id);
     const a = await 项目(乙.id, c);

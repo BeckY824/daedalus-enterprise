@@ -40,6 +40,8 @@ const 预览 = (改: object = {}) => ({
   能并: true, 原因: [], 留下: { id: "pa", name: 长名 }, 并掉: { id: "pb", name: "重复的那条线索" },
   条数: { 沟通: 5, 附件: 2, 录音: 0, 点评: 1, 联系人: 3, 关联客户: 1, 卡点: 0 },
   组员: [{ userId: "u1", name: "组员甲" }, { userId: "u2", name: "组员乙".repeat(10) }, { userId: "u3", name: "组员丙" }],
+  // 号码相同也要提示（E-331）：两位尾号一样
+  联系人: { 留下: [{ id: "c1", name: "联系人甲", 尾号: "1234" }], 并掉: [{ id: "c2", name: "联系人乙".repeat(8), 尾号: "1234" }] },
   ...改,
 });
 const 请求 = { 种: "并项目", projectId: "pb", 名: "重复的那条线索" };
@@ -73,7 +75,7 @@ async function 选(page: Page, 词: string) {
   await page.waitForFunction(() => ![...document.querySelectorAll(".ant-select-dropdown")].some((e) => e.getBoundingClientRect().height > 0 && getComputedStyle(e).visibility !== "hidden" && !e.classList.contains("ant-select-dropdown-hidden")));
 }
 
-for (const 宽 of [1280, 390]) {
+for (const 宽 of [1280, 1024, 768, 390]) {
   it(`${宽}：读候选 → 输入搜、选留下的 → 预览列明挪什么、结束为重复线索；组员只提示留在原项目、没有勾选 → 后果框 → 合并项目(留下, 被并) → 撤销条；撤销 = 撤回项目合并单`, async () => {
     const { page, 错 } = await open(宽);
     try {
@@ -103,6 +105,10 @@ for (const 宽 of [1280, 390]) {
       // 组员（E-331 必改 3）：不并进留下的项目，框里只一句提示、没有勾选
       expect(话).toContain("3 位组员留在这个项目里，随项目结束、留痕，不并进留下的项目；不在那边项目组的看不到挪过去的沟通");
       expect(await page.locator(".mrg-modal .ant-checkbox").count()).toBe(0);
+      // 联系人核实（E-331）：两边各有一位、号码尾号相同也提示；只是提示，「合成」不是按钮
+      const 核 = page.getByTestId("pmerge-核实");
+      expect(await 核.innerText()).toContain(`留下的项目有 联系人甲（尾号 1234），这个项目有 ${"联系人乙".repeat(8)}（尾号 1234）：这两位可能是同一个人，确认后可在客户详情里合成`);
+      expect(await 核.locator("button, a, [role=button]").count()).toBe(0);
       expect(await 横滚(page)).toEqual([false, false]);
       if (宽 < 768) {
         const 高 = await page.evaluate(() => [...document.querySelectorAll(".mrg-foot .ant-btn, .mrg-psel")].map((e) => Math.round(e.getBoundingClientRect().height)));
@@ -116,6 +122,7 @@ for (const 宽 of [1280, 390]) {
       const 框话 = await 框.innerText();
       expect(框话).toContain(`把「重复的那条线索」并进「${长名}」？`);
       expect(框话).toContain("3 位组员留在这个项目里");
+      expect(框话).toContain("这两位可能是同一个人，确认后可在客户详情里合成");
       expect(框话).not.toContain("加进");
       expect(框话).toContain("这个项目将结束为重复线索，不退还已占线索名额，30 天内可撤回（要你本人、且留下的项目仍归你负责，否则找系统管理员）");
       await 框.getByRole("button", { name: "并过去" }).click();
@@ -155,6 +162,25 @@ for (const 宽 of [1280, 390]) {
     } finally { await 空.page.close(); }
   }, 60_000);
 }
+
+it("[E-331] 联系人核实：只有一边有人（或被并的那位留下那边也有）不提示；多位写「这几位里」、每边最多列 3 位；没留号码照写", async () => {
+  const 人 = (n: number, 前: string) => Array.from({ length: n }, (_, i) => ({ id: `${前}${i}`, name: `${前}${i}`, 尾号: i ? `00${i}0` : "" }));
+  for (const [联系人, 有] of [
+    [{ 留下: 人(1, "甲"), 并掉: [] }, false],
+    [{ 留下: [], 并掉: 人(2, "乙") }, false],
+    [undefined, false],
+    [{ 留下: 人(4, "甲"), 并掉: 人(1, "乙") }, true],
+  ] as const) {
+    const { page, 错 } = await open(1280, { __预览: 预览({ 联系人 }) });
+    try {
+      await 选(page, "展会");
+      await page.getByTestId("pmerge-list").waitFor();
+      expect(await page.getByTestId("pmerge-核实").count(), JSON.stringify(联系人)).toBe(有 ? 1 : 0);
+      if (有) expect(await page.getByTestId("pmerge-核实").innerText()).toContain("留下的项目有 甲0（没留号码）、甲1（尾号 0010）、甲2（尾号 0020） 等 4 位，这个项目有 乙0（没留号码）：这几位里可能有同一个人，确认后可在客户详情里合成");
+      expect(错).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 60_000);
 
 it("执行时被拦（预览后情况变了）：原因写在后果框里、框不关、不出撤销条；系统管理员的后果框不补谁能撤", async () => {
   const { page, 错 } = await open(1280, { __管: true, __合并结果: { ok: false, error: "「重复的那条线索」在等市场复核，判完再并" } });

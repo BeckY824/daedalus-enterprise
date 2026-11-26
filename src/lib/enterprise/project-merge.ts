@@ -130,7 +130,15 @@ export type 项目合并预览结果 = {
   条数: 项目合并条数 | null;
   /** 被并掉的项目组员（已进组的）：只是框里提示一句「留在这个项目里、不并进留下的项目」，不能勾（E-331） */
   组员: { userId: string; name: string }[];
+  /**
+   * 两边的项目联系人（E-331 必改 2「合并时要核实」）：并掉 只列留下那边没有的（同一位联系人 id 合并时去重，不提示）。
+   * 两边都有人时框里提示「这两位可能是同一个人，确认后可在客户详情里合成」，号码同不同都提示；合并本身不按号码去重、不自动合成
+   */
+  联系人: { 留下: 合并联系人[]; 并掉: 合并联系人[] };
 };
+/** 尾号 = 号码后四位（老号码列优先，没有取联系方式里第一个手机号）；没留号码是空串 */
+export type 合并联系人 = { id: string; name: string; 尾号: string };
+const 没联系人 = { 留下: [], 并掉: [] };
 
 async function 数条数(db: Tx | 库, B: string): Promise<项目合并条数> {
   const [沟通, 附件, 录音, 点评, 联系人, 关联客户, 卡点] = await 看全部(() => Promise.all([
@@ -143,6 +151,20 @@ async function 数条数(db: Tx | 库, B: string): Promise<项目合并条数> {
     db.entBlocker.count({ where: { projectId: B, status: { not: 已解决 } } }),
   ]));
   return { 沟通, 附件, 录音, 点评, 联系人, 关联客户, 卡点 };
+}
+
+async function 两边联系人(db: Tx | 库, A: string, B: string): Promise<项目合并预览结果["联系人"]> {
+  const 行 = await 看全部(() => db.projectContact.findMany({
+    where: { projectId: { in: [A, B] }, contact: { deletedAt: null } }, orderBy: { createdAt: "asc" },
+    select: { projectId: true, contact: { select: { id: true, name: true, phone: true, contactMethods: { where: { kind: "phone" }, orderBy: { createdAt: "asc" }, take: 1, select: { value: true } } } } },
+  }));
+  const 位 = ({ contact: c }: (typeof 行)[number]): 合并联系人 => {
+    const 数字 = (c.phone || c.contactMethods[0]?.value || "").replace(/\D/g, "");
+    return { id: c.id, name: c.name, 尾号: 数字.length >= 4 ? 数字.slice(-4) : "" };
+  };
+  const 留下 = 行.filter((x) => x.projectId === A).map(位);
+  const 有 = new Set(留下.map((x) => x.id));
+  return { 留下, 并掉: 行.filter((x) => x.projectId === B && !有.has(x.contact.id)).map(位) };
 }
 
 /** 被并项目的组员（带名字、角色、邀请状态）：预览只取已进组的，合并单明细留痕全取 */
@@ -159,8 +181,9 @@ export async function 项目合并预览(db: 库, 留下id: string, 并掉id: st
   const [A, B] = await Promise.all([读项目(db, 留下id), 读项目(db, 并掉id)]);
   const 原因 = await 拦的原因(db, A, B, me, org);
   const 两个 = { 留下: A ? { id: A.id, name: A.name } : null, 并掉: B ? { id: B.id, name: B.name } : null };
-  if (原因.length || !A || !B) return { 能并: false, 原因, ...两个, 条数: null, 组员: [] };
-  return { 能并: true, 原因: [], ...两个, 条数: await 数条数(db, B.id), 组员: (await 组员们(db, B.id, true)).map(({ userId, name }) => ({ userId, name })) };
+  if (原因.length || !A || !B) return { 能并: false, 原因, ...两个, 条数: null, 组员: [], 联系人: 没联系人 };
+  const [条数, 组员, 联系人] = await Promise.all([数条数(db, B.id), 组员们(db, B.id, true), 两边联系人(db, A.id, B.id)]);
+  return { 能并: true, 原因: [], ...两个, 条数, 组员: 组员.map(({ userId, name }) => ({ userId, name })), 联系人 };
 }
 
 /**

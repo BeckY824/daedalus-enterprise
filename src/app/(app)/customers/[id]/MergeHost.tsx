@@ -504,6 +504,17 @@ function 挪话(n: NonNullable<并项目预览["条数"]>): string {
   return 有.length ? 有.join("、") : "没有要挪的沟通、附件";
 }
 
+/**
+ * 两边各有项目联系人（不是同一位）时的核实话（E-331「合并时要核实」）：号码同不同都提示，合并不按号码去重、不自动合成；
+ * 合成的入口在客户详情（联系人合并），这里只提示、不做按钮。每边最多列 3 位
+ */
+function 核实话(人: NonNullable<并项目预览["联系人"]>): string | null {
+  if (!人.留下.length || !人.并掉.length) return null;
+  const 列 = (xs: typeof 人.留下) => xs.slice(0, 3).map((x) => `${x.name || "（没写名字）"}（${x.尾号 ? `尾号 ${x.尾号}` : "没留号码"}）`).join("、") + (xs.length > 3 ? ` 等 ${xs.length} 位` : "");
+  const 两位 = 人.留下.length === 1 && 人.并掉.length === 1;
+  return `留下的项目有 ${列(人.留下)}，这个项目有 ${列(人.并掉)}：${两位 ? "这两位可能是同一个人" : "这几位里可能有同一个人"}，确认后可在客户详情里合成`;
+}
+
 function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 项目名: string; 关: () => void }) {
   const router = useRouter();
   const 去页 = useShellNavGo();
@@ -539,6 +550,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
   const 清单 = 预?.能并 && 预.条数 ? [
     { 标: "挪过去", 话: 挪话(预.条数), 级: "警" as const },
     { 标: "联系人", 话: `${预.条数.联系人} 位项目联系人、${预.条数.关联客户} 位关联客户一起过去，重复的只留一份`, 级: "常" as const },
+    ...(预.联系人 && 核实话(预.联系人) ? [{ 标: "核实", 话: 核实话(预.联系人)!, 级: "警" as const }] : []),
     // 组员不并进留下的项目（E-331「随项目结束、留痕」）：只提示，不能勾；名单记在合并单和操作日志里
     ...(预.组员.length ? [{ 标: "组员", 话: `${预.组员.length} 位组员留在这个项目里，随项目结束、留痕，不并进留下的项目；不在那边项目组的看不到挪过去的沟通`, 级: "常" as const }] : []),
     { 标: "结束", 话: "这个项目将结束为重复线索，不退还已占线索名额", 级: "警" as const },
@@ -624,7 +636,7 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
           <>
             <p className="mrg-move" data-testid="pmerge-move">{一行(<>「{B}」 → <b>「{A}」</b></>, `「${B}」 → 「${A}」`)}</p>
             <ul className="mrg-out" data-testid="pmerge-list">
-              {清单.map((x) => <li key={x.标}><span className="mrg-out-k">{x.标}</span>{x.话}</li>)}
+              {清单.map((x) => <li key={x.标} data-testid={`pmerge-${x.标}`} className={x.标 === "核实" ? "mrg-out-chk" : undefined}><span className="mrg-out-k">{x.标}</span>{x.话}</li>)}
             </ul>
           </>
         )}
