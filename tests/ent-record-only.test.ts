@@ -24,6 +24,7 @@ vi.mock("@/lib/business", async (原) => {
 });
 
 import { prisma } from "@/lib/prisma";
+import { beijingDay } from "@/lib/business-clock";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 项目现在, 项目一段, 导入批次们 } from "../src/app/(app)/overview/project-stats";
@@ -298,9 +299,12 @@ describe("待定 6：仅记录用的不回收时记沟通不强制下一步时�
   });
 });
 
+// 下一步时间不能早于今天（北京）：用北京明天，别写死日期（11-28 北京零点后写死的 11-27 起一直红）
+const 北京明天 = () => beijingDay(new Date(Date.now() + 86400e3));
+
 describe("仅记录用的不自动推出潜客培育（口径「一律停在潜客培育」）", () => {
   const 推进开: 组织规则 = { ...默认组织规则, 节点推进: { ...默认组织规则.节点推进, 开: true, 必填: { 潜客培育: ["本节点沟通", "下一步时间"] }, 范围: "全部" } };
-  const 沟通 = () => ({ type: "PHONE", content: "又问了一次价格", occurredAt: "2026-11-20 10:00", 下一步时间: "2026-11-27", 阶段: "线索", 明确回复: false });
+  const 沟通 = () => ({ type: "PHONE", content: "又问了一次价格", occurredAt: "2026-11-20 10:00", 下一步时间: 北京明天(), 阶段: "线索", 明确回复: false });
   const 在哪 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).node;
 
   it("记项目沟通把潜客培育必填填齐了：仅记录用的不推、留在潜客培育；普通的照推到线索验证", async () => {
