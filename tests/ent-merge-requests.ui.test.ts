@@ -231,13 +231,21 @@ it("处理第 1 张后它仍在第 1 行（3 张里），不跳到表底；状�
 it("E-431 ③：第 3 次交系统管理员判：同意框列出前两次拒绝原因（空写未填）、勾选框写出两位负责人姓名，不勾确认同意点不了，勾了才带「已问过」提交", async () => {
   const 管理员行 = {
     id: "w9", 状态: "待同意", 原因: null, 留下: { id: "A9", 名: "示例客户乙" }, 并掉: { id: "B9", 名: "示例客户丙" }, 发起人: "示例同事A", 发起: 天后(-1), 到期: 天后(4), 结束: null, mergeId: null,
-    同意人: [人(我, "我", "待同意", { 凭: ["系统管理员"] })],
+    交管理员判: true,
+    同意人: [人(我, "我", "待同意", { 凭: ["系统管理员"] }), 人("adm2", "示例管理员", "待同意", { 凭: ["系统管理员"] })],
     管理员判: { 负责人们: ["示例甲", "示例乙"], 前拒绝: [{ 人: "示例甲", 原因: "不是同一家", 时间: 天后(-20) }, { 人: "示例乙", 原因: "未填", 时间: 天后(-10) }] },
   };
   const { page, 错 } = await open(1280, { 等我: [管理员行] });
   try {
+    // 列表进度：任一位同意即合并，不写「0 / 2 位同意」
+    const 行文 = await 见(page, "merge-req-wait").innerText();
+    expect(行文).toContain("交系统管理员判");
+    expect(行文).not.toContain("位同意");
     await 见(page, "merge-req-wait").getByTestId("merge-request-agree").first().click();
     await 框(page).waitFor();
+    // 同意框：同意的这位就是最后一位，不写「还差 N 位同意才合并」
+    expect(await 框(page).innerText()).not.toContain("还差");
+    expect(await 见(page, "merge-request-last").count()).toBe(1);
     const 前 = await 见(page, "merge-request-prev").innerText();
     expect(前).toContain("示例甲 拒绝：不是同一家");
     expect(前).toContain("示例乙 拒绝：未填");

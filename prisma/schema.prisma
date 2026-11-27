@@ -2371,7 +2371,7 @@ model EntMergeApprover {
   why              String
   /// 他涉及的项目（JSON 数组：id、名字、哪家客户）
   projects         String          @default("[]")
-  /// 待同意 / 同意 / 拒绝
+  /// 待同意 / 同意 / 拒绝 / 不用处理（申请已结束、这一行没处理）
   status           String          @default("待同意")
   /// 拒绝时写的一句话
   note             String?

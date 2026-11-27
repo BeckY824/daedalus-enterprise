@@ -20,7 +20,7 @@ const 网断话 = "没办成，网络可能断了，再点一次";
 /** 两家：「并进来那家 → 留下那家」（名字取发起那一刻的快照） */
 export const 两家话 = (r: Pick<合并申请一条, "留下" | "并掉">) => `「${r.并掉.名}」并进「${r.留下.名}」`;
 /** 已同意几位 / 共几位（发起人不在同意人里，发起即算同意） */
-export const 同意进度 = (r: Pick<合并申请一条, "同意人">) => `${r.同意人.filter((x) => x.状态 === "同意").length} / ${r.同意人.length} 位同意`;
+export const 同意进度 = (r: Pick<合并申请一条, "同意人" | "交管理员判">) => r.交管理员判 ? "交系统管理员判" : `${r.同意人.filter((x) => x.状态 === "同意").length} / ${r.同意人.length} 位同意`;
 /** 还剩几天失效（不足一天按 1 天说；到点了说「今天到期」） */
 export function 剩几天(到期: Date | string, 现在 = Date.now()): string {
   const 差 = new Date(到期).getTime() - 现在;
@@ -59,7 +59,8 @@ export function 同意后果(r: 合并申请一条, 我: string): { 后果: stri
   const 我那行 = r.同意人.find((x) => x.userId === 我);
   const 挪 = 我那行 ? 我那行.项目.filter((p) => p.customerId === r.并掉.id).length : 0;
   const 并掉边 = !!我那行 && (我那行.凭.includes("被并客户负责人") || 挪 > 0);
-  const 还差 = r.同意人.filter((x) => x.userId !== 我 && x.状态 !== "同意").length;
+  // 交系统管理员判：任一位同意即合并，没有「还差几位」，同意的这位就是最后一位
+  const 还差 = r.交管理员判 ? 0 : r.同意人.filter((x) => x.userId !== 我 && x.状态 !== "同意").length;
   const 后果 = 并掉边
     ? 挪 > 0 ? `同意后，你的 ${挪} 个项目挪到留下那家，仍归你。` : "同意后，这家客户并进留下那家，你名下没有在推的项目要挪。"
     : "同意后，你的项目不动，客户会多出另一家的联系人和沟通。";
@@ -180,7 +181,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
   /** 剩一天（含不足一天）标橙 */
   const 剩 = (r: 合并申请一条) => {
     const 话 = 剩几天(r.到期);
-    return <span className={话 === "还剩 1 天" || 话 === "已到期" ? "mrq-hot" : ""} title={`${时刻(r.到期)} 前没全部同意就失效`}>{话}</span>;
+    return <span className={话 === "还剩 1 天" || 话 === "已到期" ? "mrq-hot" : ""} title={`${时刻(r.到期)} 前${r.交管理员判 ? "没有一位同意" : "没全部同意"}就失效`}>{话}</span>;
   };
 
   const 等我列: ColumnsType<合并申请一条> = [

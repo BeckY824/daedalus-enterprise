@@ -459,6 +459,8 @@ export type 合并申请一条 = {
   留下: { id: string; 名: string }; 并掉: { id: string; 名: string };
   发起人: string; 发起: Date; 到期: Date; 结束: Date | null; mergeId: string | null;
   同意人: { userId: string; 名: string; 凭: 凭[]; 项目: 涉及项目[]; 项目数: number; 状态: string; 一句: string | null; 处理: Date | null }[];
+  /** 交系统管理员判的申请（任一位系统管理员同意即合并）；给发起人的行也带，进度写「交系统管理员判」，不露次数 */
+  交管理员判?: boolean;
   /** 第 3 次交系统管理员判的申请才有（不给发起人）：两家现在的负责人姓名、前几次的拒绝人 + 原因（原因空 = 「未填」） */
   管理员判?: { 负责人们: string[]; 前拒绝: { 人: string; 原因: string; 时间: Date }[] };
 };
@@ -480,7 +482,10 @@ async function 申请们(where: Prisma.EntMergeRequestWhereInput, 给发起人 =
   const 项目ids = 给发起人 ? [...new Set(行们.flatMap((r) => r.approvers.flatMap((x) => 读JSON<涉及项目[]>(x.projects, []).map((p) => p.id))))] : [];
   const 看得到项目 = new Set(项目ids.length ? (await prisma.project.findMany({ where: { id: { in: 项目ids } }, select: { id: true } })).map((p) => p.id) : []);
   const 背景 = new Map<string, Awaited<ReturnType<typeof 管理员判背景of>>>();
-  if (!给发起人) for (const r of 行们) if (读选择(r.choices).管理员判) 背景.set(r.id, await 看全部(() => 管理员判背景of(prisma, r)));
+  // 两家负责人姓名和前几次拒绝原因只给系统管理员（等我同意页里的普通同意人用不着）
+  const 我 = await requireUser();
+  const 管 = 是系统管理员(我, await 权限组织());
+  if (!给发起人 && 管) for (const r of 行们) if (读选择(r.choices).管理员判) 背景.set(r.id, await 看全部(() => 管理员判背景of(prisma, r)));
   return 行们.map((r) => {
     const 快 = 读JSON<快照>(r.snapshot, { 客户: {}, 项目: {} });
     const 背 = 背景.get(r.id);
@@ -494,10 +499,12 @@ async function 申请们(where: Prisma.EntMergeRequestWhereInput, 给发起人 =
     const 话 = (v: string | null) => (v && 藏 ? 给发起人藏名(r, v) : v);
     return {
       id: r.id, 状态: r.status, 显示状态: 显示状态of(r), 原因: 话(r.reason), 留下: 客(r.intoId), 并掉: 客(r.fromId),
+      交管理员判: !!读选择(r.choices).管理员判,
       发起人: 叫.get(r.byUserId) ?? "同事", 发起: r.at, 到期: r.expiresAt, 结束: r.endedAt, mergeId: r.mergeId,
       同意人: r.approvers.map((x) => ({
         userId: x.userId, 名: 叫.get(x.userId) ?? "同事", 凭: 读JSON<凭[]>(x.why, []), ...项目们(x.projects),
-        状态: x.status, 一句: 话(x.note), 处理: x.decidedAt,
+        // 旧数据兜底：申请已结束而这一行还写「待同意」（上线前结束的申请没改过行），显示成「不用处理」，不写库
+        状态: x.status === 同意状态.待同意 && r.status !== 申请状态.待同意 ? 同意状态.不用处理 : x.status, 一句: 话(x.note), 处理: x.decidedAt,
       })),
       ...(背 ? { 管理员判: { 负责人们: 背.负责人们.map((x) => x.名), 前拒绝: 背.前拒绝.map((x) => ({ 人: x.人, 原因: x.原因, 时间: x.时间 })) } } : {}),
     };

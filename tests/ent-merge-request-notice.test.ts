@@ -192,6 +192,22 @@ describe("七种通知：谁收、怎么说", () => {
   });
 });
 
+describe("旧数据兜底（E-428 r2 可改 4）", () => {
+  it("申请已结束、同意人那一行还是「待同意」（上线前结束的）：列表显示「不用处理」，不写库；进行中的照旧", async () => {
+    const { id } = await 一张(周五下午);
+    expect((await 处理合并申请(prisma, id, 丙, "拒绝", { 原因: "不是同一家", 现在: 周五下午 })).ok).toBe(true);
+    // 模拟旧数据：结束时没改的行
+    await raw.entMergeApprover.updateMany({ where: { requestId: id, userId: 丁.id }, data: { status: "待同意" } });
+    登录.人 = 乙;
+    const 我的 = await 以谁的身份(乙.id, () => 我发起的合并申请());
+    expect(我的[0].同意人.find((x) => x.userId === 丁.id)!.状态).toBe("不用处理");
+    expect(我的[0].同意人.find((x) => x.userId === 丙.id)!.状态).toBe("拒绝");
+    expect((await raw.entMergeApprover.findFirstOrThrow({ where: { requestId: id, userId: 丁.id } })).status).toBe("待同意");
+    const 新 = await 一张(周五下午);
+    expect((await 以谁的身份(乙.id, () => 我发起的合并申请())).find((x) => x.id === 新.id)!.同意人.map((x) => x.状态)).toEqual(["待同意", "待同意"]);
+  });
+});
+
 describe("按号放行进来、发起人看不到的那家", () => {
   it("给发起人的通知、「我发起的」列表不写它的名字（拒绝原因里提到也换掉）；同意人照常看到名字", async () => {
     const a = await 客户(乙.id);

@@ -599,6 +599,34 @@ describe("动作层（customers/merge-actions.ts）", () => {
       });
     });
 
+    it("E-428 r2 可改 6：发起人看不到被并那家时，重发限制不回前端（要等 / 已满 → 限制 null）；管理员判路径只写「这张申请交系统管理员判」，不露「第 3 次」", async () => {
+      const 发 = (a: string, b: string, 现在: Date) => 发起合并申请(prisma, a, b, 乙, { 现在 });
+      // 被拒一次（要等）
+      const a = await 客户(乙.id), b = await 客户(丙.id, { name: "看不到的同事客户" });
+      const 单 = await 发(a, b, new Date());
+      if (!单.ok) throw new Error(单.error);
+      expect((await 处理合并申请(prisma, 单.requestId, 丙, "拒绝", { 原因: "不是同一家" })).ok).toBe(true);
+      // 另一对：两次撤回后第 3 张交管理员判
+      const c = await 客户(乙.id), d = await 客户(丙.id, { name: "看不到的同事客户二" });
+      for (const h of [0, 1]) {
+        const r = await 发(c, d, new Date(Date.now() + h * 60_000));
+        if (!r.ok) throw new Error(r.error);
+        await 撤回合并申请(prisma, r.requestId, 乙, new Date(Date.now() + h * 60_000 + 30_000));
+      }
+      const 号b = await 号(b), 号d = await 号(d);
+      await 开范围();
+      await 以谁的身份(乙.id, async () => {
+        expect(await prisma.customer.count({ where: { id: b } })).toBe(0);
+        const 要等 = await 预览合并申请(a, b, 号b);
+        expect(要等).toMatchObject({ ok: true, 预览: { 能发: false, 原因: [并掉看不到话], 重发限制: { 状态: "正常", 话: "" } } });
+        expect(JSON.stringify(要等)).not.toMatch(/要等|刚被拒|已发满|小时/);
+        expect(await 发起客户合并申请(a, b, { 按号: 号b })).toEqual({ ok: false, error: 并掉看不到话 });
+        const 管 = await 预览合并申请(c, d, 号d);
+        expect(管).toMatchObject({ ok: true, 预览: { 重发限制: { 状态: "管理员判", 话: "这张申请交系统管理员判，任一位系统管理员同意即合并" } } });
+        expect(JSON.stringify(管)).not.toContain("第 3 次");
+      });
+    });
+
     it("那家交接中、挂着别的申请：拦话统一一句、不点名原因也不报名字；看得到时照旧点名", async () => {
       const a = await 客户(乙.id);
       const b = await 客户(丙.id, { name: "看不到的同事客户" });
@@ -837,6 +865,79 @@ describe("重发限制（E-428 阶段 3）：被拒 24 小时、30 天 3 次、�
     const 后 = await 申请(id);
     expect(后.approvers.find((x) => x.userId === 老板二.id)!.status).toBe("不用处理");
     expect(后.approvers.find((x) => x.userId === 老板.id)!.status).toBe("同意");
+  });
+
+  it("E-428 r2 可改 3：管理员判到期失效，通知写「没有一位系统管理员同意」，不写「没在 5 个工作日内全部同意」", async () => {
+    const { a, b } = await 造到第三张();
+    const id = await 发成(a, b, 乙, 小时(4));
+    expect(await 扫过期合并申请(prisma, new Date("2026-12-05T07:01:00Z"))).toBe(1);
+    await 等通知推完();
+    const 发起 = await raw.entNotice.findFirstOrThrow({ where: { userId: 乙.id, kind: 合并申请通知种类, title: { contains: "已失效" } } });
+    expect(发起.title).toMatch(/没有一位系统管理员同意，已失效$/);
+    const 管 = await raw.entNotice.findFirstOrThrow({ where: { userId: 老板.id, kind: 合并申请通知种类, title: { contains: "已失效" } } });
+    expect(管.title).toMatch(/没有一位系统管理员同意，已失效$/);
+    expect(`${发起.title}${管.title}`).not.toContain("全部同意");
+    expect((await 申请(id)).status).toBe(申请状态.已失效);
+  });
+
+  it("E-428 r2 可改 5：管理员判合并前现算补发名单抛错，申请不卡在执行中，照常合并", async () => {
+    const { a, b } = await 造到第三张();
+    const id = await 发成(a, b, 乙, 小时(4));
+    let 炸 = false;
+    const 库 = new Proxy(prisma, {
+      get(t, k, r) {
+        if (k === "project") return { ...(t as any).project, findMany: async () => { if (炸) throw new Error("补发名单算不出"); return (t as any).project.findMany(); } };
+        const v = Reflect.get(t, k, r);
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    }) as typeof prisma;
+    炸 = true;
+    const r = await 处理合并申请(库, id, 老板, "同意", { 已问过: true, 现在: 小时(5) });
+    expect(r).toMatchObject({ ok: true, 状态: 申请状态.已合并 });
+    expect((await 申请(id)).status).toBe(申请状态.已合并);
+  });
+
+  it("E-428 r3 ①：两家同一位负责人，已问过日志写「已问过负责人（乙）」，不写「两位」", async () => {
+    const a = await 客户(乙.id), b = await 客户(乙.id);
+    await 项目(丙.id, b);
+    for (const h of [0, 2]) {
+      const r = await 发(a, b, 乙, 小时(h));
+      if (!r.ok) throw new Error(r.error);
+      await 撤回合并申请(prisma, r.requestId, 乙, 小时(h + 1));
+    }
+    const id = await 发成(a, b, 乙, 小时(4));
+    expect(await 处理合并申请(prisma, id, 老板, "同意", { 已问过: true, 现在: 小时(5) })).toMatchObject({ ok: true });
+    const 志 = await raw.auditLog.findFirstOrThrow({ where: { action: "merge-approve", entityId: a } });
+    expect(志.summary).toMatch(/勾选了「已问过负责人（乙）」/);
+    expect(志.summary).not.toContain("两位");
+  });
+
+  it("E-428 r3 ②：升级通知不发给已在管理员名单里的人（他已收「要你同意」，同一人只一条）", async () => {
+    const a = await 客户(乙.id), b = await 客户(老板.id);
+    for (const h of [0, 2]) {
+      const r = await 发(a, b, 乙, 小时(h));
+      if (!r.ok) throw new Error(r.error);
+      await 撤回合并申请(prisma, r.requestId, 乙, 小时(h + 1));
+    }
+    await 发成(a, b, 乙, 小时(4));
+    await 等通知推完();
+    expect(await raw.entNotice.count({ where: { userId: 老板.id, kind: 合并申请通知种类, title: { contains: "已交系统管理员判" } } })).toBe(0);
+    expect(await raw.entNotice.count({ where: { userId: 老板.id, kind: 合并申请通知种类, title: { contains: "要你同意" } } })).toBe(3);
+  });
+
+  it("E-428 r3 ③：等我同意页的管理员判背景（负责人姓名、前几次拒绝）只给当前是系统管理员的人", async () => {
+    const { a, b } = await 造到第三张();
+    await 发成(a, b, 乙, 小时(4));
+    登录.人 = 老板;
+    忘掉企业版范围();
+    const 管 = await 等我同意的合并申请();
+    expect(管[0]).toMatchObject({ 交管理员判: true, 管理员判: { 负责人们: expect.any(Array) } });
+    登录.人 = { ...老板, role: "SALES" };
+    await raw.entMember.updateMany({ where: { userId: 老板.id }, data: { bizRole: "sales" } });
+    忘掉企业版范围();
+    const 非 = await 等我同意的合并申请();
+    expect(非[0].交管理员判).toBe(true);
+    expect(非[0].管理员判).toBeUndefined();
   });
 
   it("E-431 ③：第 3 次发起当场通知两家负责人 + 前两次点过拒绝的人，同一人一条、不含发起人；管理员判页列出前两次拒绝原因（空 = 未填）", async () => {

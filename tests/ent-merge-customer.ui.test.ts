@@ -346,7 +346,7 @@ it("同事负责的候选标「要申请」：读申请预览、底部列要同�
     const 框 = page.locator(".csq");
     await 框.waitFor();
     const 话 = await 框.innerText();
-    expect(话).toContain("都同意了才合并");
+    expect(话).toContain("都同意了才合并；任一位拒绝，申请就结束");
     expect(话).toContain("5 个工作日内（法定节假日不算）没有全部同意，申请失效");
     await 框.locator(".csq-foot .ant-btn-primary").click();
     await page.locator(".undo-bar").waitFor();
@@ -486,6 +486,14 @@ it("第 3 次申请：发起框写明交系统管理员判、任一位同意即�
         expect(await page.getByTestId("merge-approvers").innerText()).toContain("没有一位同意就失效");
         expect(await page.getByTestId("merge-approvers").innerText()).not.toContain("没全部同意");
         expect(await page.getByTestId("merge-request-go").innerText()).toBe("发合并申请（交系统管理员判）");
+        // 发起框：不写「没有全部同意」，写明任一位拒绝即结束
+        await page.getByTestId("merge-request-go").click();
+        const 框 = page.locator(".csq");
+        await 框.waitFor();
+        const 话 = await 框.innerText();
+        expect(话).toContain("任一位同意即合并；任一位拒绝即结束；没有一位同意就失效");
+        expect(话).toContain("没有一位系统管理员同意，申请失效");
+        expect(话).not.toContain("没有全部同意");
       }
       expect(错).toEqual([]);
     } finally { await page.close(); }
