@@ -3,7 +3,7 @@
  * 采用原系统 / 保留我们（字段冲突、本地已删）、之后同步不再问、记下后又变了算已过时、定过的不重定、
  * 整批撤回冲突回待定再恢复、挡住撤同步批、建回跟进重算最近跟进、同来源在写先不定、所属客户不在了不定。
  */
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 
@@ -289,5 +289,47 @@ describe("并发", () => {
     const 成 = 们.filter((x): x is PromiseFulfilledResult<Awaited<ReturnType<typeof 定冲突>>> => x.status === "fulfilled").map((x) => x.value);
     expect(成.reduce((n, x) => n + x.定了, 0)).toBe(1);
     expect(await prisma.entImportBatch.count({ where: { kind: "resolve" } })).toBe(1);
+  });
+
+  describe("12-22 r3：采用原系统只比这条冲突里有的格，负责人被异议拦只在冲突含负责人时", () => {
+    const 挂异议 = async (customerId: string, 异议人: string, 接手: string) => {
+      process.env.CRM_ENTERPRISE = "1";
+      await prisma.entTransferObjection.create({
+        data: { ownerLogId: "log-r3", customerId, kind: "客户", targetKey: "customer", targetName: "云帆", objectorUserId: 异议人, operatorUserId: 我.id, toOwnerId: 接手, status: "待裁定", expiresAt: new Date(Date.now() + 86_400_000) },
+      });
+    };
+    afterEach(() => { delete process.env.CRM_ENTERPRISE; });
+
+    it("冲突只有备注：负责人被我们改过也不拦，备注照改", async () => {
+      await 导([客户表()]);
+      const 张 = await prisma.user.findFirstOrThrow({ where: { name: "张伟" } });
+      const 李 = await prisma.user.findFirstOrThrow({ where: { name: "李娜" } });
+      await prisma.customer.updateMany({ where: { name: "杭州云帆科技有限公司" }, data: { remark: "我们改的", salesOwnerId: 李.id } });
+      await 导([C1改("原系统改的")]);
+      const 冲 = await prisma.entConflict.findFirstOrThrow({ where: { externalId: "C1" } });
+      expect(Object.keys(JSON.parse(冲.fields))).not.toContain("salesOwnerId");
+      await 挂异议((await c1()).id, 张.id, 李.id);
+      const r = await 定冲突([冲.id], "采用原系统", 我);
+      expect(r).toMatchObject({ 定了: 1, 没定: [] });
+      expect((await c1()).remark).toBe("原系统改的");
+      expect((await c1()).salesOwnerId).toBe(李.id);
+    });
+
+    it("冲突里含负责人：被拦、还是待定，拦话说会改负责人", async () => {
+      await 导([客户表()]);
+      const 张 = await prisma.user.findFirstOrThrow({ where: { name: "张伟" } });
+      const 李 = await prisma.user.findFirstOrThrow({ where: { name: "李娜" } });
+      const 赵 = await prisma.user.create({ data: { email: "zl@x", name: "赵六", title: "销售", role: "SALES", password: "x" } });
+      await prisma.customer.updateMany({ where: { name: "杭州云帆科技有限公司" }, data: { salesOwnerId: 李.id } });
+      await 导([客户表([["C1", "杭州云帆科技有限公司", "13800000001", "赵六", "A", "老客户"], ["C2", "宁波海川贸易", "13800000002", "李娜", "B", ""]])]);
+      const 冲 = await prisma.entConflict.findFirstOrThrow({ where: { externalId: "C1" } });
+      expect(Object.keys(JSON.parse(冲.fields))).toContain("salesOwnerId");
+      await 挂异议((await c1()).id, 张.id, 赵.id);
+      const r = await 定冲突([冲.id], "采用原系统", 我);
+      expect(r.定了).toBe(0);
+      expect(r.没定).toEqual([expect.objectContaining({ 原因: "采用原系统会改负责人；这条有转让异议待裁定，裁定后再定" })]);
+      expect((await c1()).salesOwnerId).toBe(李.id);
+      expect((await prisma.entConflict.findUniqueOrThrow({ where: { id: 冲.id } })).status).toBe("待定");
+    });
   });
 });

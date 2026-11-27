@@ -9,10 +9,12 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
-import { 写一批 } from "@/lib/enterprise-import/apply";
+import { 写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
 import { 换适配器, 现成适配器 } from "@/lib/enterprise-import/adapter";
 import { 同步一次, 拉全量试跑 } from "@/lib/enterprise-import/sync";
-import type { 原始记录 } from "@/lib/enterprise-import/types";
+import { 试跑 } from "@/lib/enterprise-import/report";
+import type { 读出的表 } from "@/lib/enterprise-import/excel";
+import type { 原始记录, 待写 } from "@/lib/enterprise-import/types";
 
 const 我 = { id: "tester-id", name: "测试员" };
 const 客户 = (id: string, 名称: string, 电话: string, 负责人: string): 原始记录 => ({ 实体: "customer", 外部ID: id, 字段: { 客户名称: 名称, 手机号码: 电话, 客户负责人: 负责人, 备注: "" } });
@@ -55,5 +57,36 @@ describe("导入改客户负责人碰上待裁定异议", () => {
     await prisma.entTransferObjection.update({ where: { id: 异议.id }, data: { status: "维持" } });
     expect((await 同步一次("feishu", { 用户: 我, 现在: new Date(Date.now() + 3_600_000) })).结果).toBe("成功");
     expect(await 归谁("杭州云帆科技有限公司")).toBe((await 李()).id);
+  });
+});
+
+describe("被异议拦的行不被同次调用后面的失败行盖掉（12-22 r3）", () => {
+  const 表 = (名: string, 实体: "customer" | "contact", 表头: string[], 行: string[][]): 读出的表 => ({ 名, 实体, 表头, 行, 行号: 行.map((_, i) => i + 2), 提醒: [] });
+  const 客户表 = (负责人: string) => 表("客户.xlsx", "customer", ["记录ID", "客户名称", "手机号码", "客户负责人", "客户等级", "备注"], [["C1", "杭州云帆科技有限公司", "13800000001", 负责人, "A", ""]]);
+  const 联系人表 = () => 表("联系人.xlsx", "contact", ["联系人ID", "客户ID", "姓名", "职位", "手机"], [["P1", "C1", "王经理", "采购", "13700000001"]]);
+
+  it("先被拦一行、后面一行写不进：note 里两条都在", async () => {
+    const 一 = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: [客户表("张伟")], 建议器: null });
+    await 定这批业务线(一.批次Id, "内贸");
+    expect((await 写一批(一.批次Id, 我)).完了).toBe(true);
+    process.env.CRM_ENTERPRISE = "1";
+    const 云帆 = await prisma.customer.findFirstOrThrow({ where: { name: "杭州云帆科技有限公司" } });
+    await prisma.entTransferObjection.create({
+      data: { ownerLogId: "log2", customerId: 云帆.id, kind: "客户", targetKey: "customer", targetName: "云帆", objectorUserId: (await 张()).id, operatorUserId: 我.id, toOwnerId: (await 李()).id, status: "待裁定", expiresAt: new Date(Date.now() + 86_400_000) },
+    });
+    const 二 = await 试跑({ 来源: "excel", 用户Id: 我.id, 表: [客户表("李娜"), 联系人表()], 建议器: null });
+    await 定这批业务线(二.批次Id, "内贸");
+    const 批 = await prisma.entImportBatch.findUniqueOrThrow({ where: { id: 二.批次Id } });
+    const 计划: 待写[] = JSON.parse(批.plan!);
+    const p = 计划.find((w) => w.实体 === "contact")!;
+    p.父客户 = { 本地ID: "不存在的客户" };
+    await prisma.entImportBatch.update({ where: { id: 二.批次Id }, data: { plan: JSON.stringify(计划) } });
+
+    const r = await 写一批(二.批次Id, 我);
+    expect(r.完了).toBe(true);
+    expect(await 归谁("杭州云帆科技有限公司")).toBe((await 张()).id);
+    const note = JSON.parse((await prisma.entImportBatch.findUniqueOrThrow({ where: { id: 二.批次Id } })).note!) as { 实体: string; 原因: string }[];
+    expect(note.map((n) => n.实体).sort()).toEqual(["contact", "customer"]);
+    expect(note.find((n) => n.实体 === "customer")!.原因).toContain("没改负责人");
   });
 });

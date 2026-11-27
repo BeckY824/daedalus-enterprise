@@ -84,7 +84,7 @@ describe("确认交接：客户上有待裁定异议时拦，裁定后放行", (
     const 异议 = await 记待裁定(c.id, 销售.id, 同事.id);
     当(接手);
     const 交接 = (await 待确认的交接()).等我确认[0];
-    expect(await 确认交接(交接.id)).toMatchObject({ ok: false, error: expect.stringContaining("这条有异议还没裁定") });
+    expect(await 确认交接(交接.id)).toMatchObject({ ok: false, error: `「${c.name}」有转让异议待裁定；交接留在待确认，裁定后再确认` });
     expect(await 归谁(c.id)).toBe(销售.id);
     expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: 交接.id } })).status).toBe("待确认");
     await 裁完(异议.id);
@@ -102,6 +102,36 @@ describe("确认交接：客户上有待裁定异议时拦，裁定后放行", (
     const 交接 = (await 待确认的交接()).等我确认[0];
     expect(await 确认交接(交接.id)).toMatchObject({ ok: false });
     expect(await 归谁(c.id)).toBe(销售.id);
+  });
+
+  it("只查交出人名下的：交接期间已换了人的那位客户上有待裁定异议，不拦别的；整笔转剩下的", async () => {
+    const 甲 = await 客户(销售.id);
+    const 乙 = await 客户(销售.id);
+    当(销售);
+    expect(await assignSalesOwner([甲.id, 乙.id], 接手.id, null, undefined, { 说明: "交出去" })).toMatchObject({ ok: true, 申请移交: true });
+    await prisma.customer.update({ where: { id: 乙.id }, data: { salesOwnerId: 同事.id } });
+    await 记待裁定(乙.id, 同事.id, 接手.id);
+    当(接手);
+    const 交接 = (await 待确认的交接()).等我确认[0];
+    expect(await 确认交接(交接.id)).toMatchObject({ ok: true });
+    expect(await 归谁(甲.id)).toBe(接手.id);
+    expect(await 归谁(乙.id)).toBe(同事.id);
+  });
+
+  it("异议检查在事务里、了结之前：被拦时交接状态不变，一个客户都没转", async () => {
+    const 甲 = await 客户(销售.id);
+    const 乙 = await 客户(销售.id);
+    当(销售);
+    expect(await assignSalesOwner([甲.id, 乙.id], 接手.id, null, undefined, { 说明: "交出去" })).toMatchObject({ ok: true, 申请移交: true });
+    await 记待裁定(乙.id, 销售.id, 同事.id);
+    当(接手);
+    const 交接 = (await 待确认的交接()).等我确认[0];
+    const r = await 确认交接(交接.id);
+    expect(r).toMatchObject({ ok: false, error: expect.stringContaining(`「${乙.name}」`) });
+    expect((r as { error: string }).error).toContain("交接留在待确认，裁定后再确认");
+    expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: 交接.id } })).status).toBe("待确认");
+    expect(await 归谁(甲.id)).toBe(销售.id);
+    expect(await 归谁(乙.id)).toBe(销售.id);
   });
 
   it("离职交接照常放行（口径 B3 默认）：旧的离职交接确认时，待裁定异议的客户照样交给接手人", async () => {

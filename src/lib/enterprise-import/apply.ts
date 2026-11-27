@@ -1185,6 +1185,9 @@ export async function 写一批(批次Id: string, 用户: Actor, opts: { 段长�
           } catch (e1) {
             if (e1 instanceof 让位) throw e1;
             const w = 段[i];
+            // 同次调用里前面的行可能已经往 note 里记了（被转让异议拦的行、电话没处落的号）：用库里最新的那份接着记，不拿开头读的旧内存整个盖掉
+            const 最新 = await prisma.entImportBatch.findUnique({ where: { id: 批次Id }, select: { note: true } });
+            失败们.splice(0, 失败们.length, ...解<失败明细[]>(最新?.note, []));
             if (失败们.length < 失败上限) 失败们.push({ 实体: w.实体, 外部ID: w.外部ID, 行号: w.行号, 出处: w.出处, 原因: 原因(e1) });
             const n = await prisma.entImportBatch.updateMany({
               where: { id: 批次Id, cursor: 游标 + i, status: "applying" },

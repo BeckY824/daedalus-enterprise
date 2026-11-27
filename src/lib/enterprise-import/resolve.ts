@@ -161,9 +161,11 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
 
         // 12-22 审查 M5：采用原系统会给「待裁定异议」的客户 / 项目换负责人的，这一笔先不定（裁定后再来）
         if (选 === "采用原系统" && v && !c.localDeleted) {
-          const 拦 = await 负责人被异议拦(tx, e, c.targetId, v, 现值);
+          // 只比这条冲突里真有的格：只改名称 / 备注的冲突，不因为 v 里带着整份原系统值（含负责人）被拦
+          const 冲突格 = Object.fromEntries(Object.entries(v).filter(([k]) => k in 字段));
+          const 拦 = await 负责人被异议拦(tx, e, c.targetId, 冲突格, 现值);
           if (拦) {
-            结果.没定.push(明细(拦));
+            结果.没定.push(明细("采用原系统会改负责人；这条有转让异议待裁定，裁定后再定"));
             continue;
           }
         }
