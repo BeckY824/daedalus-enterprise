@@ -15,7 +15,8 @@ import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 查号码, 查客户名, 从回收站捞回 } from "@/app/(app)/customers/number-actions";
-import { 键指纹, 扫库检测开关key } from "@/lib/enterprise/scan-query";
+import { 键指纹, 扫库检测开关key, 记查询, 等记录落库 } from "@/lib/enterprise/scan-query";
+import { 名键 } from "@/lib/enterprise-import/clean";
 import { beijingDay } from "@/lib/business-clock";
 
 type 人 = { id: string; name: string; role: string; email: string };
@@ -27,7 +28,8 @@ async function 人(id: string, name: string, bizRole: string): Promise<人> {
 function 作为<R>(u: 人, f: () => Promise<R>): Promise<R> {
   mocks.user = u;
   忘掉企业版范围();
-  return 以谁的身份(u.id, f);
+  // 产品路径不 await 记查询，这里等它落库再返回
+  return 以谁的身份(u.id, f).finally(() => 等记录落库());
 }
 const 号 = "13800138000";
 
@@ -71,15 +73,50 @@ describe("④ 查询记录：入口", () => {
     const 行 = await 行们();
     expect(行).toHaveLength(1);
     expect(行[0]).toMatchObject({ userId: x.乙.id, keyType: "名字", hit: true });
+    expect(行[0].keyHash).toBe(键指纹("名字", 名键("编的客户甲")));
+  });
+
+  it("名字的键只用名字：同名配不同公司、不配公司都是同一键；全角 / 半角 / 空白 / 大小写不同算同一键", async () => {
+    const x = await 现场();
+    await 作为(x.乙, () => 查客户名("编的客户甲", "编的公司甲"));
+    await 作为(x.乙, () => 查客户名("编的客户甲", "别的公司"));
+    await 作为(x.乙, () => 查客户名("编的客户甲"));
+    await 作为(x.乙, () => 查客户名("  编的客户 甲　"));
+    await 作为(x.乙, () => 查客户名("ＡＢＣ公司"));
+    await 作为(x.乙, () => 查客户名("abc 公司"));
+    await 作为(x.乙, () => 查客户名(" ABC公司 "));
+    const 行 = await 行们();
+    expect(行).toHaveLength(2);
+    expect(new Set(行.map((r) => r.keyHash)).size).toBe(2);
+  });
+
+  it("名键不够 2 个字不记（空、单字、只有空白）", async () => {
+    const x = await 现场();
+    await 作为(x.乙, () => 查客户名("甲"));
+    await 作为(x.乙, () => 查客户名("  "));
+    await 作为(x.乙, () => 查客户名(" 甲 "));
+    expect(await 行们()).toHaveLength(0);
   });
 });
 
 describe("④ 查询记录：排除入口不记", () => {
-  it("点「建好」兜底核（兜底=true）：查号码、查客户名都不记", async () => {
+  it("点「建好」兜底再查同一键不新增行（服务端一律记录，没有不记的参数）", async () => {
     const x = await 现场();
-    await 作为(x.乙, () => 查号码("手机号", 号, true));
-    await 作为(x.乙, () => 查客户名("编的客户甲", undefined, true));
-    expect(await 行们()).toHaveLength(0);
+    await 作为(x.乙, () => 查号码("手机号", 号));
+    await 作为(x.乙, () => 查客户名("编的客户甲"));
+    expect(await 行们()).toHaveLength(2);
+    await 作为(x.乙, () => 查号码("手机号", 号));
+    await 作为(x.乙, () => 查客户名("编的客户甲"));
+    expect(await 行们()).toHaveLength(2);
+  });
+
+  it("兜底参数已不存在：查号码 / 查客户名 多传一个参数类型层面报错，运行时形参个数也只有约定的", () => {
+    // @ts-expect-error 查号码 只有 (类型, 值)
+    void (() => 查号码("手机号", 号, true));
+    // @ts-expect-error 查客户名 只有 (名, 公司?)
+    void (() => 查客户名("编的客户甲", undefined, true));
+    expect(查号码.length).toBe(2);
+    expect(查客户名.length).toBe(2);
   });
 
   it("从回收站捞回里的再查不记", async () => {
@@ -105,6 +142,21 @@ describe("④ 查询记录：同键同日一行、撞上只升不降", () => {
     行 = await 行们();
     expect(行).toHaveLength(1);
     expect(行[0].hit).toBe(true);
+  });
+
+  it("并发两次（先没撞、后撞上）最终 hit 为真，只一行；再来没撞上也不降", async () => {
+    const x = await 现场();
+    const p = [
+      记查询(x.乙.id, "号码", "手机号|13500003333", false),
+      记查询(x.乙.id, "号码", "手机号|13500003333", true),
+      记查询(x.乙.id, "号码", "手机号|13500003333", false),
+    ];
+    await Promise.all(p);
+    const 行 = await 行们();
+    expect(行).toHaveLength(1);
+    expect(行[0].hit).toBe(true);
+    await 记查询(x.乙.id, "号码", "手机号|13500003333", false);
+    expect((await 行们())[0].hit).toBe(true);
   });
 
   it("不同人、不同键各自一行", async () => {

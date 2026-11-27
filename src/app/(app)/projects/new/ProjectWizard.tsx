@@ -463,14 +463,14 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   };
 
   /** 查号码：能建 = 返回最新的稿（企业版首次录入会把号码带进联系人那一格）；撞了 / 格式不对 / 没查成 = null */
-  const 查号 = async (稿面: 稿 = d, 兜底 = false): Promise<稿 | null> => {
+  const 查号 = async (稿面: 稿 = d): Promise<稿 | null> => {
     const 号 = 稿面.phone.trim();
     if (!号 || (企业版 && !稿面.号码类型)) return null;
     set查中(true);
     set查错("");
     try {
       if (企业版) {
-        const r = await 查号码(稿面.号码类型 ?? "", 号, 兜底);
+        const r = await 查号码(稿面.号码类型 ?? "", 号);
         set企查(r);
         set领成话("");
         set已查(查过键(稿面, true));
@@ -498,14 +498,14 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   };
 
   /** 企业版客户名查重：没撞 = true；不是企业版不查 */
-  const 查名 = async (名 = d.客户.name.trim(), 兜底 = false): Promise<boolean> => {
+  const 查名 = async (名 = d.客户.name.trim()): Promise<boolean> => {
     if (!企业版) return true;
     // 名称选填（11-19）：没填就没有名字可查，算没撞（号码那一半照查）
     if (!名) return true;
     set名查中(true);
     set查错("");
     try {
-      const r = await 查客户名(名, undefined, 兜底);
+      const r = await 查客户名(名, undefined);
       if (!r.ok) { set查错(r.error); return false; }
       set名查({ 名, 撞: r.撞 ?? null, 提示: r.撞 ? r.提示 : "" });
       return !r.撞;
@@ -584,10 +584,10 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     if (差们.length) return 滚到(差们[0].格);
     if (老客户) return void 给老客户建(老客户);
     let 稿面: 稿 | null = d;
-    if (!号查过) 稿面 = await 查号(d, true);
+    if (!号查过) 稿面 = await 查号(d);
     else if (号拦) 稿面 = null;
     if (!稿面) return 滚到("号码");
-    if (企业版 && !(名对上 ? !名查?.撞 : await 查名(undefined, true))) return 滚到("客户名");
+    if (企业版 && !(名对上 ? !名查?.撞 : await 查名())) return 滚到("客户名");
     void 提交(稿面);
   };
 
