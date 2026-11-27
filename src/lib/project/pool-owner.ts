@@ -203,6 +203,28 @@ export async function 不回避条件(db: Pick<Prisma.TransactionClient, "projec
 }
 
 /**
+ * 「现在在公海里、最后一次是这几位放的」项目的 where（F-057 同类：数据页 project-stats 原来把 公海里历史负责人是 整串塞进 id in，
+ * 销售只看自己、总管理看全队时 1000+ 个 id 过 SQLite 参数上限，P2029）。口径同 公海里历史负责人是（只认最近一次 pool-release）。
+ * 名单不过上限：id in 名单，同原来。过了上限：按关联写——公海里、留痕里有这些人放回的（宽集合），再 NOT id in 例外
+ * （例外 = 宽集合 − 名单，早先他们放过、最后一次是别人放的）。例外也过上限时宁可少算不多算：不再列例外，
+ * 改成更窄的子集——宽集合里「从来没有别人放过」的（logs none 别人放的 pool-release），它一定是名单的子集，只会漏掉
+ * 「别人早先放过、最后一次又是他们放」的，不会把别人最后放的算进来。参数数都有界（≤ 上限 + 人们 个数）。
+ * 没有（名单空）回 null，调用方不加条件
+ */
+export async function 是我放回的公海项目条件(db: Pick<Prisma.TransactionClient, "projectNodeLog" | "project">, 人们: readonly string[]): Promise<Prisma.ProjectWhereInput | null> {
+  const 名单 = await 公海里历史负责人是(db, 人们);
+  if (!名单.length) return null;
+  if (名单.length <= 回避条件名单上限) return { id: { in: 名单 } };
+  const 是 = [...人们];
+  const 宽条件: Prisma.ProjectWhereInput = { deletedAt: null, pooledAt: { not: null }, logs: { some: { kind: "pool-release", fromOwnerId: { in: 是 } } } };
+  const 宽 = await 看全部(() => db.project.findMany({ where: 宽条件, select: { id: true } }));
+  const 在名单 = new Set(名单);
+  const 例外 = 宽.map((r) => r.id).filter((id) => !在名单.has(id));
+  if (例外.length <= 回避条件名单上限) return { AND: [宽条件, ...(例外.length ? [{ NOT: { id: { in: 例外 } } }] : [])] };
+  return { AND: [宽条件, { logs: { none: { kind: "pool-release", OR: [{ fromOwnerId: null }, { fromOwnerId: { notIn: 是 } }] } } }] };
+}
+
+/**
  * 项目刚进公海（同一笔事务里、单项目客户跟进公海 之后调）：原负责人在这个项目上没做完的待办标成已完成，记录留着。
  * 待办挂在客户上、不挂项目：客户也进了公海或客户本来就不归他，且他在这位客户下没有别的在推项目 → 他在这位客户上没做完的都关；
  * 不然（客户还归他、或他还在推别的项目）→ 只关标题里点了这个项目名的（「项目名」，超时提醒、回收前一天提醒都是这样写的）。

@@ -2,7 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { 成员选项 } from "@/lib/utils";
 import { 阶段们, 字典of, 本套位置, 结局们of, 是交付, type 阶段, type 阶段字典 } from "@/lib/project/nodes";
 import { 企业版 } from "@/lib/enterprise/switch";
-import { 公海里历史负责人是 } from "@/lib/project/pool-owner";
+import { 是我放回的公海项目条件 } from "@/lib/project/pool-owner";
 import type { Prisma } from "@/generated/prisma";
 import { bucketOf, 刻度们, type 粒度 } from "./data";
 import { 项目漏斗of, type 漏斗格 } from "./funnel";
@@ -110,8 +110,9 @@ const 负责人是 = (只看: 只看谁) => (typeof 只看 === "string" ? 只看
  * 公海里的只给线索瀑布数「退回公海」，别的口径照旧不算在谁头上
  */
 async function 这些人的(只看: 只看谁): Promise<Prisma.ProjectWhereInput> {
-  const 放的 = await 公海里历史负责人是(prisma, typeof 只看 === "string" ? [只看] : 只看);
-  return 放的.length ? { OR: [{ ownerId: 负责人是(只看) }, { id: { in: 放的 } }] } : { ownerId: 负责人是(只看) };
+  // F-057：不把名单整串塞 id in（上千个过 SQLite 参数上限，P2029），用有界条件
+  const 放的 = await 是我放回的公海项目条件(prisma, typeof 只看 === "string" ? [只看] : 只看);
+  return 放的 ? { OR: [{ ownerId: 负责人是(只看) }, 放的] } : { ownerId: 负责人是(只看) };
 }
 const 无效线索 = "无效线索";
 const 判无效了 = (v: { finalResult: string | null } | null) => v?.finalResult === 无效线索;

@@ -62,8 +62,9 @@ async function 看得到的项目们(me: { id: string; role?: string }, customer
     orderBy: { updatedAt: "desc" },
   });
   // 公海里我是历史负责人的项目：沟通入口、时间线都不出（C-01，lib/project/pool-owner.ts；总管理 / 管理员照出）
-  const [看得到, 回避] = await Promise.all([可见(ps.map((p) => p.customerId)), 回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id)))]);
-  return ps.filter((p) => 露客户(me, p, 看得到) && !回避.includes(p.id)).map((p) => ({ 行: p, 主: p.customerId === customerId, 只挂过: !直接.has(p.id) }));
+  const [看得到, 回避表] = await Promise.all([可见(ps.map((p) => p.customerId)), 回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id)))]);
+  const 回避 = new Set(回避表);
+  return ps.filter((p) => 露客户(me, p, 看得到) && !回避.has(p.id)).map((p) => ({ 行: p, 主: p.customerId === customerId, 只挂过: !直接.has(p.id) }));
 }
 
 const 项目名表 = (们: { 行: 项目行 }[]) => new Map(们.map(({ 行 }) => [行.id, 行.name]));
@@ -255,7 +256,7 @@ export async function 列表最近一句们(me: { id: string; role?: string }, �
     const 别家 = [...new Set(ps.map((p) => p.customerId).filter((c) => !本页.has(c)))];
     const 给了 = new Set(ps.map((p) => p.id));
     const 没给 = pids.filter((id) => !给了.has(id));
-    const [看得到别家, 回避, 删] = await Promise.all([
+    const [看得到别家, 回避表, 删] = await Promise.all([
       别家.length ? 可见(别家) : Promise.resolve(new Set<string>()),
       // 回避只管公海里的项目（我回避的公海项目）：这几个都不在公海就不读回避名单
       ps.some((p) => p.pooledAt) ? 回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id))) : Promise.resolve([] as string[]),
@@ -263,7 +264,8 @@ export async function 列表最近一句们(me: { id: string; role?: string }, �
       没给.length ? 看全部(() => 看已删(() => prisma.project.findMany({ where: { id: { in: 没给 }, deletedAt: { not: null } }, select: { id: true, customerId: true } }))) : Promise.resolve([]),
     ]);
     const 看得到 = new Set([...本页, ...看得到别家]);
-    for (const p of ps) if (露客户(me, p, 看得到) && !回避.includes(p.id)) 能看.add(p.id);
+    const 回避 = new Set(回避表);
+    for (const p of ps) if (露客户(me, p, 看得到) && !回避.has(p.id)) 能看.add(p.id);
     for (const p of 删) 删了的.set(p.id, p.customerId);
   }
   const 结果: Record<string, string> = {};
