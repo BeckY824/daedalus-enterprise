@@ -129,13 +129,15 @@ it("普通销售新建：负责人锁成自己、灰掉（交上去存成自己�
   } finally { await page.close(); }
 });
 
-it("编辑不锁；开关关闭新建也不锁", async () => {
+it("编辑时负责人格只读（换人走转让）；开关关闭新建不锁", async () => {
   for (const p of [{ what: "form", 锁: true, 编辑: true }, { what: "form", 锁: false }] as const) {
     const { page, errors } = await open(p);
     try {
       const 格 = page.locator(".ant-form-item").filter({ hasText: "销售负责人" });
-      expect(await 格.locator(".ant-select-disabled").count()).toBe(0);
+      // 12-22：编辑时负责人格只读（换人走转让），说明换成「换负责人请用转让」；开关关闭的新建不锁
+      expect(await 格.locator(".ant-select-disabled").count()).toBe("编辑" in p ? 1 : 0);
       expect(await 格.innerText()).not.toContain("新建的只能记在自己名下");
+      if ("编辑" in p) expect(await 格.innerText()).toContain("换负责人请用「转让」");
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

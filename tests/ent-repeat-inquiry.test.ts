@@ -865,7 +865,8 @@ describe("命名加序与只读来源字段（E-218）", () => {
     };
     走(根);
     // 只拿它当查询条件的（项目列表按原始客户编号搜：where 里比 repeatOfCustomerId），不写：另列，且那个文件里没有带它的 data
-    const 只读的 = ["lib/project/list.ts"];
+    // 转让留痕（lib/owner-log-db.ts）同理：groupBy 数「原始客户是这位的重复咨询线索有几条」，只读
+    const 只读的 = ["lib/project/list.ts", "lib/owner-log-db.ts"];
     // 例外（合并客户第一批，E-277）：不是改项目的入口、不收界面传来的值——原始客户被并掉 / 项目换了客户时，系统把
     // 「原始客户是 B」的改指 A、序号接在 A 已有最大号后面（唯一键 (repeatOfCustomerId, repeatSeq) 不撞），记下原值，
     // 撤回 / 撤销换客户按原值改回。不改指的话原始客户编号指向一位已并掉的客户、第几次也对不上 A

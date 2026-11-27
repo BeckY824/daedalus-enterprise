@@ -390,7 +390,7 @@ describe("撤销还回原值（服务端留痕，复审 11-25）", () => {
 
   it("撤销批量改负责人（一起带出线索公海的项目放回去）：回到原值；前端少带项目按重算", async () => {
     const { c, 公 } = await 存意向的();
-    const r = await 以(总管, () => assignSalesOwner([c], 丙.id));
+    const r = await 以(总管, () => assignSalesOwner([c], 丙.id, null, undefined, { 说明: "测试原因" }));
     if (!r.ok) throw new Error(r.error);
     expect(r.带过来?.公海项目).toEqual([公]);
     expect(r.原值).toEqual([{ id: c, 值: 甲.id }]);
@@ -401,7 +401,7 @@ describe("撤销还回原值（服务端留痕，复审 11-25）", () => {
     // 两个带出来的只放回一个：另一个还在外面，按重算
     const 另 = await 存意向的();
     const 另2 = await 公海线索(另.c);
-    const r2 = await 以(总管, () => assignSalesOwner([另.c], 丙.id));
+    const r2 = await 以(总管, () => assignSalesOwner([另.c], 丙.id, null, undefined, { 说明: "测试原因" }));
     if (!r2.ok) throw new Error(r2.error);
     expect(await 以(总管, () => 撤销改负责人(r2.原值!, 丙.id, { ...r2.带过来!, 公海项目: [另.公] }))).toMatchObject({ ok: true, updated: 1 });
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 另2 } })).pooledAt).toBeNull();

@@ -75,10 +75,10 @@ describe("企业版负责人候选只认业务角色", () => {
 
   it("转让客户给只读管理员、没角色的人被拒，负责人不变；给账号 ADMIN 的销售能转", async () => {
     const c = await 客户(销售.id);
-    expect(await assignSalesOwner([c.id], 管理员.id)).toMatchObject({ ok: false, error: expect.stringContaining("只读") });
-    expect(await assignSalesOwner([c.id], 没角色.id)).toMatchObject({ ok: false, error: expect.stringContaining("业务角色") });
+    expect(await assignSalesOwner([c.id], 管理员.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: false, error: expect.stringContaining("只读") });
+    expect(await assignSalesOwner([c.id], 没角色.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: false, error: expect.stringContaining("业务角色") });
     expect(await 归谁(c.id)).toBe(销售.id);
-    expect(await assignSalesOwner([c.id], 账号管理员销售.id)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c.id], 账号管理员销售.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 归谁(c.id)).toBe(账号管理员销售.id);
   });
 

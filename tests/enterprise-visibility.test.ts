@@ -251,7 +251,7 @@ describe("虚线下属的客户被挡时说对原因（F4 / F5）", () => {
   it("批量转、批量状态、放公海：单选一位虚线客户 → 虚线那句，不说已删；删、删前预检先被「只有负责人本人或系统管理员能删除」挡；客户原样", async () => {
     const id = await 客户id("C小张的");
     for (const r of [
-      await 作为(经理, () => assignSalesOwner([id], 经理)),
+      await 作为(经理, () => assignSalesOwner([id], 经理, null, undefined, { 说明: "测试原因" })),
       await 作为(经理, () => bulkFollowStatus([id], "跟进中")),
       await 作为(经理, () => 放进公海([id])),
     ]) {
@@ -268,7 +268,7 @@ describe("虚线下属的客户被挡时说对原因（F4 / F5）", () => {
 
   it("多选里混了两位虚线客户：说几位、叫人去掉再试", async () => {
     const ids = await Promise.all(["B小王的", "C小张的", "D小赵的"].map(客户id));
-    const r = await 作为(经理, () => assignSalesOwner(ids, 经理));
+    const r = await 作为(经理, () => assignSalesOwner(ids, 经理, null, undefined, { 说明: "测试原因" }));
     expect(r).toEqual({ ok: false, error: "选中的有 2 位是虚线下属的客户：只能看，不能改、不能转、不能删。去掉这几位再试" });
     expect(await raw.customer.count({ where: { id: { in: ids } } })).toBe(3);
   });
@@ -314,9 +314,9 @@ describe("虚线上级批量改负责人", () => {
     const 实 = await 建("I小王的", 小王);
     登录.user = { ...登录.user, id: 经理, name: "经理", role: "SALES" };
     // 混着选：整批先挡下、说清是哪几位（F4），一条不动
-    const 混 = await 作为(经理, () => assignSalesOwner([虚.c, 实.c], 外人));
+    const 混 = await 作为(经理, () => assignSalesOwner([虚.c, 实.c], 外人, null, undefined, { 说明: "测试原因" }));
     expect(混).toEqual({ ok: false, error: expect.stringMatching(/有 1 位是虚线下属的客户/) });
-    const r = await 作为(经理, () => assignSalesOwner([实.c], 外人));
+    const r = await 作为(经理, () => assignSalesOwner([实.c], 外人, null, undefined, { 说明: "测试原因" }));
     expect(r).toMatchObject({ ok: true, updated: 1 });
     const 归谁 = async (x: { c: string; p: string; t: string }) => [
       (await raw.customer.findUniqueOrThrow({ where: { id: x.c } })).salesOwnerId,

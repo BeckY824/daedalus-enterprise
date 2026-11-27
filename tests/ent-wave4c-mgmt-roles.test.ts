@@ -119,7 +119,7 @@ describe("1. 客户转让「指定」：兼管理角色不按分配方向限人"
     当(兼管, "MANAGER");
     const 客户 = { id: c, salesOwnerId: 外渠, bizLine: "外贸", pool: null };
     expect(await 要按方向指定({ id: 兼管, role: "MANAGER" }, org, 客户)).toBeNull();
-    expect(await assignSalesOwner([c], 内一)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c], 内一, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 客户负责人(c)).toBe(内一);
   });
 
@@ -136,7 +136,7 @@ describe("1. 客户转让「指定」：兼管理角色不按分配方向限人"
   it("对照：纯市场管理照旧按方向拦（默认外贸指定给内贸销售：拒，客户不动），预看给定向和可指定", async () => {
     const c = await 建客户(市场管);
     当(市场管);
-    expect(await assignSalesOwner([c], 内一)).toMatchObject({ ok: false, error: expect.stringContaining("外贸") });
+    expect(await assignSalesOwner([c], 内一, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: false, error: expect.stringContaining("外贸") });
     expect(await 客户负责人(c)).toBe(市场管);
     const r = await 批量客户自动分配预看([c]);
     if (!r.ok) throw new Error(r.error);
@@ -152,7 +152,7 @@ describe("2. 市场分配指定挡：兼管理角色不走，接手人按普通�
     当(兼管, "MANAGER");
     expect(市场分配限指定(await 读组织(), 兼管)).toBe(false);
     expect(await 市场分配指定挡({ id: 兼管, role: "MANAGER" }, [c], 外二)).toBeNull();
-    expect(await assignSalesOwner([c], 外二)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c], 外二, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 客户负责人(c)).toBe(外二);
   });
 
@@ -161,7 +161,7 @@ describe("2. 市场分配指定挡：兼管理角色不走，接手人按普通�
     await setSetting(自动分配不参与key, { [外二]: "暂停" });
     当(渠运);
     expect(市场分配限指定(await 读组织(), 渠运)).toBe(true);
-    expect(await assignSalesOwner([c], 外二, null, "外贸")).toMatchObject({ ok: false });
+    expect(await assignSalesOwner([c], 外二, null, "外贸", { 说明: "测试原因" })).toMatchObject({ ok: false });
     expect(await 客户负责人(c)).toBe(渠运);
   });
 });
@@ -203,7 +203,7 @@ describe("6. 外贸指定候选：外贸事业部的销售含义乌档口、外�
   it("市场成员按外贸方向指定给档口销售：放行", async () => {
     const c = await 建客户(渠运);
     当(渠运);
-    expect(await assignSalesOwner([c], 档口一)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c], 档口一, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 客户负责人(c)).toBe(档口一);
   });
 });

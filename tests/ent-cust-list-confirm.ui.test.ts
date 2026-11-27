@@ -38,7 +38,7 @@ const 桩: Plugin = { name: "cust-list-confirm", setup(b) {
     export const deleteCustomers=async(ids)=>{(window.__调??=[]).push(['删',ids]);return window.__删回??{ok:true,deleted:ids.length}};
     export const 删除前清点=async()=>({跟进:6,计划和待办:0,签约:0,签约金额:[],联系人:2,线索:0,进回收站:true,项目:1});
     export const 客户删除预检=async()=>({ok:true});
-    export const 转走项目预览of=async(ids,to)=>({项目数:1,项目:[{name:'VR 乐园二期'+名,客户:名,负责人:null}],...(window.__要确认===undefined?{}:{要确认:typeof window.__要确认==='function'?window.__要确认(to):window.__要确认})});`);
+    export const 转走项目预览of=async(ids,to)=>{if(window.__慢预览)await window.__慢预览;return({项目数:1,项目:[{name:'VR 乐园二期'+名,客户:名,负责人:null}],...(window.__要说明?{要说明:true,同事在推:[],最近跟进:null,重复咨询:0}:{}),...(window.__要确认===undefined?{}:{要确认:typeof window.__要确认==='function'?window.__要确认(to):window.__要确认})})};`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 
@@ -190,6 +190,36 @@ it("转让三层合一：按钮写全「转让给同事」，一个框里选人�
       await 框(page).getByRole("button", { name: /^取\s?消$/ }).click();
       await expect.poll(() => 框(page).isVisible()).toBe(false);
       expect(await 调(page), "取消不生效").toEqual([]);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+});
+
+it("转让框原因区不跳变：预览慢回来时先只显示加载态（不先摆字典单选）；回来说要说明就换成必填输入框，说不要就摆单选", async () => {
+  for (const 要说明 of [true, false]) {
+    const { page, errors } = await 开(列表包, 1280, "tr.ant-table-row");
+    try {
+      await page.evaluate((v) => {
+        const w = window as unknown as { __要说明: boolean; __放: () => void; __慢预览: Promise<void> };
+        w.__要说明 = v;
+        w.__慢预览 = new Promise<void>((r) => { w.__放 = r; });
+      }, 要说明);
+      await 勾(page, ["c1"]);
+      await 批量钮(page, /转让给同事$/).click();
+      await 框(page).getByRole("combobox", { name: "转给谁" }).fill("小李");
+      await page.keyboard.press("Enter");
+      await 框(page).getByTestId("transfer-why-pending").waitFor();
+      expect(await 框(page).getByRole("radio", { name: "工作调整" }).count(), "预览没回来不摆字典单选").toBe(0);
+      expect(await 框(page).getByRole("button", { name: "转给小李" }).isDisabled(), "预览没回来确认键灰").toBe(true);
+      await page.evaluate(() => (window as unknown as { __放: () => void }).__放());
+      if (要说明) {
+        await 框(page).getByRole("textbox", { name: "转让原因" }).waitFor();
+        expect(await 框(page).getByRole("radio", { name: "工作调整" }).count(), "要说明时不摆单选").toBe(0);
+      } else {
+        await 框(page).getByRole("radio", { name: "工作调整" }).waitFor();
+        expect(await 框(page).getByRole("textbox", { name: "转让原因" }).count()).toBe(0);
+      }
+      expect(await 框(page).getByTestId("transfer-why-pending").count(), "加载态收起").toBe(0);
       expect(errors).toEqual([]);
     } finally { await page.close(); }
   }

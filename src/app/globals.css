@@ -1348,6 +1348,20 @@ a.rec-step-b:hover { background: var(--row-hover); color: var(--ink); }
 .rec-field-editing { background: var(--row-hover); cursor: default; }
 .rec-field-k { font-size: var(--fs-note); color: var(--text-muted); line-height: 22px; overflow-wrap: anywhere; } /* 不再 nowrap：自定义的长字段名在 66px 里折行，不压到右边的值上；内置最长的「渠道负责人」65px 照旧一行 */
 .rec-field-v { font-size: var(--fs-body); color: var(--ink); line-height: 22px; word-break: break-word; }
+/* 12-22：负责人格只读 + 旁边「转让」 */
+.rec-field.rec-owner-ro { cursor: default; }
+.rec-field-v.rec-owner-v { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rec-owner-v > .rec-owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rec-owner-transfer.ant-btn.ant-btn-sm { padding: 0; height: auto; }
+/* 12-22：转让框「同事在推的项目 · 逐项选」 */
+.ti-head { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.ti-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.ti-grow { flex: 1; }
+.ti-ell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.ti-row > .ti-ell > .ti-ell { display: block; }
+.csq-chips.ti-chips { flex: none; }
+/* 原因框右下的「0 / 200」绝对定位在框下方，给它留一行，别压到下面「自动带上」那行 */
+.ti-why .ant-input-textarea-show-count { margin-bottom: 24px; }
 .rec-field-empty { color: var(--empty-fg); }
 .rec-field-saving { opacity: 0.5; }
 .rec-field-hint { margin-top: var(--s1); font-size: var(--fs-min); color: var(--text-muted); }

@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Input, Modal, Select } from "antd";
 import { 其他项, 其他补充上限, 合其他 } from "@/lib/enterprise/dict-kinds";
 import { 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
+import { 逐项选块, 说明框, 默认选, 随转的, 含勾选, type 逐项选择 } from "../TransferItemized";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { 自动分配说明, 自动分配生效话 } from "@/lib/enterprise/cust-auto-assign-words";
 import { 方向来源说明, 区域未填提示, type 分配方向 } from "@/lib/enterprise/customer-region";
@@ -48,7 +49,7 @@ export default function TransferBox({
   /** 字典「转让原因」；空 = 不问原因 */
   原因选项: readonly string[];
   取预览: (接手人: string) => Promise<转走项目预览 | null | undefined>;
-  做: (o: { value: string; label: string }, 原因: string | null, 方向?: 线) => Promise<转让结果>;
+  做: (o: { value: string; label: string }, 原因: string | null, 方向?: 线, 逐项?: { 说明?: string; 随转?: string[] }) => Promise<转让结果>;
   /** 市场成员转暂不分配的客户才给：摆「指定分配 / 自动分配」。取预览 = 还没挑人时会一起转走的项目 */
   自动?: {
     做: (原因: string | null, 方向?: 线) => Promise<转让结果>; 取预览: () => Promise<转走项目预览 | null | undefined>;
@@ -60,7 +61,10 @@ export default function TransferBox({
   onClose: () => void;
 }) {
   const [谁, set谁] = useState<string | undefined>();
-  const [预览, set预览] = useState<{ 谁: string; 说: ReturnType<typeof 转走项目说法> } | null>(null);
+  const [预览, set预览] = useState<{ 谁: string; 说: ReturnType<typeof 转走项目说法>; 原?: 转走项目预览 | null; 没取到?: boolean } | null>(null);
+  /** 12-22 逐项选：同事在推的项目各选保留 / 随转，默认全保留；上级直接转必填的原因 */
+  const [逐项, set逐项] = useState<逐项选择>({});
+  const [说明, set说明] = useState("");
   const [选, set选] = useState<string | null>(null);
   const [写, set写] = useState("");
   const [忙, set忙] = useState(false);
@@ -77,7 +81,7 @@ export default function TransferBox({
   const [上次开, set上次开] = useState(open);
   if (open !== 上次开) {
     set上次开(open);
-    if (open) { set谁(undefined); set预览(null); set选(null); set写(""); set忙(false); set错(""); set发出(null); set法("指定"); set自动预览(null); set向(null); }
+    if (open) { set谁(undefined); set预览(null); set逐项({}); set说明(""); set选(null); set写(""); set忙(false); set错(""); set发出(null); set法("指定"); set自动预览(null); set向(null); }
   }
   const 自动中 = !!自动 && 法 === "自动";
   /** 市场分配（摆了「指定 / 自动」）选指定：只列能被指定的；普通转让照旧 */
@@ -91,7 +95,7 @@ export default function TransferBox({
   useEffect(() => {
     if (!谁) return;
     let 作废 = false;
-    取预览(谁).then((x) => { if (!作废) set预览({ 谁, 说: 转走项目说法(x) }); }, () => { if (!作废) set预览({ 谁, 说: null }); });
+    取预览(谁).then((x) => { if (!作废) { set预览({ 谁, 说: 转走项目说法(x), 原: x }); set逐项(默认选(x)); } }, () => { if (!作废) set预览({ 谁, 说: null, 没取到: true }); });
     return () => { 作废 = true; };
   }, [谁, 取预览]);
 
@@ -103,8 +107,14 @@ export default function TransferBox({
   }, [open, 自动中, 自动预览, 自动]);
 
   const 原因齐 = !选 || 选 !== 其他项 || !!写.trim();
-  const 能发 = (自动中 || !!谁) && 原因齐 && !忙;
-  const 说 = 自动中 ? 自动预览?.说 ?? null : 预览 && 预览.谁 === 谁 ? 预览.说 : null;
+  // 预览取失败：不知道是不是上级直转，原因框照样摆出来先要填（负责人本人转时服务端不看这句），不等服务端回「请写原因」
+  const 没取到 = !!预览 && 预览.谁 === 谁 && !!预览.没取到;
+  const 要说明 = !自动中 && !!谁 && !!预览 && 预览.谁 === 谁 && (!!预览.原?.要说明 || 没取到);
+  const 说明预览: 转走项目预览 | null | undefined = 没取到 ? { 项目数: 0, 项目: [], 要说明: true } : 预览?.原;
+  /** 接手人选好了、预览没回来：原因区只显示加载态，预览说了算是单选还是必填输入框（已选 / 已填的留着） */
+  const 等预览 = !自动中 && !!谁 && !(!!预览 && 预览.谁 === 谁);
+  const 能发 = (自动中 || !!谁) && !等预览 && 原因齐 && !忙 && (!要说明 || !!说明.trim());
+  const 说 = 自动中 ? 自动预览?.说 ?? null : 预览 && 预览.谁 === 谁 ? (预览.原 ? 转走项目说法(含勾选(预览.原, 逐项)) : 预览.说) : null;
   /** 「一起转」那格：还在取 / 取到了 */
   const 取到了 = 自动中 ? !!自动预览 : !!预览 && 预览.谁 === 谁;
 
@@ -114,9 +124,9 @@ export default function TransferBox({
     set忙(true);
     set错("");
     let r: 转让结果;
-    const 因 = 原因选项.length ? 合其他(选, 写) : null;
+    const 因 = 原因选项.length && !要说明 ? 合其他(选, 写) : null;
     try {
-      r = 自动中 && 自动 ? await 自动.做(因, 向 ?? undefined) : await 做(o!, 因, 定向中 ? 向 ?? undefined : undefined);
+      r = 自动中 && 自动 ? await 自动.做(因, 向 ?? undefined) : await 做(o!, 因, 定向中 ? 向 ?? undefined : undefined, 要说明 ? { 说明: 说明.trim(), 随转: 随转的(逐项) } : undefined);
     } catch (出错) {
       r = { ok: false, error: 动作出错话(出错, "没转成，请稍后再试") };
     }
@@ -232,7 +242,33 @@ export default function TransferBox({
               )}
             </div>
           </div>
-          {原因选项.length > 0 && (
+          {要说明 && (
+            <div className="cd-transfer-row">
+              <span className="cd-transfer-k">同事项目</span>
+              <div className="cd-transfer-v">
+                {预览?.原?.同事在推?.length ? <逐项选块 预览={预览.原} 选={逐项} 改={set逐项} 忙={忙} /> : <span className="cd-transfer-mut">没有同事在推的项目要选</span>}
+              </div>
+            </div>
+          )}
+          {要说明 && (
+            <div className="cd-transfer-row">
+              <span className="cd-transfer-k">原因</span>
+              <div className="cd-transfer-v"><说明框 预览={说明预览} 值={说明} 改={set说明} 忙={忙} onEnter={() => void 发()} /></div>
+            </div>
+          )}
+          {!自动中 && 谁 && 预览 && 预览.谁 === 谁 && !预览.原?.要说明 && !预览.没取到 && 要申请 && (
+            <div className="cd-transfer-row">
+              <span className="cd-transfer-k">同事项目</span>
+              <div className="cd-transfer-v cd-transfer-mut" data-testid="transfer-colleague-note">同事在推的项目不随客户转；要带请上级在转让时勾。</div>
+            </div>
+          )}
+          {等预览 && 原因选项.length > 0 && (
+            <div className="cd-transfer-row" data-testid="transfer-why-pending">
+              <span className="cd-transfer-k">原因</span>
+              <div className="cd-transfer-v"><span className="cd-transfer-mut" aria-busy>正在确认原因怎么填</span></div>
+            </div>
+          )}
+          {原因选项.length > 0 && !要说明 && !等预览 && (
             <div className="cd-transfer-row">
               <span className="cd-transfer-k">原因</span>
               <div className="cd-transfer-v csq-why" role="radiogroup" aria-label="转让原因（可不选）">

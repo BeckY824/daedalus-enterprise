@@ -18,7 +18,7 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 看全部 } from "@/lib/team-scope";
 import { 数转走的项目 } from "@/lib/carry-over-db";
 import { 无负责人占位邮箱 } from "@/lib/pool";
-import { 待确认的交接 } from "@/app/(app)/customers/handover-actions";
+import { 待确认的交接, 确认交接 } from "@/app/(app)/customers/handover-actions";
 
 type 人 = { id: string; role: string };
 let 老板: 人, 销售们: 人[], 接手: 人, 同事: 人;
@@ -101,7 +101,7 @@ describe("待确认的交接：查库次数不随笔数涨", () => {
     expect(多.次).toBe(少.次);
   });
 
-  it("每笔说的「全部 N 个项目（含 M 个同事在推的）」和逐笔 数转走的项目 对得上", async () => {
+  it("每笔说的「全部 N 个项目（同事在推的项目不随客户转）」和逐笔 数转走的项目 对得上", async () => {
     await 造(3, 2);
     // 再掺几种：没项目的、交接期间进了公海的、被改给了别人的、待分配的、已结束的、转给本来的负责人、原负责人是占位账号的
     const 空 = await 客户(销售们[0].id);
@@ -129,14 +129,28 @@ describe("待确认的交接：查库次数不随笔数涨", () => {
     const 行们 = [...列.等我确认, ...列.我发起的];
     const 库里 = await raw.entHandover.findMany();
     expect(行们).toHaveLength(库里.length);
+    let 有同事 = false;
+    const 预们 = new Map<string, number>();
     for (const h of 库里) {
       const ids = JSON.parse(h.customerIds) as string[];
       const 还归他 = (await raw.customer.findMany({ where: { id: { in: ids }, salesOwnerId: h.fromUserId, pool: null }, select: { id: true } })).map((c) => c.id);
-      const 预 = await 看全部(() => 数转走的项目(还归他, h.toUserId));
-      const 句 = !预.项目数 ? "全部项目" : `全部 ${预.项目数} 个项目${预.同事?.项目数 ? `（含 ${预.同事.项目数} 个同事在推的，负责人一起改成你）` : ""}`;
+      const 预 = await 看全部(() => 数转走的项目(还归他, h.toUserId, [], false));
+      const 句 = !预.项目数 ? "全部项目" : `全部 ${预.项目数} 个项目（同事在推的项目不随客户转）`;
+      const 全 = await 看全部(() => 数转走的项目(还归他, h.toUserId));
+      if ((全.同事?.项目数 ?? 0) > 0) 有同事 = true;
+      预们.set(h.id, 预.项目数);
       expect(行们.find((r) => r.id === h.id)!.确认说明, `交接 ${ids.length} 位`).toContain(`、${句}，`);
     }
     // 至少有一笔真数出了同事在推的，免得两边都是空的也算对上
-    expect(行们.some((r) => r.确认说明.includes("个同事在推的"))).toBe(true);
+    expect(有同事).toBe(true);
+    expect(行们.every((r) => !r.确认说明.includes("负责人一起改成你"))).toBe(true);
+    // 确认一笔：审计里带走的项目数 = 预览说的数（同事在推的不算在内）
+    const 挑 = 库里.find((h) => h.toUserId === 接手.id && (预们.get(h.id) ?? 0) > 0)!;
+    expect(挑).toBeTruthy();
+    当(接手);
+    expect(await 确认交接(挑.id)).toMatchObject({ ok: true });
+    const 审 = await raw.auditLog.findMany({ where: { action: "assign", summary: { contains: "确认接手" } } });
+    const 详 = 审.map((a) => JSON.parse(a.detail ?? "{}")).find((d) => d.交接 === 挑.id);
+    expect(详?.带走?.项目 ?? 0).toBe(预们.get(挑.id));
   });
 });

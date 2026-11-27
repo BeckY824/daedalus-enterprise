@@ -64,7 +64,7 @@ async function 小王领一位() {
 /** 主管在撤销的两步之间把这位转给小丙 */
 const 主管转给小丙 = (id: string, 撤的人: 人) => async () => {
   当(老板);
-  expect(await assignSalesOwner([id], 小丙.id)).toMatchObject({ ok: true, updated: 1 });
+  expect(await assignSalesOwner([id], 小丙.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 1 });
   当(撤的人);
 };
 

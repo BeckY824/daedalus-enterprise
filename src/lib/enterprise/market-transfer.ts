@@ -108,7 +108,7 @@ export async function 公海项目市场转(
  * 同事在推的（P-转-07 一起带过来的，可能是销售自己建的）不推。公海领取 / 公海分配传 false，不推
  */
 export async function 市场转一位(tx: Prisma.TransactionClient, customerId: string, 原: string, 接手人: string, 操作人: string, way: string, 推节点 = true) {
-  const 带走 = await 带走一位(tx, customerId, 原, 接手人, 操作人, "assign", true, { 留下待办计划: true, 项目痕: 随客户痕, 记录种类: "market-assign" });
+  const 带走 = await 带走一位(tx, customerId, 原, 接手人, 操作人, "assign", true, { 留下待办计划: true, 项目痕: 随客户痕, 记录种类: "market-assign", 同事在推: "全带" });
   // 带过来的都有负责人了：清掉待分配，不然批量里后面几条还会被当成没分的，再分给别人
   const 待分配 = await tx.project.findMany({ where: { customerId, ownerId: 接手人, awaitAssignAt: { not: null } }, select: { id: true, awaitAssignAt: true } });
   if (待分配.length) await tx.project.updateMany({ where: { id: { in: 待分配.map((p) => p.id) } }, data: { awaitAssignAt: null } });

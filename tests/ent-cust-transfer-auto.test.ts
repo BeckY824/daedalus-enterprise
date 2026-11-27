@@ -315,19 +315,19 @@ describe("市场分配的指定：只能指定正常参与的人", () => {
     await setSetting(自动分配不参与key, { [内组长]: "禁止", [内一]: "暂停", [外一]: "禁止" });
     const a = await 建客户();
     for (const 谁 of [内一, 外一]) {
-      const r = await assignSalesOwner([a.c], 谁);
+      const r = await assignSalesOwner([a.c], 谁, null, undefined, { 说明: "测试原因" });
       expect(r.ok, String(谁)).toBe(false);
       if (!r.ok) expect(r.error).toMatch(/暂停|禁止/);
     }
     expect(await 客户负责人(a.c)).toBe(市场管);
-    expect(await assignSalesOwner([a.c], 内二)).toMatchObject({ ok: true, updated: 1 });
+    expect(await assignSalesOwner([a.c], 内二, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 1 });
     expect(await 客户负责人(a.c)).toBe(内二);
   });
 
   it("批量里混着一位暂不分配的：整批按市场分配判，指定给暂停的拒", async () => {
     await setSetting(自动分配不参与key, { [内组长]: "禁止", [内一]: "暂停" });
     const a = await 建客户(), b = await 建客户({ 方式: "个人自持" });
-    expect((await assignSalesOwner([b.c, a.c], 内一)).ok).toBe(false);
+    expect((await assignSalesOwner([b.c, a.c], 内一, null, undefined, { 说明: "测试原因" })).ok).toBe(false);
     expect(await 客户负责人(a.c)).toBe(市场管);
     expect(await 客户负责人(b.c)).toBe(市场管);
   });
@@ -335,10 +335,10 @@ describe("市场分配的指定：只能指定正常参与的人", () => {
   it("普通转让不变：不是暂不分配的客户、或总管理改派，给暂停的照转", async () => {
     await setSetting(自动分配不参与key, { [内组长]: "禁止", [内一]: "暂停" });
     const 自持 = await 建客户({ 方式: "个人自持" });
-    expect(await assignSalesOwner([自持.c], 内一)).toMatchObject({ ok: true, updated: 1 });
+    expect(await assignSalesOwner([自持.c], 内一, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 1 });
     const a = await 建客户();
     当(老板, "老板", "ADMIN");
-    expect(await assignSalesOwner([a.c], 内一)).toMatchObject({ ok: true, updated: 1 });
+    expect(await assignSalesOwner([a.c], 内一, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 1 });
     expect(await 客户负责人(a.c)).toBe(内一);
   });
 
@@ -346,7 +346,7 @@ describe("市场分配的指定：只能指定正常参与的人", () => {
     await setSetting(自动分配不参与key, { [内组长]: "禁止", [内一]: "暂停" });
     await setSetting(规则.线索分配.key, false);
     const a = await 建客户();
-    expect(await assignSalesOwner([a.c], 内一)).toMatchObject({ ok: true, updated: 1 });
+    expect(await assignSalesOwner([a.c], 内一, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 1 });
   });
 
   it("批量预看带回可指定的人：只列正常参与的销售 / 销售管理", async () => {

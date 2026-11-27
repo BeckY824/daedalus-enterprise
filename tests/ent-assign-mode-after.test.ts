@@ -107,7 +107,7 @@ describe("客户转让框：暂不分配的客户", () => {
   it("指定（客户层转让）：名下暂不分配项目改成「指定分配」；撤销改负责人还成「暂不分配」", async () => {
     const c = await 客户(市场.id);
     const p = await 项目(c, 市场.id);
-    const r = await 以(市场, () => assignSalesOwner([c], 甲.id));
+    const r = await 以(市场, () => assignSalesOwner([c], 甲.id, null, undefined, { 说明: "测试原因" }));
     expect(r).toMatchObject({ ok: true, updated: 1 });
     expect(await 方式of(p)).toBe("指定分配");
     if (!r.ok) throw new Error("没转成");

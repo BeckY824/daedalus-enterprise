@@ -230,7 +230,7 @@ describe("N 市场分给销售：停在潜客培育的进线索验证", () => {
     const c = await 建客户(市管.id, 市管.id);
     const P = await 建项目(c, { ownerId: 市管.id, creatorId: 市管.id, node: "潜客培育" });
     当(市管);
-    const r = await assignSalesOwner([c], 销售.id);
+    const r = await assignSalesOwner([c], 销售.id, null, undefined, { 说明: "测试原因" });
     if (!r.ok) throw new Error(r.error);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(销售.id);
     expect(await 节点(P)).toBe("线索验证");

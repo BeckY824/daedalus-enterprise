@@ -32,7 +32,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
-import { patchCustomer } from "@/app/(app)/customers/actions";
+import { assignSalesOwner, patchCustomer } from "@/app/(app)/customers/actions";
 
 type 人 = { id: string; role: string };
 let 老板: 人, 老板二: 人, 小王: 人, 小李: 人, 小丙: 人;
@@ -76,41 +76,22 @@ afterEach(() => { vi.unstubAllEnvs(); 忘掉企业版范围(); });
 afterAll(async () => { await prisma.$disconnect(); });
 
 describe("单格改负责人不盖别人刚改的（C2）", () => {
-  it("甲读完、还没写的时候乙把客户改给了小李：甲被拒，客户归小李，通知只有小李一份", async () => {
+  // 12-22：行内改负责人的旁路关了（换人一律走转让、原因必填），原来「读完被人抢先改」的竞态只剩转让那条路，由它自己的条件更新守
+  it("行内改负责人被拦：客户不动、不发通知、不留痕；改成原来的那位不报错", async () => {
     const c = await 客户(小王.id);
-    mocks.中间 = async () => {
-      当(老板二);
-      expect(await patchCustomer(c.id, "salesOwnerId", 小李.id)).toMatchObject({ ok: true });
-      当(老板);
-    };
-    const 甲 = await patchCustomer(c.id, "salesOwnerId", 小丙.id);
-    expect(甲.ok).toBe(false);
-    if (!甲.ok) expect(甲.error).toContain("被别人改过");
-    expect(await 归谁(c.id)).toBe(小李.id);
-    expect(await 分配通知()).toEqual([小李.id]);
-    // 只有乙那一次留痕
-    expect(await 改负责人留痕(c.id)).toBe(1);
-    // 换负责人记录只有乙那一条
-    expect(await prisma.customerOwnerLog.count({ where: { customerId: c.id } })).toBe(1);
+    expect(await patchCustomer(c.id, "salesOwnerId", 小李.id)).toMatchObject({ ok: false, error: expect.stringContaining("请用「转让」") });
+    expect(await 归谁(c.id)).toBe(小王.id);
+    expect(await 分配通知()).toEqual([]);
+    expect(await 改负责人留痕(c.id)).toBe(0);
+    expect(await patchCustomer(c.id, "salesOwnerId", 小王.id)).toMatchObject({ ok: true });
   });
 
-  it("同一位主管的两个页面同时改给不同的人：只成一个，通知只发给成的那位", async () => {
+  it("转让：没人插进来照常改、通知接手人；改成本来就是的那位不报错", async () => {
     const c = await 客户(小王.id);
-    const [给李, 给丙] = await Promise.all([patchCustomer(c.id, "salesOwnerId", 小李.id), patchCustomer(c.id, "salesOwnerId", 小丙.id)]);
-    expect([给李.ok, 给丙.ok].filter(Boolean)).toHaveLength(1);
-    const 成的 = 给李.ok ? 小李.id : 小丙.id;
-    expect(await 归谁(c.id)).toBe(成的);
-    expect(await 分配通知()).toEqual([成的]);
-    expect(await 改负责人留痕(c.id)).toBe(1);
-  });
-
-  it("没人插进来：照常改、通知接手人", async () => {
-    const c = await 客户(小王.id);
-    expect(await patchCustomer(c.id, "salesOwnerId", 小李.id)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c.id], 小李.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 归谁(c.id)).toBe(小李.id);
     expect(await 分配通知()).toEqual([小李.id]);
-    // 改成本来就是的那位：不报错
-    expect(await patchCustomer(c.id, "salesOwnerId", 小李.id)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c.id], 小李.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
   });
 
   it("别的格不受影响：改备注照常", async () => {

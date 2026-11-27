@@ -17,7 +17,7 @@ import { 能改后台设置, 只读角色, 是销售角色 } from "./permissions
 import { 无效交给, 实际待, type 待哪步 } from "@/lib/project/lead-verify";
 import { 卡点显示名 } from "@/lib/project/blocker-rules";
 import { 无负责人占位邮箱 } from "@/lib/pool";
-import { 不跟着转的提醒 } from "@/lib/carry-over-db";
+import { 不跟着转的提醒, 同事在推的项目 } from "@/lib/carry-over-db";
 import { 快轮到提醒 } from "./assign-eta";
 import { 客户显名, 客户引, 显名列 } from "./customer-title";
 import { 草稿保留天 } from "./coach-rec";
@@ -271,6 +271,38 @@ export async function 同事待分配随客户通知(操作人: string, 新: str
         body: "这些客户上你的待办和计划还在你名下，没做完的可以照常勾完成。",
         link: 们.length === 1 ? `/projects/${们[0].id}` : "/projects",
         key: `awaiting-carry:${原}:${们.map((x) => x.id).sort().join(",").slice(0, 300)}:${分钟()}`,
+      });
+    }
+  });
+}
+
+/**
+ * 12-22 逐项选：上级直接转客户后，客户上还留在原处的同事在推项目（没勾「随客户转」的），原负责人收一条
+ * 「客户负责人换了，你的项目不变」知会（判定页 #7）。调用方在转让事务提交后调，此时没带走的项目还归各自同事：
+ * 条件同 同事在推的项目（不是原负责人也不是接手人、没结束、不在公海、不在待分配）。点转让的人自己、接手人、已停用的不发；一位同事一条
+ */
+export async function 同事项目保留知会(操作人: string, 新: string, 换: readonly { customerId: string; 原: string }[]): Promise<void> {
+  await 稳("同事项目保留知会", async () => {
+    const 在推: { id: string; name: string; ownerId: string; customerId: string }[] = [];
+    for (const { customerId, 原 } of 换) {
+      在推.push(...(await 看全部(() => prisma.project.findMany({ where: 同事在推的项目(customerId, 原, 新), select: { id: true, name: true, ownerId: true, customerId: true } }))));
+    }
+    const 按人 = new Map<string, typeof 在推>();
+    for (const p of 在推) if (p.ownerId !== 操作人) 按人.set(p.ownerId, [...(按人.get(p.ownerId) ?? []), p]);
+    if (!按人.size) return;
+    const 人们 = await prisma.user.findMany({ where: { id: { in: [...按人.keys(), 操作人, 新] } }, select: { id: true, name: true, active: true } });
+    const 人 = new Map(人们.map((u) => [u.id, u]));
+    const 客户们 = await 看全部(() => prisma.customer.findMany({ where: { id: { in: [...new Set(在推.map((p) => p.customerId))] } }, select: 显名列 }));
+    const 客户名 = new Map(客户们.map((x) => [x.id, 客户显名(x)]));
+    for (const [同事, 们] of 按人) {
+      if (!人.get(同事)?.active) continue;
+      const 客户 = [...new Set(们.map((p) => 客户名.get(p.customerId) ?? "（一位客户）"))];
+      const 项目 = 们.map((p) => `「${p.name}」`);
+      await notify([同事], {
+        kind: "交接",
+        title: `${人.get(操作人)?.name ?? ""} 把客户${客户.map((c) => `「${c}」`).join("、")}的负责人换成了 ${人.get(新)?.name ?? ""}；你负责的${项目.length > 3 ? `${项目.slice(0, 3).join("")} 等 ${项目.length} 个项目` : 项目.join("")}不变，仍归你`,
+        link: 们.length === 1 ? `/projects/${们[0].id}` : "/projects",
+        key: `colleague-keep:${同事}:${们.map((p) => p.id).sort().join(",").slice(0, 300)}:${分钟()}`,
       });
     }
   });

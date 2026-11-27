@@ -50,7 +50,7 @@ const 总管转 = async (c: string, to: string) => {
   const 总管 = await 造人(`dir${++序号}`, "总管理");
   await prisma.entMember.update({ where: { userId: 总管.id }, data: { bizRole: "director", line: null } });
   忘掉企业版范围();
-  const r = await 以(总管, () => assignSalesOwner([c], to));
+  const r = await 以(总管, () => assignSalesOwner([c], to, null, undefined, { 说明: "测试原因" }));
   expect(r).toMatchObject({ ok: true, updated: 1 });
 };
 

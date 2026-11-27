@@ -18,6 +18,7 @@ import { 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
 import { 跑出原因, type 做的结果 } from "@/lib/confirm-result";
 import { 移交作废天数 } from "@/lib/enterprise/handover-expire-days";
 import { 转走项目列表 } from "./useCarryConfirm";
+import { 逐项选块, 说明框, 默认选, 随转的, 含勾选, type 逐项选择 } from "./TransferItemized";
 import { 自动分配说明, 自动分配生效话 } from "@/lib/enterprise/cust-auto-assign-words";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { 按方向挑, 指定方向话, type 指定候选表 } from "@/lib/enterprise/assign-direction-pick-core";
@@ -70,6 +71,7 @@ export default function TransferDialog({
   是字,
   做,
   自动,
+  批量,
 }: {
   open: boolean;
   onClose: (成了: boolean) => void;
@@ -91,11 +93,13 @@ export default function TransferDialog({
   自己?: string;
   /** 确认键的字；不给 = 「转给 X」 */
   是字?: string;
-  做: (人id: string, 原因: string | null, 方向?: 线) => 做的结果 | Promise<做的结果>;
+  做: (人id: string, 原因: string | null, 方向?: 线, 逐项?: { 说明?: string; 随转?: string[] }) => 做的结果 | Promise<做的结果>;
   /**
    * 市场成员批量转让才给（页面判了是市场成员、规则开着）：打开时 预看 一次，勾的里有能自动分的才摆「指定分配 / 自动分配」；
    * 预看回 null（不是市场成员、出错）= 不摆，框和原来一样
    */
+  /** 一次转多位客户：框里说一句同事项目都保留（12-22） */
+  批量?: boolean;
   自动?: { 预看: () => Promise<自动预看 | null>; 做: (原因: string | null) => Promise<自动结果> };
 }) {
   const 默认 = () => 固定人?.value ?? (人们.some((p) => p.value === 上次转给()) ? 上次转给() : undefined);
@@ -104,7 +108,10 @@ export default function TransferDialog({
   const [写, set写] = useState("");
   const [忙, set忙] = useState(false);
   const [错, set错] = useState("");
-  const [转走, set转走] = useState<{ 谁: string; 说法: ReturnType<typeof 转走项目说法>; 要确认?: boolean } | null>(null);
+  const [转走, set转走] = useState<{ 谁: string; 说法: ReturnType<typeof 转走项目说法>; 要确认?: boolean; 原?: 转走项目预览 | null; 没取到?: boolean } | null>(null);
+  /** 12-22 逐项选（只选了一位客户时服务端才列同事项目）+ 上级直接转必填的原因 */
+  const [逐项, set逐项] = useState<逐项选择>({});
+  const [说明, set说明] = useState("");
   const [法, set法] = useState<方式>("指定");
   /** 指定分配的方向（P-转-26）：人改了才有；没改 = 预看给的默认线 */
   const [向, set向] = useState<线 | null>(null);
@@ -125,6 +132,8 @@ export default function TransferDialog({
       set错("");
       set忙(false);
       set转走(null);
+      set逐项({});
+      set说明("");
       set法("指定");
       set向(null);
       set预看(null);
@@ -166,9 +175,9 @@ export default function TransferDialog({
     if (!open || !谁 || !取转走) return;
     let 还在 = true;
     取转走(谁).then(
-      (p) => 还在 && set转走({ 谁, 说法: 转走项目说法(p), 要确认: p?.要确认 }),
+      (p) => { if (!还在) return; set转走({ 谁, 说法: 转走项目说法(p), 要确认: p?.要确认, 原: p }); set逐项(默认选(p)); },
       // 取不到不拦着：转本身照样会带走项目，这里只是提前说
-      () => 还在 && set转走({ 谁, 说法: null }),
+      () => 还在 && set转走({ 谁, 说法: null, 没取到: true }),
     );
     return () => {
       还在 = false;
@@ -177,9 +186,17 @@ export default function TransferDialog({
 
   const 名 = 固定人?.label ?? 人们.find((p) => p.value === 谁)?.label ?? "";
   const 要原因 = 原因选项.length > 0 && (自动中 || 谁 !== 自己);
+  // 预览取失败 / 没取到：不知道是不是上级直转，原因框照样摆出来、先要填（上级身份服务端必填；负责人本人转时服务端不看这句），不等服务端回「请写原因」
+  const 没取到 = !!取转走 && !!转走 && 转走.谁 === 谁 && !!转走.没取到;
+  const 要说明 = !自动中 && !!谁 && !!转走 && 转走.谁 === 谁 && (!!转走.原?.要说明 || 没取到);
+  const 说明预览: 转走项目预览 | null | undefined = 没取到 ? { 项目数: 0, 项目: [], 要说明: true } : 转走?.原;
   const 原因齐 = !要原因 || 选 !== 其他项 || !!写.trim();
   const 转走好了 = !取转走 || (转走 && 转走.谁 === 谁);
-  const 能转 = (自动中 || !!谁) && 原因齐 && !忙;
+  /** 勾了随客户转的同事项目算进「会一起转走的 N 个项目」 */
+  const 转走说法 = 转走?.原 ? 转走项目说法(含勾选(转走.原, 逐项)) : 转走?.说法;
+  /** 接手人选好了、服务端预览没回来：原因区只显示加载态（预览说了算是单选还是必填输入框），已选 / 已填的内容留着 */
+  const 等预览 = !自动中 && !!谁 && !!取转走 && !转走好了;
+  const 能转 = (自动中 || !!谁) && !等预览 && 原因齐 && !忙 && (!要说明 || !!说明.trim());
   /** true 要确认 / false 直接生效 / undefined 说不清（还在取、取不到） */
   const 是申请: boolean | undefined = !谁 ? undefined : 申请 ?? (转走好了 ? 转走?.要确认 : undefined);
 
@@ -205,7 +222,7 @@ export default function TransferDialog({
     if (!能转 || !谁) return;
     set忙(true);
     set错("");
-    const 因 = await 跑出原因(() => 做(谁, 要原因 ? 合其他(选, 写) : null, 定向 ? 向 ?? undefined : undefined));
+    const 因 = await 跑出原因(() => 做(谁, 要原因 && !要说明 ? 合其他(选, 写) : null, 定向 ? 向 ?? undefined : undefined, 要说明 ? { 说明: 说明.trim(), 随转: 随转的(逐项) } : undefined));
     set忙(false);
     if (因) return set错(因);
     if (!固定人) 记上次(谁);
@@ -367,15 +384,15 @@ export default function TransferDialog({
                   </span>
                 </li>
               )}
-              {转走好了 && 转走?.说法 && (
+              {转走好了 && 转走说法 && (
                 <li className="csq-row">
                   <span className="csq-tag" data-level="警">
                     一起转走
                   </span>
                   <span className="csq-t">
-                    {转走.说法.标题}
-                    {转走.说法.同事 && `；${转走.说法.同事}`}
-                    <转走项目列表 说法={转走.说法} />
+                    {转走说法.标题}
+                    {转走说法.同事 && `；${转走说法.同事}`}
+                    <转走项目列表 说法={转走说法} />
                   </span>
                 </li>
               )}
@@ -394,7 +411,15 @@ export default function TransferDialog({
               </li>
             </ul>
           )}
-          {(谁 || 自动中) && 要原因 && (
+          {要说明 && 批量 && <div className="cd-transfer-mut" role="note">一次转多位客户时，同事在推的项目都保留原负责人；要一起转请一位一位转</div>}
+          {要说明 && <逐项选块 预览={转走?.原} 选={逐项} 改={set逐项} 忙={忙} />}
+          {要说明 && <说明框 预览={说明预览} 值={说明} 改={set说明} 忙={忙} onEnter={() => void 转()} />}
+          {等预览 && 要原因 && (
+            <div className="csq-why" data-testid="transfer-why-pending">
+              <span className="cu-tr-skel" aria-busy>正在确认转让原因怎么填</span>
+            </div>
+          )}
+          {(谁 || 自动中) && 要原因 && !要说明 && !等预览 && (
             <div className="csq-why" role="radiogroup" aria-label="转让原因">
               <div className="csq-why-h">转让原因（可不选）</div>
               <div className="csq-chips">

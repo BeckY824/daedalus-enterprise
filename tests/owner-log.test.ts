@@ -59,7 +59,7 @@ describe("每条换负责人的路都留记录", () => {
   it("批量分配：记谁转的、从谁到谁；本来就归他的不记", async () => {
     const c = await 客户("乙的", 乙);
     const 本来 = await 客户("丙的", 丙);
-    const r = await assignSalesOwner([c.id, 本来.id], 丙);
+    const r = await assignSalesOwner([c.id, 本来.id], 丙, null, undefined, { 说明: "测试原因" });
     expect(r.ok).toBe(true);
     expect(await 记录of(c.id)).toMatchObject([{ userId: 甲, fromOwnerId: 乙, toOwnerId: 丙, kind: "assign" }]);
     expect(await 记录of(本来.id)).toEqual([]);
@@ -67,15 +67,15 @@ describe("每条换负责人的路都留记录", () => {
 
   it("详情页改负责人：记 assign；改成同一个人不记", async () => {
     const c = await 客户("乙的", 乙);
-    expect((await patchCustomer(c.id, "salesOwnerId", 乙)).ok).toBe(true);
+    expect((await assignSalesOwner([c.id], 乙, null, undefined, { 说明: "测试原因" })).ok).toBe(true);
     expect(await 记录of(c.id)).toEqual([]);
-    expect((await patchCustomer(c.id, "salesOwnerId", 丙)).ok).toBe(true);
+    expect((await assignSalesOwner([c.id], 丙, null, undefined, { 说明: "测试原因" })).ok).toBe(true);
     expect(await 记录of(c.id)).toMatchObject([{ userId: 甲, fromOwnerId: 乙, toOwnerId: 丙, kind: "assign" }]);
   });
 
   it("撤销批量分配：负责人还回原负责人，被撤的那条记录删掉、不另记（P-撤销-01）", async () => {
     const c = await 客户("乙的", 乙);
-    const r = await assignSalesOwner([c.id], 丙);
+    const r = await assignSalesOwner([c.id], 丙, null, undefined, { 说明: "测试原因" });
     if (!r.ok) throw new Error("没分成");
     await 撤销改负责人(r.原值!, 丙, r.带过来);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(乙);
@@ -123,7 +123,7 @@ describe("每条换负责人的路都留记录", () => {
 describe("历史负责人", () => {
   it("读库：人名换好，停用的人照旧显示名字", async () => {
     const c = await 客户("乙的", 乙);
-    await assignSalesOwner([c.id], 丙);
+    await assignSalesOwner([c.id], 丙, null, undefined, { 说明: "测试原因" });
     await prisma.user.update({ where: { id: 乙 }, data: { active: false } });
     const 记 = await 历史负责人of(c.id);
     expect(记).toMatchObject([{ 操作人: "甲", 从: "乙", 到: "丙", kind: "assign" }]);
@@ -143,7 +143,7 @@ describe("历史负责人", () => {
 });
 
 describe("转之前先列出会一起转走的项目", () => {
-  it("数出来的 = 真转走的（P-转-07）：自己负责的 + 线索公海里的 + 同事在推的（同事的只给个数）；新负责人本来负责的、本来就归他的客户不算", async () => {
+  it("数出来的 = 真转走的（P-转-07，12-22 起转让框里同事在推的默认不转，不数）：自己负责的 + 线索公海里的；新负责人本来负责的、本来就归他的客户不算", async () => {
     const c = await 客户("乙的", 乙);
     const 本来 = await 客户("丙的", 丙);
     await 项目("乙负责", 乙, c.id);
@@ -152,32 +152,32 @@ describe("转之前先列出会一起转走的项目", () => {
     await prisma.project.update({ where: { id: (await 项目("在公海", 乙, c.id)).id }, data: { pooledAt: new Date() } });
     await 项目("丙客户上的", 乙, 本来.id);
 
-    const 预 = await 转走项目预览of([c.id, 本来.id], 丙);
-    expect(预.项目数).toBe(3);
+    const 预 = await 转走项目预览of([c.id, 本来.id], 丙, true);
+    expect(预.项目数).toBe(2);
     expect(预.项目.map((p) => p.name)).toEqual(["乙负责", "在公海"]);
     expect(预.项目[0].客户).toBe("乙的");
     expect(预.项目[1]).toEqual({ name: "在公海", 客户: "乙的", 负责人: "线索公海" });
-    // P-转-07（Even 口径，用户 11-10）：同事在推的一起转，只给个数、不列名字和负责人（Even C4）；新负责人本来负责的不算
-    expect(预.同事).toEqual({ 项目数: 1 });
+    // 12-22：转让框里同事在推的默认保留，预览不数、不列（多位客户时也不列逐项选）；新负责人本来负责的不算
+    expect(预.同事).toBeUndefined();
     expect(JSON.stringify(预)).not.toContain("同事负责");
 
-    const r = await assignSalesOwner([c.id, 本来.id], 丙);
+    const r = await assignSalesOwner([c.id, 本来.id], 丙, null, undefined, { 说明: "测试原因" });
     if (!r.ok) throw new Error("没分成");
     expect(r.带走?.项目).toBe(预.项目数);
-    expect((await prisma.project.findUniqueOrThrow({ where: { id: 同事.id } })).ownerId).toBe(丙);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: 同事.id } })).ownerId).toBe(甲);
   });
 
-  it("P-转-07：同事在推的一起转；同事已结束的留在同事名下（历史），原负责人结束了的跟着走", async () => {
+  it("P-转-07：同事在推的勾了随转才转；同事已结束的留在同事名下（历史），原负责人结束了的跟着走", async () => {
     const c = await 客户("乙的", 乙);
     const 同事在推 = await 项目("同事在推", 甲, c.id);
     const 同事结束 = await prisma.project.update({ where: { id: (await 项目("同事赢单", 甲, c.id)).id }, data: { result: "赢单" } });
     const 自己结束 = await prisma.project.update({ where: { id: (await 项目("乙丢单", 乙, c.id)).id }, data: { result: "丢单" } });
 
-    const 预 = await 转走项目预览of([c.id], 丙);
-    expect(预.项目数).toBe(2);
-    expect(预.同事?.项目数).toBe(1);
+    const 预 = await 转走项目预览of([c.id], 丙, true);
+    expect(预.项目数).toBe(1);
+    expect(预.同事在推?.map((p) => p.id)).toEqual([同事在推.id]);
 
-    const r = await assignSalesOwner([c.id], 丙);
+    const r = await assignSalesOwner([c.id], 丙, null, undefined, { 说明: "测试原因", 随转: [同事在推.id] });
     if (!r.ok) throw new Error("没分成");
     const 主 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).ownerId;
     expect(await 主(同事在推.id)).toBe(丙);
@@ -185,11 +185,11 @@ describe("转之前先列出会一起转走的项目", () => {
     expect(await 主(自己结束.id)).toBe(丙);
   });
 
-  it("P-转-07 单个改负责人（详情页）也连同事在推的一起带", async () => {
+  it("P-转-07 单个转让（详情页）：同事在推的默认保留，勾了随转的才带", async () => {
     const c = await 客户("乙的", 乙);
     const 自己 = await 项目("乙负责", 乙, c.id);
     const 同事 = await 项目("同事负责", 甲, c.id);
-    expect((await patchCustomer(c.id, "salesOwnerId", 丙)).ok).toBe(true);
+    expect((await assignSalesOwner([c.id], 丙, null, undefined, { 说明: "测试原因", 随转: [同事.id] })).ok).toBe(true);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 自己.id } })).ownerId).toBe(丙);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: 同事.id } })).ownerId).toBe(丙);
   });
@@ -239,7 +239,7 @@ describe("转之前先列出会一起转走的项目", () => {
     const c = await 客户("乙的", 乙);
     await 项目("乙负责", 乙, c.id);
     expect(await 转走项目预览of([c.id], 丙)).toEqual({ 项目数: 0, 项目: [] });
-    expect((await assignSalesOwner([c.id], 丙)).ok).toBe(true);
+    expect((await assignSalesOwner([c.id], 丙, null, undefined, { 说明: "测试原因" })).ok).toBe(true);
     expect(await 记录of(c.id)).toMatchObject([{ fromOwnerId: 乙, toOwnerId: 丙, kind: "assign" }]);
   });
 
