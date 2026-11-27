@@ -124,6 +124,14 @@ export const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: 安全头 },
+      /*
+        [O2] 站点图标长缓存。Next 给 app/ 下的 favicon.ico、icon.svg、apple-icon.png 回的是 `public, max-age=0, must-revalidate`
+        （node_modules/next/dist/build/webpack/loaders/next-metadata-route-loader.js 的 CACHE_HEADERS.REVALIDATE），
+        浏览器每开一页都要回源问一次，c2 nginx 日志 11-16~11-28 这两个地址占全部请求的 42%。
+        出现在 <head> 里的图标地址带内容哈希（?xxxx），换图标地址就变；直接请求 /favicon.ico 的没有，所以不用 immutable，给 7 天。
+        配置里的头先写进响应，Next 往回拷路由响应头时同名头已存在就不再写（send-response.js），所以这条能盖过路由自己的头
+        */
+      { source: "/:icon(favicon.ico|icon.svg|apple-icon.png)", headers: [{ key: "Cache-Control", value: "public, max-age=604800" }] },
       // 扫名片的模型和运行库的缓存头由 app/ocr-files 自己给（一年不变；manifest.json 每次问一下）
     ];
   },

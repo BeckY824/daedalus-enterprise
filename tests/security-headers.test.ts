@@ -55,3 +55,21 @@ describe("旧商机地址", () => {
     }
   });
 });
+
+/** [O2] 站点图标要能被浏览器长缓存（Next 默认 max-age=0 + must-revalidate，每开一页回源一次，占 c2 请求的 42%） */
+describe("站点图标缓存头", () => {
+  it("favicon.ico、icon.svg、apple-icon.png 最后生效的 Cache-Control 是 7 天，别的路径不受影响", async () => {
+    const { getPathMatch } = await import("next/dist/shared/lib/router/utils/path-match");
+    const 规则 = await nextConfig.headers!();
+    const 头 = (路径: string) => {
+      let 值: string | undefined;
+      for (const r of 规则) {
+        if (!getPathMatch(r.source, { strict: true, removeUnnamedParams: true })(路径)) continue;
+        for (const h of r.headers) if (h.key.toLowerCase() === "cache-control") 值 = h.value;
+      }
+      return 值;
+    };
+    for (const p of ["/favicon.ico", "/icon.svg", "/apple-icon.png"]) expect(头(p), p).toBe("public, max-age=604800");
+    for (const p of ["/login", "/dashboard", "/customers", "/api/version", "/icons.svg", "/favicon.ico.bak"]) expect(头(p), p).toBeUndefined();
+  });
+});
