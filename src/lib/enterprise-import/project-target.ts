@@ -16,6 +16,7 @@ import { 卡点随项目换人, 转让接手理由 } from "../project/blocker";
 import { 将回收提醒跟着换人 } from "../project/db";
 import { 规, 写不进, type 值表, type 标量 } from "./values";
 import { 节点所在阶段 } from "./project-values";
+import { 离开了潜客培育, 撤培育计划 } from "../project/nurture-plan";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 新项目默认值 } from "@/lib/project/proj-fields";
 
@@ -193,6 +194,9 @@ export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值�
         toResult: 新.result,
       },
     });
+    // 导入 / 同步把项目从潜客培育改走：判 MQL 不合格自动建的培育计划一起撤（E-396；不经 改节点，要自己撤）。
+    // 整批撤回导入时计划不会重建（硬删的，撤回只还项目那几格）
+    if (离开了潜客培育(本套名(原.node, 企业版字典), 新.node)) await 撤培育计划(tx, { id: String(data.ownerId || 原.ownerId || 原.creatorId) }, id);
   }
   if (!新.result) data.closedAt = null;
   else if (新.result !== 原结局 || 有("closedAt")) data.closedAt = 日(有("closedAt") ? 改动.closedAt : 现值.closedAt) ?? 原.closedAt ?? new Date(现在);

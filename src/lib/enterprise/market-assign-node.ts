@@ -20,6 +20,7 @@ import { 是市场成员of, type 组织 } from "./org-core";
 import { 是销售角色 } from "./permissions";
 import { 看全部 } from "@/lib/team-scope";
 import { 仅记录用来源 } from "@/lib/project/system-created";
+import { 撤培育计划, type 撤用库 } from "@/lib/project/nurture-plan";
 
 /** 从哪进哪：企业版、团队版字典里线索阶段前两个节点同名（stage-dict.ts） */
 export const 市场分配从 = "潜客培育";
@@ -51,7 +52,7 @@ export function 算市场建给销售(org: 组织, 建的人: string, 负责人:
  * 回推了的 id（撤销用，见 带走的.推节点）。不是企业版一行不动
  */
 export async function 市场分配进线索验证(
-  tx: Pick<Prisma.TransactionClient, "project" | "projectNodeLog">,
+  tx: Pick<Prisma.TransactionClient, "project" | "projectNodeLog"> & 撤用库,
   ids: readonly (string | null | undefined)[], 接手人: string, 操作人: string,
 ): Promise<string[]> {
   if (!企业版()) return [];
@@ -80,6 +81,8 @@ export async function 市场分配进线索验证(
           fromPhase: "线索", fromNode: 市场分配从, fromResult: null, toPhase: "线索", toNode: 市场分配到, toResult: null,
         })),
       });
+      // 潜客培育 → 线索验证 = 离开潜客培育：判 MQL 不合格自动建的培育计划一起撤（E-396；这里不经 改节点，要自己撤）
+      for (const projectId of 这批) await 撤培育计划(tx, { id: 操作人 }, projectId);
       推.push(...这批);
     }
     return 推;
@@ -90,7 +93,7 @@ export async function 市场分配进线索验证(
  * 新建客户那笔事务里（saveCustomer）：市场成员建给销售的，这位新客户名下我刚建的项目（补的潜客培育、只建客户带的那个）进线索验证
  */
 export async function 新客户项目进线索验证(
-  tx: Pick<Prisma.TransactionClient, "project" | "projectNodeLog">, customerId: string, 接手人: string, 操作人: string,
+  tx: Pick<Prisma.TransactionClient, "project" | "projectNodeLog"> & 撤用库, customerId: string, 接手人: string, 操作人: string,
 ): Promise<string[]> {
   if (!企业版()) return [];
   const ps = await tx.project.findMany({ where: { customerId, creatorId: 操作人 }, select: { id: true } });
@@ -100,6 +103,7 @@ export async function 新客户项目进线索验证(
 /**
  * 撤销分配时还原：ids 里还归 接手人、还在线索验证、没结局、不在公海，并且最后一行节点变更就是这次推进来的那行（理由对得上、从潜客培育来），
  * 推回潜客培育、删掉那一行。之后又被人推过、判过、退过的不动（P-撤销-01 只还自己那一下）。
+ * 注意（E-396）：推进来时撤掉的判 MQL 不合格培育计划（市场分配进线索验证）不随撤销回来——计划是硬删的，撤销只还节点，不重建计划。
  * 不早于：那一行要在这个时刻之后（单个项目撤销时传分配那行转让痕的时刻，免得还了更早一次分配推的）；操作人：给了就只认他推的
  */
 export async function 推回潜客培育(

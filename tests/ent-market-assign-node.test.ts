@@ -116,6 +116,40 @@ describe("N 市场分给销售：停在潜客培育的进线索验证", () => {
       .toEqual({ userId: 市管.id, reason: 市场分配进验证理由, kind: "node" });
   });
 
+  it("N-1b 推进线索验证 = 离开潜客培育：判 MQL 不合格自动建的培育计划一起撤（负责人是市场、操作人看不到时也撤到）；人手加的不动；撤销分配不把计划带回来（E-396）", async () => {
+    const c = await 建客户(市管.id, 市管.id);
+    const P = await 建项目(c, { ownerId: 市管.id, creatorId: 市管.id, node: "潜客培育" });
+    const 别 = await 建项目(c, { ownerId: 市管.id, creatorId: 市管.id, node: "线索验证" });
+    const 计划 = (projectId: string | null, autoBy: string | null, subject: string) =>
+      prisma.followPlan.create({ data: { subject, plannedAt: new Date(), customerId: c, ownerId: 市管.id, projectId, autoBy } });
+    await 计划(P, "mql-nurture", "潜客培育：自动");
+    await 计划(P, null, "人手加的");
+    await 计划(别, "mql-nurture", "别的项目的自动计划");
+    当(市管);
+    expect((await 分配线索({ projectId: P, toUserId: 销售.id, 原负责人: 市管.id })).ok).toBe(true);
+    expect(await 节点(P)).toBe("线索验证");
+    expect((await prisma.followPlan.findMany({ orderBy: { subject: "asc" } })).map((x) => x.subject).sort()).toEqual(["人手加的", "别的项目的自动计划"].sort());
+    const 日志 = await prisma.auditLog.findFirstOrThrow({ where: { entity: "FollowPlan", action: "delete" } });
+    expect(日志).toMatchObject({ userId: 市管.id, userName: 市管.name });
+    expect(日志.summary).toContain("潜客培育：自动");
+  });
+
+  it("N-1c 自动分配进线索验证也撤；撤销自动分配推回潜客培育，计划不回来（硬删，撤销只还节点，E-396）", async () => {
+    const 全部 = await prisma.entMember.findMany({ select: { userId: true } });
+    await setSetting(自动分配不参与key, 全部.map((x) => x.userId).filter((id) => id !== 销售.id));
+    invalidateSettingsCache();
+    const c = await 建客户(市管.id, 市管.id);
+    const P = await 建项目(c, { ownerId: 市管.id, creatorId: 市管.id, node: "潜客培育" });
+    await prisma.followPlan.create({ data: { subject: "潜客培育：自动", plannedAt: new Date(), customerId: c, ownerId: 市管.id, projectId: P, autoBy: "mql-nurture" } });
+    当(市管);
+    const r = await 自动分配线索(P, { 项目: true, 原负责人: 市管.id });
+    if (!r.ok) throw new Error(r.error);
+    expect(await prisma.followPlan.count()).toBe(0);
+    expect(await 撤销自动分配(P, r.还原)).toEqual({ ok: true });
+    expect(await 节点(P)).toBe("潜客培育");
+    expect(await prisma.followPlan.count()).toBe(0);
+  });
+
   it("N-2 市场管理新建客户直接选销售当负责人：自动带的项目在线索验证", async () => {
     当(市管);
     const r = await saveCustomer({

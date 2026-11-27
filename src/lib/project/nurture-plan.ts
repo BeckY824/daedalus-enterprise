@@ -9,8 +9,16 @@
 import type { Prisma } from "@/generated/prisma";
 import { 同名们 } from "./stage-dict";
 
+/** 撤培育计划要的几张表（事务里的完整 tx 也行；市场分配那头的 tx 是 Pick 出来的，放宽到这几张） */
+export type 撤用库 = Pick<Prisma.TransactionClient, "followPlan" | "auditLog" | "user">;
+
 export const 培育计划来源 = "mql-nurture";
 export const 撤培育计划话 = "项目离开潜客培育，自动培育计划随之撤销";
+
+/** 这个节点是不是「潜客培育」（新旧节点名都认） */
+export function 在潜客培育(节点: string): boolean {
+  return 同名们("潜客培育").includes(节点);
+}
 
 /** 从「潜客培育」走到别的节点才算离开（新旧节点名都认；原地不动、从别处进来都不算） */
 export function 离开了潜客培育(从节点: string, 到节点: string): boolean {
@@ -19,7 +27,7 @@ export function 离开了潜客培育(从节点: string, 到节点: string): boo
 }
 
 /** 撤这个项目名下系统自动建、还没完成的培育计划；返回撤了几条 */
-export async function 撤培育计划(tx: Prisma.TransactionClient, me: { id: string }, projectId: string): Promise<number> {
+export async function 撤培育计划(tx: 撤用库, me: { id: string }, projectId: string): Promise<number> {
   const 们 = await tx.followPlan.findMany({
     where: { projectId, autoBy: 培育计划来源, done: false },
     select: { id: true, subject: true, plannedAt: true, customerId: true, ownerId: true },

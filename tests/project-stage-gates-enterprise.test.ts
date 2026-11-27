@@ -14,6 +14,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 改节点, 改项目, 记项目沟通 } from "@/lib/project/db";
 import { 判MQL } from "@/lib/project/mql";
+import { 改项目 as 导入改项目, 读项目 as 导入读项目 } from "@/lib/enterprise-import/project-target";
 import { 缺有效沟通还差, 记沟通阶段问题, 缺本节点沟通, 要沟通的节点 } from "@/lib/project/stage-gates";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
@@ -253,6 +254,19 @@ describe("企业版三大阶段的门", () => {
       await 判MQL(乙, q.id, false, 明天(), new Date(), "乙的");
       await 改节点(乙, p.id, { phase: "线索", node: "线索验证" });
       expect((await prisma.followPlan.findMany()).map((x) => x.projectId)).toEqual([q.id]);
+    });
+
+    it("导入 / 同步改已有项目的节点离开潜客培育：自动培育计划一起撤；节点没变、还在潜客培育不撤；人手加的不动（E-396）", async () => {
+      const p = await 项目({ node: "线索验证" });
+      await 判MQL(乙, p.id, false, 明天(), new Date(), "下月再问");
+      await prisma.followPlan.create({ data: { subject: "人手加的", plannedAt: new Date(), customerId: 客户, ownerId: 乙.id } });
+      const 导 = async (stage: string) => prisma.$transaction(async (tx) => 导入改项目(tx, p.id, { stage }, (await 导入读项目(tx, p.id))!, new Date().toISOString()));
+      await 导("潜客培育");
+      expect(await prisma.followPlan.count()).toBe(2);
+      await 导("线索验证");
+      expect((await prisma.followPlan.findMany()).map((x) => x.subject)).toEqual(["人手加的"]);
+      const 日志 = await prisma.auditLog.findFirstOrThrow({ where: { entity: "FollowPlan", action: "delete" } });
+      expect(日志.summary).toContain("潜客培育：下月再问");
     });
 
     it("培育计划字数上限（M-节点-03）：默认不设，很长也收；管理员设了才拦，拦下一行不写", async () => {
