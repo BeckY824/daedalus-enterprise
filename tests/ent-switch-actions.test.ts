@@ -62,12 +62,12 @@ describe("只有系统管理员拿得到", () => {
 describe("系统管理员", () => {
   beforeEach(() => 当(系统, "ADMIN"));
 
-  it("开关现状：21 项的值、默认值；父开关关着子开关照实给；字段权限表没改过", async () => {
+  it("开关现状：22 项的值、默认值；父开关关着子开关照实给；字段权限表没改过", async () => {
     await setSetting("enterprise.lead_assign.no_quota", true);
     const r = await 开关现状();
     if (!r.ok) throw new Error(r.error);
-    expect(Object.keys(r.值).sort()).toHaveLength(21);
-    expect(r.值).toMatchObject({ org_scope: false, lead_assign: false, no_quota: true, reply_overdue: true, market_review: true, lead_giveup: false, block_meaningless: true, push_perm: "负责人可推", hold_cap: false, tri_state: false, record_only: false, record_only_recall: false });
+    expect(Object.keys(r.值).sort()).toHaveLength(22);
+    expect(r.值).toMatchObject({ org_scope: false, lead_assign: false, no_quota: true, reply_overdue: true, verify_autosettle: false, market_review: true, lead_giveup: false, block_meaningless: true, push_perm: "负责人可推", hold_cap: false, tri_state: false, record_only: false, record_only_recall: false });
     expect(r.字段权限表改过).toBe(false);
     expect(r.全员).toBe(7);
     expect(r.持有上限).toEqual({ 默认上限: 30, 单设人数: 0, 到上限: 0 });

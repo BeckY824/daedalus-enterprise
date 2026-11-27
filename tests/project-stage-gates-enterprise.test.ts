@@ -14,7 +14,8 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { 改节点, 改项目, 记项目沟通, 终止进程, 删项目, 放回公海 } from "@/lib/project/db";
 import { 判MQL } from "@/lib/project/mql";
-import { 撤培育计划 } from "@/lib/project/nurture-plan";
+import { 撤培育计划, 项目们撤培育计划 } from "@/lib/project/nurture-plan";
+import { 恢复, 软删客户, 看已删 } from "@/lib/enterprise/soft-delete";
 import { 改项目 as 导入改项目, 读项目 as 导入读项目 } from "@/lib/enterprise-import/project-target";
 import { 缺有效沟通还差, 记沟通阶段问题, 缺本节点沟通, 要沟通的节点 } from "@/lib/project/stage-gates";
 import { 默认组织规则 } from "@/lib/project/org-rules";
@@ -301,6 +302,62 @@ describe("企业版三大阶段的门", () => {
         const r = await 放回公海(乙, p.id);
         expect(r).toMatchObject({ ok: true });
         expect((await prisma.followPlan.findMany()).map((x) => x.subject)).toEqual(["人手加的"]);
+      });
+
+      // E-401：三种动作（还在潜客培育就结束 / 删进回收站 / 退回公海）撤的口径一致：留一行操作日志、人手加的和发版前的（两列空）不动
+      const 旧的 = () => prisma.followPlan.create({ data: { subject: "发版前的", plannedAt: new Date(), customerId: 客户, ownerId: 乙.id, projectId: undefined } });
+      const 剩 = async () => (await prisma.followPlan.findMany({ orderBy: { subject: "asc" } })).map((x) => x.subject).sort();
+      const 日志数 = () => prisma.auditLog.count({ where: { entity: "FollowPlan", action: "delete", summary: { contains: "项目离开潜客培育" } } });
+
+      it("E-401 三种动作各留一行操作日志，人手加的、发版前的（autoBy 空）都不动", async () => {
+        const a = await 项目({ node: "潜客培育", name: "甲" });
+        const b = await 项目({ node: "潜客培育", name: "乙" });
+        const c = await 项目({ node: "潜客培育", name: "丙" });
+        await prisma.contact.create({ data: { name: "联系人", customerId: 客户, phone: "13900002222", isPrimary: true } });
+        for (const p of [a, b, c]) await 建计划(p, `潜客培育：${p.name}`);
+        await 人手加();
+        await prisma.followPlan.create({ data: { subject: "发版前的", plannedAt: new Date(), customerId: 客户, ownerId: 乙.id, projectId: a.id } });
+        expect(await 终止进程(乙, a.id, { 备注: "不要了" })).toMatchObject({ ok: true });
+        expect(await 删项目(乙, b.id)).toMatchObject({ ok: true });
+        expect(await 放回公海(乙, c.id)).toMatchObject({ ok: true });
+        expect(await 剩()).toEqual(["人手加的", "发版前的"]);
+        expect(await 日志数()).toBe(3);
+      });
+
+      it("E-401 回收站恢复项目：撤掉的计划不自动重建", async () => {
+        const p = await 项目({ node: "潜客培育" });
+        await 项目({ name: "二号" });
+        await 建计划(p);
+        expect(await 删项目(乙, p.id)).toMatchObject({ ok: true });
+        expect(await prisma.followPlan.count()).toBe(0);
+        expect(await 恢复(老板, "Project", p.id)).toMatchObject({ ok: true });
+        expect((await 现(p.id)).deletedAt).toBeNull();
+        expect(await prisma.followPlan.count()).toBe(0);
+      });
+
+      it("E-401 删客户（项目连带进回收站）：自动培育计划一并撤，操作日志一个项目一行", async () => {
+        const a = await 项目({ node: "潜客培育", name: "甲" });
+        const b = await 项目({ node: "潜客培育", name: "乙" });
+        await 建计划(a, "潜客培育：甲");
+        await 建计划(b, "潜客培育：乙");
+        await 人手加();
+        await 旧的();
+        await prisma.$transaction((tx) => 软删客户(tx, [客户], new Date(), 老板));
+        // 客户进了回收站，挂在它名下的计划默认读不到，带上已删的看
+        expect(await 看已删(剩)).toEqual(["人手加的", "发版前的"]);
+        expect(await 日志数()).toBe(2);
+      });
+
+      it("E-401 批量撤：一批项目一次撤完，每个有计划的项目一行日志，没计划的项目不记", async () => {
+        const ps = await Promise.all([1, 2, 3].map((i) => 项目({ node: "潜客培育", name: `批${i}` })));
+        await 建计划(ps[0], "潜客培育：1");
+        await 建计划(ps[0], "潜客培育：1b");
+        await 建计划(ps[1], "潜客培育：2");
+        expect(await prisma.$transaction((tx) => 项目们撤培育计划(tx, 老板, ps.map((x) => x.id)))).toBe(3);
+        expect(await prisma.followPlan.count()).toBe(0);
+        expect(await 日志数()).toBe(2);
+        expect(await prisma.$transaction((tx) => 项目们撤培育计划(tx, 老板, ps.map((x) => x.id)))).toBe(0);
+        expect(await 日志数()).toBe(2);
       });
 
       it("撤的时候这几条计划还没读的到期 / 逾期提醒标已读；别的计划的、已读的不碰", async () => {

@@ -19,7 +19,7 @@ import { useSettingsNote } from "./InlineNote";
 import { useCountConfirm } from "./use-count-confirm";
 import { 开关现状, 读开关改动, type 开关现状 as 现状型, type 一次改动 } from "./switch-actions";
 import { 设规则, 设通讯录同步 } from "./org-actions";
-import { 设不设配额, 设扫库检测 } from "../leads/assign-actions";
+import { 设不设配额, 设扫库检测, 设重复咨询自动落定 } from "../leads/assign-actions";
 import { 改组织规则 } from "@/app/(app)/projects/actions";
 import { 设飞书推送 } from "../notice-actions";
 import { 设录音点评开关 } from "./asr-actions";
@@ -177,6 +177,7 @@ export default function SwitchesTab({ 去卡 }: { 去卡: (tab: 原页签, 找: 
     switch (k) {
       case "no_quota": return () => 设不设配额(v === true);
       case "scan_detect": return () => 设扫库检测(v === true);
+      case "verify_autosettle": return () => 设重复咨询自动落定(v === true);
       case "node_advance": return () => 改组织规则({ 节点推进: { 开: v === true } });
       case "first_two": return () => 改组织规则({ 阶段: { 前两节点要沟通: v === true } });
       case "fill_period": return () => 改组织规则({ 阶段: { 需求补全期: v === true } });

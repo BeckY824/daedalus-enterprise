@@ -15,6 +15,7 @@ import { 验证时限扫一遍, 验证时限通知种类, 起钟时刻 } from "@
 import { 待补数们 } from "@/lib/enterprise/invalid-makeup";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 验证时限生效key } from "@/lib/project/lead-verify-timeout";
+import { 自动落定开关key, 自动落定生效key } from "@/lib/enterprise/lead-verify-autosettle";
 import { 超时转生效key } from "@/lib/enterprise/reply-overdue";
 import { 月份 } from "@/lib/enterprise/lead-assign";
 import { 记有效沟通 } from "./helpers/ent-valid-followup";
@@ -55,6 +56,9 @@ describe("重复咨询线索的验证时限", () => {
     // 两个生效时刻都放到用例之前（只认生效后进入这一步的）；要测生效时刻的用例自己改
     await setSetting(超时转生效key, "2026-01-01T00:00:00.000Z");
     await setSetting(验证时限生效key, "2026-01-01T00:00:00.000Z");
+    // 自动落定独立开关（E-424）默认关；既有用例测的是落定本身，先拨开并放到用例之前，新用例自己改
+    await setSetting(自动落定开关key, true);
+    await setSetting(自动落定生效key, "2026-01-01T00:00:00.000Z");
     vi.stubEnv("CRM_ENTERPRISE", "1");
     老板 = await 建人("boss", "ADMIN");
     总管 = await 建人("director", "SALES");
@@ -206,6 +210,90 @@ describe("重复咨询线索的验证时限", () => {
     const id = await 项目();
     await 初判无效于(id, 京("2026-12-02 19:00"));
     expect(await 扫(京("2026-12-02 23:00"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+  });
+
+  it("自动落定开关关着（默认没这行）：照常提醒，到期不落定、不发落定通知、不刷日志，一直等人判（E-424）", async () => {
+    await prisma.setting.deleteMany({ where: { key: { in: [自动落定开关key, 自动落定生效key] } } });
+    invalidateSettingsCache();
+    const log = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 10:00"));
+    expect((await 扫(京("2026-12-02 11:00"))).提醒).toBe(1);
+    expect(await 扫(京("2026-12-02 11:30"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect(await 扫(京("2026-12-02 15:00"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect((await 现(id)).result).toBeNull();
+    expect(await prisma.entNotice.count({ where: { title: { startsWith: "线索验证已自动落定" } } })).toBe(0);
+    expect(await 提醒数(市场.id)).toBe(1);
+    expect(log).not.toHaveBeenCalled();
+    expect(err).not.toHaveBeenCalled();
+    log.mockRestore(); err.mockRestore();
+  });
+
+  it("自动落定开关关着且被等的人为空：兜底也不落定、不打兜底日志", async () => {
+    await prisma.setting.deleteMany({ where: { key: { in: [自动落定开关key, 自动落定生效key] } } });
+    invalidateSettingsCache();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 10:00"));
+    await prisma.entMember.deleteMany({ where: { userId: { in: [老板.id, 总管.id, 市场.id] } } });
+    expect(await 扫(京("2026-12-02 12:00"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect((await 现(id)).result).toBeNull();
+    // 关着也不兜底落定，但没人收提醒要留一行（同一条只一次）
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("没有可通知的人"))).toHaveLength(1);
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("按顺延钟"))).toHaveLength(0);
+    await 扫(京("2026-12-02 12:05"));
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("没有可通知的人"))).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  it("自动落定开着但生效时刻缺 / 坏：扫描打一次 warn（E-424）", async () => {
+    await prisma.setting.deleteMany({ where: { key: 自动落定生效key } });
+    invalidateSettingsCache();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 10:00"));
+    await 扫(京("2026-12-02 11:00"));
+    await 扫(京("2026-12-02 11:01"));
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes(自动落定生效key))).toHaveLength(1);
+    expect((await 现(id)).result).toBeNull();
+    warn.mockRestore();
+  });
+
+  it("关着时「再提醒」正文不说顺延、只说系统不会自动落定（E-424）", async () => {
+    await prisma.setting.deleteMany({ where: { key: { in: [自动落定开关key, 自动落定生效key] } } });
+    invalidateSettingsCache();
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 20:45"));
+    expect((await 扫(京("2026-12-02 21:45"))).提醒).toBe(1);
+    await 扫(京("2026-12-02 22:15"));
+    expect((await 扫(京("2026-12-03 09:00"))).提醒).toBe(1);
+    const 正文 = await prisma.entNotice.findMany({ where: { kind: 验证时限通知种类, userId: 市场.id }, select: { body: true } });
+    expect(正文.length).toBe(2);
+    for (const n of 正文) { expect(n.body).not.toContain("顺延"); expect(n.body).toContain("系统不会自动落定"); }
+  });
+
+  it("自动落定开关开着：到期按上一步判定落定（E-424）", async () => {
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 10:00"));
+    expect((await 扫(京("2026-12-02 11:00"))).提醒).toBe(1);
+    expect((await 扫(京("2026-12-02 11:30"))).落定).toBe(1);
+    expect((await 现(id)).result).toBe("线索流失");
+  });
+
+  it("从关拨到开：拨开前起钟的（含关着期间到期的）不落定，拨开后起钟的照常落定（E-424）", async () => {
+    await setSetting(自动落定生效key, 京("2026-12-02 12:00").toISOString());
+    const 老 = await 项目();
+    await 初判无效于(老, 京("2026-12-02 10:00"));
+    const 新 = await 项目();
+    await 初判无效于(新, 京("2026-12-02 12:30"));
+    expect((await 扫(京("2026-12-02 11:00"))).提醒).toBe(1);
+    expect(await 扫(京("2026-12-02 12:10"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
+    expect((await 现(老)).result).toBeNull();
+    expect((await 扫(京("2026-12-02 13:30"))).提醒).toBe(1);
+    expect((await 扫(京("2026-12-02 14:00"))).落定).toBe(1);
+    expect((await 现(新)).result).toBe("线索流失");
+    expect((await 现(老)).result).toBeNull();
   });
 
   it("生效时刻：上线前就在等的不提醒不落定，上线后（生效时刻之后）进入的照常", async () => {

@@ -2324,7 +2324,7 @@ model EntCustomerMerge {
 
 /// 企业版跨负责人合并客户的合并申请（迁移 174，2026-11-26，客户 E-280 / E-331 第二批 2b）：一张申请一行，B（fromId）并进 A（intoId）。
 /// 留下那家的客户负责人发起（他不是销售时由他的直属上级或能接分配的销售发起，E-331 一.1）；要同意的人一位一行在 EntMergeApprover。
-/// 5 个工作日内没全同意就失效（周一到周五，不扣节假日）；全同意时只比四项（负责人、阶段、回款或提成、被判无效）再判，
+/// 5 个工作日内没全同意就失效（周一到周五，扣法定节假日，按 cn-workday 表）；全同意时只比四项（负责人、阶段、回款或提成、被判无效）再判，
 /// 都没变才调第一批的 执行合并（lib/enterprise/merge-request.ts）。执行后的合并单记在 mergeId，撤回照第一批整单撤回。
 /// 指向人和客户的列都不建外键（B 清掉以后申请照留）
 model EntMergeRequest {
@@ -2371,7 +2371,7 @@ model EntMergeApprover {
   why              String
   /// 他涉及的项目（JSON 数组：id、名字、哪家客户）
   projects         String          @default("[]")
-  /// 待同意 / 同意 / 拒绝
+  /// 待同意 / 同意 / 拒绝 / 不用处理（申请已结束、这一行没处理）
   status           String          @default("待同意")
   /// 拒绝时写的一句话
   note             String?

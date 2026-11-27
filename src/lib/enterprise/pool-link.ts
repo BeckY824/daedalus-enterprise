@@ -116,7 +116,6 @@ export async function 客户名下在推项目进公海(
         await 进公海清组员(tx, [p.id], 操作人);
         await 进公海清验证(tx, [p.id], 操作人);
         await 进公海关主题(tx, [p.id], 操作人, 现在);
-        await 项目们撤培育计划(tx, { id: 操作人 }, [p.id]);
         await 记转让(tx, p, 操作人, p.ownerId, null, "pool-release", 理由, 现在);
         // 客户这时已经在公海里：原负责人在这位客户上没做完的待办全关（pool-owner.ts 进公海关待办）
         await 进公海关待办(tx, p, p.ownerId, 现在);
@@ -124,6 +123,8 @@ export async function 客户名下在推项目进公海(
         进了.add(p.customerId);
       }
     }
+    // 这批项目的自动培育计划一次撤完（E-401，不按项目一轮一轮撤）
+    await 项目们撤培育计划(tx, { id: 操作人 }, 放了);
     // 在推的进了公海，客户状态按剩下的重算（在推项目优先不再护着它，流失 / 丢单可能压上来；cust-status-auto-db.ts 进出公海重算）
     await 进出公海重算(tx, 进了);
     return 放了;

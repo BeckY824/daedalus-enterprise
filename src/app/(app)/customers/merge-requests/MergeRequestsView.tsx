@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Card, Empty, Input, Modal, Table, Tag } from "antd";
+import { Alert, Button, Card, Checkbox, Empty, Input, Modal, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PageHead } from "@/components/ui";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -20,7 +20,7 @@ const 网断话 = "没办成，网络可能断了，再点一次";
 /** 两家：「并进来那家 → 留下那家」（名字取发起那一刻的快照） */
 export const 两家话 = (r: Pick<合并申请一条, "留下" | "并掉">) => `「${r.并掉.名}」并进「${r.留下.名}」`;
 /** 已同意几位 / 共几位（发起人不在同意人里，发起即算同意） */
-export const 同意进度 = (r: Pick<合并申请一条, "同意人">) => `${r.同意人.filter((x) => x.状态 === "同意").length} / ${r.同意人.length} 位同意`;
+export const 同意进度 = (r: Pick<合并申请一条, "同意人" | "交管理员判">) => r.交管理员判 ? "交系统管理员判" : `${r.同意人.filter((x) => x.状态 === "同意").length} / ${r.同意人.length} 位同意`;
 /** 还剩几天失效（不足一天按 1 天说；到点了说「今天到期」） */
 export function 剩几天(到期: Date | string, 现在 = Date.now()): string {
   const 差 = new Date(到期).getTime() - 现在;
@@ -45,7 +45,7 @@ const 同意人话 = (x: 合并申请一条["同意人"][number]) => `${x.名} $
 export function 我的身份话(r: 合并申请一条, 我: string): string {
   const 我那行 = r.同意人.find((x) => x.userId === 我);
   if (!我那行) return "";
-  return [...我那行.凭.map((v) => 凭叫法[v]), ...(我那行.项目.length ? [`${我那行.项目.length} 个项目：${我那行.项目.map((p) => p.name).join("、")}`] : [])].join("；");
+  return [...我那行.凭.map((v) => (v === "系统管理员" ? "系统管理员（第 3 次申请，由你判）" : 凭叫法[v])), ...(我那行.项目.length ? [`${我那行.项目.length} 个项目：${我那行.项目.map((p) => p.name).join("、")}`] : [])].join("；");
 }
 
 /**
@@ -55,15 +55,16 @@ export function 我的身份话(r: 合并申请一条, 我: string): string {
  *   - 留下那家的同事：「同意后，你的项目不动，客户会多出另一家的联系人和沟通」
  *   - 最后一位（除我以外都同意了）多一句「你是最后一位：同意后立即合并，30 天内发起人可撤回」；不是最后一位写还差几位
  */
-export function 同意后果(r: 合并申请一条, 我: string): { 后果: string; 最后一位: boolean; 还差: number } {
+export function 同意后果(r: 合并申请一条, 我: string): { 后果: string; 最后一位: boolean; 还差: number; 管理员判: boolean } {
   const 我那行 = r.同意人.find((x) => x.userId === 我);
   const 挪 = 我那行 ? 我那行.项目.filter((p) => p.customerId === r.并掉.id).length : 0;
   const 并掉边 = !!我那行 && (我那行.凭.includes("被并客户负责人") || 挪 > 0);
-  const 还差 = r.同意人.filter((x) => x.userId !== 我 && x.状态 !== "同意").length;
+  // 交系统管理员判：任一位同意即合并，没有「还差几位」，同意的这位就是最后一位
+  const 还差 = r.交管理员判 ? 0 : r.同意人.filter((x) => x.userId !== 我 && x.状态 !== "同意").length;
   const 后果 = 并掉边
     ? 挪 > 0 ? `同意后，你的 ${挪} 个项目挪到留下那家，仍归你。` : "同意后，这家客户并进留下那家，你名下没有在推的项目要挪。"
     : "同意后，你的项目不动，客户会多出另一家的联系人和沟通。";
-  return { 后果, 最后一位: 还差 === 0, 还差 };
+  return { 后果, 最后一位: 还差 === 0, 还差, 管理员判: !!r.交管理员判 };
 }
 
 /** 一行放不下省略、悬停看全文（企业版一行 + 省略号规矩） */
@@ -75,7 +76,7 @@ type 框 = { 种: "同意" | "拒绝"; 行: 合并申请一条 };
 /**
  * 合并申请（第二批 2b-3）：等我同意的一张（同意 / 拒绝），我发起的一张（待同意时可撤回申请）。
  * 表格和卡片两套都渲染、CSS @media 显隐（不靠 JS 判宽，首屏不闪）。电脑：表格固定列宽、单元格省略号（悬停看全），放不下在表格里横滚；手机（≤767）每张一块卡片、一项一行，按钮整行 ≥ 触屏点击区。
- * 同意弹确认框（按我站哪边说后果，最后一位多一句）；拒绝弹框写原因（选填、≤100 字，超了点不了）。
+ * 同意弹确认框（按我站哪边说后果，最后一位多一句）；拒绝弹框写原因（必填、≤100 字，空着或超了点不了）。
  * 办成了这一行留在表里、置灰写结果（刷新后从「等我同意」里去掉）；没办成原因写在框里、框不关。
  * 只读身份（只读管理员、销售教练、设了只看某人、切换视图在看别人）：列表照常，按钮置灰、悬停写原因；服务端本来就拦
  */
@@ -90,6 +91,8 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
   const [开着, set开着] = useState<框 | null>(null);
   const [原因, set原因] = useState("");
   const [框错, set框错] = useState<string | null>(null);
+  /** 管理员判的申请同意前必勾「已问过两位负责人」（E-431 ③） */
+  const [问过, set问过] = useState(false);
 
   const 撤 = async (id: string) => {
     set忙(id);
@@ -108,21 +111,24 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
     set开着({ 种, 行 });
     set原因("");
     set框错(null);
+    set问过(false);
   };
   const 关 = () => {
     if (忙) return;
     set开着(null);
   };
   const 超了 = 原因.trim().length > 拒绝原因上限;
+  const 没写 = !原因.trim();
 
   const 定 = async () => {
     if (!开着 || 忙) return;
     const { 种, 行 } = 开着;
-    if (种 === "拒绝" && 超了) return;
+    if (种 === "拒绝" && (超了 || 没写)) return;
+    if (种 === "同意" && 行.管理员判 && !问过) return;
     set忙(行.id);
     set框错(null);
     const 后 = 种 === "同意" ? 同意后果(行, 我) : null;
-    const r = await 处理客户合并申请(行.id, 种, 种 === "拒绝" ? 原因.trim() || undefined : undefined).catch(() => ({ ok: false as const, error: 网断话 }));
+    const r = await 处理客户合并申请(行.id, 种, 种 === "拒绝" ? 原因.trim() : undefined, 种 === "同意" && 行.管理员判 ? 问过 : undefined).catch(() => ({ ok: false as const, error: 网断话 }));
     set忙(null);
     if (!r.ok) {
       set框错(r.error);
@@ -175,7 +181,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
   /** 剩一天（含不足一天）标橙 */
   const 剩 = (r: 合并申请一条) => {
     const 话 = 剩几天(r.到期);
-    return <span className={话 === "还剩 1 天" || 话 === "已到期" ? "mrq-hot" : ""} title={`${时刻(r.到期)} 前没全部同意就失效`}>{话}</span>;
+    return <span className={话 === "还剩 1 天" || 话 === "已到期" ? "mrq-hot" : ""} title={`${时刻(r.到期)} 前${r.交管理员判 ? "没有一位同意" : "没全部同意"}就失效`}>{话}</span>;
   };
 
   const 等我列: ColumnsType<合并申请一条> = [
@@ -226,10 +232,11 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
 
   const 框行 = 开着?.行;
   const 后 = 开着?.种 === "同意" && 框行 ? 同意后果(框行, 我) : null;
+  const 需勾 = 开着?.种 === "同意" && !!框行?.管理员判;
 
   return (
     <div>
-      <PageHead title="合并申请" subtitle={`同事负责的客户，或名下有同事在推的项目，合并要发申请：要同意的人都同意了才合并；${等待工作日} 个工作日内没全部同意，申请失效`} />
+      <PageHead title="合并申请" subtitle={`同事负责的客户，或名下有同事在推的项目，合并要发申请：要同意的人都同意了才合并；${等待工作日} 个工作日内（法定节假日不算）没全部同意，申请失效`} />
       <div className="mrq-stack">
         {不能写 && <Alert type="info" showIcon title={`${不能写}：列表照常显示，同意、拒绝、撤回按钮都点不了`} data-testid="merge-req-ro" />}
         <Card title={<span>等我同意{待处理数 ? <span className="mrq-cnt">{待处理数} 张等你处理</span> : null}</span>} size="small">
@@ -267,8 +274,8 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
             <span className="mrg-foot-sp" />
             <Button onClick={关} disabled={!!忙}>取消</Button>
             {开着?.种 === "拒绝"
-              ? <Button type="primary" danger loading={!!忙} disabled={超了} onClick={() => void 定()} data-testid="merge-request-reject-ok">确认拒绝</Button>
-              : <Button type="primary" loading={!!忙} onClick={() => void 定()} data-testid="merge-request-agree-ok">确认同意</Button>}
+              ? <Button type="primary" danger loading={!!忙} disabled={超了 || 没写} onClick={() => void 定()} data-testid="merge-request-reject-ok">确认拒绝</Button>
+              : <Button type="primary" loading={!!忙} disabled={需勾 && !问过} onClick={() => void 定()} data-testid="merge-request-agree-ok">确认同意</Button>}
           </div>
         )}
       >
@@ -278,20 +285,33 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
               <div className="mrq-two-r"><span className="mrq-tg">留下</span>{一行(框行.留下.名)}</div>
               <div className="mrq-two-r"><span className="mrq-tg">并掉</span>{一行(框行.并掉.名)}</div>
             </div>
+            {开着?.种 === "同意" && 框行?.管理员判 && (
+              <>
+                <div className="mrq-prev" data-testid="merge-request-prev">
+                  <p className="mrq-lbl">前几次的拒绝原因</p>
+                  {框行.管理员判.前拒绝.length
+                    ? 框行.管理员判.前拒绝.map((x, i) => <p key={i} className="mrq-mu" data-testid="merge-request-prev-item">{一行(`${时刻(x.时间)} ${x.人} 拒绝：${x.原因}`)}</p>)
+                    : <p className="mrq-mu">前几次没有拒绝的记录。</p>}
+                </div>
+                <Checkbox className="mrq-asked" data-testid="merge-request-asked" checked={问过} onChange={(e) => set问过(e.target.checked)} >
+                  {`已问过${框行.管理员判.负责人们.length > 1 ? "两位" : ""}负责人（${框行.管理员判.负责人们.join("、")}）`}
+                </Checkbox>
+              </>
+            )}
             {后 && (
               <>
                 <p className="mrq-eff" data-testid="merge-request-effect">{后.后果}</p>
                 {后.最后一位
-                  ? <p className="mrq-last" data-testid="merge-request-last">你是最后一位：同意后立即合并，{撤回天数} 天内发起人可撤回。</p>
+                  ? <p className="mrq-last" data-testid="merge-request-last">{后.管理员判 ? "任一位系统管理员同意即合并" : "你是最后一位"}：同意后立即合并，{撤回天数} 天内发起人可撤回。</p>
                   : <p className="mrq-mu">还差 {后.还差} 位同意才合并。</p>}
               </>
             )}
             {开着?.种 === "拒绝" && (
               <>
-                <label className="mrq-lbl" htmlFor="mrq-why">拒绝原因（选填，最多 {拒绝原因上限} 字）</label>
+                <label className="mrq-lbl" htmlFor="mrq-why">拒绝原因（必填，最多 {拒绝原因上限} 字）</label>
                 <Input.TextArea id="mrq-why" value={原因} onChange={(e) => set原因(e.target.value)} autoSize={{ minRows: 2, maxRows: 5 }} placeholder="写一句，发起人和其余同意人会看到" data-testid="merge-request-why" />
                 <div className="mrq-count">
-                  <span className={超了 ? "is-over" : ""} role={超了 ? "alert" : undefined}>{超了 ? `超出 ${原因.trim().length - 拒绝原因上限} 字` : ""}</span>
+                  <span className={超了 ? "is-over" : ""} role={超了 ? "alert" : undefined} data-testid="merge-request-why-hint">{超了 ? `超出 ${原因.trim().length - 拒绝原因上限} 字` : 没写 ? "写一句原因才能拒绝" : ""}</span>
                   <span className={超了 ? "is-over" : ""}>{原因.trim().length} / {拒绝原因上限}</span>
                 </div>
                 <p className="mrq-mu">一位拒绝整张就「已拒绝」，发起人和其余同意人会收到通知；发起人可以改了再发一张。</p>

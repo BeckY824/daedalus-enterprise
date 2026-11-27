@@ -23,7 +23,7 @@ const plugin: Plugin = { name: "overdue-switch", setup(b) {
   stub(/^\.\/OrgSyncCard$/, "export default function S(){return null}");
   stub(/^\.\/org-actions$/, 补全动作桩("src/app/(app)/settings/org-actions.ts", `const f=${空跑};export const 建部门=f,改部门=f,删部门=f,设字段权限=f,设改权限=f,设市场部门=f,设只看某人=f,设回收站副手=f,设成员=f;
     export const 设规则=async(...a)=>{(window.__调用||(window.__调用=[])).push(a);return{ok:true}};`));
-  stub(/^\.\.\/leads\/assign-actions$/, `export const 设不设配额=${空跑};export const 设扫库检测=${空跑};export const 读线部门设置=async()=>({设的:{内贸:[],外贸:[]},还没勾:[],能改:true});export const 设线部门=${空跑};`);
+  stub(/^\.\.\/leads\/assign-actions$/, `export const 设不设配额=${空跑};export const 设扫库检测=${空跑};export const 设重复咨询自动落定=${空跑};export const 读线部门设置=async()=>({设的:{内贸:[],外贸:[]},还没勾:[],能改:true});export const 设线部门=${空跑};`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
 beforeAll(async () => {

@@ -7,7 +7,7 @@
  *     留下那家没填业务线按它负责人的业务线比。系统管理员不用申请，照第一批直接代并
  *   - 要谁同意（按人去重，同一个人只确认一次，列出他涉及的项目）：留下那家的客户负责人（不是发起人时）+
  *     被并那家的客户负责人（是同事时）+ 两家名下没结束（没结局、不在项目公海）、由同事负责的项目负责人。发起即算发起人同意
- *   - 等多久：5 个工作日（周一到周五，不扣节假日，同 tri-state.ts 工作日数），到期没全部同意就失效、要重新发起
+ *   - 等多久：5 个工作日（周一到周五，扣法定节假日、调休上班的周末算，同 cn-workday.ts 节假日表；E-428 ①），到期没全部同意就失效、要重新发起
  *   - 执行前再判：只比四项——负责人、阶段、回款或提成、被判无效；任一变了申请失效、要重新发起，别的字段变了不重判。
  *     数据拦法（交接中、公海、无效、业务线不同）照第一批，执行合并时事务里再判一遍
  *   - 全同意后调第一批的 执行合并（me = 发起人；挪、合成联系人、通知、30 天整单撤回都照第一批），
@@ -29,7 +29,8 @@ import { 权限组织, 直属上级of, 是系统管理员of, type 组织 } from 
 import { 只读角色, 只看的人 } from "./permissions";
 import { 接手问题, type 线 } from "./lead-assign";
 import { 是项目线 } from "./assign-line";
-import { 工作日数, 加天 } from "./tri-state";
+import { 加天 } from "./tri-state";
+import { 是工作日 } from "./cn-workday";
 import { 通知里的客户名 } from "./notice-mask";
 import { notify } from "./notify";
 import { 合并申请页, 凭叫法, 拒绝原因上限 } from "@/app/(app)/customers/merge-request-words";
@@ -47,16 +48,28 @@ type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 /** 申请状态（EntMergeRequest.status）。执行中 = 最后一位同意后正在挪（条件更新抢到的那一次才执行） */
 export const 申请状态 = { 待同意: "待同意", 执行中: "执行中", 已合并: "已合并", 已拒绝: "已拒绝", 已失效: "已失效", 已撤回: "已撤回" } as const;
 /** 同意人那一行的状态（EntMergeApprover.status） */
-export const 同意状态 = { 待同意: "待同意", 同意: "同意", 拒绝: "拒绝" } as const;
+/** 不用处理：申请已结束（拒绝 / 失效 / 撤回 / 作废 / 已合并）时，还没处理的同意人那一行改成这个，不再显示「待同意」（E-428 阶段 3 审查可改 3） */
+export const 同意状态 = { 待同意: "待同意", 同意: "同意", 拒绝: "拒绝", 不用处理: "不用处理" } as const;
 /** 等待期：5 个工作日（E-331 一.1） */
 export const 等待工作日 = 5;
 /** 一位发起人同时挂着的待同意申请上限（我方定，防拿申请当查询用） */
 export const 每人最多待同意 = 5;
+/** 重发限制（E-428 阶段 3）：同一对客户（两个方向都算）被拒后 24 小时内不能再发；30 天内最多 3 张，第 3 张交系统管理员判 */
+export const 被拒后等待小时 = 24;
+export const 重发窗口天 = 30;
+export const 窗口内最多张 = 3;
+export const 管理员判话看不到 = "这张申请交系统管理员判，任一位系统管理员同意即合并";
+export const 管理员判话 = `第 ${窗口内最多张} 次交系统管理员判，任一位系统管理员同意即合并`;
+export const 已发满话 = `这对客户 ${重发窗口天} 天内已发满 ${窗口内最多张} 次`;
+export const 没勾已问过话of = (负责人数: number) => `同意前要先勾选已问过${负责人数 > 1 ? "两位" : ""}负责人`;
+export const 没勾已问过话 = 没勾已问过话of(2);
+export const 没有管理员话 = "没有可用的系统管理员，没法交他判";
+export type 重发限制 = { 状态: "正常" | "要等" | "已满" | "管理员判"; 话: string };
 /** 执行前再判只认这四项（E-331 一.1：「四项任一变化才重判，否则会无限重来」） */
 export const 四项 = ["负责人", "阶段", "回款或提成", "被判无效"] as const;
 export type 变动项 = (typeof 四项)[number];
 
-export type 凭 = "留下客户负责人" | "被并客户负责人" | "项目负责人";
+export type 凭 = "留下客户负责人" | "被并客户负责人" | "项目负责人" | "系统管理员";
 export type 涉及项目 = { id: string; name: string; customerId: string };
 export type 同意人 = { userId: string; 凭: 凭[]; 项目: 涉及项目[] };
 /**
@@ -67,13 +80,18 @@ export type 给发起人的同意人 = 同意人 & { 项目数: number };
 
 /** 拒绝原因超了上限：动作层、数据层都拦这一句，不悄悄截（2b-3 第二段审查第 7 条） */
 export const 拒绝原因超话 = `拒绝原因最多 ${拒绝原因上限} 字`;
+/** 拒绝必须写一句原因（E-428 ②）：空、全空白都拦；动作层、数据层同一句 */
+export const 拒绝要写原因话 = "拒绝要写一句原因";
 export const 到期话 = `超过 ${等待工作日} 个工作日没有全部同意，申请已失效，要重新发起`;
 /**
  * 给人看的状态：库里只有「已失效」一种结束，界面分开说——到期没同意完叫「已失效」；
  * 作废的（系统管理员作废有 endedById；四项有变、执行时被拦是系统判的，原因不是 到期话）叫「已作废」；其余同 status（2b-3 第二段审查第 4 条）
  */
+export const 管理员到期话 = `超过 ${等待工作日} 个工作日没有一位系统管理员同意，申请已失效，要重新发起`;
+/** 到期写进库的话：管理员判（第 3 张）一位同意即合并，不写「全部同意」 */
+export const 到期话of = (管理员判: boolean) => (管理员判 ? 管理员到期话 : 到期话);
 export const 显示状态of = (r: { status: string; reason: string | null; endedById: string | null }): string =>
-  r.status === 申请状态.已失效 && (r.endedById || r.reason !== 到期话) ? "已作废" : r.status;
+  r.status === 申请状态.已失效 && (r.endedById || r.reason !== 到期话 && r.reason !== 管理员到期话) ? "已作废" : r.status;
 export const 变动话 = (项: readonly 变动项[]) => `两家的${项.join("、")}有变，申请已失效，要重新发起`;
 
 const 名 = (c: Pick<客户行, "name" | "shortName" | "customerNo" | "id">) => 通知里的客户名(c);
@@ -156,13 +174,15 @@ export function 算同意人(
 }
 
 /**
- * 到期的那一刻：从发起那天（北京时间的日子）往后数第 5 个工作日的同一时刻，周末不算。
+ * 到期的那一刻：从发起那天（北京时间的日子）往后数第 5 个工作日的同一时刻，周末、法定节假日不算，调休上班的周末算（E-428 ①，只对新发起的算；已存的 expiresAt 不重算）。
  * 周五 15:00 发起 → 下周五 15:00；周六发起 → 下周五同一时刻
  */
 export function 到期时刻(发起: Date, 工作日 = 等待工作日): Date {
   const 起 = beijingDay(发起);
-  let k = 1;
-  while (工作日数(起, 加天(起, k)) < 工作日) k++;
+  let k = 0, 数 = 0;
+  // 扣法定节假日、调休上班的周末算工作日（cn-workday 节假日表，E-428 ①）；k < 120 只是防表错了死循环
+  while (数 < 工作日 && k < 120) { k++; if (是工作日(加天(起, k))) 数++; }
+  if (数 < 工作日) console.error(`[合并申请] 数满 ${k} 天仍不够 ${工作日} 个工作日，节假日表可能录错了，按 ${k} 天兜底`);
   return new Date(发起.getTime() + k * 86_400_000);
 }
 export const 到期了 = (r: { expiresAt: Date }, 现在: Date) => 现在.getTime() >= r.expiresAt.getTime();
@@ -309,7 +329,7 @@ export async function 发起合并申请(
   try {
     const r = await 看全部(() => db.$transaction(async (tx) => {
       const [A, B] = [await 读客户(tx, 留下id), await 读客户(tx, 并掉id)];
-      const 判 = await 发起前判(tx, A, B, me, org, !并掉看得到);
+      const 判 = await 发起前判(tx, A, B, me, org, !并掉看得到, 现在);
       if (!判.ok) throw new 拦下(判.原因.join("；"));
       const 人们 = 判.人们;
       if (来源或创建人不同(A!, B!) && !opt.已核对) throw new 拦下(`两家的来源或创建人不一样，请先勾选「${已核对话}」`);
@@ -318,7 +338,7 @@ export async function 发起合并申请(
       const 单 = await tx.entMergeRequest.create({
         data: {
           fromId: B!.id, intoId: A!.id, byUserId: me.id, status: 申请状态.待同意, at: 现在, expiresAt,
-          choices: JSON.stringify({ 已核对: !!opt.已核对, 同一个人: opt.同一个人 ?? [], ...(并掉看得到 ? {} : { 并掉看不到: true, 并掉编号: B!.customerNo ?? null }) } satisfies 选择),
+          choices: JSON.stringify({ 已核对: !!opt.已核对, 同一个人: opt.同一个人 ?? [], ...(并掉看得到 ? {} : { 并掉看不到: true, 并掉编号: B!.customerNo ?? null }), ...(判.管理员判 ? { 管理员判: true } : {}) } satisfies 选择),
           snapshot: JSON.stringify(快),
           approvers: { create: 人们.map((x) => ({ userId: x.userId, why: JSON.stringify(x.凭), projects: JSON.stringify(x.项目), createdAt: 现在 })) },
         },
@@ -332,10 +352,11 @@ export async function 发起合并申请(
           { userId: me.id, userName: me.name, action: "merge-request", entity: "Customer", entityId: B!.id, at: 现在, summary: `发合并申请：这位客户并进「${名(A!)}」，等 ${谁们} 同意（${等待工作日} 个工作日内）`, detail },
         ],
       });
-      return { requestId: 单.id, 同意人: 人们, expiresAt };
+      return { requestId: 单.id, 同意人: 人们, expiresAt, 管理员判: 判.管理员判 };
     }, 合并事务选项));
     await 申请通知(db, r.requestId, "收到", me);
-    return { ok: true, ...r, 同意人: await 给发起人看(db, r.同意人, 并掉id, 并掉看得到) };
+    if (r.管理员判) await 升级通知(db, r.requestId, me);
+    return { ok: true, requestId: r.requestId, expiresAt: r.expiresAt, 同意人: await 给发起人看(db, r.同意人, 并掉id, 并掉看得到) };
   } catch (e) {
     if (e instanceof 拦下) return { ok: false, error: e.message };
     const 话 = 并发失败话(e);
@@ -350,17 +371,31 @@ export async function 发起合并申请(
  * 「来源或创建人不同要勾已核对」不在这里：预览只提示要勾，发起时判
  */
 async function 发起前判(
-  db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织, 并掉看不到: boolean,
-): Promise<{ ok: true; 人们: 同意人[] } | { ok: false; 原因: string[] }> {
-  const 不行 = (...原因: string[]) => ({ ok: false as const, 原因 });
+  db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织, 并掉看不到: boolean, 现在: Date,
+): Promise<{ ok: true; 人们: 同意人[]; 管理员判: boolean; 限制: 重发限制 } | { ok: false; 原因: string[]; 限制: 重发限制 | null }> {
+  const 不行 = (...原因: string[]) => ({ ok: false as const, 原因, 限制: null as 重发限制 | null });
   const 原因 = await 申请拦的原因(db, A, B, me, org, { 并掉看不到 });
   if (原因.length) return 不行(...原因);
   const 问 = 发起人问题(org, me, A!.salesOwnerId, A!.bizLine);
   if (问) return 不行(问);
   if (!(await 有负责人(db, B!.salesOwnerId))) return 不行(并掉看不到 ? 并掉看不到话 : `「${名(B!)}」没有负责人，没人可以同意；请找系统管理员代并`);
-  const 人们 = await 现算同意人(db, me.id, A!, B!);
+  let 人们 = await 现算同意人(db, me.id, A!, B!);
   if (!人们.length) return 不行(直接并话);
-  const 停了 = 人们.filter((x) => !org.成员.has(x.userId));
+  const 限制 = await 重发限制of(db, A!.id, B!.id, 现在);
+  if (限制.状态 === "要等" || 限制.状态 === "已满") {
+    // 发起人看不到被并那家：等多久、发了几次会露出那对客户的往来，照 并掉看不到话 的写法不透露，限制也不回前端
+    if (并掉看不到) return 不行(并掉看不到话);
+    return { ok: false, 原因: [限制.话], 限制 };
+  }
+  const 管理员判 = 限制.状态 === "管理员判";
+  // 看不到被并那家的发起人：不写「第 3 次」（露出那对客户的往来次数）
+  const 限制出: 重发限制 = 管理员判 && 并掉看不到 ? { ...限制, 话: 管理员判话看不到 } : 限制;
+  if (管理员判) {
+    const 管理员 = [...org.成员.keys()].filter((id) => id !== me.id && 是系统管理员of(org, id));
+    if (!管理员.length) return { ok: false, 原因: [没有管理员话], 限制: 限制出 };
+    人们 = 管理员.map((userId) => ({ userId, 凭: ["系统管理员" as const], 项目: [] }));
+  }
+  const 停了 = 管理员判 ? [] : 人们.filter((x) => !org.成员.has(x.userId));
   if (停了.length) {
     const 叫 = await 人名们(db, 停了.map((x) => x.userId));
     return 不行(`${停了.map((x) => `「${叫.get(x.userId) ?? "已停用的成员"}」`).join("")}已停用，等不到他同意；先办离职交接，或请系统管理员代并`);
@@ -376,7 +411,51 @@ async function 发起前判(
   }
   if ((await db.entMergeRequest.count({ where: { byUserId: me.id, status: 申请状态.待同意 } })) >= 每人最多待同意)
     return 不行(`你已有 ${每人最多待同意} 张合并申请在等同意，等处理完或撤回一张再发`);
-  return { ok: true, 人们 };
+  return { ok: true, 人们, 管理员判, 限制: 限制出 };
+}
+
+/** 同一对客户（A→B、B→A 两个方向都算）的重发限制：被拒后 24 小时内要等；30 天内不论结果已有 3 张拦、已有 2 张第 3 张交系统管理员判。失效、撤回不算被拒 */
+export async function 重发限制of(db: Tx | 库, 一: string, 二: string, 现在: Date): Promise<重发限制> {
+  const 一对 = [{ fromId: 一, intoId: 二 }, { fromId: 二, intoId: 一 }];
+  // 先算 30 天：已满就是已满（第 3 张被拒后不能再说「24 小时后才能再发」，等 24 小时也发不了）
+  const 已发 = await db.entMergeRequest.count({ where: { OR: 一对, at: { gte: new Date(现在.getTime() - 重发窗口天 * 86400_000) } } });
+  if (已发 >= 窗口内最多张) return { 状态: "已满", 话: 已发满话 };
+  const 刚拒 = await db.entMergeRequest.findFirst({ where: { OR: 一对, status: 申请状态.已拒绝, endedAt: { not: null } }, orderBy: { endedAt: "desc" }, select: { endedAt: true } });
+  if (刚拒?.endedAt) {
+    const 还要 = 刚拒.endedAt.getTime() + 被拒后等待小时 * 3600_000 - 现在.getTime();
+    if (还要 > 0) {
+      const 分 = Math.ceil(还要 / 60_000);
+      return { 状态: "要等", 话: `这对客户的合并申请刚被拒，${Math.floor(分 / 60)} 小时 ${分 % 60} 分后才能再发` };
+    }
+  }
+  if (已发 === 窗口内最多张 - 1) return { 状态: "管理员判", 话: 管理员判话 };
+  return { 状态: "正常", 话: "" };
+}
+
+/**
+ * 管理员判的申请（第 3 次）的背景（E-431 ③）：两家客户现在的负责人（去重，勾选框写姓名、升级通知收件人）、
+ * 这对客户 30 天内、这张之前的申请里点过「拒绝」的人和原因（原因空 = 「未填」，上线前的拒绝没写原因）
+ */
+export type 管理员判背景 = {
+  负责人们: { id: string; 名: string }[];
+  前拒绝: { 人id: string; 人: string; 原因: string; 时间: Date }[];
+};
+export const 原因未填 = "未填";
+export async function 管理员判背景of(db: Tx | 库, r: { id: string; fromId: string; intoId: string; at: Date }): Promise<管理员判背景> {
+  const 一对 = [{ fromId: r.fromId, intoId: r.intoId }, { fromId: r.intoId, intoId: r.fromId }];
+  const [A, B] = await Promise.all([读客户(db, r.intoId), 读客户(db, r.fromId)]);
+  const 负责ids = [...new Set([A?.salesOwnerId, B?.salesOwnerId].filter((x): x is string => !!x))];
+  const 前们 = await db.entMergeRequest.findMany({
+    where: { OR: 一对, id: { not: r.id }, at: { lt: r.at, gte: new Date(r.at.getTime() - 重发窗口天 * 86400_000) } },
+    include: { approvers: { where: { status: 同意状态.拒绝 } } },
+    orderBy: { at: "asc" },
+  });
+  const 拒们 = 前们.flatMap((q) => q.approvers.map((x) => ({ 人id: x.userId, 原因: x.note?.trim() || 原因未填, 时间: x.decidedAt ?? q.endedAt ?? q.at })));
+  const 叫 = await 人名们(db, [...负责ids, ...拒们.map((x) => x.人id)]);
+  return {
+    负责人们: 负责ids.map((id) => ({ id, 名: 叫.get(id) ?? "同事" })),
+    前拒绝: 拒们.map((x) => ({ ...x, 人: 叫.get(x.人id) ?? "同事" })),
+  };
 }
 
 /** 两家和名下没结束的项目都归发起人：不用申请（发起前判 那一句；界面见到这句就回到直接合并） */
@@ -391,25 +470,28 @@ export type 合并申请预览结果 = {
   预览: 合并预览结果 | null;
   同意人: 申请预览同意人[];
   等待工作日: number;
+  /** 重发限制：要等多久 / 已发满 3 次 / 第 3 次交系统管理员判（状态 正常 时话为空） */
+  重发限制: 重发限制;
 };
 
 /**
  * 发合并申请前的预览（第二批 2b-3 合并客户框）：判法同 发起合并申请（发起前判），能发时给两家并排、要勾的、联系人配对、要谁同意。
  * 只读，不写库；谁能看到同事那家由 merge-actions.ts 先判（看得到，或按完整号码搜到的）
  */
-export async function 合并申请预览(db: 库, 留下id: string, 并掉id: string, me: 合并人): Promise<合并申请预览结果> {
-  const 空 = (原因: string[]): 合并申请预览结果 => ({ 能发: false, 原因, 预览: null, 同意人: [], 等待工作日 });
+export async function 合并申请预览(db: 库, 留下id: string, 并掉id: string, me: 合并人, 现在: Date = new Date()): Promise<合并申请预览结果> {
+  const 正常: 重发限制 = { 状态: "正常", 话: "" };
+  const 空 = (原因: string[], 限制: 重发限制 = 正常): 合并申请预览结果 => ({ 能发: false, 原因, 预览: null, 同意人: [], 等待工作日, 重发限制: 限制 });
   if (!企业版()) return 空(["只有企业版能发合并申请"]);
   const org = await 权限组织();
   if (!org) return 空(["只有企业版能发合并申请"]);
   const 并掉看得到 = await 发起人看得到的并掉(db, 并掉id);
   const [A, B] = await 看全部(() => Promise.all([读客户(db, 留下id), 读客户(db, 并掉id)]));
-  const 判 = await 看全部(() => 发起前判(db, A, B, me, org, !并掉看得到));
-  if (!判.ok) return 空(判.原因);
+  const 判 = await 看全部(() => 发起前判(db, A, B, me, org, !并掉看得到, 现在));
+  if (!判.ok) return 空(判.原因, 判.限制 ?? 正常);
   const 预览 = await 看全部(() => 合并预览(db, 留下id, 并掉id, me, { 按申请: true, 并掉看不到: !并掉看得到 }));
-  if (!预览.能并) return 空(预览.原因);
+  if (!预览.能并) return 空(预览.原因, 判.限制);
   const [叫, 们] = await Promise.all([人名们(db, 判.人们.map((x) => x.userId)), 给发起人看(db, 判.人们, 并掉id, 并掉看得到)]);
-  return { 能发: true, 原因: [], 预览, 同意人: 们.map((x) => ({ ...x, 名: 叫.get(x.userId) ?? "同事" })), 等待工作日 };
+  return { 能发: true, 原因: [], 预览, 同意人: 们.map((x) => ({ ...x, 名: 叫.get(x.userId) ?? "同事" })), 等待工作日, 重发限制: 判.限制 };
 }
 
 /** 负责人是真人（不空、不是公海占位） */
@@ -435,6 +517,7 @@ export type 处理完 = { 状态: (typeof 申请状态)[keyof typeof 申请状�
 async function 结束(tx: Tx, r: { id: string; fromId: string; intoId: string; byUserId: string }, 状态: string, 原因: string, 谁: 合并人 | null, 动作: string, 现在: Date): Promise<boolean> {
   const n = await tx.entMergeRequest.updateMany({ where: { id: r.id, status: 申请状态.待同意 }, data: { status: 状态, reason: 原因, endedAt: 现在, endedById: 谁?.id ?? null } });
   if (!n.count) return false;
+  await tx.entMergeApprover.updateMany({ where: { requestId: r.id, status: 同意状态.待同意 }, data: { status: 同意状态.不用处理 } });
   const detail = JSON.stringify({ requestId: r.id, 原因 });
   await tx.auditLog.createMany({
     data: [r.intoId, r.fromId].map((entityId) => ({ userId: 谁?.id ?? r.byUserId, userName: 谁?.name ?? "系统", action: 动作, entity: "Customer", entityId, at: 现在, summary: `合并申请${状态}：${原因}`, detail })),
@@ -453,13 +536,14 @@ const 只读身份 = (me: 合并人, org: 组织 | null) => !!org && (只读角�
  * 拒绝：整张申请「已拒绝」，可写一句原因
  */
 export async function 处理合并申请(
-  db: 库, requestId: string, me: 合并人, 结论: "同意" | "拒绝", opt: { 原因?: string; 现在?: Date } = {},
+  db: 库, requestId: string, me: 合并人, 结论: "同意" | "拒绝", opt: { 原因?: string; 已问过?: boolean; 现在?: Date } = {},
 ): Promise<结果<处理完>> {
   if (!企业版()) return { ok: false, error: "只有企业版有合并申请" };
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   if (!org) return { ok: false, error: "只有企业版有合并申请" };
   if (只读身份(me, org)) return { ok: false, error: `你现在是只读身份，不能${结论}合并申请` };
+  if (结论 === "拒绝" && !opt.原因?.trim()) return { ok: false, error: 拒绝要写原因话 };
   if (结论 === "拒绝" && (opt.原因?.trim().length ?? 0) > 拒绝原因上限) return { ok: false, error: 拒绝原因超话 };
   let 失效: string | null = null;
   let 该执行 = false;
@@ -474,9 +558,12 @@ export async function 处理合并申请(
       const 我的 = r.approvers.find((x) => x.userId === me.id);
       if (!我的) throw new 拦下("你不是这张合并申请要同意的人");
       if (我的.status !== 同意状态.待同意) throw new 拦下(`你已经${我的.status}过了`);
+      const 管理员判 = !!读选择(r.choices).管理员判;
+      if (管理员判 && !是系统管理员of(org, me.id)) throw new 拦下("你已经不是系统管理员，不能处理这张合并申请");
       if (到期了(r, 现在)) {
-        await 结束(tx, r, 申请状态.已失效, 到期话, null, "merge-request-void", 现在);
-        失效 = 到期话;
+        const 到期说 = 到期话of(管理员判);
+        await 结束(tx, r, 申请状态.已失效, 到期说, null, "merge-request-void", 现在);
+        失效 = 到期说;
         事后 = { 事: "失效" };
         return 申请状态.已失效;
       }
@@ -487,6 +574,7 @@ export async function 处理合并申请(
         事后 = { 事: "拒绝", 原因: 一句 ?? "" };
         return 申请状态.已拒绝;
       }
+      if (管理员判 && !opt.已问过) throw new 拦下(没勾已问过话of((await 管理员判背景of(tx, r)).负责人们.length));
       const 变 = await 再判(tx, r, me, org);
       if (变) {
         await 结束(tx, r, 申请状态.已失效, 变, null, "merge-request-void", 现在);
@@ -496,10 +584,18 @@ export async function 处理合并申请(
       }
       const n = await tx.entMergeApprover.updateMany({ where: { id: 我的.id, status: 同意状态.待同意 }, data: { status: 同意状态.同意, decidedAt: 现在 } });
       if (!n.count) throw new 拦下("你已经处理过了");
+      // 管理员判：谁勾了「已问过两位负责人」、什么时候勾的，进两家客户的操作日志（和同意那条日志同一行）
+      const 问 = 管理员判 ? await 管理员判背景of(tx, r) : null;
+      const 问过 = 问 ? { 谁: me.id, 名: me.name, 时刻: 现在.toISOString(), 负责人们: 问.负责人们.map((x) => x.名) } : null;
       await tx.auditLog.createMany({
-        data: [r.intoId, r.fromId].map((entityId) => ({ userId: me.id, userName: me.name, action: "merge-approve", entity: "Customer", entityId, at: 现在, summary: `同意合并申请`, detail: JSON.stringify({ requestId: r.id }) })),
+        data: [r.intoId, r.fromId].map((entityId) => ({
+          userId: me.id, userName: me.name, action: "merge-approve", entity: "Customer", entityId, at: 现在,
+          summary: 问过 ? `同意合并申请（${me.name} 在 ${北京时刻(现在)} 勾选了「已问过${问过.负责人们.length > 1 ? "两位" : ""}负责人（${问过.负责人们.join("、")}）」）` : `同意合并申请`,
+          detail: JSON.stringify(问过 ? { requestId: r.id, 已问过两位负责人: 问过 } : { requestId: r.id }),
+        })),
       });
-      const 还等 = await tx.entMergeApprover.count({ where: { requestId: r.id, status: { not: 同意状态.同意 } } });
+      // 管理员判（第 3 张）：任一位系统管理员同意即全同意
+      const 还等 = 管理员判 ? 0 : await tx.entMergeApprover.count({ where: { requestId: r.id, status: { not: 同意状态.同意 } } });
       if (还等) {
         事后 = { 事: "同意" };
         return 申请状态.待同意;
@@ -534,9 +630,21 @@ async function 再判(tx: Tx, r: { fromId: string; intoId: string; byUserId: str
   if (原因.length) return `${原因.join("；")}，申请已失效`;
   const 旧 = JSON.parse(r.snapshot) as 快照;
   const 新 = await 读快照(tx, A!, B!);
-  const 人 = 同意人对不上(r.approvers.map((x) => x.userId), await 现算同意人(tx, r.byUserId, A!, B!));
+  // 管理员判的申请要同意的是系统管理员、不是同事，不比同意人
+  const 人 = !读选择(r.choices).管理员判 && 同意人对不上(r.approvers.map((x) => x.userId), await 现算同意人(tx, r.byUserId, A!, B!));
   const 变 = 比四项(旧, 新, 人);
   return 变.length ? 变动话(变) : null;
+}
+
+/** 执行申请开头要读的东西（读库 + 解 JSON），抛错由 执行申请 放回待同意 */
+async function 读执行用(db: 库, requestId: string) {
+  const r = await db.entMergeRequest.findUniqueOrThrow({ where: { id: requestId }, include: { approvers: { orderBy: { createdAt: "asc" } } } });
+  const 发 = await db.user.findUnique({ where: { id: r.byUserId }, select: { id: true, name: true, role: true } });
+  const 选 = 读选择(r.choices);
+  const 快 = JSON.parse(r.snapshot) as 快照;
+  const 叫 = await 人名们(db, [r.byUserId, ...r.approvers.map((x) => x.userId)]);
+  const 同意们 = r.approvers.filter((x) => !选.管理员判 || x.status === 同意状态.同意).map((x) => ({ userId: x.userId, 名: 叫.get(x.userId) ?? "同事", 凭: JSON.parse(x.why) as 凭[], 项目: JSON.parse(x.projects) as 涉及项目[], at: x.decidedAt }));
+  return { r, 发, 选, 快, 叫, 同意们 };
 }
 
 /**
@@ -544,12 +652,14 @@ async function 再判(tx: Tx, r: { fromId: string; intoId: string; byUserId: str
  * 撞上别的写入（这次什么都没写）或意外的错：申请放回待同意、最后这位的同意也放回待同意，他再点一次就行
  */
 async function 执行申请(db: 库, requestId: string, 我的行: string, me: 合并人, 现在: Date): Promise<结果<处理完>> {
-  const r = await db.entMergeRequest.findUniqueOrThrow({ where: { id: requestId }, include: { approvers: { orderBy: { createdAt: "asc" } } } });
-  const 发 = await db.user.findUnique({ where: { id: r.byUserId }, select: { id: true, name: true, role: true } });
-  const 选 = 读选择(r.choices);
-  const 快 = JSON.parse(r.snapshot) as 快照;
-  const 叫 = await 人名们(db, [r.byUserId, ...r.approvers.map((x) => x.userId)]);
-  const 同意们 = r.approvers.map((x) => ({ userId: x.userId, 名: 叫.get(x.userId) ?? "同事", 凭: JSON.parse(x.why) as 凭[], 项目: JSON.parse(x.projects) as 涉及项目[], at: x.decidedAt }));
+  const 放回 = () => db.$transaction(async (tx) => {
+    await tx.entMergeRequest.updateMany({ where: { id: requestId, status: 申请状态.执行中 }, data: { status: 申请状态.待同意 } });
+    await tx.entMergeApprover.update({ where: { id: 我的行 }, data: { status: 同意状态.待同意, decidedAt: null } });
+  }, 合并事务选项);
+  // 读申请、人名、解 JSON 也在保护里：任一步抛错（比如旧数据里有坏 JSON）都放回待同意，不能停在「执行中」谁都点不动
+  let 读到: Awaited<ReturnType<typeof 读执行用>>;
+  try { 读到 = await 读执行用(db, requestId); } catch (e) { await 放回(); throw e; }
+  const { r, 发, 选, 快, 叫, 同意们 } = 读到;
   const 经过 = {
     requestId: r.id,
     发起: { userId: r.byUserId, 名: 叫.get(r.byUserId) ?? "同事", at: r.at.toISOString() },
@@ -558,16 +668,25 @@ async function 执行申请(db: 库, requestId: string, 我的行: string, me: �
   };
   const 回到 = async (状态: string, data: Prisma.EntMergeRequestUpdateManyMutationInput) =>
     db.entMergeRequest.updateMany({ where: { id: r.id, status: 申请状态.执行中 }, data: { status: 状态, ...data } });
-  const 放回 = () => db.$transaction(async (tx) => {
-    await tx.entMergeRequest.updateMany({ where: { id: r.id, status: 申请状态.执行中 }, data: { status: 申请状态.待同意 } });
-    await tx.entMergeApprover.update({ where: { id: 我的行 }, data: { status: 同意状态.待同意, decidedAt: null } });
-  }, 合并事务选项);
+  // 管理员判的申请：本该同意的同事（项目负责人等）不在申请里，合并后的通知名单也可能漏掉他们，合并前现算一遍，让 执行合并 补发
+  let 另补: string[] = [];
+  if (选.管理员判) {
+    // 算名单出错不卡住申请（卡在执行中谁都点不动）：算不出就不补，照常合并
+    try {
+      const [A, B] = await 看全部(() => Promise.all([读客户(db, r.intoId), 读客户(db, r.fromId)]));
+      if (A && B) 另补 = (await 看全部(() => 现算同意人(db, r.byUserId, A, B))).map((x) => x.userId).filter((u) => u !== r.byUserId && !同意们.some((y) => y.userId === u));
+    } catch (e) {
+      // 不卡申请，但留一行：长期算不出名单时，该补发的同事一直收不到，要能从日志里查到（不带客户名 / 号码）
+      console.warn("[合并申请] 补发名单没算出：", r.id, e instanceof Error ? e.message : e);
+      另补 = [];
+    }
+  }
   let 结: Awaited<ReturnType<typeof 执行合并>>;
   try {
     结 = 发
       ? await 执行合并(db, r.intoId, r.fromId, 发, {
           已核对: 选.已核对, 同一个人: 选.同一个人 ?? [], 现在,
-          申请: { 经过: JSON.stringify(经过), 已另通知: [r.byUserId, ...r.approvers.map((x) => x.userId)], 并掉看不到: !!选.并掉看不到 },
+          申请: { 经过: JSON.stringify(经过), 已另通知: [r.byUserId, ...同意们.map((x) => x.userId)], 另补, 并掉看不到: !!选.并掉看不到 },
         })
       : { ok: false, error: "发起人已不在系统里" };
   } catch (e) {
@@ -588,6 +707,8 @@ async function 执行申请(db: 库, requestId: string, 我的行: string, me: �
     return { ok: false, error: 原因 };
   }
   await 回到(申请状态.已合并, { mergeId: 结.mergeId, endedAt: 现在 });
+  // 管理员判：一位同意即合并，其余管理员那行不再「待同意」
+  await db.entMergeApprover.updateMany({ where: { requestId: r.id, status: 同意状态.待同意 }, data: { status: 同意状态.不用处理 } });
   const 话 = `合并申请通过：${经过话({ 名: 经过.发起.名, at: r.at }, 同意们)}。合并前：${快照话(快)}`;
   await db.auditLog.createMany({
     data: [r.intoId, r.fromId].map((entityId) => ({
@@ -660,10 +781,10 @@ export async function 钟上扫过期合并申请(现在: Date = new Date()): Pr
 /** 到期扫一遍：待同意、过了到期时刻的都记已失效（同意 / 拒绝那一刻也会当场判；每分钟的钟调 钟上扫过期合并申请） */
 export async function 扫过期合并申请(db: 库, 现在: Date = new Date()): Promise<number> {
   if (!企业版()) return 0;
-  const 们 = await db.entMergeRequest.findMany({ where: { status: 申请状态.待同意, expiresAt: { lte: 现在 } }, select: { id: true, fromId: true, intoId: true, byUserId: true } });
+  const 们 = await db.entMergeRequest.findMany({ where: { status: 申请状态.待同意, expiresAt: { lte: 现在 } }, select: { id: true, fromId: true, intoId: true, byUserId: true, choices: true } });
   let n = 0;
   for (const r of 们) {
-    if (!(await db.$transaction((tx) => 结束(tx, r, 申请状态.已失效, 到期话, null, "merge-request-void", 现在), 合并事务选项))) continue;
+    if (!(await db.$transaction((tx) => 结束(tx, r, 申请状态.已失效, 到期话of(!!读选择(r.choices).管理员判), null, "merge-request-void", 现在), 合并事务选项))) continue;
     n++;
     await 申请通知(db, r.id, "失效", null);
   }
@@ -682,7 +803,7 @@ export const 作废话 = (谁: string) => `系统管理员${谁}作废了申请`
 export const 看不到那家叫法 = (customerNo: number | null | undefined) => `同事负责的客户（号码撞上）${customerNo ? ` ${customerNo}` : ""}`;
 
 /** 申请时存下的选择（EntMergeRequest.choices）。并掉看不到 / 并掉编号：发起人看不到那家时记下（2b-3 第二段起） */
-export type 选择 = { 已核对?: boolean; 同一个人?: readonly 同一个人[]; 并掉看不到?: boolean; 并掉编号?: number | null };
+export type 选择 = { 已核对?: boolean; 同一个人?: readonly 同一个人[]; 并掉看不到?: boolean; 并掉编号?: number | null; 管理员判?: boolean };
 export function 读选择(v: string | null | undefined): 选择 {
   try {
     const x = JSON.parse(v ?? "{}") as unknown;
@@ -744,14 +865,16 @@ async function 申请通知(db: 库, requestId: string, 事: 申请事件, 谁: 
       notify(收.filter((u) => u !== 谁?.id || 事 === "合并"), { kind: 合并申请通知种类, title, body, link: 合并申请页, key: `merge-req:${r.id}:${键}` });
     const 一句 = 原因.trim();
     switch (事) {
-      case "收到":
+      case "收到": {
+        const 管 = !!读选择(r.choices).管理员判;
         for (const x of r.approvers) {
           const 凭们 = 读JSON<凭[]>(x.why, []).map((v) => 凭叫法[v] ?? v);
           const 项目数 = 读JSON<涉及项目[]>(x.projects, []).length;
           await 发([x.userId], `${发起人名}发来合并申请：${给别人}，要你同意`,
-            `你是${凭们.join("、") || "要同意的人"}${项目数 ? `，涉及你的 ${项目数} 个项目` : ""}。${北京时刻(r.expiresAt)} 前没全部同意，申请失效`, "收到");
+            `你是${凭们.join("、") || "要同意的人"}${项目数 ? `，涉及你的 ${项目数} 个项目` : ""}。${管 ? "第 3 次申请交系统管理员判，任一位同意即合并，" : ""}${北京时刻(r.expiresAt)} 前${管 ? "没有一位同意" : "没全部同意"}，申请失效`, "收到");
         }
         return;
+      }
       case "同意": {
         if (r.status !== 申请状态.待同意) return;
         const 还差 = r.approvers.filter((x) => x.status !== 同意状态.同意).length;
@@ -760,14 +883,19 @@ async function 申请通知(db: 库, requestId: string, 事: 申请事件, 谁: 
       }
       case "拒绝": {
         const 说 = 一句 ? `原因：${一句}` : "没写原因";
-        await 发([r.byUserId], `${谁名}拒绝了你的合并申请：${给发}`, `${给发起人藏名(r, 说)}。要并可以改了再发一张`, "结束");
+        // 按同一份 重发限制of 出字：已发满 3 次写已发满，没满才写 24 小时后才能再发（看不到被并那家的发起人，不露往来）
+        const 限 = await 重发限制of(db, r.fromId, r.intoId, r.endedAt ?? new Date());
+        const 后话 = 限.状态 === "已满" ? (读选择(r.choices).并掉看不到 ? 并掉看不到话 : 已发满话) : `${被拒后等待小时} 小时后才能再发`;
+        await 发([r.byUserId], `${谁名}拒绝了你的合并申请：${给发}`, `${给发起人藏名(r, 说)}。${后话}`, "结束");
         await 发(别的同意人, `${谁名}拒绝了合并申请：${给别人}`, `${说}。不用再处理`, "结束");
         return;
       }
-      case "失效":
-        await 发([r.byUserId], `你发起的合并申请${给发}没在 ${等待工作日} 个工作日内全部同意，已失效`, "要并请重新发起", "结束");
-        await 发(别的同意人, `合并申请${给别人}没在 ${等待工作日} 个工作日内全部同意，已失效`, "不用再处理", "结束");
+      case "失效": {
+        const 没同意话 = 读选择(r.choices).管理员判 ? "没有一位系统管理员同意" : "没在 " + 等待工作日 + " 个工作日内全部同意";
+        await 发([r.byUserId], `你发起的合并申请${给发}${没同意话}，已失效`, "要并请重新发起", "结束");
+        await 发(别的同意人, `合并申请${给别人}${没同意话}，已失效`, "不用再处理", "结束");
         return;
+      }
       case "作废":
         await 发([r.byUserId], `你发起的合并申请${给发}已作废`, 给发起人藏名(r, 一句 || "要并请重新发起"), "结束");
         await 发(别的同意人, `合并申请${给别人}已作废`, `${一句 ? `${一句}。` : ""}不用再处理`, "结束");
@@ -777,11 +905,37 @@ async function 申请通知(db: 库, requestId: string, 事: 申请事件, 谁: 
         return;
       case "合并":
         await 发([r.byUserId], `你发起的合并申请${给发}已合并`, `${撤回期限天数} 天内可在留下那家的「历史变更」里整单撤回`, "结束");
-        await 发(r.approvers.map((x) => x.userId), `你同意的合并申请${给别人}已合并`, `${撤回期限天数} 天内发起人可撤回`, "结束");
+        await 发(r.approvers.filter((x) => !读选择(r.choices).管理员判 || x.status === 同意状态.同意).map((x) => x.userId), `你同意的合并申请${给别人}已合并`, `${撤回期限天数} 天内发起人可撤回`, "结束");
         return;
     }
   } catch (e) {
     console.warn("[通知] 合并申请没发：", e instanceof Error ? e.message : e);
+  }
+}
+
+/**
+ * 第 3 次转系统管理员判时当场通知（E-431 ③ / E-432 2）：两家客户的负责人 + 这对客户 30 天内前两次点过「拒绝」的人，各一条（站内 + 飞书，同一人只一条），
+ * 去掉发起人（发起人自己知道）。发起人看不到被并那家时这条照常发给负责人（他们看得到自己的客户）；客户叫法同其他合并通知（快照名、notify 再兜打码）。
+ * 从不抛：通知不能连累已经发出的申请
+ */
+export async function 升级通知(db: 库, requestId: string, 发起人: 合并人): Promise<void> {
+  if (!企业版()) return;
+  try {
+    const r = await 看全部(() => db.entMergeRequest.findUnique({ where: { id: requestId }, include: { approvers: { select: { userId: true } } } }));
+    if (!r) return;
+    const 背 = await 看全部(() => 管理员判背景of(db, r));
+    // 申请里的系统管理员已经收到「要你同意」，不再重复收升级通知（同一人只一条）
+    const 已收 = new Set([发起人.id, ...r.approvers.map((x) => x.userId)]);
+    const 收 = [...new Set([...背.负责人们.map((x) => x.id), ...背.前拒绝.map((x) => x.人id)])].filter((u) => !已收.has(u));
+    if (!收.length) return;
+    const 两家 = 申请两家话(r, false);
+    await notify(收, {
+      kind: 合并申请通知种类, title: `合并申请已交系统管理员判：${两家}`,
+      body: `这对客户（${两家}）的第 ${窗口内最多张} 次合并申请已交系统管理员判，不是拒绝就结束了。`,
+      link: 合并申请页, key: `merge-req:${r.id}:升级`,
+    });
+  } catch (e) {
+    console.warn("[通知] 合并申请升级没发：", e instanceof Error ? e.message : e);
   }
 }
 
