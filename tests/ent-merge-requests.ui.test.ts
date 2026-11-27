@@ -11,7 +11,7 @@ let browser: Browser, bundle: string;
 const 长名 = "超长的测试客户名称用来看会不会撑破".repeat(2) + "出来的测试四"; // 40 个汉字
 const 动作 = `
   const 记=(...a)=>(window.__调??=[]).push(a);
-  export const 处理客户合并申请=async(id,结论,原因)=>{记('处理',id,结论,原因);return (window.__处理结果??{})[id]??{ok:true,状态:'待同意'}};
+  export const 处理客户合并申请=async(id,结论,原因,已问过)=>{记('处理',id,结论,原因,...(已问过===undefined?[]:[已问过]));return (window.__处理结果??{})[id]??{ok:true,状态:'待同意'}};
   export const 撤回客户合并申请=async(id)=>{记('撤申请',id);return {ok:true}};`;
 const plugin: Plugin = { name: "merge-requests", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
@@ -224,6 +224,31 @@ it("处理第 1 张后它仍在第 1 行（3 张里），不跳到表底；状�
     expect(await 行.nth(2).getByTestId("merge-request-agree").count()).toBe(1);
     const 发起 = 见(page, "merge-req-mine").locator(".ant-table-row");
     expect(await 发起.last().locator(".ant-tag").first().innerText()).toBe("已作废");
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("E-431 ③：第 3 次交系统管理员判：同意框列出前两次拒绝原因（空写未填）、勾选框写出两位负责人姓名，不勾确认同意点不了，勾了才带「已问过」提交", async () => {
+  const 管理员行 = {
+    id: "w9", 状态: "待同意", 原因: null, 留下: { id: "A9", 名: "示例客户乙" }, 并掉: { id: "B9", 名: "示例客户丙" }, 发起人: "示例同事A", 发起: 天后(-1), 到期: 天后(4), 结束: null, mergeId: null,
+    同意人: [人(我, "我", "待同意", { 凭: ["系统管理员"] })],
+    管理员判: { 负责人们: ["示例甲", "示例乙"], 前拒绝: [{ 人: "示例甲", 原因: "不是同一家", 时间: 天后(-20) }, { 人: "示例乙", 原因: "未填", 时间: 天后(-10) }] },
+  };
+  const { page, 错 } = await open(1280, { 等我: [管理员行] });
+  try {
+    await 见(page, "merge-req-wait").getByTestId("merge-request-agree").first().click();
+    await 框(page).waitFor();
+    const 前 = await 见(page, "merge-request-prev").innerText();
+    expect(前).toContain("示例甲 拒绝：不是同一家");
+    expect(前).toContain("示例乙 拒绝：未填");
+    expect(await 框(page).locator("label.mrq-asked").innerText()).toBe("已问过两位负责人（示例甲、示例乙）");
+    const 确认 = 见(page, "merge-request-agree-ok");
+    expect(await 确认.isDisabled()).toBe(true);
+    await 框(page).locator("label.mrq-asked").click();
+    expect(await 确认.isDisabled()).toBe(false);
+    await 确认.click();
+    await 见(page, "merge-request-done").first().waitFor();
+    expect(await 调(page)).toEqual([["处理", "w9", "同意", undefined, true]]);
     expect(错).toEqual([]);
   } finally { await page.close(); }
 });

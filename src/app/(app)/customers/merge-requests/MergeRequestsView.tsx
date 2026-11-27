@@ -2,7 +2,7 @@
 
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Card, Empty, Input, Modal, Table, Tag } from "antd";
+import { Alert, Button, Card, Checkbox, Empty, Input, Modal, Table, Tag } from "antd";
 import type { ColumnsType } from "antd/es/table";
 import { PageHead } from "@/components/ui";
 import InlineConfirm from "@/components/InlineConfirm";
@@ -90,6 +90,8 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
   const [开着, set开着] = useState<框 | null>(null);
   const [原因, set原因] = useState("");
   const [框错, set框错] = useState<string | null>(null);
+  /** 管理员判的申请同意前必勾「已问过两位负责人」（E-431 ③） */
+  const [问过, set问过] = useState(false);
 
   const 撤 = async (id: string) => {
     set忙(id);
@@ -108,6 +110,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
     set开着({ 种, 行 });
     set原因("");
     set框错(null);
+    set问过(false);
   };
   const 关 = () => {
     if (忙) return;
@@ -120,10 +123,11 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
     if (!开着 || 忙) return;
     const { 种, 行 } = 开着;
     if (种 === "拒绝" && (超了 || 没写)) return;
+    if (种 === "同意" && 行.管理员判 && !问过) return;
     set忙(行.id);
     set框错(null);
     const 后 = 种 === "同意" ? 同意后果(行, 我) : null;
-    const r = await 处理客户合并申请(行.id, 种, 种 === "拒绝" ? 原因.trim() : undefined).catch(() => ({ ok: false as const, error: 网断话 }));
+    const r = await 处理客户合并申请(行.id, 种, 种 === "拒绝" ? 原因.trim() : undefined, 种 === "同意" && 行.管理员判 ? 问过 : undefined).catch(() => ({ ok: false as const, error: 网断话 }));
     set忙(null);
     if (!r.ok) {
       set框错(r.error);
@@ -227,6 +231,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
 
   const 框行 = 开着?.行;
   const 后 = 开着?.种 === "同意" && 框行 ? 同意后果(框行, 我) : null;
+  const 需勾 = 开着?.种 === "同意" && !!框行?.管理员判;
 
   return (
     <div>
@@ -269,7 +274,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
             <Button onClick={关} disabled={!!忙}>取消</Button>
             {开着?.种 === "拒绝"
               ? <Button type="primary" danger loading={!!忙} disabled={超了 || 没写} onClick={() => void 定()} data-testid="merge-request-reject-ok">确认拒绝</Button>
-              : <Button type="primary" loading={!!忙} onClick={() => void 定()} data-testid="merge-request-agree-ok">确认同意</Button>}
+              : <Button type="primary" loading={!!忙} disabled={需勾 && !问过} onClick={() => void 定()} data-testid="merge-request-agree-ok">确认同意</Button>}
           </div>
         )}
       >
@@ -279,6 +284,19 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
               <div className="mrq-two-r"><span className="mrq-tg">留下</span>{一行(框行.留下.名)}</div>
               <div className="mrq-two-r"><span className="mrq-tg">并掉</span>{一行(框行.并掉.名)}</div>
             </div>
+            {开着?.种 === "同意" && 框行?.管理员判 && (
+              <>
+                <div className="mrq-prev" style={{ display: "flex", flexDirection: "column", gap: 4 }} data-testid="merge-request-prev">
+                  <p className="mrq-lbl">前几次的拒绝原因</p>
+                  {框行.管理员判.前拒绝.length
+                    ? 框行.管理员判.前拒绝.map((x, i) => <p key={i} className="mrq-mu" data-testid="merge-request-prev-item">{一行(`${时刻(x.时间)} ${x.人} 拒绝：${x.原因}`)}</p>)
+                    : <p className="mrq-mu">前几次没有拒绝的记录。</p>}
+                </div>
+                <Checkbox className="mrq-asked" data-testid="merge-request-asked" checked={问过} onChange={(e) => set问过(e.target.checked)} >
+                  {`已问过${框行.管理员判.负责人们.length > 1 ? "两位" : ""}负责人（${框行.管理员判.负责人们.join("、")}）`}
+                </Checkbox>
+              </>
+            )}
             {后 && (
               <>
                 <p className="mrq-eff" data-testid="merge-request-effect">{后.后果}</p>

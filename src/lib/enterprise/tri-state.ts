@@ -15,6 +15,7 @@ import type { 三态规则, 三态天数 } from "@/lib/project/org-rules";
 import type { 阶段 } from "@/lib/project/stage-dict";
 import type { 项目线 } from "./assign-line";
 import { 三态显示名 } from "./tri-state-label";
+import { 是工作日 } from "./cn-workday";
 
 /** 系统倒计时的起算日（X-19 / M-公海-30）：这天之前的事一律按这天算 */
 export const 三态起算日 = "2026-11-01";
@@ -225,13 +226,21 @@ export function 加月(d: string, n: number): string {
 }
 const 是周一 = (d: string) => new Date(转日(d)).getUTCDay() === 1;
 /**
- * 从 a（不含）到 b（含）有几个工作日（T6 / T12「15 个工作日」）。仓库里没有工作日 / 节假日工具，先按周一到周五算、不扣法定节假日、不补调休
+ * 离职交接 / 待交接「15 个工作日」改扣法定节假日（E-431 / E-432）的生效日（北京日期，12-02 上线）：
+ * 挂起日（起日）在这一天及以后的走 cn-workday 的 是工作日（扣法定节假日、认调休），更早的老交接照旧只数周一到周五。
+ * 只看起日、不改表：交接的 createdAt 就是挂起时刻，早于上线的老交接不会被追着改口径
+ */
+export const 交接节假日口径起日 = "2026-12-02";
+/**
+ * 从 a（不含）到 b（含）有几个工作日（T6 / T12「15 个工作日」）。a 是挂起日：
+ * a ≥ 交接节假日口径起日 → 用 cn-workday.是工作日（和合并申请 5 个工作日同一张表）；更早的（上线前挂起的）按周一到周五、不扣节假日
  */
 export function 工作日数(a: string, b: string): number {
+  const 新 = a >= 交接节假日口径起日;
   let n = 0;
   for (let d = 加天(a, 1); d <= b; d = 加天(d, 1)) {
-    const w = new Date(转日(d)).getUTCDay();
-    if (w !== 0 && w !== 6) n++;
+    const 上班 = 新 ? 是工作日(d) : ![0, 6].includes(new Date(转日(d)).getUTCDay());
+    if (上班) n++;
   }
   return n;
 }

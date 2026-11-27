@@ -804,7 +804,9 @@ describe("重发限制（E-428 阶段 3）：被拒 24 小时、30 天 3 次、�
     expect(JSON.parse(单.approvers[0].why)).toEqual(["系统管理员"]);
     expect(JSON.parse(单.choices)).toMatchObject({ 管理员判: true });
     await 等通知推完();
-    expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并申请通知种类 } })).toBe(丙前);
+    // 同事（丙，被并那家负责人）不收「要你同意」，只收一条升级通知（E-431 ③）
+    expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并申请通知种类 } })).toBe(丙前 + 1);
+    expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并申请通知种类, title: { contains: "已交系统管理员判" } } })).toBe(1);
     expect(await raw.entNotice.count({ where: { userId: 老板二.id, kind: 合并申请通知种类 } })).toBe(1);
     // 可改 1：给管理员的通知说明交系统管理员判、任一位同意即合并，不写「没全部同意」
     const 收 = await raw.entNotice.findFirstOrThrow({ where: { userId: 老板二.id, kind: 合并申请通知种类 } });
@@ -814,11 +816,19 @@ describe("重发限制（E-428 阶段 3）：被拒 24 小时、30 天 3 次、�
     expect(await 处理合并申请(prisma, id, 丙, "同意", { 现在: 小时(5) })).toMatchObject({ ok: false, error: "你不是这张合并申请要同意的人" });
     // 新建一个丁的项目：同意人重算会多出丁，管理员判不比同意人，照常合并
     await 项目(丁.id, a);
-    expect(await 处理合并申请(prisma, id, 老板, "同意", { 现在: 小时(5) })).toMatchObject({ ok: true, 状态: 申请状态.已合并 });
+    expect(await 处理合并申请(prisma, id, 老板, "同意", { 现在: 小时(5) })).toEqual({ ok: false, error: "同意前要先勾选已问过两位负责人" });
+    expect(await 处理合并申请(prisma, id, 老板, "同意", { 已问过: true, 现在: 小时(5) })).toMatchObject({ ok: true, 状态: 申请状态.已合并 });
+    // E-431 ③：谁勾的、什么时候勾的，写进两家客户的操作日志（同意那条的 summary / detail）
+    for (const entityId of [a, b]) {
+      const 志 = await raw.auditLog.findFirstOrThrow({ where: { action: "merge-approve", entityId } });
+      expect(志.userName).toBe("老板");
+      expect(志.summary).toMatch(/老板 在 .* 勾选了「已问过两位负责人（乙、丙）」/);
+      expect(JSON.parse(志.detail ?? "{}")).toMatchObject({ requestId: id, 已问过两位负责人: { 谁: 老板.id, 名: "老板", 时刻: 小时(5).toISOString() } });
+    }
     expect((await raw.customer.findUniqueOrThrow({ where: { id: b } })).deletedAt).not.toBeNull();
     await 等通知推完();
     expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并通知种类 } })).toBe(1);
-    expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并申请通知种类 } })).toBe(丙前);
+    expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并申请通知种类 } })).toBe(丙前 + 1);
     // 没点同意的另一位管理员不收「你同意的…已合并」
     expect(await raw.entNotice.count({ where: { userId: 老板二.id, title: { contains: "你同意的" } } })).toBe(0);
     // E-428 阶段 3 审查可改 4：管理员判时，名下有项目、本该同意的丁（不在申请名单里）合并后补收一条合并完成通知，且只一条
@@ -827,6 +837,49 @@ describe("重发限制（E-428 阶段 3）：被拒 24 小时、30 天 3 次、�
     const 后 = await 申请(id);
     expect(后.approvers.find((x) => x.userId === 老板二.id)!.status).toBe("不用处理");
     expect(后.approvers.find((x) => x.userId === 老板.id)!.status).toBe("同意");
+  });
+
+  it("E-431 ③：第 3 次发起当场通知两家负责人 + 前两次点过拒绝的人，同一人一条、不含发起人；管理员判页列出前两次拒绝原因（空 = 未填）", async () => {
+    const a = await 客户(乙.id), b = await 客户(丙.id);
+    const 戊 = await 造人("wu", "戊", "SALES");
+    await raw.entMember.create({ data: { userId: 戊.id, bizRole: "sales" } });
+    忘掉企业版范围();
+    // 第 1 张：丙拒绝写了原因；第 2 张：戊（项目负责人）拒绝，原因老数据空着
+    const i1 = await 发成(a, b, 乙, 小时(0));
+    expect((await 处理合并申请(prisma, i1, 丙, "拒绝", { 原因: "不是同一家", 现在: 小时(1) })).ok).toBe(true);
+    const i2 = await 发成(a, b, 乙, 小时(30));
+    await raw.entMergeApprover.updateMany({ where: { requestId: i2, userId: 丙.id }, data: { status: "拒绝", note: null, decidedAt: 小时(31) } });
+    await raw.entMergeApprover.create({ data: { requestId: i2, userId: 戊.id, status: "拒绝", note: "  ", decidedAt: 小时(31), why: "[]", projects: "[]" } });
+    await raw.entMergeRequest.update({ where: { id: i2 }, data: { status: 申请状态.已拒绝, endedAt: 小时(31) } });
+    await 等通知推完();
+    const 升级前 = await raw.entNotice.count({ where: { dedupeKey: { endsWith: ":升级" } } });
+    expect(升级前).toBe(0);
+    const i3 = await 发成(a, b, 乙, 小时(60));
+    await 等通知推完();
+    const 升级 = await raw.entNotice.findMany({ where: { dedupeKey: `merge-req:${i3}:升级` } });
+    // 乙（发起人，也是留下那家负责人）不收；丙（被并那家负责人、也是前两次拒绝人）只一条；戊（前一次拒绝人）一条
+    expect(升级.map((x) => x.userId).sort()).toEqual([丙.id, 戊.id].sort());
+    expect(升级[0].body).toMatch(/^这对客户（「.+」并进「.+」）的第 3 次合并申请已交系统管理员判，不是拒绝就结束了。$/);
+    // 管理员判页：前两次拒绝人 + 原因，空的写「未填」；负责人姓名去重
+    登录.人 = 老板;
+    const 等 = await 等我同意的合并申请();
+    expect(等).toHaveLength(1);
+    expect(等[0].管理员判).toMatchObject({ 负责人们: expect.arrayContaining(["乙", "丙"]) });
+    expect(等[0].管理员判!.前拒绝.map((x) => [x.人, x.原因]).sort()).toEqual([["丙", "不是同一家"], ["丙", "未填"], ["戊", "未填"]].sort());
+  });
+
+  it("E-431 ③：管理员判不勾「已问过」服务端拒，勾了能并；普通申请不受影响", async () => {
+    const { a, b } = await 造到第三张();
+    const id = await 发成(a, b, 乙, 小时(4));
+    登录.人 = 老板;
+    expect(await 处理客户合并申请(id, "同意")).toEqual({ ok: false, error: "同意前要先勾选已问过两位负责人" });
+    expect(await 处理客户合并申请(id, "同意", undefined, false)).toEqual({ ok: false, error: "同意前要先勾选已问过两位负责人" });
+    expect((await 申请(id)).status).toBe(申请状态.待同意);
+    expect(await 处理客户合并申请(id, "同意", undefined, true)).toMatchObject({ ok: true, 状态: 申请状态.已合并 });
+    // 普通申请：不带已问过也能同意
+    const c = await 客户(乙.id), d = await 客户(丙.id);
+    const 普 = await 发成(c, d, 乙, 小时(100));
+    expect(await 处理合并申请(prisma, 普, 丙, "同意", { 现在: 小时(101) })).toMatchObject({ ok: true, 状态: 申请状态.已合并 });
   });
 
   it("发起人看不到被并那家：被拒后、已发满时，重发限制写 并掉看不到话，不露往来（可改 7）", async () => {
