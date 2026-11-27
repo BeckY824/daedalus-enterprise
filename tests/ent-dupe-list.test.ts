@@ -1,6 +1,6 @@
 /**
  * 疑似重复清单（12-15 第三批 C，P-合并-06；lib/enterprise/dupe-groups.ts）：
- *   - 成组口径：名键（空白、全半角、大小写不算）、不足两个字不比、业务线都填了且不同不成对、两家都在公海不算（D 再列）、标了的对不列
+ *   - 成组口径：名键（空白、全半角、大小写不算）、不足两个字不比、业务线都填了且不同不成对、两家都在公海的另成公海组（D，只系统管理员）、标了的对不列
  *   - 谁看哪些：负责人只看自己名下有份的组（销售管理不看下属的），系统管理员看全部
  *   - 标 / 撤「不是同一个人」：两家各一条操作日志；撤不删行、打上谁何时撤；再标清空；只读三类、只看某人、不是自己名下的拦
  *   - 客户详情那一行提示的数、「合并」默认留下 / 并进来哪家、同事那家标要申请
@@ -80,8 +80,8 @@ describe("成组口径（纯函数）", () => {
     expect(成组([行("c1", "星河展具", { bizLine: "内贸" }), 行("c2", "星河展具")], new Set(), 看)).toHaveLength(1);
   });
 
-  it("两家都在公海的不算（公海组下一单 D）；一家在公海照样成对", () => {
-    expect(成组([行("c1", "星河展具", { 在公海: true }), 行("c2", "星河展具", { 在公海: true })], new Set(), 看)).toHaveLength(0);
+  it("两家都在公海的不进普通组（系统管理员另成公海组，见 ent-dupe-pool.test.ts）；一家在公海照样成对", () => {
+    expect(成组([行("c1", "星河展具", { 在公海: true }), 行("c2", "星河展具", { 在公海: true })], new Set(), 看).filter((g) => !g.公海组)).toHaveLength(0);
     expect(成组([行("c1", "星河展具", { 在公海: true }), 行("c2", "星河展具")], new Set(), 看)).toHaveLength(1);
   });
 
@@ -300,7 +300,7 @@ describe("名键底数据缓存（C 审查建议 2、3、9）", () => {
     await 隔一毫秒();
     await raw.customer.update({ where: { id: a3 }, data: { deletedAt: new Date() } });
     expect(await 本客户疑似重复数(prisma, 甲, org, a1)).toBe(1);
-    // 两家都进公海：这对不再列（公海组下一单 D）
+    // 两家都进公海：这对不再列给负责人（管理员的公海组见 ent-dupe-pool.test.ts）
     await 进公海(a1);
     await 进公海(a2);
     expect(await 名们(甲)).toEqual([]);
@@ -421,7 +421,7 @@ describe("名键底数据缓存（C 审查建议 2、3、9）", () => {
     await raw.customer.createMany({ data: Array.from({ length: 40 }, (_, i) => ({ name: "粗筛银河", phone: "", salesOwnerId: i < 2 ? 甲.id : 乙.id, createdAt: new Date(Date.UTC(2026, 0, 2, 0, i)) })) });
     const g = (await 页(甲)).组们[0];
     expect(g).toMatchObject({ 太多: true, 组名: "粗筛银河", 家数: 40, 们: [], 留下: "", 并掉: "", 对们: [] });
-    expect(Object.keys(g).sort()).toEqual(["家数", "们", "对们", "并掉", "留下", "组名", "键", "太多"].sort());
+    expect(Object.keys(g).sort()).toEqual(["家数", "们", "对们", "并掉", "留下", "组名", "键", "太多", "公海组", "先领", "能并"].sort());
     expect(JSON.stringify(g)).not.toMatch(/customerNo|NO\.|项目数|建档|负责人/);
   });
 

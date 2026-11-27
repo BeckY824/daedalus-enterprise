@@ -3,7 +3,7 @@ import { 后售项目们 } from "@/lib/project/after-sale";
 import { 负责人显示名 } from "@/lib/pool";
 import { notFound, redirect } from "next/navigation";
 import { 并入去向, 并入后去处, 并入提示 } from "@/lib/enterprise/customer-merge";
-import { 本客户疑似重复数 } from "@/lib/enterprise/dupe-groups";
+import { 本客户疑似重复 } from "@/lib/enterprise/dupe-groups";
 import { 收藏了吗 } from "@/lib/favorites";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 历史负责人of, 我放出去的公海客户 } from "@/lib/owner-log-db";
@@ -156,7 +156,7 @@ export default async function CustomerDetailPage({
     sourceLead, aiEnabled, 已收藏, 换负责人记录, 旺旺们, 项目们, 参与项目们, 只读, 客户状态选项,
     联系人分类附件, 关联们, 号码种类, 分配方式选项, 客户类型选项, 规则, 联系人附件数,
     可改沟通, 可删沟通, 客户状态字典, 职务选项, 客户属性选项, 字典释义, 项目区,
-    三态, 抬头节点, 沟通方式们, 发起主体们, 上次背调, 历史摘要, 疑似重复数,
+    三态, 抬头节点, 沟通方式们, 发起主体们, 上次背调, 历史摘要, 疑似重复,
   ] = await Promise.all([
     // 演示区是公开的，同一份数据所有访客共用：号码一律打码。自己部署的实例不受影响——销售要照着这个号打电话。
     号码脱敏器(),
@@ -234,7 +234,7 @@ export default async function CustomerDetailPage({
     企 ? 项目区P.then((z) => 历史变更摘要(customer.id, z?.页签们.map((t) => t.id) ?? [])) : null,
     // 顶上「还有 N 家同名」提示（12-15 C 审查建议 2）：原来 await 在 JSX 属性里排在大 Promise.all 后面串行；这里和上面各句并行，
     // 名键底数据走进程内短缓存（dupe-groups.ts 名键底数据，指纹一句 SQL），查询条数不多于原来
-    企 ? 权限组织().then((org) => 本客户疑似重复数(prisma, me, org, customer.id)) : 0,
+    企 ? 权限组织().then((org) => 本客户疑似重复(prisma, me, org, customer.id)) : { 数: 0, 只公海: false },
   ]);
   const 冷项目 = 三态?.冷 ?? {};
   if (项目区) 项目区.页签们 = 项目区.页签们.map((t) => (冷项目[t.id] != null ? { ...t, 冷天数: 冷项目[t.id] } : t));
@@ -298,7 +298,8 @@ export default async function CustomerDetailPage({
         return { 客户: 管 || 本人, 联系人: 管 || 本人 };
       })() : null}
       并入话={企 && typeof sp.merged === "string" ? await 并入提示(prisma, customer.id, sp.merged) : null}
-      疑似重复数={疑似重复数}
+      疑似重复数={疑似重复.数}
+      疑似重复只公海={疑似重复.只公海}
       历史变更={历史摘要 ? <HistoryChanges customerId={customer.id} 摘要={历史摘要} 当前项目={项目区?.当前?.p.id ?? null} 客户名={[customer.name.trim() || customer.shortName, 客户编号文字(customer.customerNo)].filter(Boolean).join(" · ")} /> : null}
       sourceLead={sourceLead}
       users={users}

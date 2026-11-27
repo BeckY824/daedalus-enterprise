@@ -11,8 +11,8 @@ import { requireUser } from "@/lib/auth";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import {
-  疑似重复页, 标不是同一个人, 撤销不是同一个人, 已标的对, 一组最多,
-  type 清单页, type 已标一对,
+  疑似重复页, 标不是同一个人, 撤销不是同一个人, 已标的对, 一组最多, 公海对能不能并,
+  type 清单页, type 已标一对, type 清单栏,
 } from "@/lib/enterprise/dupe-groups";
 
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -24,19 +24,31 @@ const 是id们 = (v: unknown, 最多: number): v is string[] =>
 const 刷新 = () => revalidatePath("/customers/dupes");
 
 /** 清单的一页（换页用；第一页页面直接取） */
-export async function 疑似重复清单(页: number): Promise<结果<{ 清单: 清单页 }>> {
+export async function 疑似重复清单(页: number, 栏: 清单栏 = "普通"): Promise<结果<{ 清单: 清单页 }>> {
   const me = await requireUser();
   if (!企业版()) return 不是企业版;
-  if (typeof 页 !== "number" || !Number.isFinite(页)) return 坏参数;
-  return { ok: true, 清单: await 疑似重复页(prisma, me, await 权限组织(), 页) };
+  if (typeof 页 !== "number" || !Number.isFinite(页) || (栏 !== "普通" && 栏 !== "公海")) return 坏参数;
+  return { ok: true, 清单: await 疑似重复页(prisma, me, await 权限组织(), 页, 栏) };
+}
+
+/**
+ * 清单上点「合并」前核一遍（12-15 D，P-合并-07）：两家都在公海的只有系统管理员能并，普通角色调用直接拒；一家公海一家有主回「先领出来再并」。
+ * 过了才开合并框（框里预览 / 执行还会在 customer-merge 再判一次）
+ */
+export async function 核对清单合并(留下id: string, 并掉id: string): Promise<结果> {
+  const me = await requireUser();
+  if (!企业版()) return 不是企业版;
+  if (!是id们([留下id, 并掉id], 2) || 留下id === 并掉id) return 坏参数;
+  const 话 = await 公海对能不能并(prisma, me, await 权限组织(), 留下id, 并掉id);
+  return 话 ? { ok: false, error: 话 } : { ok: true };
 }
 
 /** 一组标「不是同一个人」：传那一行的几家客户 id；回标了的几对（撤销条上的「撤销」用） */
-export async function 标为不是同一个人(ids: string[]): Promise<结果<{ 对们: string[] }>> {
+export async function 标为不是同一个人(ids: string[], 栏?: "普通" | "公海"): Promise<结果<{ 对们: string[] }>> {
   const me = await requireUser();
   if (!企业版()) return 不是企业版;
   if (!是id们(ids, 一组最多)) return 坏参数;
-  const r = await 标不是同一个人(prisma, me, await 权限组织(), ids);
+  const r = await 标不是同一个人(prisma, me, await 权限组织(), ids, 栏 === "公海" ? "公海" : "普通");
   if (r.ok) 刷新();
   return r;
 }

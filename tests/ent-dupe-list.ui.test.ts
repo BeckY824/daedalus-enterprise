@@ -16,11 +16,16 @@ const 动作 = `
 const 标动作 = `
   const 记=(...a)=>(window.__调??=[]).push(a);
   export const 标为不是同一个人=async(ids)=>{记('标',ids);return {ok:true,对们:['a__b']}};
-  export const 撤销不是同一个人标记=async(ids)=>{记('撤标',ids);return {ok:true,撤了:ids.length}};`;
+  export const 撤销不是同一个人标记=async(ids)=>{记('撤标',ids);return {ok:true,撤了:ids.length}};
+  export const 核对清单合并=async(a,b)=>{记('核对',a,b);return window.__核对?.(a,b)??{ok:true}};`;
+const 池动作 = `
+  const 记=(...a)=>(window.__调??=[]).push(a);
+  export const 领取=async(ids)=>{记('领取',ids);return window.__领取?.(ids)??{ok:true,updated:ids.length,unchanged:0,没权限:0}};`;
 const plugin: Plugin = { name: "dupe-list", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, a => ({ path: a.path, namespace: "fixture", pluginData: code }));
   stub(/(^|\/)merge-actions$/, 补全动作桩("src/app/(app)/customers/merge-actions.ts", 动作));
   stub(/(^|\/)dupe-actions$/, 补全动作桩("src/app/(app)/customers/dupe-actions.ts", 标动作));
+  stub(/(^|\/)pool-actions$/, 补全动作桩("src/app/(app)/customers/pool-actions.ts", 池动作));
   stub(/^next\/navigation$/, "export const useRouter=()=>({refresh(){(window.__调??=[]).push(['刷新'])},push(u){window.__去=u},replace(){},prefetch(){}});export const usePathname=()=>'/customers/dupes';");
   stub(/^next\/link$/, "import React from 'react';export default function Link({href,onClick,prefetch,unstable_dynamicOnHover,children,...p}){return React.createElement('a',{...p,href,onClick:e=>{onClick?.(e);if(!e.defaultPrevented){e.preventDefault();window.__去=href}}},children)}");
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
@@ -30,7 +35,7 @@ beforeAll(async () => {
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import DupesView from '@/app/(app)/customers/dupes/DupesView';import {MergePairDialog} from '@/app/(app)/customers/[id]/MergeHost';
     import {切换视图Provider} from '@/components/ViewAsContext';
-    window.__渲清单=(p)=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><切换视图Provider value={!!p.切换}><DupesView 清单={p.清单} 已标={p.已标??null} 只读原因={p.只读原因??null}/></切换视图Provider></App></ConfigProvider>);
+    window.__渲清单=(p)=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><切换视图Provider value={!!p.切换}><DupesView 清单={p.清单} 已标={p.已标??null} 只读原因={p.只读原因??null} 栏={p.栏??"普通"}/></切换视图Provider></App></ConfigProvider>);
     window.__渲合并框=()=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><MergePairDialog 留下={{id:'a',name:'同名测试客户'}} 并掉={{id:'b',name:'同名测试客户',编号:'NO.00012',负责人:'QA'}} 关={()=>{window.__关=true}}/></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, loader: { ".css": "empty" }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -47,10 +52,10 @@ const 预览 = {
 const 成员 = (id: string, 编号: string, 我的 = true) => ({ id, 名: "同名测试客户", 编号, 负责人: "QA", 在公海: false, 我的, 建档: 1_700_000_000_000, 项目数: 2, 要申请: false });
 const 清单 = {
   组们: [
-    { 键: "g1", 组名: "同名测试客户", 家数: 2, 们: [成员("a", "NO.00001"), 成员("b", "NO.00012")], 留下: "a", 并掉: "b", 对们: ["a__b"], 太多: false },
-    { 键: "g2", 组名: "同名测试客户", 家数: 3, 们: [成员("c", "NO.00020"), 成员("d", "NO.00021"), 成员("e", "NO.00022")], 留下: "c", 并掉: "d", 对们: ["c__d", "c__e", "d__e"], 太多: false },
+    { 键: "g1", 组名: "同名测试客户", 家数: 2, 们: [成员("a", "NO.00001"), 成员("b", "NO.00012")], 留下: "a", 并掉: "b", 对们: ["a__b"], 太多: false, 公海组: false, 先领: [], 能并: true },
+    { 键: "g2", 组名: "同名测试客户", 家数: 3, 们: [成员("c", "NO.00020"), 成员("d", "NO.00021"), 成员("e", "NO.00022")], 留下: "c", 并掉: "d", 对们: ["c__d", "c__e", "d__e"], 太多: false, 公海组: false, 先领: [], 能并: true },
   ],
-  共: 2, 页: 1, 每页: 20, 管: false,
+  共: 2, 页: 1, 每页: 20, 管: false, 公海共: 0,
 };
 const 已标 = [{ id: "x__y", 两家: [{ id: "x", 名: "已标测试客户", 负责人: "QA", 我的: true }, { id: "y", 名: "已标测试客户", 负责人: null, 我的: false }], 谁标: "QA", 标于: 1_700_000_000_000 }];
 
@@ -134,7 +139,7 @@ it("三家及以上点「不是同一个人」先弹确认（写明两两都不�
 }, 60_000);
 
 it("超 30 家的组折叠成「同名 N 家，太多请逐家处理」，不列成员、没有合并和不是同一个人按钮", async () => {
-  const { page, 错 } = await open(1280, "清单", { 清单: { 组们: [{ 键: "big", 组名: "同名测试客户", 家数: 31, 们: [], 留下: "", 并掉: "", 对们: [], 太多: true }], 共: 1, 页: 1, 每页: 20, 管: false } });
+  const { page, 错 } = await open(1280, "清单", { 清单: { 组们: [{ 键: "big", 组名: "同名测试客户", 家数: 31, 们: [], 留下: "", 并掉: "", 对们: [], 太多: true, 公海组: false, 先领: [], 能并: false }], 共: 1, 页: 1, 每页: 20, 管: false, 公海共: 0 } });
   try {
     await page.getByTestId("dupe-group-toomany").waitFor();
     expect(await page.getByTestId("dupe-group-toomany").innerText()).toContain("同名 31 家，太多请逐家处理");
@@ -147,8 +152,8 @@ it("超 30 家的组折叠成「同名 N 家，太多请逐家处理」，不列
 }, 60_000);
 
 it("三家里只标部分对时，确认文案写「会标 M 对」而不是两两全对", async () => {
-  const 组 = { 键: "p", 们: [成员("c", "NO.1"), 成员("d", "NO.2"), 成员("e", "NO.3")], 留下: "c", 并掉: "d", 对们: ["c__e", "d__e"], 太多: false };
-  const { page, 错 } = await open(1280, "清单", { 清单: { 组们: [组], 共: 1, 页: 1, 每页: 20, 管: false } });
+  const 组 = { 键: "p", 们: [成员("c", "NO.1"), 成员("d", "NO.2"), 成员("e", "NO.3")], 留下: "c", 并掉: "d", 对们: ["c__e", "d__e"], 太多: false, 公海组: false, 先领: [], 能并: true };
+  const { page, 错 } = await open(1280, "清单", { 清单: { 组们: [组], 共: 1, 页: 1, 每页: 20, 管: false, 公海共: 0 } });
   try {
     await page.getByTestId("dupe-group").first().waitFor();
     await page.getByTestId("dupe-not-same").first().click();
@@ -222,4 +227,85 @@ it("390 宽：一组一张卡（上下排开）、按钮各占一行里的半边
       expect(错).toEqual([]);
     } finally { await page.close(); }
   }
+}, 60_000);
+
+const 池成员 = (id: string, 编号: string) => ({ ...成员(id, 编号, false), 负责人: null, 在公海: true });
+const 管清单 = (组们: unknown[], 共: number, 公海共: number) => ({ 组们, 共, 页: 1, 每页: 20, 管: true, 公海共 });
+
+it("公海组（12-15 D）：只有系统管理员摆「公海组」页签；公海组行写「都在公海」、有合并；点合并先核对再开框；核对被拒时写原话、不开框", async () => {
+  const 池组 = { 键: "p1", 组名: "同名测试客户", 家数: 2, 们: [池成员("p", "NO.00031"), 池成员("q", "NO.00032")], 留下: "p", 并掉: "q", 对们: ["p__q"], 太多: false, 公海组: true, 先领: [], 能并: true };
+  const { page, 错 } = await open(1280, "清单", { 清单: 管清单([池组], 1, 1), 栏: "公海" });
+  try {
+    await page.getByTestId("dupe-group").waitFor();
+    const 页签 = await page.locator(".dp-tabs").innerText();
+    expect(页签).toContain("公海组 1 组");
+    expect(await page.getByTestId("dupe-pool-tag").innerText()).toBe("都在公海");
+    expect(await page.getByTestId("dupe-claim-first").count()).toBe(0);
+    await page.evaluate(() => { (window as unknown as { __核对: () => unknown }).__核对 = () => ({ ok: false, error: "两家都在公海里，只有系统管理员能合并" }); });
+    await page.getByTestId("dupe-merge").click();
+    await page.getByRole("alert").waitFor();
+    expect(await page.getByRole("alert").innerText()).toBe("两家都在公海里，只有系统管理员能合并");
+    expect(await page.locator(".mrg-modal").count()).toBe(0);
+    await page.evaluate(() => { (window as unknown as { __核对: unknown }).__核对 = undefined; });
+    await page.getByTestId("dupe-merge").click();
+    await page.getByTestId("merge-row").first().waitFor();
+    expect((await 调(page)).filter((x) => x[0] === "核对")).toEqual([["核对", "p", "q"], ["核对", "p", "q"]]);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("非管理员的清单没有「公海组」页签", async () => {
+  const { page, 错 } = await open(1280, "清单");
+  try {
+    await page.getByTestId("dupe-group").first().waitFor();
+    expect(await page.locator(".dp-tabs").innerText()).not.toContain("公海组");
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);
+
+it("一家公海一家有主：行上写「公海里那家先领出来再并」、不给合并；负责人有「去领取」、点了调领取；被拒写原话；管理员（没有自己那家）只看到提示", async () => {
+  const 组 = { 键: "m1", 组名: "同名测试客户", 家数: 2, 们: [成员("a", "NO.00001"), 池成员("b", "NO.00012")], 留下: "a", 并掉: "b", 对们: ["a__b"], 太多: false, 公海组: false, 先领: ["b"], 能并: false };
+  const { page, 错 } = await open(1280, "清单", { 清单: { ...清单, 组们: [组], 共: 1 } });
+  try {
+    await page.getByTestId("dupe-claim-first").waitFor();
+    expect(await page.getByTestId("dupe-claim-first").innerText()).toContain("公海里那家先领出来再并");
+    expect(await page.getByTestId("dupe-merge").count()).toBe(0);
+    expect(await page.getByTestId("dupe-not-same").count()).toBe(1);
+    await page.evaluate(() => { (window as unknown as { __领取: () => unknown }).__领取 = () => ({ ok: false, error: "你是这家的原负责人，不能领回" }); });
+    await page.getByTestId("dupe-claim").click();
+    await page.getByRole("alert").waitFor();
+    expect(await page.getByRole("alert").innerText()).toBe("你是这家的原负责人，不能领回");
+    await page.evaluate(() => { (window as unknown as { __领取: unknown }).__领取 = undefined; });
+    await page.getByTestId("dupe-claim").click();
+    await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).some((x) => x[0] === "刷新"));
+    expect((await 调(page)).filter((x) => x[0] === "领取")).toEqual([["领取", ["b"]], ["领取", ["b"]]]);
+  } finally { await page.close(); }
+  // 管理员：这组里没有他自己的客户，只看到提示、没有去领取
+  const 管 = await open(1280, "清单", { 清单: { ...管清单([{ ...组, 们: [成员("a", "NO.00001", false), 池成员("b", "NO.00012")] }], 1, 0) } });
+  try {
+    await 管.page.getByTestId("dupe-claim-first").waitFor();
+    expect(await 管.page.getByTestId("dupe-claim").count()).toBe(0);
+    expect(await 管.page.getByTestId("dupe-merge").count()).toBe(0);
+    expect(错).toEqual([]);
+    expect(管.错).toEqual([]);
+  } finally { await 管.page.close(); }
+}, 60_000);
+
+it("公海栏（12-15 D3a 审查）：翻页的地址带 tab=pool（不跳回普通栏）；普通栏翻页不带；公海「太多」组的淡链去 /pool?keyword=，普通组仍 /customers?keyword=", async () => {
+  const 池组们 = Array.from({ length: 2 }, (_, i) => ({ 键: `pp${i}`, 组名: "同名测试客户", 家数: 2, 们: [池成员(`p${i}a`, "NO.1"), 池成员(`p${i}b`, "NO.2")], 留下: `p${i}a`, 并掉: `p${i}b`, 对们: [`p${i}a__p${i}b`], 太多: false, 公海组: true, 先领: [], 能并: true }));
+  const 太多池组 = { 键: "pbig", 组名: "同名测试客户", 家数: 31, 们: [], 留下: "", 并掉: "", 对们: [], 太多: true, 公海组: true, 先领: [], 能并: false };
+  const { page, 错 } = await open(1280, "清单", { 清单: { ...管清单([...池组们, 太多池组], 45, 45), 每页: 20 }, 栏: "公海" });
+  try {
+    await page.getByTestId("dupe-toomany-link").waitFor();
+    expect(await page.getByTestId("dupe-toomany-link").getAttribute("href")).toBe(`/pool?keyword=${encodeURIComponent("同名测试客户")}`);
+    await page.locator(".dp-pager").getByTitle("2").click();
+    expect(await page.evaluate(() => (window as unknown as { __去?: string }).__去)).toBe("/customers/dupes?tab=pool&page=2");
+  } finally { await page.close(); }
+  const 普 = await open(1280, "清单", { 清单: { ...清单, 共: 45 } });
+  try {
+    await 普.page.locator(".dp-pager").waitFor();
+    await 普.page.locator(".dp-pager").getByTitle("2").click();
+    expect(await 普.page.evaluate(() => (window as unknown as { __去?: string }).__去)).toBe("/customers/dupes?page=2");
+    expect(错).toEqual([]);
+  } finally { await 普.page.close(); }
 }, 60_000);

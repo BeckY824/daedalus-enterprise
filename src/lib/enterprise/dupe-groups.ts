@@ -6,7 +6,8 @@
  * 标了「不是同一个人」的一对（CustomerNotDupe，撤销了的不算）不再算一对；一组里一对都不剩就不列。
  *
  * 谁看哪些（E-363 四③）：负责人只看自己名下有份的组——只算有一家是我负责、不在公海的那几对；系统管理员看全部。
- * 不另开上级视图（销售管理、条线总管理不看下属的组）。两家都在公海的那对（公海组，P-合并-07）下一单 D 才列，这里先不算。
+ * 不另开上级视图（销售管理、条线总管理不看下属的组）。两家都在公海的那对（公海组，P-合并-07，12-15 D）只给系统管理员、单独成一栏（组上 公海组: true），其他角色看不到；
+ * 一家在公海、一家有负责人的那对照旧列给有负责人那家的负责人，但清单上不给「合并」（先把公海那家领出来再并，组上 先领 列出要领的那几家）。
  * 清单里以前建下的同名不补记撞号次数（E-363 四④）：这里只读，不写撞号台账。
  *
  * 写（标、撤）：只读角色、设了「只看某人」的只看不改；负责人只能标 / 撤自己名下有份的那几对。每次标、撤都在两家客户上各记一条操作日志（not-dupe / not-dupe-undo），
@@ -37,7 +38,7 @@ export function 对id(a: string, b: string): string {
 
 export type 成员行 = { id: string; name: string; bizLine: string | null; salesOwnerId: string | null; 在公海: boolean; 建档: number };
 /** 太多：同名家数（非管理员先粗筛，见 粗筛）超过 一组最多 的名键不两两比（O(k²)），整组列出、对们为空，界面只提示逐家处理（12-15 C 复审 C3 建议 C） */
-export type 组 = { 键: string; 们: 成员行[]; 对们: string[]; 太多?: boolean };
+export type 组 = { 键: string; 们: 成员行[]; 对们: string[]; 太多?: boolean; /** 两家都在公海的组（只系统管理员看到，单独一栏） */ 公海组?: boolean };
 
 const 有值 = (v: string | null | undefined) => !!v && v.trim() !== "";
 const 业务线冲突 = (a: 成员行, b: 成员行) => 有值(a.bizLine) && 有值(b.bizLine) && a.bizLine!.trim() !== b.bizLine!.trim();
@@ -52,7 +53,7 @@ function 粗筛(们: 成员行[], 标着: Set<string>, 我: string): 成员行[]
 }
 
 /**
- * 成组（纯函数，测试直接调）：同名键的几家里，两两看是不是要列的一对——业务线不冲突、没标着「不是同一个人」、不是两家都在公海（D 再列）；
+ * 成组（纯函数，测试直接调）：同名键的几家里，两两看是不是要列的一对——业务线不冲突、没标着「不是同一个人」、两家都在公海的对不进普通组（系统管理员另成「公海组」）；
  * 不是系统管理员的只算有一家是我的那几对。一组只列出现在这些对里的几家，一对都不剩的组不列。
  * 组按组里最晚建档的那家倒排（新冒出来的重复先看），同一刻按名键
  */
@@ -73,30 +74,36 @@ export function 成组(行们: 成员行[], 标着: Set<string>, 看: { 管: boo
       if (!看.管) 候 = 粗筛(们, 标着, 看.我);
       if (候.length < 2) continue;
       if (候.length > 一组最多) {
-        // 粗筛后仍超限才「太多」：不两两比。看得到的条件放宽成「有一家不在公海（管理员），不是管理员再要有一家是我的」（粗筛后必有我的）
-        if (候.every((r) => r.在公海)) continue;
+        // 粗筛后仍超限才「太多」：不两两比。全在公海的只有系统管理员走到这（粗筛后非管理员必有我的），列成公海组；否则按普通太多组
+        if (候.every((r) => r.在公海)) {
+          出.push({ 键, 们: [...候].sort((x, y) => x.建档 - y.建档 || (x.id < y.id ? -1 : 1)), 对们: [], 太多: true, 公海组: true });
+          continue;
+        }
         出.push({ 键, 们: [...候].sort((x, y) => x.建档 - y.建档 || (x.id < y.id ? -1 : 1)), 对们: [], 太多: true });
         continue;
       }
     }
-    const 对们: string[] = [];
-    const 在 = new Set<string>();
+    const 对们: string[] = [], 池对们: string[] = [];
+    const 在 = new Set<string>(), 池在 = new Set<string>();
     for (let i = 0; i < 候.length; i++) {
       for (let j = i + 1; j < 候.length; j++) {
         const a = 候[i], b = 候[j];
-        if (a.在公海 && b.在公海) continue;
+        const 两家公海 = a.在公海 && b.在公海;
+        // 公海对只给系统管理员，单独成「公海组」
+        if (两家公海 && !看.管) continue;
         if (业务线冲突(a, b)) continue;
         if (!看.管 && !我的(a, 看.我) && !我的(b, 看.我)) continue;
         const id = 对id(a.id, b.id);
         if (标着.has(id)) continue;
-        对们.push(id); 在.add(a.id); 在.add(b.id);
+        if (两家公海) { 池对们.push(id); 池在.add(a.id); 池在.add(b.id); } else { 对们.push(id); 在.add(a.id); 在.add(b.id); }
       }
     }
-    if (!对们.length) continue;
-    出.push({ 键, 们: 候.filter((r) => 在.has(r.id)).sort((x, y) => x.建档 - y.建档 || (x.id < y.id ? -1 : 1)), 对们 });
+    const 排 = (rs: 成员行[]) => rs.sort((x, y) => x.建档 - y.建档 || (x.id < y.id ? -1 : 1));
+    if (对们.length) 出.push({ 键, 们: 排(候.filter((r) => 在.has(r.id))), 对们 });
+    if (池对们.length) 出.push({ 键, 们: 排(候.filter((r) => 池在.has(r.id))), 对们: 池对们, 公海组: true });
   }
   const 最晚 = (g: 组) => Math.max(...g.们.map((r) => r.建档));
-  return 出.sort((x, y) => 最晚(y) - 最晚(x) || (x.键 < y.键 ? -1 : x.键 > y.键 ? 1 : 0));
+  return 出.sort((x, y) => 最晚(y) - 最晚(x) || (x.键 < y.键 ? -1 : x.键 > y.键 ? 1 : 0) || Number(!!x.公海组) - Number(!!y.公海组));
 }
 
 /** 裸 SQL 回的时间可能是毫秒数（bigint）也可能是字符串：一律转成毫秒 */
@@ -222,8 +229,18 @@ export type 清单成员 = {
   要申请: boolean;
 };
 /** 太多的组：们 为空、留下 / 并掉 为空串，只给 组名 和 家数（不带每家编号、负责人、项目数、建档；C5 必改 1）；普通组的 组名 是组里最早建档那家的全称 */
-export type 清单组 = { 键: string; 组名: string; 家数: number; 们: 清单成员[]; 留下: string; 并掉: string; 对们: string[]; 太多: boolean };
-export type 清单页 = { 组们: 清单组[]; 共: number; 页: number; 每页: number; 管: boolean };
+export type 清单组 = {
+  键: string; 组名: string; 家数: number; 们: 清单成员[]; 留下: string; 并掉: string; 对们: string[]; 太多: boolean;
+  /** 公海组（两家都在公海，只系统管理员看到）：「合并」只对系统管理员亮 */
+  公海组: boolean;
+  /** 一家在公海、一家有负责人时要先领出来的公海那几家（id）；非空时这行提示「公海里那家先领出来再并」并带「去领取」，默认那一对是这种就不给「合并」 */
+  先领: string[];
+  /** 默认那一对（留下 / 并掉）清单上能不能点「合并」：一家在公海、一家不在的不能（先领出来再并） */
+  能并: boolean;
+};
+export type 清单栏 = "普通" | "公海";
+/** 共 = 当前栏的组数；公海共 = 系统管理员那一栏「公海组」的组数（别的角色恒为 0，不露面） */
+export type 清单页 = { 组们: 清单组[]; 共: number; 页: number; 每页: number; 管: boolean; 公海共: number };
 
 /**
  * 「合并」默认哪家留下、哪家并进来（框里还能「换一家」）：留下的先挑我负责的（系统管理员不挑）、不在公海的，再挑项目多的、建档早的；
@@ -237,9 +254,10 @@ function 挑留并(们: 清单成员[], 管: boolean, 对们: string[]): { 留�
     for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
     return a.id < b.id ? -1 : 1;
   });
-  // 并进来那家只在和留下这家成对的里挑（不成对的合并框里服务端也不放行；12-15 C 审查建议 7）
+  // 并进来那家只在和留下这家成对的里挑（不成对的合并框里服务端也不放行；12-15 C 审查建议 7）；同在不在公海的优先（一家公海一家不在的并不了，D）
   const 留 = 排[0];
-  const 并 = 排.find((m) => m.id !== 留.id && 在对.has(对id(留.id, m.id))) ?? 排[1];
+  const 成对的 = 排.filter((m) => m.id !== 留.id && 在对.has(对id(留.id, m.id)));
+  const 并 = 成对的.find((m) => m.在公海 === 留.在公海) ?? 成对的[0] ?? 排[1];
   return { 留下: 留.id, 并掉: 并.id };
 }
 
@@ -254,7 +272,7 @@ async function 补全(db: 库, 组们: 组[], 看: { 管: boolean; 我: string }
   const 数 = new Map(项目数们.map((p) => [p.customerId, p._count._all]));
   return 组们.map((g) => {
     const 组名 = (g.们[0]?.name ?? "").trim();
-    if (g.太多) return { 键: g.键, 组名, 家数: g.们.length, 们: [], 留下: "", 并掉: "", 对们: [], 太多: true };
+    if (g.太多) return { 键: g.键, 组名, 家数: g.们.length, 们: [], 留下: "", 并掉: "", 对们: [], 太多: true, 公海组: !!g.公海组, 先领: [], 能并: false };
     const 们 = g.们.map((r): 清单成员 => {
       const c = 客.get(r.id);
       const 我 = 我的(r, 看.我);
@@ -263,36 +281,55 @@ async function 补全(db: 库, 组们: 组[], 看: { 管: boolean; 我: string }
         在公海: r.在公海, 我的: 我, 建档: r.建档, 项目数: 数.get(r.id) ?? 0, 要申请: !看.管 && !我 && !r.在公海,
       };
     });
-    return { 键: g.键, 组名, 家数: 们.length, 们, ...挑留并(们, 看.管, g.对们), 对们: g.对们, 太多: false };
+    const 选 = 挑留并(们, 看.管, g.对们);
+    const 在公海ids = new Set(们.filter((m) => m.在公海).map((m) => m.id));
+    // 一家在公海、一家有负责人的对：公海那家要先领出来；对们的 id 是 对id（两个客户 id 排好用 __ 连）
+    const 先领 = new Set<string>();
+    for (const 对 of g.对们) {
+      const [a, b] = 对.split("__");
+      if (在公海ids.has(a) !== 在公海ids.has(b)) 先领.add(在公海ids.has(a) ? a : b);
+    }
+    return { 键: g.键, 组名, 家数: 们.length, 们, ...选, 对们: g.对们, 太多: false, 公海组: !!g.公海组, 先领: [...先领], 能并: 在公海ids.has(选.留下) === 在公海ids.has(选.并掉) };
   });
 }
 
 const 看法of = (me: 看的人, org: 组织 | null) => ({ 管: 是系统管理员(me, org), 我: me.id });
 
 /** 疑似重复清单的一页（页从 1 起；越界落到最后一页） */
-export async function 疑似重复页(db: 库, me: 看的人, org: 组织 | null, 页 = 1): Promise<清单页> {
+export async function 疑似重复页(db: 库, me: 看的人, org: 组织 | null, 页 = 1, 栏: 清单栏 = "普通"): Promise<清单页> {
   const 看 = 看法of(me, org);
   const [底, 标着] = await Promise.all([读底(db), 标着的对(db)]);
-  const 全 = 成组(底.行们, 标着, 看);
+  const 总 = 成组(底.行们, 标着, 看);
+  // 公海组只有系统管理员有（成组里已拦）；别的角色要「公海」栏也只回空
+  const 公海共 = 总.filter((g) => g.公海组).length;
+  const 全 = 总.filter((g) => !!g.公海组 === (栏 === "公海"));
   const 末页 = Math.max(1, Math.ceil(全.length / 每页组数));
   const p = Math.min(Math.max(1, Math.floor(Number(页)) || 1), 末页);
-  return { 组们: await 补全(db, 全.slice((p - 1) * 每页组数, p * 每页组数), 看), 共: 全.length, 页: p, 每页: 每页组数, 管: 看.管 };
+  return { 组们: await 补全(db, 全.slice((p - 1) * 每页组数, p * 每页组数), 看), 共: 全.length, 页: p, 每页: 每页组数, 管: 看.管, 公海共 };
 }
 
 /** 「已标」页签用：不成组，只带界面要的「管」（谁看全部）；待处理的组数那一项在这个页签上不写数（12-15 C 审查建议 3） */
 export function 清单空页(me: 看的人, org: 组织 | null): 清单页 {
-  return { 组们: [], 共: 0, 页: 1, 每页: 每页组数, 管: 看法of(me, org).管 };
+  return { 组们: [], 共: 0, 页: 1, 每页: 每页组数, 管: 看法of(me, org).管, 公海共: 0 };
 }
 
 /** 客户详情顶部那一行提示：这位客户在登录的人的清单里和几家同名（0 = 不提示）。读缓存里同名键那几家，不整库成组 */
-export async function 本客户疑似重复数(db: 库, me: 看的人, org: 组织 | null, customerId: string): Promise<number> {
+export async function 本客户疑似重复(db: 库, me: 看的人, org: 组织 | null, customerId: string): Promise<{ 数: number; 只公海: boolean }> {
+  const 无 = { 数: 0, 只公海: false };
   const 底 = await 读底(db);
   const 这位 = 底.按id.get(customerId);
-  if (!这位) return 0;
+  if (!这位) return 无;
   const 行们 = 底.按键.get(名键(这位.name));
-  if (!行们 || 行们.length < 2) return 0;
-  const g = 成组(行们, await 标着的对(db, 行们.map((r) => r.id)), 看法of(me, org)).find((x) => x.们.some((r) => r.id === customerId));
-  return g ? g.们.length - 1 : 0;
+  if (!行们 || 行们.length < 2) return 无;
+  // 系统管理员同名键下可同时有普通组和公海组（12-15 D3a 审查建议 1）：命中的几组成员按 id 去重合起来数，不算自己
+  const 命中 = 成组(行们, await 标着的对(db, 行们.map((r) => r.id)), 看法of(me, org)).filter((x) => x.们.some((r) => r.id === customerId));
+  const 别家 = new Set(命中.flatMap((g) => g.们.map((r) => r.id)));
+  别家.delete(customerId);
+  return { 数: 别家.size, 只公海: 命中.length > 0 && 命中.every((g) => !!g.公海组) };
+}
+
+export async function 本客户疑似重复数(db: 库, me: 看的人, org: 组织 | null, customerId: string): Promise<number> {
+  return (await 本客户疑似重复(db, me, org, customerId)).数;
 }
 
 /**
@@ -311,6 +348,23 @@ export async function 两家在我清单成对(db: 库, me: 看的人, org: 组�
   return 对们.includes(对id(留下id, 并掉id));
 }
 
+/**
+ * 清单上点「合并」前服务端再核一遍（dupe-actions 调）：两家都在公海的对只有系统管理员能并、且得是清单上列着的一对（名键同、业务线不冲突、没标不是同一个人）；
+ * 一家在公海、一家不在的回「先领出来再并」（管理员也不直接并，同 customer-merge 拦的原因）；两家都不在公海的不归这里管（谁能并照旧在 customer-merge / merge-request 判）。
+ * 回 null = 放行（交给合并框走原来的预览 / 执行，那里还会再判一次）
+ */
+export async function 公海对能不能并(db: 库, me: 看的人, org: 组织 | null, 留下id: string, 并掉id: string): Promise<string | null> {
+  if (留下id === 并掉id) return "不能和自己合并，请选另一位客户";
+  const 底 = await 读底(db);
+  const 留 = 底.按id.get(留下id), 并 = 底.按id.get(并掉id);
+  if (!留 || !并) return "客户不存在或已删除，刷新看看";
+  if (留.在公海 !== 并.在公海) return `「${(留.在公海 ? 留 : 并).name.trim()}」在公海里，先领出来再并`;
+  if (!留.在公海) return null;
+  if (!是系统管理员(me, org)) return "两家都在公海里，只有系统管理员能合并";
+  if (名键(留.name) !== 名键(并.name) || 业务线冲突(留, 并) || (await 标着的对(db, [留下id, 并掉id])).has(对id(留下id, 并掉id))) return "这两家已经不在疑似重复清单上了，刷新再看";
+  return null;
+}
+
 type 写结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
 function 能写(me: 看的人, org: 组织 | null): string | null {
@@ -321,9 +375,9 @@ function 能写(me: 看的人, org: 组织 | null): string | null {
 
 /**
  * 标「不是同一个人」：传一组里的几家（清单上那一行），按登录的人重新成组，只标这几家之间、他清单上还列着的那几对
- * （负责人只标自己名下有份的，系统管理员全标）。一对都没有 = 回原因。两家客户上各记一条操作日志
+ * （负责人只标自己名下有份的，系统管理员标当前栏的：普通栏不连带两家都在公海的对，公海栏只标公海对）。一对都没有 = 回原因。两家客户上各记一条操作日志
  */
-export async function 标不是同一个人(db: 库, me: 看的人, org: 组织 | null, ids: string[]): Promise<写结果<{ 对们: string[] }>> {
+export async function 标不是同一个人(db: 库, me: 看的人, org: 组织 | null, ids: string[], 栏: 清单栏 = "普通"): Promise<写结果<{ 对们: string[] }>> {
   const 不能 = 能写(me, org);
   if (不能) return { ok: false, error: 不能 };
   const 要 = [...new Set(ids)];
@@ -338,7 +392,8 @@ export async function 标不是同一个人(db: 库, me: 看的人, org: 组织 
     const 标着 = new Set((await tx.customerNotDupe.findMany({
       where: { undoneAt: null, OR: [{ customerId: { in: 要 } }, { otherId: { in: 要 } }] }, select: { id: true },
     })).map((x) => x.id));
-    const 对们 = 成组(行们, 标着, 看法of(me, org)).flatMap((g) => g.对们);
+    // 只标当前栏里显示的对（12-15 D）：普通栏不带两家都在公海的对（公海组），公海栏只标公海组的对
+    const 对们 = 成组(行们, 标着, 看法of(me, org)).filter((g) => !!g.公海组 === (栏 === "公海")).flatMap((g) => g.对们);
     if (!对们.length) return { ok: false as const, error: "这几家已经标过了，或者不是你名下的，刷新再看" };
     const 名 = new Map(行们.map((r) => [r.id, r.name.trim()]));
     for (const id of 对们) {
