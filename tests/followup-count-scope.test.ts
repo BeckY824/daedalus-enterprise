@@ -25,6 +25,7 @@ vi.mock("@/lib/prisma", async () => {
 });
 
 import { prisma as db, defaultClient as raw } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 看得到的跟进数 } from "@/lib/scope-sql";
@@ -76,7 +77,10 @@ beforeAll(async () => {
   }
 });
 
-beforeEach(() => 忘掉企业版范围());
+beforeEach(async () => {
+  await 回填放回人列(raw); // 公海里负责人还挂着的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
+  忘掉企业版范围();
+});
 
 afterAll(async () => {
   delete process.env.CRM_ENTERPRISE;

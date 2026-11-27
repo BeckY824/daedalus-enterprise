@@ -417,8 +417,6 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
     const 回避 = await 现在的公海回避(defaultClient);
     if (回避?.客户 === null) return null;
     if (回避) {
-      段.push('c."salesOwnerId" <> ?');
-      值.push(回避.本人);
       if (回避.客户?.length) {
         段.push(`c.id NOT IN (${回避.客户.map(() => "?").join(", ")})`);
         值.push(...回避.客户);

@@ -10,11 +10,12 @@
  * 新（读改按列的包 2 要用的写法）：
  *   项目 = 没删、（项目在公海且 项目.poolPrevOwnerId = 我）或（所在客户在公海且 客户.poolPrevOwnerId = 我）
  *   客户 = 没删、在公海、（客户.poolPrevOwnerId = 我 或 下面有在公海的、没删的项目 poolPrevOwnerId = 我）
- * 可空列的坑：poolPrevOwnerId 为空的行，SQL 里 NOT (列 = 我) 是 NULL、会被一起挡掉，所以「不是我」要写成「为空或不是我」。
- * 这里每位员工另做一遍互补核对：{为空或不是我} 的行数 + {是我} 的行数 = 在公海的总行数，等式不成立就是写错了。
+ * 可空列的坑：poolPrevOwnerId 为空的行，SQL 里 NOT (列 = 我) 是 NULL、会被一起挡掉，所以「不是我」要写成「为空或不是我」（公共写法在 pool-prev-owner-where.ts，team-scope 的回避条件拼它）。
+ * 这里每位员工另做一遍互补核对：以他的身份走限定层数「能看到的公海客户 / 项目」，应等于 总数 − 新回避集合（见 互补成立），
+ * 这样才真核到 team-scope 回避条件的写法（包 1 当时只核 compare 自己的式子，恒成立）。
  */
 import type { PrismaClient } from "@/generated/prisma";
-import { 公海里历史负责人是 } from "@/lib/project/pool-owner";
+import { 留痕推算公海里历史负责人是 } from "@/lib/project/pool-owner";
 import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 
 export type 对拍不一致 = { userId: string; 实体: "项目" | "客户"; 旧多出: string[]; 新多出: string[] };
@@ -22,7 +23,7 @@ export type 对拍结果 = {
   在职人数: number;
   不一致人数: number;
   不一致: 对拍不一致[];
-  /** 互补核对（为空或不是我 + 是我 = 总数）不成立的人数 */
+  /** 互补核对（限定层看到的公海行 = 总数 − 新回避集合）不成立的人数 */
   互补不成立人数: number;
   数于: Date;
 };
@@ -35,7 +36,7 @@ const 分段 = <T,>(a: T[], n: number): T[][] => {
 
 /** 旧算法：这个人的回避项目、回避客户（完整集合，不设名单上限） */
 export async function 旧回避集合(db: PrismaClient, id: string): Promise<{ 项目: Set<string>; 客户: Set<string> }> {
-  const 放回的 = await 公海里历史负责人是(db, [id]);
+  const 放回的 = await 留痕推算公海里历史负责人是(db, [id]);
   const 放走的 = [...(await 公海客户原负责人是(db, [id])).keys()];
   const 他的 = (await db.customer.findMany({ where: { salesOwnerId: id, pool: { isNot: null }, deletedAt: null }, select: { id: true } })).map((c) => c.id);
   const 客户 = new Set<string>([...他的, ...放走的]);
@@ -64,32 +65,26 @@ export async function 新回避集合(db: PrismaClient, id: string): Promise<{ �
   return { 项目: new Set(项目.map((r) => r.id)), 客户: new Set(客户.map((r) => r.id)) };
 }
 
-/**
- * 「不是我」这一支的写法（拼进 where）。包 2 要用的是 Prisma 的 NOT {…} / not: 这一类：列可空，SQL 里 NOT (col = 我) 遇到空值得 NULL，
- * 空列的行会被挡掉（Prisma 的 { not: 我 }、NOT { col: 我 } 都一样），所以必须显式写「为空或不是我」。默认写法就是包 2 要用的这句
- */
-export type 不是我写法 = (id: string) => Record<string, unknown>;
-export const 为空或不是我: 不是我写法 = (id) => ({ OR: [{ poolPrevOwnerId: null }, { NOT: { poolPrevOwnerId: id } }] });
+export { 为空或不是我, type 不是我写法 } from "@/lib/enterprise/pool-prev-owner-where";
 
 /**
- * 互补核对：在公海的项目 / 客户里，按「不是我」写法数出来的行数 + {是我} 的行数 = 总数。
- * 写法漏了空值（空列被错挡）时 看到 + 是我 < 总数，报不成立。写法可注入（测试用最朴素的 NOT { col: 我 } 验证这里报得出来）
+ * 互补核对（E-417 包 2 起真核到 team-scope 的回避条件）：以这个人的身份走带限定的客户端（限定层，team-scope 加上限定 / 回避客户条件 / 回避项目条件），
+ * 数「他能看到的在公海的客户 / 项目」，应该等于 在公海的总数 − 按列算的回避集合（新回避集合）。
+ * 限定层的回避条件写漏了空列（NOT (列 = 我) 遇空得 NULL，空列的行被错挡）时，看到的数 < 应有的数，报不成立。
+ * 不受回避的人（系统管理员、只读管理员，P-公海-04）看到的是总数，也算成立——这一项只管「错挡」，不管「没挡」（没挡由守卫测试和各入口用例管）。
+ * 限定端默认 = db（不带限定层，只在测试里传 db 自身时退化成总数比）；脚本和测试传 @/lib/prisma 的 prisma。每人范围有 10 秒缓存，改了数据要先 忘掉企业版范围
  */
-export async function 互补成立(db: PrismaClient, id: string, 写法: 不是我写法 = 为空或不是我): Promise<boolean> {
+export async function 互补成立(db: PrismaClient, id: string, 限定端: PrismaClient = db): Promise<boolean> {
   const 项目在 = { pooledAt: { not: null }, deletedAt: null };
   const 客户在 = { pool: { isNot: null }, deletedAt: null };
-  const [总p, 是p, 否p, 总c, 是c, 否c] = await Promise.all([
-    db.project.count({ where: 项目在 }),
-    db.project.count({ where: { ...项目在, poolPrevOwnerId: id } }),
-    db.project.count({ where: { ...项目在, ...写法(id) } }),
-    db.customer.count({ where: 客户在 }),
-    db.customer.count({ where: { ...客户在, poolPrevOwnerId: id } }),
-    db.customer.count({ where: { ...客户在, ...写法(id) } }),
-  ]);
-  return 是p + 否p === 总p && 是c + 否c === 总c;
+  const [总p, 总c, 新] = await Promise.all([db.project.count({ where: 项目在 }), db.customer.count({ where: 客户在 }), 新回避集合(db, id)]);
+  const { 以谁的身份 } = await import("@/lib/enterprise/visibility");
+  const [看p, 看c] = await 以谁的身份(id, () => Promise.all([限定端.project.count({ where: 项目在 }), 限定端.customer.count({ where: 客户在 })]));
+  const 对 = (看: number, 总: number, 回避: number) => 看 === 总 - 回避 || 看 === 总;
+  return 对(看p, 总p, 新.项目.size) && 对(看c, 总c, 新.客户.size);
 }
 
-export async function 对拍(db: PrismaClient): Promise<对拍结果> {
+export async function 对拍(db: PrismaClient, 限定端: PrismaClient = db): Promise<对拍结果> {
   const 数于 = new Date();
   const 人们 = await db.user.findMany({ where: { active: true }, select: { id: true }, orderBy: { id: "asc" } });
   const 不一致: 对拍不一致[] = [];
@@ -105,7 +100,7 @@ export async function 对拍(db: PrismaClient): Promise<对拍结果> {
         不一致.push({ userId: id, 实体, 旧多出: 旧多出.slice(0, 5), 新多出: 新多出.slice(0, 5) });
       }
     }
-    if (!(await 互补成立(db, id))) 互补不成立人数++;
+    if (!(await 互补成立(db, id, 限定端))) 互补不成立人数++;
   }
   return { 在职人数: 人们.length, 不一致人数: 有问题.size, 不一致, 互补不成立人数, 数于 };
 }

@@ -31,7 +31,7 @@ import { 读项目主题 } from "@/lib/enterprise/coach-topic-db";
 import { 超时回收日, 超时起点, 超时理由, 节点超时天数, 计时起点, 是超时自动转痕, 系统, 超时自动转理由, 放弃转理由, 记沟通要下一步时间 } from "@/lib/project/timeout";
 import { 停用项目进公海理由 } from "@/lib/offboard-db";
 import { 拦原负责人, 原负责人不能领回提示, 拦单独领项目, 项目不能单独领提示, 拦客户公海里的项目, 客户在公海项目不单领提示 } from "@/lib/enterprise/pool-rules";
-import { 原负责人回避, 回避豁免 } from "@/lib/project/pool-owner";
+import { 原负责人回避, 回避豁免, 项目放回人 } from "@/lib/project/pool-owner";
 import { 字典of, 同名们, 是交付 } from "@/lib/project/stage-dict";
 import { 本套位置 } from "@/lib/project/nodes";
 import { 读线索验证 } from "@/lib/project/lead-verify";
@@ -152,8 +152,7 @@ export async function 项目页去向(me: SessionUser, id: string): Promise<{ �
   // 只负责项目的人（仅项目，lib/enterprise/project-only-customers.ts）：客户看不到也跳客户页，那边是受限客户详情
   if (!(await 看得到的客户([p.customerId])).has(p.customerId) && !(await 仅项目可见(me, p.customerId))?.includes(p.id)) return { 种: "留" };
   if (p.pooledAt && 原负责人回避()) {
-    const 放 = await prisma.projectNodeLog.findFirst({ where: { projectId: p.id, kind: "pool-release" }, orderBy: { at: "desc" }, select: { fromOwnerId: true } });
-    const 上一任 = 放?.fromOwnerId ?? (p.ownerId || null);
+    const 上一任 = (await 项目放回人(prisma, p.id)) ?? (p.ownerId || null); // Project.poolPrevOwnerId（E-417 包 2）；列没记的老数据照旧按 ownerId 认
     if (me.id === 上一任 && !(await 回避豁免(me))) return { 种: "无" };
   }
   return { 种: "客户页", 到: 客户页项目地址(p.customerId, p.id) };
@@ -266,8 +265,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
   // 沟通记录跟着项目走（11-03 C6-2）：企业版不在公海的项目，看得到项目（负责人、组员、管理者，上面 能看项目 挡过）就看得到上面谁记的沟通，
   // 包括前负责人记的、客户不归自己线的；客户本身、联系人照旧按 露。公海里照旧领了再看。附件照旧按 露（附件接口按客户认）
   const 露沟通 = 露 || (企业 && !p.pooledAt);
-  // 公海里这个项目最后一次是谁放的（企业版 11-01 起进公海清负责人，原负责人只在留痕里，lib/project/pool-owner.ts）
-  const 上一任 = 公海 ? 放回过[0]?.fromOwnerId ?? (p.ownerId || null) : null;
+  // 公海里这个项目最后一次是谁放的：认 Project.poolPrevOwnerId（E-417 包 2；页头「X 放回的」仍认下面的放回留痕）
+  const 上一任 = 公海 ? (await 项目放回人(prisma, p.id)) ?? (p.ownerId || null) : null;
   // 历史负责人对公海里的这个项目没有任何权限（C-01）：看不到，总管理 / 管理员不算（回避豁免）
   if (公海 && 原负责人回避() && me.id === 上一任 && !(await 回避豁免(me))) return { 种: "无" };
 

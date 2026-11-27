@@ -96,7 +96,6 @@ const 读 = new Set([
   "src/lib/agent/query.ts",
   "src/lib/enterprise/channel-dash-db.ts",
   "src/lib/enterprise/channel-dash.ts",
-  "src/lib/enterprise/contact-dedupe.ts",
   "src/lib/enterprise/cust-status-undo.ts",
   "src/lib/enterprise/line-viewer.ts",
   "src/lib/enterprise/merge-moved-logs.ts",
@@ -110,15 +109,12 @@ const 读 = new Set([
   "src/lib/enterprise/unbuilt-record.ts",
   "src/lib/enterprise/unified-pool-db.ts",
   "src/lib/enterprise/unified-pool.ts",
-  "src/lib/enterprise/visibility.ts",
   "src/lib/offboard-db.ts",
   "src/lib/owner-log.ts",
   "src/lib/project/carry-tasks.ts",
-  "src/lib/project/customer-detail-direct.ts",
   "src/lib/project/node-log-text.ts",
   "src/lib/project/pool-owner.ts",
   "src/lib/project/recycle-count.ts",
-  "src/lib/team-scope.ts",
 ]);
 
 const 源 = (f: string) => fs.readFileSync(path.join(ROOT, f), "utf8");
@@ -175,6 +171,47 @@ describe("每处写 pool-release 都要同时写 poolPrevOwnerId（迁移 194）
   it("公共函数里的列写法没被改掉：记转让 / 记换负责人 都调了 记放回人 / 记客户放回人，写的是 poolPrevOwnerId", () => {
     expect(源("src/lib/project/db.ts")).toMatch(/data: \{ poolPrevOwnerId: 人 \}/);
     expect(源("src/lib/owner-log-db.ts")).toMatch(/data: \{ poolPrevOwnerId: 人 \}/);
+  });
+
+  // 不写放回留痕的两条进公海的路（E-417 包 2 起回避只认 poolPrevOwnerId，这两条不补列就等于原负责人不回避）：
+  // 「按天掉公海」（pool-db.ts 按天扫）和「清负责人开关」关着时的 客户进公海清负责人（pool-link.ts）。次数钉死，多一处少一处都红
+  it("按天掉公海（pool-db.ts）：createMany 进公海后写列，次数 1，放回人 = 入池前的负责人 salesOwnerId", () => {
+    const t = 源("src/lib/pool-db.ts");
+    expect(t.match(/customerPool\.createMany\(/g)?.length ?? 0).toBe(1);
+    expect(t.match(/await 记客户放回人\(/g)?.length ?? 0).toBe(1);
+    expect(t).toMatch(/记客户放回人\(prisma, 要掉\.map\(\(c\) => \(\{ id: c\.id, 从: c\.salesOwnerId \}\)\)\)/);
+    expect(t).toMatch(/select: \{ id: true, salesOwnerId: true \}/);
+  });
+
+  it("清负责人开关关着（pool-link.ts 客户进公海清负责人）：不记留痕但写列，次数 1，占位账号写空", () => {
+    const t = 源("src/lib/enterprise/pool-link.ts");
+    expect(t.match(/await 记客户放回人\(/g)?.length ?? 0).toBe(1);
+    expect(t).toMatch(/if \(!公海规则\.进公海清负责人\) \{\s*await 记客户放回人\(tx, 们\.map\(\(c\) => \(\{ id: c\.id, 从: c\.salesOwnerId === 占位 \? null : c\.salesOwnerId \}\)\)\);\s*return;/);
+    // 开关开着的那条路仍经 记换负责人 写 pool-release（它里面写列）
+    expect(t.match(/记换负责人\([^\n]*"pool-release"/g)?.length ?? 0).toBe(1);
+  });
+
+  it("所有往 CustomerPool 里加行的地方都已盘点（新加一处就红，要么写列、要么写明为什么不用）", () => {
+    // 盘点：写列的 = 放进公海（pool-actions，经 客户进公海清负责人）、离职放公海（offboard-move，同）、三态自动进公海（tri-state-db，同）、恢复停用负责人（restore-inactive-owner，同）、
+    //   按天掉公海（pool-db）、导入无主客户入池（enterprise-import/apply.ts，经 记换负责人）；
+    //   不用写的 = 项目放回带出的客户（pool-link.ts 单项目客户跟进公海，调 客户进公海清负责人）、合并客户搬公海行（customer-merge）、导入撤销还原（revert）、撤销放进公海里重建、手动放进公海
+    const 预期: Record<string, number> = {
+      "src/app/(app)/customers/pool-actions.ts": 3,
+      "src/lib/pool-db.ts": 2, // createMany + 撞主键时逐条 upsert
+      "src/lib/offboard-move.ts": 1,
+      "src/lib/enterprise/restore-inactive-owner.ts": 1,
+      "src/lib/enterprise/pool-link.ts": 1,
+      "src/lib/enterprise/tri-state-db.ts": 1,
+      "src/lib/enterprise/customer-merge.ts": 1,
+      "src/lib/enterprise-import/apply.ts": 2,
+      "src/lib/enterprise-import/revert.ts": 1,
+    };
+    const 实际: Record<string, number> = {};
+    for (const f of 扫(path.join(ROOT, "src"))) {
+      const n = 源(f).match(/customerPool\.(create|createMany|upsert)\(/g)?.length ?? 0;
+      if (n) 实际[f] = n;
+    }
+    expect(实际).toEqual(预期);
   });
 
   it("豁免的都写了理由", () => {

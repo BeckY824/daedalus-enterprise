@@ -59,7 +59,7 @@ import { 读客户状态, 项目的客户们, 原状态记到出公海痕 } from
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
-import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数, 进公海清组员, 进公海关主题, 放弃没发出的录音 } from "./pool-owner";
+import { 进公海后负责人, 历史负责人, 项目放回人, 进公海关待办, 一批id数, 进公海清组员, 进公海关主题, 放弃没发出的录音 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
 import { 换负责人待办, 待办痕, 手动转让痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
@@ -1208,7 +1208,7 @@ export async function 领一个公海项目(
     const 真 = await 看全部(() => tx.project.findUnique({ where: { id }, select: { id: true, pooledAt: true } }));
     if (!真) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     // 还在公海、只是我看不到：是我放回的（原负责人回避），话说准（11-03 完成度 B4-3）
-    if (真.pooledAt && 企业版() && !公海规则.原负责人能领回 && (await 历史负责人(tx, id)) === me.id) return { ok: false as const, error: 原负责人不能领回提示 };
+    if (真.pooledAt && 企业版() && !公海规则.原负责人能领回 && (await 项目放回人(tx, id)) === me.id) return { ok: false as const, error: 原负责人不能领回提示 };
     return 领走了;
   }
   if (!p.pooledAt) return 领走了;
@@ -1221,8 +1221,8 @@ export async function 领一个公海项目(
     if (c?.pool && c.poolInvalidAt) return { ok: false as const, error: "这位客户已标成无效客户，领不了，要系统管理员先恢复" };
   }
   // 原负责人领不回：企业版看 公海规则（10-26 定稿「非原负责人均可领取」），别的版本照旧。
-  // 原负责人 = 留痕里最后一次进公海前的负责人（企业版进公海清了 ownerId，pool-owner.ts）
-  const 原 = (await 历史负责人(tx, p.id)) ?? (p.ownerId || null);
+  // 原负责人 = Project.poolPrevOwnerId（最后一次进公海前的负责人，E-417 包 2；企业版进公海清了 ownerId，pool-owner.ts）
+  const 原 = (await 项目放回人(tx, p.id)) ?? (p.ownerId || null); // 列没记的老数据照旧按 ownerId 认
   if (me.id === 原 && !(企业版() && 公海规则.原负责人能领回)) return { ok: false as const, error: 企业版() ? 原负责人不能领回提示 : "自己放回公海的项目不能自己领回" };
   // 规则关着时项目不单独领（无效客户、原负责人先说更具体的原因）；11-09 起开着（M-公海-06）
   if (拦单独领项目()) return { ok: false as const, error: 项目不能单独领提示 };

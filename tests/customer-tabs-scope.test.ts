@@ -25,6 +25,7 @@ vi.mock("@/lib/prisma", async () => {
 });
 
 import { prisma as db, defaultClient as raw } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 客户页签数 } from "@/lib/pool-db";
@@ -65,7 +66,10 @@ beforeAll(async () => {
   await raw.setting.create({ data: { key: 规则.按组织看客户.key, value: JSON.stringify(true) } });
 });
 
-beforeEach(() => 忘掉企业版范围());
+beforeEach(async () => {
+  await 回填放回人列(raw); // 公海里负责人还挂着的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
+  忘掉企业版范围();
+});
 
 afterAll(async () => {
   delete process.env.CRM_ENTERPRISE;
@@ -100,6 +104,7 @@ describe("客户页签数带范围", () => {
   it("回收站里的公海客户不算：软删不动公海表，那一行还在，公海不计它、两数相加照样等于角标（11-02 公海多、客户少）", async () => {
     const c = await raw.customer.create({ data: { name: "I进了回收站的公海", phone: "13800009999", salesOwnerId: 老板, deletedAt: new Date() } });
     await raw.customerPool.create({ data: { customerId: c.id } });
+    await 回填放回人列(raw);
     // 软删了、不在公海的也不能被多减
     const d = await raw.customer.create({ data: { name: "J进了回收站的", phone: "13800009998", salesOwnerId: 老板, deletedAt: new Date() } });
     try {

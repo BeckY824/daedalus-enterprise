@@ -28,7 +28,7 @@ async function 看得到的(): Promise<{ where: string; 参数: string[]; 名下
   const 占 = 们.map(() => "?").join(",");
   const 回避 = await 现在的公海回避(defaultClient);
   if (回避?.客户 === null) return null;
-  const 避 = 回避 ? 回避段(回避.本人, 回避.客户 ?? []) : { sql: "", 参数: [] as string[] };
+  const 避 = 回避 ? 回避段(回避.客户 ?? []) : { sql: "", 参数: [] as string[] };
   // 企业版项目组员（V3.5.1）：加入的项目挂的客户也看得到，同 team-scope 限定条件——算好的编号名单；过上限（null）退回子查询；不是组员不加。
   // 子查询只认本人进的组（11-24 ②，同 team-scope 限定.本人）：管理者的下属进组不算
   const 组员名单 = 企业版() ? await 现在的组员客户(defaultClient) : undefined;
@@ -69,13 +69,9 @@ export function 看得到的范围SQL() {
   return 看得到的();
 }
 
-/** 回避的那段：负责人是他的公海客户 + 名单上的客户。salesOwnerId 非空，NOT (... ) 不踩 NULL */
-function 回避段(本人: string, 客户: string[]): { sql: string; 参数: string[] } {
-  const 名单 = 客户.length ? ` AND c.id NOT IN (${客户.map(() => "?").join(",")})` : "";
-  return {
-    sql: ` AND NOT (c."salesOwnerId" = ? AND c.id IN (SELECT "customerId" FROM "CustomerPool"))${名单}`,
-    参数: [本人, ...客户],
-  };
+/** 回避的那段：名单上的客户（Customer.poolPrevOwnerId 认出来的，E-417 包 2；id 非空，NOT IN 不踩 NULL）。名单空不带 */
+function 回避段(客户: string[]): { sql: string; 参数: string[] } {
+  return 客户.length ? { sql: ` AND c.id NOT IN (${客户.map(() => "?").join(",")})`, 参数: 客户 } : { sql: "", 参数: [] };
 }
 
 /** 看得到的客户一共几位（= prisma.customer.count()） */
@@ -152,14 +148,14 @@ async function 公海数现数(): Promise<number> {
   if (!回避) return 未删公海数();
   if (回避.客户 === null) return prisma.customer.count({ where: { pool: { isNot: null } } });
   const 名单 = 回避.客户;
-  const 或名单 = 名单.length ? ` OR c.id IN (${名单.map(() => "?").join(",")})` : "";
+  if (!名单.length) return 未删公海数();
+  const 或名单 = `c.id IN (${名单.map(() => "?").join(",")})`;
   const [全部, [r]] = await Promise.all([
     未删公海数(),
     prisma.$queryRawUnsafe<{ n: bigint | number }[]>(
       /* `+c.id`：一元加号让 SQLite 不拿这条 IN 去挑索引。跑过 ANALYZE 后它会改成拿公海表 6.7 万行逐条对客户（0.2→18ms），
          加了照旧走「负责人索引 + 主键」（27I，11-18 在 8.6 万客户库拷贝上 EXPLAIN 核过） */
-      `SELECT COUNT(*) AS n FROM "Customer" c WHERE c."deletedAt" IS NULL AND (c."salesOwnerId" = ?${或名单}) AND +c.id IN (SELECT "customerId" FROM "CustomerPool")`,
-      回避.本人,
+      `SELECT COUNT(*) AS n FROM "Customer" c WHERE c."deletedAt" IS NULL AND (${或名单}) AND +c.id IN (SELECT "customerId" FROM "CustomerPool")`,
       ...名单,
     ),
   ]);
@@ -254,14 +250,14 @@ async function 公海跟进数(筛: { type?: string; ownerId?: string }, 含删�
     return Number(r.n);
   });
   if (!回避) return 全部;
-  const 他的 = 跟进筛SQL(筛, true);
   const 名单 = 回避.客户 ?? [];
-  const 或名单 = 名单.length ? ` OR c.id IN (${名单.map(() => "?").join(",")})` : "";
+  if (!名单.length) return 全部;
+  const 他的 = 跟进筛SQL(筛, true);
+  const 或名单 = `c.id IN (${名单.map(() => "?").join(",")})`;
   const [n, [r]] = await Promise.all([
     全部,
     prisma.$queryRawUnsafe<{ n: bigint | number }[]>(
-      `SELECT COUNT(*) AS n FROM "FollowUp" f WHERE f."customerId" IN (SELECT c.id FROM "Customer" c WHERE (c."salesOwnerId" = ?${或名单})${客户没删} AND c.id IN (SELECT "customerId" FROM "CustomerPool")) AND +f."deletedAt" IS NULL${他的.筛段.join("")}`,
-      回避.本人,
+      `SELECT COUNT(*) AS n FROM "FollowUp" f WHERE f."customerId" IN (SELECT c.id FROM "Customer" c WHERE (${或名单})${客户没删} AND c.id IN (SELECT "customerId" FROM "CustomerPool")) AND +f."deletedAt" IS NULL${他的.筛段.join("")}`,
       ...名单,
       ...他的.筛值,
     ),

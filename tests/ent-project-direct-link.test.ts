@@ -29,6 +29,7 @@ vi.mock("@/app/(app)/projects/[id]/ProjectDetail", () => ({ default: () => null 
 vi.mock("@/app/(app)/projects/[id]/SameNumberBanner", () => ({ default: () => null }));
 
 import { prisma } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -93,6 +94,7 @@ beforeEach(async () => {
     { projectId: 项.公海乙放, userId: 乙.id, toPhase: "商机", toNode: "需求确认", kind: "pool-release", fromOwnerId: 乙.id },
     { projectId: 项.公海甲放, userId: 甲.id, toPhase: "商机", toNode: "需求确认", kind: "pool-release", fromOwnerId: 甲.id },
   ] });
+  await 回填放回人列(prisma); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
   忘掉企业版范围();
 });
 afterAll(async () => { vi.unstubAllEnvs(); invalidateSettingsCache(); await prisma.$disconnect(); });
@@ -132,6 +134,7 @@ describe("项目链接们 = /projects/<id> 重定向的落点", () => {
   it("总管理（回避豁免）：公海里上一任是自己的也跳客户页，和项目页一致", async () => {
     const 总管放 = await prisma.project.create({ data: { name: "总管放公海的", customerId: 客户, ownerId: 乙.id, creatorId: 乙.id, phase: "商机", node: "需求确认", pooledAt: new Date() } });
     await prisma.projectNodeLog.create({ data: { projectId: 总管放.id, userId: 总管.id, toPhase: "商机", toNode: "需求确认", kind: "pool-release", fromOwnerId: 总管.id } });
+    await 回填放回人列(prisma);
     const 给 = (await 以(总管, () => 项目链接们(总管 as never, [总管放.id]))).get(总管放.id);
     expect(给).toBe(await 打开落点(总管, 总管放.id));
   });

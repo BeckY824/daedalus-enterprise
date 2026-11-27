@@ -25,6 +25,7 @@ vi.mock("@/lib/check-then-write", async (原) => {
 });
 
 import { prisma } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -77,6 +78,7 @@ async function 公海客户们(n: number, owner: string) {
   const 客户 = Array.from({ length: n }, (_, i) => ({ id: `c${i}`, name: `客户${i}`, phone: `13${String(i).padStart(9, "0")}`, salesOwnerId: 占位.id }));
   await prisma.customer.createMany({ data: 客户 });
   await prisma.customerPool.createMany({ data: 客户.map((c, i) => ({ customerId: c.id, reason: "r", at: 时刻(i) })) });
+  await 回填放回人列(prisma); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
   await prisma.project.createMany({ data: 客户.map((c, i) => ({ id: `p${i}`, name: `项目${i}`, customerId: c.id, ownerId: owner, creatorId: owner })) });
 }
 
@@ -87,6 +89,7 @@ async function 公海项目们(n: number, hist: (i: number) => string, 起 = 0) 
   await prisma.project.createMany({ data: 号.map((i) => ({ id: `xp${i}`, name: `公海项目${i}`, customerId: `xc${i}`, ownerId: "", creatorId: hist(i), pooledAt: 时刻(i) })) });
   const 痕 = (i: number, userId: string, at: Date) => ({ projectId: `xp${i}`, kind: "pool-release", fromOwnerId: hist(i), userId, toPhase: "线索", toNode: "x", at });
   await prisma.projectNodeLog.createMany({ data: 号.flatMap((i) => [痕(i, hist(i), 时刻(i - 100000)), 痕(i, 系统操作人, 时刻(i))]) });
+  await 回填放回人列(prisma); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
 }
 
 describe("统一公海过 999 行", () => {
@@ -210,6 +213,7 @@ describe("统一公海过 999 行", () => {
   it("历史负责人们、看得到的客户：直接传过 999 个 id，结果完整", async () => {
     await 公海项目们(过限, (i) => (i % 2 ? 组.销售.id : 组.同事.id));
     await prisma.projectNodeLog.create({ data: { projectId: "xp0", kind: "pool-release", fromOwnerId: 组.总管理.id, userId: 组.总管理.id, toPhase: "线索", toNode: "x", at: 时刻(9_000_000) } });
+    await 回填放回人列(prisma);
     const ids = Array.from({ length: 过限 }, (_, i) => `xp${i}`);
     const 们 = await 历史负责人们(prisma, ids);
     expect(们.size).toBe(过限);

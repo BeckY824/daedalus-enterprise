@@ -14,7 +14,7 @@ import { invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 算回填计划, 写回填, 汇总表, 动作of } from "@/lib/enterprise/pool-prev-owner-backfill";
-import { 对拍, 互补成立 } from "@/lib/enterprise/pool-prev-owner-compare";
+import { 对拍, 互补成立, 为空或不是我 } from "@/lib/enterprise/pool-prev-owner-compare";
 
 let 序号 = 0;
 const 人 = async (key: string) => (await raw.user.create({ data: { email: `${key}@x`, name: key, title: "", role: "SALES", password: "x" } })).id;
@@ -143,10 +143,10 @@ describe("回填：dry 不写，真写后值对，重复跑没有变化", () => 
 
 describe("对拍：旧算法 vs 按列", () => {
   it("回填之后每位在职员工两个集合完全相同（0 不一致）；回填之前列是空的，会报出不一致", async () => {
-    const 前 = await 对拍(raw);
+    const 前 = await 对拍(raw, prisma);
     expect(前.不一致人数).toBeGreaterThan(0);
     await 写回填(raw, await 算回填计划(raw), () => {});
-    const 后 = await 对拍(raw);
+    const 后 = await 对拍(raw, prisma);
     expect(后.在职人数).toBeGreaterThanOrEqual(3);
     expect(后).toMatchObject({ 不一致人数: 0, 不一致: [], 互补不成立人数: 0 });
   });
@@ -162,20 +162,35 @@ describe("对拍：旧算法 vs 按列", () => {
     expect((await 对拍(raw)).不一致人数).toBe(2);
   });
 
-  it("可空列的坑：包 2 会用的「为空或不是我」写法在列为空时不误挡——互补核对成立", async () => {
-    const r = await 对拍(raw); // 没回填、列全空
+  it("可空列的坑：回填前列全空，限定层（team-scope 回避条件）不误挡——互补核对成立", async () => {
+    const r = await 对拍(raw, prisma); // 没回填、列全空：甲看到的在公海行 = 全部
     expect(r.互补不成立人数).toBe(0);
   });
 
-  it("可空列的坑：写成 NOT { 列: 我 } 会把列为空的行错挡掉，互补核对报得出（Prisma / SQLite 下 NOT (空 = 我) 是 NULL）", async () => {
-    // 回填前：在公海的项目 / 客户列全空。朴素写法数出来的「能看到」是 0，对不上总数
-    expect(await 互补成立(raw, 甲, (id) => ({ NOT: { poolPrevOwnerId: id } }))).toBe(false);
-    expect(await 互补成立(raw, 甲, (id) => ({ poolPrevOwnerId: { not: id } }))).toBe(false);
-    expect(await 互补成立(raw, 甲)).toBe(true);
-    // 回填后仍有列为空的在公海行（导入无主 / 没留痕占位）：朴素写法照样报，默认写法成立
+  it("可空列的坑：回填后仍有列为空的在公海行（导入无主 / 没留痕占位），限定层只挡列是我的、空列的照样看得到；互补核对成立且真的比了个数", async () => {
     await 写回填(raw, await 算回填计划(raw), () => {});
-    expect(await 互补成立(raw, 甲, (id) => ({ NOT: { poolPrevOwnerId: id } }))).toBe(false);
-    expect(await 互补成立(raw, 甲)).toBe(true);
+    const 总p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null } });
+    const 空p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: null } });
+    const 甲p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: 甲 } });
+    expect(空p).toBeGreaterThan(0); // 空列的行确实存在（不然这条测不到坑）
+    expect(甲p).toBeGreaterThan(0);
+    const { 以谁的身份 } = await import("@/lib/enterprise/visibility");
+    const 甲看到的 = await 以谁的身份(甲, () => prisma.project.count({ where: { pooledAt: { not: null }, deletedAt: null } }));
+    // 甲回避自己放回的 + 他放走的客户名下的项目；空列的行（导入无主、没留痕）一个不少
+    expect(甲看到的).toBeLessThan(总p);
+    expect(甲看到的).toBeGreaterThanOrEqual(总p - 甲p - 1); // 减去客户连带的（客户「退过两次」那一位名下的没进线索公海项目不算公海行，不影响这个数）
+    expect((await 对拍(raw, prisma)).互补不成立人数).toBe(0);
+    expect(await 互补成立(raw, 甲, prisma)).toBe(true);
+  });
+
+  it("可空列的坑（证据）：朴素写 NOT { 列: 我 } / { not: 我 } 会把空列的行一起挡掉；公共写法 为空或不是我 不会", async () => {
+    await 写回填(raw, await 算回填计划(raw), () => {});
+    const 在 = { pooledAt: { not: null }, deletedAt: null };
+    const 总 = await raw.project.count({ where: 在 });
+    const 是我 = await raw.project.count({ where: { ...在, poolPrevOwnerId: 甲 } });
+    expect(await raw.project.count({ where: { ...在, NOT: { poolPrevOwnerId: 甲 } } })).toBeLessThan(总 - 是我);
+    expect(await raw.project.count({ where: { ...在, poolPrevOwnerId: { not: 甲 } } })).toBeLessThan(总 - 是我);
+    expect(await raw.project.count({ where: { ...在, ...(为空或不是我(甲) as object) } })).toBe(总 - 是我);
   });
 });
 

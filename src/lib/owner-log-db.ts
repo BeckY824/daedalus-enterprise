@@ -187,14 +187,30 @@ export async function 公海客户原负责人是(db: Pick<Prisma.TransactionCli
 }
 
 /**
- * 界面灰领取按钮用（接口拦在 pool-actions.ts 领取）：这几位公海客户里原负责人是我的，
- * 负责人还是我的老数据 + 最近一次进公海时负责人是我的。回客户 id
+ * 公海里的客户，人们 里谁是「最近一次进公海时的负责人」（回避认 Customer.poolPrevOwnerId，E-417 包 2）：回 客户 id → 那位。
+ * 在公海、没删、列在 人们 里的才算；领走时列留着、不在公海的不算。不再区分占位负责人 / 真人负责人（老数据靠回填写了列）。
+ * 包 看全部：公海里的客户原负责人本来就看不到，读列不能被回避自己挡住
+ */
+export async function 公海客户放回人们(db: Pick<Prisma.TransactionClient, "customer">, 人们: string[], 限定客户?: string[]): Promise<Map<string, string>> {
+  const 出 = new Map<string, string>();
+  if (!人们.length || (限定客户 && !限定客户.length)) return 出;
+  for (let i = 0; i < (限定客户?.length ?? 1); i += 400) {
+    const 行 = await 看全部(() => db.customer.findMany({
+      where: { pool: { isNot: null }, deletedAt: null, poolPrevOwnerId: { in: 人们 }, ...(限定客户 ? { id: { in: 限定客户.slice(i, i + 400) } } : {}) },
+      select: { id: true, poolPrevOwnerId: true },
+    }));
+    for (const r of 行) if (r.poolPrevOwnerId) 出.set(r.id, r.poolPrevOwnerId);
+  }
+  return 出;
+}
+
+/**
+ * 界面灰领取按钮用（接口拦在 pool-actions.ts 领取）：这几位公海客户里原负责人是我的（Customer.poolPrevOwnerId，E-417 包 2）。回客户 id
  */
 export async function 我放出去的公海客户(们: { id: string; 在公海: boolean; salesOwnerId: string }[], 我: string): Promise<string[]> {
   const 公海们 = 们.filter((c) => c.在公海);
   if (!公海们.length) return [];
-  const 放走的 = await 看全部(() => 公海客户原负责人是(prisma, [我], 公海们.map((c) => c.id)));
-  return 公海们.filter((c) => c.salesOwnerId === 我 || 放走的.has(c.id)).map((c) => c.id);
+  return [...(await 公海客户放回人们(prisma, [我], 公海们.map((c) => c.id))).keys()];
 }
 
 /**

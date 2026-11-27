@@ -25,6 +25,7 @@ vi.mock("@/lib/prisma", async () => {
 });
 
 import { prisma as db, defaultClient as raw } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 看得到的客户数, 最近跟进的客户 } from "@/lib/scope-sql";
@@ -80,6 +81,7 @@ beforeAll(async () => {
   }
   // 公海：负责人看不到的、负责人看得到的（不能数两遍）、没跟进过的
   await raw.customerPool.createMany({ data: [0, 1, 4, 9, 11, 22, 29, 40].map((i) => ({ customerId: 编号[i] })) });
+  await 回填放回人列(raw); // 公海里负责人还挂着的客户补两列（回避只认 poolPrevOwnerId，E-417 包 2）
 });
 
 beforeEach(() => 忘掉企业版范围());

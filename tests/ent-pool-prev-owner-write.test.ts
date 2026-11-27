@@ -1,7 +1,8 @@
 /**
  * 放进公海时把原负责人存到 poolPrevOwnerId（E-417 包 1，迁移 194）：
  * 手动放回、超时回收、客户连带、离职、导入各一条：进公海后列 = 原负责人；再进一次被覆盖；出公海不清。
- * 读法这一包不改（还走留痕），这里只钉写。
+ * 写列这一包钉死；E-417 包 2 起回避按这两列读（读的用例在 ent-pool-original-owner-hidden 等），本文件末尾补两条不写放回留痕的入池路（清负责人开关关着、按天掉公海）
+ * 和「名单过上限 + 列为空」的读。
  */
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
@@ -30,6 +31,10 @@ import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 记换负责人 } from "@/lib/owner-log-db";
+import { saveBusiness, DEFAULT_BUSINESS } from "@/lib/business";
+import { 自动掉公海 } from "@/lib/pool-db";
+import { 对拍 } from "@/lib/enterprise/pool-prev-owner-compare";
+import { defaultClient as raw } from "@/lib/prisma";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 let 甲: 人;
@@ -193,5 +198,74 @@ describe("客户进公海写 poolPrevOwnerId", () => {
       await 记换负责人(tx, [{ customerId: c, from: 甲.id, to: 占位 }], 甲.id, "pool-release");
     }));
     expect(await 客户列(c)).toBe(甲.id);
+  });
+});
+
+describe("不写放回留痕的两条进公海的路：照样写列（E-417 包 2）", () => {
+  it("清负责人开关关着：客户进公海负责人留着、不记放回留痕，列 = 原负责人；甲看不到也领不回，乙看得到、领得到", async () => {
+    公海规则.进公海清负责人 = false;
+    try {
+      const c = await 客户(甲.id);
+      expect((await 以(甲, () => 放进公海([c], "客户主动终止"))).ok).toBe(true);
+      expect(await 客户列(c)).toBe(甲.id);
+      expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(甲.id); // 负责人没清
+      expect(await prisma.customerOwnerLog.count({ where: { customerId: c, kind: "pool-release" } })).toBe(0); // 没有放回留痕
+      expect(await 以(甲, () => prisma.customer.findUnique({ where: { id: c }, select: { id: true } }))).toBeNull();
+      expect((await 以(甲, () => 领取([c]))).ok).toBe(false);
+      expect(await 以(乙, () => prisma.customer.findUnique({ where: { id: c }, select: { id: true } }))).not.toBeNull();
+      expect((await 以(乙, () => 领取([c]))).ok).toBe(true);
+    } finally {
+      公海规则.进公海清负责人 = true;
+    }
+  });
+
+  it("按天掉公海：扫进公海的客户列 = 入池前的负责人（负责人留着、没有放回留痕）", async () => {
+    vi.stubEnv("CRM_ENTERPRISE", ""); // 企业版业务配置把 poolDays 锁成 0，按天扫只在别的版本里走
+    invalidateSettingsCache();
+    await saveBusiness({ ...DEFAULT_BUSINESS, poolDays: 30 });
+    const 旧 = await 客户(甲.id);
+    await prisma.customer.update({ where: { id: 旧 }, data: { lastFollowAt: new Date(Date.now() - 90 * 86_400_000) } });
+    const 新 = await 客户(乙.id);
+    await prisma.customer.update({ where: { id: 新 }, data: { lastFollowAt: new Date() } });
+    expect(await 自动掉公海({ id: 甲.id, name: 甲.name })).toBe(1);
+    expect(await prisma.customerPool.count({ where: { customerId: 旧 } })).toBe(1);
+    expect(await 客户列(旧)).toBe(甲.id);
+    expect(await 客户列(新)).toBeNull();
+    expect(await prisma.customerOwnerLog.count({ where: { customerId: 旧, kind: "pool-release" } })).toBe(0);
+  });
+});
+
+describe("回避名单过上限、公海里有列为空的行：按列写的条件不误挡（空列踩 NULL 的坑）", () => {
+  it("甲放回 101 个公海项目 + 101 位公海客户，另有列为空的、乙放的：甲只看不到自己的；对拍（限定层互补）不报", async () => {
+    const t = new Date("2026-11-01T10:00:00Z");
+    const 公海客户 = async (列: string | null) => {
+      const c = await 客户(甲.id);
+      await prisma.customerPool.create({ data: { customerId: c, userId: null, reason: "手动", at: t } });
+      await raw.customer.update({ where: { id: c }, data: { poolPrevOwnerId: 列 } });
+      return c;
+    };
+    const 公海项目 = async (列: string | null) => {
+      const c = await 客户(乙.id);
+      const p = await 项目(c, "", t);
+      await raw.project.update({ where: { id: p }, data: { pooledAt: t, poolPrevOwnerId: 列 } });
+      return p;
+    };
+    const 甲的客户: string[] = [];
+    const 甲的项目: string[] = [];
+    for (let i = 0; i < 回避名单上限 + 1; i++) { 甲的客户.push(await 公海客户(甲.id)); 甲的项目.push(await 公海项目(甲.id)); }
+    const 空客户 = [await 公海客户(null), await 公海客户(null)];
+    const 空项目 = [await 公海项目(null), await 公海项目(null)];
+    const 乙客户 = await 公海客户(乙.id);
+    const 乙项目 = await 公海项目(乙.id);
+    const 看 = await 以(甲, async () => ({
+      客户: new Set((await prisma.customer.findMany({ where: { pool: { isNot: null } }, select: { id: true } })).map((r) => r.id)),
+      项目: new Set((await prisma.project.findMany({ where: { pooledAt: { not: null } }, select: { id: true } })).map((r) => r.id)),
+    }));
+    for (const id of 甲的客户) expect(看.客户.has(id)).toBe(false);
+    for (const id of 甲的项目) expect(看.项目.has(id)).toBe(false);
+    for (const id of [...空客户, 乙客户]) expect(看.客户.has(id)).toBe(true);
+    for (const id of [...空项目, 乙项目]) expect(看.项目.has(id)).toBe(true);
+    const r = await 对拍(raw, prisma);
+    expect(r.互补不成立人数).toBe(0);
   });
 });

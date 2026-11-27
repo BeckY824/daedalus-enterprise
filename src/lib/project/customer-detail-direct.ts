@@ -3,7 +3,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 权限项目选, 带已加入, type 谁 } from "@/lib/enterprise/permissions";
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
-import { 原负责人回避, 回避豁免 } from "./pool-owner";
+import { 原负责人回避, 回避豁免, 项目放回人们 } from "./pool-owner";
 import { 看得到的客户 } from "./db";
 import { 客户页项目地址, 录音确认参数, 带录音确认参数 } from "./customer-detail-href";
 import { 仅项目客户们 } from "@/lib/enterprise/project-only-customers";
@@ -49,13 +49,9 @@ export async function 项目链接们(me: 谁, ids: readonly (string | null | un
 /** 公海里的项目，要判原负责人回避的：项目 id → 最近一次放公海时的负责人（没有这条痕 = 不在表里，退回项目上的 ownerId，同 项目页去向）。不用判（回避关、豁免、没有公海项目）= null */
 async function 公海上一任(me: 谁, ids: string[]): Promise<Map<string, string | null> | null> {
   if (!ids.length || !原负责人回避() || (await 回避豁免(me))) return null;
+  // 认 Project.poolPrevOwnerId（E-417 包 2）；空列不在表里，判的地方照旧退回项目上的 ownerId
   const 表 = new Map<string, string | null>();
-  for (const l of await prisma.projectNodeLog.findMany({
-    where: { projectId: { in: ids }, kind: "pool-release" },
-    orderBy: { at: "desc" },
-    select: { projectId: true, fromOwnerId: true },
-  }))
-    if (!表.has(l.projectId)) 表.set(l.projectId, l.fromOwnerId);
+  for (const [id, 人] of await 项目放回人们(prisma, ids)) 表.set(id, 人);
   return 表;
 }
 

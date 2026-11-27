@@ -22,6 +22,7 @@ import { 卡点看板, 交接卡点 } from "@/lib/project/blocker";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 项目现在, 项目一段 } from "@/app/(app)/overview/project-stats";
 import { 不回避条件, 是我放回的公海项目条件 } from "@/lib/project/pool-owner";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 
 type 人 = { id: string; role: string; name: string; email: string; title: string; avatar: string | null };
 const 时刻 = (i: number) => new Date(Date.UTC(2026, 9, 1) + i * 1000);
@@ -75,6 +76,7 @@ describe.each([5, 150, 1500])("F-057 回避 %i 个公海项目", (N) => {
       { id: X丙, name: "X丙放的", customerId: 客户X, ownerId: "", creatorId: 丙.id, pooledAt: 时刻(7001) },
     ] });
     await prisma.projectNodeLog.createMany({ data: [痕(X回避, 乙.id, 7000), 痕(X丙, 丙.id, 7001)] });
+    await 回填放回人列(prisma); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
     忘掉企业版范围();
   });
   afterEach(() => {
@@ -162,10 +164,10 @@ describe.each([5, 150, 1500])("F-057 回避 %i 个公海项目", (N) => {
   });
 });
 
-describe("F-057 例外过上限：宽挡 / 窄算", () => {
+describe("F-057 早先放过、最后一次是别人放的（原来的「例外」）：按列写，不再宽挡 / 窄算", () => {
   const 例外数 = 130; // 早先乙放、后来丙放回：最后不是乙（> 名单上限 100）
   const 自己数 = 120; // 只有乙放过
-  it("不回避条件：例外 > 100 时回避的一定挡住（宁可多挡）；是我放回的公海项目条件：宁可少算，别人最后放的不算进来", async () => {
+  it("不回避条件：回避的挡住、最后一次是别人放的照样放出来；是我放回的公海项目条件：只含最后一次是我放的", async () => {
     await resetDb();
     invalidateSettingsCache();
     忘掉企业版范围();
@@ -183,13 +185,15 @@ describe("F-057 例外过上限：宽挡 / 窄算", () => {
       ...自己ids.map((id, i) => 痕(id, 乙.id, i)),
       ...例外ids.flatMap((id, i) => [痕(id, 乙.id, 1000 + i), 痕(id, 丙.id, 2000 + i)]),
     ] });
+    await 回填放回人列(prisma);
     const 查 = async (w: object) => new Set((await prisma.project.findMany({ where: w, select: { id: true } })).map((r) => r.id));
-    // 不回避条件（乙看）：乙回避的 120 个一个都不能出现；例外被宽挡（多挡）可以不出现，但不能报错
+    // 不回避条件（乙看）：乙回避的 120 个一个都不能出现；最后一次是丙放的 130 个照样出现（按列写，没有多挡）
     const 不回避 = await 以谁的身份(乙.id, () => 不回避条件(prisma, 乙.id));
     expect(不回避).not.toBeNull();
     const 出 = await 查(不回避!);
     for (const id of 自己ids) expect(出.has(id)).toBe(false);
-    // 正向条件（乙的）：不报错；不含最后是丙放的（少算不多算）；含「从没别人放过」的自己 120 个
+    for (const id of 例外ids) expect(出.has(id)).toBe(true);
+    // 正向条件（乙的）：不含最后是丙放的；含自己放的 120 个
     const 正 = await 是我放回的公海项目条件(prisma, [乙.id]);
     expect(正).not.toBeNull();
     const 中 = await 查(正!);

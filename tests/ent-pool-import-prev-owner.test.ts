@@ -20,6 +20,7 @@ vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
 import { prisma } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
@@ -69,6 +70,7 @@ async function 补记(customerId: string, 原负责人: string) {
   await prisma.customerOwnerLog.create({
     data: { customerId, userId: 系统.id, at: pool.at, fromOwnerId: 原负责人, toOwnerId: 占位, kind: "pool-release", clockReset: null },
   });
+  await 回填放回人列(prisma); // 补记后跑回填脚本补列（回避只认 poolPrevOwnerId，E-417 包 2）
   忘掉企业版范围();
 }
 

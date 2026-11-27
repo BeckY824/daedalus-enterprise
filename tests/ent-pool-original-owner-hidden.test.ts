@@ -2,7 +2,7 @@
  * 企业版「原负责人退到公海后就看不到」（11-03 用户定）和「没设业务角色不能领公海」：
  *   - 原负责人：客户列表、客户详情、项目列表、项目详情、公海页、关键词分页、页签数都没有这位客户和项目；客户下面的沟通也跟着
  *   - 客户放进公海：客户和他的项目都回避；项目退回：只有项目回避，客户还归他（M-公海-02，11-09）
- *   - 认法：认最后一条 pool-release 的 fromOwnerId；旧数据客户 salesOwnerId 还留着他的也认（部署空档）
+ *   - 认法（E-417 包 2 起）：认 Customer / Project 的 poolPrevOwnerId 两列（放进公海时写的最近一次放进公海的人；老数据靠回填脚本写列）
  *   - 同事照常看得到才能领；上级、总管理不受影响；上级自己是原负责人也回避
  *   - 新负责人领走：原负责人还是看不到（仍是组员看得到项目）；只认最后一次放回
  *   - 规则「按组织看客户」关着（别人都不限定）：照样回避
@@ -35,6 +35,7 @@ import { 放进公海, 领取, 分配公海, 撤销公海, 退回原因选项 } 
 import { 放回项目公海 } from "@/app/(app)/projects/actions";
 import { saveFollowUp } from "@/app/(app)/customers/[id]/actions";
 import { saveBusiness, getBusiness } from "@/lib/business";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人;
@@ -60,6 +61,7 @@ async function 导入的(原负责人: string, name = "导入客户") {
   await raw.customerPool.create({ data: { customerId: c, userId: null, reason: "导入" } });
   const p = (await raw.project.create({ data: { name: `${name}项目`, customerId: c, ownerId: "", creatorId: 原负责人, pooledAt: new Date() } })).id;
   await raw.projectNodeLog.create({ data: { projectId: p, userId: 原负责人, kind: "pool-release", fromOwnerId: 原负责人, toPhase: "线索", toNode: "线索" } });
+  await 回填放回人列(raw); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
   忘掉企业版范围();
   return { c, p };
 }
@@ -340,6 +342,7 @@ describe("原负责人退到公海后看不到", () => {
     // 项目级：乙退过，后来丙那一条更晚（领走再退）
     const 转手 = await 导入的(乙.id, "转手项目");
     await raw.projectNodeLog.create({ data: { projectId: 转手.p, userId: 丙.id, kind: "pool-release", fromOwnerId: 丙.id, toPhase: "线索", toNode: "线索", at: new Date(Date.now() + 60_000) } });
+    await 回填放回人列(raw); // 转手项目那一条留痕后补列：列跟着最近一条（丙）
     // 客户级：乙放进公海、丙领走、丙再放进公海
     const c = await 客户(乙.id, "转手客户");
     const p = await 项目(乙.id, c);
