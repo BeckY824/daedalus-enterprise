@@ -3059,7 +3059,13 @@ button.ais-hd-b { cursor: pointer; }
 .plan-g-h { display: flex; align-items: baseline; gap: var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
 .plan-g-h b { font-size: var(--fs-section); font-weight: 600; color: var(--ink); }
 .plan-g-n { font-size: var(--fs-note); color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.plan-g-s { font-size: var(--fs-note); color: var(--text-muted); margin-left: auto; }
+.plan-g-s { font-size: var(--fs-note); color: var(--text-muted); margin-left: auto; min-width: 0; flex: 0 100 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* F-056 组头计数：「· 计划和待办 N · 项目下一步 M」一行，放不下截断（title 带全文）；名字不缩，说明先让 */
+.plan-g-h b { flex: none; }
+.plan-g-c { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-g-d { margin-inline: var(--s1); }
+.plan-g-c .plan-g-n { margin-inline: 0 var(--s1); }
+.plan-g-warn .plan-g-c { color: var(--danger); }
 /* 逾期那一组：红只给标题和数字，不给整块底色——整块红会让人以为出错了 */
 .plan-g-warn .plan-g-h b, .plan-g-warn .plan-g-n { color: var(--danger); }
 .plan-g-warn .plan-g-h { border-bottom-color: var(--danger-line); }

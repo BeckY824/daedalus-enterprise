@@ -674,7 +674,8 @@ it("看板视图（C17 / C18 / C15）：页头照客户列表（导入、导出�
       await page.addScriptTag({ content: 包 });
       await page.locator(".fake-board").waitFor();
       expect(await page.locator("tr.ant-table-row").count(), `宽 ${w}`).toBe(0);
-      const 钮 = (await page.locator(".page-head button").allInnerTexts()).map((t) => t.replace(/\s+/g, ""));
+      // F-056：≤1199 导入 / 导出只留图标（字靠 aria-label），按读屏名比，宽窄都是同一串
+      const 钮 = (await page.locator(".page-head button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label") || (e as HTMLElement).innerText))).map((t) => t.replace(/\s+/g, ""));
       // 页头「新建 ▾」（11-12）：看板视图也是这一颗，看板上不再单独有「新增项目」
       expect(钮, `宽 ${w}`).toEqual(["导入", "导出", "离职交接3", "新建"]);
       expect(await page.getByRole("button", { name: /新增项目|分配/ }).count(), `宽 ${w}`).toBe(0);
