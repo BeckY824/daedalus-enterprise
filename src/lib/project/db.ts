@@ -60,6 +60,7 @@ import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
 import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数, 进公海清组员, 进公海关主题, 放弃没发出的录音 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
+import { 项目有未裁定异议 } from "@/lib/enterprise/objection-guard";
 import { 换负责人待办, 待办痕, 手动转让痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
@@ -747,6 +748,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       // 验证中（等复核、等销售）的线索不能改负责人（X-77）
       const 验证中 = await 验证中不能改派(tx, p.id);
       if (验证中) return { ok: false as const, error: 验证中 };
+      // 12-22 异议：这个项目有没裁定的转让异议，裁定前不能再转（判定页 #20）
+      const 异议拦 = await 项目有未裁定异议(tx, [{ id: p.id, customerId: p.customerId, ownerId: p.ownerId }], "再转");
+      if (异议拦) return { ok: false as const, error: 异议拦 };
       // 这里改不了阶段和结局（规整项目只出名称、负责人、金额、备注），p 的阶段 / 结局就是改完的
       const 超 = await 超上限(tx, 规则, 新.ownerId, p);
       if (超) return { ok: false as const, error: 超 };

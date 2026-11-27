@@ -14,6 +14,7 @@
  * （项目公海里的不算同事的，同 P-删-05 的口径）；系统管理员可代并。合并不成组：项目负责人、组员都不动（E-280 一.2）。
  * 第二批（合并申请、并进另一个项目）用同一张合并单：kind / parentId / approvals / status 留了口子，这里不写。
  */
+import { 客户有未裁定异议 } from "./objection-guard";
 import type { PrismaClient, Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删, 回收站保留天数 } from "./soft-delete-core";
@@ -125,6 +126,9 @@ async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | nu
   if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return ["你只能看，不能合并客户"];
   const 管 = 是系统管理员(me, org);
   const 因: string[] = [];
+  // 12-22 异议：这两位客户（或名下项目）有没裁定的转让异议，裁定前不能合并（判定页 #20）
+  const 异议拦 = await 客户有未裁定异议(db, [A.id, B.id], "合并");
+  if (异议拦) 因.push(异议拦);
   const 在公海 = (c: 客户行) => !!c.pool;
   if (在公海(A) !== 在公海(B)) 因.push(`「${名(在公海(A) ? A : B)}」在公海里，先领出来再并`);
   else if (在公海(A) && !管) 因.push("两家都在公海里，只有系统管理员能合并");

@@ -7048,3 +7048,5 @@ button.proj-miss-chip { cursor: pointer; }
 .obj-mut { font-size: var(--dt-aux, 12px); color: var(--text-muted); }
 .obj-form { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .obj-err { color: var(--danger); }
+.obj-btns { display: flex; gap: 8px; flex: none; }
+.obj-full { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }

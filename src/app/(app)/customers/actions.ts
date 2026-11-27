@@ -45,6 +45,7 @@ import { 带走并记下在事务里, 还项目, 带过来对不上, 数转走�
 import { 等确认的申请移交, 作废申请移交 } from "@/lib/enterprise/handover-void";
 import { 同事项目保留知会 } from "@/lib/enterprise/notice-sources";
 import { 记转让异议入口 } from "@/lib/enterprise/objection";
+import { 客户有未裁定异议 } from "@/lib/enterprise/objection-guard";
 import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
 import { 记换负责人, 是我刚换的, 删被撤的换负责人记录, 公海前负责人, 取转让留痕 } from "@/lib/owner-log-db";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
@@ -1417,6 +1418,9 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   if (在公海) return { ok: false, error: 在公海 };
   const 验 = await 验证中挡(ids, salesOwnerId);
   if (验) return { ok: false, error: 验 };
+  // 12-22 异议：未裁定的异议挂着，客户不能再转（申请移交那一路也一样，所以放在分路之前）
+  const 异议拦 = await 客户有未裁定异议(prisma, (await prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: { not: salesOwnerId } }, select: { id: true } })).map((c) => c.id), "再转");
+  if (异议拦) return { ok: false, error: 异议拦 };
   const 挡 = await 挡字段(me.id, ["销售负责人"]);
   if (挡) return { ok: false, error: 挡 };
   // 市场分配（转让框里有「指定分配 / 自动分配」那组）的指定：只能给参与状态正常的（审核 11-18 追加，cust-auto-assign.ts 市场分配指定挡）
@@ -1570,6 +1574,9 @@ async function 移交中挡(ids: string[], to: string): Promise<string | null> {
   if (!企业版()) return null;
   // 本来就归接手人的不算换人，不拦
   const 要换 = (await prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: { not: to } }, select: { id: true } })).map((c) => c.id);
+  // 12-22 异议：要换人的客户（或名下项目）有没裁定的转让异议，裁定前不能再转（判定页 #20）
+  const 异议拦 = await 客户有未裁定异议(prisma, 要换, "再转");
+  if (异议拦) return 异议拦;
   const 中 = await 交接中的客户(要换);
   if (!中.size) return null;
   const b = await getBusiness();
