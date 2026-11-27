@@ -20,7 +20,7 @@ import { prisma } from "@/lib/prisma";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 看全部 } from "@/lib/team-scope";
 import { recordAudit } from "@/lib/audit";
-import { 转项目 } from "@/lib/carry-over-db";
+import { 转项目, 不跟着转的提醒 } from "@/lib/carry-over-db";
 import { 换负责人待办, 待办痕, 手动转让痕, 接上待办痕, 跟着客户痕 } from "@/lib/project/carry-tasks";
 import { 记换负责人 } from "@/lib/owner-log-db";
 import { 企业版 } from "./switch";
@@ -91,7 +91,7 @@ export async function 评估退回(db: Db, 行: Pick<EntTransferObjection, "kind
 class 裁定拦 extends Error {}
 
 /** 在事务里真退：项目一个个退（待办跟着走、验证钟从头）、客户异议再退客户本身。对不上（刚被改）抛 裁定拦，整笔回滚 */
-async function 执行退回(tx: Db, 行: EntTransferObjection, 评估: Extract<退回评估, { 自动: true }>, 裁定人: string, 说明: string): Promise<{ 项目数: number; 退了客户: boolean }> {
+async function 执行退回(tx: Db, 行: EntTransferObjection, 评估: Extract<退回评估, { 自动: true }>, 裁定人: string, 说明: string): Promise<{ 项目数: number; 退了客户: boolean; 计划数?: number; 待办数?: number }> {
   const 话 = `异议撤回，退回原负责人：${说明}`;
   for (const p of 评估.项目) {
     const 几条 = await 换负责人待办(tx, { id: p.id, customerId: p.customerId, name: p.name, pooledAt: null }, 行.toOwnerId, 评估.还给, true);
@@ -102,7 +102,18 @@ async function 执行退回(tx: Db, 行: EntTransferObjection, 评估: Extract<�
   const r = await tx.customer.updateMany({ where: { id: 行.customerId, salesOwnerId: 行.toOwnerId }, data: { salesOwnerId: 评估.还给 } });
   if (r.count !== 1) throw new 裁定拦("这位客户刚被别人改过负责人，这次没退，请刷新再裁定");
   await 记换负责人(tx, [{ customerId: 行.customerId, from: 行.toOwnerId, to: 评估.还给 }], 裁定人, "undo", new Map([[行.customerId, { 原因: 话, 最近跟进: null, 重复咨询: null }]]));
-  return { 项目数: 评估.项目.length, 退了客户: true };
+  // 12-22 审查 M4：转让时客户上的未完成计划、待办也一起带去了接手人名下，撤回时一并退给原负责人。异议行没有存「当次带走的 id」的列（不加迁移），
+  // 按条件找：这位客户 + 现在归接手人 + 没做完 + 转让时刻前就有（接手人转让后自己新建的不退）+ 转让那一刻被换过手（updatedAt ≥ 转让时刻前一点，
+  // 接手人转让前就有、没被带动过的不算）；已完成的不动；转让时不跟着转的提醒待办也不动。同一事务里做
+  const 日志 = await tx.customerOwnerLog.findUnique({ where: { id: 行.ownerLogId }, select: { at: true } });
+  if (!日志) return { 项目数: 评估.项目.length, 退了客户: true, 计划数: 0, 待办数: 0 };
+  const 起 = new Date(日志.at.getTime() - 当次窗口毫秒);
+  const 带 = { customerId: 行.customerId, ownerId: 行.toOwnerId, done: false, createdAt: { lte: 日志.at }, updatedAt: { gte: 起 } };
+  const 计划们 = await tx.followPlan.findMany({ where: 带, select: { id: true } });
+  const 待办们 = await tx.task.findMany({ where: { ...带, AND: 不跟着转的提醒("assign") }, select: { id: true } });
+  const 计划r = 计划们.length ? await tx.followPlan.updateMany({ where: { id: { in: 计划们.map((x) => x.id) }, ownerId: 行.toOwnerId, done: false }, data: { ownerId: 评估.还给 } }) : { count: 0 };
+  const 待办r = 待办们.length ? await tx.task.updateMany({ where: { id: { in: 待办们.map((x) => x.id) }, ownerId: 行.toOwnerId, done: false }, data: { ownerId: 评估.还给 } }) : { count: 0 };
+  return { 项目数: 评估.项目.length, 退了客户: true, 计划数: 计划r.count, 待办数: 待办r.count };
 }
 
 export type 待裁定行 = {
@@ -207,7 +218,7 @@ export async function 裁定(me: { id: string; name: string }, id: unknown, 决�
   if (行.status !== 异议待裁定) return { ok: false, error: "这一条已经裁定过了，刷新看看" };
 
   let 终态: string = 异议维持;
-  type 退了 = { 项目数: number; 退了客户: boolean };
+  type 退了 = { 项目数: number; 退了客户: boolean; 计划数?: number; 待办数?: number };
   const 盒: { 退: 退了 | null } = { 退: null };
   let 手工原因 = "";
   try {
@@ -262,7 +273,7 @@ export async function 裁定(me: { id: string; name: string }, id: unknown, 决�
     return { ok: true, 结果: "待手工退回", 说: "已裁定：撤回。不满足自动退回的条件，已通知系统管理员手工退回" };
   }
   await 通知退回完(行, me.name, 话, "自动");
-  return { ok: true, 结果: "撤回", 说: `已裁定：撤回，已退回${异议人}${退?.项目数 ? `（含 ${退.项目数} 个项目）` : ""}，并通知各方` };
+  return { ok: true, 结果: "撤回", 说: `已裁定：撤回，已退回${异议人}${退?.项目数 ? `（含 ${退.项目数} 个项目）` : ""}${退?.计划数 || 退?.待办数 ? `，客户上的 ${退.计划数 ?? 0} 条计划、${退.待办数 ?? 0} 条待办一并退回` : ""}，并通知各方` };
 }
 
 /** 撤回退回做完（自动或手工）：通知异议人、发起人、被退回的接手人、客户现在的负责人（判定页 #19） */
