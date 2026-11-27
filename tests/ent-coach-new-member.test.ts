@@ -99,6 +99,20 @@ describe("系统管理员新增", () => {
   });
 });
 
+describe("导入来的登录名（@import.invalid）", () => {
+  it("编辑时登录名原样可存、改成另一个不合法的拒、新增用不合法的拒", async () => {
+    当(系统);
+    const id = (await prisma.user.create({ data: { email: "xx@import.invalid", name: "导入人", title: "", role: "SALES", password: "x" } })).id;
+    const 改 = { name: "导入人", email: "xx@import.invalid", title: "销售总监", role: "SALES", active: true, password: null, id };
+    expect(await saveUser(改)).toMatchObject({ ok: true });
+    expect(await prisma.user.findUnique({ where: { id } })).toMatchObject({ email: "xx@import.invalid", title: "销售总监" });
+    expect(await saveUser({ ...改, email: "yy@import.invalid" })).toMatchObject({ ok: false, error: expect.stringContaining("2–32") });
+    expect((await prisma.user.findUnique({ where: { id } }))?.email).toBe("xx@import.invalid");
+    expect(await saveUser({ ...新("zz@import.invalid") })).toMatchObject({ ok: false, error: expect.stringContaining("2–32") });
+    expect(await prisma.user.count({ where: { email: "zz@import.invalid" } })).toBe(0);
+  });
+});
+
 describe("不是系统管理员", () => {
   it("条线总管、勾了「不管设置」的总管理、只读管理员：新增教练 FORBIDDEN，一行不写", async () => {
     for (const id of [条线总管, 不管设置, 只读]) {
