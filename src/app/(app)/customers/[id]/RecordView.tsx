@@ -11,6 +11,7 @@ import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo,
 import { 只读上下文, 只能看的格上下文, 资料改挡上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { 疑似重复页 } from "../dupe-words";
 import { LinkPending } from "@/components/NavProgress";
 import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, Select, Typography, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
@@ -239,6 +240,7 @@ export default function RecordView({
   合并口 = null,
   能合并 = null,
   并入话 = null,
+  疑似重复数 = 0,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档 || 管理员只读;
@@ -1266,6 +1268,14 @@ export default function RecordView({
       {后果框}
       {合并口 && <合并桥.Provider value={合并桥值}>{合并口}</合并桥.Provider>}
       {醒目条}
+      {/* 疑似重复（12-15 第三批 C，P-合并-06）：清单里还列着这位时一行淡字，链到清单逐组处理；不可关（处理完自然不列） */}
+      {疑似重复数 > 0 && (
+        <div className="dupe-hint" role="status" data-testid="dupe-hint">
+          <InfoCircleOutlined className="dupe-hint-i" aria-hidden />
+          <span className="dupe-hint-t" title={`还有 ${疑似重复数} 家客户和这位同名，可能是同一位`}>还有 {疑似重复数} 家客户和这位同名，可能是同一位</span>
+          <Link href={疑似重复页} className="dupe-hint-a">去疑似重复清单 ›</Link>
+        </div>
+      )}
       {/*
         「← 回到客户列表（第 N 页）」（员工反馈 1A，11-16）：原来按设计稿 12/PAGE「切人不再返回列表」不摆，靠窄名单换人；
         员工是按列表一页一页盘点的，窄名单（最近跟进 50 位）不是那一页。回的是进来前那张列表的原地址（筛选、页码、页签），

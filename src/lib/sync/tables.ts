@@ -150,6 +150,7 @@ export const 指向人的列: [string, string][] = [
   ["CustomerClaim", "userId"],
   ["CustomerMerge", "userId"],
   ["CustomerNotDupe", "userId"],
+  ["CustomerNotDupe", "undoneById"],
   ["ContractOwner", "salesOwnerId"],
   ["ContractOwner", "channelOwnerId"],
   ["Opportunity", "ownerId"],

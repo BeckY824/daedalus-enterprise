@@ -16,7 +16,8 @@ export { 挂靠联系人不能合成, 只有一位联系人不能合成 } from "
 export type 合成候选人 = { id: string; name: string; 职务: string | null; 关键: boolean; 号: string | null; 主号?: string | null };
 
 export type 合并请求 =
-  | { 种: "客户" }
+  /** 预选：并进来那家已经定了（疑似重复清单），框一开就读预览；形状同 merge-actions 的 合并候选 */
+  | { 种: "客户"; 预选?: { id: string; name: string; 编号: string | null; 负责人: string | null; 要申请?: boolean } }
   | { 种: "联系人"; 留: 合成候选人; 们: 合成候选人[] }
   | { 种: "项目"; projectId: string; 名: string }
   /** 并进另一个项目（第二批 2a）：从这个项目（被并掉的）出发，框里选留下的那个；客户页、项目详情页都从这里开 */

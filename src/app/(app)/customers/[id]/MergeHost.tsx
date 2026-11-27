@@ -64,7 +64,7 @@ type 并项目预览 = Extract<Awaited<ReturnType<typeof 预览项目合并>>, {
 export default function MergeHost({ customerId, 客户名 }: { customerId: string; 客户名: string }) {
   const { 请求, 收 } = useContext(合并桥);
   if (!请求) return null;
-  if (请求.种 === "客户") return <MergeCustomerDialog key={请求.次} customerId={customerId} 客户名={客户名} 关={收} />;
+  if (请求.种 === "客户") return <MergeCustomerDialog key={请求.次} customerId={customerId} 客户名={客户名} 预选={请求.预选} 关={收} />;
   if (请求.种 === "联系人") return <ContactMergeDialog key={请求.次} 留={请求.留} 们={请求.们} 关={收} />;
   if (请求.种 === "并项目") return <ProjectMergeDialog key={请求.次} projectId={请求.projectId} 项目名={请求.名} 关={收} />;
   return <ProjectMoveDialog key={请求.次} customerId={customerId} 客户名={客户名} projectId={请求.projectId} 项目名={请求.名} 关={收} />;
@@ -142,7 +142,15 @@ const 一行 = (v: ReactNode, 全: string, cls = "") => <span className={`mrg-on
 
 /* ───────────────────────── 合并客户 ───────────────────────── */
 
-function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: string; 客户名: string; 关: () => void }) {
+/**
+ * 疑似重复清单（12-15 第三批 C）上的「合并」：两家都预选好（留下 = 清单挑的那家，并进来的那家直接读预览，不用再搜），框里照样能「换一家」。
+ * 并进来那家是同事负责的（要申请）走第二批合并申请，同客户详情；谁能并照旧服务端判
+ */
+export function MergePairDialog({ 留下, 并掉, 关 }: { 留下: { id: string; name: string }; 并掉: 合并候选; 关: () => void }) {
+  return <MergeCustomerDialog customerId={留下.id} 客户名={留下.name} 预选={并掉} 关={关} />;
+}
+
+function MergeCustomerDialog({ customerId, 客户名, 预选, 关 }: { customerId: string; 客户名: string; 预选?: 合并候选; 关: () => void }) {
   const router = useRouter();
   // 撤销条上的「看进度」：框已经关了，用壳里那份跳（同项目换客户）
   const 去 = useShellNavGo();
@@ -205,6 +213,13 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
         });
     读.catch((e) => { if (这次 === 读次.current) set读错(动作出错话(e, "没读到合并预览，请再试一次")); });
   }
+  // 预选了并进来那家（疑似重复清单）：一开框就读预览，跳过搜索那步；只在开框那一下
+  const 预选过 = useRef(false);
+  useEffect(() => {
+    // 等管理员身份读回来再预选：挑 里按 管 分走申请 / 直接预览，读回前调会走错路
+    if (预选 && 管 !== null && !预选过.current) { 预选过.current = true; 挑(预选); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [管]);
   const 换一家 = () => { 读次.current++; set并掉(null); set预(null); set申(null); set读错(null); };
 
   const 对们 = 预 ? 预.联系人们.并掉.filter((b) => 同.has(b.id) && 配[b.id]).map((b) => ({ 留: 配[b.id]!, 并: b.id })) : [];

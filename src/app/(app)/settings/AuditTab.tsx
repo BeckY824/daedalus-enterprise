@@ -34,6 +34,8 @@ const ACTION_LABEL: Record<string, string> = {
   // 合并客户第二批 2b（11-26）：跨负责人合并申请，两家客户上各一条（lib/enterprise/merge-request.ts）
   "merge-request": "发合并申请", "merge-approve": "同意合并", "merge-reject": "拒绝合并", "merge-request-withdraw": "撤回合并申请",
   "merge-request-void": "合并申请失效", "merge-request-done": "合并申请通过",
+  // 疑似重复清单（12-15 第三批 C）：标 / 撤「不是同一个人」，两家客户上各一条（lib/enterprise/dupe-groups.ts）
+  "not-dupe": "标不是同一个人", "not-dupe-undo": "撤销不是同一个人",
 };
 /** 同一个动作按对象另起叫法：项目合并（第二批 2a，project-merge.ts 在两个项目上各记一条 merge / merge-undo）和客户合并分开 */
 const ACTION_LABEL_BY_ENTITY: Record<string, Record<string, string>> = {

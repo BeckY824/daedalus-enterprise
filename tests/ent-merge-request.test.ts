@@ -500,6 +500,45 @@ describe("动作层（customers/merge-actions.ts）", () => {
     expect(await raw.entMergeRequest.count()).toBe(1);
   });
 
+  it("疑似重复清单放行（12-15 C 审查必改 1）：平级同事的同名客户看不到，但清单上成对 → 预览合并申请、发起申请都能过；不成组的两家仍拒；标了不是同一个人的也拒", async () => {
+    const 看不到话 = { ok: false, error: "客户不存在或你看不到，刷新看看" };
+    const a = await 客户(乙.id, { name: "星河展具" });
+    const b = await 客户(丙.id, { name: "星河　展具", bizLine: "内贸" });
+    const 异名 = await 客户(丁.id, { name: "另一家公司" });
+    const 业务线冲突 = await 客户(丁.id, { name: "星河展具", bizLine: "外贸" });
+    await raw.customer.update({ where: { id: a }, data: { bizLine: "内贸" } });
+    以(乙);
+    await setSetting(规则.按组织看客户.key, true);
+    忘掉企业版范围();
+    await 以谁的身份(乙.id, async () => {
+      expect(await prisma.customer.count({ where: { id: b } })).toBe(0);
+      expect(await 预览合并申请(a, b)).toMatchObject({ ok: true });
+      expect(await 预览合并申请(a, 异名)).toEqual(看不到话);
+      expect(await 预览合并申请(a, 业务线冲突)).toEqual(看不到话);
+      expect(await 发起客户合并申请(a, 异名)).toEqual(看不到话);
+      expect(await 发起客户合并申请(a, 业务线冲突)).toEqual(看不到话);
+      expect(await raw.entMergeRequest.count()).toBe(0);
+      // 反过来：留下的是对方那家（不是我负责的）不放行
+      expect(await 预览合并申请(b, a)).toEqual(看不到话);
+      const 对 = await 发起客户合并申请(a, b);
+      expect(对).toMatchObject({ ok: true, 同意人: [{ userId: 丙.id }] });
+    });
+    expect(await raw.entMergeRequest.count()).toBe(1);
+  });
+
+  it("疑似重复清单放行：标了「不是同一个人」的两家不再放行", async () => {
+    const a = await 客户(乙.id, { name: "北辰贸易" });
+    const b = await 客户(丙.id, { name: "北辰贸易" });
+    await raw.customerNotDupe.create({ data: { id: [a, b].sort().join("__"), customerId: a, otherId: b, userId: 乙.id } });
+    以(乙);
+    await setSetting(规则.按组织看客户.key, true);
+    忘掉企业版范围();
+    await 以谁的身份(乙.id, async () => {
+      expect(await 预览合并申请(a, b)).toEqual({ ok: false, error: "客户不存在或你看不到，刷新看看" });
+      expect(await 发起客户合并申请(a, b)).toEqual({ ok: false, error: "客户不存在或你看不到，刷新看看" });
+    });
+  });
+
   describe("按号放行进来、看不到的同事客户：不超过挂靠只读卡（PR #506 审查第 1、3、4 条）", () => {
     const 号 = async (id: string) => (await raw.contact.findFirstOrThrow({ where: { customerId: id } })).phone!;
     async function 开范围() {

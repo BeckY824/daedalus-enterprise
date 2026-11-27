@@ -159,6 +159,7 @@ const 路由白名单: { 文件: string; 参数: string; 理由: string }[] = [
   { 文件: "src/app/(app)/overview/DataShell.tsx", 参数: "url", 理由: "复盘页本页换页签 / 筛选（/overview?…）" },
   { 文件: "src/lib/url-filters.ts", 参数: "q.size ? `${path}", 理由: "各列表页共用的筛选写地址：本页改参数，外面包着 startTransition" },
   { 文件: "src/app/(app)/dashboard/StartCard.tsx", 参数: "u", 理由: "首页起步卡（企业版开始）：只去设置、客户列表、新建线索这几个列表类的页，不去详情" },
+  { 文件: "src/app/(app)/customers/dupes/DupesView.tsx", 参数: "s ? `${疑似重复页}", 理由: "疑似重复清单本页换页签 / 页码（/customers/dupes?…），不去详情" },
   { 文件: "src/components/AppShell.tsx", 参数: "路径", 理由: "桌面壳原生菜单（window.desktopNav）发来的跳转；企业版网页里没有 desktopNav" },
 ];
 
@@ -172,6 +173,7 @@ const 链接白名单: { 文件: string; 参数: string; 理由: string }[] = [
   { 文件: "src/app/(app)/channels/RosterNote.tsx", 参数: "去.公海", 理由: "「N 条在公海」：链到公海页" },
   { 文件: "src/app/(app)/overview/ProjectStatsView.tsx", 参数: "链(`/leads", 理由: "复盘统计里的人名链到线索列表（按负责人筛）" },
   { 文件: "src/app/(app)/overview/ProjectStatsView.tsx", 参数: "带批次(\"/pool", 理由: "复盘统计里的数字链到公海页（带批次筛选）" },
+  { 文件: "src/app/(app)/customers/[id]/RecordView.tsx", 参数: "疑似重复页", 理由: "客户页顶上「去疑似重复清单 ›」：链到清单页（/customers/dupes），不去详情" },
   { 文件: "src/components/CustomerRoster.tsx", 参数: "底句.href", 理由: "名单底下「看全部」那句：/customers?scope=…（lib/enterprise/customer-scope.ts 名单底句）" },
   { 文件: "src/components/BackToList.tsx", 参数: "href", 理由: "详情页头的「回列表」：只回各模块的列表页" },
 ];
