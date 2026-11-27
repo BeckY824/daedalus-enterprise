@@ -25,6 +25,7 @@
  */
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { 读记录, 汇总 } from "./telemetry-daily.mjs";
@@ -131,15 +132,17 @@ export function 评规则(记录, 现在) {
   }
   for (const [k, rs] of 组) {
     if (rs.length < 阈值.R1次数) continue;
-    const 单人 = 人数(rs) === 1;
+    // 0 人（未登录 / 认不出员工）和 1 人都算「不够人」：只发我方，不发客户群
+    const 人 = 人数(rs);
+    const 不够人 = 人 < 2;
     const x = rs[0];
     出.push({
       键: `R1:${k}`,
       名: "同类错误连发",
-      客户: !单人,
+      客户: !不够人,
       近10: rs.length,
       近60: 记录.filter((y) => 组键(y) === k).length,
-      内容: 明细(rs, [`规则：同一类错误 10 分钟内 ${rs.length} 次（线 ${阈值.R1次数}）${单人 ? "，仅 1 位员工（个案）" : ""}`, `错误：${x.name || "?"}${x.code ? ` / ${x.code}` : ""}　路由：${x.route ?? "?"}`]),
+      内容: 明细(rs, [`规则：同一类错误 10 分钟内 ${rs.length} 次（线 ${阈值.R1次数}）${不够人 ? (人 === 0 ? "，认不出员工" : "，仅 1 位员工（个案）") : ""}`, `错误：${x.name || "?"}${x.code ? ` / ${x.code}` : ""}　路由：${x.route ?? "?"}`]),
     });
   }
   // R2：总量（只我方）、人数（客户）
@@ -273,6 +276,17 @@ export async function 运行(选项) {
     const 客户 = h.客户 || !!条?.客户;
     if (!条) {
       待发.push({ 优先: 1, 内容: `[告警] ${实例} ${h.名}\n${h.内容}`, 客户, 应用: () => (状态.alerts[h.键] = { 客户, 首次: 现在, 上次发: 现在 }) });
+    } else if (!条.客户 && 客户) {
+      // 之前只发过我方，现在升级成要发客户群：不等 60 分钟去重，当次立即按新告警发（我方 + 客户群）
+      待发.push({
+        优先: 1,
+        内容: `[告警] ${实例} ${h.名}\n${h.内容}`,
+        客户,
+        应用: () => {
+          条.客户 = true;
+          条.上次发 = 现在;
+        },
+      });
     } else if (现在 - 条.上次发 >= 重报毫秒) {
       待发.push({
         优先: 1,
@@ -291,6 +305,42 @@ export async function 运行(选项) {
     if (!键还在发生(键, 记录, 现在)) {
       const 谁 = 键.startsWith("R1:") ? `同类错误：${键.slice(3).replace(/\|/g, " / ")}` : (规则名[键] ?? 键);
       待发.push({ 优先: 2, 内容: `[已恢复] ${实例} 过去 30 分钟没有再出现\n${谁}\n首次 ${双时区(条.首次)}\n时间：${双时区(现在)}`, 客户: !!条.客户, 应用: () => delete 状态.alerts[键] });
+    }
+  }
+
+  // 状态写不了（磁盘满 / 无写权限）：去重、上限、心跳都失效，照常发会每轮刷屏，所以先试写一次
+  if (!dry) {
+    try {
+      写状态(目录, 状态);
+    } catch (e) {
+      const 码 = e && e.code ? e.code : "Error";
+      console.error(`[ent-alert] 状态写不了：${码}`);
+      // 本轮不发客户群、不发常规告警，也不发心跳；只往我方群发一条「状态写不了」。
+      // 这条自己的限频不能靠状态文件，退路用系统临时目录里按数据目录区分的小文件，记上次发的时刻，满 60 分钟才再发。
+      // 选临时目录而不是「只在整点那次发」：timer 间隔不一定踩中整点，整点法可能一整小时一条都发不出，也可能同一整点发两次。
+      // 临时目录也写不了时宁可不发（只写 stderr），也不每 2 分钟刷我方群。
+      const 退路 = path.join(os.tmpdir(), `ent-alert-unwritable-${crypto.createHash("sha1").update(path.resolve(目录)).digest("hex").slice(0, 12)}`);
+      let 上次 = 0;
+      try {
+        上次 = Number(fs.readFileSync(退路, "utf8")) || 0;
+      } catch {
+        /* 没有：当没发过 */
+      }
+      if (现在 - 上次 >= 重报毫秒 || 现在 < 上次) {
+        let 记上 = false;
+        try {
+          fs.writeFileSync(退路, String(现在));
+          记上 = true;
+        } catch {
+          /* 退路也写不了：不发 */
+        }
+        if (记上 && 配置.ALERT_WEBHOOK_OURS) {
+          const 内容 = `[告警] ${实例} 告警状态写不了（${码}）\n数据目录磁盘满或无写权限；去重和限频失效，已暂停常规告警和客户群通知，每小时提醒一次，请尽快处理。\n时间：${双时区(现在)}`;
+          await 发(取, 配置.ALERT_WEBHOOK_OURS, 配置.ALERT_SECRET_OURS, 内容, 现在, "我方群");
+          return { 发出: [{ 内容, 客户: false }] };
+        }
+      }
+      return { 发出: [] };
     }
   }
 

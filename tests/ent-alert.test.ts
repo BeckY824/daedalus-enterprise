@@ -335,3 +335,53 @@ describe("发送、dry、消息内容", () => {
     expect(读配置(目录)).toEqual({ A_B: "v1", C: "", D: "v 2" });
   });
 });
+
+describe("审查必改", () => {
+  it("单人个案升级成两人：当次立即发我方 + 客户群，不等 60 分钟", async () => {
+    记(5, 6, {}, ["a"]);
+    await 跑(T0);
+    expect(发往(OURS)).toHaveLength(1);
+    expect(发往(EVEN)).toHaveLength(0);
+    记(1, 1, {}, ["b"]);
+    const r = await 跑(T0 + 4 * 分);
+    expect(r.发出).toHaveLength(1);
+    expect(r.发出[0].客户).toBe(true);
+    expect(发往(OURS)).toHaveLength(2);
+    expect(发往(EVEN)).toHaveLength(1);
+    const 状态 = JSON.parse(fs.readFileSync(path.join(目录, "alert-state.json"), "utf8"));
+    expect(Object.values(状态.alerts as Record<string, { 客户: boolean; 上次发: number }>).some((a) => a.客户 && a.上次发 === T0 + 4 * 分)).toBe(true);
+  });
+
+  it("R1：5 条都认不出员工（无 u）只发我方，写认不出员工", async () => {
+    记(5, 3, {}, [undefined]);
+    const r = await 跑();
+    expect(r.发出).toHaveLength(1);
+    expect(r.发出[0].客户).toBe(false);
+    expect(发往(EVEN)).toHaveLength(0);
+    expect(文本(发往(OURS)[0])).toContain("认不出员工");
+  });
+
+  it("状态目录写不了：不发客户群、不照常全量发，第二次运行不重复发", async () => {
+    if (typeof process.getuid === "function" && process.getuid() === 0) return; // root 不受权限限制
+    记(5, 3, {}, ["a", "b"]);
+    fs.chmodSync(目录, 0o555);
+    try {
+      const r1 = await 跑(T0);
+      expect(发往(EVEN)).toHaveLength(0);
+      expect(发往(OURS)).toHaveLength(1);
+      expect(文本(发往(OURS)[0])).toContain("状态写不了");
+      expect(r1.发出).toHaveLength(1);
+      const r2 = await 跑(T0 + 2 * 分);
+      expect(r2.发出).toHaveLength(0);
+      expect(发往(OURS)).toHaveLength(1);
+      expect(发往(EVEN)).toHaveLength(0);
+    } finally {
+      fs.chmodSync(目录, 0o755);
+      try {
+        fs.rmSync(path.join(os.tmpdir(), `ent-alert-unwritable-${crypto.createHash("sha1").update(path.resolve(目录)).digest("hex").slice(0, 12)}`), { force: true });
+      } catch {
+        /* 忽略 */
+      }
+    }
+  });
+});
