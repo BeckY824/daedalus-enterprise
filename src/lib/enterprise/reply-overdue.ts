@@ -127,6 +127,8 @@ import { 通知文字打码 } from "./notice-mask";
 import { 分配通知, 带放弃链接 } from "./notice-sources";
 import { 企业版 } from "./switch";
 import { 视图中跳过 } from "./view-as";
+import { 客户有未裁定异议, 项目有未裁定异议 } from "./objection-guard";
+import { 未落地状态们 } from "./objection-core";
 import { 已回复的, 是有效沟通, 不是沟通的类型, 回复提醒时刻 } from "./reply-notice";
 import { 无效沟通原因of, 无效原因话, 有效沟通最少字数, type 无效沟通原因 } from "./tri-state-quota";
 import { 系统操作人 } from "./scheduled-assign";
@@ -753,9 +755,10 @@ export async function 超时转扫一遍(现在: Date = new Date()): Promise<超
       if (没基准的.length) await prisma.entReplyOverdue.updateMany({ where: { projectId: { in: 没基准的 }, stoppedAt: null }, data: { stoppedAt: 现在 } });
       if (!们.length) return;
       const 回了 = await 记过有效沟通的(们);
+      const 有待裁定 = (await prisma.entTransferObjection.count({ where: { status: { in: [...未落地状态们] } } })) > 0;
       for (const p of 们) {
         try {
-          await 走一步(p, 回了.has(p.id), 现在, 明细, org);
+          await 走一步(p, 回了.has(p.id), 现在, 明细, org, 有待裁定);
         } catch (e) {
           明细.没转成++;
           console.error(`[超时自动转] ${p.id} 出错，下一遍再试`, e);
@@ -825,7 +828,7 @@ export async function 超时转重新起算(现在: Date = new Date()): Promise<
   }
 }
 
-async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: 超时转明细, org: 组织): Promise<void> {
+async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: 超时转明细, org: 组织, 有待裁定 = false): Promise<void> {
   const 基 = p.基;
   let 行 = p.replyOverdue;
   // 基准变了（改过指定回复时间、从空填上 / 清空换了起算方式、停了的按分配链又分了一次，含停了的链）：整行重来（按新基准算，还没到的这一遍不动）
@@ -852,6 +855,13 @@ async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: �
     await 记链(p.id, { anchorAt: 基, holderId: p.ownerId, since, overdueAt: null });
   } else {
     since = 行.since; overdueAt = 行.overdueAt; 试过 = 读试过(行.tried); transfers = 行.transfers;
+  }
+  // 12-22 审查 M5（口径 B3）：这条项目（或随客户转走的那次）有转让异议在「待裁定」时，不提醒、不转，计时暂停：
+  // 每一遍把起点推到现在、提醒记号清掉，裁定完（维持 / 撤回）后从头算，不会一裁完就立刻超时。库里一条待裁定都没有时不查（钟每分钟一遍）
+  if (有待裁定 && (await 项目有未裁定异议(prisma, [{ id: p.id, customerId: p.customerId, ownerId: p.ownerId }]))) {
+    await 改链若持有人是(p.id, p.ownerId, { anchorAt: 基, holderId: p.ownerId, since: 现在, overdueAt: null, tried: 试过, transfers });
+    明细.停++;
+    return;
   }
   const 步 = 该做({ since, overdueAt }, 现在);
   if (!步) return;
@@ -1050,6 +1060,8 @@ export async function 客户随线索(projectId: string, customerId: string, 原
   return 看全部(() => 查完再写(async (tx) => {
     const c = await tx.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
     if (!c) return { 去向: "不动" as const, 在谁名下: null };
+    // 12-22 审查 M5（口径 B3）：客户上有转让异议在「待裁定」，客户不跟着线索走（项目照转）
+    if (await 客户有未裁定异议(tx, [customerId])) return { 去向: "不动" as const, 在谁名下: c.pool ? null : c.salesOwnerId };
     const 别的 = c.salesOwnerId === 原
       ? await tx.project.count({ where: { customerId, ownerId: 原, id: { not: projectId }, result: null, pooledAt: null, awaitAssignAt: null } })
       : 0;

@@ -33,6 +33,7 @@ import { getBusiness } from "@/lib/business";
 import { 交接通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
 import { 不能当负责人 } from "@/lib/owners";
 import { notify } from "@/lib/enterprise/notify";
+import { 客户有未裁定异议 } from "@/lib/enterprise/objection-guard";
 
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 export type 交接行 = {
@@ -311,6 +312,10 @@ export async function 确认交接(id: string): Promise<结果> {
   // 发起之后名下线索进了验证（X-77）：先不确认，验证走完或撤回验证再来；交接留在待确认
   const 验 = await 客户有验证中线索(prisma, (await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: h.fromUserId }, select: { id: true } }))).map((c) => c.id));
   if (验) return { ok: false, error: 验 };
+  // 12-22 审查 M5：这几位客户（或名下随客户走的项目）上有转让异议还在「待裁定」的，不能再转；裁定后再确认，交接留在待确认。
+  // 离职交接（上面两条分支）照常放行：人走了总要有人接，撤回时转手工退回（口径 B3 默认）
+  const 异议 = await 客户有未裁定异议(prisma, ids);
+  if (异议) return { ok: false, error: 异议 };
   const org = await 权限组织();
   // 改客户负责人、名下的活和项目跟着走、核持有上限，一个事务做完（M-公海-18，11-11）：超了整笔回滚，交接还是待确认、什么都没转
   const 整批 = await 整批或不做(() => 看全部(() => 查完再写(async (tx) => {
