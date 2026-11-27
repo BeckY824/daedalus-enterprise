@@ -10,7 +10,7 @@
  * 生效时刻 = max(本钟自己的 Setting 验证时限生效key, 超时转生效时刻)：本钟第一遍扫（= 上线时刻）记成那一刻，超时转开关从关拨开时那边重记，
  *   起钟早于生效时刻的（上线前就在等的、关着期间进入的）一律不提醒不落定，只认之后进入这一步的。
  * 提醒发出的时刻 = 站内通知（EntNotice kind 验证时限）的 createdAt，不另存。销售认领不是验证，不走这个钟。
- * 跑在每分钟那一遍（nightly.ts，排在超时自动转后面）；开关同「超时未跟进自动转」。从不抛。
+ * 跑在每分钟那一遍（nightly.ts，排在超时自动转后面）；提醒的开关同「超时未跟进自动转」，落定这一步另要「重复咨询到期自动落定」开着（lead-verify-autosettle.ts，默认关，只落拨开之后才起钟的）。从不抛。
  */
 import { prisma } from "../prisma";
 import { getSetting, setSetting } from "../settings";
@@ -20,6 +20,7 @@ import { 读组织 } from "@/lib/enterprise/org";
 import { notify } from "@/lib/enterprise/notify";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 该做, 不执行, 超时提醒到期, 超时转出安排, 超时自动转开着, 超时提醒分钟, 超时转出分钟, 超时转生效时刻, 超时转生效key } from "@/lib/enterprise/reply-overdue";
+import { 自动落定开着, 自动落定生效时刻 } from "@/lib/enterprise/lead-verify-autosettle";
 import { 重复咨询来源 } from "./system-created";
 import { 有效线索节点 } from "./stage-gates";
 import { 实际待, 无效交给, 被等的人们, 到期落定, type 待哪步 } from "./lead-verify";
@@ -91,6 +92,9 @@ export async function 验证时限扫一遍(现在: Date = new Date(), 上限: n
       }
     }
     const 生效 = new Date(Math.max((await 本钟生效时刻(现在)).getTime(), 转生效.getTime()));
+    // 自动落定独立开关（E-424，默认关）：关着只提醒不落定；拨开后只落「起钟时刻 ≥ 拨开时刻」的，积压的照旧等人判
+    const 落定开 = await 自动落定开着();
+    const 落定生效 = 落定开 ? await 自动落定生效时刻() : null;
     const 行们 = await 看全部(() => prisma.entLeadVerify.findMany({
       where: {
         pending: { in: ["市场复核", "销售终验", "总管理终判"] },
@@ -113,10 +117,13 @@ export async function 验证时限扫一遍(现在: Date = new Date(), 上限: n
         if (步 !== "市场复核" && 步 !== "销售终验" && 步 !== "总管理终判") continue;
         const 起 = 起钟时刻(步, v);
         if (!起 || 起.getTime() < 生效.getTime()) continue;
+        const 可落定 = 落定开 && !!落定生效 && 起.getTime() >= 落定生效.getTime();
         const 头 = 键头(v.projectId, 起);
         const 末提醒 = await prisma.entNotice.findFirst({ where: { kind: 验证时限通知种类, dedupeKey: { startsWith: `${头}:` } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
         const 做 = 该做({ since: 起, overdueAt: 末提醒?.createdAt ?? null }, 现在);
         if (!做) continue;
+        // 到期落定这一步：开关关着 / 起钟早于拨开时刻 = 一直等人判，不落定、不通知、不写日志（不然每分钟对同一条重复一遍）
+        if (做 === "转" && !可落定) continue;
         // 上一遍落不下来、已经通知过负责人的（缺必填等）：不每分钟重试，补齐后由负责人自己点终验
         if (步 === "销售终验" && (await prisma.entNotice.findFirst({ where: { kind: 验证时限通知种类, dedupeKey: `${头}:卡住` }, select: { id: true } }))) continue;
         const 被等 = await 被等的人们(v.projectId, 步);
@@ -126,12 +133,12 @@ export async function 验证时限扫一遍(现在: Date = new Date(), 上限: n
           const n = await notify(被等, {
             kind: 验证时限通知种类,
             title: `线索验证待处理：${v.project.name}`,
-            body: `这条重复咨询线索在等${步}，已等满 ${超时提醒分钟 / 60} 小时${重 ? "（上次提醒后的时限落在非工作时段，已顺延重新计时）" : ""}。再过 ${超时转出分钟} 分钟还没判，系统会按上一步判定自动落定。`,
+            body: `这条重复咨询线索在等${步}，已等满 ${超时提醒分钟 / 60} 小时${重 ? "（上次提醒后的时限落在非工作时段，已顺延重新计时）" : ""}。${可落定 ? `再过 ${超时转出分钟} 分钟还没判，系统会按上一步判定自动落定。` : "请尽快处理，系统不会自动落定，会一直等人来判。"}`,
             link: 链接,
             key: `${头}:${重 ? `再${现在.toISOString()}` : "提醒"}`,
           });
           明细.提醒 += n;
-          if (n > 0) continue;
+          if (n > 0 || !可落定) continue;
           // 被等的人为空 / 通知一条没记上：overdueAt 永远 null，不然每分钟回到提醒、永远落不了。
           // 兜底也走顺延钟：该提醒的那一刻当作提醒发出，再 30 分钟落定；夜里 / 周末 / 节假日顺延重新计时（P-线索-05）
           if (!已记兜底.has(头)) {

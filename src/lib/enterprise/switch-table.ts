@@ -16,7 +16,7 @@ export type 开关键 =
   | "org_scope" | "field_perm" | "lead_assign" | "no_quota" | "reply_overdue" | "lead_giveup" | "market_review" | "block_meaningless"
   | "node_advance" | "first_two" | "fill_period" | "push_perm" | "record_only"
   | "hold_cap" | "node_timeout" | "record_only_recall" | "tri_state"
-  | "feishu_push" | "sync_feishu" | "coach_rec" | "scan_detect";
+  | "feishu_push" | "sync_feishu" | "coach_rec" | "scan_detect" | "verify_autosettle";
 
 export type 开关组 = "see" | "lead" | "flow" | "pool" | "link";
 export const 开关组们: readonly { id: 开关组; 名: string }[] = [
@@ -91,6 +91,10 @@ export const 开关表: readonly 开关定义[] = [
     what: "开着：记录「+」查重和新建向导查号码 / 查客户名的次数；同一人当天查询 ≥50 次且撞号率 ≥60%，第二天早 8 点通知其直属上级（没有直属上级时发系统管理员）。只记次数和指纹，不存号码、客户名原值，记录留 90 天。",
     影响: "用「+」查重、新建向导查号码 / 查客户名的人（其直属上级收通知）", when: "之后的新查询起记；凌晨扫昨天的、早 8 点发", 默认: true, 小: true,
     off: "关掉以后不再记查询、不再扫、不再发通知；已记的记录满 90 天照清" },
+  { k: "verify_autosettle", g: "lead", 名: "重复咨询到期自动落定", alias: "重复咨询 验证 到期 自动落定 线索验证 时限 超时 复核 终判",
+    what: "关着时：重复咨询线索在验证里等人判，到 1 小时照常提醒被等的人，不自动落定，一直等人来判。开着时：再过 30 分钟按上一步的判定自动落定。",
+    影响: "重复咨询线索在验证里等的人（市场复核、负责人、系统管理员）", when: "从关拨到开只管拨开之后才进入验证这一步的线索；关着期间积压的照旧等人判", 默认: false, 小: true,
+    off: "关掉以后到期只提醒不落定，一直等人来判" },
   { k: "reply_overdue", g: "lead", 名: "超时未跟进自动转", tab: "org", 找: "组织规则", 位: "组织架构 → 组织规则", alias: "超时 自动转 1 小时 提醒 回复时间",
     // 客户 11-23：不说「本线下一位」
     what: "开着：线索分到 1 小时负责人没记有效沟通先提醒，再过 30 分钟转给本线内本月分得最少的销售；夜里、周末、节假日不计时。",

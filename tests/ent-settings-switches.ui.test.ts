@@ -1,7 +1,7 @@
 /**
  * 设置 →「开关总览」（设置开关 N1 / N3 / N7，11-23）：
  *   - 只系统管理员目录里有（「团队与权限」第一项）；别的身份带 ?tab=switches 落回个人资料，也不调 开关现状
- *   - 18 张卡左边对齐（用户 11-23），子开关卡头写「属于：线索分配和配额」
+ *   - 22 张卡左边对齐（用户 11-23），子开关卡头写「属于：线索分配和配额」
  *   - 父开关关着：子开关开着的能关（照样弹后果框）、关着的打不开
  *   - 拨开关先弹后果框，取消不调 action；超时回收先数个数；持有上限只读显示、不放输入框
  *   - 每卡「上次：谁 · 几点 · 动作」，组织规则比不出的只写「操作日志里比不出」；搜「卡点」给一条去项目模式；「在 X 里看」切到那一栏
@@ -48,7 +48,7 @@ const 现状 = (改: Record<string, unknown> = {}) => ({
   ok: true,
   值: { org_scope: true, field_perm: true, lead_assign: false, no_quota: false, reply_overdue: true, lead_giveup: true, market_review: true, block_meaningless: true,
     node_advance: true, first_two: false, fill_period: false, push_perm: "负责人可推", hold_cap: true, node_timeout: false, tri_state: false, record_only: false, record_only_recall: false,
-    feishu_push: true, sync_feishu: false, coach_rec: false, scan_detect: true, ...改 },
+    feishu_push: true, sync_feishu: false, coach_rec: false, scan_detect: true, verify_autosettle: false, ...改 },
   全员: 43,
   组织规则: { 公海: { 持有上限开: true, 默认上限: 999, 每人上限: {}, 多项目客户: "客户可转让" } },
   持有上限: { 默认上限: 999, 单设人数: 0, 到上限: 0 },
@@ -65,7 +65,7 @@ async function 开(身份: Parameters<typeof props>[0], 宽 = 1280, 预览 = 0, 
 }
 const 调了 = async (page: Page, 名: string) => (await 调用们(page)).filter(([n]) => n === 名).map(([, a]) => a);
 
-it("系统管理员：目录「团队与权限」第一项是开关总览；18 张卡左边对齐，子开关写「属于」", async () => {
+it("系统管理员：目录「团队与权限」第一项是开关总览；22 张卡左边对齐，子开关写「属于」", async () => {
   const { page, errors } = await 开("系统管理员");
   try {
     await page.getByTestId("switches-tab").waitFor();
@@ -73,7 +73,7 @@ it("系统管理员：目录「团队与权限」第一项是开关总览；18 �
     expect(页签.indexOf("开关总览")).toBe(页签.indexOf("团队成员") - 1);
     expect(await page.getByRole("tab", { name: /开关总览/ }).getAttribute("aria-selected")).toBe("true");
     const 左 = await page.locator(".sw-card").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
-    expect(左).toHaveLength(21);
+    expect(左).toHaveLength(22);
     expect(new Set(左).size).toBe(1);
     expect(await page.getByTestId("sw-parent-no_quota").innerText()).toBe("属于：线索分配和配额");
     expect(await page.getByTestId("sw-parent-lead_giveup").innerText()).toBe("属于：线索分配和配额");
@@ -90,6 +90,21 @@ it("系统管理员：目录「团队与权限」第一项是开关总览；18 �
     const 持有 = await page.getByTestId("sw-card-hold_cap").innerText();
     expect(持有).toContain("操作日志里比不出");
     expect(持有).not.toMatch(/上次：|· ·|undefined|Invalid Date/);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("重复咨询到期自动落定：默认关，卡上写清关着 / 开着各怎样；拨开直接调、不弹后果框（E-424）", async () => {
+  const { page, errors } = await 开("系统管理员");
+  try {
+    await page.getByTestId("switches-tab").waitFor();
+    const 卡 = page.getByTestId("sw-card-verify_autosettle");
+    const 字 = await 卡.innerText();
+    expect(字).toContain("重复咨询到期自动落定");
+    expect(字).toContain("关着时：重复咨询线索在验证里等人判，到 1 小时照常提醒被等的人，不自动落定，一直等人来判。开着时：再过 30 分钟按上一步的判定自动落定。");
+    expect(await 卡.getByRole("switch").getAttribute("aria-checked")).toBe("false");
+    await 卡.getByRole("switch").click();
+    await expect.poll(() => 调了(page, "设重复咨询自动落定")).toEqual([[true]]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

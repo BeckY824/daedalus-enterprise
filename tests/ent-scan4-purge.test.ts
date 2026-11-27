@@ -15,7 +15,8 @@ import { prisma } from "@/lib/prisma";
 import { getSetting, invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 钟上清扫库记录, 前几天, 扫库清水位键 } from "@/lib/enterprise/scan-notice";
 import { 扫库检测开关key, 扫库检测开着 } from "@/lib/enterprise/scan-query";
-import { 设扫库检测 } from "@/app/(app)/leads/assign-actions";
+import { 设扫库检测, 设重复咨询自动落定 } from "@/app/(app)/leads/assign-actions";
+import { 自动落定开着, 自动落定生效时刻 } from "@/lib/enterprise/lead-verify-autosettle";
 import { 开关现状, 读开关改动 } from "@/app/(app)/settings/switch-actions";
 
 const 今天 = "2026-11-27";
@@ -127,6 +128,25 @@ describe("④ 扫库检测 · 开关动作", () => {
     }
     expect(await 扫库检测开着()).toBe(true);
     expect(await prisma.auditLog.count({ where: { entityId: 扫库检测开关key } })).toBe(0);
+  });
+
+  it("重复咨询到期自动落定（E-424）：没存过 = 关；拨开记生效时刻；非系统管理员改不了；没变不重复写", async () => {
+    expect(await 自动落定开着()).toBe(false);
+    expect(await 自动落定生效时刻()).toBeNull();
+    当("经理");
+    expect(await 设重复咨询自动落定(true)).toMatchObject({ ok: false, error: "只有系统管理员能改这个开关" });
+    expect(await 自动落定开着()).toBe(false);
+    当("管理员", "ADMIN");
+    expect(await 设重复咨询自动落定(false)).toEqual({ ok: true });
+    expect(await 设重复咨询自动落定(true)).toEqual({ ok: true });
+    const 拨开 = await 自动落定生效时刻();
+    expect(拨开 && Date.now() - 拨开.getTime() < 60_000).toBe(true);
+    expect(await 自动落定开着()).toBe(true);
+    expect(await 设重复咨询自动落定(true)).toEqual({ ok: true });
+    expect(await 设重复咨询自动落定(false)).toEqual({ ok: true });
+    expect(await 自动落定开着()).toBe(false);
+    const 日志 = await prisma.auditLog.findMany({ where: { entity: "Setting", entityId: "enterprise.lead_verify_autosettle.on" } });
+    expect(日志.map((l) => l.summary).sort()).toEqual(["关掉重复咨询到期自动落定", "打开重复咨询到期自动落定"]);
   });
 
   it("参数不是布尔：拒绝", async () => {
