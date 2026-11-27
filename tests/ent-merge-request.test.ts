@@ -817,6 +817,37 @@ describe("重发限制（E-428 阶段 3）：被拒 24 小时、30 天 3 次、�
     expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并申请通知种类 } })).toBe(丙前);
     // 没点同意的另一位管理员不收「你同意的…已合并」
     expect(await raw.entNotice.count({ where: { userId: 老板二.id, title: { contains: "你同意的" } } })).toBe(0);
+    // E-428 阶段 3 审查可改 4：管理员判时，名下有项目、本该同意的丁（不在申请名单里）合并后补收一条合并完成通知，且只一条
+    expect(await raw.entNotice.count({ where: { userId: 丁.id, kind: 合并通知种类 } })).toBe(1);
+    // 可改 3：没处理的另一位管理员那行改「不用处理」，不再挂着「待同意」
+    const 后 = await 申请(id);
+    expect(后.approvers.find((x) => x.userId === 老板二.id)!.status).toBe("不用处理");
+    expect(后.approvers.find((x) => x.userId === 老板.id)!.status).toBe("同意");
+  });
+
+  it("发起人看不到被并那家：被拒后、已发满时，重发限制写 并掉看不到话，不露往来（可改 7）", async () => {
+    const a = await 客户(乙.id);
+    const b = await 客户(丙.id, { name: "看不到的同事客户" });
+    const 号 = (await raw.contact.findFirstOrThrow({ where: { customerId: b } })).phone!;
+    登录.人 = 乙;
+    await setSetting(规则.按组织看客户.key, true);
+    忘掉企业版范围();
+    const 现在 = new Date();
+    await raw.entMergeRequest.create({ data: { fromId: b, intoId: a, byUserId: 丙.id, status: 申请状态.已拒绝, endedAt: new Date(现在.getTime() - 3600_000), at: new Date(现在.getTime() - 7200_000), snapshot: "{}", expiresAt: 现在 } });
+    await 以谁的身份(乙.id, async () => {
+      // 刚被拒（要等）
+      const 预 = await 预览合并申请(a, b, 号);
+      expect(预).toMatchObject({ ok: true, 预览: { 能发: false, 原因: [并掉看不到话] } });
+      expect(JSON.stringify(预)).not.toMatch(/小时|刚被拒|已发满|看不到的同事客户/);
+      expect(await 发起客户合并申请(a, b, { 按号: 号 })).toEqual({ ok: false, error: 并掉看不到话 });
+    });
+    // 再补两张（已发满）
+    for (const h of [30, 40]) await raw.entMergeRequest.create({ data: { fromId: a, intoId: b, byUserId: 乙.id, status: 申请状态.已撤回, endedAt: new Date(现在.getTime() - h * 3600_000), at: new Date(现在.getTime() - h * 3600_000 - 60_000), snapshot: "{}", expiresAt: 现在 } });
+    await 以谁的身份(乙.id, async () => {
+      const 预 = await 预览合并申请(a, b, 号);
+      expect(预).toMatchObject({ ok: true, 预览: { 能发: false, 原因: [并掉看不到话] } });
+      expect(JSON.stringify(预)).not.toMatch(/已发满|30 天/);
+    });
   });
 
   it("第 3 张：系统管理员拒绝一票结束（原因必填）；没有在职系统管理员时拦下", async () => {
@@ -824,6 +855,11 @@ describe("重发限制（E-428 阶段 3）：被拒 24 小时、30 天 3 次、�
     const id = await 发成(a, b, 乙, 小时(4));
     expect(await 处理合并申请(prisma, id, 老板, "拒绝", { 现在: 小时(5) })).toMatchObject({ ok: false, error: "拒绝要写一句原因" });
     expect(await 处理合并申请(prisma, id, 老板, "拒绝", { 原因: "不并", 现在: 小时(5) })).toMatchObject({ ok: true, 状态: 申请状态.已拒绝 });
+    // E-428 阶段 3 审查必改 1：第 3 张被拒后，已发满 3 次，预览和拒绝通知都写已发满，不写「24 小时后才能再发」
+    expect(await 合并申请预览(prisma, a, b, 乙, 小时(6))).toMatchObject({ 能发: false, 原因: ["这对客户 30 天内已发满 3 次"], 重发限制: { 状态: "已满" } });
+    await 等通知推完();
+    const 拒通知 = await raw.entNotice.findFirstOrThrow({ where: { userId: 乙.id, title: { contains: "拒绝了你的合并申请" } } });
+    expect(拒通知.body).toBe("原因：不并。这对客户 30 天内已发满 3 次");
     // 另起一对客户，没有系统管理员
     const c = await 客户(乙.id), d = await 客户(丁.id);
     for (const h of [0, 2]) {

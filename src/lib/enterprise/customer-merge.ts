@@ -388,7 +388,7 @@ async function 查同一个人(tx: Tx, A: string, B: string, 对们: readonly �
  * 申请（第二批 2b，merge-request.ts 全同意后调）：me = 发起人，不判「是不是自己负责」（同意人已经同意过），
  * 申请经过（JSON）记进合并单的 approvals 那一格；申请.并掉看不到 = 并进来那家发起人看不到（按号放行进来的），拦话照 拦的原因 收窄
  */
-export async function 执行合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 已核对?: boolean; 现在?: Date; 同一个人?: readonly 同一个人[]; 申请?: { 经过: string; 已另通知?: readonly string[]; 并掉看不到?: boolean } } = {}): Promise<结果<合并完>> {
+export async function 执行合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 已核对?: boolean; 现在?: Date; 同一个人?: readonly 同一个人[]; 申请?: { 经过: string; 已另通知?: readonly string[]; 另补?: readonly string[]; 并掉看不到?: boolean } } = {}): Promise<结果<合并完>> {
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   const 开 = await 客户状态自动();
@@ -434,7 +434,7 @@ export async function 执行合并(db: 库, 留下id: string, 并掉id: string, 
   }
   忘掉企业版范围();
   await 存沟通后重算三态(留下id, 现在).catch((e) => console.warn("[合并客户] 三态没重算上：", e instanceof Error ? e.message : e));
-  if (通知要) await 合并后通知(通知要, me, opt.申请?.已另通知 ?? []);
+  if (通知要) await 合并后通知(通知要, me, opt.申请?.已另通知 ?? [], opt.申请?.另补 ?? []);
   return { ok: true, ...r! };
 }
 
@@ -661,10 +661,11 @@ export async function 重算最近跟进(tx: Tx, customerId: string) {
 /**
  * 合并后通知（E-280 三.2）：被并那家的创建人、来源渠道负责人（B 的 channelOwnerId，空的取 B 主渠道的负责人）各一条，站内 + 飞书。
  * 系统管理员代并时，不是操作人本人的两家负责人也各一条（🔍 我方推断，方案第六节第 3 条）。操作人自己不发。
- * 按合并申请执行的（第二批 2b-3 第二段）：发起人、同意人已收到申请那条「已合并」，这里不再重复发（已另通知）
+ * 按合并申请执行的（第二批 2b-3 第二段）：发起人、同意人已收到申请那条「已合并」，这里不再重复发（已另通知）。
+ * 另补：系统管理员判的申请，合并前现算的「本该同意」的同事（项目负责人等），名单里没有的补发这一条，已收过的不重复（E-429 承诺同事合并后照常收合并通知）
  */
-async function 合并后通知({ A, B }: { A: 客户行; B: 客户行 }, me: 合并人, 已另通知: readonly string[] = []): Promise<void> {
-  const 收 = [B.creator?.userId, B.channelOwnerId || B.channel?.channelOwnerId, A.salesOwnerId, B.salesOwnerId].filter((u) => u && u !== me.id && !已另通知.includes(u));
+async function 合并后通知({ A, B }: { A: 客户行; B: 客户行 }, me: 合并人, 已另通知: readonly string[] = [], 另补: readonly string[] = []): Promise<void> {
+  const 收 = [...new Set([B.creator?.userId, B.channelOwnerId || B.channel?.channelOwnerId, A.salesOwnerId, B.salesOwnerId, ...另补])].filter((u) => u && u !== me.id && !已另通知.includes(u));
   await notify(收, {
     kind: 合并通知种类,
     title: `「${名(B)}」已并入「${名(A)}」`,
