@@ -47,7 +47,7 @@ import { POST as 传 } from "@/app/api/attachments/route";
 import { GET as 取, DELETE as 删 } from "@/app/api/attachments/[id]/route";
 import { POST as 传导入表 } from "@/app/api/enterprise-import/upload/route";
 import { 认扫名片的人 } from "@/lib/card-scan/server/auth";
-import { 改我的资料, changeMyPassword } from "@/app/(app)/settings/actions";
+import { 改我的资料, changeMyPassword, saveUser } from "@/app/(app)/settings/actions";
 import { 视图只读错误 } from "@/lib/enterprise/view-as";
 
 const 原数据目录 = process.env.CRM_DATA_DIR;
@@ -376,6 +376,68 @@ describe("切换视图拦不经过库的动作", () => {
       await 登录成(人.甲);
       expect(await 改我的资料({ name: "改名了", title: "" })).toEqual({ ok: true });
       expect((await prisma.user.findUnique({ where: { id: 人.甲 } }))?.name).toBe("改名了");
+    });
+
+    it("E-384 职位：本人带了和库里不同的职位 → 拒绝（中文错误）、库里不动；不带 / 带原值照常改名", async () => {
+      await prisma.user.update({ where: { id: 人.甲 }, data: { title: "销售" } });
+      await 登录成(人.甲);
+      const 拒 = await 改我的资料({ name: "改名了", title: "财务" });
+      expect(拒).toEqual({ ok: false, error: "职位只能由系统管理员在「设置 → 团队成员」里修改" });
+      const 库 = await prisma.user.findUnique({ where: { id: 人.甲 } });
+      expect(库?.title).toBe("销售");
+      expect(库?.name).toBe("业务员甲");
+      expect(await 改我的资料({ name: "改名了" })).toEqual({ ok: true });
+      expect(await 改我的资料({ name: "又改了", title: "销售" })).toEqual({ ok: true });
+      const 后 = await prisma.user.findUnique({ where: { id: 人.甲 } });
+      expect([后?.name, 后?.title]).toEqual(["又改了", "销售"]);
+    });
+
+    it("E-384 职位：系统管理员在团队成员里改别人的职位照旧可用（saveUser 不受影响）", async () => {
+      await 登录成(人.老板);
+      const r = await saveUser({ id: 人.甲, name: "业务员甲", email: "sales-a", title: "财务", role: "SALES", active: true });
+      expect(r, JSON.stringify(r)).toMatchObject({ ok: true });
+      expect((await prisma.user.findUnique({ where: { id: 人.甲 } }))?.title).toBe("财务");
+    });
+
+    it("E-384 职位：系统管理员改自己的职位成功；首尾空格去掉、空串存空串；超 20 字被拒库里不动", async () => {
+      // 夹具里老板的登录名是「老板@t」，过不了 saveUser 的格式检查：先在库里直接改成合法的，saveUser 里原样带回、不顺带改登录名
+      await prisma.user.update({ where: { id: 人.老板 }, data: { email: "boss-x" } });
+      await 登录成(人.老板);
+      const 老板 = await prisma.user.findUnique({ where: { id: 人.老板 } });
+      const 基 = { id: 人.老板, name: 老板!.name, email: 老板!.email, role: 老板!.role, active: true };
+      const 首 = await saveUser({ ...基, title: "  总监 " });
+      expect(首, JSON.stringify(首)).toMatchObject({ ok: true });
+      expect((await prisma.user.findUnique({ where: { id: 人.老板 } }))?.title).toBe("总监");
+      expect(await saveUser({ ...基, title: "   " })).toMatchObject({ ok: true });
+      expect((await prisma.user.findUnique({ where: { id: 人.老板 } }))?.title).toBe("");
+      expect(await saveUser({ ...基, title: "总监" })).toMatchObject({ ok: true });
+      expect(await saveUser({ ...基, title: "长".repeat(21) })).toEqual({ ok: false, error: "职位最多 20 个字" });
+      expect((await prisma.user.findUnique({ where: { id: 人.老板 } }))?.title).toBe("总监");
+      expect(await saveUser({ ...基, title: "长".repeat(20) })).toMatchObject({ ok: true });
+    });
+
+    it("E-384 职位：库里职位 25 字（同步来的）→ 系统管理员只改名成功、职位原样；改成另一个 21 字职位被拒", async () => {
+      const 长 = "长".repeat(25);
+      await prisma.user.update({ where: { id: 人.甲 }, data: { title: 长 } });
+      await 登录成(人.老板);
+      const r = await saveUser({ id: 人.甲, name: "业务员甲改", email: "sales-a", title: 长, role: "SALES", active: true });
+      expect(r, JSON.stringify(r)).toMatchObject({ ok: true });
+      const 库 = await prisma.user.findUnique({ where: { id: 人.甲 } });
+      expect([库?.name, 库?.title]).toEqual(["业务员甲改", 长]);
+      expect(await saveUser({ id: 人.甲, name: "业务员甲改", email: "sales-a", title: "宽".repeat(21), role: "SALES", active: true })).toEqual({ ok: false, error: "职位最多 20 个字" });
+      expect((await prisma.user.findUnique({ where: { id: 人.甲 } }))?.title).toBe(长);
+      expect(await saveUser({ name: "新人", email: "new-long", title: 长, role: "SALES", active: true })).toEqual({ ok: false, error: "职位最多 20 个字" });
+    });
+
+    it("E-384 职位：改我的资料传 title:null 不抛错按不带处理；库里职位带首尾空格时只改名不被误拒、职位原样保留", async () => {
+      await prisma.user.update({ where: { id: 人.甲 }, data: { title: " 销售 " } });
+      await 登录成(人.甲);
+      expect(await 改我的资料({ name: "改一", title: null as unknown as string })).toEqual({ ok: true });
+      expect(await 改我的资料({ name: "改二", title: "销售" })).toEqual({ ok: true });
+      expect(await 改我的资料({ name: "改三", title: " 销售  " })).toEqual({ ok: true });
+      const 库 = await prisma.user.findUnique({ where: { id: 人.甲 } });
+      expect([库?.name, 库?.title]).toEqual(["改三", " 销售 "]);
+      expect(await 改我的资料({ name: "改四", title: "财务" })).toMatchObject({ ok: false });
     });
   });
 });

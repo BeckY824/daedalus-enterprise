@@ -575,6 +575,13 @@ describe("交销售：客户负责人接不了指定分配，新线索按区域�
     expect(await prisma.project.findUniqueOrThrow({ where: { id: c.旧 } })).toMatchObject({ ownerId: 外贸甲.id, phase: "商机" });
     // 接手的乙收到分配通知
     expect(await prisma.entNotice.count({ where: { userId: 乙.id, kind: "自动分配", link: { startsWith: `/projects/${p.id}` } } })).toBe(1);
+    // P-公海-16：客户负责人（外贸甲）也收一条「重复咨询已交给乙」，链接只到客户页、不带线索；接手人那边不多收这一条
+    const 负责人通知 = await prisma.entNotice.findMany({ where: { userId: 外贸甲.id, kind: "分配" } });
+    expect(负责人通知).toHaveLength(1);
+    expect(负责人通知[0].body).toContain(乙.name);
+    expect(负责人通知[0].link).toBe(`/customers/${c.id}`);
+    expect(`${负责人通知[0].title}${负责人通知[0].body}${负责人通知[0].link}`).not.toContain(p.id);
+    expect(await prisma.entNotice.count({ where: { userId: 乙.id, kind: "分配" } })).toBe(0);
   });
 
   it("客户负责人是市场成员（市场管理名下）：交销售分给销售，客户仍在市场管理名下（不算市场转客户）", async () => {
@@ -597,6 +604,8 @@ describe("交销售：客户负责人接不了指定分配，新线索按区域�
     expect(await 查号码("手机号", c.号)).toMatchObject({ 出口C: { 交销售: true } });
     expect(await 交(c, 外贸甲.name)).toMatchObject({ ok: true, 提示: 出口C交销售已分话(乙.name, 外贸甲.name) });
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c.id } })).salesOwnerId).toBe(外贸甲.id);
+    // 停用的客户负责人不发通知
+    expect(await prisma.entNotice.count({ where: { userId: 外贸甲.id } })).toBe(0);
   });
 
   it("挑不到人（这条线的销售都暂停了）：框打开就说，交了整笔不建（没有项目、没有分配记录、没有沟通）；市场成员名下什么都没有、看不到客户名", async () => {

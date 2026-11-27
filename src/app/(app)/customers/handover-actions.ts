@@ -30,7 +30,8 @@ import { 确认离职交接, 确认超上限尾, 留交接备注, 离职段, 能
 import { 公海分不给话 } from "@/lib/enterprise/permissions";
 import { 移交作废天数, 移交作废说法 } from "@/lib/enterprise/handover-expire";
 import { getBusiness } from "@/lib/business";
-import { 交接通知, 同事待分配随客户通知 } from "@/lib/enterprise/notice-sources";
+import type { 同事待分配条 } from "@/lib/enterprise/notice-sources";
+import { 交接通知, 同事待分配随客户通知, 离职带走待分配通知 } from "@/lib/enterprise/notice-sources";
 import { 不能当负责人 } from "@/lib/owners";
 import { notify } from "@/lib/enterprise/notify";
 
@@ -267,6 +268,8 @@ export async function 确认交接(id: string): Promise<结果> {
       summary: `确认接手离职成员「${从}」的交接：${r.段 || "没有转成的"}` + (r.跳过 ? `（${r.跳过}在交接期间已放回公海、换了人或结束了，没转）` : ""),
       detail: { 交接: h.id, way: h.way, from: h.fromUserId, to: me.id, 发起人: h.byUserId, 客户: r.客户, 项目: r.项目, 跳过: r.跳过, ...(r.分 ? { 待办: r.分.待办.length, 计划: r.分.计划.length, 线索: r.分.线索.length, 渠道: r.分.渠道.length, 主渠道: r.分.主渠道.length } : {}) },
     });
+    // 随客户带走了在职同事待分配的项目：事务提交了告诉这位同事（E-339）
+    if (r.同事待分配.length) await 离职带走待分配通知(h.fromUserId, me.id, r.同事待分配);
     await 交接通知(me, h.id, "已确认", undefined, r.客户, { 段: r.段, 跳过: r.跳过 });
     刷新();
     revalidatePath("/projects/handover");
@@ -278,11 +281,13 @@ export async function 确认交接(id: string): Promise<结果> {
     const 方式: 停用方式 = (停用方式们 as readonly string[]).includes(h.way ?? "") ? (h.way as 停用方式) : "转交";
     const 记分配 = await 规则开着("线索分配");
     // 持有上限和转在同一个事务里（M-公海-18）：先记下接手人名下原有几个，全部转完再数，超了抛错整笔回滚，交接还是待确认
+    const 同事待分配: 同事待分配条[] = [];
     const 整批 = await 整批或不做(() => 看全部(() => 查完再写(async (tx) => {
+      同事待分配.length = 0; // 重试时清掉上一轮收的
       if (!(await 了结(tx, h.id, "已确认", me))) return null;
       const 起 = await 持有上限起点(tx, 规则, me.id);
       const 分 = await 停用分拣(tx, h.fromUserId, 方式, true);
-      const 项目 = await 离职转给接手人(tx, 分, h.fromUserId, me.id, h.byUserId, 记分配);
+      const 项目 = await 离职转给接手人(tx, 分, h.fromUserId, me.id, h.byUserId, 记分配, 同事待分配);
       // 发起到确认之间又该进公海的（方式 = 公海），这时一起放
       await 离职放进公海(tx, 分, h.byUserId);
       // 企业版卡点：确认了才跟着转给接手人；项目在公海里的回看板
@@ -296,6 +301,7 @@ export async function 确认交接(id: string): Promise<结果> {
     if (!整批.值) return { ok: false, error: 已处理 };
     const { 分, 项目 } = 整批.值;
     await 进公海挂靠通知(分.进公海客户); // 进公海关掉的挂靠申请，事务提交了再通知申请人（P-挂靠-01 / 02）
+    if (同事待分配.length) await 离职带走待分配通知(h.fromUserId, me.id, 同事待分配); // E-339
     const 从 = (await prisma.user.findUnique({ where: { id: h.fromUserId }, select: { name: true } }))?.name ?? h.fromUserId;
     await recordAudit({
       user: me, action: "deactivate", entity: "User", entityId: h.fromUserId,

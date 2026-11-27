@@ -18,6 +18,7 @@ import { 能改后台设置, 是市场角色, 是销售角色, 能管公海 } fr
 import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 扫库检测开着, 扫库检测开关key } from "@/lib/enterprise/scan-query";
 import { 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterprise/dict";
 import { 能自动分配客户, 不是市场话, 市场分配限指定 } from "@/lib/enterprise/cust-auto-assign";
@@ -1183,6 +1184,30 @@ export async function 设不设配额(on: boolean): Promise<结果> {
       summary: on ? `规则「${规则.线索分配.名}」改成不设配额：人人参与自动分配、不限额` : `规则「${规则.线索分配.名}」改回按配额分配`,
     });
     revalidatePath("/leads");
+    revalidatePath("/settings");
+    return { ok: true };
+  } catch (e) {
+    return 不在了(e);
+  }
+}
+
+/**
+ * 设置 →「开关总览」里的「扫库检测」开关（E-383 ④）。和设不设配额同一道门：只有总管理（能改后台设置），勾了「不管设置」的不算。
+ * 写 Setting + 操作日志（摘要「打开扫库检测 / 关掉扫库检测」打头，总览那一行的「上次：谁 · 几点」读它）
+ */
+export async function 设扫库检测(on: boolean): Promise<结果> {
+  // 不看「线索分配」规则开没开：扫库检测是独立开关
+  const me = await requireUser();
+  try {
+    const org = await 读组织();
+    if (!能改后台设置(me, org)) return { ok: false, error: "只有系统管理员能改这个开关" };
+    if (typeof on !== "boolean") return { ok: false, error: "开关只能开或关" };
+    if ((await 扫库检测开着()) === on) return { ok: true };
+    await setSetting(扫库检测开关key, on);
+    await recordAudit({
+      user: me, action: "update", entity: "Setting", entityId: 扫库检测开关key,
+      summary: on ? "打开扫库检测" : "关掉扫库检测",
+    });
     revalidatePath("/settings");
     return { ok: true };
   } catch (e) {

@@ -274,7 +274,8 @@ describe("点了以后", () => {
 
   it("待补：下一条自动分配先补给放弃人（补发不计本月已分），只补 1 条", async () => {
     // 乙、丙本月各 0 条，甲 1 条（放弃这条）→ 正常轮转不该先给甲
-    const { id } = await 分来的(甲, new Date(Date.now() - 600_000)); // 放弃用的是 new Date()，分配时刻跟着现在走，免得过了放弃窗口变时间炸弹
+    // 分配时刻跟真钟走（5 分钟前）：放弃用真钟判 7 天窗口、自动分配按真钟的本月算，写死日期过 7 天就红（11-27 北京 10:00 起红过）
+    const { id } = await 分来的(甲, new Date(Date.now() - 5 * 60_000));
     expect(await 放弃(甲, id, new Date())).toMatchObject({ ok: true });
     const 新 = async () => {
       const cid = (await prisma.customer.create({ data: { name: `新客户${++序}`, phone: `137${String(序).padStart(8, "0")}`, salesOwnerId: 市场.id } })).id;

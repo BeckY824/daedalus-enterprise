@@ -31,7 +31,7 @@ import { 级别星 } from "@/lib/enterprise/level-stars";
 import { 重复咨询来源, 仅记录用来源, 来源字 } from "@/lib/project/system-created";
 import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-main-core";
 import { 回公海文案 } from "@/lib/enterprise/recycle-text";
-import { 卡片小字, 未填标签, type 项目行, type 看板一列, type 看板卡片 } from "@/lib/project/board";
+import { 卡片小字, 拆出的流失of, 未填标签, type 项目行, type 看板一列, type 看板卡片 } from "@/lib/project/board";
 import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import { 换客户页看法, 市场视图名 } from "@/lib/customers-view-pref";
 import type { 看板列 } from "@/lib/project/nodes";
@@ -811,7 +811,7 @@ export default function ProjectsView({
                     {这列卡.length === 0 && <div className="pipe-empty">{在筛 ? "这一列没有对得上的项目" : c.空态}</div>}
                     {这列卡.map((r, 序) => {
                       const 异常 = r.result === "异常状态";
-                      const 小字 = 卡片小字(r, 字典);
+                      const 小字 = 卡片小字(r, 字典, 拆出的流失of(c.列));
                       const 刚来 = 刚到.has(r.id);
                       const 档 = 刚来 ? 新第++ : 序;
                       // 只看进度（市场角色、已分给圈外的人）：卡片照摆、点不进详情（P-看-06）

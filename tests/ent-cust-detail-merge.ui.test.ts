@@ -115,6 +115,7 @@ beforeAll(async () => {
           只读={o.只读?'全':false} {...(o.合并?{合并口:<合并探针/>,能合并:o.合并,并入话:o.并入话??null}:{})} {...(o.不能转?{能转让客户:false}:{})} {...(o.不能放?{能放公海:false}:{})}
           三态条={o.提醒?{状态:'沉睡',文字:'满 90 天没有有效沟通，也可以用右上角「客户操作」转让或退回公海',悬停:'满 90 天没有有效沟通',旁注:null,按钮们:[{动作:'继续持有',字:'我还在跟',说明:'顺延 30 天',要理由:false,主:true}]}:null}
           项目数据={{customerId:'a',页签们:签,锁数:o.锁数??0,当前}}
+          {...(o.疑似?{疑似重复数:o.疑似.数,疑似重复只公海:o.疑似.只公海}:{})}
           {...(o.号码?{号码种类:[{名:'手机',kind:'phone',active:true},{名:'座机',kind:'landline',active:true},{名:'WhatsApp',kind:'whatsapp',active:true}]}:{})}/>
       </div></main></div></BusinessProvider></App></ConfigProvider>));
     };
@@ -135,7 +136,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 合并?: { 客户: boolean; 联系人: boolean }; 挂一位?: boolean; 并入话?: string; 组员?: boolean | "只看"; 名片?: boolean; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean; 售后?: boolean; 售后签?: boolean };
+type 参 = { 疑似?: { 数: number; 只公海: boolean }; 合并?: { 客户: boolean; 联系人: boolean }; 挂一位?: boolean; 并入话?: string; 组员?: boolean | "只看"; 名片?: boolean; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean; 售后?: boolean; 售后签?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -1632,4 +1633,15 @@ it("[E-283] 页签是售后回访主按钮时：还有没页签的交付结清�
     expect(await page.getByTestId("cust-after-sale-visit-other").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
+});
+
+it("疑似重复提示（12-15 D3a 审查建议 1）：普通命中链到清单；只在公海组里的链到 ?tab=pool；数为 0 不画", async () => {
+  for (const [疑似, 链, 画了] of [[{ 数: 2, 只公海: false }, "/customers/dupes", true], [{ 数: 1, 只公海: true }, "/customers/dupes?tab=pool", true], [{ 数: 0, 只公海: false }, "", false]] as const) {
+    const { page, errors } = await 开(1280, { 疑似 });
+    try {
+      expect(await page.getByTestId("dupe-hint").count()).toBe(画了 ? 1 : 0);
+      if (画了) expect(await page.locator(".dupe-hint-a").getAttribute("href")).toBe(链);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
 });

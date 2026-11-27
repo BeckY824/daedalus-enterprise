@@ -272,6 +272,8 @@ const 派生: Record<string, Record<string, string>> = {
     otherId: "另一位，同上",
     userId: "谁标的，标的时候打上",
     at: "标的那一刻，系统打上",
+    undoneAt: "撤销标记的那一刻（企业版疑似重复清单），撤的时候打上；再标时清空",
+    undoneById: "谁撤的标记，撤的时候打上；再标时清空",
   },
   ContractOwner: {
     contractId: "哪一笔签约，saveContract 新登记时一起建",
@@ -576,6 +578,15 @@ const 派生: Record<string, Record<string, string>> = {
     escalatedAt: "最近一次往上转审批人的时刻，系统写", decidedById: "点批准 / 拒绝的人，当前登录账号；客户进公海自动关的留空", decidedAt: "点批准 / 拒绝的时刻，或客户进公海自动关的时刻，系统写",
     unbuilt: "出口 C 挑不到人 / 负责人到持有上限整笔没建时系统写的待补建记录（迁移 165，P-公海-15）：客户编号、渠道、对接人、沟通、没建原因、通知了谁、交的人和时间，不写客户名；同一人 10 分钟内再交追加成数组（读走 读未建线索，两种都认）；补建按钮之后做",
   },
+  // 企业版扫库检测（2026-11-27，迁移 178，E-383）：lib/enterprise/scan-query.ts 系统写，没有哪一列是用户直接填的
+  EntScanQuery: {
+    userId: "查询人，当前登录账号", day: "查的那天（北京自然日），系统算", keyType: "号码 / 名字，查重入口定",
+    keyHash: "键指纹（HMAC，不存原文），系统算", hit: "撞上别组同事负责的客户置真、只升不降，查重结果系统判",
+  },
+  EntScanTrigger: {
+    day: "触发的那天，后续阶段凌晨扫系统写（第 1 阶段只建表）", userId: "被查的人，系统写", queries: "当天查询次数，系统数", hits: "当天撞上次数，系统数",
+    notifiedTo: "通知发给谁，发通知时系统写", noticeAt: "发出的时刻，系统写",
+  },
   // 企业版客户三态（2026-11-11，迁移 121–123）：三张表都由夜扫和三态按钮系统写，没有哪一列是用户直接填进表的
   // （继续持有的理由是点按钮时填的一句话，由动作连同次数、推后日一起写）
   EntCustomerClock: {
@@ -630,6 +641,18 @@ const 派生: Record<string, Record<string, string>> = {
     fromOwnerId: "被并那位当时的负责人，系统照抄", fromCreatorId: "被并那位的创建人，系统照抄（E-280 创建人记在合并单里可查）", fromChannelId: "被并那位的主渠道，系统照抄",
     fromTouchpoint: "被并那位的渠道触点，系统照抄", counts: "各类挪了几条，合并时系统数", detail: "挪动明细（撤回用），合并时系统写",
     at: "合并的那一刻，系统写", undoneAt: "撤回的那一刻，系统写", undoneById: "谁撤回的，当前登录账号", undoLeft: "撤回时没还原的那几条和原因，系统写",
+  },
+  EntMergeRequest: {
+    fromId: "被并掉的那家，发起合并申请时系统写（lib/enterprise/merge-request.ts，迁移 174）", intoId: "留下的那家，发起时系统写", byUserId: "谁发起的，当前登录账号",
+    status: "待同意 / 执行中 / 已合并 / 已拒绝 / 已失效 / 已撤回，系统按同意、拒绝、到期、再判、撤回写", reason: "拒绝、失效、撤回的一句原因，系统写",
+    choices: "申请时勾的已核对、「是同一个人」，发起时系统照存", snapshot: "合并前两家和名下项目的快照，发起时系统写（再判、留痕用）",
+    at: "发起的那一刻，系统写", expiresAt: "发起后第 5 个工作日的同一时刻，系统算", endedAt: "结束的那一刻，系统写", endedById: "谁结束的（系统判失效时空），当前登录账号",
+    mergeId: "执行后的合并单，系统写", approvers: "关系字段",
+  },
+  EntMergeApprover: {
+    requestId: "哪张申请，发起时系统写", request: "关系字段", userId: "要谁同意，系统按两家负责人和同事项目负责人算", why: "凭什么要他同意，系统写",
+    projects: "他涉及的项目，系统写", status: "待同意 / 同意 / 拒绝，本人点", note: "拒绝时本人写的一句话", decidedAt: "本人同意 / 拒绝的那一刻，系统写",
+    fromUserId: "超时转上级时从谁转来，通知升级链定了再写；这一阶段不写", transferredAt: "超时转上级的那一刻，同上不写", createdAt: "系统写",
   },
   EntReplyOverdue: {
     projectId: "哪个项目，超时未跟进那条链起头时系统建（迁移 150）", anchorAt: "起链时的超时基准，系统按指定回复时间写", holderId: "链上眼下这一位，系统写",
@@ -709,6 +732,14 @@ const 系统事实: Record<string, Record<string, 系统事实项>> = {
     afterSaleProjectId: {
       写入方: ["src/app/(app)/customers/[id]/actions.ts"],
       说明: "下次回访（迁移 173）：记售后回访时顺手排的计划，系统记下是给哪个交付结清项目排的（saveFollowUp 附带计划），完成计划时默认挂回它；不建外键，核不过当普通计划",
+    },
+    projectId: {
+      写入方: ["src/lib/project/mql.ts"],
+      说明: "培育计划是哪个项目判的（迁移 179，客户 E-396）：判 MQL 不合格系统建计划时写，之后不改；项目离开潜客培育时按它找要撤的计划，不建外键，旧计划为空不动",
+    },
+    autoBy: {
+      写入方: ["src/lib/project/mql.ts"],
+      说明: "自动建的来源标记（迁移 180，客户 E-396）：判 MQL 不合格建的写 mql-nurture，人手加的为空；只有它 + projectId 对得上的计划才会随项目离开潜客培育被撤",
     },
   },
   EntLeadAssign: {

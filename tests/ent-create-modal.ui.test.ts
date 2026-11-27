@@ -28,7 +28,7 @@ const plugin: Plugin = { name: "ent-create-modal", setup(b) {
   // 建档两个 server action：记下交了什么，回成功
   stub(/^\.\.\/actions$/, "export const 建档向导=async(x)=>{(window.__调||=[]).push(['建档向导',x]);return window.__回??{ok:true,customerId:'c1',projectId:'p1'}};export const 建档只建客户=async(x)=>{(window.__调||=[]).push(['建档只建客户',x]);return window.__回只客户??{ok:true,customerId:'c2',projectId:null}};");
   stub(/customers\/actions$/, "export const checkDuplicate=async()=>null;export const 推荐人候选=async()=>[];");
-  stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);if(window.__查号慢)await new Promise(r=>setTimeout(r,400));return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return {ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
+  stub(/(^|\/)number-actions$/, "export const 查号码=async(t,v)=>{(window.__调||=[]).push(['查号码',t,v]);if(window.__查号慢)await new Promise(r=>setTimeout(r,400));return {ok:true,状态:'首次录入',提示:'首次录入',值:v,归属地:null}};export const 查客户名=async(n)=>{(window.__调||=[]).push(['查客户名',n]);return window.__名撞??{ok:true,撞:null}};export const 申请挂靠=async()=>({ok:true});export const 从回收站捞回=async()=>({ok:true});");
   stub(/customers\/RepeatInquiryKey$/, "export default function R(){return null}");
   stub(/customers\/DedupeClaimKey$/, "export default function D(){return null}");
   // 老客户新增项目（cr.old）：搜得到一位老客户；给客户建项目记下交了什么
@@ -253,6 +253,37 @@ it("老客户新增项目（cr.old）：客户名直接搜到老客户，挑中�
     expect(交).toMatchObject({ customerId: "c9", 项目: { name: "华东展具-二期", ownerId: "u1", 业务线: "外贸" }, 跟进: { content: "老客户要加一套", 节点: "潜客培育" } });
     expect((await 调(page)).some((x) => x[0] === "建档向导" || x[0] === "建档只建客户" || x[0] === "查号码")).toBe(false);
     await expect.poll(() => page.evaluate(() => (window as unknown as { __跳?: string[] }).__跳 ?? [])).toEqual(["/customers/c9?project=np9&landed=1"]);
+  } finally { await page.close(); }
+});
+
+it.each([1280, 390])("名字撞上自己名下的客户（12-15 第三批 E 件，%ipx）：提示里有「记到这位客户上」和「打开它」；点了客户段收成这一位、项目开关打开锁住、项目名带客户名；建好走「给客户建项目」，不新建客户", async (w) => {
+  const page = await 开(w, { __开关: "关", __名撞: { ok: true, 撞: { 我名下: { 客户名: "示例精工科技", 客户id: "c7", 按: "客户名" } }, 提示: "你名下已有同名客户「示例精工科技」，请勿重复录入" } });
+  try {
+    const 框 = page.getByRole("dialog");
+    await 框.getByLabel("客户名称").fill("示例精工科技");
+    await 框.getByLabel("联系人姓名").click();
+    const 撞 = 框.getByTestId("wizard-name-dupe");
+    await 撞.waitFor();
+    await 撞.getByRole("button", { name: "打开它" }).waitFor();
+    const 记到 = 撞.getByRole("button", { name: "记到这位客户上" });
+    // 窄屏两颗键 + 一句灰字折行，不横向溢出
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+    await 记到.click();
+    const 一行 = 框.getByTestId("wizard-old-customer");
+    await 一行.waitFor();
+    expect(await 一行.innerText()).toContain("示例精工科技");
+    expect(await 框.getByTestId("wizard-name-dupe").count()).toBe(0);
+    const 开关 = 框.getByRole("switch", { name: "有项目" });
+    expect(await 开关.getAttribute("aria-checked")).toBe("true");
+    expect(await 开关.isDisabled()).toBe(true);
+    expect(await 框.getByLabel("项目名称").inputValue()).toBe("示例精工科技");
+    await 框.getByLabel("沟通内容").fill("老客户又来问一套");
+    await 框.getByRole("button", { name: /^保\s*存$/ }).click();
+    await expect.poll(async () => (await 调(page)).find((x) => x[0] === "给客户建项目")).toBeTruthy();
+    const 交 = (await 调(page)).find((x) => x[0] === "给客户建项目")![1] as { customerId: string; 项目: Record<string, unknown>; 跟进: Record<string, unknown> };
+    expect(交).toMatchObject({ customerId: "c7", 项目: { name: "示例精工科技" }, 跟进: { content: "老客户又来问一套" } });
+    expect((await 调(page)).some((x) => x[0] === "建档向导" || x[0] === "建档只建客户")).toBe(false);
+    await expect.poll(() => page.evaluate(() => (window as unknown as { __跳?: string[] }).__跳 ?? [])).toEqual(["/customers/c7?project=np9&landed=1"]);
   } finally { await page.close(); }
 });
 

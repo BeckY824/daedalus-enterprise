@@ -30,7 +30,9 @@ import { 忘掉企业版范围 } from "./visibility";
 import { 拦下, 合并事务选项, 并发失败话, 重算最近跟进, 读没还原, type 合并人, type 没还原 } from "./customer-merge";
 import { 项目单, 项目合并撤回天数, 项目合并单们, 项目合并验证步 } from "./project-merge-guard";
 import { 生效的合同状态 } from "@/lib/project/proj-fields";
+import { 在潜客培育, 培育计划来源, 撤培育计划 } from "@/lib/project/nurture-plan";
 import { 短时刻 } from "@/lib/project/time-fields";
+import { 实际待, 无效交给 } from "@/lib/project/lead-verify";
 
 export { 项目单, 项目合并撤回天数, 项目合并验证步 };
 type 库 = PrismaClient;
@@ -93,8 +95,18 @@ export function 业务线不同的原因(A: { bizLine?: string | null }, B: { bi
   return 有值(A.bizLine) && 有值(B.bizLine) && A.bizLine !== B.bizLine ? `两个项目业务线不同（${A.bizLine} / ${B.bizLine}），不能合并` : null;
 }
 
+/** 留下的项目在线索验证里等人判：预览和候选的灰着列共用这一句 */
+export const 留下在等的原因 = (p: { name?: string | null }, 等: string) => `留下的项目「${名(p as 项目行)}」在等${等}，判完再并`;
+
 /** 不能并的原因（空 = 能并）。A = 留下，B = 并掉 */
-async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | null, me: 合并人, org: 组织 | null): Promise<string[]> {
+/** 销售判无效现在交给谁（实际待要用）：读规则要用外面的库连接，不能在合并事务里读，调用方先在事务外算好传进来 */
+async function 现在交给(org: 组织 | null): Promise<"市场复核" | "总管理终判"> {
+  return org ? 无效交给(org) : "总管理终判";
+}
+/** 验证里存着的 pending 换成现在实际在等的那步（规则关了 / 市场管理走了，存着「市场复核」按总管理终判算，和验证页、待办同一口径） */
+const 等谁 = (pending: string, 交给: "市场复核" | "总管理终判") => 实际待(pending, 交给) ?? pending;
+
+async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | null, me: 合并人, org: 组织 | null, 交给: "市场复核" | "总管理终判"): Promise<string[]> {
   if (!企业版()) return ["只有企业版能合并项目"];
   if (!A || !B) return ["项目不存在或已删除，刷新看看"];
   if (A.id === B.id) return ["不能和自己合并，请选另一个项目"];
@@ -119,8 +131,11 @@ async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | nu
     因.push(...阶段和钱拦(p, 角色, await 钱(db as Tx, p.id)));
   }
   // 被并掉的那个：线索验证判过有效、在等复核 / 终验 / 终判 / 认领、已判无效的都拦（再记一遍重复线索会盖掉原结局）
+  // 留下的那个也一样（P-合并-09）：在等复核 / 终验 / 终判 / 认领不能把别的并进来。「等销售初判」= 刚分来还没初判，pending 是 null（lead-verify.ts 只有初判无效才写 pending = 复核 / 终判），不拦
+  const 留 = await 看全部(() => db.entLeadVerify.findUnique({ where: { projectId: A.id }, select: { pending: true } }));
+  if (留?.pending) 因.push(留下在等的原因(A, 等谁(留.pending, 交给)));
   const v = await 看全部(() => db.entLeadVerify.findUnique({ where: { projectId: B.id }, select: { verdict: true, finalResult: true, pending: true } }));
-  if (v?.pending) 因.push(`「${名(B)}」在等${v.pending}，判完再并`);
+  if (v?.pending) 因.push(`「${名(B)}」在等${等谁(v.pending, 交给)}，判完再并`);
   else if (v?.verdict === "有效线索" || v?.finalResult === "有效线索") 因.push(`「${名(B)}」线索验证判过有效，不能并掉；要并请把它留下、并另一个`);
   else if (v?.verdict === "无效线索" || v?.finalResult === "无效线索") 因.push(`「${名(B)}」已判无效线索，不能再并`);
   if ((await 交接中的客户([A.customerId], db as Tx)).has(A.customerId)) 因.push("这位客户正在转让交接中，等接手人确认或撤回交接后再并");
@@ -195,7 +210,7 @@ async function 组员们(db: Tx | 库, B: string, 只进组的: boolean): Promis
 export async function 项目合并预览(db: 库, 留下id: string, 并掉id: string, me: 合并人): Promise<项目合并预览结果> {
   const org = await 权限组织();
   const [A, B] = await Promise.all([读项目(db, 留下id), 读项目(db, 并掉id)]);
-  const 原因 = await 拦的原因(db, A, B, me, org);
+  const 原因 = await 拦的原因(db, A, B, me, org, await 现在交给(org));
   const 两个 = { 留下: A ? { id: A.id, name: A.name } : null, 并掉: B ? { id: B.id, name: B.name } : null };
   if (原因.length || !A || !B) return { 能并: false, 原因, ...两个, 条数: null, 组员: [], 联系人: 没联系人 };
   const [条数, 组员, 联系人] = await Promise.all([数条数(db, B.id), 组员们(db, B.id, true), 两边联系人(db, A.id, B.id, me)]);
@@ -243,10 +258,12 @@ export async function 能并进的候选们(db: 库, B: { id: string; customerId
   // 业务线：和 业务线不同的原因 同一规则（两边都有值、不一样才算不同），翻成查询条件，两边互补
   const 线不同: Prisma.ProjectWhereInput[] = 有值(B.bizLine) ? [{ AND: [{ bizLine: { not: null } }, { bizLine: { not: "" } }, { bizLine: { not: B.bizLine } }] }] : [];
   const 线同或空: Prisma.ProjectWhereInput[] = 有值(B.bizLine) ? [{ OR: [{ bizLine: null }, { bizLine: "" }, { bizLine: B.bizLine }] }] : [];
+  const 验证中: Prisma.ProjectWhereInput = { entLeadVerify: { is: { pending: { not: null } } } };
   const 没签合同: Prisma.ProjectWhereInput = { OR: [{ contractStatus: null }, { contractStatus: { not: 生效的合同状态 } }] };
-  const 能选的条件: Prisma.ProjectWhereInput = { ...底, AND: [没签合同, { phase: { in: [...能并的阶段.留下] } }, ...线同或空] };
-  const 灰的条件: Prisma.ProjectWhereInput = { ...底, OR: [{ contractStatus: 生效的合同状态 }, { phase: { notIn: [...能并的阶段.留下] } }, ...线不同] };
-  const 选 = { id: true, name: true, node: true, phase: true, contractStatus: true, bizLine: true } satisfies Prisma.ProjectSelect;
+  const 能选的条件: Prisma.ProjectWhereInput = { ...底, AND: [没签合同, { NOT: 验证中 }, { phase: { in: [...能并的阶段.留下] } }, ...线同或空] };
+  const 灰的条件: Prisma.ProjectWhereInput = { ...底, OR: [验证中, { contractStatus: 生效的合同状态 }, { phase: { notIn: [...能并的阶段.留下] } }, ...线不同] };
+  const 选 = { id: true, name: true, node: true, phase: true, contractStatus: true, bizLine: true, entLeadVerify: { select: { pending: true } } } satisfies Prisma.ProjectSelect;
+  const 交给 = await 现在交给(await 权限组织());
   const [能, 灰, 灰共] = await 看全部(() => Promise.all([
     db.project.findMany({ where: 能选的条件, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], select: 选 }),
     db.project.findMany({ where: 灰的条件, orderBy: [{ updatedAt: "desc" }, { id: "asc" }], take: 灰着列的上限, select: 选 }),
@@ -254,7 +271,7 @@ export async function 能并进的候选们(db: 库, B: { id: string; customerId
   ]));
   const 列 = [
     ...能.map(({ id, name, node }): 并进候选 => ({ id, name, node })),
-    ...灰.map(({ id, name, node, contractStatus, phase, bizLine }): 并进候选 => ({ id, name, node, 不能: 签了合同({ contractStatus }) ? 已签合同的项目不能合并 : !能并的阶段.留下.includes(phase) ? 到商机订单不能合并 : 业务线不同的原因({ bizLine }, B) ?? 到商机订单不能合并 })),
+    ...灰.map(({ id, name, node, contractStatus, phase, bizLine, entLeadVerify }): 并进候选 => ({ id, name, node, 不能: entLeadVerify?.pending ? 留下在等的原因({ name }, 等谁(entLeadVerify.pending, 交给)) : 签了合同({ contractStatus }) ? 已签合同的项目不能合并 : !能并的阶段.留下.includes(phase) ? 到商机订单不能合并 : 业务线不同的原因({ bizLine }, B) ?? 到商机订单不能合并 })),
   ];
   return { 列, 灰共 };
 }
@@ -283,10 +300,15 @@ const 去重表 = [["projectContact", "contactId"], ["projectCustomer", "custome
  *   - EntTrash.targetId（多态，整批撤回删掉的记录）：指的是已删的项目，删了的项目不能并（读项目 deletedAt: null），不涉及
  *   - EntHandover.projectIds（JSON 数组）：不挪；离职交接待确认里的项目合并、撤回都拦（离职交接中的项目），确认过的是历史不动
  */
-const 主键of: Record<string, string> = Object.fromEntries([...挪表.map(([t, 键]) => [t, 键]), ...去重表.map(([t]) => [t, "id"])]);
+/*
+ * FollowPlan.projectId（判 MQL 不合格自动建的培育计划，autoBy = mql-nurture，E-396）：不在挪表里，挪不挪看留下的项目 A 在不在潜客培育（挪 里单独处理）——
+ *   A 也在潜客培育：B 的这些未完成计划改指 A（记进 改指，撤回改回 B）；A 不在：撤掉（硬删 + 操作日志），撤回合并不重建。人手加的计划（autoBy 空）一概不动
+ */
+const 计划键 = "followPlan.projectId";
+const 主键of: Record<string, string> = Object.fromEntries([...挪表.map(([t, 键]) => [t, 键]), ...去重表.map(([t]) => [t, "id"]), ["followPlan", "id"]]);
 const 类叫: Record<string, string> = {
   followUpProject: "沟通", entFollowUpMark: "沟通标记", entFollowUpMeta: "沟通编号", attachment: "附件", entCoachRecording: "录音", entCoachTopic: "点评",
-  entBlocker: "卡点", entExternalRef: "老系统对照", projectContact: "项目联系人", projectCustomer: "项目关联客户", project: "被并掉的项目",
+  entBlocker: "卡点", followPlan: "培育计划", entExternalRef: "老系统对照", projectContact: "项目联系人", projectCustomer: "项目关联客户", project: "被并掉的项目",
 };
 const 键 = (t: string, 列: string) => `${t}.${列}`;
 
@@ -334,6 +356,7 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   const 开 = await 客户状态自动();
+  const 交给 = await 现在交给(org);
   let 通知要: { A: 项目行; B: 项目行 } | null = null;
   let r: 项目合并完;
   try {
@@ -341,7 +364,7 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
       看全部(() =>
         db.$transaction(async (tx) => {
           const [A, B] = [await 读项目(tx, 留下id), await 读项目(tx, 并掉id)];
-          const 原因 = await 拦的原因(tx, A, B, me, org);
+          const 原因 = await 拦的原因(tx, A, B, me, org, 交给);
           if (原因.length) throw new 拦下(原因.join("；"));
           const 结 = await 挪(tx, A!, B!, me, 现在);
           await 重算最近跟进(tx, A!.customerId);
@@ -378,6 +401,9 @@ async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Da
   };
 
   for (const [t, 主键, 列, 加] of 挪表) 明.改指[键(t, 列)] = await 改指(tx, t, 主键, 列, B.id, A.id, 加);
+  // B 判 MQL 不合格建的培育计划（E-396）：A 也在潜客培育就改指 A，不然撤掉（B 结束为重复线索，计划没处挂）；撤了的撤回合并不重建
+  if (在潜客培育(A.node)) 明.改指[计划键] = await 改指(tx, "followPlan", "id", "projectId", B.id, A.id, { autoBy: 培育计划来源, done: false });
+  else await 撤培育计划(tx, me, B.id);
 
   // 项目联系人、关联客户：A 已有同一位的，B 那行删掉（整行记下）；关联的是 A 的主客户的也删（主客户不在关联表里占行）
   for (const [t, 对] of 去重表) {

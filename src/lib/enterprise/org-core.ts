@@ -315,7 +315,7 @@ export function 能市场复核(org: 组织, me: string, p: 复核看的项目):
   return 市场复核人们(org, p).includes(me);
 }
 /** 离职（停用）的人离职前手填的直属上级，且那位还在职 */
-function 离职直属上级(org: 组织, userId: string): string | null {
+export function 离职直属上级(org: 组织, userId: string): string | null {
   const 上 = org.离职上级?.get(userId);
   return 上 && org.成员.has(上) ? 上 : null;
 }

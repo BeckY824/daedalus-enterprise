@@ -458,7 +458,8 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 不打省略号（D3 · M3-
   const 联系人 = (id: string, 加: Record<string, unknown>) => ({ id, name: "赵六", position: null, phone: null, email: null, wechat: null, isPrimary: false, remark: null, updatedAt: "2026-01-01T00:00:00.000Z", ...加 });
   const contacts = [
     联系人("c1", { phone: 长号, email: 长邮箱 }),
-    联系人("c2", { 号码们: [{ kind: "phone", value: 长号 }, { kind: "landline", value: 长号 }, { kind: "email", value: 长邮箱 }, { kind: "phone", value: "138****8001" }] }),
+    // 12-15 第三批 B：两个手机号，主号（默认）那一行跟一枚「主号」标；c3 只一个手机不标
+    联系人("c2", { 号码们: [{ kind: "phone", value: 长号, 默认: true }, { kind: "landline", value: 长号 }, { kind: "email", value: 长邮箱 }, { kind: "phone", value: "138****8001" }] }),
     联系人("c3", { 号码们: [{ kind: "phone", value: "+86 138-0013-8000" }] }),
   ];
   const 号码种类 = [{ kind: "phone", 名: "手机" }, { kind: "landline", 名: "座机" }, { kind: "email", 名: "邮箱" }];
@@ -492,6 +493,11 @@ it("超长号码、超长邮箱：1024 / 1280 / 1366 不打省略号（D3 · M3-
         expect(x, `宽 ${w}：${x.文字}`).toMatchObject({ 键能点到: true, 键宽: 28, 不重叠: true, 紧贴: true, 在格内: true, 格不出界: true, 被截: false, 折得对: true, title: x.文字 });
       }
       expect(量.filter(x => x.无键).map(x => x.文字)).toEqual(["138****8001"]);
+      const 标 = await page.locator(".rec-contact-main").evaluateAll((ts: HTMLElement[]) => ts.map(t => {
+        const r = t.getBoundingClientRect(), 卡 = t.closest<HTMLElement>(".rec-contact")!.getBoundingClientRect();
+        return { 字: t.textContent, 在卡内: r.left >= 卡.left - 0.5 && r.right <= 卡.right + 0.5, 跟在号码后: t.parentElement!.classList.contains("rec-contact-nv") };
+      }));
+      expect(标, `宽 ${w}`).toEqual([{ 字: "主号", 在卡内: true, 跟在号码后: true }]);
       // 放得下的「+86 138-0013-8000」一行，不在连字符处断开；超长的那几串比整格宽，才在里面断
       expect(量.find(x => x.文字 === "+86 138-0013-8000")!.行数, `宽 ${w}`).toBe(1);
       expect(量.filter(y => !y.无键 && (y.行数 ?? 0) > 1).length).toBeGreaterThan(0);
@@ -637,4 +643,22 @@ it("能改的格：行尾一支笔，平时不显、悬停出、整行 --row-hov
   try {
     expect(await 只读.locator("[data-field='name'] .rec-field-pen").count()).toBe(0);
   } finally { await 只读.close(); }
+});
+
+/* 12-15 第三批 B：手机（390）上「主号」标跟在号码后面，长号放不下就折到下一行，不出卡、页面不横滚 */
+it("主号标 390：跟在号码后、不出卡、不横滚；只一个手机不标", async () => {
+  const 联系人 = (id: string, 加: Record<string, unknown>) => ({ id, name: "赵六", position: null, phone: null, email: null, wechat: null, isPrimary: false, remark: null, updatedAt: "2026-01-01T00:00:00.000Z", ...加 });
+  const contacts = [
+    联系人("c1", { 号码们: [{ kind: "phone", value: "+86 138-0013-8000 转 1234567890", 默认: true }, { kind: "phone", value: "138****8001" }] }),
+    联系人("c2", { 号码们: [{ kind: "phone", value: "138****8002", 默认: true }] }),
+  ];
+  const page = await open(true, 390, false, { contacts, 号码种类: [{ kind: "phone", 名: "手机" }] });
+  try {
+    const 标 = await page.locator(".rec-contact-main").evaluateAll((ts: HTMLElement[]) => ts.map(t => {
+      const r = t.getBoundingClientRect(), 卡 = t.closest<HTMLElement>(".rec-contact")!.getBoundingClientRect();
+      return { 字: t.textContent, 在卡内: r.left >= 卡.left - 0.5 && r.right <= 卡.right + 0.5, 联系人: t.closest<HTMLElement>("[data-contact]")!.dataset.contact };
+    }));
+    expect(标).toEqual([{ 字: "主号", 在卡内: true, 联系人: "c1" }]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+  } finally { await page.close(); }
 });
