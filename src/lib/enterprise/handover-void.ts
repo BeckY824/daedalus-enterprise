@@ -31,31 +31,45 @@ export async function 作废申请移交(
   try {
     const 转 = new Set(转成了);
     const 接 = (await prisma.user.findUnique({ where: { id: 新负责人 }, select: { name: true } }))?.name ?? "";
-    for (const h of 行) {
-      const 全 = 读ids(h.customerIds);
-      const 余 = 全.filter((c) => !转.has(c));
-      if (余.length === 全.length) continue;
+    for (const h0 of 行) {
+      // 现读这一行、按库里现值重算余下的客户（调用方的快照可能已过时：两位上级同时直转同一份申请里的不同客户）；乐观锁没命中就再读再试，最多 3 次
+      let h = h0, 全: string[] = [], 余: string[] = [], 去掉: string[] = [], 累计 = 0, 成 = false;
       const 现在 = new Date();
-      const r = await 看全部(() =>
-        余.length
-          ? prisma.entHandover.updateMany({ where: { id: h.id, status: 待确认, customerIds: h.customerIds }, data: { customerIds: JSON.stringify(余), counts: JSON.stringify({ 客户: 余.length }) } })
-          : prisma.entHandover.updateMany({ where: { id: h.id, status: 待确认 }, data: { status: 已作废, doneAt: 现在, doneById: me.id } }),
-      );
-      if (r.count !== 1) continue;
+      for (let 次 = 0; 次 < 3 && !成; 次++) {
+        const 现 = await 看全部(() => prisma.entHandover.findUnique({ where: { id: h0.id }, select: { id: true, fromUserId: true, toUserId: true, byUserId: true, customerIds: true, counts: true, status: true, kind: true } }));
+        if (!现 || 现.status !== 待确认 || 现.kind !== "转让") break;
+        h = 现;
+        全 = 读ids(h.customerIds);
+        余 = 全.filter((c) => !转.has(c));
+        去掉 = 全.filter((c) => 转.has(c));
+        if (!去掉.length) break;
+        // 累计已被直接转走的位数：此前几次部分作废记在 counts.已被直接转走 里
+        let 此前 = 0;
+        try { 此前 = Number((JSON.parse(h.counts) as Record<string, unknown>).已被直接转走) || 0; } catch { /* counts 坏了从 0 算 */ }
+        累计 = 此前 + 去掉.length;
+        const r = await 看全部(() =>
+          余.length
+            ? prisma.entHandover.updateMany({ where: { id: h.id, status: 待确认, customerIds: h.customerIds }, data: { customerIds: JSON.stringify(余), counts: JSON.stringify({ 客户: 余.length, 已被直接转走: 累计 }) } })
+            : prisma.entHandover.updateMany({ where: { id: h.id, status: 待确认, customerIds: h.customerIds }, data: { status: 已作废, doneAt: 现在, doneById: me.id } }),
+        );
+        成 = r.count === 1;
+      }
+      if (!成) continue;
       const 人 = new Map((await prisma.user.findMany({ where: { id: { in: [h.byUserId, h.toUserId] } }, select: { id: true, name: true, active: true } })).map((u) => [u.id, u]));
       const 本人 = 人.get(h.byUserId);
       const 原接手 = 人.get(h.toUserId);
-      const 几位 = `${全.length - 余.length} 位客户`;
+      const 几位 = `${去掉.length} 位客户`;
       await recordAudit({
         user: me, action: "assign", entity: "Customer", entityId: null,
         summary: `${me.name} 直接把${几位}转给「${接}」，「${本人?.name ?? h.byUserId}」发给「${原接手?.name ?? h.toUserId}」的转让申请${余.length ? "里这几位" : ""}作废`,
-        detail: { 交接: h.id, kind: "转让", 状态: 余.length ? "部分作废" : 已作废, fromUserId: h.fromUserId, toUserId: h.toUserId, 客户: 全.filter((c) => 转.has(c)) },
+        detail: { 交接: h.id, kind: "转让", 状态: 余.length ? "部分作废" : 已作废, fromUserId: h.fromUserId, toUserId: h.toUserId, 客户: 去掉 },
       });
       // 全作废：原接手人那条「发起」标已读；部分作废：申请还有人等他确认，不标已读，只把标题 / 正文改成说清哪几位已被上级转走
       if (余.length) {
+        // 不带「未读」条件：他已读过也要把标题改对，并置回未读（再提醒一次）；位数按累计已被直接转走的算（counts.已被直接转走）
         await prisma.entNotice.updateMany({
-          where: { userId: h.toUserId, dedupeKey: `handover:${h.id}:发起`, readAt: null },
-          data: { title: `${本人?.name ?? ""} 发给你的转让申请：其中 ${全.length - 余.length} 位已由 ${me.name} 直接转走，其余仍待你确认`, body: `还剩 ${余.length} 位客户待你确认。` },
+          where: { userId: h.toUserId, dedupeKey: `handover:${h.id}:发起` },
+          data: { title: `${本人?.name ?? ""} 发给你的转让申请：其中 ${累计} 位已由 ${me.name} 直接转走，其余仍待你确认`, body: `还剩 ${余.length} 位客户待你确认。`, readAt: null },
         });
       } else {
         await prisma.entNotice.updateMany({ where: { userId: h.toUserId, dedupeKey: `handover:${h.id}:发起`, readAt: null }, data: { readAt: 现在 } });
@@ -65,9 +79,9 @@ export async function 作废申请移交(
       if (本人?.active && h.byUserId !== me.id) {
         await notify([h.byUserId], {
           kind: "交接",
-          title: 余.length ? `你发给 ${原接手?.name ?? ""} 的转让申请：其中 ${全.length - 余.length} 位已由 ${me.name} 直接转给 ${接}，其余仍待对方确认` : `你发给 ${原接手?.name ?? ""} 的转让申请已作废：${话}`,
+          title: 余.length ? `你发给 ${原接手?.name ?? ""} 的转让申请：其中 ${去掉.length} 位已由 ${me.name} 直接转给 ${接}，其余仍待对方确认` : `你发给 ${原接手?.name ?? ""} 的转让申请已作废：${话}`,
           body: 余.length ? `还剩 ${余.length} 位客户待对方确认。` : "客户已按新的转让生效，不用再等确认。",
-          link: "/customers", key: `handover:${h.id}:作废:本人`,
+          link: "/customers", key: 余.length ? `handover:${h.id}:部分作废:${[...去掉].sort().join(",")}` : `handover:${h.id}:作废:本人`,
         });
       }
       if (!余.length && 原接手?.active && h.toUserId !== me.id && h.toUserId !== 新负责人) {
