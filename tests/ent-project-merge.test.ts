@@ -643,8 +643,8 @@ describe("字段覆盖守卫：库里带项目 id 的表都定过挪不挪", () 
       const c = /^\s+(\w*[pP]rojectId)\s+String/.exec(行);
       if (c && 模型) 列们.push(`${模型}.${c[1]}`);
     }
-    // 挪（project-merge.ts 挪表 / 去重表）
-    const 挪 = ["FollowUpProject.projectId", "EntFollowUpMark.projectId", "EntFollowUpMeta.projectId", "Attachment.projectId", "EntCoachRecording.projectId", "EntCoachTopic.projectId", "EntBlocker.projectId", "ProjectContact.projectId", "ProjectCustomer.projectId"];
+    // 挪（project-merge.ts 挪表 / 去重表；FollowPlan.projectId 是 挪 里单独处理：A 在潜客培育才挪，不在就撤，E-396）
+    const 挪 = ["FollowUpProject.projectId", "EntFollowUpMark.projectId", "EntFollowUpMeta.projectId", "Attachment.projectId", "EntCoachRecording.projectId", "EntCoachTopic.projectId", "EntBlocker.projectId", "ProjectContact.projectId", "ProjectCustomer.projectId", "FollowPlan.projectId"];
     // 人勾的
     const 勾 = ["ProjectMember.projectId"];
     // 不挪 / 不涉及（规划逐表清单）：项目自己的经历、前提拦住的回款提成、售后列、AI 对话自己的项目
@@ -659,6 +659,44 @@ describe("字段覆盖守卫：库里带项目 id 的表都定过挪不挪", () 
     //   EntHandover.projectIds（JSON，不挪，离职交接待确认的合并、撤回都拦）。新加这类多态 / JSON 列也要在那里补一行
     expect(列们.filter((x) => ![...挪, ...勾, ...不挪].includes(x)), "新表带项目 id：在 project-merge.ts 决定挪不挪，再补进这里").toEqual([]);
     expect([...挪, ...勾, ...不挪].filter((x) => !列们.includes(x)), "表里没有了，从清单删掉").toEqual([]);
+  });
+});
+
+describe("判 MQL 不合格的自动培育计划（E-396）", () => {
+  const 计划 = (customerId: string, projectId: string, autoBy: string | null, subject: string, 补: Record<string, unknown> = {}) =>
+    raw.followPlan.create({ data: { subject, plannedAt: new Date(), customerId, ownerId: 乙.id, projectId, autoBy, ...补 } });
+
+  it("留下的 A 也在潜客培育：B 的自动培育计划改指 A（人手加的、已完成的不动）；撤回合并改回 B", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c, { node: "潜客培育" });
+    const b = await 项目(乙.id, c, { node: "潜客培育" });
+    const 自动 = await 计划(c, b, "mql-nurture", "潜客培育：自动");
+    const 人手 = await 计划(c, b, null, "人手加的");
+    const 做完 = await 计划(c, b, "mql-nurture", "潜客培育：做完了", { done: true, doneAt: new Date() });
+    const mergeId = await 并(a, b, 乙);
+    expect((await raw.followPlan.findUniqueOrThrow({ where: { id: 自动.id } })).projectId).toBe(a);
+    expect((await raw.followPlan.findUniqueOrThrow({ where: { id: 人手.id } })).projectId).toBe(b);
+    expect((await raw.followPlan.findUniqueOrThrow({ where: { id: 做完.id } })).projectId).toBe(b);
+    expect(await raw.auditLog.count({ where: { entity: "FollowPlan", action: "delete" } })).toBe(0);
+    expect(await 撤回项目合并(prisma, mergeId, 乙)).toMatchObject({ ok: true });
+    expect((await raw.followPlan.findUniqueOrThrow({ where: { id: 自动.id } })).projectId).toBe(b);
+  });
+
+  it("留下的 A 不在潜客培育：B 的自动培育计划撤掉（硬删 + 操作日志）；人手加的、已完成的、A 自己的不动；撤回合并不重建", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c, { node: "线索验证" });
+    const b = await 项目(乙.id, c, { node: "潜客培育" });
+    const 自动 = await 计划(c, b, "mql-nurture", "潜客培育：自动");
+    const 人手 = await 计划(c, b, null, "人手加的");
+    const A的 = await 计划(c, a, "mql-nurture", "潜客培育：A 的");
+    const mergeId = await 并(a, b, 乙);
+    expect(await raw.followPlan.findUnique({ where: { id: 自动.id } })).toBeNull();
+    expect((await raw.followPlan.findMany({ select: { id: true } })).map((x) => x.id).sort()).toEqual([人手.id, A的.id].sort());
+    const 日志 = await raw.auditLog.findFirstOrThrow({ where: { entity: "FollowPlan", action: "delete" } });
+    expect(日志).toMatchObject({ userId: 乙.id, userName: 乙.name });
+    expect(日志.summary).toContain("潜客培育：自动");
+    expect(await 撤回项目合并(prisma, mergeId, 乙)).toMatchObject({ ok: true });
+    expect(await raw.followPlan.findUnique({ where: { id: 自动.id } })).toBeNull();
   });
 });
 

@@ -722,6 +722,14 @@ const 系统事实: Record<string, Record<string, 系统事实项>> = {
       写入方: ["src/app/(app)/customers/[id]/actions.ts"],
       说明: "下次回访（迁移 173）：记售后回访时顺手排的计划，系统记下是给哪个交付结清项目排的（saveFollowUp 附带计划），完成计划时默认挂回它；不建外键，核不过当普通计划",
     },
+    projectId: {
+      写入方: ["src/lib/project/mql.ts"],
+      说明: "培育计划是哪个项目判的（迁移 179，客户 E-396）：判 MQL 不合格系统建计划时写，之后不改；项目离开潜客培育时按它找要撤的计划，不建外键，旧计划为空不动",
+    },
+    autoBy: {
+      写入方: ["src/lib/project/mql.ts"],
+      说明: "自动建的来源标记（迁移 180，客户 E-396）：判 MQL 不合格建的写 mql-nurture，人手加的为空；只有它 + projectId 对得上的计划才会随项目离开潜客培育被撤",
+    },
   },
   EntLeadAssign: {
     way: {

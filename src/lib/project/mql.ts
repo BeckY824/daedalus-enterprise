@@ -11,6 +11,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 改节点 } from "./db";
 import { 有效线索节点 } from "./stage-gates";
 import { 生效组织规则 } from "./org-rules-store";
+import { 培育计划来源 } from "./nurture-plan";
 import { 等复核拦 } from "./lead-verify-guard";
 
 type 谁 = { id: string; role: string };
@@ -45,6 +46,7 @@ export async function 判MQL(
         subject: `潜客培育：${内容}`,
         plannedAt: 日, plannedOn: dayjs(日).format("YYYY-MM-DD"), plannedHasTime: false,
         customerId: p.customerId, ownerId: p.ownerId,
+        projectId: p.id, autoBy: 培育计划来源,
       },
     });
   });

@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma";
+import { 项目们撤培育计划 } from "@/lib/project/nurture-plan";
 import { 转项目 } from "@/lib/carry-over-db";
 import { 离职交接痕 } from "@/lib/project/carry-tasks";
 import { 记换负责人 } from "@/lib/owner-log-db";
@@ -89,6 +90,7 @@ export async function 离职放进公海(tx: Prisma.TransactionClient, 分: 停�
     await 进公海清组员(tx, 分.进公海项目, 操作人);
     await 进公海清验证(tx, 分.进公海项目, 操作人);
     await 进公海关主题(tx, 分.进公海项目, 操作人);
+    await 项目们撤培育计划(tx, { id: 操作人 }, 分.进公海项目);
     // 挂在别人客户上的项目进了公海：那几位客户的状态重算（cust-status-auto-db.ts 进出公海重算）
     await 进出公海重算(tx, 们.map((p) => p.customerId));
   }

@@ -30,6 +30,7 @@ import { 忘掉企业版范围 } from "./visibility";
 import { 拦下, 合并事务选项, 并发失败话, 重算最近跟进, 读没还原, type 合并人, type 没还原 } from "./customer-merge";
 import { 项目单, 项目合并撤回天数, 项目合并单们, 项目合并验证步 } from "./project-merge-guard";
 import { 生效的合同状态 } from "@/lib/project/proj-fields";
+import { 在潜客培育, 培育计划来源, 撤培育计划 } from "@/lib/project/nurture-plan";
 import { 短时刻 } from "@/lib/project/time-fields";
 
 export { 项目单, 项目合并撤回天数, 项目合并验证步 };
@@ -283,10 +284,15 @@ const 去重表 = [["projectContact", "contactId"], ["projectCustomer", "custome
  *   - EntTrash.targetId（多态，整批撤回删掉的记录）：指的是已删的项目，删了的项目不能并（读项目 deletedAt: null），不涉及
  *   - EntHandover.projectIds（JSON 数组）：不挪；离职交接待确认里的项目合并、撤回都拦（离职交接中的项目），确认过的是历史不动
  */
-const 主键of: Record<string, string> = Object.fromEntries([...挪表.map(([t, 键]) => [t, 键]), ...去重表.map(([t]) => [t, "id"])]);
+/*
+ * FollowPlan.projectId（判 MQL 不合格自动建的培育计划，autoBy = mql-nurture，E-396）：不在挪表里，挪不挪看留下的项目 A 在不在潜客培育（挪 里单独处理）——
+ *   A 也在潜客培育：B 的这些未完成计划改指 A（记进 改指，撤回改回 B）；A 不在：撤掉（硬删 + 操作日志），撤回合并不重建。人手加的计划（autoBy 空）一概不动
+ */
+const 计划键 = "followPlan.projectId";
+const 主键of: Record<string, string> = Object.fromEntries([...挪表.map(([t, 键]) => [t, 键]), ...去重表.map(([t]) => [t, "id"]), ["followPlan", "id"]]);
 const 类叫: Record<string, string> = {
   followUpProject: "沟通", entFollowUpMark: "沟通标记", entFollowUpMeta: "沟通编号", attachment: "附件", entCoachRecording: "录音", entCoachTopic: "点评",
-  entBlocker: "卡点", entExternalRef: "老系统对照", projectContact: "项目联系人", projectCustomer: "项目关联客户", project: "被并掉的项目",
+  entBlocker: "卡点", followPlan: "培育计划", entExternalRef: "老系统对照", projectContact: "项目联系人", projectCustomer: "项目关联客户", project: "被并掉的项目",
 };
 const 键 = (t: string, 列: string) => `${t}.${列}`;
 
@@ -378,6 +384,9 @@ async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Da
   };
 
   for (const [t, 主键, 列, 加] of 挪表) 明.改指[键(t, 列)] = await 改指(tx, t, 主键, 列, B.id, A.id, 加);
+  // B 判 MQL 不合格建的培育计划（E-396）：A 也在潜客培育就改指 A，不然撤掉（B 结束为重复线索，计划没处挂）；撤了的撤回合并不重建
+  if (在潜客培育(A.node)) 明.改指[计划键] = await 改指(tx, "followPlan", "id", "projectId", B.id, A.id, { autoBy: 培育计划来源, done: false });
+  else await 撤培育计划(tx, me, B.id);
 
   // 项目联系人、关联客户：A 已有同一位的，B 那行删掉（整行记下）；关联的是 A 的主客户的也删（主客户不在关联表里占行）
   for (const [t, 对] of 去重表) {

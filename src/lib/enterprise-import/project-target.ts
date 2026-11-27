@@ -16,6 +16,7 @@ import { 卡点随项目换人, 转让接手理由 } from "../project/blocker";
 import { 将回收提醒跟着换人 } from "../project/db";
 import { 规, 写不进, type 值表, type 标量 } from "./values";
 import { 节点所在阶段 } from "./project-values";
+import { 在潜客培育, 离开了潜客培育, 撤培育计划 } from "../project/nurture-plan";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 新项目默认值 } from "@/lib/project/proj-fields";
 
@@ -157,7 +158,7 @@ export async function 建项目(tx: Tx, v: 值表, 现在: string, 业务线?: s
 }
 
 /** 改项目的这几格；节点或结局变了记一条节点日志（谁改的记负责人） */
-export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值表, 现在: string): Promise<void> {
+export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值表, 现在: string, 操作人?: string): Promise<void> {
   const 有 = (k: string) => k in 改动;
   const data: Prisma.ProjectUncheckedUpdateInput = {};
   if (有("name")) data.name = String(改动.name);
@@ -193,6 +194,13 @@ export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值�
         toResult: 新.result,
       },
     });
+    // 导入 / 同步把项目从潜客培育改走：判 MQL 不合格自动建的培育计划一起撤（E-396；不经 改节点，要自己撤）。
+    // 整批撤回导入时计划不会重建（硬删的，撤回只还项目那几格）
+    // 在潜客培育上只把结局改成线索流失等（节点不动）也算，口径同 db.ts 改节点；操作日志记导入的人，没给记负责人
+    const 原节点 = 本套名(原.node, 企业版字典);
+    if (离开了潜客培育(原节点, 新.node) || (!!新.result && 新.result !== 原结局 && 在潜客培育(新.node))) {
+      await 撤培育计划(tx, { id: 操作人 || String(data.ownerId || 原.ownerId || 原.creatorId) }, id);
+    }
   }
   if (!新.result) data.closedAt = null;
   else if (新.result !== 原结局 || 有("closedAt")) data.closedAt = 日(有("closedAt") ? 改动.closedAt : 现值.closedAt) ?? 原.closedAt ?? new Date(现在);
@@ -204,6 +212,8 @@ export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值�
   if (Object.keys(data).length) await tx.project.update({ where: { id }, data });
   const 位 = { phase: String(data.phase ?? 原.phase), node: String(data.node ?? 原.node), result: "result" in data ? (data.result as string | null) : 原.result };
   if (进) await tx.projectNodeLog.create({ data: 无主留痕(位, id, 原.ownerId || 原.creatorId, 原.ownerId || null, 现在) });
+  // 导入把负责人清空使项目进公海：自动培育计划一起撤（E-396；撤回导入不重建）
+  if (进) await 撤培育计划(tx, { id: 操作人 || 原.ownerId || 原.creatorId }, id);
   if (出) {
     await tx.projectNodeLog.create({
       data: { projectId: id, userId: String(data.ownerId), kind: "transfer", fromOwnerId: null, toOwnerId: String(data.ownerId), fromPhase: 位.phase, fromNode: 位.node, fromResult: 位.result, toPhase: 位.phase, toNode: 位.node, toResult: 位.result, at: new Date(现在) },
