@@ -7,7 +7,7 @@
  *     留下那家没填业务线按它负责人的业务线比。系统管理员不用申请，照第一批直接代并
  *   - 要谁同意（按人去重，同一个人只确认一次，列出他涉及的项目）：留下那家的客户负责人（不是发起人时）+
  *     被并那家的客户负责人（是同事时）+ 两家名下没结束（没结局、不在项目公海）、由同事负责的项目负责人。发起即算发起人同意
- *   - 等多久：5 个工作日（周一到周五，不扣节假日，同 tri-state.ts 工作日数），到期没全部同意就失效、要重新发起
+ *   - 等多久：5 个工作日（周一到周五，扣法定节假日、调休上班的周末算，同 cn-workday.ts 节假日表；E-428 ①），到期没全部同意就失效、要重新发起
  *   - 执行前再判：只比四项——负责人、阶段、回款或提成、被判无效；任一变了申请失效、要重新发起，别的字段变了不重判。
  *     数据拦法（交接中、公海、无效、业务线不同）照第一批，执行合并时事务里再判一遍
  *   - 全同意后调第一批的 执行合并（me = 发起人；挪、合成联系人、通知、30 天整单撤回都照第一批），
@@ -29,7 +29,8 @@ import { 权限组织, 直属上级of, 是系统管理员of, type 组织 } from 
 import { 只读角色, 只看的人 } from "./permissions";
 import { 接手问题, type 线 } from "./lead-assign";
 import { 是项目线 } from "./assign-line";
-import { 工作日数, 加天 } from "./tri-state";
+import { 加天 } from "./tri-state";
+import { 是工作日 } from "./cn-workday";
 import { 通知里的客户名 } from "./notice-mask";
 import { notify } from "./notify";
 import { 合并申请页, 凭叫法, 拒绝原因上限 } from "@/app/(app)/customers/merge-request-words";
@@ -156,13 +157,14 @@ export function 算同意人(
 }
 
 /**
- * 到期的那一刻：从发起那天（北京时间的日子）往后数第 5 个工作日的同一时刻，周末不算。
+ * 到期的那一刻：从发起那天（北京时间的日子）往后数第 5 个工作日的同一时刻，周末、法定节假日不算，调休上班的周末算（E-428 ①，只对新发起的算；已存的 expiresAt 不重算）。
  * 周五 15:00 发起 → 下周五 15:00；周六发起 → 下周五同一时刻
  */
 export function 到期时刻(发起: Date, 工作日 = 等待工作日): Date {
   const 起 = beijingDay(发起);
-  let k = 1;
-  while (工作日数(起, 加天(起, k)) < 工作日) k++;
+  let k = 0, 数 = 0;
+  // 扣法定节假日、调休上班的周末算工作日（cn-workday 节假日表，E-428 ①）；k < 120 只是防表错了死循环
+  while (数 < 工作日 && k < 120) { k++; if (是工作日(加天(起, k))) 数++; }
   return new Date(发起.getTime() + k * 86_400_000);
 }
 export const 到期了 = (r: { expiresAt: Date }, 现在: Date) => 现在.getTime() >= r.expiresAt.getTime();
