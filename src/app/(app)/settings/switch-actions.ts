@@ -14,6 +14,7 @@ import { 能进设置 } from "@/lib/enterprise/permissions";
 import { 规则, 规则名们, type 规则名 } from "@/lib/enterprise/rules-table";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 不设配额开着 } from "@/lib/enterprise/assign-eta";
+import { 扫库检测开着, 扫库检测开关key } from "@/lib/enterprise/scan-query";
 import { 不设配额key } from "@/lib/enterprise/lead-assign";
 import { 读组织规则 } from "@/lib/project/org-rules-store";
 import { 规整组织规则, 到上限的人数, type 组织规则 } from "@/lib/project/org-rules";
@@ -67,9 +68,10 @@ export async function 开关现状(): Promise<开关现状 | 拒> {
   if ("ok" in 人) return 人;
   const org = await 权限组织();
   const 在职 = org ? [...org.成员.keys()] : [];
-  const [开们, 不设, 组织规则, 字段表, 推送, 通讯录, 录音, 持有] = await Promise.all([
+  const [开们, 不设, 扫库, 组织规则, 字段表, 推送, 通讯录, 录音, 持有] = await Promise.all([
     Promise.all(规则名们.map(async (n) => [n, await 规则开着(n)] as const)),
     不设配额开着(),
+    扫库检测开着(),
     读组织规则(),
     getSetting<unknown>(字段权限key).then(规整字段配置),
     读飞书推送(),
@@ -83,6 +85,7 @@ export async function 开关现状(): Promise<开关现状 | 拒> {
   const 值 = {
     ...Object.fromEntries(开们.map(([n, v]) => [规则开关[n], v])),
     no_quota: 不设,
+    scan_detect: 扫库,
     node_advance: 组织规则.节点推进.开,
     first_two: 组织规则.阶段.前两节点要沟通,
     fill_period: 组织规则.阶段.需求补全期,
@@ -129,6 +132,7 @@ const 单键开关: Record<string, 开关键> = {
   [不设配额key]: "no_quota",
   [飞书推送开关键]: "feishu_push",
   [录音点评开关键]: "coach_rec",
+  [扫库检测开关key]: "scan_detect",
 };
 const 单键动作 = (summary: string): string | null =>
   /^打开|改成不设配额/.test(summary) ? "打开" : /^关掉|改回按配额/.test(summary) ? "关掉" : null;

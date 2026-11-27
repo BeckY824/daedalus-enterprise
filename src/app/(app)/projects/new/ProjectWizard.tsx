@@ -505,7 +505,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
     set名查中(true);
     set查错("");
     try {
-      const r = await 查客户名(名);
+      const r = await 查客户名(名, undefined);
       if (!r.ok) { set查错(r.error); return false; }
       set名查({ 名, 撞: r.撞 ?? null, 提示: r.撞 ? r.提示 : "" });
       return !r.撞;

@@ -39,6 +39,7 @@ import { 挂起移交作废 } from "@/lib/enterprise/handover-expire";
 import { 挂靠超时转上级 } from "@/lib/enterprise/attach-approval";
 import { 三态夜扫, type 三态夜扫明细 } from "@/lib/enterprise/tri-state-db";
 import { 钟上三态提醒 } from "@/lib/enterprise/tri-state-notice";
+import { 钟上扫库检测, 钟上清扫库记录 } from "@/lib/enterprise/scan-notice";
 import { 钟上指定回复提醒 } from "@/lib/enterprise/reply-notice";
 import { 钟上定时分配, type 定时分配明细 } from "@/lib/enterprise/scheduled-assign";
 import { 钟上超时自动转, type 超时转明细 } from "@/lib/enterprise/reply-overdue";
@@ -126,6 +127,12 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       // 三态提醒：排在三态那一段后面（先改状态再发），自己按北京 08:00 和当天水位判
       .then(() => 钟上三态提醒(现在))
       .then(() => undefined, (e) => console.error("[三态提醒] 出错，下一遍再试", e))
+      // ④ 扫库检测（E-383）：北京 00:05 后扫昨天、08:00 后发昨天的，各一天一次，开关关了不跑；扫和清理避开 00:15–00:50、03:15–03:50 备份窗口（E-387）
+      .then(() => 钟上扫库检测(现在))
+      .then(() => undefined, (e) => console.error("[扫库检测] 出错，下一遍再试", e))
+      // ④ 扫库记录 90 天清理：一天一次，开关关了照清；和扫各管各的
+      .then(() => 钟上清扫库记录(现在))
+      .then(() => undefined, (e) => console.error("[扫库检测] 90 天清理出错，下一遍再试", e))
       // 回收站到期清理：和超时回收各管各的，一边出错不拦另一边
       .then(() => (过了夜扫时刻(现在) ? 每天清一次(现在) : null))
       .then((清) => { r.回收站 = 清 ? Object.values(清).reduce((a, b) => a + b, 0) : 0; })

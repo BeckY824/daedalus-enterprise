@@ -92,6 +92,8 @@ export const 不同步表 = [
   "EntChannelMain",
   // 企业版撞号台账（2026-11-10，migrations/115）：同上
   "EntDupeHit",
+  // 企业版扫库检测的查询记录与触发名单（2026-11-27，迁移 178）：同上
+  "EntScanQuery", "EntScanTrigger",
   // 企业版教练主题（2026-11-17，迁移 144）：企业版是一台服务器上的网页，不走团队同步
   "EntCoachTopic", "EntCoachReply",
   // 企业版录音点评的录音（2026-11-22，迁移 162）：同上
@@ -186,6 +188,10 @@ export const 指向人的列: [string, string][] = [
   ["EntDupeHit", "ownerId"],
   ["EntDupeHit", "approverId"],
   ["EntDupeHit", "decidedById"],
+  // 企业版扫库检测（2026-11-27，迁移 178）：查询人、被查的人、通知收件人，不建外键
+  ["EntScanQuery", "userId"],
+  ["EntScanTrigger", "userId"],
+  ["EntScanTrigger", "notifiedTo"],
   // 企业版教练主题（2026-11-17，迁移 144）：发起人、关的人、回复人，不建外键
   ["EntCoachTopic", "authorId"],
   ["EntCoachTopic", "closedById"],
