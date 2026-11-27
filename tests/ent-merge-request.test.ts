@@ -886,7 +886,7 @@ describe("重发限制（E-428 阶段 3）：被拒 24 小时、30 天 3 次、�
     let 炸 = false;
     const 库 = new Proxy(prisma, {
       get(t, k, r) {
-        if (k === "project") return { ...(t as any).project, findMany: async () => { if (炸) throw new Error("补发名单算不出"); return (t as any).project.findMany(); } };
+        if (k === "project") return { ...t.project, findMany: async () => { if (炸) throw new Error("补发名单算不出"); return t.project.findMany(); } };
         const v = Reflect.get(t, k, r);
         return typeof v === "function" ? v.bind(t) : v;
       },
