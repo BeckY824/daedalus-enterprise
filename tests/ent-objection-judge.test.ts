@@ -396,4 +396,37 @@ describe("裁定人按当前组织重算（审查 M3，口径 A2 / B1）", () =>
     const 审 = await prisma.auditLog.findMany({ where: { entityId: a.id } });
     expect(审.some((x) => x.summary.includes("本人发起"))).toBe(true);
   });
+
+  it("接手人是唯一系统管理员、发起人不是：接手人自己裁，页面和留痕写「本人接手、无人回避」", async () => {
+    await prisma.entMember.delete({ where: { userId: 副管.id } });
+    await prisma.user.update({ where: { id: 副管.id }, data: { role: "SALES" } });
+    await prisma.entMember.update({ where: { userId: 线总管.id }, data: { line: "外贸" } });
+    const a = await 客户(销售.id, { bizLine: "内贸" });
+    当(组长);
+    expect(await assignSalesOwner([a.id], 老板.id, null, undefined, { 说明: "转给唯一的管理员" })).toMatchObject({ ok: true });
+    const 行 = (await 行们()).find((r) => r.kind === "客户")!;
+    await 提(行, 销售);
+    const 待 = await 待我裁定(老板.id);
+    expect(待).toHaveLength(1);
+    expect(待[0]).toMatchObject({ 本人接手: true, 能裁: true });
+    expect(待[0].本人发起).toBeUndefined();
+    当(老板);
+    expect(await 裁定(老板, 行.id, "维持", "本人接手的")).toMatchObject({ ok: true });
+    const 审 = await prisma.auditLog.findMany({ where: { entityId: a.id } });
+    expect(审.some((x) => x.summary.includes("本人接手、无人回避"))).toBe(true);
+  });
+
+  it("全部待裁定每行带「能裁」：发起人是系统管理员、还有别的系统管理员可裁时，发起人那行不能裁（页上不出维持 / 撤回），别的系统管理员能裁", async () => {
+    const a = await 客户(销售.id, { bizLine: "内贸" });
+    当(老板);
+    expect(await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "老板直接转" })).toMatchObject({ ok: true });
+    const 行 = (await 行们()).find((r) => r.kind === "客户")!;
+    await 提(行, 销售);
+    const 老板看 = await 全部待裁定(老板.id);
+    expect(老板看.map((r) => r.id)).toEqual([行.id]);
+    expect(老板看[0]).toMatchObject({ 能裁: false, 现裁定人: 副管.name });
+    expect(await 裁定(老板, 行.id, "维持", "我是发起人")).toMatchObject({ ok: false });
+    expect((await 全部待裁定(副管.id))[0]).toMatchObject({ 能裁: true });
+    expect((await 待我裁定(副管.id))[0]).toMatchObject({ 能裁: true });
+  });
 });

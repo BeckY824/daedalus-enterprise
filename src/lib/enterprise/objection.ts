@@ -163,8 +163,8 @@ export async function 提异议(me: { id: string; name: string }, id: unknown, �
   const 名 = new Map(人们.map((u) => [u.id, u.name]));
   await recordAudit({
     user: me, action: "assign", entity: "Customer", entityId: 行.customerId,
-    summary: `${me.name} 对${行.kind}「${行.targetName}」的转让提了异议，由${裁.角色}裁定${裁.本人发起 ? "（本人发起、无人回避）" : ""}`,
-    detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 理由: 话, 裁定人: 裁.ids, ...(裁.本人发起 ? { 本人发起: true } : {}) },
+    summary: `${me.name} 对${行.kind}「${行.targetName}」的转让提了异议，由${裁.角色}裁定${裁.本人发起 ? "（本人发起、无人回避）" : ""}${裁.本人接手 ? "（本人接手、无人回避）" : ""}`,
+    detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 理由: 话, 裁定人: 裁.ids, ...(裁.本人发起 ? { 本人发起: true } : {}), ...(裁.本人接手 ? { 本人接手: true } : {}) },
   }).catch((e) => console.warn("[异议] 留痕没写上：", e));
   await notify(人们.filter((u) => 裁.ids.includes(u.id) && u.active).map((u) => u.id), {
     kind: "异议",

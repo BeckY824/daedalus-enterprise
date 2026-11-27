@@ -24,7 +24,7 @@ export default async function ObjectionsPage({ searchParams }: { searchParams: P
   const 管理员 = (await 读组织().then((org) => org && 系统管理员们(org).includes(me.id)).catch(() => false)) === true;
   const 待手工 = 管理员 ? await 待手工退回们() : [];
   // 全部待裁定同样只给系统管理员（兜底：谁都能裁，不用等裁定人）
-  const 全部 = 管理员 ? await 全部待裁定(me.id) : [];
+  const 全部 = 管理员 ? await 全部待裁定(me.id, 待裁) : [];
   const 页签 = tab === "hand" && 待手工.length ? "hand" : tab === "all" && 管理员 ? "all" : j || tab === "judge" ? "judge" : "mine";
   return (
     <ObjectionsView
