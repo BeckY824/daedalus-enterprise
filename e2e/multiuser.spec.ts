@@ -207,6 +207,8 @@ async function 转给(page: Page, 名: string) {
   const 框 = page.getByRole("dialog", { name: /^把 \d+ 位.+转给$/ });
   await 框.getByRole("combobox", { name: "转给谁" }).click();
   await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: 名 }).click();
+  // 12-22 起上级 / 管理员直接转必填原因（框里点一个原因）
+  await 框.getByRole("radio", { name: "工作量调整" }).click();
   await 框.getByRole("button", { name: `转给${名}` }).click();
   await expect(框).toBeHidden();
 }
