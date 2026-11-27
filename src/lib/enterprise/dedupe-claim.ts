@@ -90,7 +90,7 @@ export function 要回避(原负责人: string | null, 创建人: string | null)
 
 /**
  * 发起领取的这位是不是「原负责人领不回」（P-公海-04）：和查重向导的「原负责人是我」同一个判断（contact-dedupe.ts 我回避的：
- * 负责人还是我、换到占位账号的最近一条是我放的、公海回避名单里有它），再按用户 11-19「仅对创建人豁免」放过客户创建人。
+ * 客户列是我、换到占位账号的最近一条是我放的、公海回避名单里有它），再按用户 11-19「仅对创建人豁免」放过客户创建人。
  * 这样向导里「原负责人是我」和「市场可领」不会同时为真
  */
 export async function 发起人领不回(db: 库, 挑: { id: string; salesOwnerId: string | null }, meId: string): Promise<boolean> {

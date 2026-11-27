@@ -413,7 +413,7 @@ export async function 关键词分页(sp: 客户条件, 请求页: number, pageS
   const 值: unknown[] = [...kw.values];
   if (公海) {
     段.push('EXISTS (SELECT 1 FROM "CustomerPool" p WHERE p."customerId" = c.id)');
-    // 原负责人回避（11-03）：这个页签全是公海客户，负责人是他的都不算；名单过上限走老路
+    // 原负责人回避（11-03）：这个页签全是公海客户，客户列是他的（回避名单）都不算；名单过上限走老路
     const 回避 = await 现在的公海回避(defaultClient);
     if (回避?.客户 === null) return null;
     if (回避) {

@@ -203,7 +203,7 @@ describe("原负责人退到公海后看不到", () => {
     expect(await 看(乙, c, p)).toMatchObject({ 客户列表: true, 客户详情: true, 项目列表: true, 项目详情: true });
   });
 
-  it("导入的（占位负责人、项目 ownerId 空）：按 pool-release 认原负责人", async () => {
+  it("导入的（占位负责人）：客户列空、只有项目列 = 只项目看不到，合 P-公海-04：直接导入进公海的没人放过，不回避客户", async () => {
     const { c, p } = await 导入的(乙.id);
     expect(await 看(乙, c, p)).toEqual(只项目看不到);
     for (const u of [丙, 经理, 老板]) {
@@ -337,6 +337,8 @@ describe("原负责人退到公海后看不到", () => {
       expect(await prisma.project.count()).toBe(0);
     });
     expect(await 看(乙, 们[0].c, 们[0].p)).toEqual(都看不到);
+    // 确实走按列那支（名单为 null）：造数改了不会悄悄退回名单那支
+    expect(await 以谁的身份(乙.id, async () => (await import("@/lib/team-scope")).现在的公海回避(raw))).toMatchObject({ 客户: null, 项目: null });
     await 页签对得上(乙);
     expect(await 看(丙, 们[0].c, 们[0].p)).toMatchObject({ 客户详情: true, 项目详情: true });
   });
@@ -364,8 +366,8 @@ describe("原负责人退到公海后看不到", () => {
     expect(await 看(丙, 转手.c, 转手.p)).toEqual(只项目看不到); // 转手项目只有项目列是丙，客户不回避
     expect(await 看(丙, c, p)).toEqual(都看不到);
     const 还避 = await 导入的(乙.id, "还是乙最后退的");
-    // 乙的客户名单过上限（关键词分页走老路返回 null，不比搜索这一项）
-    expect(await 看(乙, 还避.c, 还避.p)).toMatchObject({ ...只项目看不到, 搜索: false });
+    // 乙的客户名单过上限（关键词分页走老路返回 null，搜索这一项不是口径，不比）
+    expect(await 看(乙, 还避.c, 还避.p)).toMatchObject({ 客户列表: true, 客户详情: true, 项目列表: false, 项目公海: false, 项目详情: false, 公海页客户: true, 公海页项目: false });
     await 页签对得上(乙);
   });
 
@@ -386,6 +388,8 @@ describe("原负责人退到公海后看不到", () => {
     expect(await raw.customerPool.findUnique({ where: { customerId: c } })).toBeNull();
     expect((await raw.project.findUnique({ where: { id: p } }))?.pooledAt).toBeNull(); // 项目一起归他
     expect((await raw.project.findUnique({ where: { id: p } }))?.customerId).toBe(c);
+    // 客户名单空、项目名单非空：客户页签数走裸 SQL（回避段为空），和带限定的数对拍一次
+    await 页签对得上(丙);
   });
 
   it("负责人是他的线索挂在回避客户上也不出；没挂客户的、别的客户上的照常", async () => {

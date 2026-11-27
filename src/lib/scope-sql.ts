@@ -42,7 +42,7 @@ async function 看得到的(): Promise<{ where: string; 参数: string[]; 名下
   const 组员 = 线建名单?.length ? { sql: `${组员段.sql} OR c.id IN (${线建名单.map(() => "?").join(",")})`, 参数: [...组员段.参数, ...线建名单] } : 组员段;
   // 企业版不认渠道负责人（11-04，同 team-scope 可见客户）
   const 渠道 = 企业版() ? { sql: "", 参数: [] as string[] } : { sql: ` OR c."channelOwnerId" IN (${占})`, 参数: 们 };
-  // 回避的名单（不含「负责人是他的公海客户」那一半）：名下这一路不在公海，只剩名单这一段
+  // 回避的名单（只认客户列的名单，不看负责人）：名下这一路不在公海，只剩名单这一段
   const 名单 = 回避?.客户?.length ? { sql: ` AND c.id NOT IN (${回避.客户.map(() => "?").join(",")})`, 参数: 回避.客户 } : { sql: "", 参数: [] as string[] };
   return {
     // 回收站里的客户（企业版软删，P9）不算：裸 SQL 不过 Prisma 扩展，自己带上。外层是 AND，三段 OR 照旧各走各的索引
