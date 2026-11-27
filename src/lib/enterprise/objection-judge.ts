@@ -17,6 +17,7 @@
  */
 import type { EntTransferObjection, Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
+import { getSetting, setSetting } from "@/lib/settings";
 import { beijingWallIso } from "@/lib/business-clock";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 看全部 } from "@/lib/team-scope";
@@ -34,7 +35,7 @@ import { 客户编号显示 } from "@/lib/customer-no";
 import { 系统管理员们 } from "./tri-state-people";
 import { 项目合并单们 } from "./project-merge-guard";
 import {
-  异议待裁定, 异议已撤销, 异议维持, 异议撤回, 异议待手工退回, 异议已退回, 裁定说明上限, 不能自动退话, 算不能自动退, 能裁定, type 不能自动退类,
+  异议待裁定, 异议已撤销, 异议维持, 异议撤回, 异议待手工退回, 异议已退回, 裁定说明上限, 不能自动退话, 算不能自动退, 能裁定, 台账条数上限, type 不能自动退类, type 裁定人结果,
 } from "./objection-core";
 
 type Db = Prisma.TransactionClient;
@@ -197,10 +198,36 @@ export async function 待手工退回们(): Promise<待裁定行[]> {
   return 出;
 }
 
-export type 特殊裁定行 = { id: string; 裁定于: string; 客户编号: string; 项目: string; 类型: "本人发起" | "本人接手"; 发起人: string; 接手人: string; 裁定人: string; 结果: string; 理由: string };
+export type 特殊裁定行 = {
+  id: string; 裁定于: string; 客户名: string; 客户编号: string; 项目: string; 类型: "本人发起" | "本人接手"; 发起人: string; 接手人: string; 裁定人: string;
+  异议人: string; 异议理由: string; 结果: string; 裁定说明: string;
+};
 
-/** 特殊裁定台账一次最多列多少条；查到这个数就提示按月筛选（页签角标也按这个数封顶） */
-export const 台账条数上限 = 500;
+export { 台账条数上限 };
+
+/** 台账「结果」列：撤回按状态细分（待手工退回 = 还没人退；已退回 = 手工退完；撤回 = 裁定时自动退了） */
+const 台账结果 = (status: string): string =>
+  status === 异议维持 ? "维持" : status === 异议待手工退回 ? "撤回（待手工退回）" : status === 异议已退回 ? "撤回（已退回）" : "撤回（已自动退回）";
+
+/** 北京月 YYYY-MM 的起止（UTC 时刻，左闭右开） */
+const 月区间 = (月: string): { gte: Date; lt: Date } | null => {
+  const m = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(月);
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]);
+  return { gte: new Date(Date.UTC(y, mo - 1, 1) - 8 * 3_600_000), lt: new Date(Date.UTC(y, mo, 1) - 8 * 3_600_000) };
+};
+/** 「本人裁定」的库里条件：裁定人 = 发起人 或 = 接手人（字段引用，下推到库里） */
+const 本人裁定条件 = (): Prisma.EntTransferObjectionWhereInput => {
+  const 字段 = prisma.entTransferObjection.fields;
+  return { OR: [{ judgedById: { equals: 字段.operatorUserId } }, { judgedById: { equals: 字段.toOwnerId } }] };
+};
+
+/** 某个北京月里「本人裁定」的条数（每月 1 日通知用；不看身份，调用方保证只发给系统管理员） */
+export async function 本月特殊裁定条数(月: string): Promise<number> {
+  const 时间 = 月区间(月);
+  if (!时间) return 0;
+  return prisma.entTransferObjection.count({ where: { judgedAt: 时间, ...本人裁定条件() } });
+}
 
 /**
  * 特殊裁定台账（E-436）：列「本人发起、本人裁定」（裁定人 = 发起人）和「本人接手、本人裁定」（裁定人 = 接手人）的异议，
@@ -211,32 +238,68 @@ export async function 特殊裁定台账(userId: string, 月?: string | null): P
   if (!企业版()) return [];
   const org = await 读组织();
   if (!org || !系统管理员们(org).includes(userId)) return [];
-  let 时间: { gte: Date; lt: Date } | undefined;
-  const m = typeof 月 === "string" ? /^(\d{4})-(0[1-9]|1[0-2])$/.exec(月) : null;
-  if (m) {
-    const y = Number(m[1]), mo = Number(m[2]);
-    时间 = { gte: new Date(Date.UTC(y, mo - 1, 1) - 8 * 3_600_000), lt: new Date(Date.UTC(y, mo, 1) - 8 * 3_600_000) };
-  }
-  const 字段 = prisma.entTransferObjection.fields;
+  const 时间 = typeof 月 === "string" ? 月区间(月) : null;
   const 行们 = await prisma.entTransferObjection.findMany({
-    where: {
-      judgedAt: 时间 ?? { not: null },
-      OR: [{ judgedById: { equals: 字段.operatorUserId } }, { judgedById: { equals: 字段.toOwnerId } }],
-    },
+    where: { judgedAt: 时间 ?? { not: null }, ...本人裁定条件() },
     orderBy: [{ judgedAt: "desc" }, { id: "asc" }], take: 台账条数上限,
   });
   if (!行们.length) return [];
   const [人们, 客户们] = await Promise.all([
-    prisma.user.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => [r.operatorUserId, r.toOwnerId]))] } }, select: { id: true, name: true } }),
-    看全部(() => 看已删(() => prisma.customer.findMany({ where: { id: { in: 行们.map((r) => r.customerId) } }, select: { id: true, customerNo: true } }))),
+    prisma.user.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => [r.operatorUserId, r.toOwnerId, r.objectorUserId]))] } }, select: { id: true, name: true } }),
+    看全部(() => 看已删(() => prisma.customer.findMany({ where: { id: { in: 行们.map((r) => r.customerId) } }, select: 显名列 }))),
   ]);
   const 名 = new Map(人们.map((u) => [u.id, u.name]));
-  const 客 = new Map(客户们.map((c) => [c.id, 客户编号显示(c)]));
-  return 行们.map((r) => ({
-    id: r.id, 裁定于: beijingWallIso(r.judgedAt as Date).slice(0, 16).replace("T", " "), 客户编号: 客.get(r.customerId) ?? "", 项目: r.kind === "项目" ? r.targetName : "（客户）",
-    类型: r.judgedById === r.operatorUserId ? "本人发起" as const : "本人接手" as const,
-    发起人: 名.get(r.operatorUserId) ?? "", 接手人: 名.get(r.toOwnerId) ?? "", 裁定人: 名.get(r.judgedById as string) ?? "", 结果: r.status === 异议维持 ? "维持" : "撤回", 理由: r.judgeNote ?? "",
-  }));
+  const 客 = new Map(客户们.map((c) => [c.id, c]));
+  return 行们.map((r) => {
+    const c = 客.get(r.customerId);
+    return {
+      id: r.id, 裁定于: beijingWallIso(r.judgedAt as Date).slice(0, 16).replace("T", " "),
+      客户名: c ? 客户显名(c) : "", 客户编号: c ? 客户编号显示(c) : "", 项目: r.kind === "项目" ? r.targetName : "（客户）",
+      类型: r.judgedById === r.operatorUserId ? "本人发起" as const : "本人接手" as const,
+      发起人: 名.get(r.operatorUserId) ?? "", 接手人: 名.get(r.toOwnerId) ?? "", 裁定人: 名.get(r.judgedById as string) ?? "",
+      异议人: 名.get(r.objectorUserId) ?? "", 异议理由: r.reason ?? "", 结果: 台账结果(r.status), 裁定说明: r.judgeNote ?? "",
+    };
+  });
+}
+
+/**
+ * 裁定留痕里「本人裁定」那一段（E-436）：只要裁定人是发起人 / 接手人就标「本人发起 / 接手、本人裁定」，不管怎么落到他头上；
+ * 「无人回避」只在算裁定人确实挑不出别的系统管理员（本人发起 / 本人接手标志）时才写，兜底裁定不带
+ */
+export function 本人裁定标注(是发起人: boolean, 是接手人: boolean, 裁: Pick<裁定人结果, "本人发起" | "本人接手"> | undefined): string {
+  if (是发起人) return `（本人发起、本人裁定${裁?.本人发起 ? "；无人回避" : ""}）`;
+  if (是接手人) return `（本人接手、本人裁定${裁?.本人接手 ? "；无人回避" : ""}）`;
+  return "";
+}
+
+/**
+ * 每月 1 日（北京）给全部在职系统管理员发一条站内通知：上月有几条特殊裁定，链到台账上月。上月 0 条不发；
+ * 通知去重键按月（同一人同一月只记一行），再加设置水位，钟每分钟来也不重复查库。早 8 点后才发（别半夜推飞书）
+ */
+export const 特殊裁定月通知水位键 = "entObjSpecialMonthNotice";
+export async function 钟上特殊裁定月通知(现在: Date = new Date()): Promise<number> {
+  if (!企业版()) return 0;
+  const 墙 = beijingWallIso(现在);
+  if (墙.slice(8, 10) !== "01" || 墙.slice(11, 16) < "08:00") return 0;
+  const 本月 = 墙.slice(0, 7);
+  if ((await getSetting<string>(特殊裁定月通知水位键)) === 本月) return 0;
+  const [y, mo] = 本月.split("-").map(Number);
+  const 上月 = mo === 1 ? `${y - 1}-12` : `${y}-${String(mo - 1).padStart(2, "0")}`;
+  const 条 = await 本月特殊裁定条数(上月);
+  let 发了 = 0;
+  if (条 > 0) {
+    const org = await 读组织();
+    const 管理员们 = org ? 系统管理员们(org) : [];
+    if (管理员们.length) {
+      await notify(管理员们, {
+        kind: "异议", title: `上月有 ${条} 条特殊裁定（本人发起 / 本人接手、本人裁定），请查看台账`,
+        body: `${上月} 这个月里，发起人或接手人自己裁定的转让异议共 ${条} 条，每月看一次`, link: `/objections?tab=special&month=${上月}`, key: `objection-special-month:${上月}`,
+      });
+      发了 = 管理员们.length;
+    }
+  }
+  await setSetting(特殊裁定月通知水位键, 本月);
+  return 发了;
 }
 
 const 话of = (r: EntTransferObjection) => `${r.kind}「${r.targetName}」`;
@@ -302,7 +365,7 @@ export async function 裁定(me: { id: string; name: string }, id: unknown, 决�
   const 接手人 = 名.get(行.toOwnerId) ?? "";
   await recordAudit({
     user: me, action: "update", entity: "Customer", entityId: 行.customerId,
-    summary: `转让异议裁定：${异议人}对${话of(行)}的异议，${是发起人 ? "（本人发起、本人裁定；无人回避）" : ""}${是接手人 ? "（本人接手、本人裁定；无人回避）" : ""}${me.name}裁定「${决定}」${终态 === 异议待手工退回 ? "（不满足自动退回，待系统管理员手工退回）" : ""}：${话}`,
+    summary: `转让异议裁定：${异议人}对${话of(行)}的异议，${本人裁定标注(是发起人, 是接手人, 裁定人们)}${me.name}裁定「${决定}」${终态 === 异议待手工退回 ? "（不满足自动退回，待系统管理员手工退回）" : ""}：${话}`,
     detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 异议理由: 行.reason, 裁定: 决定, 结果: 终态, 裁定说明: 话, ...(是发起人 ? { 类型: "本人发起", 本人发起: true, 本人裁定: true } : {}), ...(是接手人 ? { 类型: "本人接手", 本人接手: true, 本人裁定: true } : {}), ...(退 ? { 退回: 退 } : {}), ...(手工原因 ? { 待手工原因: 手工原因 } : {}) },
   }).catch((e) => console.warn("[异议] 裁定留痕没写上：", e));
 

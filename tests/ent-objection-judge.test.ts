@@ -11,10 +11,10 @@ import { setSetting } from "@/lib/settings";
 import { assignSalesOwner, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { 提异议 as 提异议动作 } from "@/app/(app)/objections/actions";
 import { 提异议 as 提异议核, 我的异议 } from "@/lib/enterprise/objection";
-import { 裁定, 待我裁定, 全部待裁定, 待手工退回们, 评估退回, 标记已手工退回 } from "@/lib/enterprise/objection-judge";
+import { 裁定, 待我裁定, 全部待裁定, 待手工退回们, 评估退回, 标记已手工退回, 钟上特殊裁定月通知, 本人裁定标注, 特殊裁定台账 as 台账们 } from "@/lib/enterprise/objection-judge";
 import { 客户有未裁定异议, 项目有未裁定异议 } from "@/lib/enterprise/objection-guard";
 import { 裁定异议 } from "@/app/(app)/objections/actions";
-import { 裁定说明上限 } from "@/lib/enterprise/objection-core";
+import { 裁定说明上限, 台账满了, 台账条数上限 } from "@/lib/enterprise/objection-core";
 
 type 人 = { id: string; role: string; name: string };
 let 老板: 人, 副管: 人, 线总管: 人, 组长: 人, 销售: 人, 接手: 人, 同事: 人, 同事二: 人;
@@ -536,7 +536,11 @@ describe("特殊裁定台账（E-436）：本人发起、本人裁定", () => {
     const { 特殊裁定台账 } = await import("@/lib/enterprise/objection-judge");
     const 台 = await 特殊裁定台账(老板.id);
     expect(台).toHaveLength(1);
-    expect(台[0]).toMatchObject({ id: 行.id, 类型: "本人发起", 发起人: 老板.name, 结果: "维持", 理由: "本人裁" });
+    expect(台[0]).toMatchObject({ id: 行.id, 类型: "本人发起", 发起人: 老板.name, 结果: "维持", 裁定说明: "本人裁", 异议人: 销售.name });
+    expect(台[0].异议理由).toBeTruthy();
+    expect(台[0].客户名).toBe(a.name);
+    expect(台[0].客户编号).toBeTruthy();
+    expect(审.some((x) => x.summary.includes("本人发起、本人裁定；无人回避"))).toBe(true);
     const 月 = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 7); // 北京月，和台账切月一致
     expect(await 特殊裁定台账(老板.id, 月)).toHaveLength(1);
     expect(await 特殊裁定台账(老板.id, "2001-01")).toEqual([]);
@@ -556,5 +560,111 @@ describe("特殊裁定台账（E-436）：本人发起、本人裁定", () => {
     当(老板);
     expect(await 裁定(老板, 行B.id, "维持", "老板裁")).toMatchObject({ ok: true });
     expect(await 特殊裁定台账(老板.id)).toHaveLength(1);
+  });
+});
+
+describe("特殊裁定台账（E-436）：留痕文案、结果细分、条数上限、月通知", () => {
+  async function 本人裁(结果: "维持" | "撤回") {
+    await prisma.entMember.delete({ where: { userId: 副管.id } });
+    await prisma.user.update({ where: { id: 副管.id }, data: { role: "SALES" } });
+    const a = await 客户(销售.id, { bizLine: "内贸" });
+    当(老板);
+    expect(await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "只有我一个管理员" })).toMatchObject({ ok: true });
+    const 行 = (await 行们()).find((r) => r.kind === "客户")!;
+    await 提(行, 销售);
+    当(老板);
+    expect(await 裁定(老板, 行.id, 结果, "本人裁")).toMatchObject({ ok: true });
+    return 行;
+  }
+  const 北京 = (s: string) => new Date(`${s}+08:00`);
+
+  it("本人裁定标注：有「本人发起 / 接手」标志才写「无人回避」；兜底（没标志）只写本人裁定，不带无人回避", () => {
+    expect(本人裁定标注(true, false, { 本人发起: true })).toBe("（本人发起、本人裁定；无人回避）");
+    expect(本人裁定标注(true, false, undefined)).toBe("（本人发起、本人裁定）");
+    expect(本人裁定标注(false, true, { 本人接手: true })).toBe("（本人接手、本人裁定；无人回避）");
+    // 兜底：系统管理员裁别人发起的、自己是接手人，算裁定人没打标志
+    const 兜底 = 本人裁定标注(false, true, {});
+    expect(兜底).toBe("（本人接手、本人裁定）");
+    expect(兜底).not.toContain("无人回避");
+    expect(本人裁定标注(false, false, {})).toBe("");
+  });
+
+  it("台账结果细分：自动退回 / 待手工退回 / 已退回，维持不带括号", async () => {
+    const 行 = await 本人裁("维持");
+    expect((await 台账们(老板.id))[0].结果).toBe("维持");
+    await prisma.entTransferObjection.update({ where: { id: 行.id }, data: { status: "待手工退回" } });
+    expect((await 台账们(老板.id))[0].结果).toBe("撤回（待手工退回）");
+    await prisma.entTransferObjection.update({ where: { id: 行.id }, data: { status: "已退回" } });
+    expect((await 台账们(老板.id))[0].结果).toBe("撤回（已退回）");
+  });
+
+  it("满 500 条：台账只列 500 条、台账满了 为真；499 条不提示", async () => {
+    const 行 = await 本人裁("维持");
+    const 原 = (await prisma.entTransferObjection.findUnique({ where: { id: 行.id } }))!;
+    const 批 = Array.from({ length: 499 }, (_, i) => ({
+      ownerLogId: `log-${i}`, customerId: 原.customerId, kind: "客户", targetKey: `customer-${i}`, targetName: "批量", objectorUserId: 原.objectorUserId,
+      operatorUserId: 原.operatorUserId, toOwnerId: 原.toOwnerId, status: "维持", expiresAt: new Date(), judgedAt: new Date(), judgedById: 原.operatorUserId,
+    }));
+    await prisma.entTransferObjection.createMany({ data: 批 });
+    const 满前 = await 台账们(老板.id);
+    expect(满前).toHaveLength(台账条数上限);
+    expect(台账满了(满前.length)).toBe(true);
+    expect(台账满了(台账条数上限 - 1)).toBe(false);
+  });
+
+  describe("每月 1 日的上月台账通知", () => {
+    async function 上月有一条() {
+      const 行 = await 本人裁("维持");
+      await prisma.entTransferObjection.update({ where: { id: 行.id }, data: { judgedAt: 北京("2026-11-15T10:00:00") } });
+      return 行;
+    }
+    const 管理员收到 = (id: string) => prisma.entNotice.findMany({ where: { userId: id, kind: "异议", link: { startsWith: "/objections?tab=special" } } });
+
+    it("上月有记录：1 日 08:00 后发给全部系统管理员，链到上月台账；文案带条数", async () => {
+      await 上月有一条();
+      // 把副管恢复成系统管理员，验证「全部」系统管理员都收
+      await prisma.user.update({ where: { id: 副管.id }, data: { role: "ADMIN" } });
+      await prisma.entMember.create({ data: { userId: 副管.id, bizRole: "director" } });
+      await 钟上特殊裁定月通知(北京("2026-12-01T09:00:00"));
+      for (const a of [老板, 副管]) {
+        const n = await 管理员收到(a.id);
+        expect(n).toHaveLength(1);
+        expect(n[0].link).toBe("/objections?tab=special&month=2026-11");
+        expect(n[0].title).toContain("上月有 1 条特殊裁定");
+        expect(n[0].title).toContain("本人发起 / 本人接手、本人裁定");
+      }
+    });
+
+    it("上月 0 条不发；不是 1 日、1 日 08:00 前也不发", async () => {
+      await 钟上特殊裁定月通知(北京("2026-12-01T09:00:00"));
+      expect(await 管理员收到(老板.id)).toHaveLength(0);
+      await 上月有一条();
+      await 钟上特殊裁定月通知(北京("2026-12-02T09:00:00"));
+      await 钟上特殊裁定月通知(北京("2026-12-01T07:59:00"));
+      expect(await 管理员收到(老板.id)).toHaveLength(0);
+    });
+
+    it("同一月重复跑不重发（水位 + 去重键）；清掉水位再跑也只有一行", async () => {
+      await 上月有一条();
+      await 钟上特殊裁定月通知(北京("2026-12-01T09:00:00"));
+      await 钟上特殊裁定月通知(北京("2026-12-01T09:01:00"));
+      expect(await 管理员收到(老板.id)).toHaveLength(1);
+      await setSetting("entObjSpecialMonthNotice", "");
+      await 钟上特殊裁定月通知(北京("2026-12-01T10:00:00"));
+      expect(await 管理员收到(老板.id)).toHaveLength(1);
+    });
+
+    it("非系统管理员不收（组长、销售、条线总管理）", async () => {
+      await 上月有一条();
+      await 钟上特殊裁定月通知(北京("2026-12-01T09:00:00"));
+      for (const p of [组长, 销售, 线总管, 接手]) expect(await 管理员收到(p.id)).toHaveLength(0);
+    });
+
+    it("1 月 1 日发的是上一年 12 月", async () => {
+      const 行 = await 本人裁("维持");
+      await prisma.entTransferObjection.update({ where: { id: 行.id }, data: { judgedAt: 北京("2026-12-31T23:30:00") } });
+      await 钟上特殊裁定月通知(北京("2027-01-01T09:00:00"));
+      expect((await 管理员收到(老板.id))[0].link).toBe("/objections?tab=special&month=2026-12");
+    });
   });
 });

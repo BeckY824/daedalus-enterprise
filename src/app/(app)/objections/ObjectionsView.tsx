@@ -4,6 +4,9 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Alert, Button, Card, Empty, Input, Modal, Tabs, Tag } from "antd";
 import { PageHead } from "@/components/ui";
+import DatePicker from "@/components/BusinessDatePicker";
+import { dayjs } from "@/lib/utils";
+import { 台账满了, 台账条数上限 } from "@/lib/enterprise/objection-core";
 import type { 异议行 } from "@/lib/enterprise/objection";
 import type { 待裁定行, 特殊裁定行 } from "@/lib/enterprise/objection-judge";
 import { 提异议, 裁定异议, 已手工退回 } from "./actions";
@@ -18,12 +21,11 @@ import { 提异议, 裁定异议, 已手工退回 } from "./actions";
 type 页签键 = "mine" | "judge" | "all" | "hand" | "special";
 /** 页签数字：查到上限（200）就写「200+」，不假装只有这么多 */
 const 数 = (n: number, 顶 = 200) => (n ? `（${n >= 顶 ? `${顶}+` : n}）` : "");
-const 台账上限 = 500; // 同 objection-judge.ts 的 台账条数上限（客户端组件不引服务端模块）
 type 裁定框 = { 行: 待裁定行; 动作: "维持" | "撤回" | "手工" };
 
-export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限, 待裁, 全部, 待手工, 台账, 月, 管理员, 台账已查, 裁定上限, 首个页签, 打开裁定 }: {
+export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限, 待裁, 全部, 待手工, 台账, 月, 月是默认, 管理员, 台账已查, 裁定上限, 首个页签, 打开裁定 }: {
   能提: 异议行[]; 已提: 异议行[]; 打开: string | null; 天数: number; 上限: number;
-  待裁: 待裁定行[]; 全部: 待裁定行[]; 待手工: 待裁定行[]; 台账: 特殊裁定行[]; 月: string | null; 管理员: boolean; 台账已查: boolean; 裁定上限: number; 首个页签: 页签键; 打开裁定: string | null;
+  待裁: 待裁定行[]; 全部: 待裁定行[]; 待手工: 待裁定行[]; 台账: 特殊裁定行[]; 月: string; 月是默认: boolean; 管理员: boolean; 台账已查: boolean; 裁定上限: number; 首个页签: 页签键; 打开裁定: string | null;
 }) {
   const router = useRouter();
   const [页签, set页签] = useState<页签键>(首个页签);
@@ -131,7 +133,7 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
         activeKey={页签} onChange={(k) => {
           set页签(k as 页签键);
           // 台账只在打开这个页签时才由服务端查：还没查过就带着 tab=special 重新取一次
-          if (k === "special" && !台账已查) router.push(`/objections?tab=special${月 ? `&month=${月}` : ""}`);
+          if (k === "special" && !台账已查) router.push(`/objections?tab=special&month=${月}`);
         }}
         items={[
           { key: "mine", label: "我的异议", children: 我的页 },
@@ -148,22 +150,28 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
             children: <Card title="待手工退回（裁定撤回、但不满足自动退回的条件）" className="obj-card" data-testid="obj-hand">{待手工.length ? 待手工.map((r) => 裁定行(r, true)) : <Empty description="没有等手工退回的" />}</Card>,
           }] : []),
           ...(管理员 ? [{
-            key: "special", label: `特殊裁定${台账已查 ? 数(台账.length, 台账上限) : ""}`,
+            key: "special", label: `特殊裁定${台账已查 ? 数(台账.length, 台账条数上限) : ""}`,
             children: (
               <Card title="特殊裁定台账" className="obj-card" data-testid="obj-special"
-                extra={<input type="month" aria-label="按月筛选" value={月 ?? ""} onChange={(e) => router.push(`/objections?tab=special${e.target.value ? `&month=${e.target.value}` : ""}`)} />}>
-                <div className="obj-mut" data-testid="obj-special-note">本人发起、本人裁定 / 本人接手、本人裁定的记录，每月看一次；{月 ? `当前只看 ${月}` : "当前列全部月份"}。</div>
-                {台账.length >= 台账上限 && <div className="obj-mut" data-testid="obj-special-cap">记录较多，只列最近 {台账上限} 条，请按月筛选。</div>}
-                {台账.length ? 台账.map((r) => (
-                  <div key={r.id} className="obj-row" data-testid="obj-special-row">
-                    <div className="obj-main">
-                      <span className="obj-ell" title={`${r.客户编号} · ${r.项目}`}>{r.客户编号} · {r.项目}</span>
-                      <span className="obj-ell obj-mut" title={`${r.类型 === "本人发起" ? "本人发起、本人裁定" : "本人接手、本人裁定"}：${r.裁定人}`}>{r.裁定于} · {r.类型 === "本人发起" ? "本人发起、本人裁定" : "本人接手、本人裁定"}：{r.裁定人}</span>
-                      <span className="obj-ell obj-mut" title={r.理由}>理由：{r.理由}</span>
+                extra={<DatePicker picker="month" allowClear={false} aria-label="按月筛选" value={dayjs(`${月}-01`)} format="YYYY-MM"
+                  onChange={(d) => { if (d) router.push(`/objections?tab=special&month=${d.format("YYYY-MM")}`); }} />}>
+                <div className="obj-mut" data-testid="obj-special-note">本人发起、本人裁定 / 本人接手、本人裁定的记录，每月看一次；当前只看 {月}{月是默认 ? "（没选月份，默认当前月）" : ""}。</div>
+                {台账满了(台账.length) && <div className="obj-mut" data-testid="obj-special-cap">记录较多，只列最近 {台账条数上限} 条，请按月筛选。</div>}
+                {台账.length ? 台账.map((r) => {
+                  const 标 = r.类型 === "本人发起" ? "本人发起、本人裁定" : "本人接手、本人裁定";
+                  const 客 = r.客户名 && r.客户名 !== r.客户编号 ? `${r.客户名}（${r.客户编号}）` : r.客户编号;
+                  return (
+                    <div key={r.id} className="obj-row" data-testid="obj-special-row">
+                      <div className="obj-main">
+                        <span className="obj-ell" title={`${客} · ${r.项目}`}>{客} · {r.项目}</span>
+                        <span className="obj-ell obj-mut" title={`${r.裁定于} · ${标}：${r.裁定人}`}>{r.裁定于} · {标}：{r.裁定人}</span>
+                        <span className="obj-ell obj-mut" title={`${r.异议人} 的异议理由：${r.异议理由}`}>异议人 {r.异议人}：{r.异议理由}</span>
+                        <span className="obj-ell obj-mut" title={r.裁定说明}>裁定说明：{r.裁定说明}</span>
+                      </div>
+                      <Tag>{r.结果}</Tag>
                     </div>
-                    <Tag>{r.结果}</Tag>
-                  </div>
-                )) : <Empty description="没有本人发起 / 本人接手、本人裁定的记录" />}
+                  );
+                }) : <Empty description="这个月没有本人发起 / 本人接手、本人裁定的记录" />}
               </Card>
             ),
           }] : []),

@@ -51,6 +51,11 @@ export function 能裁定(org: 组织, 裁: 裁定人结果, 我: string, 行: {
   return true;
 }
 
+/** 特殊裁定台账一次最多列多少条（E-436）；查到这个数就提示按月筛选，页签角标也按这个数封顶。客户端组件也用，所以放在 core */
+export const 台账条数上限 = 500;
+/** 台账这次列出的条数是不是顶到了上限（顶到就可能还有更多，界面要提示） */
+export const 台账满了 = (n: number): boolean => n >= 台账条数上限;
+
 /** 转让生效的这一刻起的最后一天 */
 export const 异议截止 = (转让时刻: Date): Date => new Date(转让时刻.getTime() + 异议期天数 * 86_400_000);
 

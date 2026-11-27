@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { beijingWallIso } from "@/lib/business-clock";
 import { requireUser } from "@/lib/auth";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 我的异议 } from "@/lib/enterprise/objection";
@@ -25,7 +26,9 @@ export default async function ObjectionsPage({ searchParams }: { searchParams: P
   const 待手工 = 管理员 ? await 待手工退回们() : [];
   // 全部待裁定同样只给系统管理员（兜底：谁都能裁，不用等裁定人）
   const 全部 = 管理员 ? await 全部待裁定(me.id, 待裁) : [];
-  const 月 = typeof month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : null;
+  // 月份不带或不合法：默认当前北京月（界面上写明），不再列全部月份
+  const 月合法 = typeof month === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(month);
+  const 月 = 月合法 ? month : beijingWallIso(new Date()).slice(0, 7);
   // 台账只在打开「特殊裁定」页签时才查（带 tab=special），别的页签不为它多查一次库
   const 台账已查 = 管理员 && tab === "special";
   const 台账 = 台账已查 ? await 特殊裁定台账(me.id, 月) : [];
@@ -33,7 +36,7 @@ export default async function ObjectionsPage({ searchParams }: { searchParams: P
   return (
     <ObjectionsView
       能提={能提} 已提={已提} 打开={typeof o === "string" ? o : null} 天数={异议期天数} 上限={异议理由上限}
-      待裁={待裁} 全部={全部} 待手工={待手工} 台账={台账} 台账已查={台账已查} 月={月} 管理员={管理员} 裁定上限={裁定说明上限} 首个页签={页签} 打开裁定={typeof j === "string" ? j : null}
+      待裁={待裁} 全部={全部} 待手工={待手工} 台账={台账} 台账已查={台账已查} 月={月} 月是默认={!月合法} 管理员={管理员} 裁定上限={裁定说明上限} 首个页签={页签} 打开裁定={typeof j === "string" ? j : null}
     />
   );
 }
