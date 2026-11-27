@@ -127,6 +127,7 @@ M=$(stat -c %a "$I/data/.alert-env" 2>/dev/null || stat -f %Lp "$I/data/.alert-e
 [ "$M" = 600 ] && ok ".alert-env 权限 600" || bad ".alert-env 权限 $M"
 grep -q 'http://127.0.0.1:3003/api/health' "$I/data/.alert-env" && ok "模板里探活地址推到 3000..3003" || bad "探活地址不对"
 grep -q '^ExecStart=.* --dir '"$I"'/data$' "$I/units/crm-test-alert.service" && grep -q 'Type=oneshot' "$I/units/crm-test-alert.service" && ok "service：oneshot + --dir 数据目录" || bad "service 内容不对"
+ME=$(id -un); grep -q "^User=$ME$" "$I/units/crm-test-alert.service" && grep -q '^TimeoutStartSec=300$' "$I/units/crm-test-alert.service" && ok "service：User= 取数据目录属主 + 超时 300" || { [ "$ME" = root ] && ok "root 跑，不写 User=" || bad "service 缺 User= / 超时"; }
 grep -q 'OnBootSec=2min' "$I/units/crm-test-alert.timer" && grep -q 'OnUnitActiveSec=2min' "$I/units/crm-test-alert.timer" && ok "timer：2min / 2min" || bad "timer 内容不对"
 echo "ALERT_INSTANCE=keepme" >> "$I/data/.alert-env"
 bash deploy/enterprise/tools/install-alert.sh "${IA[@]}" >"$T/i2.txt" 2>&1 && grep -q keepme "$I/data/.alert-env" && ! grep -q '已写：' "$T/i2.txt" && ok "重跑幂等：不覆盖 .alert-env、单元没变不重写" || { bad "重跑不幂等"; cat "$T/i2.txt"; }

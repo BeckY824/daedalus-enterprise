@@ -3,14 +3,16 @@
 #   <服务名>-alert.service（Type=oneshot）+ <服务名>-alert.timer（开机 2 分钟后、之后每 2 分钟一次）。
 #
 # 用法（把本文件和 scripts/ent-alert.mjs、scripts/telemetry-daily.mjs 放同一个目录，或在仓库里直接跑）：
-#   bash install-alert.sh [--service crm-enterprise] [--dir /opt/crm-enterprise] [--port 3000] [--workers 1]
-#                         [--node <node 路径>] [--src <两份 mjs 所在目录>]
+#   bash install-alert.sh [--service crm-enterprise] [--dir /opt/crm-enterprise] [--port 3000] [--workers 4]
+#                         [--node <node 路径>] [--src <两份 mjs 所在目录>] [--user <运行告警的系统用户>]
 #   bash install-alert.sh --uninstall [--service …] [--dir …]     停 timer、删单元和 <目录>/alert/；.alert-env、alert-state.json 留着
 #   --unit-dir <目录> --no-systemctl   只把单元写到别的目录、不碰 systemd（本机试装、ent-alert-selftest.sh 用）
 # 参数默认值 = instances/<实例>.env 里的 SERVICE / DIR / PORT / WORKERS（c2：crm-enterprise、/opt/crm-enterprise、3000、4），
-#   node 默认 <目录>/node/bin/node（和 run.sh 同一个）。多进程的进程 i 听 PORT+i-1（ent-render.sh），探活地址按这个推。
+#   node 默认 <目录>/node/bin/node（和 run.sh 同一个）。多进程的进程 i 听 PORT+i-1（ent-render.sh），探活地址按这个推：PORT..PORT+WORKERS-1 各一个 http://127.0.0.1:<端口>/api/health。
 # 装完：
 #   <目录>/alert/ent-alert.mjs、telemetry-daily.mjs   同一目录（前者 import 后者；用软链也行，入口按真实路径判断）
+#   运行身份：默认取 <目录>/data 的属主（c2 主服务的系统用户），非 root 就在单元里写 User= / Group=，不以 root 在数据目录写文件
+#     （避免跟随软链）；取不到或属主是 root 就不加（仍是 root）；--user 可显式指定。.alert-env 也 chown 给该用户、600。
 #   <目录>/data/.alert-env                             没有就按模板建（600，键留空）；已有不覆盖（只把权限收到 600）
 #   运行记录读 <目录>/data/telemetry/（run.sh 里 DATABASE_URL=file:<目录>/data/crm.db → store.ts 写在库文件旁边的 telemetry/）
 # 幂等：重跑只补差异；单元 / 脚本内容没变就不重启 timer。
@@ -21,7 +23,8 @@ set -euo pipefail
 SERVICE=crm-enterprise
 DIR=/opt/crm-enterprise
 PORT=3000
-WORKERS=1
+WORKERS=4
+RUN_USER=""
 NODE=""
 SRC=""
 UNIT_DIR=/etc/systemd/system
@@ -37,11 +40,12 @@ while [ $# -gt 0 ]; do
     --workers) [ $# -ge 2 ] || die "--workers 缺值"; WORKERS=$2; shift 2 ;;
     --node) [ $# -ge 2 ] || die "--node 缺值"; NODE=$2; shift 2 ;;
     --src) [ $# -ge 2 ] || die "--src 缺值"; SRC=$2; shift 2 ;;
+    --user) [ $# -ge 2 ] || die "--user 缺值"; RUN_USER=$2; shift 2 ;;
     --unit-dir) [ $# -ge 2 ] || die "--unit-dir 缺值"; UNIT_DIR=$2; shift 2 ;;
     --no-systemctl) NO_SYSTEMCTL=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
     -h | --help) sed -n 2,22p "$0"; exit 0 ;;
-    *) die "不认识的参数 $1（--service --dir --port --workers --node --src --unit-dir --no-systemctl --uninstall）" ;;
+    *) die "不认识的参数 $1（--service --dir --port --workers --node --src --user --unit-dir --no-systemctl --uninstall）" ;;
   esac
 done
 [[ $SERVICE =~ ^[a-z0-9][a-z0-9._-]*$ ]] || die "服务名只许小写字母、数字、. _ -：$SERVICE"
@@ -82,6 +86,19 @@ for f in ent-alert.mjs telemetry-daily.mjs; do [ -f "$SRC/$f" ] || die "$SRC 里
 [ -d "$DATA" ] || die "数据目录不存在：$DATA（--dir 指到企业版装的目录；这个脚本不建库目录）"
 [ -d "$UNIT_DIR" ] || die "单元目录不存在：$UNIT_DIR"
 
+# 运行身份：--user > 数据目录属主（Linux stat -c %U，macOS stat -f %Su；取不到就不加）；root 等于不加
+if [ -z "$RUN_USER" ]; then RUN_USER=$(stat -c %U "$DATA" 2>/dev/null || stat -f %Su "$DATA" 2>/dev/null || true); fi
+[ "$RUN_USER" != root ] || RUN_USER=""
+RUN_GROUP=""
+if [ -n "$RUN_USER" ]; then
+  [[ $RUN_USER =~ ^[a-z_][a-z0-9_-]*$ ]] || die "运行用户名不合法：$RUN_USER"
+  RUN_GROUP=$(id -gn "$RUN_USER" 2>/dev/null || true)
+  [ -n "$RUN_GROUP" ] || die "系统里没有用户 $RUN_USER（--user 指定一个存在的用户）"
+fi
+chown_run() { # 只有 root 才改属主（本机试装不是 root，跳过）
+  if [ -n "$RUN_USER" ] && [ "$(id -u)" = 0 ]; then chown "$RUN_USER:$RUN_GROUP" "$@"; fi
+}
+
 CHANGED=0
 mkdir -p "$A"
 for f in ent-alert.mjs telemetry-daily.mjs; do
@@ -118,10 +135,12 @@ ALERT_HEALTH_URLS=
 ALERT_INSTANCE=
 EOF
   )
+  chown_run "$ENVF"
   echo "已建：$ENVF（600，键都是空的，填好才会发；探活地址见文件里的注释）"
 else
   MODE=$(stat -c %a "$ENVF" 2>/dev/null || stat -f %Lp "$ENVF")
   if [ "$MODE" != 600 ]; then chmod 600 "$ENVF"; echo "已把 $ENVF 的权限从 $MODE 收到 600"; fi
+  chown_run "$ENVF"
   echo "已有：$ENVF（不覆盖）"
 fi
 
@@ -129,10 +148,12 @@ want_svc="[Unit]
 Description=CRM enterprise $SERVICE error alert (telemetry + health probe)
 [Service]
 Type=oneshot
-ExecStart=$NODE $A/ent-alert.mjs --dir $DATA
+${RUN_USER:+User=$RUN_USER
+Group=$RUN_GROUP
+}ExecStart=$NODE $A/ent-alert.mjs --dir $DATA
 Nice=10
 IOSchedulingClass=idle
-TimeoutStartSec=120
+TimeoutStartSec=300
 "
 want_tmr="[Unit]
 Description=CRM enterprise $SERVICE error alert, every 2 minutes
@@ -148,7 +169,10 @@ for pair in "$SVC|$want_svc" "$TMR|$want_tmr"; do
   if [ ! -f "$p" ] || [ "$(cat "$p")" != "${body%$'\n'}" ]; then printf '%s' "$body" > "$p"; CHANGED=1; echo "已写：$p"; fi
 done
 ctl daemon-reload
-ctl enable --now "$SERVICE-alert.timer" >/dev/null 2>&1
+if ! ctl enable --now "$SERVICE-alert.timer" >/dev/null; then
+  echo "install-alert：启用 $SERVICE-alert.timer 失败（systemctl enable --now 报错，原因见上面 systemctl 输出；可再跑 systemctl status $SERVICE-alert.timer --no-pager 查看）" >&2
+  exit 1
+fi
 [ "$CHANGED" = 0 ] || ctl restart "$SERVICE-alert.timer"
 echo "告警定时：每 2 分钟（$SERVICE-alert.timer），脚本在 $A，读 $DATA/telemetry/，配置 $ENVF"
 if [ "$NO_SYSTEMCTL" = 0 ]; then systemctl list-timers "$SERVICE-alert.timer" --no-pager | sed -n 2p; fi
