@@ -19,7 +19,7 @@ import { 查完再写 } from "@/lib/check-then-write";
 import { 读改权限, 谁能改的话 } from "@/lib/enterprise/edit-perm";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 扫库检测开着, 扫库检测开关key } from "@/lib/enterprise/scan-query";
-import { 自动落定开着, 自动落定开关key, 自动落定生效key } from "@/lib/enterprise/lead-verify-autosettle";
+import { 自动落定开着, 自动落定开关key, 自动落定生效key, 自动落定生效时刻 } from "@/lib/enterprise/lead-verify-autosettle";
 import { 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
 import { 分配方式叫法, 挡分配方式, 选的原因 } from "@/lib/enterprise/dict";
 import { 能自动分配客户, 不是市场话, 市场分配限指定 } from "@/lib/enterprise/cust-auto-assign";
@@ -1217,7 +1217,7 @@ export async function 设扫库检测(on: boolean): Promise<结果> {
 }
 
 /**
- * 设置 →「开关总览」里的「重复咨询到期自动落定」开关（E-424）。同扫库检测一道门：只有总管理（能改后台设置）。
+ * 设置 →「开关总览」里的「重复咨询到期自动落定」开关（E-424）。同扫库检测一道门：只有系统管理员（能改后台设置）。
  * 默认关；从关拨到开时把那一刻存进 自动落定生效key，只对拨开之后才起钟的生效。写 Setting + 操作日志（摘要「打开 / 关掉」打头）
  */
 export async function 设重复咨询自动落定(on: boolean): Promise<结果> {
@@ -1226,7 +1226,11 @@ export async function 设重复咨询自动落定(on: boolean): Promise<结果> 
     const org = await 读组织();
     if (!能改后台设置(me, org)) return { ok: false, error: "只有系统管理员能改这个开关" };
     if (typeof on !== "boolean") return { ok: false, error: "开关只能开或关" };
-    if ((await 自动落定开着()) === on) return { ok: true };
+    if ((await 自动落定开着()) === on) {
+      // 已开但生效时刻读不出（缺 / 坏）：补写一次，不重复写审计；否则扫描永远一条都不落定
+      if (on && !(await 自动落定生效时刻())) await setSetting(自动落定生效key, new Date().toISOString());
+      return { ok: true };
+    }
     if (on) await setSetting(自动落定生效key, new Date().toISOString());
     await setSetting(自动落定开关key, on);
     await recordAudit({

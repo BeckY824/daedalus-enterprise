@@ -94,16 +94,24 @@ it("系统管理员：目录「团队与权限」第一项是开关总览；22 �
   } finally { await page.close(); }
 });
 
-it("重复咨询到期自动落定：默认关，卡上写清关着 / 开着各怎样；拨开直接调、不弹后果框（E-424）", async () => {
+it("重复咨询到期自动落定：默认关，卡上写清关着 / 开着各怎样、依赖超时自动转；拨开先弹后果框、关掉不问（E-424）", async () => {
   const { page, errors } = await 开("系统管理员");
   try {
     await page.getByTestId("switches-tab").waitFor();
     const 卡 = page.getByTestId("sw-card-verify_autosettle");
     const 字 = await 卡.innerText();
     expect(字).toContain("重复咨询到期自动落定");
-    expect(字).toContain("关着时：重复咨询线索在验证里等人判，到 1 小时照常提醒被等的人，不自动落定，一直等人来判。开着时：再过 30 分钟按上一步的判定自动落定。");
+    expect(字).toContain("关着时：重复咨询线索在验证里等人判，到 1 小时照常提醒被等的人，不自动落定，一直等人来判。开着时：再过 30 分钟按上一步的判定自动落定。「超时未跟进自动转」关着时，这条也不提醒。");
+    expect(await page.getByTestId("sw-parent-verify_autosettle").innerText()).toBe("属于：超时未跟进自动转");
+    // 卡片排在超时未跟进自动转后面
+    const 序 = await page.locator(".sw-card").evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")));
+    expect(序.indexOf("sw-card-verify_autosettle")).toBe(序.indexOf("sw-card-reply_overdue") + 1);
     expect(await 卡.getByRole("switch").getAttribute("aria-checked")).toBe("false");
     await 卡.getByRole("switch").click();
+    const 框 = page.getByRole("dialog", { name: "打开「重复咨询到期自动落定」？" });
+    expect(await 框.innerText()).toContain("打开后，重复咨询线索在验证里等到 1.5 小时没人判，系统会按上一步的判定自动落定，记为「系统」操作。只对打开之后才开始等待的线索生效。");
+    expect(await 调了(page, "设重复咨询自动落定")).toEqual([]);
+    await 框.getByRole("button", { name: "确认打开" }).click();
     await expect.poll(() => 调了(page, "设重复咨询自动落定")).toEqual([[true]]);
     expect(errors).toEqual([]);
   } finally { await page.close(); }

@@ -16,7 +16,7 @@ import { getSetting, invalidateSettingsCache, setSetting } from "@/lib/settings"
 import { 钟上清扫库记录, 前几天, 扫库清水位键 } from "@/lib/enterprise/scan-notice";
 import { 扫库检测开关key, 扫库检测开着 } from "@/lib/enterprise/scan-query";
 import { 设扫库检测, 设重复咨询自动落定 } from "@/app/(app)/leads/assign-actions";
-import { 自动落定开着, 自动落定生效时刻 } from "@/lib/enterprise/lead-verify-autosettle";
+import { 自动落定开着, 自动落定生效时刻, 自动落定生效key } from "@/lib/enterprise/lead-verify-autosettle";
 import { 开关现状, 读开关改动 } from "@/app/(app)/settings/switch-actions";
 
 const 今天 = "2026-11-27";
@@ -147,6 +147,27 @@ describe("④ 扫库检测 · 开关动作", () => {
     expect(await 自动落定开着()).toBe(false);
     const 日志 = await prisma.auditLog.findMany({ where: { entity: "Setting", entityId: "enterprise.lead_verify_autosettle.on" } });
     expect(日志.map((l) => l.summary).sort()).toEqual(["关掉重复咨询到期自动落定", "打开重复咨询到期自动落定"]);
+  });
+
+  it("重复咨询到期自动落定：已开但生效时刻缺 / 坏，再拨开补写时刻、不重复写审计（E-424）", async () => {
+    当("管理员", "ADMIN");
+    expect(await 设重复咨询自动落定(true)).toEqual({ ok: true });
+    const 审计数 = () => prisma.auditLog.count({ where: { entity: "Setting", entityId: "enterprise.lead_verify_autosettle.on" } });
+    expect(await 审计数()).toBe(1);
+    for (const 坏 of [null, "不是时刻"]) {
+      await prisma.setting.deleteMany({ where: { key: 自动落定生效key } });
+      if (坏 !== null) await setSetting(自动落定生效key, 坏);
+      invalidateSettingsCache();
+      expect(await 自动落定生效时刻()).toBeNull();
+      expect(await 设重复咨询自动落定(true)).toEqual({ ok: true });
+      const 补 = await 自动落定生效时刻();
+      expect(补 && Date.now() - 补.getTime() < 60_000).toBe(true);
+      expect(await 审计数()).toBe(1);
+    }
+    // 时刻正常时再拨开不改
+    const 原 = await 自动落定生效时刻();
+    expect(await 设重复咨询自动落定(true)).toEqual({ ok: true });
+    expect((await 自动落定生效时刻())?.getTime()).toBe(原?.getTime());
   });
 
   it("参数不是布尔：拒绝", async () => {

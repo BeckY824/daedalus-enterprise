@@ -239,8 +239,38 @@ describe("重复咨询线索的验证时限", () => {
     await prisma.entMember.deleteMany({ where: { userId: { in: [老板.id, 总管.id, 市场.id] } } });
     expect(await 扫(京("2026-12-02 12:00"))).toEqual({ 提醒: 0, 落定: 0, 没落成: 0 });
     expect((await 现(id)).result).toBeNull();
-    expect(warn).not.toHaveBeenCalled();
+    // 关着也不兜底落定，但没人收提醒要留一行（同一条只一次）
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("没有可通知的人"))).toHaveLength(1);
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("按顺延钟"))).toHaveLength(0);
+    await 扫(京("2026-12-02 12:05"));
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes("没有可通知的人"))).toHaveLength(1);
     warn.mockRestore();
+  });
+
+  it("自动落定开着但生效时刻缺 / 坏：扫描打一次 warn（E-424）", async () => {
+    await prisma.setting.deleteMany({ where: { key: 自动落定生效key } });
+    invalidateSettingsCache();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 10:00"));
+    await 扫(京("2026-12-02 11:00"));
+    await 扫(京("2026-12-02 11:01"));
+    expect(warn.mock.calls.filter((c) => String(c[0]).includes(自动落定生效key))).toHaveLength(1);
+    expect((await 现(id)).result).toBeNull();
+    warn.mockRestore();
+  });
+
+  it("关着时「再提醒」正文不说顺延、只说系统不会自动落定（E-424）", async () => {
+    await prisma.setting.deleteMany({ where: { key: { in: [自动落定开关key, 自动落定生效key] } } });
+    invalidateSettingsCache();
+    const id = await 项目();
+    await 初判无效于(id, 京("2026-12-02 20:45"));
+    expect((await 扫(京("2026-12-02 21:45"))).提醒).toBe(1);
+    await 扫(京("2026-12-02 22:15"));
+    expect((await 扫(京("2026-12-03 09:00"))).提醒).toBe(1);
+    const 正文 = await prisma.entNotice.findMany({ where: { kind: 验证时限通知种类, userId: 市场.id }, select: { body: true } });
+    expect(正文.length).toBe(2);
+    for (const n of 正文) { expect(n.body).not.toContain("顺延"); expect(n.body).toContain("系统不会自动落定"); }
   });
 
   it("自动落定开关开着：到期按上一步判定落定（E-424）", async () => {
