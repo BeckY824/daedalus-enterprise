@@ -778,7 +778,13 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     return { ok: true as const, 变了, ...带推进(推进) };
   });
   // 12-22 审查 M1：自动记成「已退回」的，事务提交后补留痕和通知（同「已手工退回」按钮）
-  if (自动退回.length && 结果.ok) await (await import("@/lib/enterprise/objection-judge")).自动记已退回后补({ id: me.id, name: (await prisma.user.findUnique({ where: { id: me.id }, select: { name: true } }))?.name ?? "系统管理员" }, 自动退回).catch((e) => console.warn("[异议] 自动记已退回后补没做完：", e));
+  if (自动退回.length && 结果.ok) {
+    // 事务已提交：动态引入、查操作人名字、补留痕都在这一个 catch 里，出错只记日志、不往外抛
+    await (async () => {
+      const 名 = (await prisma.user.findUnique({ where: { id: me.id }, select: { name: true } }))?.name ?? "系统管理员";
+      await (await import("@/lib/enterprise/objection-judge")).自动记已退回后补({ id: me.id, name: 名 }, 自动退回);
+    })().catch((e) => console.warn("[异议] 自动记已退回后补没做完：", e));
+  }
   return 结果;
 }
 

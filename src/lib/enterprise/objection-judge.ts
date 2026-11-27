@@ -292,8 +292,8 @@ export async function 通知撤销作废异议(行们: readonly EntTransferObjec
   for (const 行 of 行们) {
     const 裁 = 行.judgeIds ? (JSON.parse(行.judgeIds) as string[]) : [];
     const 异议人 = (await 名们of([行.objectorUserId])).get(行.objectorUserId) ?? "";
-    await notify([行.objectorUserId], { kind: "异议", title: `${话of(行)}的转让已被撤销、已回到你名下，你提的异议作废，无需裁定`, body: "", link: "/objections", key: `objection-void:${行.id}:objector` });
-    await notify(裁.filter((x) => x !== 行.objectorUserId), { kind: "异议", title: `${异议人}对${话of(行)}提的转让异议作废：转让已被撤销、客户已回到${异议人}名下，无需裁定`, body: "", link: "/objections", key: `objection-void:${行.id}:judge` });
+    await notify([行.objectorUserId], { kind: "异议", title: `转让已撤销：你对${话of(行)}的异议作废`, body: `${行.kind}已回到你名下，无需裁定`, link: "/objections", key: `objection-void:${行.id}:objector` });
+    await notify(裁.filter((x) => x !== 行.objectorUserId), { kind: "异议", title: `转让已撤销：${异议人}对${话of(行)}的异议作废`, body: `${行.kind}已回到${异议人}名下，无需裁定`, link: "/objections", key: `objection-void:${行.id}:judge` });
   }
 }
 

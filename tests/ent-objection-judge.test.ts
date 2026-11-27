@@ -285,7 +285,8 @@ describe("撤销改负责人带走异议行（审查 M2）", () => {
       if (先提) {
         const 异议人收 = await 作废通知(销售.id);
         expect(异议人收).toHaveLength(1);
-        expect(异议人收[0].title).toContain("无需裁定");
+        expect(异议人收[0].title).toContain("转让已撤销");
+        expect(异议人收[0].body).toContain("客户已回到你名下，无需裁定");
         const 裁定人们 = JSON.parse((await prisma.entTransferObjection.findUniqueOrThrow({ where: { id: 行.id } })).judgeIds!) as string[];
         expect(裁定人们.length).toBeGreaterThan(0);
         for (const id of 裁定人们) expect((await 作废通知(id)).length, "裁定人").toBe(1);
@@ -293,6 +294,28 @@ describe("撤销改负责人带走异议行（审查 M2）", () => {
         expect(await 作废通知(销售.id)).toHaveLength(0);
       }
     }
+  });
+
+  it("项目异议被撤销作废：通知标题写「转让已撤销」、正文按类别写「项目已回到…名下」，不写成客户", async () => {
+    const a = await 客户(销售.id, { bizLine: "内贸" });
+    const 转的 = await 项目(a.id, 同事.id);
+    当(组长);
+    const r = await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "客户说连着两周没人回", 随转: [转的.id] });
+    const 行 = (await 行们()).find((x) => x.kind === "项目")!;
+    await 提(行, 同事);
+    当(组长);
+    expect(await 撤销改负责人(r.ok ? (r.原值 ?? []) : [], 接手.id, r.ok ? r.带过来 : undefined)).toMatchObject({ ok: true });
+    expect((await prisma.entTransferObjection.findUniqueOrThrow({ where: { id: 行.id } })).status).toBe("已撤销");
+    const 作废 = async (id: string) => (await 通知们(id)).filter((n) => n.dedupeKey.startsWith(`objection-void:${行.id}`));
+    const 异议人收 = await 作废(同事.id);
+    expect(异议人收).toHaveLength(1);
+    expect(异议人收[0].title).toContain("转让已撤销");
+    expect(异议人收[0].body).toBe("项目已回到你名下，无需裁定");
+    const 裁人 = JSON.parse((await prisma.entTransferObjection.findUniqueOrThrow({ where: { id: 行.id } })).judgeIds!) as string[];
+    const 裁收 = await 作废(裁人[0]);
+    expect(裁收).toHaveLength(1);
+    expect(裁收[0].body).toContain(`项目已回到${同事.name}名下`);
+    expect(裁收[0].body).not.toContain("客户已回到");
   });
 
   it("已撤销的异议再提 / 再裁定：提示这次转让已被撤销（审查 必改 4）", async () => {
