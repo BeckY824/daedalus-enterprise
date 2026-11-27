@@ -2299,7 +2299,7 @@ model EntTransferObjection {
   operatorUserId  String
   /// 转让当时的新负责人
   toOwnerId   String
-  /// 可提 / 待裁定 / 维持 / 撤回 / 待手工退回 / 已退回（后三种属第 2 阶段 B 段）
+  /// 可提 / 待裁定 / 维持 / 撤回 / 待手工退回 / 已退回 / 已撤销（后四种属第 2 阶段 B 段；已撤销 = 转让被撤销、异议作废）
   status      String    @default("可提")
   /// 转让时刻 + 30 天；过了不能再提
   expiresAt   DateTime

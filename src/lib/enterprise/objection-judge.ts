@@ -31,7 +31,7 @@ import { 客户显名, 显名列 } from "./customer-title";
 import { 系统管理员们 } from "./tri-state-people";
 import { 项目合并单们 } from "./project-merge-guard";
 import {
-  异议待裁定, 异议维持, 异议撤回, 异议待手工退回, 异议已退回, 裁定说明上限, 不能自动退话, 算不能自动退, type 不能自动退类,
+  异议待裁定, 异议已撤销, 异议维持, 异议撤回, 异议待手工退回, 异议已退回, 裁定说明上限, 不能自动退话, 算不能自动退, type 不能自动退类,
 } from "./objection-core";
 
 type Db = Prisma.TransactionClient;
@@ -180,6 +180,7 @@ export async function 裁定(me: { id: string; name: string }, id: unknown, 决�
   const 我是裁定人 = !!行?.judgeIds && (JSON.parse(行.judgeIds) as string[]).includes(me.id);
   // 不是裁定人的当没有，不透露存在
   if (!行 || !我是裁定人) return { ok: false, error: "没找到这条待裁定的异议" };
+  if (行.status === 异议已撤销) return { ok: false, error: "这次转让已被撤销，异议已作废" };
   if (行.status !== 异议待裁定) return { ok: false, error: "这一条已经裁定过了，刷新看看" };
 
   let 终态: string = 异议维持;
@@ -253,6 +254,31 @@ async function 通知退回完(行: EntTransferObjection, 谁: string, 说明: s
   await notify([行.operatorUserId], { kind: "异议", title: `${异议人}对${话of(行)}的转让异议已撤回，${头}`, body, link: 链, key: `objection-done:${行.id}:operator${方式 === "手工" ? ":hand" : ""}` });
   await notify([行.toOwnerId], { kind: "异议", title: `${头}，不再归你`, body, link: 链, key: `objection-done:${行.id}:taker${方式 === "手工" ? ":hand" : ""}` });
   if (c?.salesOwnerId) await notify([c.salesOwnerId], { kind: "异议", title: `${头}（你是这位客户的负责人）`, body, link: 链, key: `objection-done:${行.id}:owner${方式 === "手工" ? ":hand" : ""}` });
+}
+
+/** 改负责人时自动记成「已退回」的行（改回异议人记已退回 返回的）：事务提交后补留痕和通知，同「已手工退回」按钮那一路 */
+export async function 自动记已退回后补(me: { id: string; name: string }, 行们: readonly EntTransferObjection[]): Promise<void> {
+  for (const 行 of 行们) {
+    try {
+      const 话 = `${me.name}已把负责人改回异议人（改负责人时自动记）`;
+      await recordAudit({
+        user: me, action: "update", entity: "Customer", entityId: 行.customerId,
+        summary: `转让异议：${话of(行)}由${me.name}手工退回${(await 名们of([行.objectorUserId])).get(行.objectorUserId) ?? ""}：${话}`,
+        detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 手工退回说明: 话, 时间: new Date().toISOString() },
+      }).catch((e) => console.warn("[异议] 自动记已退回留痕没写上：", e));
+      await 通知退回完(行, me.name, 话, "手工");
+    } catch (e) { console.warn("[异议] 自动记已退回通知没发出：", e); }
+  }
+}
+
+/** 转让被撤销、把「待裁定」的异议作废了（口径 A8）：通知异议人和裁定人。撤销把对象退回给了异议人本人，不用再裁 */
+export async function 通知撤销作废异议(行们: readonly EntTransferObjection[]): Promise<void> {
+  for (const 行 of 行们) {
+    const 裁 = 行.judgeIds ? (JSON.parse(行.judgeIds) as string[]) : [];
+    const 异议人 = (await 名们of([行.objectorUserId])).get(行.objectorUserId) ?? "";
+    await notify([行.objectorUserId], { kind: "异议", title: `${话of(行)}的转让已被撤销、已回到你名下，你提的异议作废，无需裁定`, body: "", link: "/objections", key: `objection-void:${行.id}:objector` });
+    await notify(裁.filter((x) => x !== 行.objectorUserId), { kind: "异议", title: `${异议人}对${话of(行)}提的转让异议作废：转让已被撤销、客户已回到${异议人}名下，无需裁定`, body: "", link: "/objections", key: `objection-void:${行.id}:judge` });
+  }
 }
 
 /** 系统管理员手工退回做完：写留痕、状态变「已退回」、通知各方。手工退回本身在别处做（改项目负责人 / 转让客户），这里只记「做完了」 */

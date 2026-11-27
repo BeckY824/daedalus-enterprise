@@ -6,7 +6,7 @@
  *   - 项目异议（kind = 项目）：挡这个项目转让 / 合并；客户本身不挡（别的项目照常能转），但整客户转让会带走这个项目（项目在接手人手里 = 客户负责人的项目），所以客户转让也挡
  * 不是企业版一律不拦。
  */
-import type { Prisma } from "@/generated/prisma";
+import type { EntTransferObjection, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
 import { 未落地状态们, 未裁定拦话, 异议待手工退回, 异议已退回 } from "./objection-core";
 import { 读组织 } from "./org";
@@ -36,26 +36,24 @@ type 写 = Pick<Prisma.TransactionClient, "entTransferObjection">;
 
 /**
  * 系统管理员把客户 / 项目改回给异议人后（12-22 审查 M1）：这条对象上、异议人 = 新负责人、状态「待手工退回」的异议顺带记成「已退回」，
- * 和「已手工退回」按钮同一个终态、同一种说明写法。不是系统管理员办的不记（要他自己去点「已手工退回」）。返回记了几条
+ * 和「已手工退回」按钮同一个终态、同一种说明写法。不是系统管理员办的不记（要他自己去点「已手工退回」）。返回记成「已退回」的那几行（调用方在提交后补留痕和通知）
  */
 export async function 改回异议人记已退回(
   db: 写, 操作人: { id: string; name?: string }, 新负责人: string, 对象: { customerId?: string; projectId?: string },
-): Promise<number> {
-  if (!企业版()) return 0;
+): Promise<EntTransferObjection[]> {
+  if (!企业版()) return [];
   const 或: Prisma.EntTransferObjectionWhereInput[] = [];
   if (对象.customerId) 或.push({ kind: "客户", customerId: 对象.customerId });
   if (对象.projectId) 或.push({ kind: "项目", projectId: 对象.projectId });
-  if (!或.length) return 0;
+  if (!或.length) return [];
   const org = await 读组织();
-  if (!org || !系统管理员们(org).includes(操作人.id)) return 0;
-  const 行们 = await db.entTransferObjection.findMany({ where: { status: 异议待手工退回, objectorUserId: 新负责人, OR: 或 }, select: { id: true, judgeNote: true } });
-  let n = 0;
+  if (!org || !系统管理员们(org).includes(操作人.id)) return [];
+  const 行们 = await db.entTransferObjection.findMany({ where: { status: 异议待手工退回, objectorUserId: 新负责人, OR: 或 } });
+  const 记了: EntTransferObjection[] = [];
   for (const 行 of 行们) {
-    const r = await db.entTransferObjection.updateMany({
-      where: { id: 行.id, status: 异议待手工退回 },
-      data: { status: 异议已退回, judgeNote: `${行.judgeNote ?? ""}${行.judgeNote ? "；" : ""}手工退回：${操作人.name ?? "系统管理员"}已把负责人改回异议人（改负责人时自动记）`.slice(0, 600) },
-    });
-    n += r.count;
+    const judgeNote = `${行.judgeNote ?? ""}${行.judgeNote ? "；" : ""}手工退回：${操作人.name ?? "系统管理员"}已把负责人改回异议人（改负责人时自动记）`.slice(0, 600);
+    const r = await db.entTransferObjection.updateMany({ where: { id: 行.id, status: 异议待手工退回 }, data: { status: 异议已退回, judgeNote } });
+    if (r.count) 记了.push({ ...行, status: 异议已退回, judgeNote });
   }
-  return n;
+  return 记了;
 }

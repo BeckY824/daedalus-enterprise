@@ -251,6 +251,14 @@ describe("待手工退回不死锁（审查 M1）", () => {
     const 后 = await prisma.entTransferObjection.findUniqueOrThrow({ where: { id: 客户行.id } });
     expect(后.status).toBe("已退回");
     expect(后.judgeNote).toContain("手工退回");
+    // 审查 必改 1：自动记已退回也补通知（异议人、发起人、接手人、现负责人）和留痕，同「已手工退回」按钮
+    expect((await 通知们(销售.id)).some((n) => n.dedupeKey === `objection-done:${客户行.id}:objector:hand`), "异议人").toBe(true);
+    expect((await 通知们(组长.id)).some((n) => n.dedupeKey === `objection-done:${客户行.id}:operator:hand`), "发起人").toBe(true);
+    expect((await 通知们(接手.id)).some((n) => n.dedupeKey === `objection-done:${客户行.id}:taker:hand`), "接手人").toBe(true);
+    expect((await prisma.auditLog.findMany({ where: { entityId: a.id, summary: { contains: "手工退回" } } })).length).toBeGreaterThan(0);
+    // 审查 必改 3：手工退回走转让，被换掉的同事二不生成新的异议入口
+    expect((await 行们()).filter((x) => x.objectorUserId === 同事二.id)).toHaveLength(0);
+    expect((await 通知们(同事二.id)).some((n) => n.link === "/objections" && n.title.includes("提异议"))).toBe(false);
   });
 });
 
@@ -272,7 +280,34 @@ describe("撤销改负责人带走异议行（审查 M2）", () => {
       expect(await 客户有未裁定异议(prisma, [a.id]), String(先提)).toBeNull();
       expect(await assignSalesOwner([a.id], 同事二.id, null, undefined, { 说明: "再转" }), String(先提)).toMatchObject({ ok: true, updated: 1 });
       expect((await 我的异议(销售.id)).已提.map((x) => x.id), String(先提)).not.toContain(行.id);
+      // 审查 必改 2（口径 A8）：待裁定的撤销作废要通知异议人和裁定人；可提的不用
+      const 作废通知 = async (id: string) => (await 通知们(id)).filter((n) => n.dedupeKey.startsWith(`objection-void:${行.id}`));
+      if (先提) {
+        const 异议人收 = await 作废通知(销售.id);
+        expect(异议人收).toHaveLength(1);
+        expect(异议人收[0].title).toContain("无需裁定");
+        const 裁定人们 = JSON.parse((await prisma.entTransferObjection.findUniqueOrThrow({ where: { id: 行.id } })).judgeIds!) as string[];
+        expect(裁定人们.length).toBeGreaterThan(0);
+        for (const id of 裁定人们) expect((await 作废通知(id)).length, "裁定人").toBe(1);
+      } else {
+        expect(await 作废通知(销售.id)).toHaveLength(0);
+      }
     }
+  });
+
+  it("已撤销的异议再提 / 再裁定：提示这次转让已被撤销（审查 必改 4）", async () => {
+    const a = await 客户(销售.id, { bizLine: "内贸" });
+    当(组长);
+    const r = await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "客户说连着两周没人回" });
+    const 行 = (await 行们()).find((x) => x.kind === "客户")!;
+    await 提(行, 销售);
+    当(组长);
+    await 撤销改负责人(r.ok ? (r.原值 ?? []) : [], 接手.id, r.ok ? r.带过来 : undefined);
+    const 裁人 = JSON.parse((await prisma.entTransferObjection.findUniqueOrThrow({ where: { id: 行.id } })).judgeIds!) as string[];
+    当(销售);
+    expect(await 提异议核(销售, 行.id, "再提")).toMatchObject({ ok: false, error: "这次转让已被撤销，不用再提异议" });
+    const 裁 = [老板, 副管, 线总管, 组长].find((p) => 裁人.includes(p.id))!;
+    expect(await 裁定(裁, 行.id, "维持", "x")).toMatchObject({ ok: false, error: "这次转让已被撤销，异议已作废" });
   });
 });
 

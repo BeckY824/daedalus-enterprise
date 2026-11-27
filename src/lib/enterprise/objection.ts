@@ -121,6 +121,7 @@ export async function 提异议(me: { id: string; name: string }, id: unknown, �
   const 行 = await prisma.entTransferObjection.findUnique({ where: { id } });
   // 别人的入口当没有，不透露存在
   if (!行 || 行.objectorUserId !== me.id) return { ok: false, error: "没找到这条异议入口" };
+  if (行.status === 异议已撤销) return { ok: false, error: "这次转让已被撤销，不用再提异议" };
   if (行.status !== 异议可提) return { ok: false, error: "这一条已经提过异议了，等裁定" };
   if (现在 > 行.expiresAt) return { ok: false, error: `已超过 ${异议期天数} 天异议期，不能再提；有问题请直接找系统管理员` };
   const org = await 读组织();
@@ -135,7 +136,10 @@ export async function 提异议(me: { id: string; name: string }, id: unknown, �
     where: { id: 行.id, status: 异议可提, objectorUserId: me.id },
     data: { status: 异议待裁定, reason: 话, submittedAt: 现在, judgeIds: JSON.stringify(裁.ids), judgeRole: 裁.角色 },
   });
-  if (r.count !== 1) return { ok: false, error: "这一条已经提过异议了，等裁定" };
+  if (r.count !== 1) {
+    const 现 = await prisma.entTransferObjection.findUnique({ where: { id: 行.id }, select: { status: true } });
+    return { ok: false, error: 现?.status === 异议已撤销 ? "这次转让已被撤销，不用再提异议" : "这一条已经提过异议了，等裁定" };
+  }
   const 人们 = await prisma.user.findMany({ where: { id: { in: [...裁.ids, 行.operatorUserId, 行.toOwnerId] } }, select: { id: true, name: true, active: true } });
   const 名 = new Map(人们.map((u) => [u.id, u.name]));
   await recordAudit({

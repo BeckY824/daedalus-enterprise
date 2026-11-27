@@ -657,7 +657,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
   const 级别 = await 字段权限of(me.id);
   const 状态开 = await 客户状态自动();
   const org = await 权限组织();
-  return 查完再写(async (tx) => {
+  let 自动退回: Awaited<ReturnType<typeof 改回异议人记已退回>> = [];
+  const 结果 = await 查完再写(async (tx) => {
+    自动退回 = [];
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     const 能改 = 能管项目(me, p, org);
@@ -767,7 +769,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       // 没碰待办（换负责人带待办关着、没传勾）记「手动转让」：超时未跟进自动转靠原因认手动转让（carry-tasks.ts 待办痕头）
       await 记转让(tx, p, me.id, 原, 新.ownerId, "transfer", 待办痕(带待办, 几条) ?? 手动转让痕);
       // 12-22 审查 M1：系统管理员把项目改回给异议人（待手工退回里的），顺带记成「已退回」
-      await 改回异议人记已退回(tx, me, 新.ownerId, { projectId: p.id });
+      自动退回 = await 改回异议人记已退回(tx, me, 新.ownerId, { projectId: p.id });
       await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: 新.ownerId }, new Date());
     }
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
@@ -775,6 +777,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (推进.length || (换人 && p.pooledAt)) await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, 变了, ...带推进(推进) };
   });
+  // 12-22 审查 M1：自动记成「已退回」的，事务提交后补留痕和通知（同「已手工退回」按钮）
+  if (自动退回.length && 结果.ok) await (await import("@/lib/enterprise/objection-judge")).自动记已退回后补({ id: me.id, name: (await prisma.user.findUnique({ where: { id: me.id }, select: { name: true } }))?.name ?? "系统管理员" }, 自动退回).catch((e) => console.warn("[异议] 自动记已退回后补没做完：", e));
+  return 结果;
 }
 
 /** 存字典项名的两格：列 → 字典种类、叫法 */
