@@ -1,6 +1,6 @@
 /**
  * E-384 个人资料里的职位只读：不再是输入框，旁边写「如需修改请联系系统管理员」；保存只送名字（不带职位）；
- * 长职位一行 + 省略号，悬停（title）看全文
+ * 长职位一行 + 省略号，悬停浮层交全站 TruncTip（不挂原生 title）
  */
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { chromium, type Browser } from "playwright";
@@ -42,7 +42,7 @@ it("长职位一行 + 省略号、悬停看全文；没填显示「未填」", a
   try {
     const 职位 = a.page.getByTestId("profile-title");
     await 职位.waitFor();
-    expect(await 职位.getAttribute("title")).toBe(长职位);
+    expect(await 职位.getAttribute("title")).toBeNull();
     const m = await 职位.evaluate((el) => ({ 溢出: el.scrollWidth > el.clientWidth, 行高: el.getBoundingClientRect().height, 省略: getComputedStyle(el).textOverflow, 不折: getComputedStyle(el).whiteSpace }));
     expect(m.省略).toBe("ellipsis");
     expect(m.不折).toBe("nowrap");
@@ -50,6 +50,8 @@ it("长职位一行 + 省略号、悬停看全文；没填显示「未填」", a
   } finally { await a.page.close(); }
   const b = await 开页(browser, 包, { me: { name: "周宁", title: "", email: "u1" } });
   try {
-    expect(await b.page.getByTestId("profile-title").innerText()).toBe("未填");
+    const 空 = b.page.getByTestId("profile-title");
+    expect(await 空.innerText()).toBe("未填");
+    expect(await 空.getAttribute("style")).toContain("var(--text-muted)");
   } finally { await b.page.close(); }
 });

@@ -398,5 +398,31 @@ describe("切换视图拦不经过库的动作", () => {
       expect(r, JSON.stringify(r)).toMatchObject({ ok: true });
       expect((await prisma.user.findUnique({ where: { id: 人.甲 } }))?.title).toBe("财务");
     });
+
+    it("E-384 职位：系统管理员改自己的职位成功；首尾空格去掉、空串存空串；超 20 字被拒库里不动", async () => {
+      await 登录成(人.老板);
+      const 老板 = await prisma.user.findUnique({ where: { id: 人.老板 } });
+      const 基 = { id: 人.老板, name: 老板!.name, email: "boss-x", role: 老板!.role, active: true };
+      const 首 = await saveUser({ ...基, title: "  总监 " });
+      expect(首, JSON.stringify(首)).toMatchObject({ ok: true });
+      expect((await prisma.user.findUnique({ where: { id: 人.老板 } }))?.title).toBe("总监");
+      expect(await saveUser({ ...基, title: "   " })).toMatchObject({ ok: true });
+      expect((await prisma.user.findUnique({ where: { id: 人.老板 } }))?.title).toBe("");
+      expect(await saveUser({ ...基, title: "总监" })).toMatchObject({ ok: true });
+      expect(await saveUser({ ...基, title: "长".repeat(21) })).toEqual({ ok: false, error: "职位最多 20 个字" });
+      expect((await prisma.user.findUnique({ where: { id: 人.老板 } }))?.title).toBe("总监");
+      expect(await saveUser({ ...基, title: "长".repeat(20) })).toMatchObject({ ok: true });
+    });
+
+    it("E-384 职位：改我的资料传 title:null 不抛错按不带处理；库里职位带首尾空格时只改名不被误拒、职位原样保留", async () => {
+      await prisma.user.update({ where: { id: 人.甲 }, data: { title: " 销售 " } });
+      await 登录成(人.甲);
+      expect(await 改我的资料({ name: "改一", title: null as unknown as string })).toEqual({ ok: true });
+      expect(await 改我的资料({ name: "改二", title: "销售" })).toEqual({ ok: true });
+      expect(await 改我的资料({ name: "改三", title: " 销售  " })).toEqual({ ok: true });
+      const 库 = await prisma.user.findUnique({ where: { id: 人.甲 } });
+      expect([库?.name, 库?.title]).toEqual(["改三", " 销售 "]);
+      expect(await 改我的资料({ name: "改四", title: "财务" })).toMatchObject({ ok: false });
+    });
   });
 });

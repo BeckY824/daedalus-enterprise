@@ -627,9 +627,9 @@ export default function MembersTab({
               </Form.Item>
             </Col>
             <Col span={12}>
-              {/* 职位不再填也不显示（11-01）：老数据留着不动 */}
-              <Form.Item name="title" hidden>
-                <Input />
+              {/* 按 E-384 恢复（11-01 曾隐藏）：职位只在这里改，个人资料里只读；可留空，最多 20 字 */}
+              <Form.Item name="title" label="职位" rules={[{ max: 20, message: "最多 20 个字" }]}>
+                <Input placeholder="如：销售、财务（可不填）" />
               </Form.Item>
             </Col>
             {/*

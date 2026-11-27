@@ -60,7 +60,7 @@ export default function ProfileTab({ me }: {
           <Input onChange={(e) => set预览(e.target.value)} />
         </Form.Item>
         <Form.Item label="职位" extra="如需修改请联系系统管理员">
-          <div className="profile-title-ro" data-testid="profile-title" title={me.title || undefined}>{me.title || "未填"}</div>
+          <div className="profile-title-ro" data-testid="profile-title" style={me.title ? undefined : { color: "var(--text-muted)" }}>{me.title || "未填"}</div>
         </Form.Item>
         <Form.Item label="登录名" extra="登录用的就是它，建好之后不能改——它同时是账号的标识">
           <Input value={me.email} disabled />

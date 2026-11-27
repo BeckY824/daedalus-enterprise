@@ -136,6 +136,9 @@ export async function saveUser(input: {
       (input.password != null && typeof input.password !== "string")) {
     return { ok: false, error: "成员信息不完整或格式不正确" };
   }
+  // 职位（E-384）：去首尾空格，空串照存，最多 20 字
+  const 职位 = input.title.trim();
+  if (职位.length > 20) return { ok: false as const, error: "职位最多 20 个字" };
   if (!ROLES.some((r) => r.value === input.role)) {
     return { ok: false as const, error: `角色「${input.role}」不是合法取值` };
   }
@@ -211,7 +214,7 @@ export async function saveUser(input: {
   const base = {
     name: input.name.trim(),
     email: 登录名,
-    title: input.title,
+    title: 职位,
     role: input.role,
     active: input.active,
   };
@@ -600,7 +603,7 @@ export async function 解绑飞书身份(id: string) {
 }
 
 /**
- * 改自己的名字和职位。**任何人都可以改自己的**——不需要管理员。
+ * 改自己的名字。**任何人都可以改自己的名字**——不需要管理员；职位按 E-384 一律去「设置 → 团队成员」改，这里改不了。
  *
  * 在这之前，改名只存在于「团队成员 → 编辑成员」那个弹窗里，而那个弹窗只有管理员打得开：
  * 一个销售想把自己的名字从邮箱前缀改成中文名，得去求管理员。
@@ -621,10 +624,11 @@ export async function 改我的资料(input: { name: string; title?: string }) {
   if (!旧) return { ok: false as const, error: "用户不存在" };
   /*
     职位只让系统管理员在「团队成员」里改（E-384）：已开票名单认「职位是财务」，本人能自改职位就能绕过。
-    不带职位 = 不改；带了且和库里不同 = 想改，非系统管理员拒绝。系统管理员也统一去团队成员改，这里只留名字。
+    不带职位（或带的不是字符串）= 不改；带了且和库里不同 = 想改，一律拒绝（系统管理员也统一去团队成员改，这里只留名字）。
     飞书 / 钉钉同步走 org-sync，不经过这里，不受影响。
   */
-  const title = input.title === undefined ? 旧.title : input.title.trim();
+  // 比较时库里值和传入值都 trim：库里带首尾空格的老数据不会让正常改名被误拒；相等就写回库里原值
+  const title = typeof input.title !== "string" || input.title.trim() === 旧.title.trim() ? 旧.title : input.title.trim();
   if (title !== 旧.title) return { ok: false as const, error: "职位只能由系统管理员在「设置 → 团队成员」里修改" };
   if (旧.name === name && 旧.title === title) return { ok: true as const };
 

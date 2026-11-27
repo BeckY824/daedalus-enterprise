@@ -150,3 +150,28 @@ it("不是系统管理员：没有「新增成员」", async () => {
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it("E-384 职位：编辑成员（含系统管理员编辑自己）能看到「职位」输入框，改了随 saveUser 交上去；超 20 字报红不交", async () => {
+  const { page, errors } = await open(true);
+  try {
+    await page.getByRole("button", { name: "编辑 老板" }).click();
+    const 框 = page.getByRole("dialog");
+    const 职位 = 框.getByLabel("职位");
+    await 职位.waitFor();
+    await 职位.fill("财务");
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(async () => (await 调用们(page)).filter(([n]) => n === "saveUser").length).toBe(1);
+    const 交 = (await 调用们(page)).find(([n]) => n === "saveUser")![1] as { title?: string }[];
+    expect(交[0].title).toBe("财务");
+  } finally { await page.close(); }
+  const b = await open(true);
+  try {
+    await b.page.getByRole("button", { name: "编辑 老板" }).click();
+    const 框 = b.page.getByRole("dialog");
+    await 框.getByLabel("职位").fill("长".repeat(21));
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await 框.getByText("最多 20 个字").first().waitFor();
+    expect((await 调用们(b.page)).filter(([n]) => n === "saveUser").length).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await b.page.close(); }
+}, 慢);
