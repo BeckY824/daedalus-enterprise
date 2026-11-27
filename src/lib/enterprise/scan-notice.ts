@@ -109,3 +109,28 @@ export async function 钟上扫库检测(现在: Date = new Date()): Promise<扫
   }
   return 明细.扫 || 明细.发 ? 明细 : null;
 }
+
+export const 扫库保留天数 = 90;
+export const 扫库清水位键 = "entScan4PurgeDay";
+
+/** 北京日 YYYY-MM-DD 往前推 n 天（YYYY-MM-DD 定长，字符串可直接比大小） */
+export function 前几天(day: string, n: number): string {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() - n);
+  return d.toISOString().slice(0, 10);
+}
+
+/**
+ * 90 天清理（E-383）：删 EntScanQuery / EntScanTrigger 里 day < 今天 − 90 天的行（「超过 90 天删」：正好 90 天前那天还留，91 天前删）。
+ * 一天一次（Setting 水位）；按范围一次删光，停机几天后开机第一遍就把所有超期的清掉。开关关着照清。不是企业版 = null
+ */
+export async function 钟上清扫库记录(现在: Date = new Date()): Promise<{ 查询: number; 触发: number } | null> {
+  if (!企业版()) return null;
+  const 今天 = beijingDay(现在);
+  if ((await getSetting<string>(扫库清水位键)) === 今天) return null;
+  const 线 = 前几天(今天, 扫库保留天数);
+  const 查询 = (await prisma.entScanQuery.deleteMany({ where: { day: { lt: 线 } } })).count;
+  const 触发 = (await prisma.entScanTrigger.deleteMany({ where: { day: { lt: 线 } } })).count;
+  await setSetting(扫库清水位键, 今天);
+  return { 查询, 触发 };
+}
