@@ -366,6 +366,12 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   const 改挡 = await 改客户挡(me, input.id);
   if (改挡) return { ok: false, error: 改挡 };
   // 编辑里换了负责人：同转让（只转自己的；管理、总管理随便转）
+  // 旧表单：打开表单时的负责人（base）和这次提交的一样 = 用户没动负责人，只是别人刚把客户转走了；负责人字段换成库里现值、照常保存，
+  // 不拿「请用转让」去拦一个只改了备注的人。只有用户真改了负责人（提交值和 base 不同）才往下拦。base 是客户端交的，伪造成和提交值一样
+  // 也只是把负责人落成库里现值，转不了任何人
+  if (改前 && input.salesOwnerId && input.salesOwnerId !== 改前.salesOwnerId && input.base && input.base.salesOwnerId === input.salesOwnerId) {
+    input = { ...input, salesOwnerId: 改前.salesOwnerId, base: { ...input.base, salesOwnerId: 改前.salesOwnerId } };
+  }
   if (改前 && input.salesOwnerId && input.salesOwnerId !== 改前.salesOwnerId) {
     const 转挡 = await 转让挡(me, [改前.id]);
     if (转挡) return { ok: false, error: 转挡 };
@@ -1312,6 +1318,8 @@ export async function 转走项目预览of(ids: string[], 新负责人?: string,
   // 顺带说转给这位要不要接手人确认：和真转时（assignSalesOwner）同一个判定，转让框照它写「生效」那一条（P-转-16）。
   // 空串 = 客户转让框选了自动分配、还没挑人：只数会一起走的项目（同批量自动分配）；自动分配是市场转销售，不走确认（P-转-17）
   // 转让框（12-22 起）：同事在推的项目不再随客户默认转，数的时候不算，改由框里逐项选（上级）或一律不带（负责人本人）
+  // 混批边角（不改逻辑）：上级一次转多位、里面一部分是市场成员的客户时，这里按「不全带」数（只要有一位不是市场转销售就不算同事在推的），
+  // 批量提示写「同事在推的项目都保留原负责人」；可那几位市场的客户转过去会全带（市场转一位，market-transfer），所以提示和实际有出入，只在这种混批出现
   const [预览, 走法] = await Promise.all([数转走的项目(们, 新, [], !转让框 || (!!新 && (await 都是市场转销售(们, 新)))), 新 ? 转让走交接(me, 新, 们) : null]);
   const 基 = { ...预览, 要确认: 走法 === "申请" };
   if (!转让框 || !新 || 走法 || !(await 直转要说明(me, 新, 们)) || (await 转让挡(me, 们))) return 基;
@@ -1592,7 +1600,7 @@ function 交接结果(r: BulkResult): { 交接中?: number; 交接已在路上?:
 /**
  * 企业版「交接中」的转让（负责人本人申请移交，P-转-16；测试清单 D10「交接完成前接手人看不到」）：
  * 负责人先不换，按原负责人一人一行记待确认（EntHandover），接手人在客户页确认了才换，
- * 联系人、沟通记录、名下全部项目（含同事在推的，P-转-07）、没做完的活照老规矩一起走（customers/handover-actions.ts 确认交接）。
+ * 联系人、沟通记录、名下自己的项目（同事在推的不随客户转，12-22）、没做完的活照老规矩一起走（customers/handover-actions.ts 确认交接）。
  * 已经在另一笔交接里的客户这次不再发起：同一位客户不能同时交给两个人（查和写在同一笔事务里，两人同时发起只成一笔）。
  * 只读的客户（虚线下属的）上面 虚线只读挡 已经整批拦了；企业版没有互看，这里看得到的就是改得动的
  */

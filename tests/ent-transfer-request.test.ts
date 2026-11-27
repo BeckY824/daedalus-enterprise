@@ -227,6 +227,25 @@ describe("负责人本人转客户 = 申请移交", () => {
     }
   });
 
+  it("旧表单只改了备注：别人刚把客户转走，负责人字段落成库里现值照常保存，不回「请用转让」（12-22）", async () => {
+    const a = await 客户(销售.id);
+    const r = await prisma.customer.findUniqueOrThrow({ where: { id: a.id } });
+    const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: r.salesOwnerId, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
+    // 打开表单之后，上级把客户转给了同事
+    当(组长);
+    expect(await assignSalesOwner([a.id], 同事.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 1 });
+    // 用旧表单的是能改这位客户的系统管理员（负责人本人、上级改不了别人的资料）
+    当(老板);
+    const res2 = await saveCustomer({ id: a.id, updatedAt: (await prisma.customer.findUniqueOrThrow({ where: { id: a.id } })).updatedAt.toISOString(), base, ...base, remark: "只改备注" } as Parameters<typeof saveCustomer>[0]);
+    expect(JSON.stringify(res2)).not.toContain("请用「转让」");
+    expect(res2).toMatchObject({ ok: true });
+    expect(await 归谁(a.id)).toBe(同事.id);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: a.id } })).remark).toBe("只改备注");
+    // 用户真改了负责人（提交值和 base 不同）照旧拦
+    const res3 = await saveCustomer({ id: a.id, updatedAt: (await prisma.customer.findUniqueOrThrow({ where: { id: a.id } })).updatedAt.toISOString(), base: { ...base, salesOwnerId: 同事.id }, ...base, salesOwnerId: 接手.id } as Parameters<typeof saveCustomer>[0]);
+    expect(res3).toMatchObject({ ok: false, error: expect.stringContaining("请用「转让」") });
+  });
+
   it("「交接要确认」开着：上级单条换负责人直接转（P-转-16）", async () => {
     await setSetting("enterprise.rule.handover_confirm", true);
     const c = await 客户(销售.id);

@@ -229,12 +229,16 @@ describe("审查修复（12-22 阶段 1 复审）", () => {
     expect(发起.readAt).not.toBeNull();
   });
 
-  it("saveCustomer：base 伪造成和提交值一样、但和库里现值不同，照样回「请用转让」", async () => {
+  it("saveCustomer：base 伪造成和提交值一样、但和库里现值不同，当作没动负责人（落成库里现值），转不了人；真改了负责人才回「请用转让」", async () => {
     const a = await 客户(销售.id);
     当(销售);
     const r = await prisma.customer.findUniqueOrThrow({ where: { id: a.id } });
     const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: 接手.id, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
-    expect(await saveCustomer({ id: a.id, updatedAt: r.updatedAt.toISOString(), base, ...base } as Parameters<typeof saveCustomer>[0])).toMatchObject({ ok: false, error: expect.stringContaining("请用「转让」") });
+    // 12-22：旧表单没动负责人（base = 提交值）= 别人刚转走客户后只改了别的；负责人落成库里现值，不转给提交值上的人
+    await saveCustomer({ id: a.id, updatedAt: r.updatedAt.toISOString(), base, ...base } as Parameters<typeof saveCustomer>[0]);
+    expect(await 归谁(a.id)).toBe(销售.id);
+    // 提交值和 base 不同 = 真改了负责人，照旧回「请用转让」
+    expect(await saveCustomer({ id: a.id, updatedAt: r.updatedAt.toISOString(), base: { ...base, salesOwnerId: 销售.id }, ...base } as Parameters<typeof saveCustomer>[0])).toMatchObject({ ok: false, error: expect.stringContaining("请用「转让」") });
     expect(await 归谁(a.id)).toBe(销售.id);
   });
 });
