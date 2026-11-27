@@ -140,12 +140,6 @@ describe("七种通知：谁收、怎么说", () => {
     expect((await 标题们(丙)).filter((t) => t.includes("拒绝"))).toEqual([]);
   });
 
-  it("没写原因：发起人那条写「没写原因」", async () => {
-    const { id } = await 一张();
-    await 处理合并申请(prisma, id, 丙, "拒绝");
-    expect((await 收到(乙)).at(-1)!.body).toBe("没写原因。要并可以改了再发一张");
-  });
-
   it("已失效（到期扫）：发起人和同意人各一条；再扫一遍不重复", async () => {
     const { id, 两家 } = await 一张(周五下午);
     expect(await 扫过期合并申请(prisma, new Date("2026-12-04T07:00:00Z"))).toBe(1);
@@ -316,7 +310,7 @@ describe("显示状态：已失效里分出已作废（2b-3 第二段审查第 4
     await raw.entProjectPayment.create({ data: { projectId: pid, paidAt: new Date(), currency: "CNY", amount: 1 } });
     await 处理合并申请(prisma, 有变.id, 丙, "同意");
     const 拒 = await 一张();
-    await 处理合并申请(prisma, 拒.id, 丙, "拒绝");
+    await 处理合并申请(prisma, 拒.id, 丙, "拒绝", { 原因: "不是同一家" });
     const 等 = await 一张();
     登录.人 = 乙;
     const 们 = new Map((await 以谁的身份(乙.id, () => 我发起的合并申请())).map((x) => [x.id, x]));
@@ -329,6 +323,18 @@ describe("显示状态：已失效里分出已作废（2b-3 第二段审查第 4
 });
 
 describe("界面常量和服务端一致；拒绝原因上限服务端也拦", () => {
+  it("E-428 ②：拒绝原因必填，数据层、动作层空 / 全空白都回「拒绝要写一句原因」，申请仍待同意；同意不受影响", async () => {
+    const { id } = await 一张();
+    for (const 原因 of [undefined, "", "   \n "]) {
+      expect(await 处理合并申请(prisma, id, 丙, "拒绝", { 原因 })).toEqual({ ok: false, error: "拒绝要写一句原因" });
+    }
+    登录.人 = 丙;
+    expect(await 处理客户合并申请(id, "拒绝")).toEqual({ ok: false, error: "拒绝要写一句原因" });
+    expect(await 处理客户合并申请(id, "拒绝", "  ")).toEqual({ ok: false, error: "拒绝要写一句原因" });
+    expect((await raw.entMergeRequest.findUniqueOrThrow({ where: { id } })).status).toBe(申请状态.待同意);
+    expect(await 处理合并申请(prisma, id, 丙, "拒绝", { 原因: "还在跟" })).toMatchObject({ ok: true, 状态: 申请状态.已拒绝 });
+  });
+
   it("数据层 处理合并申请 也按上限拒收、回同一句话，不截断；100 字原样存", async () => {
     const { id } = await 一张();
     expect(await 处理合并申请(prisma, id, 丙, "拒绝", { 原因: "字".repeat(拒绝原因上限 + 1) })).toEqual({ ok: false, error: "拒绝原因最多 100 字" });

@@ -68,6 +68,8 @@ export type 给发起人的同意人 = 同意人 & { 项目数: number };
 
 /** 拒绝原因超了上限：动作层、数据层都拦这一句，不悄悄截（2b-3 第二段审查第 7 条） */
 export const 拒绝原因超话 = `拒绝原因最多 ${拒绝原因上限} 字`;
+/** 拒绝必须写一句原因（E-428 ②）：空、全空白都拦；动作层、数据层同一句 */
+export const 拒绝要写原因话 = "拒绝要写一句原因";
 export const 到期话 = `超过 ${等待工作日} 个工作日没有全部同意，申请已失效，要重新发起`;
 /**
  * 给人看的状态：库里只有「已失效」一种结束，界面分开说——到期没同意完叫「已失效」；
@@ -462,6 +464,7 @@ export async function 处理合并申请(
   const org = await 权限组织();
   if (!org) return { ok: false, error: "只有企业版有合并申请" };
   if (只读身份(me, org)) return { ok: false, error: `你现在是只读身份，不能${结论}合并申请` };
+  if (结论 === "拒绝" && !opt.原因?.trim()) return { ok: false, error: 拒绝要写原因话 };
   if (结论 === "拒绝" && (opt.原因?.trim().length ?? 0) > 拒绝原因上限) return { ok: false, error: 拒绝原因超话 };
   let 失效: string | null = null;
   let 该执行 = false;

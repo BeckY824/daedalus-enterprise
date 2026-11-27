@@ -75,7 +75,7 @@ type 框 = { 种: "同意" | "拒绝"; 行: 合并申请一条 };
 /**
  * 合并申请（第二批 2b-3）：等我同意的一张（同意 / 拒绝），我发起的一张（待同意时可撤回申请）。
  * 表格和卡片两套都渲染、CSS @media 显隐（不靠 JS 判宽，首屏不闪）。电脑：表格固定列宽、单元格省略号（悬停看全），放不下在表格里横滚；手机（≤767）每张一块卡片、一项一行，按钮整行 ≥ 触屏点击区。
- * 同意弹确认框（按我站哪边说后果，最后一位多一句）；拒绝弹框写原因（选填、≤100 字，超了点不了）。
+ * 同意弹确认框（按我站哪边说后果，最后一位多一句）；拒绝弹框写原因（必填、≤100 字，空着或超了点不了）。
  * 办成了这一行留在表里、置灰写结果（刷新后从「等我同意」里去掉）；没办成原因写在框里、框不关。
  * 只读身份（只读管理员、销售教练、设了只看某人、切换视图在看别人）：列表照常，按钮置灰、悬停写原因；服务端本来就拦
  */
@@ -114,15 +114,16 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
     set开着(null);
   };
   const 超了 = 原因.trim().length > 拒绝原因上限;
+  const 没写 = !原因.trim();
 
   const 定 = async () => {
     if (!开着 || 忙) return;
     const { 种, 行 } = 开着;
-    if (种 === "拒绝" && 超了) return;
+    if (种 === "拒绝" && (超了 || 没写)) return;
     set忙(行.id);
     set框错(null);
     const 后 = 种 === "同意" ? 同意后果(行, 我) : null;
-    const r = await 处理客户合并申请(行.id, 种, 种 === "拒绝" ? 原因.trim() || undefined : undefined).catch(() => ({ ok: false as const, error: 网断话 }));
+    const r = await 处理客户合并申请(行.id, 种, 种 === "拒绝" ? 原因.trim() : undefined).catch(() => ({ ok: false as const, error: 网断话 }));
     set忙(null);
     if (!r.ok) {
       set框错(r.error);
@@ -267,7 +268,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
             <span className="mrg-foot-sp" />
             <Button onClick={关} disabled={!!忙}>取消</Button>
             {开着?.种 === "拒绝"
-              ? <Button type="primary" danger loading={!!忙} disabled={超了} onClick={() => void 定()} data-testid="merge-request-reject-ok">确认拒绝</Button>
+              ? <Button type="primary" danger loading={!!忙} disabled={超了 || 没写} onClick={() => void 定()} data-testid="merge-request-reject-ok">确认拒绝</Button>
               : <Button type="primary" loading={!!忙} onClick={() => void 定()} data-testid="merge-request-agree-ok">确认同意</Button>}
           </div>
         )}
@@ -288,10 +289,10 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
             )}
             {开着?.种 === "拒绝" && (
               <>
-                <label className="mrq-lbl" htmlFor="mrq-why">拒绝原因（选填，最多 {拒绝原因上限} 字）</label>
+                <label className="mrq-lbl" htmlFor="mrq-why">拒绝原因（必填，最多 {拒绝原因上限} 字）</label>
                 <Input.TextArea id="mrq-why" value={原因} onChange={(e) => set原因(e.target.value)} autoSize={{ minRows: 2, maxRows: 5 }} placeholder="写一句，发起人和其余同意人会看到" data-testid="merge-request-why" />
                 <div className="mrq-count">
-                  <span className={超了 ? "is-over" : ""} role={超了 ? "alert" : undefined}>{超了 ? `超出 ${原因.trim().length - 拒绝原因上限} 字` : ""}</span>
+                  <span className={超了 ? "is-over" : ""} role={超了 ? "alert" : undefined} data-testid="merge-request-why-hint">{超了 ? `超出 ${原因.trim().length - 拒绝原因上限} 字` : 没写 ? "写一句原因才能拒绝" : ""}</span>
                   <span className={超了 ? "is-over" : ""}>{原因.trim().length} / {拒绝原因上限}</span>
                 </div>
                 <p className="mrq-mu">一位拒绝整张就「已拒绝」，发起人和其余同意人会收到通知；发起人可以改了再发一张。</p>

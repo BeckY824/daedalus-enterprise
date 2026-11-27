@@ -5,7 +5,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
 /* 合并申请页 · 第二段（11-26，customers/merge-requests/MergeRequestsView.tsx；P-界面-67）：真组件 + globals.css + merge.css，只桩掉 merge-actions。钉的是：
    等我同意每张同意 / 拒绝两颗；同意框按我站哪边说后果（并掉那家：N 个项目挪到留下那家、仍归你；留下那家：项目不动、多出联系人和沟通），
-   最后一位多一句「立即合并，30 天内发起人可撤回」；拒绝原因选填、超 100 字点不了；办成了留在表里写结果，没办成原因写在框里、框不关；
+   最后一位多一句「立即合并，30 天内发起人可撤回」；拒绝原因必填、超 100 字点不了；办成了留在表里写结果，没办成原因写在框里、框不关；
    只读管理员、切换视图：列表照常、按钮置灰、悬停写原因；390 一列卡片、按钮 ≥ 44px；768 / 1024 / 1280 / 1440 / 390 不横滚，长客户名一行省略悬停看全 */
 let browser: Browser, bundle: string;
 const 长名 = "超长的测试客户名称用来看会不会撑破".repeat(2) + "出来的测试四"; // 40 个汉字
@@ -126,7 +126,7 @@ it("同意：留下那家的同事说「项目不动、多出联系人和沟通�
   } finally { await page.close(); }
 });
 
-it("拒绝：原因选填、超 100 字点不了并写超出几字；带原因确认后写「你已拒绝：…」；没办成的原因写在框里、框不关", async () => {
+it("拒绝：原因必填、空着和全空白点不了并提示、超 100 字点不了并写超出几字；带原因确认后写「你已拒绝：…」；没办成的原因写在框里、框不关", async () => {
   const { page, 错 } = await open(1280, {}, false, { __处理结果: { w2: { ok: false, error: "超过 5 个工作日没有全部同意，申请已失效，要重新发起" } } });
   try {
     await 见(page, "merge-request-reject").first().click();
@@ -134,7 +134,10 @@ it("拒绝：原因选填、超 100 字点不了并写超出几字；带原因�
     expect(await page.locator(".mrg-modal .ant-modal-title").innerText()).toBe("拒绝这张合并申请");
     expect(await 见(page, "merge-request-effect").count()).toBe(0);
     const 确认 = 见(page, "merge-request-reject-ok");
-    expect(await 确认.isDisabled()).toBe(false); // 选填：不写也能拒
+    expect(await 确认.isDisabled()).toBe(true); // 必填：不写点不了「确认拒绝」
+    expect(await 见(page, "merge-request-why-hint").innerText()).toBe("写一句原因才能拒绝");
+    await 见(page, "merge-request-why").fill("   ");
+    expect(await 确认.isDisabled()).toBe(true);
     await 见(page, "merge-request-why").fill("字".repeat(101));
     expect(await 确认.isDisabled()).toBe(true);
     expect(await 框(page).innerText()).toContain("超出 1 字");

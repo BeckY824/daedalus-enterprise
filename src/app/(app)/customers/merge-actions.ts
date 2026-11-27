@@ -36,7 +36,7 @@ import {
   type 项目合并预览结果, type 项目合并完, type 撤回项目合并完, type 项目合并单一条, type 并进候选们,
 } from "@/lib/enterprise/project-merge";
 import {
-  发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 申请状态, 同意状态, 合并申请预览, 给发起人藏名, 读选择, 看不到那家叫法, 显示状态of, 拒绝原因超话,
+  发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 申请状态, 同意状态, 合并申请预览, 给发起人藏名, 读选择, 看不到那家叫法, 显示状态of, 拒绝原因超话, 拒绝要写原因话,
   type 发起完, type 处理完, type 快照, type 凭, type 涉及项目, type 合并申请预览结果,
 } from "@/lib/enterprise/merge-request";
 import { 两家在我清单成对 } from "@/lib/enterprise/dupe-groups";
@@ -421,10 +421,11 @@ export async function 发起客户合并申请(
   return r;
 }
 
-/** 同意人同意 / 拒绝。拒绝可带一句原因（选填，最多 100 字：界面超了点不了，这里再拦一道，不悄悄截） */
+/** 同意人同意 / 拒绝。拒绝必须带一句原因（E-428 ②，最多 100 字：界面空着 / 超了点不了，这里再拦一道，不悄悄截） */
 export async function 处理客户合并申请(requestId: string, 结论: "同意" | "拒绝", 原因?: string): Promise<结果<处理完>> {
   const me = await 我();
   if (!是id(requestId) || (结论 !== "同意" && 结论 !== "拒绝") || (原因 !== undefined && typeof 原因 !== "string")) return 坏参数;
+  if (结论 === "拒绝" && !(原因 ?? "").trim()) return { ok: false, error: 拒绝要写原因话 };
   if (原因 && 原因.trim().length > 拒绝原因上限) return { ok: false, error: 拒绝原因超话 };
   const r = await 处理合并申请(prisma, requestId, me, 结论, { 原因 });
   if (r.ok) await 刷新申请(requestId);
