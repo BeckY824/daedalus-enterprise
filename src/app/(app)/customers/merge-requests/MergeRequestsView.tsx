@@ -55,7 +55,7 @@ export function 我的身份话(r: 合并申请一条, 我: string): string {
  *   - 留下那家的同事：「同意后，你的项目不动，客户会多出另一家的联系人和沟通」
  *   - 最后一位（除我以外都同意了）多一句「你是最后一位：同意后立即合并，30 天内发起人可撤回」；不是最后一位写还差几位
  */
-export function 同意后果(r: 合并申请一条, 我: string): { 后果: string; 最后一位: boolean; 还差: number } {
+export function 同意后果(r: 合并申请一条, 我: string): { 后果: string; 最后一位: boolean; 还差: number; 管理员判: boolean } {
   const 我那行 = r.同意人.find((x) => x.userId === 我);
   const 挪 = 我那行 ? 我那行.项目.filter((p) => p.customerId === r.并掉.id).length : 0;
   const 并掉边 = !!我那行 && (我那行.凭.includes("被并客户负责人") || 挪 > 0);
@@ -64,7 +64,7 @@ export function 同意后果(r: 合并申请一条, 我: string): { 后果: stri
   const 后果 = 并掉边
     ? 挪 > 0 ? `同意后，你的 ${挪} 个项目挪到留下那家，仍归你。` : "同意后，这家客户并进留下那家，你名下没有在推的项目要挪。"
     : "同意后，你的项目不动，客户会多出另一家的联系人和沟通。";
-  return { 后果, 最后一位: 还差 === 0, 还差 };
+  return { 后果, 最后一位: 还差 === 0, 还差, 管理员判: !!r.交管理员判 };
 }
 
 /** 一行放不下省略、悬停看全文（企业版一行 + 省略号规矩） */
@@ -287,7 +287,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
             </div>
             {开着?.种 === "同意" && 框行?.管理员判 && (
               <>
-                <div className="mrq-prev" style={{ display: "flex", flexDirection: "column", gap: 4 }} data-testid="merge-request-prev">
+                <div className="mrq-prev" data-testid="merge-request-prev">
                   <p className="mrq-lbl">前几次的拒绝原因</p>
                   {框行.管理员判.前拒绝.length
                     ? 框行.管理员判.前拒绝.map((x, i) => <p key={i} className="mrq-mu" data-testid="merge-request-prev-item">{一行(`${时刻(x.时间)} ${x.人} 拒绝：${x.原因}`)}</p>)
@@ -302,7 +302,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
               <>
                 <p className="mrq-eff" data-testid="merge-request-effect">{后.后果}</p>
                 {后.最后一位
-                  ? <p className="mrq-last" data-testid="merge-request-last">你是最后一位：同意后立即合并，{撤回天数} 天内发起人可撤回。</p>
+                  ? <p className="mrq-last" data-testid="merge-request-last">{后.管理员判 ? "任一位系统管理员同意即合并" : "你是最后一位"}：同意后立即合并，{撤回天数} 天内发起人可撤回。</p>
                   : <p className="mrq-mu">还差 {后.还差} 位同意才合并。</p>}
               </>
             )}

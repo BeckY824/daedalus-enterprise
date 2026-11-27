@@ -348,6 +348,7 @@ it("同事负责的候选标「要申请」：读申请预览、底部列要同�
     const 话 = await 框.innerText();
     expect(话).toContain("都同意了才合并；任一位拒绝，申请就结束");
     expect(话).toContain("5 个工作日内（法定节假日不算）没有全部同意，申请失效");
+    expect(话).toContain("都同意之前，你可以在「合并申请」页撤回");
     await 框.locator(".csq-foot .ant-btn-primary").click();
     await page.locator(".undo-bar").waitFor();
     expect(await page.locator(".undo-t").innerText()).toBe("合并申请已发出，等 2 位同意");
@@ -494,6 +495,9 @@ it("第 3 次申请：发起框写明交系统管理员判、任一位同意即�
         expect(话).toContain("任一位同意即合并；任一位拒绝即结束；没有一位同意就失效");
         expect(话).toContain("没有一位系统管理员同意，申请失效");
         expect(话).not.toContain("没有全部同意");
+        // E-428 r4 可改 5：可撤回申请也不写「都同意之前」
+        expect(话).toContain("系统管理员同意之前，你可以在「合并申请」页撤回");
+        expect(话).not.toContain("都同意之前");
       }
       expect(错).toEqual([]);
     } finally { await page.close(); }

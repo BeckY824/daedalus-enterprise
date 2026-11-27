@@ -74,6 +74,7 @@
 .mrq-eff { margin: 0; }
 .mrq-last { margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-ctl); background: var(--warning-bg); color: var(--warning-text); }
 .mrq-mu { margin: 0; color: var(--text-muted); font-size: var(--fs-note); }
+.mrq-prev { display: flex; flex-direction: column; gap: 4px; }
 .mrq-lbl { font-size: var(--fs-note); color: var(--ink-soft); }
 .mrq-count { display: flex; justify-content: space-between; gap: var(--s2); color: var(--text-muted); font-size: var(--fs-min); }
 .mrq-count .is-over { color: var(--danger-text); }

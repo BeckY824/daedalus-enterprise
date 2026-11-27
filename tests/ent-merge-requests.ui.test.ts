@@ -246,6 +246,9 @@ it("E-431 ③：第 3 次交系统管理员判：同意框列出前两次拒绝�
     // 同意框：同意的这位就是最后一位，不写「还差 N 位同意才合并」
     expect(await 框(page).innerText()).not.toContain("还差");
     expect(await 见(page, "merge-request-last").count()).toBe(1);
+    // E-428 r4 可改 6：管理员判不写「你是最后一位」（还有别的系统管理员待同意）
+    expect(await 见(page, "merge-request-last").innerText()).toBe("任一位系统管理员同意即合并：同意后立即合并，30 天内发起人可撤回。");
+    expect(await 框(page).innerText()).not.toContain("你是最后一位");
     const 前 = await 见(page, "merge-request-prev").innerText();
     expect(前).toContain("示例甲 拒绝：不是同一家");
     expect(前).toContain("示例乙 拒绝：未填");
