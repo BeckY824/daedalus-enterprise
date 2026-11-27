@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { 纯路径, 路由模式, 读路由表, 请求种类 } from "../request-log";
-import { 认浏览器, 脱敏报错, 错误名, 认digest, 统一占位, 报错类们, type 一行, type 上报 } from "./fields";
+import { 认浏览器, 脱敏报错, 错误名, 认digest, 统一占位, 查询键名, 报错类们, type 一行, type 上报 } from "./fields";
 import { 写一条, 遥测开着 } from "./store";
 import { 认身份, type 身份 } from "./who";
 
@@ -85,6 +85,7 @@ export function 盯慢请求(e: 起点事件, d: 慢请求依赖) {
   const 现在 = d.现在 ?? (() => performance.now());
   const 起 = 现在();
   const 墙钟 = Date.now();
+  const qk = 查询键名(e.request.url);
   e.response.once("close", () => {
     try {
       const ms = Math.round(现在() - 起);
@@ -99,6 +100,7 @@ export function 盯慢请求(e: 起点事件, d: 慢请求依赖) {
         ms,
         status: e.response.statusCode,
         role: "未登录",
+        ...(qk ? { qk } : {}),
       };
       void d
         .认(h.cookie)

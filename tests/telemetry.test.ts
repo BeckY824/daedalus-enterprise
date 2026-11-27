@@ -184,6 +184,15 @@ describe("慢请求：超过门槛才记", () => {
     expect(JSON.stringify(r)).not.toMatch(/cm9x8y7|tab=|crm_session|cookie/);
   });
 
+  it("慢请求只落查询串的键名（字母序、逗号连接），值一律不落；没有查询串就没有 qk", async () => {
+    const [r] = await 跑("/customers?scope=joined&keyword=张三&keyword=李四&phone=13800138000&page=2", 800);
+    expect(r.qk).toBe("keyword,page,phone,scope");
+    expect(JSON.stringify(r)).not.toMatch(/joined|张三|李四|13800138000/);
+    expect("qk" in (await 跑("/customers", 800))[0]).toBe(false);
+    expect((await 跑("/customers/x?_rsc=abc#frag=1", 800))[0].qk).toBe("_rsc");
+    expect((await 跑("/customers?13800138000&张三=1&a=1", 800))[0].qk).toBe("a");
+  });
+
   it("接口、动作、预取各记各的种类；静态资源、上报自己、AI 流不记", async () => {
     expect((await 跑("/api/attachments", 600))[0].kind).toBe("API");
     expect((await 跑("/customers", 600, { "next-action": "abc" }))[0].kind).toBe("ACTION");
@@ -307,6 +316,11 @@ describe("每日摘要脚本", () => {
     expect(文).toMatch(/5 次 \| p50\s+800 ms \| p95\s+3000 ms \| 最慢\s+3000 ms \| HTML \/channels \| marketing_mgr×5/);
     expect(文).toMatch(/1 次 .* API \/api\/attachments \| 5xx 1/);
     expect(文).not.toContain("/old");
+
+    // 带 qk 的新记录：按键名分开成一组（旧记录没有 qk 照旧）
+    const 新 = 汇总([...读到, ...[1, 2].map((i) => ({ t: 时(i), k: "slow", src: "server", route: "/customers", kind: "RSC", ms: 900, status: 200, role: "sales", qk: "keyword,scope" })), { t: 时(3), k: "slow", src: "server", route: "/customers", kind: "RSC", ms: 900, status: 200, role: "sales", qk: 7 }], { 起: 现在 - 24 * 3600_000, 止: 现在 });
+    expect(新).toMatch(/2 次 .* RSC \/customers\?keyword,scope/);
+    expect(新).toMatch(/1 次 .* RSC \/customers \|/);
 
     // 命令行：服务器上那样跑
     const out = execFileSync(process.execPath, [path.resolve(__dirname, "../scripts/telemetry-daily.mjs"), d, "--now", new Date(现在).toISOString()], { encoding: "utf8" });

@@ -107,9 +107,10 @@ export function 汇总(记录, 选项) {
   // 二、慢请求
   const 慢组 = new Map();
   for (const x of 慢们) {
-    const 键 = `${x.route ?? "?"}\u0000${x.kind ?? "?"}`;
+    const qk = typeof x.qk === "string" ? x.qk : "";
+    const 键 = `${x.route ?? "?"}\u0000${x.kind ?? "?"}\u0000${qk}`;
     let g = 慢组.get(键);
-    if (!g) 慢组.set(键, (g = { route: x.route ?? "?", kind: x.kind ?? "?", ms: [], 角色: new Map(), 错: 0 }));
+    if (!g) 慢组.set(键, (g = { route: x.route ?? "?", kind: x.kind ?? "?", qk, ms: [], 角色: new Map(), 错: 0 }));
     g.ms.push(x.ms);
     计数(g.角色, x.role ?? "?");
     if (x.status >= 500) g.错++;
@@ -118,7 +119,7 @@ export function 汇总(记录, 选项) {
   if (!慢组.size) 出.push("  没有。");
   const 慢排 = [...慢组.values()].map((g) => ({ ...g, ms: g.ms.sort((a, b) => a - b) })).sort((a, b) => b.ms.length - a.ms.length || 分位(b.ms, 0.95) - 分位(a.ms, 0.95));
   for (const g of 慢排.slice(0, top)) {
-    出.push(`  ${String(g.ms.length).padStart(4)} 次 | p50 ${String(分位(g.ms, 0.5)).padStart(5)} ms | p95 ${String(分位(g.ms, 0.95)).padStart(5)} ms | 最慢 ${String(g.ms[g.ms.length - 1]).padStart(5)} ms | ${g.kind} ${g.route}${g.错 ? ` | 5xx ${g.错}` : ""} | ${角色串(g.角色)}`);
+    出.push(`  ${String(g.ms.length).padStart(4)} 次 | p50 ${String(分位(g.ms, 0.5)).padStart(5)} ms | p95 ${String(分位(g.ms, 0.95)).padStart(5)} ms | 最慢 ${String(g.ms[g.ms.length - 1]).padStart(5)} ms | ${g.kind} ${g.route}${g.qk ? `?${g.qk}` : ""}${g.错 ? ` | 5xx ${g.错}` : ""} | ${角色串(g.角色)}`);
   }
   if (慢排.length > top) 出.push(`  …另有 ${慢排.length - top} 组，共 ${慢排.slice(top).reduce((s, g) => s + g.ms.length, 0)} 次`);
   return 出.join("\n");

@@ -52,7 +52,29 @@ export type 一行 = {
   kind?: string;
   ms?: number;
   status?: number;
+  /** 慢请求：查询串里的键名，字母序、逗号连接（如 keyword,scope）。只有键名，值一律不记；旧记录没有这个字段 */
+  qk?: string;
 };
+
+/**
+ * URL → 查询串的键名（慢请求的 qk）：只留像参数名的键（字母数字 _ - . [ ]，≤24 字），去重、字母序、最多 12 个，逗号连接；没有就回 undefined。
+ * 值不碰；首字符须是字母或下划线（纯数字串多半是电话 / 编号），键名里夹了别的字符（有人把值当键写）的整个丢掉
+ */
+export function 查询键名(url: unknown): string | undefined {
+  if (typeof url !== "string") return undefined;
+  const i = url.indexOf("?");
+  if (i < 0) return undefined;
+  let q = url.slice(i + 1);
+  const h = q.indexOf("#");
+  if (h >= 0) q = q.slice(0, h);
+  const 键 = new Set<string>();
+  for (const 段 of q.split("&")) {
+    const k = 段.split("=", 1)[0];
+    if (/^[A-Za-z_][A-Za-z0-9_.\-\[\]]{0,23}$/.test(k)) 键.add(k);
+  }
+  if (!键.size) return undefined;
+  return [...键].sort().slice(0, 12).join(",");
+}
 
 /* ---------------- 浏览器 ---------------- */
 
