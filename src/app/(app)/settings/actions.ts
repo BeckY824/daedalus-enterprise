@@ -138,7 +138,11 @@ export async function saveUser(input: {
   }
   // 职位（E-384）：去首尾空格，空串照存，最多 20 字
   const 职位 = input.title.trim();
-  if (职位.length > 20) return { ok: false as const, error: "职位最多 20 个字" };
+  // 编辑时职位和库里一样就不查长度（飞书 / 钉钉同步写进来的超长职位，改名、改角色、重置密码不被拦）；变了才限 20 字
+  if (职位.length > 20) {
+    const 库职位 = input.id ? (await prisma.user.findUnique({ where: { id: input.id }, select: { title: true } }))?.title : undefined;
+    if (库职位 == null || 库职位.trim() !== 职位) return { ok: false as const, error: "职位最多 20 个字" };
+  }
   if (!ROLES.some((r) => r.value === input.role)) {
     return { ok: false as const, error: `角色「${input.role}」不是合法取值` };
   }

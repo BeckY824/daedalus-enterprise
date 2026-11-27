@@ -628,7 +628,15 @@ export default function MembersTab({
             </Col>
             <Col span={12}>
               {/* 按 E-384 恢复（11-01 曾隐藏）：职位只在这里改，个人资料里只读；可留空，最多 20 字 */}
-              <Form.Item name="title" label="职位" rules={[{ max: 20, message: "最多 20 个字" }]}>
+              <Form.Item name="title" label="职位" rules={[{
+                  // 编辑时值没动（飞书 / 钉钉同步来的超长职位）不报红；改了才限 20 字。服务端同口径
+                  validator: (_, v) => {
+                    const s = typeof v === "string" ? v : "";
+                    if (s.length <= 20) return Promise.resolve();
+                    if (editing && s.trim() === (editing.title ?? "").trim()) return Promise.resolve();
+                    return Promise.reject(new Error("最多 20 个字"));
+                  },
+                }]}>
                 <Input placeholder="如：销售、财务（可不填）" />
               </Form.Item>
             </Col>
