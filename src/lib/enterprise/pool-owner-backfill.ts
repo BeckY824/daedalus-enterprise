@@ -40,7 +40,7 @@ export async function 补记存量公海客户(真写: boolean): Promise<补记�
       for (const c of 们) {
         await prisma.$transaction(async (tx) => {
           // 跑的时候客户刚好被领走了就不算了：只改还挂着读到的那位、还在公海里的
-          const r = await tx.customer.updateMany({ where: { id: c.id, salesOwnerId: c.salesOwnerId, pool: { isNot: null } }, data: { salesOwnerId: 占位 } });
+          const r = await tx.customer.updateMany({ where: { id: c.id, salesOwnerId: c.salesOwnerId, pool: { isNot: null } }, data: { salesOwnerId: 占位, poolPrevOwnerId: c.salesOwnerId } });
           if (!r.count) return;
           await tx.customerOwnerLog.create({
             data: { customerId: c.id, userId: 系统.id, at: c.pool?.at ?? new Date(), fromOwnerId: c.salesOwnerId, toOwnerId: 占位, kind: "pool-release" },

@@ -30,3 +30,4 @@ tests/utc-date-cap.test.ts
 tests/ent-channel-read-no-write.test.ts
 tests/nav-pending-entries.test.ts
 tests/nav-smooth-routes.test.ts
+tests/pool-prev-owner-write-guard.test.ts

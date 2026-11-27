@@ -1,0 +1,160 @@
+/**
+ * 放进公海时把原负责人存到 poolPrevOwnerId（E-417 包 1，迁移 194）：
+ * 手动放回、超时回收、客户连带、离职、导入各一条：进公海后列 = 原负责人；再进一次被覆盖；出公海不清。
+ * 读法这一包不改（还走留痕），这里只钉写。
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+const mocks = vi.hoisted(() => ({
+  user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null },
+  团队: null as null,
+}));
+vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
+vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
+vi.mock("@/lib/sync/client", () => ({ 读团队: () => mocks.团队 }));
+vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
+vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
+
+import { prisma } from "@/lib/prisma";
+import { resetDb } from "./reset";
+import { invalidateSettingsCache, setSetting } from "@/lib/settings";
+import { 规则 } from "@/lib/enterprise/rules";
+import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 放进公海, 领取 } from "@/app/(app)/customers/pool-actions";
+import { 放回公海, 公海超时收回, 领取公海项目 } from "@/lib/project/db";
+import { 默认组织规则 } from "@/lib/project/org-rules";
+import { 离职放进公海 } from "@/lib/offboard-move";
+import type { 停用分拣结果 } from "@/lib/offboard-db";
+import { 无主项目进公海 } from "@/lib/enterprise-import/project-target";
+import { 无负责人占位邮箱 } from "@/lib/pool";
+import { 公海规则 } from "@/lib/enterprise/pool-rules";
+
+type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
+let 甲: 人;
+let 乙: 人;
+let 序号 = 0;
+
+const 造人 = async (key: string, name: string, role = "SALES"): Promise<人> => {
+  const u = await prisma.user.create({ data: { email: `${key}@x`, name, title: "", role, password: "x" } });
+  await prisma.entMember.create({ data: { userId: u.id, bizRole: role === "ADMIN" ? "director" : "sales", ...(role === "ADMIN" ? {} : { line: "内贸" }) } });
+  return { id: u.id, name, email: `${key}@x`, role, title: "", avatar: null };
+};
+const 以 = <T,>(u: 人, fn: () => Promise<T>): Promise<T> => {
+  mocks.user = { ...u };
+  忘掉企业版范围();
+  return 以谁的身份(u.id, fn);
+};
+const 客户 = async (ownerId: string) => {
+  序号 += 1;
+  return (await prisma.customer.create({
+    data: { name: `公海客户${序号}`, phone: "", salesOwnerId: ownerId, contacts: { create: { name: `联系人${序号}`, phone: `139${String(序号).padStart(8, "0")}`, isPrimary: true } } },
+  })).id;
+};
+const 项目 = async (customerId: string, ownerId: string, createdAt?: Date) => {
+  序号 += 1;
+  return (await prisma.project.create({ data: { name: `项目${序号}`, customerId, ownerId, creatorId: ownerId, phase: "线索", node: "潜客培育", ...(createdAt ? { createdAt } : {}) } })).id;
+};
+const 项目列 = async (id: string) => (await prisma.project.findUniqueOrThrow({ where: { id } })).poolPrevOwnerId;
+const 客户列 = async (id: string) => (await prisma.customer.findUniqueOrThrow({ where: { id } })).poolPrevOwnerId;
+
+beforeEach(async () => {
+  await resetDb();
+  invalidateSettingsCache();
+  忘掉企业版范围();
+  vi.stubEnv("CRM_ENTERPRISE", "1");
+  公海规则.项目能单独领 = true;
+  甲 = await 造人("jia", "销售甲某");
+  乙 = await 造人("yi", "销售乙某");
+  await setSetting(规则.按组织看客户.key, true);
+  await setSetting("business", { projectMode: true });
+  invalidateSettingsCache();
+  忘掉企业版范围();
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+  公海规则.项目能单独领 = false;
+  忘掉企业版范围();
+});
+
+describe("项目进公海写 poolPrevOwnerId", () => {
+  it("手动放回：列 = 原负责人；别人领走再放回，被新的覆盖；没进过公海的列是空", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id);
+    const 没动的 = await 项目(c, 甲.id);
+    expect(await 项目列(p)).toBeNull();
+    expect(await 以(甲, () => 放回公海(甲, p))).toEqual({ ok: true });
+    expect(await 项目列(p)).toBe(甲.id);
+    expect(await 项目列(没动的)).toBeNull();
+
+    // 乙领走（出公海不清列），再放回：覆盖成乙
+    expect(await 以(乙, () => 领取公海项目(乙, p))).toMatchObject({ ok: true });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).toBeNull();
+    expect(await 项目列(p)).toBe(甲.id);
+    expect(await 以(乙, () => 放回公海(乙, p))).toEqual({ ok: true });
+    expect(await 项目列(p)).toBe(乙.id);
+  });
+
+  it("超时回收：列 = 超时那位的原负责人", async () => {
+    const 老板 = await 造人("boss", "老板", "ADMIN");
+    await setSetting("orgRules", { ...默认组织规则, 超时回收: { 开: true, 起算日: null, 节点天数: { 潜客培育: 3 } } });
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id, new Date("2026-10-20T10:00:00"));
+    expect(await 以(老板, () => 公海超时收回(老板, new Date("2026-10-25T00:02:00")))).toBeGreaterThanOrEqual(1);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
+    expect(await 项目列(p)).toBe(甲.id);
+  });
+
+  it("客户连带：客户放进公海时他自己负责的项目一起进，项目列和客户列都 = 原负责人；别的客户上别人负责的项目不写", async () => {
+    const c = await 客户(甲.id);
+    const 他的 = await 项目(c, 甲.id);
+    const 别人的 = await 项目(await 客户(乙.id), 乙.id);
+    const r = await 以(甲, () => 放进公海([c], "客户主动终止"));
+    if (!r.ok) throw new Error(r.error);
+    expect(await 客户列(c)).toBe(甲.id);
+    expect(await 项目列(他的)).toBe(甲.id);
+    expect(await 项目列(别人的)).toBeNull();
+  });
+
+  it("离职：进公海的项目和客户列 = 离职的人；一次几位按原负责人分别写", async () => {
+    const 操作 = await 造人("op", "总管", "ADMIN");
+    const c甲 = await 客户(甲.id);
+    const p甲 = await 项目(c甲, 甲.id);
+    const c乙 = await 客户(乙.id);
+    const p乙 = await 项目(c乙, 乙.id);
+    const 客户整体 = await 客户(甲.id);
+    const 分 = { 进公海客户: [客户整体], 进公海项目: [p甲, p乙] } as unknown as 停用分拣结果;
+    await prisma.$transaction((tx) => 离职放进公海(tx, 分, 操作.id));
+    expect(await 项目列(p甲)).toBe(甲.id);
+    expect(await 项目列(p乙)).toBe(乙.id);
+    expect(await 客户列(客户整体)).toBe(甲.id);
+    expect(await 客户列(c甲)).toBeNull();
+  });
+
+  it("导入：新建没负责人的项目进公海，列是空（没有原负责人）", async () => {
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id);
+    // 先带一个旧值，模拟早先被放过；无主进公海按「原负责人 = 无」覆盖成空
+    await prisma.project.update({ where: { id: p }, data: { poolPrevOwnerId: 乙.id } });
+    await prisma.$transaction((tx) => 无主项目进公海(tx, p, 甲.id, new Date().toISOString()));
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
+    expect(await 项目列(p)).toBeNull();
+  });
+});
+
+describe("客户进公海写 poolPrevOwnerId", () => {
+  it("手动放进公海 = 原负责人；领走再放，被新的覆盖；领走本身不清", async () => {
+    const c = await 客户(甲.id);
+    expect(await 客户列(c)).toBeNull();
+    await 以(甲, () => 放进公海([c], "客户主动终止"));
+    expect(await 客户列(c)).toBe(甲.id);
+    const 占位 = (await prisma.user.findUniqueOrThrow({ where: { email: 无负责人占位邮箱 } })).id;
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(占位);
+
+    const r = await 以(乙, () => 领取([c]));
+    if (!r.ok) throw new Error(r.error);
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(乙.id);
+    expect(await 客户列(c)).toBe(甲.id);
+    await 以(乙, () => 放进公海([c], "客户主动终止"));
+    expect(await 客户列(c)).toBe(乙.id);
+  });
+});

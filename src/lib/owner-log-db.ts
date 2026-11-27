@@ -35,7 +35,7 @@ async function 挂靠审批跟着换(tx: Pick<Prisma.TransactionClient, "entDupe
 }
 
 export async function 记换负责人(
-  tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entDupeHit" | "setting" | "entCustomerStateLog" | "entCustomerMerge">,
+  tx: Pick<Prisma.TransactionClient, "customer" | "customerOwnerLog" | "entDupeHit" | "setting" | "entCustomerStateLog" | "entCustomerMerge">,
   换: { customerId: string; from: string | null; to: string }[],
   操作人: string,
   kind: 换负责人种类,
@@ -50,10 +50,27 @@ export async function 记换负责人(
   // 进公海：公海客户没有负责人、也不是挂靠对象（P-挂靠-01），审批人不跟到占位账号上，待处理的直接关
   // 出口 C「重复咨询待补建」记录同样自动关（客户 E-227 三处默认 ③：客户中途进了公海，改走公海领取）
   if (kind === "pool-release") {
+    await 记客户放回人(tx, 真换了.map((x) => ({ id: x.customerId, 从: x.from })));
     await 挂靠申请进公海关(tx, 真换了.map((x) => x.customerId));
     await 待补建进公海关(tx, 真换了.map((x) => x.customerId));
   }
   else await 挂靠审批跟着换(tx, 真换了);
+}
+
+/**
+ * 客户放进公海时把原负责人存在 Customer.poolPrevOwnerId（迁移 194）：和 pool-release 留痕同一笔事务，每次进公海覆盖；
+ * 值 = 那条 pool-release 的 from（toOwnerId 是占位账号）。只在在公海里时有意义，出公海不清。
+ * 没走 记换负责人 直接写 pool-release 的地方（pool-owner-backfill.ts）自己调它
+ */
+export async function 记客户放回人(tx: Pick<Prisma.TransactionClient, "customer">, 们: { id: string; 从: string | null }[]): Promise<void> {
+  const 组 = new Map<string | null, string[]>();
+  for (const x of 们) {
+    const 人 = x.从 || null;
+    组.set(人, [...(组.get(人) ?? []), x.id]);
+  }
+  for (const [人, ids] of 组) {
+    for (let i = 0; i < ids.length; i += 500) await tx.customer.updateMany({ where: { id: { in: ids.slice(i, i + 500) } }, data: { poolPrevOwnerId: 人 } });
+  }
 }
 
 /** 挂靠申请（EntDupeHit）客户进了公海被关掉时记的状态，同 已批准 / 已拒绝 一列 */
