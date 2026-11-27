@@ -207,8 +207,14 @@ async function 转给(page: Page, 名: string) {
   const 框 = page.getByRole("dialog", { name: /^把 \d+ 位.+转给$/ });
   await 框.getByRole("combobox", { name: "转给谁" }).click();
   await page.locator(".ant-select-dropdown:visible .ant-select-item-option", { hasText: 名 }).click();
-  // 12-22 起上级 / 管理员直接转必填原因（框里点一个原因）
-  await 框.getByRole("radio", { name: "工作量调整" }).click();
+  // 12-22 起上级 / 管理员直接转必填原因：选人后服务端预览回来，框里换成一句话原因的输入框（字典里的原因单选随之收起），等它出来再填；
+  // 没有必填原因的情形（开关关着那套）只有字典单选，点一个
+  const 说明 = 框.getByRole("textbox", { name: "转让原因" });
+  const 单选 = 框.getByRole("radio", { name: "工作量调整" });
+  // 预览回来前字典单选先摆着、回来后才换成输入框，所以先给输入框几秒，没等到才当作没有必填原因
+  const 要说明 = await 说明.waitFor({ timeout: 8_000 }).then(() => true, () => false);
+  if (要说明) await 说明.fill("工作量调整，销售乙名下客户过多");
+  else await 单选.click();
   await 框.getByRole("button", { name: `转给${名}` }).click();
   await expect(框).toBeHidden();
 }

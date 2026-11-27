@@ -75,7 +75,7 @@ export type ContactRow = {
   hobby?: string | null;
   address?: string | null;
   /** 联系方式几行（类型 kind + 号码）；子表里没有的拿老三格拼（customer-v2-db.ts 的 联系人号码们）。不给 = 别的版本 */
-  号码们?: { kind: string; value: string }[];
+  号码们?: { kind: string; value: string; /** 子表那一行的 id（老三格拼的没有）：「设为主号」按它认 */ id?: string; /** 主号（电话格那个，12-15 第三批 B）：排在最前 */ 默认?: true }[];
   /**
    * 企业版联系人挂多位客户（2026-10-29 P13，迁移 090）：给了 = 这位是挂到这位客户上的、主客户是别人。
    * 能改 = 主客户那一头我能改（编辑资料、换主客户只在能改时摆）；解除挂靠看的是这位客户能不能改
@@ -224,6 +224,10 @@ export type RecordProps = {
   能合并?: { 客户: boolean; 联系人: boolean } | null;
   /** 打开的是已并入的 B 的旧链接（?merged=B）：顶上那句「NO.xxxxx「B」已并入这位客户」（customer-merge.ts 并入提示）；对不上 = null */
   并入话?: string | null;
+  /** 疑似重复清单（12-15 第三批 C）：这位客户在登录的人的清单里和几家同名（0 / 不给 = 不提示）；有就在醒目条之后一行提示，链到清单 */
+  疑似重复数?: number;
+  /** 命中的组全是公海组（只系统管理员有）：链接带 ?tab=pool，不然落在普通栏看不到 */
+  疑似重复只公海?: boolean;
   /** 项目区正在提交：「更多操作 ▾」里对当前项目的几项灰着、写「正在处理」 */
   项目忙?: boolean;
   /**

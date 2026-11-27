@@ -22,12 +22,14 @@ type 列表项目 = { id: string; name: string; phase: string; node: string; res
  * 页面（page.tsx）和「历史变更」弹窗的项目块（history-data.ts 客户页可看项目）都走这里，再各自过 能看的项目
  */
 export async function 客户页项目列表(me: SessionUser, customerId: string) {
-  const 回避 = (await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id);
-  return prisma.project.findMany({
-    where: { customerId, ...(回避.length ? { id: { notIn: 回避 } } : {}) },
+  // F-057：回避名单（退过上千个项目的人）不塞进 notIn（过 SQLite 参数上限 P2029）：先取这位客户的项目（量小），在内存里去掉回避的
+  const 回避 = new Set((await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id));
+  const 行 = await prisma.project.findMany({
+    where: { customerId },
     orderBy: { updatedAt: "desc" },
     select: { id: true, name: true, phase: true, node: true, result: true, pooledAt: true, amount: true, currency: true, updatedAt: true, createdAt: true },
   });
+  return 回避.size ? 行.filter((p) => !回避.has(p.id)) : 行;
 }
 
 /** 列表里哪些项目我能看（同项目详情页那道 能看项目）：项目区页签、「历史变更」项目块同一把尺 */

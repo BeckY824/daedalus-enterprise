@@ -31,6 +31,11 @@ const ACTION_LABEL: Record<string, string> = {
   unbuilt_failed: "待补建没写成",
   // 合并客户第一批（11-25）：合并客户 / 合成联系人记 merge，撤回记 merge-undo；项目换客户在项目、两位客户上各一条
   "merge-undo": "撤回合并", "project-move-customer": "项目换客户", "project-move-customer-undo": "撤销换客户",
+  // 合并客户第二批 2b（11-26）：跨负责人合并申请，两家客户上各一条（lib/enterprise/merge-request.ts）
+  "merge-request": "发合并申请", "merge-approve": "同意合并", "merge-reject": "拒绝合并", "merge-request-withdraw": "撤回合并申请",
+  "merge-request-void": "合并申请失效", "merge-request-done": "合并申请通过",
+  // 疑似重复清单（12-15 第三批 C）：标 / 撤「不是同一个人」，两家客户上各一条（lib/enterprise/dupe-groups.ts）
+  "not-dupe": "标不是同一个人", "not-dupe-undo": "撤销不是同一个人",
 };
 /** 同一个动作按对象另起叫法：项目合并（第二批 2a，project-merge.ts 在两个项目上各记一条 merge / merge-undo）和客户合并分开 */
 const ACTION_LABEL_BY_ENTITY: Record<string, Record<string, string>> = {
@@ -68,6 +73,7 @@ const ACTION_COLOR: Record<string, string> = {
   assign: "cyan", convert: "gold", deactivate: "warning", reactivate: "default", password: "default", ai_use: "purple", ai_apply: "green", ai_undo: "default",
   pool: "default", claim: "cyan", merge: "geekblue", restore: "green", purge: "error", export: "magenta",
   "merge-undo": "default", "project-move-customer": "geekblue", "project-move-customer-undo": "default",
+  "merge-request": "geekblue", "merge-approve": "green", "merge-reject": "warning", "merge-request-withdraw": "default", "merge-request-void": "default", "merge-request-done": "geekblue",
 };
 
 /** 导出 = 设置 →「导出记录」：同一张表只放导出那几条，抬头换成导出的说法（11-03） */

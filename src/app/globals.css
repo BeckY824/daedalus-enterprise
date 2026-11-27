@@ -338,6 +338,7 @@
 :root:root .m-top { background: var(--rail-bg); border-bottom-color: var(--mod-line); }
 /* 手机：顶栏只有一行，浮在上面会盖住菜单键，改成排在顶栏上方；电脑上内容区顶部另留了空（AppShell） */
 @media (max-width: 767px) { .view-as-bar { position: static; transform: none; align-self: center; margin: 6px 16px; } }
+.profile-title-ro { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 32px; }
 .view-as-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .view-as-text b { font-weight: 600; }
 .view-as-exit { flex: none; padding: 0 10px; border: 0; border-radius: 999px; background: var(--warning-text); color: var(--on-ink); font: inherit; line-height: 20px; cursor: pointer; }
@@ -684,6 +685,40 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
    壳的数现在晚一步到（components/LateCount.tsx），挪一下就是跳版。让出来这一行和别的项一样高 */
 .rail-count { margin-left: auto; margin-block: -1px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
   background: var(--danger); color: var(--on-ink); font-size: var(--fs-min); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.cust-head-follow-n { margin-left: var(--s2); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
+  background: var(--danger); color: var(--on-ink); font-size: var(--fs-min); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.cust-head-follow-ph { visibility: hidden; }
+.cust-head-follow-n.is-calm { background: var(--text-muted); }
+/* F-056 窄电脑宽（768–1439，左栏拖宽时 1200–1439 也一样挤）：页头「标题 + 范围 + 导入 / 导出 / 新建 / 跟进计划」一排放不下（1024 + 左栏最宽实测撑出），
+   跟进计划收成日历图标 + 红数，字靠 aria-label；入口、红数都在，点击区仍 ≥ 32（触屏 44） */
+@media (min-width: 768px) and (max-width: 1439px) {
+  :root:root .cust-head-follow > .cust-head-follow-t { display: none; }
+  :root:root .cust-head-follow { min-width: 32px; padding-inline: var(--s2); }
+  :root:root .cust-head-follow-n { margin-left: 0; }
+}
+/* 离职交接：宽屏只有字 + 数（图标藏着），≤1199 收成图标 + 数 */
+.cust-head-ho > .ant-btn-icon { display: none; }
+.cust-head-ho > .cust-head-ho-n::before { content: " "; white-space: pre; }
+@media (min-width: 768px) and (max-width: 1199px) { .cust-head-ho > .cust-head-ho-n::before { content: none; } }
+/* 按钮最多的角色（导入 / 导出 / 跟进计划 / 离职交接 / 新建五颗）在 1024 左右整组被挤到标题下一行：≤1199 导入、导出也只留图标（同手机段写法，字靠 aria-label），32 宽 */
+@media (min-width: 768px) and (max-width: 1199px) {
+  :root:root .cust-head-io { width: 32px; min-width: 32px; padding-inline: 0; }
+  :root:root .cust-head-io > span:not(.ant-btn-icon) { display: none; }
+  :root:root .cust-head-ho { min-width: 32px; padding-inline: var(--s2); }
+  :root:root .cust-head-ho > .cust-head-ho-t { display: none; }
+  :root:root .cust-head-ho > .ant-btn-icon { display: inline-flex; }
+  :root:root .cust-head-ho > .cust-head-ho-n { margin-left: var(--s1); }
+}
+/* F-056 兜底：768–1199 客户页页头放不下时允许折行，不许出横滚 */
+@media (min-width: 768px) and (max-width: 1199px) {
+  :root:root .page-head:has(.cust-scope) { flex-wrap: wrap; row-gap: var(--s2); }
+  :root:root .page-head:has(.cust-scope) .page-head-a { flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; }
+  :root:root .page-head:has(.cust-scope) .page-head-a > .ant-space { flex-wrap: wrap; row-gap: var(--s2); max-width: 100%; }
+}
+@media (min-width: 768px) and (max-width: 1439px) and (pointer: coarse) {
+  :root:root .cust-head-follow, :root:root .cust-head-io { min-height: var(--hit-touch); }
+  :root:root .cust-head-io { min-width: var(--hit-touch); }
+}
 .rail-item:hover { background: var(--hover); color: var(--ink); }
 .rail-item.on { color: var(--nav-on-fg); }
 /* 左栏底部「问一句 ⌘J」：AI 面板收着时的入口，长得和导航项一样，只是个按钮 */
@@ -1226,6 +1261,15 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   color: var(--text-muted); cursor: pointer; transition: background-color var(--t-press) var(--ease), color var(--t-press) var(--ease); }
 .mrg-landed-x:hover { background: var(--row-hover); color: var(--ink); }
 .mrg-landed-x:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
+/* 客户页顶上「还有 N 家客户和这位同名」（12-15 第三批 C 疑似重复）：醒目条之后单占一行淡字，一行省略、悬停看全，右端链到清单 */
+.dupe-hint { display: flex; align-items: center; gap: var(--s1); min-width: 0; margin-bottom: var(--s2); color: var(--text-muted); font-size: var(--fs-note); line-height: 24px; }
+.dupe-hint-i { flex: none; color: var(--brand); }
+.dupe-hint-t { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dupe-hint-a { flex: none; white-space: nowrap; }
+/* 客户列表「范围」旁的「疑似重复 ›」：淡字链样子的按钮，不抢页头按钮 */
+.cust-dupe-a { flex: none; padding: 0; border: 0; background: none; color: var(--brand); font-size: var(--fs-note); white-space: nowrap; cursor: pointer; }
+.cust-dupe-a:hover { text-decoration: underline; }
+.cust-dupe-a:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
 @media (max-width: 767px) {
   /* 关掉的 ✕ 点击区放大到 36，用负外边距吃回去，那一行还是 24 高 */
   .mrg-landed-x { width: 36px; height: 36px; margin: -6px -6px -6px 0; }
@@ -1316,6 +1360,8 @@ a.rec-step-b:hover { background: var(--row-hover); color: var(--ink); }
 .ti-ell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ti-row > .ti-ell > .ti-ell { display: block; }
 .csq-chips.ti-chips { flex: none; }
+/* 原因框右下的「0 / 200」绝对定位在框下方，给它留一行，别压到下面「自动带上」那行 */
+.ti-why .ant-input-textarea-show-count { margin-bottom: 24px; }
 .rec-field-empty { color: var(--empty-fg); }
 .rec-field-saving { opacity: 0.5; }
 .rec-field-hint { margin-top: var(--s1); font-size: var(--fs-min); color: var(--text-muted); }
@@ -3048,9 +3094,12 @@ button.ais-hd-b { cursor: pointer; }
    不是「哪些是任务哪些是计划」，而是哪些已经拖了、今天必须做哪些。 */
 .plans { display: flex; flex-direction: column; gap: var(--s5); }
 .plan-g-h { display: flex; align-items: baseline; gap: var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
-.plan-g-h b { font-size: var(--fs-section); font-weight: 600; color: var(--ink); }
+.plan-g-h b { font-size: var(--fs-section); font-weight: 600; color: var(--ink); flex: none; }
 .plan-g-n { font-size: var(--fs-note); color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.plan-g-s { font-size: var(--fs-note); color: var(--text-muted); margin-left: auto; }
+.plan-g-s { font-size: var(--fs-note); color: var(--text-muted); margin-left: auto; min-width: 0; flex: 0 100 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* F-056 组头计数：「· 计划和待办 N · 项目下一步 M」一行，放不下截断（title 带全文）；名字不缩，说明先让 */
+.plan-g-c { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan-g-d { margin-inline: var(--s1); }
 /* 逾期那一组：红只给标题和数字，不给整块底色——整块红会让人以为出错了 */
 .plan-g-warn .plan-g-h b, .plan-g-warn .plan-g-n { color: var(--danger); }
 .plan-g-warn .plan-g-h { border-bottom-color: var(--danger-line); }
@@ -5260,6 +5309,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 @media (max-width: 767px) { .dc-claim-grid { grid-template-columns: minmax(0, 1fr); } }
 .dc-claim-foot { display: flex; justify-content: flex-end; gap: var(--s2); }
 .prop-err-act { margin-top: var(--s2); }
+/* 「记到这位客户上」手机（≤767 或触屏）点击区 ≥ 44（--hit-touch），电脑宽不动 */
+@media (max-width: 767px), (pointer: coarse) { :root:root .prop-err-act .ant-btn, :root:root .ant-btn[data-testid="attach-to-mine"] { min-height: var(--hit-touch); } }
 /* 撞号的在推个数是提示，不是错误：不跟 .prop-err 的红字 */
 .prop-err-note { color: var(--text-muted); }
 .cu-said-warn { color: var(--warning-text); }
@@ -5627,6 +5678,8 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* 号码那一列（值那一列里自己折行）。号码保护 11-24 起单独一行（字段名「号码保护」+ 状态标签），不再跟在号码后面：1280 卡宽 232 放不下 */
 .rec-contact-nv { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
 .rec-contact-nv > .rec-contact-v { flex: 0 1 auto; max-width: 100%; }
+/* 主号标（12-15 第三批 B）：跟在号码后面，和组头「关键」同一号小标签 */
+.ant-tag.rec-contact-main { margin: 0; font-size: var(--fs-min); line-height: 18px; padding: 0 5px; flex: none; }
 .att-empty { display: inline-flex; align-items: center; gap: 6px; }
 .cf-rule { margin: -4px 0 12px; font-size: var(--fs-note); color: var(--text-muted); }
 .rec-contact-pick { display: grid; gap: 4px; }
@@ -5989,6 +6042,8 @@ button.proj-miss-chip { cursor: pointer; }
   /* M1-c：只剩图标也守触屏点击区 44（--hit-touch），不是 32 */
   :root:root .cust-head-io { width: var(--hit-touch); min-width: var(--hit-touch); height: var(--hit-touch); padding-inline: 0; }
   :root:root .cust-head-io > span:not(.ant-btn-icon) { display: none; }
+  /* F-056「跟进计划 N」：手机顶栏已有日历 + 红数入口（AppShell），页头这颗整个不要，免得把导入 / 导出 / 新建那一排挤到换行 */
+  :root:root .cust-head-follow, :root:root .cust-head-follow-ph { display: none; }
   /* 筛选行三排：①「列表 | 看板」…「列」②搜索 + 重置 ③客户状态、负责人、更多筛选（阶段 / 进程收进更多筛选，同 1366，L-新5）。
      原来五排（列表 | 看板 / 搜索 / 状态 + 负责人 / 阶段 + 进程 / 更多筛选 + 重置）再单独一排「列」，表格从 y≈420 才开始。
      市场管理的客户页（我分出去的，.cust-market）同一摆法：「客户列表 | 我分出去的」…「列」/ 搜索 + 重置 / 成员、创建人、更多筛选；

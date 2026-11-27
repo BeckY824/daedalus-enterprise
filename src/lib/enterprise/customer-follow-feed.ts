@@ -26,7 +26,7 @@ import { 企业版只用项目 } from "@/lib/enterprise/project-only";
 
 /** 判客户看不看得到用哪个：服务端动作（翻页）现读 看得到的客户；客户页渲染传请求内缓存的 页面看得到的客户（lib/project/visible-customers.ts） */
 export type 可见法 = (ids: string[]) => Promise<Set<string>>;
-import { 我回避的公海项目, 回避豁免 } from "@/lib/project/pool-owner";
+import { 我回避的公海项目, 不回避条件, 回避豁免 } from "@/lib/project/pool-owner";
 import { followHistoryInclude, followHistoryOrder, serializeFollowHistory } from "@/app/(app)/customers/[id]/follow-history-query";
 import type { FollowUpRow } from "@/app/(app)/customers/[id]/types";
 import type { 附件 } from "@/lib/attachment-rules";
@@ -62,8 +62,9 @@ async function 看得到的项目们(me: { id: string; role?: string }, customer
     orderBy: { updatedAt: "desc" },
   });
   // 公海里我是历史负责人的项目：沟通入口、时间线都不出（C-01，lib/project/pool-owner.ts；总管理 / 管理员照出）
-  const [看得到, 回避] = await Promise.all([可见(ps.map((p) => p.customerId)), 回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id)))]);
-  return ps.filter((p) => 露客户(me, p, 看得到) && !回避.includes(p.id)).map((p) => ({ 行: p, 主: p.customerId === customerId, 只挂过: !直接.has(p.id) }));
+  const [看得到, 回避表] = await Promise.all([可见(ps.map((p) => p.customerId)), 回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id)))]);
+  const 回避 = new Set(回避表);
+  return ps.filter((p) => 露客户(me, p, 看得到) && !回避.has(p.id)).map((p) => ({ 行: p, 主: p.customerId === customerId, 只挂过: !直接.has(p.id) }));
 }
 
 const 项目名表 = (们: { 行: 项目行 }[]) => new Map(们.map(({ 行 }) => [行.id, 行.name]));
@@ -255,7 +256,7 @@ export async function 列表最近一句们(me: { id: string; role?: string }, �
     const 别家 = [...new Set(ps.map((p) => p.customerId).filter((c) => !本页.has(c)))];
     const 给了 = new Set(ps.map((p) => p.id));
     const 没给 = pids.filter((id) => !给了.has(id));
-    const [看得到别家, 回避, 删] = await Promise.all([
+    const [看得到别家, 回避表, 删] = await Promise.all([
       别家.length ? 可见(别家) : Promise.resolve(new Set<string>()),
       // 回避只管公海里的项目（我回避的公海项目）：这几个都不在公海就不读回避名单
       ps.some((p) => p.pooledAt) ? 回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id))) : Promise.resolve([] as string[]),
@@ -263,7 +264,8 @@ export async function 列表最近一句们(me: { id: string; role?: string }, �
       没给.length ? 看全部(() => 看已删(() => prisma.project.findMany({ where: { id: { in: 没给 }, deletedAt: { not: null } }, select: { id: true, customerId: true } }))) : Promise.resolve([]),
     ]);
     const 看得到 = new Set([...本页, ...看得到别家]);
-    for (const p of ps) if (露客户(me, p, 看得到) && !回避.includes(p.id)) 能看.add(p.id);
+    const 回避 = new Set(回避表);
+    for (const p of ps) if (露客户(me, p, 看得到) && !回避.has(p.id)) 能看.add(p.id);
     for (const p of 删) 删了的.set(p.id, p.customerId);
   }
   const 结果: Record<string, string> = {};
@@ -306,21 +308,22 @@ export async function 跨客户跟进可见条件(me: { id: string; role?: strin
   const [项目读, 客户读, 回避] = await Promise.all([
     项目读条件(defaultClient),
     客户读条件(defaultClient),
-    回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id))),
+    // F-057：回避名单不塞 notIn（上千个过 SQLite 参数上限，P2029），用有界条件（名单长了退回按关联写）
+    回避豁免(me).then((免) => (免 ? null : 不回避条件(prisma, me.id))),
   ]);
-  // 总管理、系统管理员：项目读、客户读都没限定、回避名单也空 → 不加任何过滤（调用方按 null = 不滤处理）
-  if (!项目读 && !客户读 && !回避.length) return null;
+  // 总管理、系统管理员：项目读、客户读都没限定、没有要回避的 → 不加任何过滤（调用方按 null = 不滤处理）
+  if (!项目读 && !客户读 && !回避) return null;
   const 看得到的项目: Prisma.ProjectWhereInput = { AND: [
     ...(项目读 ? [项目读 as Prisma.ProjectWhereInput] : []),
     { OR: [{ customer: { AND: [...(客户读 ? [客户读 as Prisma.CustomerWhereInput] : []), { deletedAt: null }] } }, { pooledAt: null, ownerId: me.id }] },
-    ...(回避.length ? [{ id: { notIn: 回避 } }] : []),
+    ...(回避 ? [回避] : []),
   ] };
   return { OR: [
     { projectNode: null },
     { projectNode: { project: 看得到的项目 } },
     { projectNode: { project: { deletedAt: { not: null } } } },
     // 本人售后回访也过公海回避（C-01，同单客户版：项目进公海、我是原负责人时整段不给）
-    { ownerId: me.id, afterSale: true, projectNode: 回避.length ? { projectId: { notIn: 回避 } } : { isNot: null } },
+    { ownerId: me.id, afterSale: true, projectNode: 回避 ? { project: 回避 } : { isNot: null } },
   ] };
 }
 

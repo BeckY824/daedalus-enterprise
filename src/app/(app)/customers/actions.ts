@@ -1150,7 +1150,7 @@ export async function deleteCustomers(
     const 删了 = await prisma.$transaction(async (tx) => {
       const dependencyError = await 删除依赖错误(tx, 待删.map((c) => c.id), b.customer, 管);
       if (dependencyError) throw new 客户删除阻塞(dependencyError);
-      return 软删客户(tx, 待删.map((c) => c.id));
+      return 软删客户(tx, 待删.map((c) => c.id), new Date(), me);
     }).catch((e) => {
       if (e instanceof 客户删除阻塞) return e;
       throw e;

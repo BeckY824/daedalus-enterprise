@@ -1,4 +1,5 @@
 import type { Prisma } from "@/generated/prisma";
+import { 项目们撤培育计划 } from "@/lib/project/nurture-plan";
 import { 转项目 } from "@/lib/carry-over-db";
 import { 离职交接痕 } from "@/lib/project/carry-tasks";
 import { 记换负责人 } from "@/lib/owner-log-db";
@@ -9,6 +10,7 @@ import { 客户名下在推项目进公海, 客户进公海清负责人 } from "
 import { 月份 } from "@/lib/enterprise/lead-assign";
 import { 停用进公海理由, 停用项目进公海理由, type 停用分拣结果 } from "@/lib/offboard-db";
 import { 换负责人 } from "@/lib/project/owner-write";
+import type { 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 进出公海重算 } from "@/lib/enterprise/cust-status-auto-db";
 
 /**
@@ -26,7 +28,13 @@ export async function 离职转给接手人(
   接手人: string,
   操作人: string,
   记分配: boolean,
+  /** 随客户给了接手人的同事待分配项目（原负责人、所在客户）：调用方事务提交后发 离职带走待分配通知；不传不收 */
+  收同事待分配?: 同事待分配条[],
 ): Promise<string[]> {
+  // 同事待分配的项目：转之前记下各自的负责人（转完负责人就是接手人了）
+  const 同事待分配们 = 收同事待分配 && 分.清待分配.length && 分.项目.length
+    ? await tx.project.findMany({ where: { id: { in: 分.清待分配 }, ownerId: { notIn: [id, 接手人, ""] } }, select: { id: true, ownerId: true, customerId: true } })
+    : [];
   await tx.customer.updateMany({ where: { id: { in: 分.客户 } }, data: { salesOwnerId: 接手人 } });
   // 历史负责人：每位转走的客户记一行「他 → 接手人」（D-36）；进公海的另记，见 离职放进公海
   await 记换负责人(tx, 分.客户.map((customerId) => ({ customerId, from: id, to: 接手人 })), 操作人, "deactivate");
@@ -54,6 +62,10 @@ export async function 离职转给接手人(
   // 清待分配：同事待分配的；离职的人自己占着待分配、这次转过去的也清（P-转-20、X-84），转过去就是接手人的、算他持有
   const 清的 = [...同事的.filter((p) => 待分配.has(p)), ...转了];
   if (清的.length) await tx.project.updateMany({ where: { id: { in: 清的 }, awaitAssignAt: { not: null } }, data: { awaitAssignAt: null } });
+  if (收同事待分配) {
+    const 真转了 = new Set(转了同事);
+    收同事待分配.push(...同事待分配们.filter((p) => 真转了.has(p.id)).map((p): 同事待分配条 => ({ id: p.id, 原: p.ownerId, customerId: p.customerId })));
+  }
   return [...转了, ...转了同事];
 }
 
@@ -78,6 +90,7 @@ export async function 离职放进公海(tx: Prisma.TransactionClient, 分: 停�
     await 进公海清组员(tx, 分.进公海项目, 操作人);
     await 进公海清验证(tx, 分.进公海项目, 操作人);
     await 进公海关主题(tx, 分.进公海项目, 操作人);
+    await 项目们撤培育计划(tx, { id: 操作人 }, 分.进公海项目);
     // 挂在别人客户上的项目进了公海：那几位客户的状态重算（cust-status-auto-db.ts 进出公海重算）
     await 进出公海重算(tx, 们.map((p) => p.customerId));
   }

@@ -22,6 +22,14 @@ export function 随转的(选: 逐项选择): string[] {
   return Object.entries(选).filter(([, v]) => v === "go").map(([id]) => id);
 }
 
+/** 勾了「随客户转」的同事项目也算进「会一起转走的 N 个项目」：项目数和同事数各加勾的个数（只算还在列表里的） */
+export function 含勾选(p: 转走项目预览 | null | undefined, 选: 逐项选择): 转走项目预览 | null | undefined {
+  if (!p) return p;
+  const 在 = new Set((p.同事在推 ?? []).map((x) => x.id));
+  const 勾 = 随转的(选).filter((id) => 在.has(id)).length;
+  if (!勾) return p;
+  return { ...p, 项目数: p.项目数 + 勾, 同事: { 项目数: (p.同事?.项目数 ?? 0) + 勾 } };
+}
 
 export function 逐项选块({ 预览, 选, 改, 忙 }: { 预览: 转走项目预览 | null | undefined; 选: 逐项选择; 改: (n: 逐项选择) => void; 忙: boolean }) {
   const 们 = 预览?.同事在推 ?? [];
@@ -62,7 +70,7 @@ export function 逐项选块({ 预览, 选, 改, 忙 }: { 预览: 转走项目�
 export function 说明框({ 预览, 值, 改, 忙, onEnter }: { 预览: 转走项目预览 | null | undefined; 值: string; 改: (s: string) => void; 忙: boolean; onEnter?: () => void }) {
   if (!预览?.要说明) return null;
   return (
-    <div data-testid="transfer-why">
+    <div data-testid="transfer-why" className="ti-why">
       <label className="csq-why-h" htmlFor="transfer-why-input">转让原因（必填，写进变更历史）</label>
       <Input.TextArea
         id="transfer-why-input"

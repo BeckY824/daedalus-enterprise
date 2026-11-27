@@ -34,6 +34,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
 import { 无负责人占位邮箱 } from "@/lib/pool";
+import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 放进公海, 领取, 分配公海, 撤销公海 } from "@/app/(app)/customers/pool-actions";
 
 type 人 = { id: string; role: string };
@@ -157,6 +158,35 @@ describe("公海撤销只撤自己刚才那一下", () => {
     expect(await 撤销公海("分配", r.原负责人!, r.带过来, 小王.id)).toEqual(撤不了("分配"));
     expect(await 归谁(c.id)).toBe(小王.id);
   });
+  it("销管分给自己管理范围外的人（总管理）：撤不了，只说「接手的人不在你的管理范围内」那一条", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    await 放进公海([c.id], "客户主动终止");
+    当(组长);
+    const r = await 分配公海([c.id], 老板.id);
+    if (!r.ok) throw new Error(r.error);
+    expect(await 归谁(c.id)).toBe(老板.id);
+    // 网页请求里 prisma 按 组长 的范围限定（测试里没有 cookie，用 以谁的身份 代）：总管理名下的客户他看不到
+    忘掉企业版范围();
+    expect(await 以谁的身份(组长.id, () => 撤销公海("分配", r.原负责人!, r.带过来, 老板.id))).toEqual({
+      ok: false, error: "这位接手的人不在你的管理范围内，这次没有撤销，请找对方的上级或系统管理员撤销",
+    });
+    expect(await 归谁(c.id)).toBe(老板.id);
+    expect(await 在公海(c.id)).toBe(false);
+  });
+
+  it("销管分给范围外的人、再过了时限：仍判不出的那几位用原来的总括说法", async () => {
+    const c = await 客户(小李.id);
+    当(小李);
+    await 放进公海([c.id], "客户主动终止");
+    当(组长);
+    const r = await 分配公海([c.id], 小王.id);
+    if (!r.ok) throw new Error(r.error);
+    await 记录挪到(c.id, 31);
+    忘掉企业版范围();
+    expect(await 以谁的身份(组长.id, () => 撤销公海("分配", r.原负责人!, r.带过来, 小王.id))).toEqual(撤不了("分配"));
+  });
+
   it("负责人没换过的：主管填 给谁 = 负责人，塞不进从没进过公海的客户", async () => {
     const c = await 客户(小李.id);
     当(组长);

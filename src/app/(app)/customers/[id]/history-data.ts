@@ -22,7 +22,7 @@ import { 三态开着 } from "@/lib/enterprise/tri-state-db";
 import { 进公海理由显示 } from "@/lib/enterprise/tri-state-label";
 import { 同号标题 } from "@/lib/enterprise/same-number-mark";
 import { 批量批次, 批量说明, 折批量 } from "@/lib/enterprise/history-batch";
-import { 换负责人怎么来的 } from "@/lib/owner-log";
+import { 换负责人怎么来的, 转让留痕一句 } from "@/lib/owner-log";
 import { 无负责人占位名 } from "@/lib/pool";
 import { 人名显示, 历史分析来源, 补建创建人, 补建批次, 来源字 } from "@/lib/project/system-created";
 import { 超时理由 } from "@/lib/project/timeout";
@@ -279,6 +279,8 @@ export async function 客户历史页(me: SessionUser, c: 客户行, 筛: 历史
         const 公海 = r.kind === "pool-release" || r.kind === "claim" || r.kind === "pool-assign";
         const 文 = r.kind === "pool-release" ? `进客户公海（原负责人 ${从}）` : r.kind === "claim" ? `${到} 从公海领取` : r.kind === "pool-assign" ? `从公海分配给 ${到}` : `${从} → ${到}`;
         const 因 = 公海 ? (r.clockReset ? ["三态钟归零"] : []) : [`${换负责人怎么来的(r.kind)}${r.clockReset ? "，三态钟归零" : ""}`];
+        // 12-22 逐项选：直接转时必填的原因、转的那一刻的最近一次跟进、重复咨询次数（库里有就摆一行，一行省略 + 悬停看全文）
+        if (r.reason != null) 因.push(转让留痕一句({ 原因: r.reason, 最近跟进: r.lastFollowAt?.toISOString() ?? null, 重复咨询: r.repeatCount }));
         return { id: r.id, at: r.at.toISOString(), 标: 公海 ? "公海" : "负责人", 文, 谁: 叫(r.userId) ?? "已不在的成员", 因 };
       },
     })),

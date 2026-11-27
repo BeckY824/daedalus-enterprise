@@ -61,7 +61,7 @@ export async function 作废申请移交(
       const 几位 = `${去掉.length} 位客户`;
       await recordAudit({
         user: me, action: "assign", entity: "Customer", entityId: null,
-        summary: `${me.name} 直接把${几位}转给「${接}」，「${本人?.name ?? h.byUserId}」发给「${原接手?.name ?? h.toUserId}」的转让申请${余.length ? "里这几位" : ""}作废`,
+        summary: `${me.name} 直接把 ${几位}转给「${接}」，「${本人?.name ?? h.byUserId}」发给「${原接手?.name ?? h.toUserId}」的转让申请${余.length ? "里这几位" : ""}作废`,
         detail: { 交接: h.id, kind: "转让", 状态: 余.length ? "部分作废" : 已作废, fromUserId: h.fromUserId, toUserId: h.toUserId, 客户: 去掉 },
       });
       // 全作废：原接手人那条「发起」标已读；部分作废：申请还有人等他确认，不标已读，只把标题 / 正文改成说清哪几位已被上级转走
@@ -74,7 +74,7 @@ export async function 作废申请移交(
       } else {
         await prisma.entNotice.updateMany({ where: { userId: h.toUserId, dedupeKey: `handover:${h.id}:发起`, readAt: null }, data: { readAt: 现在 } });
       }
-      const 话 = `${me.name} 已直接把${几位}转给 ${接}`;
+      const 话 = `${me.name} 已直接把 ${几位}转给 ${接}`;
       // 部分作废：申请还在，原接手人只留上面改过的那一条「其余仍待你确认」，不再补「已作废」；发起人也说成部分作废
       if (本人?.active && h.byUserId !== me.id) {
         await notify([h.byUserId], {

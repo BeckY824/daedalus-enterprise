@@ -84,6 +84,7 @@ export default async function PlansPage({
       预选客户={预选客户}
       直接新建={sp.new === "1"}
       全员={sp.scope === "all"}
+      只看我的={sp.scope === "mine"}
       plans={计划们}
       tasks={tasks}
       项目下一步={项目下一步}

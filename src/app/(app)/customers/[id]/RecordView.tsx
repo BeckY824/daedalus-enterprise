@@ -11,6 +11,7 @@ import { Fragment, useCallback, useContext, useEffect, useLayoutEffect, useMemo,
 import { 只读上下文, 只能看的格上下文, 资料改挡上下文 } from "./read-only";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { 疑似重复页, 疑似重复公海页 } from "../dupe-words";
 import { LinkPending } from "@/components/NavProgress";
 import { Alert, Button, Card, Drawer, Dropdown, Input, Modal, Space, Tag, Avatar, Checkbox, Tooltip, Select, Typography, type MenuProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
@@ -239,6 +240,8 @@ export default function RecordView({
   合并口 = null,
   能合并 = null,
   并入话 = null,
+  疑似重复数 = 0,
+  疑似重复只公海 = false,
 }: RecordProps) {
   // 「加跟进」= 团队版互看同事的客户；「全」= 企业版虚线下属的客户，跟进也不能记
   const 只读 = !!只读档 || 管理员只读;
@@ -989,15 +992,18 @@ export default function RecordView({
         <span className="rec-contact-v"><号码保护标签 c={c} 客户={customer} /></span>
       </div>
     );
-    const 号码行 = (k: string, v: ReactNode, key?: string) => (
+    const 号码行 = (k: string, v: ReactNode, key?: string, 主号 = false) => (
       /* 号码本身一整串不拆，比整格还宽才在里面断 */
       <div key={key} className="rec-contact-line rec-contact-num">
         <span className="rec-contact-k" title={k}>{k}</span>
         <span className="rec-contact-nv">
           <span className="rec-contact-v">{v}</span>
+          {主号 && <Tag className="rec-contact-main" title="主号：要换在联系人「⋯」里设">主号</Tag>}
         </span>
       </div>
     );
+    /* 主号（12-15 第三批 B）：两个以上手机号才标（只有一个时就是它，不多一枚标）；页面已把主号排在最前 */
+    const 标主号 = (c.号码们 ?? []).filter((m) => m.kind === "phone").length >= 2;
     const 老号: { k: string; v: ReactNode }[] = [
       ...(c.phone ? [{ k: "电话", v: <CopyValue 叫法="电话" value={c.phone} /> }] : []),
       ...(c.email ? [{ k: "邮箱", v: <CopyValue 种类="邮箱" 叫法="邮箱" value={c.email} /> }] : []),
@@ -1017,7 +1023,7 @@ export default function RecordView({
           /* 改版后（定稿 P5 第 24 条）：联系方式几行（类型 + 号码），一人可以好几个；性别、生日、爱好、地址填了才摆 */
           <>
             {c.号码们.map((m, i) =>
-              号码行(号码叫法(号码种类, m.kind), m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value, `${m.kind}-${i}`),
+              号码行(号码叫法(号码种类, m.kind), m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value, `${m.kind}-${i}`, 标主号 && !!m.默认),
             )}
             {c.号码们.length === 0 && 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>)}
             {保护行}
@@ -1049,7 +1055,7 @@ export default function RecordView({
   */
   /** 和另一位合成（合并客户第一批）：同一位客户名下、不是挂靠过来的才行。有权的人（合并口、能合并.联系人、不只读）每位都摆这一项：
    *  挂靠过来的、客户只有一位自家联系人时置灰写原因（12-02，ContactLinks 合成灰）；服务端 合成两位联系人 照旧拦 */
-  const 合成人 = (c: ContactRow): 合成候选人 => ({ id: c.id, name: c.name, 职务: c.position, 关键: c.isPrimary, 号: c.号码们?.[0]?.value ?? c.phone ?? null });
+  const 合成人 = (c: ContactRow): 合成候选人 => ({ id: c.id, name: c.name, 职务: c.position, 关键: c.isPrimary, 号: c.号码们?.[0]?.value ?? c.phone ?? null, 主号: c.phone || null });
   const 可合成的人 = contacts.filter((c) => !c.挂靠).map(合成人);
   const 有合成权 = !!合并口 && !!能合并?.联系人 && !联系人只读;
   const 合成灰因 = (c: ContactRow) => (!有合成权 ? undefined : c.挂靠 ? 挂靠联系人不能合成 : 可合成的人.length < 2 ? 只有一位联系人不能合成 : undefined);
@@ -1263,6 +1269,14 @@ export default function RecordView({
       {后果框}
       {合并口 && <合并桥.Provider value={合并桥值}>{合并口}</合并桥.Provider>}
       {醒目条}
+      {/* 疑似重复（12-15 第三批 C，P-合并-06）：清单里还列着这位时一行淡字，链到清单逐组处理；不可关（处理完自然不列） */}
+      {疑似重复数 > 0 && (
+        <div className="dupe-hint" role="status" data-testid="dupe-hint">
+          <InfoCircleOutlined className="dupe-hint-i" aria-hidden />
+          <span className="dupe-hint-t" title={`还有 ${疑似重复数} 家客户和这位同名，可能是同一位`}>还有 {疑似重复数} 家客户和这位同名，可能是同一位</span>
+          <Link href={疑似重复只公海 ? 疑似重复公海页 : 疑似重复页} className="dupe-hint-a">去疑似重复清单 ›</Link>
+        </div>
+      )}
       {/*
         「← 回到客户列表（第 N 页）」（员工反馈 1A，11-16）：原来按设计稿 12/PAGE「切人不再返回列表」不摆，靠窄名单换人；
         员工是按列表一页一页盘点的，窄名单（最近跟进 50 位）不是那一页。回的是进来前那张列表的原地址（筛选、页码、页签），

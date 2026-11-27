@@ -1022,7 +1022,7 @@ export async function saveContact(input: 联系人字段 & { id?: string; custom
         老三格按号码几行算，表单上的 phone / email / wechat 这时不看
       */
       if (号) {
-        const 三 = await 存联系人号码(tx, 主客户, savedId, 号.行们);
+        const 三 = await 存联系人号码(tx, 主客户, savedId, 号.行们, 原?.phone);
         await tx.contact.update({ where: { id: savedId }, data: 三 });
         Object.assign(data, 三);
       }

@@ -15,10 +15,12 @@ import { MoreOutlined } from "@ant-design/icons";
 import InlineConfirm from "@/components/InlineConfirm";
 import { 挂靠说明上限 } from "@/lib/enterprise/customer-v2";
 import { 搜客户, type 可挑客户 } from "./pick";
-import { 挂到客户, 改挂靠说明, 解除挂靠, 换主客户 } from "./contact-link-actions";
+import { 挂到客户, 改挂靠说明, 解除挂靠, 换主客户, 设为主号 } from "./contact-link-actions";
 import type { ContactRow } from "./types";
 
 type 结果 = { ok: true } | { ok: false; error: string };
+/** 「⋯」里「设为主号」那几项的 key 前缀，后面接号码行 id */
+const 主号键头 = "主号:";
 
 const 客户链接 = (x: { id: string; name: string; 看得到: boolean }) =>
   x.看得到 ? <Link href={`/customers/${encodeURIComponent(x.id)}`}>{x.name}<LinkPending /></Link> : <span title="不在你的范围，只显示名字">{x.name}</span>;
@@ -101,6 +103,14 @@ export default function ContactLinks({ customerId, c, 只读, 头, children, 合
           label: <div className="menu-2l mrg-gray-item"><div>和另一位合成</div><div className="menu-2l-note mrg-gray-note">{合成灰}</div></div>,
         }]
       : [];
+  /*
+    主号（12-15 第三批 B，P-合并-05）：两个以上手机号时，不是主号的每个号一项「设为主号：号码」（号码打码照页面给的，按号码行 id 设）。
+    只给自家的（挂靠过来的到主客户那头设）；主号那一行在号码几行里标「主号」（RecordView 联系人身）。谁能设服务端判（设为主号）
+  */
+  const 手机们 = (c.号码们 ?? []).filter((m) => m.kind === "phone" && m.id);
+  const 主号项: NonNullable<MenuProps["items"]> = !挂 && 手机们.length >= 2
+    ? [{ type: "divider" as const, key: "d3" }, ...手机们.filter((m) => !m.默认).map((m) => ({ key: `${主号键头}${m.id}`, label: `设为主号：${m.value}` }))]
+    : [];
   const 菜单项: NonNullable<MenuProps["items"]> = 只读
     ? []
     : 挂
@@ -114,10 +124,11 @@ export default function ContactLinks({ customerId, c, 只读, 头, children, 合
       : [
           { key: "挂", label: "挂到别的客户" },
           { key: "换", label: "换主客户" },
+          ...主号项,
           ...合成项,
         ];
   const 更多 = 头 && 菜单项.length > 0 && (
-    <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 菜单项, onClick: ({ key }) => (key === "合成" ? 合成?.() : 开(key as "挂" | "换" | "说明" | "改到" | "解除")) }}>
+    <Dropdown trigger={["click"]} placement="bottomRight" menu={{ items: 菜单项, onClick: ({ key }) => (key === "合成" ? 合成?.() : key.startsWith(主号键头) ? void 跑(() => 设为主号(c.id, key.slice(主号键头.length)), "主号换好了") : 开(key as "挂" | "换" | "说明" | "改到" | "解除")) }}>
       <Button type="text" size="small" className="rec-contact-menu" icon={<MoreOutlined />} aria-label={`联系人 ${c.name || "—"} 的更多操作`} />
     </Dropdown>
   );

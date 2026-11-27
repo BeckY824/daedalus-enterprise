@@ -627,6 +627,10 @@ model CustomerNotDupe {
   /// 谁标的。不建外键，同 AuditLog
   userId     String
   at         DateTime @default(now())
+  /// 撤销「不是同一个人」的时刻（迁移 177，企业版疑似重复清单）：空 = 标着；撤了这一对重新列出来，再标时清空
+  undoneAt   DateTime?
+  /// 谁撤的。不建外键，同 userId
+  undoneById String?
 
   @@index([customerId])
   @@index([otherId])
@@ -783,10 +787,16 @@ model FollowPlan {
   /// 售后回访排的下次回访（2026-11-25，迁移 173）：给哪个交付结清项目排的，记售后回访时顺带排计划那一刻系统写。
   /// 不建外键：项目删了计划照留，完成计划时核不过（项目不在 / 已不是交付结清 / 客户进了公海）就当普通计划
   afterSaleProjectId String?
+  /// 判 MQL 不合格自动建的培育计划（2026-11-27，迁移 179 / 180，客户 E-396）：记是哪个项目判的、谁建的（autoBy = "mql-nurture"）。
+  /// 项目离开「潜客培育」节点时，projectId 对得上、autoBy = mql-nurture、还没完成的计划随之撤掉（硬删 + 操作日志）。
+  /// 不建外键；人手加的计划、发版前建的计划这两列都是空，不动
+  projectId  String?
+  autoBy     String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@index([customerId, done])
+  @@index([projectId, autoBy, done])
 }
 
 /// 操作留痕。
@@ -1926,6 +1936,47 @@ model EntDupeHit {
   @@index([approverId, status])
 }
 
+/// ④ 扫库检测的查询记录（2026-11-27，迁移 178，E-383）：一行 = 同一人同一北京日同一键；只记「主动查」的三个入口（首页「+」查重、新建向导查号码、查客户名），
+/// 不存号码 / 客户名原文，只存 HMAC 指纹。撞上 = 撞别组同事负责的客户（自己名下、同组、公海不算），同键同日后来撞上的只升不降。保留 90 天，夜里清理（scan-notice.ts 钟上清扫库记录）。不建外键
+model EntScanQuery {
+  id        String   @id @default(cuid())
+  /// 查询人
+  userId    String
+  /// 北京自然日 YYYY-MM-DD
+  day       String
+  /// 键类型：号码 / 名字
+  keyType   String
+  /// 键指纹：HMAC-SHA256(规整后的号码或 trim 后的名字)，不存原文
+  keyHash   String
+  /// 这一天里这个键有没有撞上过别组同事负责的客户
+  hit       Boolean  @default(false)
+  /// 首次查的时刻
+  createdAt DateTime @default(now())
+
+  @@unique([userId, day, keyType, keyHash])
+  @@index([day, userId])
+}
+
+/// ④ 扫库检测的触发名单（2026-11-27，迁移 178，E-383）：同人同日一行，凌晨扫出来的「查询 ≥50 次且撞上 ≥60%」。凌晨扫写入、早 8 点发后写回 noticeAt / notifiedTo；不建外键
+model EntScanTrigger {
+  id         String    @id @default(cuid())
+  /// 触发的那天（北京自然日 YYYY-MM-DD）
+  day        String
+  /// 被查的人（查询人）
+  userId     String
+  /// 当天查询次数
+  queries    Int
+  /// 当天撞上次数
+  hits       Int
+  /// 通知发给谁（用户 id）；还没发 = 空
+  notifiedTo String?
+  /// 发出的时刻；还没发 = 空
+  noticeAt   DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([day, userId])
+}
+
 /// 企业版选项字典（2026-10-26，迁移 057）：分配方式、回收原因、无效原因、转让原因、验证结果、客户状态、项目标签，
 /// 一张表按 kind 分。默认值由 lib/enterprise/dict.ts 第一次读时补上（迁移不许 INSERT），只停用不删。
 /// 只给选项、不设必填；谁能改同项目字典（「后台设置谁能改」的字典一行）
@@ -2317,4 +2368,67 @@ model EntTransferObjection {
   @@unique([ownerLogId, objectorUserId, targetKey])
   @@index([objectorUserId, status])
   @@index([status, submittedAt])
+}
+
+/// 企业版跨负责人合并客户的合并申请（迁移 174，2026-11-26，客户 E-280 / E-331 第二批 2b）：一张申请一行，B（fromId）并进 A（intoId）。
+/// 留下那家的客户负责人发起（他不是销售时由他的直属上级或能接分配的销售发起，E-331 一.1）；要同意的人一位一行在 EntMergeApprover。
+/// 5 个工作日内没全同意就失效（周一到周五，不扣节假日）；全同意时只比四项（负责人、阶段、回款或提成、被判无效）再判，
+/// 都没变才调第一批的 执行合并（lib/enterprise/merge-request.ts）。执行后的合并单记在 mergeId，撤回照第一批整单撤回。
+/// 指向人和客户的列都不建外键（B 清掉以后申请照留）
+model EntMergeRequest {
+  id        String    @id @default(cuid())
+  /// 被并掉的（B）
+  fromId    String
+  /// 留下的（A）
+  intoId    String
+  /// 谁发起的
+  byUserId  String
+  /// 待同意 / 已合并（全同意、再判通过、挪完）/ 已拒绝 / 已失效（到期、四项有变、拦下）/ 已撤回（发起人撤回申请）；执行中 = 最后一位同意后正在挪
+  status    String    @default("待同意")
+  /// 已拒绝 / 已失效 / 已撤回的一句原因
+  reason    String?
+  /// 申请时的选择（JSON）：已核对、「是同一个人」那几对；执行时照用
+  choices   String    @default("{}")
+  /// 合并前快照（JSON）：两家负责人、无效标记、客户状态，两家名下项目的负责人、阶段、结局、回款、提成、判无效；再判只比四项
+  snapshot  String
+  /// 发起的那一刻
+  at        DateTime  @default(now())
+  /// 到期的那一刻：发起后第 5 个工作日的同一时刻（北京时间算日子）
+  expiresAt DateTime
+  /// 结束（合并 / 拒绝 / 失效 / 撤回）的那一刻和谁（系统判的失效 endedById 空）
+  endedAt   DateTime?
+  endedById String?
+  /// 执行后的合并单（EntCustomerMerge.id）
+  mergeId   String?
+  approvers EntMergeApprover[]
+
+  @@index([intoId, status])
+  @@index([fromId, status])
+  @@index([byUserId, status])
+  @@index([status, expiresAt])
+}
+
+/// 合并申请的同意人（迁移 174，E-331 一.1）：按人去重，一人一行；涉及的项目列在 projects（同一人只确认一次）
+model EntMergeApprover {
+  id               String          @id @default(cuid())
+  requestId        String
+  request          EntMergeRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  /// 要谁同意
+  userId           String
+  /// 凭什么要他同意（JSON 数组）：留下客户负责人 / 被并客户负责人 / 项目负责人
+  why              String
+  /// 他涉及的项目（JSON 数组：id、名字、哪家客户）
+  projects         String          @default("[]")
+  /// 待同意 / 同意 / 拒绝
+  status           String          @default("待同意")
+  /// 拒绝时写的一句话
+  note             String?
+  decidedAt        DateTime?
+  /// 留给超时转上级（通知升级链定了再用）：从谁转来、转来的那一刻；这一阶段不写
+  fromUserId       String?
+  transferredAt    DateTime?
+  createdAt        DateTime        @default(now())
+
+  @@index([requestId])
+  @@index([userId, status])
 }

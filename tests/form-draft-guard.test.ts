@@ -23,6 +23,7 @@ const 不留草稿: Record<string, string> = {
   "src/app/(app)/objections/ObjectionsView.tsx": "转让异议理由（200 字以内一句话），框关了丢了重写一句；提交不成不关框，不值得为它留草稿",
   "src/app/(app)/customers/TransferItemized.tsx": "转让框里的必填原因（200 字以内的一句客户原话摘要），框关了丢了重写一句；转让不成不关框，不值得为它留草稿",
   "src/app/(app)/projects/[id]/GiveUpDialog.tsx": "放弃（豁免）框里选「其他」时补一句原因（100 字以内、一月一次），丢了重写一句；不值得为它留草稿",
+  "src/app/(app)/customers/merge-requests/MergeRequestsView.tsx": "拒绝合并申请时选填一句原因（100 字以内），丢了重写一句；不值得为它留草稿",
 };
 
 /** 交出去时框本来就清空、草稿跟着删（useFormDraft：改回空就删），不另调 存好了 */
