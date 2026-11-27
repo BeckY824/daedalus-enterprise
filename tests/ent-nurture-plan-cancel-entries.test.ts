@@ -106,7 +106,9 @@ describe("删客户 / 退回公海 / 离职放进公海", () => {
     await prisma.$transaction((tx) => 软删客户(tx, [c], new Date(), 导入的人));
     expect((await 看已删(() => prisma.project.findFirstOrThrow({ where: { id: p }, select: { deletedAt: true } }))).deletedAt).not.toBeNull();
     expect(await 剩下()).toEqual(该留的);
-    expect(await 撤的日志()).toHaveLength(1);
+    const 日志 = await 撤的日志();
+    expect(日志).toHaveLength(1);
+    expect(日志[0]).toMatchObject({ userId: 导入的人.id });
   });
 
   it("客户整体退回公海连带名下在推项目进公海：自动计划撤，别的不动", async () => {

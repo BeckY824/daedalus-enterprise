@@ -103,7 +103,7 @@ export async function 软删客户(tx: Tx, ids: string[], 时刻 = new Date(), �
     for (const t of 客户连带) await 表(tx, t).updateMany({ where: { customerId: { in: 删了的 } }, data: { deletedAt: 时刻 } });
   });
   // 名下项目跟着进回收站：判 MQL 不合格自动建、没完成的培育计划一起撤（E-396；早先单独删掉的项目当时已撤；恢复不重建）
-  const 进的项目 = await 看已删(() => tx.project.findMany({ where: { customerId: { in: 删了的 }, deletedAt: 时刻 }, select: { id: true } }));
+  const 进的项目 = await 看全部(() => 看已删(() => tx.project.findMany({ where: { customerId: { in: 删了的 }, deletedAt: 时刻 }, select: { id: true } })));  // 看全部：同事负责的项目也连带进了回收站，查时不按操作人范围滤
   // 客户已进回收站，挂在它名下的计划默认读不到，要带上已删的一起看
   await 看已删(() => 项目们撤培育计划(tx, 操作人, 进的项目.map((p) => p.id)));
   return n;
