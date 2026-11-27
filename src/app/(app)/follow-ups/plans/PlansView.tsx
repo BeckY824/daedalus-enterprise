@@ -538,7 +538,7 @@ function 组块({
           {共 > 0 && <><span className="plan-g-d">·</span>计划和待办 <span className="plan-g-n">{共}</span></>}
           {项目.length > 0 && <><span className="plan-g-d">·</span>项目下一步 <span className="plan-g-n plan-g-p">{项目.length}</span></>}
         </span>}
-        <span className="plan-g-s">{说明}</span>
+        <span className="plan-g-s" title={说明}>{说明}</span>
       </div>
       {共 + 项目.length === 0 ? (
         <div className="plan-empty">{空话}</div>

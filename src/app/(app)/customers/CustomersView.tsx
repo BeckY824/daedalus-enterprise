@@ -1322,7 +1322,7 @@ export default function CustomersView({
   /** 导出中旁边那颗「取消导出」：只有它 abort（离开页面不打断导出，D8-3）；摆在页头下一行 */
   const 取消导出钮 = <Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button>;
   // F-056：按钮只在收成图标时才挂悬停提示（宽屏字还在，再出一遍是重复）；服务端先按宽屏不挂，水合后按真实宽度。断点同 globals.css：导入 / 离职交接 ≤1199，跟进计划 ≤1439
-  const 图标收了 = useNarrow("(max-width: 1199px)");
+  const 图标收了 = useNarrow("(min-width: 768px) and (max-width: 1199px)");
   const 跟进收了 = useNarrow("(max-width: 1439px)");
   // F-056：左栏「客户」红数是今天到期 + 逾期的跟进计划、待办条数；客户列表里看不到这些条，在页头给个入口去跟进计划页（数到了且为 0 不占位；数晚到时先放同宽隐形占位，避免硬刷新页头跳）
   const 跟进计划钮 = 要跟.未到 ? (
@@ -1415,7 +1415,11 @@ export default function CustomersView({
             导出中 / 导完那句不再塞在这排按钮中间（L-新13：导完那句约 40 字，把按钮往左推约 440），写在页头下一行
           */
           <Space wrap>
-            {能导入导出 && <Button key="import" className="cust-head-io" aria-label="导入" icon={<UploadOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : 图标收了 ? "导入" : undefined} onClick={去导入}>导入</Button>}
+            {能导入导出 && (
+              <Tooltip key="import" title={视图中 ? 视图外部话 : 图标收了 ? "导入" : undefined}>
+                <Button className="cust-head-io" aria-label="导入" icon={<UploadOutlined />} disabled={视图中} onClick={去导入}>导入</Button>
+              </Tooltip>
+            )}
             {能导入导出 && !空库 && (
               <Tooltip key="export" title={视图中 ? 视图外部话 : 导出说明}>
                 <Button className="cust-head-io" aria-label="导出" icon={<DownloadOutlined />} loading={导出中} disabled={视图中} onClick={导出做}>导出</Button>
