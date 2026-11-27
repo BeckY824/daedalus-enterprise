@@ -622,12 +622,15 @@ export async function 记转让(
  * （守卫 tests/pool-prev-owner-write-guard.test.ts）；一次放很多个（停用成员）按原负责人分组 updateMany
  */
 export async function 记放回人(tx: Pick<Prisma.TransactionClient, "project">, 们: { id: string; 从: string | null }[]): Promise<void> {
-  const 组 = new Map<string | null, string[]>();
+  const 组 = new Map<string | null, Set<string>>();
   for (const x of 们) {
     const 人 = x.从 || null;
-    组.set(人, [...new Set([...(组.get(人) ?? []), x.id])]);
+    let 集 = 组.get(人);
+    if (!集) 组.set(人, (集 = new Set()));
+    集.add(x.id);
   }
-  for (const [人, ids] of 组) {
+  for (const [人, 集] of 组) {
+    const ids = [...集];
     // 看全部：限定层会给 updateMany 加「公海回避」条件，放回人的回避项目过上限时退回按留痕算，刚写的这行 pool-release 会把项目自己挡掉（0 行不报错）
     for (let i = 0; i < ids.length; i += 500) {
       const 段 = ids.slice(i, i + 500);

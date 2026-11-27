@@ -29,6 +29,16 @@ function 扫(dir: string, 出: string[] = []): string[] {
  * 所以不要这样写（要加一处就改这张表，让守卫看得见）。
  */
 type 形态 = { re: RegExp; n: number; /** true = 这一处是「直接写留痕」，必须各有一次 记放回人 / 记客户放回人 / 直接写列 对上 */ 对应?: boolean };
+/** 字面量 "pool-release" 在文件里出现的总次数（不管换行、先赋值再写、createMany，多写一处就红）；无主留痕( 同理 */
+const 字面量总数: Record<string, { 总: number; 无主留痕?: number }> = {
+  "src/lib/project/db.ts": { 总: 6 },
+  "src/lib/offboard-move.ts": { 总: 1 },
+  "src/lib/enterprise-import/project-target.ts": { 总: 3, 无主留痕: 3 }, // 定义 1 + 调用 2
+  "src/lib/owner-log-db.ts": { 总: 5 },
+  "src/lib/enterprise/pool-owner-backfill.ts": { 总: 1 },
+  "src/lib/enterprise/pool-link.ts": { 总: 2 },
+  "src/lib/enterprise-import/apply.ts": { 总: 2 },
+};
 const 写: Record<string, { 形态: 形态[]; 放回人: RegExp; 放回人次数: number }> = {
   // 记转让 里 kind 是变量，pool-release 时调 记放回人（一处）；调用方只传 "pool-release"，次数钉死
   "src/lib/project/db.ts": {
@@ -130,6 +140,16 @@ describe("每处写 pool-release 都要同时写 poolPrevOwnerId（迁移 194）
       expect(们.filter((x) => x.对应).reduce((和, x) => 和 + x.n, 0)).toBe(放回人次数);
     });
   }
+
+  for (const [f, { 总, 无主留痕 }] of Object.entries(字面量总数)) {
+    it(`${f} 里 "pool-release" 字面量总次数钉死（跨行 / createMany / 先赋值再写也拦得住）`, () => {
+      expect(源(f).match(/"pool-release"/g)?.length ?? 0).toBe(总);
+      if (无主留痕 !== undefined) expect(源(f).match(/无主留痕\(/g)?.length ?? 0).toBe(无主留痕);
+    });
+  }
+  it("字面量总数表覆盖所有写 / 走公共写法的文件", () => {
+    expect(Object.keys(字面量总数).sort()).toEqual([...Object.keys(写), ...Object.keys(走公共写法)].sort());
+  });
 
   for (const [f, { re, n }] of Object.entries(走公共写法)) {
     it(`${f} 只走 记转让 / 记换负责人 写（列由公共函数写），次数钉死`, () => {

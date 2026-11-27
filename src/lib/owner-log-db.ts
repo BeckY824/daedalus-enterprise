@@ -63,12 +63,15 @@ export async function 记换负责人(
  * 没走 记换负责人 直接写 pool-release 的地方（pool-owner-backfill.ts）自己调它
  */
 export async function 记客户放回人(tx: Pick<Prisma.TransactionClient, "customer">, 们: { id: string; 从: string | null }[]): Promise<void> {
-  const 组 = new Map<string | null, string[]>();
+  const 组 = new Map<string | null, Set<string>>();
   for (const x of 们) {
     const 人 = x.从 || null;
-    组.set(人, [...new Set([...(组.get(人) ?? []), x.id])]);
+    let 集 = 组.get(人);
+    if (!集) 组.set(人, (集 = new Set()));
+    集.add(x.id);
   }
-  for (const [人, ids] of 组) {
+  for (const [人, 集] of 组) {
+    const ids = [...集];
     // 看全部：同 记放回人，别让限定层的公海回避条件把刚进公海的客户自己挡掉
     for (let i = 0; i < ids.length; i += 500) {
       const 段 = ids.slice(i, i + 500);

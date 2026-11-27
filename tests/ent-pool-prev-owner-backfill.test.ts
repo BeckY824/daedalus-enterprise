@@ -189,5 +189,8 @@ describe("回填 --dry 口径核对：最近一条 to = 占位但 kind 不是 po
     const 计划 = await 算回填计划(raw);
     expect(计划.占位非放回).toEqual({ 位数: 1, 按种类: { assign: 1 } });
     expect(汇总表(计划)).toContain("1 位；按 kind：assign 1");
+    // 回收站里的客户不算（对拍只比没删的）
+    await raw.customer.update({ where: { id: 公海客户们.退过两次 }, data: { deletedAt: t("11 11:00") } });
+    expect((await 算回填计划(raw)).占位非放回).toEqual({ 位数: 0, 按种类: {} });
   });
 });

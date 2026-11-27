@@ -62,7 +62,7 @@ export async function 算回填计划(db: PrismaClient): Promise<回填计划> {
     }
   }
 
-  const 客户们 = await db.customer.findMany({ where: { pool: { isNot: null } }, select: { id: true, salesOwnerId: true, poolPrevOwnerId: true, updatedAt: true, pool: { select: { at: true } } }, orderBy: { id: "asc" } });
+  const 客户们 = await db.customer.findMany({ where: { pool: { isNot: null } }, select: { id: true, salesOwnerId: true, deletedAt: true, poolPrevOwnerId: true, updatedAt: true, pool: { select: { at: true } } }, orderBy: { id: "asc" } });
   const 客户行: 回填行[] = [];
   const 占位非放回 = { 位数: 0, 按种类: {} as Record<string, number> };
   for (const 段 of 分段(客户们, 批)) {
@@ -76,8 +76,9 @@ export async function 算回填计划(db: PrismaClient): Promise<回填计划> {
       }));
       for (const r of 记录) if (!最近.has(r.customerId)) 最近.set(r.customerId, r.fromOwnerId || null);
       // 口径核对：旧算法不限 kind，取最近一条 toOwnerId = 占位
+      // 回收站里的客户不算（对拍和旧算法的候选都带 deletedAt: null）
       const 全种类 = await 去掉合并挪来的(db, await db.customerOwnerLog.findMany({
-        where: { customerId: { in: 挂占位.map((c) => c.id) }, toOwnerId: 占位 },
+        where: { customerId: { in: 挂占位.filter((c) => !c.deletedAt).map((c) => c.id) }, toOwnerId: 占位 },
         orderBy: [{ at: "desc" }, { id: "desc" }],
         select: { id: true, customerId: true, kind: true },
       }));

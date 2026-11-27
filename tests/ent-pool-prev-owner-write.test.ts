@@ -19,7 +19,7 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
-import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 以谁的身份, 忘掉企业版范围, 回避名单上限 } from "@/lib/enterprise/visibility";
 import { 放进公海, 领取 } from "@/app/(app)/customers/pool-actions";
 import { 放回公海, 公海超时收回, 领取公海项目 } from "@/lib/project/db";
 import { 默认组织规则 } from "@/lib/project/org-rules";
@@ -142,11 +142,11 @@ describe("项目进公海写 poolPrevOwnerId", () => {
     expect(await 项目列(p)).toBeNull();
   });
 
-  it("放回人的回避项目过了名单上限（101 个以上，退回按关联写）：手动放回照样写上列，不被限定层挡成 0 行", async () => {
+  it("放回人的回避项目过了名单上限（超过名单上限，退回按关联写）：手动放回照样写上列，不被限定层挡成 0 行", async () => {
     const 占位 = await 无负责人占位Id(prisma);
     const 公海客户 = await 客户(占位);
     const 旧们: string[] = [];
-    for (let i = 0; i < 101; i++) {
+    for (let i = 0; i < 回避名单上限 + 1; i++) {
       const id = await 项目(公海客户, 占位);
       旧们.push(id);
     }
@@ -177,10 +177,10 @@ describe("客户进公海写 poolPrevOwnerId", () => {
     await 以(乙, () => 放进公海([c], "客户主动终止"));
     expect(await 客户列(c)).toBe(乙.id);
   });
-  it("放回人的回避客户过了名单上限（101 个以上，退回按关联写）：经 记换负责人 进公海照样写上列", async () => {
+  it("放回人的回避客户过了名单上限（超过名单上限，退回按关联写）：经 记换负责人 进公海照样写上列", async () => {
     const 占位 = await 无负责人占位Id(prisma);
     const 时刻 = new Date("2026-11-01T10:00:00Z");
-    for (let i = 0; i < 101; i++) {
+    for (let i = 0; i < 回避名单上限 + 1; i++) {
       const id = await 客户(占位);
       await prisma.customerPool.create({ data: { customerId: id, userId: null, reason: "手动", at: 时刻 } });
       await prisma.customerOwnerLog.create({ data: { customerId: id, userId: 甲.id, fromOwnerId: 甲.id, toOwnerId: 占位, kind: "pool-release", at: 时刻 } });
