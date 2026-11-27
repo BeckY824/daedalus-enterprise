@@ -248,6 +248,10 @@ export async function 运行(选项) {
     const 好 = await 探活(取, u);
     新健康[u] = { fails: 好 ? 0 : (状态.health[u]?.fails ?? 0) + 1 };
   }
+  // 配置里已经删掉的探活地址：状态里的 R4 条目一起清掉（审查可改 8），以后同一地址加回来又不通时当新告警发
+  for (const 键 of Object.keys(状态.alerts)) {
+    if (键.startsWith("R4:") && !地址们.includes(键.slice(3))) delete 状态.alerts[键];
+  }
   const 端口 = (u) => {
     try {
       return new URL(u).host;
@@ -395,7 +399,15 @@ export async function 运行(选项) {
   return { 发出 };
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+// 比对真实路径：用软链指到脚本时 argv[1] 是软链，import.meta.url 是真实路径，不解析会静默什么都不做（审查可改 9）
+const 是入口 = (() => {
+  try {
+    return !!process.argv[1] && fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
+if (是入口) {
   const 参数 = process.argv.slice(2);
   const 取值 = (名) => {
     const i = 参数.indexOf(名);

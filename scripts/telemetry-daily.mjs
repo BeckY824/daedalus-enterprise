@@ -124,7 +124,14 @@ export function 汇总(记录, 选项) {
   return 出.join("\n");
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
+const 是入口 = (() => {
+  try {
+    return !!process.argv[1] && fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+})();
+if (是入口) {
   const 参数 = process.argv.slice(2);
   const 取 = (名) => {
     const i = 参数.indexOf(名);

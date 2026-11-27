@@ -385,3 +385,33 @@ describe("审查必改", () => {
     }
   });
 });
+
+describe("审查可改（阶段 2 一并改的）", () => {
+  it("可改 8：从 ALERT_HEALTH_URLS 删掉的地址，状态里的 R4 条目被清掉；加回来又不通当新告警发", async () => {
+    const 地址 = "http://127.0.0.1:3001/api/health";
+    fs.appendFileSync(path.join(目录, ".alert-env"), `ALERT_HEALTH_URLS=${地址}\n`);
+    健康好 = false;
+    await 跑(T0);
+    await 跑(T0 + 2 * 分);
+    expect(发往(OURS)).toHaveLength(1);
+    // 地址从配置里去掉
+    fs.writeFileSync(path.join(目录, ".alert-env"), `ALERT_WEBHOOK_OURS=${OURS}\nALERT_SECRET_OURS=so\n`);
+    await 跑(T0 + 4 * 分);
+    const 状态 = JSON.parse(fs.readFileSync(path.join(目录, "alert-state.json"), "utf8"));
+    expect(Object.keys(状态.alerts).filter((k) => k.startsWith("R4:"))).toHaveLength(0);
+    // 加回来：连败 2 次后当新告警发，不等 60 分钟
+    fs.appendFileSync(path.join(目录, ".alert-env"), `ALERT_HEALTH_URLS=${地址}\n`);
+    await 跑(T0 + 6 * 分);
+    await 跑(T0 + 8 * 分);
+    expect(发往(OURS)).toHaveLength(2);
+  });
+
+  it("可改 9：通过软链启动脚本也照常跑（不静默什么都不做）", () => {
+    记(6, 3);
+    fs.writeFileSync(path.join(目录, ".alert-env"), "ALERT_INSTANCE=c2\n");
+    const 链 = path.join(目录, "ent-alert-link.mjs");
+    fs.symlinkSync(path.resolve(__dirname, "../scripts/ent-alert.mjs"), 链);
+    const out = execFileSync(process.execPath, [链, "--dir", 目录, "--dry", "--now", new Date(T0).toISOString()], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    expect(out).toContain("将发");
+  });
+});
