@@ -29,6 +29,7 @@ import { notify } from "./notify";
 import { 读组织 } from "./org";
 import { 重算裁定人们 } from "./objection";
 import { 客户显名, 显名列 } from "./customer-title";
+import { 客户编号显示 } from "@/lib/customer-no";
 import { 系统管理员们 } from "./tri-state-people";
 import { 项目合并单们 } from "./project-merge-guard";
 import {
@@ -195,6 +196,40 @@ export async function 待手工退回们(): Promise<待裁定行[]> {
   return 出;
 }
 
+export type 特殊裁定行 = { id: string; 裁定于: string; 客户编号: string; 项目: string; 发起人: string; 结果: string; 理由: string };
+
+/**
+ * 特殊裁定台账（E-436）：只列「本人发起、本人裁定」的异议（裁定人 = 发起人，只剩他一位系统管理员时才会出现），
+ * 按裁定时间倒序，月份（YYYY-MM，北京时间）可选；只给系统管理员，非系统管理员返回空（服务端判）。
+ * 不另存标记列：judgedById = operatorUserId 就是「本人裁定」。
+ */
+export async function 特殊裁定台账(userId: string, 月?: string | null): Promise<特殊裁定行[]> {
+  if (!企业版()) return [];
+  const org = await 读组织();
+  if (!org || !系统管理员们(org).includes(userId)) return [];
+  let 时间: { gte: Date; lt: Date } | undefined;
+  const m = typeof 月 === "string" ? /^(\d{4})-(0[1-9]|1[0-2])$/.exec(月) : null;
+  if (m) {
+    const y = Number(m[1]), mo = Number(m[2]);
+    时间 = { gte: new Date(Date.UTC(y, mo - 1, 1) - 8 * 3_600_000), lt: new Date(Date.UTC(y, mo, 1) - 8 * 3_600_000) };
+  }
+  const 行们 = (await prisma.entTransferObjection.findMany({
+    where: { judgedById: { not: null }, judgedAt: 时间 ?? { not: null } },
+    orderBy: [{ judgedAt: "desc" }, { id: "asc" }], take: 2000,
+  })).filter((r) => r.judgedById === r.operatorUserId).slice(0, 500);
+  if (!行们.length) return [];
+  const [人们, 客户们] = await Promise.all([
+    prisma.user.findMany({ where: { id: { in: [...new Set(行们.map((r) => r.operatorUserId))] } }, select: { id: true, name: true } }),
+    看全部(() => 看已删(() => prisma.customer.findMany({ where: { id: { in: 行们.map((r) => r.customerId) } }, select: { id: true, customerNo: true } }))),
+  ]);
+  const 名 = new Map(人们.map((u) => [u.id, u.name]));
+  const 客 = new Map(客户们.map((c) => [c.id, 客户编号显示(c)]));
+  return 行们.map((r) => ({
+    id: r.id, 裁定于: (r.judgedAt as Date).toISOString(), 客户编号: 客.get(r.customerId) ?? "", 项目: r.kind === "项目" ? r.targetName : "（客户）",
+    发起人: 名.get(r.operatorUserId) ?? "", 结果: r.status === 异议维持 ? "维持" : "撤回", 理由: r.judgeNote ?? "",
+  }));
+}
+
 const 话of = (r: EntTransferObjection) => `${r.kind}「${r.targetName}」`;
 
 async function 名们of(ids: string[]): Promise<Map<string, string>> {
@@ -257,8 +292,8 @@ export async function 裁定(me: { id: string; name: string }, id: unknown, 决�
   const 接手人 = 名.get(行.toOwnerId) ?? "";
   await recordAudit({
     user: me, action: "update", entity: "Customer", entityId: 行.customerId,
-    summary: `转让异议裁定：${异议人}对${话of(行)}的异议，${本人发起 ? "（本人发起、无人回避）" : ""}${本人接手 ? "（本人接手、无人回避）" : ""}${me.name}裁定「${决定}」${终态 === 异议待手工退回 ? "（不满足自动退回，待系统管理员手工退回）" : ""}：${话}`,
-    detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 异议理由: 行.reason, 裁定: 决定, 结果: 终态, 裁定说明: 话, ...(本人发起 ? { 本人发起: true } : {}), ...(本人接手 ? { 本人接手: true } : {}), ...(退 ? { 退回: 退 } : {}), ...(手工原因 ? { 待手工原因: 手工原因 } : {}) },
+    summary: `转让异议裁定：${异议人}对${话of(行)}的异议，${本人发起 ? "（本人发起、本人裁定；无人回避）" : ""}${本人接手 ? "（本人接手、无人回避）" : ""}${me.name}裁定「${决定}」${终态 === 异议待手工退回 ? "（不满足自动退回，待系统管理员手工退回）" : ""}：${话}`,
+    detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 异议理由: 行.reason, 裁定: 决定, 结果: 终态, 裁定说明: 话, ...(本人发起 ? { 本人发起: true, 本人裁定: true } : {}), ...(本人接手 ? { 本人接手: true } : {}), ...(退 ? { 退回: 退 } : {}), ...(手工原因 ? { 待手工原因: 手工原因 } : {}) },
   }).catch((e) => console.warn("[异议] 裁定留痕没写上：", e));
 
   const 链 = "/objections";

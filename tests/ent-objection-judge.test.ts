@@ -506,3 +506,47 @@ describe("裁定人按当前组织重算（审查 M3，口径 A2 / B1）", () =>
     expect((await 待我裁定(副管.id))[0]).toMatchObject({ 能裁: true });
   });
 });
+
+describe("特殊裁定台账（E-436）：本人发起、本人裁定", () => {
+  async function 本人裁一条(结果: "维持" | "撤回") {
+    await prisma.entMember.delete({ where: { userId: 副管.id } });
+    await prisma.user.update({ where: { id: 副管.id }, data: { role: "SALES" } });
+    const a = await 客户(销售.id, { bizLine: "内贸" });
+    当(老板);
+    expect(await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "只有我一个管理员" })).toMatchObject({ ok: true });
+    const 行 = (await 行们()).find((r) => r.kind === "客户")!;
+    await 提(行, 销售);
+    当(老板);
+    expect(await 裁定(老板, 行.id, 结果, "本人裁")).toMatchObject({ ok: true });
+    return { a, 行 };
+  }
+
+  it("留痕写「本人发起、本人裁定」并带标记；台账只给系统管理员，列出这条", async () => {
+    const { a, 行 } = await 本人裁一条("维持");
+    const 审 = await prisma.auditLog.findMany({ where: { entityId: a.id } });
+    expect(审.some((x) => x.summary.includes("本人发起、本人裁定"))).toBe(true);
+    const { 特殊裁定台账 } = await import("@/lib/enterprise/objection-judge");
+    const 台 = await 特殊裁定台账(老板.id);
+    expect(台).toHaveLength(1);
+    expect(台[0]).toMatchObject({ id: 行.id, 发起人: 老板.name, 结果: "维持", 理由: "本人裁" });
+    const 月 = new Date().toISOString().slice(0, 7);
+    expect(await 特殊裁定台账(老板.id, 月)).toHaveLength(1);
+    expect(await 特殊裁定台账(老板.id, "2001-01")).toEqual([]);
+  });
+
+  it("非系统管理员拿不到台账；别人裁的（裁定人不是发起人）不进台账", async () => {
+    const { 特殊裁定台账 } = await import("@/lib/enterprise/objection-judge");
+    await 本人裁一条("撤回");
+    expect(await 特殊裁定台账(组长.id)).toEqual([]);
+    expect(await 特殊裁定台账(销售.id)).toEqual([]);
+    // 另一条：组长转的，老板（非发起人）裁，不进台账
+    const b = await 客户(销售.id, { bizLine: "内贸" });
+    当(组长);
+    expect(await assignSalesOwner([b.id], 同事.id, null, undefined, { 说明: "组长转" })).toMatchObject({ ok: true });
+    const 行B = (await 行们()).find((r) => r.customerId === b.id && r.kind === "客户")!;
+    await 提(行B, 销售);
+    当(老板);
+    expect(await 裁定(老板, 行B.id, "维持", "老板裁")).toMatchObject({ ok: true });
+    expect(await 特殊裁定台账(老板.id)).toHaveLength(1);
+  });
+});
