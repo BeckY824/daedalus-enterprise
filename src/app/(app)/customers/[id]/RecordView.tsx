@@ -793,8 +793,8 @@ export default function RecordView({
    * 「客户转让」（dt.transfer）：选人、一起转走的项目、原因在同一个框里（TransferBox），assignSalesOwner（权限、虚线只读、交接要确认都在服务端挡）。
    * 回 ok:false = 框里写原因不关框；申请移交回一句话、框里原地说；直接转的给底部撤销条
    */
-  async function 发转让(o: { value: string; label: string }, 原因: string | null, 方向?: "内贸" | "外贸"): Promise<转让结果> {
-    const res = await assignSalesOwner([customer.id], o.value, 原因, 方向);
+  async function 发转让(o: { value: string; label: string }, 原因: string | null, 方向?: "内贸" | "外贸", 逐项?: { 说明?: string; 随转?: string[] }): Promise<转让结果> {
+    const res = await assignSalesOwner([customer.id], o.value, 原因, 方向, 逐项);
     router.refresh();
     if (!res.ok) return { ok: false, error: res.error };
     // 企业版「交接中」（D10）：负责人还没换，等接手人确认，没有可撤销的——框里原地说一句
@@ -815,7 +815,7 @@ export default function RecordView({
     });
     return { ok: true };
   }
-  const 取转走预览 = useCallback((接手人: string) => 转走项目预览of([customer.id], 接手人), [customer.id]);
+  const 取转走预览 = useCallback((接手人: string) => 转走项目预览of([customer.id], 接手人, true), [customer.id]);
   /**
    * 客户转让框选「自动分配」（客户 11-17：市场成员给暂不分配的客户）：服务端挑人、整客户给挑中的销售，只通知接手人；
    * 成了框里原地说分给了谁（「已自动分配给 X」），没挑到人原因写在框里、什么都没动。

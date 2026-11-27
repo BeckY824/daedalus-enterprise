@@ -75,7 +75,7 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
   it("原来是我的、被老板转给了同事：那一下不是我做的，我撤不回来", async () => {
     const c = await 客户(小王.id);
     当(老板);
-    expect(await assignSalesOwner([c.id], 小李.id)).toMatchObject({ ok: true, updated: 1 });
+    expect(await assignSalesOwner([c.id], 小李.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 1 });
     当(小王);
     expect(await 撤销改负责人([{ id: c.id, 值: 小王.id }], 小李.id)).toMatchObject({ ok: false, error: expect.stringContaining("现在撤不了") });
     expect(await 归谁(c.id)).toBe(小李.id);
@@ -85,7 +85,7 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
     const c = await 客户(小王.id);
     const t = await prisma.task.create({ data: { title: "回电", customerId: c.id, ownerId: 小王.id } });
     当(组长);
-    const r = await assignSalesOwner([c.id], 小李.id);
+    const r = await assignSalesOwner([c.id], 小李.id, null, undefined, { 说明: "测试原因" });
     if (!r.ok) throw new Error(r.error);
     expect(await 归谁(c.id)).toBe(小李.id);
     expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: true, updated: 1 });
@@ -101,13 +101,13 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
     const a = await 客户(小李.id);
     const b = await 客户(小王.id);
     当(老板);
-    const r1 = await assignSalesOwner([a.id], 小王.id);
+    const r1 = await assignSalesOwner([a.id], 小王.id, null, undefined, { 说明: "测试原因" });
     if (!r1.ok) throw new Error(r1.error);
     expect(await 撤销改负责人(r1.原值!, 小王.id, r1.带过来)).toMatchObject({ ok: true, updated: 1 });
     expect(await 归谁(a.id)).toBe(小李.id);
 
     当(组长);
-    const r2 = await assignSalesOwner([b.id], 小李.id);
+    const r2 = await assignSalesOwner([b.id], 小李.id, null, undefined, { 说明: "测试原因" });
     if (!r2.ok) throw new Error(r2.error);
     expect(await 归谁(b.id)).toBe(小李.id);
     expect(await 撤销改负责人(r2.原值!, 小李.id, r2.带过来)).toMatchObject({ ok: true, updated: 1 });
@@ -117,12 +117,12 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
   it("撤过一次就不能再撤：最近一条记录变成撤销了", async () => {
     const c = await 客户(小王.id);
     当(组长);
-    const r = await assignSalesOwner([c.id], 小李.id);
+    const r = await assignSalesOwner([c.id], 小李.id, null, undefined, { 说明: "测试原因" });
     if (!r.ok) throw new Error(r.error);
     expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ updated: 1 });
     // 小李又被老板转回去不算：那一下是老板做的
     当(老板);
-    await assignSalesOwner([c.id], 小李.id);
+    await assignSalesOwner([c.id], 小李.id, null, undefined, { 说明: "测试原因" });
     当(组长);
     expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: false, error: expect.stringContaining("现在撤不了") });
     expect(await 归谁(c.id)).toBe(小李.id);
@@ -132,7 +132,7 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
     const c = await 客户(小王.id);
     const t = await prisma.task.create({ data: { title: "回电", customerId: c.id, ownerId: 小王.id } });
     当(组长);
-    const r = await assignSalesOwner([c.id], 小李.id);
+    const r = await assignSalesOwner([c.id], 小李.id, null, undefined, { 说明: "测试原因" });
     if (!r.ok) throw new Error(r.error);
     await 记录挪到(c.id, 31);
     expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: false, error: expect.stringContaining("现在撤不了") });
@@ -144,7 +144,7 @@ describe("撤销改负责人只撤自己刚才那一下", () => {
   it("29 分钟前自己转出去的照常撤（网络慢、标签页挂着）", async () => {
     const c = await 客户(小王.id);
     当(组长);
-    const r = await assignSalesOwner([c.id], 小李.id);
+    const r = await assignSalesOwner([c.id], 小李.id, null, undefined, { 说明: "测试原因" });
     if (!r.ok) throw new Error(r.error);
     await 记录挪到(c.id, 29);
     expect(await 撤销改负责人(r.原值!, 小李.id, r.带过来)).toMatchObject({ ok: true, updated: 1 });
@@ -161,12 +161,12 @@ describe("企业版转让客户：负责人只转自己的，别人的 / 公海�
     await prisma.customerPool.create({ data: { customerId: 公海的.id } });
     当(小王);
     // 自己的：发出申请移交（X4），小李确认前不动
-    expect(await assignSalesOwner([自己的.id], 小李.id)).toMatchObject({ ok: true, updated: 0, 申请移交: true });
-    expect(await assignSalesOwner([同事的.id], 小王.id)).toEqual({ ok: false, error: 拦话 });
-    expect(await assignSalesOwner([公海的.id], 小李.id)).toEqual({ ok: false, error: 拦话 });
+    expect(await assignSalesOwner([自己的.id], 小李.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 0, 申请移交: true });
+    expect(await assignSalesOwner([同事的.id], 小王.id, null, undefined, { 说明: "测试原因" })).toEqual({ ok: false, error: 拦话 });
+    expect(await assignSalesOwner([公海的.id], 小李.id, null, undefined, { 说明: "测试原因" })).toEqual({ ok: false, error: 拦话 });
     // 一批里夹着别人的也整批拦
     const 又一个 = await 客户(小王.id);
-    expect(await assignSalesOwner([又一个.id, 同事的.id], 小王.id)).toEqual({ ok: false, error: 拦话 });
+    expect(await assignSalesOwner([又一个.id, 同事的.id], 小王.id, null, undefined, { 说明: "测试原因" })).toEqual({ ok: false, error: 拦话 });
     expect(await 归谁(同事的.id)).toBe(小李.id);
     expect(await 归谁(公海的.id)).toBe(小王.id);
     expect(await 归谁(又一个.id)).toBe(小王.id);
@@ -176,12 +176,12 @@ describe("企业版转让客户：负责人只转自己的，别人的 / 公海�
     const 光杆 = await 建("bare", "SALES");
     const c = await 客户(光杆.id);
     当(光杆);
-    expect(await assignSalesOwner([c.id], 小李.id)).toEqual({ ok: false, error: 拦话 });
+    expect(await assignSalesOwner([c.id], 小李.id, null, undefined, { 说明: "测试原因" })).toEqual({ ok: false, error: 拦话 });
     当(组长);
-    expect(await assignSalesOwner([c.id], 小李.id)).toEqual({ ok: false, error: 拦话 });
+    expect(await assignSalesOwner([c.id], 小李.id, null, undefined, { 说明: "测试原因" })).toEqual({ ok: false, error: 拦话 });
     const 下属的 = await 客户(小王.id);
-    expect(await assignSalesOwner([下属的.id], 小李.id)).toMatchObject({ ok: true, updated: 1 });
+    expect(await assignSalesOwner([下属的.id], 小李.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 1 });
     当(老板);
-    expect(await assignSalesOwner([c.id], 小王.id)).toMatchObject({ ok: true, updated: 1 });
+    expect(await assignSalesOwner([c.id], 小王.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 1 });
   });
 });

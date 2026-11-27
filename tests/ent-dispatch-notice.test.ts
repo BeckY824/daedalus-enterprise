@@ -149,21 +149,21 @@ describe("分给你通知", () => {
 describe("assignSalesOwner（直接换负责人）", () => {
   it("单条：接手人收一条，链客户详情", async () => {
     const c = await 客户("客户一", 运营);
-    expect(await assignSalesOwner([c], 销售)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c], 销售, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 分配通知们()).toMatchObject([{ userId: 销售, link: `/customers/${c}` }]);
   });
 
   it("多条：只一条汇总，链列表", async () => {
     const a = await 客户("客户一", 运营);
     const b = await 客户("客户二", 运营, "13900000002");
-    expect(await assignSalesOwner([a, b], 销售)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([a, b], 销售, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 分配通知们()).toMatchObject([{ userId: 销售, link: "/customers" }]);
   });
 
   it("本来就是他的：不发", async () => {
     const c = await 客户("客户一", 销售);
     当(老板, "老板", "ADMIN");
-    await assignSalesOwner([c], 销售);
+    await assignSalesOwner([c], 销售, null, undefined, { 说明: "测试原因" });
     expect(await 分配通知们()).toEqual([]);
   });
 
@@ -172,7 +172,7 @@ describe("assignSalesOwner（直接换负责人）", () => {
     const c = await 客户("客户一", 销售);
     // P-转-16（11-10）起批量转同单条：系统管理员直接转，负责人本人转自己的走申请——由负责人本人发起
     当(销售, "销售甲");
-    expect(await assignSalesOwner([c], 另一销售)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c], 另一销售, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 分配通知们()).toEqual([]);
     expect(await prisma.entNotice.count({ where: { kind: "交接", userId: 另一销售 } })).toBe(1);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(销售);
@@ -182,7 +182,7 @@ describe("assignSalesOwner（直接换负责人）", () => {
     invalidateSettingsCache();
     const a = await 客户("客户一", 运营);
     const b = await 客户("客户二", 运营, "13900000002");
-    expect(await assignSalesOwner([a, b], 销售)).toMatchObject({ ok: true, updated: 2 });
+    expect(await assignSalesOwner([a, b], 销售, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 2 });
     expect((await prisma.customer.findMany({ where: { id: { in: [a, b] } } })).map((c) => c.salesOwnerId)).toEqual([销售, 销售]);
     expect(await prisma.entHandover.count()).toBe(0);
     expect(await prisma.entNotice.count({ where: { kind: "交接" } })).toBe(0);
@@ -196,7 +196,7 @@ describe("assignSalesOwner（直接换负责人）", () => {
     // P-转-16（11-10）起系统管理员批量转直接转；混批改由运营（另一销售的实线上级）把自己的连同下属的一起转，整批走申请
     await prisma.entMember.update({ where: { userId: 另一销售 }, data: { managerId: 运营 } });
     忘掉企业版范围();
-    expect(await assignSalesOwner([a, b], 销售)).toMatchObject({ ok: true, 交接中: 2 });
+    expect(await assignSalesOwner([a, b], 销售, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, 交接中: 2 });
     expect(await 分配通知们()).toEqual([]);
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: a } })).salesOwnerId).toBe(运营);
   });

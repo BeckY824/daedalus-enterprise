@@ -80,21 +80,21 @@ describe("X-77 客户转让：名下有验证中的线索不能换负责人", ()
     const p = await 项目(a, 销售.id);
     const q = await 项目(b, 销售.id);
     await 挂验证(p);
-    const r = await assignSalesOwner([a, b], 接手.id);
+    const r = await assignSalesOwner([a, b], 接手.id, null, undefined, { 说明: "测试原因" });
     expect(r).toMatchObject({ ok: false, error: expect.stringContaining("验证中") });
     expect(r.ok === false && r.error).toContain("撤回验证");
     expect(await patchCustomer(a, "salesOwnerId", 接手.id)).toMatchObject({ ok: false, error: expect.stringContaining("验证中") });
     expect([await 归谁(a), await 归谁(b), await 负责(p), await 负责(q)]).toEqual([销售.id, 销售.id, 销售.id, 销售.id]);
     // 在公海里的项目不跟着走，不算
     await prisma.project.update({ where: { id: p }, data: { pooledAt: new Date(), ownerId: "" } });
-    expect(await assignSalesOwner([a, b], 接手.id)).toMatchObject({ ok: true, updated: 2 });
+    expect(await assignSalesOwner([a, b], 接手.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 2 });
   });
 
   it("负责人本人申请移交，发起之后线索进了验证：接手人确认被拦，交接留在待确认；撤回验证后能确认", async () => {
     const a = await 客户(销售.id);
     const p = await 项目(a, 销售.id);
     当(销售);
-    expect(await assignSalesOwner([a], 接手.id)).toMatchObject({ ok: true, 交接中: 1, 申请移交: true });
+    expect(await assignSalesOwner([a], 接手.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, 交接中: 1, 申请移交: true });
     const h = await prisma.entHandover.findFirstOrThrow();
     await 挂验证(p);
     当(接手);
@@ -110,7 +110,7 @@ describe("X-77 客户转让：名下有验证中的线索不能换负责人", ()
     const a = await 客户(销售.id);
     await 挂验证(await 项目(a, 销售.id), "销售终验");
     当(销售);
-    expect(await assignSalesOwner([a], 接手.id)).toMatchObject({ ok: false, error: expect.stringContaining("验证中") });
+    expect(await assignSalesOwner([a], 接手.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: false, error: expect.stringContaining("验证中") });
     expect(await prisma.entHandover.count()).toBe(0);
   });
 });

@@ -52,7 +52,7 @@ describe("市场只建客户、再交给销售：改节点的行不重复", () =
     if (!r.ok) throw new Error(JSON.stringify(r));
     const cid = r.customerId;
     const p = await prisma.project.findFirstOrThrow({ where: { customerId: cid } });
-    if (路 === "客户层转让") expect(await 以谁的身份(市场, () => assignSalesOwner([cid], 销售))).toMatchObject({ ok: true, updated: 1 });
+    if (路 === "客户层转让") expect(await 以谁的身份(市场, () => assignSalesOwner([cid], 销售, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true, updated: 1 });
     if (路 === "线索列表指定") expect(await 以谁的身份(市场, () => 分配线索({ projectId: p.id, toUserId: 销售, line: "内贸" }))).toEqual({ ok: true });
     if (路 === "客户转让框自动") expect(await 以谁的身份(市场, () => 客户自动分配(cid, null))).toMatchObject({ ok: true, toUserId: 销售 });
     const 们 = await 行们(cid);

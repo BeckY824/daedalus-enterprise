@@ -386,7 +386,7 @@ async function 剧本开() {
   await 查("D1-组长看下属链", async () => expect(await 看到的项目("组长")).toEqual(["P1", "P10", "P2"]));
   await 查("D1-虚线上级能看", async () => expect(await 看到的项目("外贸经理")).toContain("P8"));
   await 查("D1-虚线不能转客户", async () => {
-    await 作为("外贸经理", () => assignSalesOwner([客户id["P8"]], 公.id["外销1"]));
+    await 作为("外贸经理", () => assignSalesOwner([客户id["P8"]], 公.id["外销1"], null, undefined, { 说明: "测试原因" }));
     const c = await 作为("老板", () => prisma.customer.findUniqueOrThrow({ where: { id: 客户id["P8"] } }));
     expect(公.名[c.salesOwnerId ?? ""]).toBe("内销4");
   });
@@ -722,7 +722,7 @@ async function 剧本关() {
     ["内销6", "P5", null], ["内销4", "P8", "2026-02-20"], ["外销5", "P9", "2026-02-20"], ["内销3", "P10", "2026-02-20"],
   ] as const) 记(`D1 ${谁} 建 ${名}（下一步 ${下一步 ?? "不填"}）→ ${话(await 建项目(谁, 名, 下一步))}`);
   await 作为("老板", () => prisma.project.update({ where: { id: 项目id["P9"] }, data: { phase: "订单", node: "生产备货" } }));
-  记(`D1 外贸经理 转 客户P8 给外销1 → ${话(await 作为("外贸经理", () => assignSalesOwner([客户id["P8"]], 公.id["外销1"])))}`);
+  记(`D1 外贸经理 转 客户P8 给外销1 → ${话(await 作为("外贸经理", () => assignSalesOwner([客户id["P8"]], 公.id["外销1"], null, undefined, { 说明: "测试原因" })))}`);
   await 日终("D1 1/26");
 
   拨到("2026-01-27 09:00");

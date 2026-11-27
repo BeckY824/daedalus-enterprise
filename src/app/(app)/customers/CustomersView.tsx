@@ -401,7 +401,7 @@ export default function CustomersView({
   const [转让框, set转让框] = useState<{ ids: string[]; 清空: () => void } | null>(null);
   /** 转让框是懒块：第一次开才挂，挂上以后不卸（关的动画照放） */
   const [转让框挂过, set转让框挂过] = useState(false);
-  const 取转走 = useCallback((人id: string) => 转走项目预览of(转让框?.ids ?? [], 人id), [转让框]);
+  const 取转走 = useCallback((人id: string) => 转走项目预览of(转让框?.ids ?? [], 人id, true), [转让框]);
   /**
    * 批量转让框的自动分配（客户 11-17）：页面递了两个动作才有。预看 = 勾的里几位能自动分、别的为什么不行；
    * 做 = 一位一位自动分，结果框里原地列（分给了谁、几位没分成）。分出去了就清勾选、刷新列表；没有撤销条（同单个转让框的自动分配）。
@@ -1333,11 +1333,11 @@ export default function CustomersView({
         原因选项={转让原因?.选项}
         自己={转让原因?.自己}
         自动={转让框自动}
-        做={async (人id, 原因, 方向) => {
+        做={async (人id, 原因, 方向, 逐项) => {
           if (!转让框) return;
           const ids = 转让框.ids;
           const 名 = 成员选项(users).find((o) => o.value === 人id)?.label ?? "";
-          const res = await assignSalesOwner(ids, 人id, 原因, 方向);
+          const res = await assignSalesOwner(ids, 人id, 原因, 方向, 逐项);
           // 权限被挡、交接中……：原因写在框里，框不关，不提示成功
           if (!res.ok) return res;
           // 企业版「交接中」（D10）：一位都没发起 = 没成，原因写在框里

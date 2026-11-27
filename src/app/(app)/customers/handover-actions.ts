@@ -120,17 +120,16 @@ async function 转让项目句(行: { id: string; fromUserId: string; toUserId: 
     else 项目.set(p.customerId, [p]);
   }
   for (const { h, 还归他 } of 每笔) {
-    let 列名的 = 0, 同事的 = 0;
+    let 列名的 = 0;
     for (const c of 还归他) {
       const 主人 = 进公海前.get(`${c}|${h.fromUserId}`) ?? h.fromUserId;
       for (const p of 项目.get(c) ?? []) {
         if (p.ownerId !== h.toUserId && (p.pooledAt || p.ownerId === 主人 || p.awaitAssignAt)) 列名的++;
-        // 同 同事在推的项目（carry-over-db.ts）
-        if (!p.pooledAt && !p.awaitAssignAt && p.result === null && p.ownerId !== 主人 && p.ownerId !== h.toUserId && p.ownerId !== "") 同事的++;
+        // 12-22 起同事在推的项目不随客户转（负责人本人转客户一律不带，E-339:6），不再数
       }
     }
-    const 项目数 = 列名的 + 同事的;
-    if (项目数) 句.set(h.id, `全部 ${项目数} 个项目${同事的 ? `（含 ${同事的} 个同事在推的，负责人一起改成你）` : ""}`);
+    const 项目数 = 列名的;
+    if (项目数) 句.set(h.id, `全部 ${项目数} 个项目（同事在推的项目不随客户转）`);
   }
   return 句;
 }

@@ -195,7 +195,7 @@ describe("条线总管理在 P-看-18 只读客户下：写一律拒（审查建
       expect(await 记(客户B, { projectId: 项目Q })).toMatchObject({ ok: false });
       expect(await 给客户建项目({ customerId: 客户B, 项目: { name: "线总建的", ownerId: 线总 }, 跟进: 向导() } as never)).toMatchObject({ ok: false });
       expect(await 项目附件(项目Q)).toHaveProperty("错");
-      expect(await assignSalesOwner([客户B], 线内)).toMatchObject({ ok: false });
+      expect(await assignSalesOwner([客户B], 线内, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: false });
       const 放 = await 放进公海([客户B]);
       expect(放.ok === false || 放.updated === 0).toBe(true);
     });

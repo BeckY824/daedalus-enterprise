@@ -187,7 +187,7 @@ describe("assignSalesOwner（客户转让 / 分配）", () => {
     it(`${r} 把${谁的}客户转给销售丙 → ${应 === "申请" ? "申请移交" : 应 ? "能" : "拒"}`, async () => {
       const id = 客户[谁的 as keyof typeof 客户];
       const 原 = await 客户负责人(id);
-      const x = await 试(r, () => assignSalesOwner([id], 人.销售丙));
+      const x = await 试(r, () => assignSalesOwner([id], 人.销售丙, null, undefined, { 说明: "测试原因" }));
       if (应 === "申请") {
         expect(x.回, JSON.stringify(x.回)).toMatchObject({ ok: true, updated: 0, 申请移交: true });
         expect(await 客户负责人(id)).toBe(原);
@@ -258,7 +258,7 @@ describe("销售教练（coach，11-17）：不能当负责人、不能被转给
     expect(await 项目负责人()).toBe(人.销售甲);
   });
   it("老板把甲的客户转给教练 → 拒，负责人不变", async () => {
-    const x = await 试("老板", () => assignSalesOwner([客户.甲的], 人.教练));
+    const x = await 试("老板", () => assignSalesOwner([客户.甲的], 人.教练, null, undefined, { 说明: "测试原因" }));
     const 真成 = x.成了 && (x.回 as { updated?: number })?.updated !== 0;
     expect(真成, JSON.stringify(x.回)).toBe(false);
     expect(await 客户负责人(客户.甲的)).toBe(人.销售甲);

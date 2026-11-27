@@ -34,18 +34,38 @@ async function 挂靠审批跟着换(tx: Pick<Prisma.TransactionClient, "entDupe
   }
 }
 
+/** 直接转时留在换负责人记录上的一份（12-22）：原因必填，最近跟进 / 重复咨询取不到是 null */
+export type 转让留痕 = { 原因: string; 最近跟进: Date | null; 重复咨询: number | null };
+
+/** 转的那一刻读：每位客户的最近一次跟进、重复咨询次数（出口 C 建的线索数，含回收站里的）。读不到的给 null，不拦转让 */
+export async function 取转让留痕(ids: readonly string[], 原因: string): Promise<Map<string, 转让留痕>> {
+  const 出 = new Map<string, 转让留痕>();
+  if (!ids.length) return 出;
+  const [客户们, 重复们] = await 看全部(() => Promise.all([
+    prisma.customer.findMany({ where: { id: { in: [...ids] } }, select: { id: true, lastFollowAt: true } }),
+    prisma.project.groupBy({ by: ["repeatOfCustomerId"], where: { repeatOfCustomerId: { in: [...ids] } }, _count: { _all: true } }),
+  ]));
+  const 次 = new Map(重复们.map((r) => [r.repeatOfCustomerId as string, r._count._all]));
+  for (const c of 客户们) 出.set(c.id, { 原因, 最近跟进: c.lastFollowAt ?? null, 重复咨询: 次.get(c.id) ?? 0 });
+  return 出;
+}
+
 export async function 记换负责人(
   tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entDupeHit" | "setting" | "entCustomerStateLog" | "entCustomerMerge">,
   换: { customerId: string; from: string | null; to: string }[],
   操作人: string,
   kind: 换负责人种类,
+  留痕?: ReadonlyMap<string, 转让留痕>,
 ): Promise<void> {
   const 真换了 = 换.filter((x) => x.from !== x.to);
   if (!真换了.length) return;
   // 企业版三态（M-公海-20 / M-公海-37）：转让 / 离职交接当下按此刻的规则定归不归零、存下，之后改规则不回改；三态关着留空
   const 归零 = await 当下归零(tx, 真换了.map((x) => x.customerId), kind);
   await tx.customerOwnerLog.createMany({
-    data: 真换了.map((x) => ({ customerId: x.customerId, userId: 操作人, fromOwnerId: x.from, toOwnerId: x.to, kind, clockReset: 归零.get(x.customerId) ?? null })),
+    data: 真换了.map((x) => {
+      const 痕 = 留痕?.get(x.customerId);
+      return { customerId: x.customerId, userId: 操作人, fromOwnerId: x.from, toOwnerId: x.to, kind, clockReset: 归零.get(x.customerId) ?? null, ...(痕 ? { reason: 痕.原因, lastFollowAt: 痕.最近跟进, repeatCount: 痕.重复咨询 } : {}) };
+    }),
   });
   // 进公海：公海客户没有负责人、也不是挂靠对象（P-挂靠-01），审批人不跟到占位账号上，待处理的直接关
   // 出口 C「重复咨询待补建」记录同样自动关（客户 E-227 三处默认 ③：客户中途进了公海，改走公海领取）
@@ -233,5 +253,5 @@ export async function 历史负责人of(customerId: string): Promise<换负责�
   const ids = [...new Set(记录.flatMap((r) => [r.userId, r.fromOwnerId, r.toOwnerId]).filter((x): x is string => !!x))];
   const 名 = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   const 叫 = (id: string | null) => (id ? (名.get(id) ?? "已删除的成员") : null);
-  return 记录.map((r) => ({ at: r.at.toISOString(), 操作人: r.userId === 系统.id ? 系统.name : (名.get(r.userId) ?? null), 从: 叫(r.fromOwnerId), 到: 叫(r.toOwnerId), kind: r.kind, ...(r.clockReset ? { 三态归零: true as const } : {}) }));
+  return 记录.map((r) => ({ at: r.at.toISOString(), 操作人: r.userId === 系统.id ? 系统.name : (名.get(r.userId) ?? null), 从: 叫(r.fromOwnerId), 到: 叫(r.toOwnerId), kind: r.kind, ...(r.clockReset ? { 三态归零: true as const } : {}), ...(r.reason != null ? { 原因: r.reason, 最近跟进: r.lastFollowAt?.toISOString() ?? null, 重复咨询: r.repeatCount ?? null } : {}) }));
 }

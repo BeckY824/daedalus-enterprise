@@ -95,7 +95,7 @@ describe("规则开关", () => {
     expect(await bulkFollowStatus([客户], "跟进中")).toMatchObject({ ok: false, error: expect.stringContaining("跟进状态") });
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: 客户 } })).followStatus).not.toBe("跟进中");
     expect(await patchCustomer(客户, "remark", "下周再打")).toMatchObject({ ok: true });
-    expect(await assignSalesOwner([客户], 老板)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([客户], 老板, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
   });
 
   it("开了：电话设成看不到的角色打码，总管理不受字段表限", async () => {

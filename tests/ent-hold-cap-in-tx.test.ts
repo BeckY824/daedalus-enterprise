@@ -99,7 +99,7 @@ describe("1. 确认交接：核和转在同一个事务里", () => {
     const ps: string[] = [];
     for (let i = 0; i < n; i++) ps.push(await 项目(c, 甲.id));
     const t = await 待办(c, 甲.id);
-    expect(await 以(甲, () => assignSalesOwner([c], 丙.id))).toMatchObject({ ok: true, 交接中: 1 });
+    expect(await 以(甲, () => assignSalesOwner([c], 丙.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true, 交接中: 1 });
     const [h] = (await 以(丙, () => 待确认的交接())).等我确认;
     return { c, ps, t, h: h.id };
   };
@@ -186,7 +186,7 @@ describe("2. 直接转客户的接待分配（assignSalesOwner）：核和写在
     const x = await 市场客户(1);
     const y = await 市场客户(1);
     const 通知前 = await 通知数();
-    const r = await 以(市场, () => assignSalesOwner([x.c, y.c], 甲.id));
+    const r = await 以(市场, () => assignSalesOwner([x.c, y.c], 甲.id, null, undefined, { 说明: "测试原因" }));
     expect(r).toEqual({ ok: false, error: "销售甲某名下现在有 1 个线索 / 商机阶段的项目，持有上限 2 个，这次要分配 2 个，最多还能分配 1 个；超了上限，这一批一个都没分配，先推进或放回一些，或者少选几个再分配" });
     for (const z of [x, y]) {
       expect(await 客户负责人(z.c)).toBe(市场.id);
@@ -201,7 +201,7 @@ describe("2. 直接转客户的接待分配（assignSalesOwner）：核和写在
     await 先有(甲, 1);
     const x = await 市场客户(1);
     const y = await 市场客户(1);
-    expect(await 以(市场, () => assignSalesOwner([x.c, y.c], 甲.id))).toMatchObject({ ok: true, updated: 2 });
+    expect(await 以(市场, () => assignSalesOwner([x.c, y.c], 甲.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true, updated: 2 });
     expect(await 持有数(prisma, 甲.id)).toBe(3);
   });
 
@@ -212,7 +212,7 @@ describe("2. 直接转客户的接待分配（assignSalesOwner）：核和写在
       await 先有(甲, 1);
       const x = await 市场客户(1);
       const y = await 市场客户(1);
-      const [a, b] = await Promise.all([以(市场, () => assignSalesOwner([x.c], 甲.id)), 以(市场, () => assignSalesOwner([y.c], 甲.id))]);
+      const [a, b] = await Promise.all([以(市场, () => assignSalesOwner([x.c], 甲.id, null, undefined, { 说明: "测试原因" })), 以(市场, () => assignSalesOwner([y.c], 甲.id, null, undefined, { 说明: "测试原因" }))]);
       expect([a, b].filter((r) => r.ok)).toHaveLength(1);
       expect((a.ok ? b : a) as { error: string }).toMatchObject({ error: expect.stringContaining("这次要分配 1 个，最多还能分配 0 个") });
       const 没转的 = a.ok ? y : x;

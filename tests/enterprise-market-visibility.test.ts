@@ -202,7 +202,7 @@ describe("默认市场部门（名字带「市场」）", () => {
     await expect(作为(小市, () => db.followUp.create({ data: { customerId: a.id, title: "x", content: "x", type: "PHONE", ownerId: 小市 } }))).rejects.toThrow();
     当(小市);
     expect(await 作为(小市, () => patchCustomer(a.id, "major", "改"))).toEqual({ ok: false, error: 市场只读话 });
-    expect(await 作为(小市, () => assignSalesOwner([a.id], 小市))).toEqual({ ok: false, error: 市场只读话 });
+    expect(await 作为(小市, () => assignSalesOwner([a.id], 小市, null, undefined, { 说明: "测试原因" }))).toEqual({ ok: false, error: 市场只读话 });
     const 后 = await 客户("A小市建的");
     expect(后.salesOwnerId).toBe(销售);
     expect(后.major).toBe(a.major);

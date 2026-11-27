@@ -40,10 +40,12 @@ import { statusLabel, 签约叫 } from "@/lib/business-config";
 import { 查电话, 规整手机号, 认回打码号 } from "@/lib/phone";
 import { 同号条件, 分机留存起 } from "@/lib/phone-dedupe";
 import { 同邮箱条件, 同微信条件, 同阿里条件, 邮箱键 } from "@/lib/email-dedupe";
-import type { 带走数, 转走项目预览 } from "@/lib/carry-over";
-import { 带走并记下在事务里, 还项目, 带过来对不上, 数转走的项目, 数进手的持有项目, type 带走的 } from "@/lib/carry-over-db";
+import { 转让说明上限, type 带走数, type 转走项目预览, type 同事在推条 } from "@/lib/carry-over";
+import { 带走并记下在事务里, 还项目, 带过来对不上, 数转走的项目, 数进手的持有项目, 同事在推的项目, type 带走的, type 逐项选项 } from "@/lib/carry-over-db";
+import { 等确认的申请移交, 作废申请移交 } from "@/lib/enterprise/handover-void";
+import { 同事项目保留知会 } from "@/lib/enterprise/notice-sources";
 import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
-import { 记换负责人, 是我刚换的, 删被撤的换负责人记录 } from "@/lib/owner-log-db";
+import { 记换负责人, 是我刚换的, 删被撤的换负责人记录, 公海前负责人, 取转让留痕 } from "@/lib/owner-log-db";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 客户显名, 客户引, 全称或显名, 显名列 } from "@/lib/enterprise/customer-title";
@@ -1295,7 +1297,7 @@ export type BulkResult =
  * 转之前先列出会一起转走的项目（企业版 D-36）：批量分配、改负责人、公海领取 / 分配之前界面先问这一下，
  * 有项目才弹确认框。只读，不改任何东西。不是企业版一律回 0 个 = 不弹，和原来一样直接转
  */
-export async function 转走项目预览of(ids: string[], 新负责人?: string): Promise<转走项目预览> {
+export async function 转走项目预览of(ids: string[], 新负责人?: string, 转让框 = false): Promise<转走项目预览> {
   const me = await requireUser();
   if (!企业版()) return { 项目数: 0, 项目: [] };
   // 不传 = 转给自己（公海领取）；空串 = 还没挑人（客户转让框的自动分配）
@@ -1304,9 +1306,41 @@ export async function 转走项目预览of(ids: string[], 新负责人?: string)
   const 们 = ids.filter((x) => typeof x === "string");
   // 顺带说转给这位要不要接手人确认：和真转时（assignSalesOwner）同一个判定，转让框照它写「生效」那一条（P-转-16）。
   // 空串 = 客户转让框选了自动分配、还没挑人：只数会一起走的项目（同批量自动分配）；自动分配是市场转销售，不走确认（P-转-17）
-  const [预览, 走法] = await Promise.all([数转走的项目(们, 新), 新 ? 转让走交接(me, 新, 们) : null]);
-  return { ...预览, 要确认: 走法 === "申请" };
+  // 转让框（12-22 起）：同事在推的项目不再随客户默认转，数的时候不算，改由框里逐项选（上级）或一律不带（负责人本人）
+  const [预览, 走法] = await Promise.all([数转走的项目(们, 新, [], !转让框), 新 ? 转让走交接(me, 新, 们) : null]);
+  const 基 = { ...预览, 要确认: 走法 === "申请" };
+  if (!转让框 || !新 || 走法 || !(await 直转要说明(me, 新, 们)) || (await 转让挡(me, 们))) return 基;
+  // 直接转（上级 / 条线总管理 / 系统管理员）：原因必填；只选了一位客户时列同事在推的项目、自动带最近跟进和重复咨询
+  const 说明 = { 要说明: true as const };
+  if (们.length !== 1) return { ...基, ...说明 };
+  const [留痕, 清单] = await Promise.all([取转让留痕(们, ""), 同事在推清单(们[0], 新)]);
+  const 痕 = 留痕.get(们[0]);
+  return { ...基, ...说明, 同事在推: 清单, 最近跟进: 痕?.最近跟进?.toISOString() ?? null, ...(痕 ? { 重复咨询: 痕.重复咨询 ?? undefined } : {}) };
 }
+
+/**
+ * 上级直接转时转让框要逐项选的：这位客户上同事在推的项目（负责人不是客户负责人也不是接手人、没结束、不在公海、不在待分配）。
+ * 只有提示和写入两处调，调用方先核过 转让挡。看全部：同事负责的项目限定层会滤掉，上级本来就要看见
+ */
+async function 同事在推清单(customerId: string, 新: string): Promise<同事在推条[]> {
+  const c = await prisma.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } });
+  if (!c || c.pool || c.salesOwnerId === 新) return [];
+  const 主 = await 公海前负责人(prisma, customerId, c.salesOwnerId);
+  const 们 = await 看全部(() => prisma.project.findMany({ where: 同事在推的项目(customerId, 主, 新), orderBy: { createdAt: "asc" }, select: { id: true, name: true, ownerId: true, phase: true } }));
+  const 人 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set(们.map((p) => p.ownerId))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
+  return 们.map((p) => ({ id: p.id, 项目: p.name, 负责人: 人.get(p.ownerId) ?? "（已删除的成员）", 阶段: p.phase }));
+}
+
+/**
+ * 企业版直接生效的转让（上级 / 条线总管理 / 系统管理员转别人的客户，不用接手人确认、不是市场转销售）要不要必填原因（12-22）。
+ * 调用方已判过 转让走交接 = null；全是自己的 / 本来就归接手人的不算
+ */
+async function 直转要说明(me: { id: string }, 新: string, ids: string[]): Promise<boolean> {
+  if (!企业版() || !ids.length) return false;
+  if (await 都是市场转销售(ids, 新)) return false;
+  return (await 看全部(() => prisma.customer.count({ where: { id: { in: ids }, salesOwnerId: { notIn: [me.id, 新] } } }))) > 0;
+}
+
 
 /** 企业版转了不归自己管的客户（界面不摆，直接调接口才到这） */
 const 只有管理能转让话 = "只能转出自己的或直属下属的客户；别的找系统管理员转";
@@ -1346,7 +1380,7 @@ async function 公海挡(ids: string[]): Promise<string | null> {
 // 改客户挡（企业版改客户资料：负责人本人或系统管理员，公海里的先领）11-18 挪到 lib/enterprise/follow-perm.ts，关联客户也用
 
 /** 批量改销售负责人 */
-export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原因?: string | null, 方向?: unknown): Promise<BulkResult> {
+export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原因?: string | null, 方向?: unknown, 逐项?: { 说明?: string; 随转?: string[] }): Promise<BulkResult> {
   const me = await requireUser();
   const b = await getBusiness();
   if (!ids.length) return { ok: true, updated: 0, unchanged: 0, missing: 0 };
@@ -1383,13 +1417,30 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   // 负责人本人转自己的 = 申请移交（X-20、P-转-16），先不换负责人，等接手人确认（转给自己 = 自己就是接手人，不用确认）；不看「交接要确认」开关，同单条。
   // 上级、条线总管理、系统管理员直接转（P-转-01）；市场成员的客户分给销售不走确认（P-转-17），当场转、只通知
   const 走法 = await 转让走交接(me, salesOwnerId, ids);
-  if (走法) return 发起转让交接(me, ids, salesOwnerId, already, reason, 走法 === "申请");
-  // 当场换：正在移交 / 交接中的不能再转（X-38 → P-转-05），上级、系统管理员也一样，先撤回或等对方拒收
-  const 中 = await 移交中挡(ids, salesOwnerId);
+  const 勾的 = Array.isArray(逐项?.随转) ? 逐项.随转.filter((x): x is string => typeof x === "string") : [];
+  if (走法) {
+    // 负责人本人发起：同事项目一律不带（E-339:6），不收「随客户转」
+    if (勾的.length) return { ok: false, error: "负责人本人转客户，同事在推的项目不随客户转；要带请上级在转让时逐项勾选" };
+    return 发起转让交接(me, ids, salesOwnerId, already, reason, 走法 === "申请");
+  }
+  // 12-22：上级 / 条线总管理 / 系统管理员直接转别人的客户，原因必填（客户原话摘要），留在换负责人记录上
+  const 要说明 = await 直转要说明(me, salesOwnerId, ids);
+  const 说明 = typeof 逐项?.说明 === "string" ? 逐项.说明.trim() : "";
+  if (要说明 && !说明) return { ok: false, error: "请写一句转让原因（客户原话摘要），会记进变更历史" };
+  if (说明.length > 转让说明上限) return { ok: false, error: `转让原因最多 ${转让说明上限} 字` };
+  if (勾的.length && (!要说明 || ids.length !== 1)) return { ok: false, error: "同事在推的项目要逐项选，只能一位客户一位客户地转" };
+  if (勾的.length) {
+    const 合法 = new Set((await 同事在推清单(ids[0], salesOwnerId)).map((p) => p.id));
+    if (勾的.some((x) => !合法.has(x))) return { ok: false, error: "有项目已经不是同事在推的（换了人、结束了或进了公海），请重新打开转让框再选" };
+  }
+  // 当场换：正在移交 / 交接中的不能再转（X-38 → P-转-05）。上级直接转时负责人本人还在等确认的申请移交不挡，写成功后作废并通知两边（终审 5）
+  const 本人等确认 = 要说明 ? await 等确认的申请移交(ids) : { 行: [], 其他: false };
+  const 中 = 本人等确认.行.length && !本人等确认.其他 ? null : await 移交中挡(ids, salesOwnerId);
   if (中) return { ok: false, error: 中 };
   await 钉住老签约();
   // 改负责人、名下的活跟着走、核持有上限（接待分配），一个事务做完（M-公海-18，11-11）：超了整批回滚，一个都没转
-  const 写 = await 接待分配写(ids, salesOwnerId, me.id);
+  const 留痕 = 要说明 ? await 取转让留痕(ids, 说明) : undefined;
+  const 写 = await 接待分配写(ids, salesOwnerId, me.id, 要说明 ? { 随转: 勾的, 留痕 } : undefined);
   if (!写.ok) return { ok: false, error: 写.超 };
   const { res, 换成了, 带: { 数: 带走, 记下: 带过来, 没转成, 留下, 同事待分配 } } = 写.值;
   // 转客户带走了同事的项目（待分配的、在推的）：事务提交了才告诉这位同事（P-转-19）
@@ -1400,13 +1451,18 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   await 分给你通知(me, salesOwnerId, 转成了.map((c) => c.id), undefined, 留下);
   // 市场管理改分销售名下的（11-19）：原负责人上面 改负责人通知 已经说了，这里只补他的直属上级
   await 市场改分通知(me, 转成了.map((c) => ({ 原: c.salesOwnerId, 新: salesOwnerId, customerId: c.id })), { 原负责人另有通知: true });
+  // 12-22 逐项选：没勾的同事项目原负责人收一条「客户负责人换了，你的项目不变」；负责人本人还在等确认的申请作废并通知两边
+  if (要说明 && 转成了.length) {
+    await 同事项目保留知会(me.id, salesOwnerId, 转成了.map((c) => ({ customerId: c.id, 原: c.salesOwnerId })));
+    if (本人等确认.行.length) await 作废申请移交(me, 本人等确认.行, 转成了.map((c) => c.id), salesOwnerId);
+  }
 
   if (res.count) {
     await recordAudit({
       user: me, action: "assign", entity: "Customer",
       summary: `把 ${转成了.length} 名${b.customer}的销售负责人改为「${(await prisma.user.findUnique({ where: { id: salesOwnerId }, select: { name: true } }))?.name ?? salesOwnerId}」${reason ? `（${reason}）` : ""}${没转成.length ? `（${没转成.length} 名刚被别人改了负责人，没转）` : ""}`,
       // 原值也记下：撤销提示条过了 6 秒，还能照着这里手工改回去（排查 D1）
-      detail: { ids, salesOwnerId, 原负责人: 转成了.map((c) => ({ id: c.id, salesOwnerId: c.salesOwnerId })), ...(没转成.length ? { 没转成 } : {}), ...(reason ? { 转让原因: reason } : {}) },
+      detail: { ids, salesOwnerId, 原负责人: 转成了.map((c) => ({ id: c.id, salesOwnerId: c.salesOwnerId })), ...(没转成.length ? { 没转成 } : {}), ...(reason ? { 转让原因: reason } : {}), ...(说明 ? { 转让说明: 说明, 随客户转的项目: 勾的 } : {}) },
     });
   }
   revalidateCustomer();
@@ -1442,7 +1498,7 @@ async function 接待分配核上限(tx: Pick<Prisma.TransactionClient, "custome
  * 批量直接转客户的写入（assignSalesOwner）：一个事务里核接待分配的持有上限、改负责人、名下的活和项目跟着走；超了抛 整批超上限 整批回滚。
  * 限定着改（企业版虚线上级只能看、团队版同事互看）：看得到的客户里有改不动的，那几位没换人，下面的项目和活也不能跟着走
  */
-async function 接待分配写(ids: string[], salesOwnerId: string, 操作人: string) {
+async function 接待分配写(ids: string[], salesOwnerId: string, 操作人: string, 逐项?: 逐项选项) {
   const 规则 = await 生效组织规则();
   const org = 企业版() ? await 权限组织() : null;
   return 整批或不做(() => 查完再写(async (tx) => {
@@ -1456,7 +1512,7 @@ async function 接待分配写(ids: string[], salesOwnerId: string, 操作人: s
       const 已换 = new Set((await tx.customer.findMany({ where: { id: { in: 换人的.map((c) => c.id) }, salesOwnerId }, select: { id: true } })).map((c) => c.id));
       return 换人的.filter((c) => 已换.has(c.id));
     });
-    const 带 = await 带走并记下在事务里(tx, 换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId, 操作人, "assign", org);
+    const 带 = await 带走并记下在事务里(tx, 换成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId, 操作人, "assign", org, 逐项);
     await 原状态记到出公海痕(tx, new Map(换成了.map((c) => [c.id, c.custStatus])), 动手时);
     return { res, 换成了, 带 };
   }, { timeout: 30_000 }));

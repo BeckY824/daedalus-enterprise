@@ -658,7 +658,7 @@ describe("仅项目客户：客户本身、原有联系人照旧动不了，别�
     const 前 = await prisma.customer.findUniqueOrThrow({ where: { id: c } });
     const 结果们: { ok: boolean }[] = [
       await 以(乙, () => patchCustomer(c, "remark" as never, "乙改备注")),
-      await 以(乙, () => assignSalesOwner([c], 乙.id)),
+      await 以(乙, () => assignSalesOwner([c], 乙.id, null, undefined, { 说明: "测试原因" })),
       // 放进公海：看不到的客户不算数（回 ok、动了 0 位）
       await 以(乙, () => 放进公海([c])).then((r) => ({ ok: r.ok && r.updated > 0 })),
       await 以(乙, () => 三态暂缓回收(c, "x")),

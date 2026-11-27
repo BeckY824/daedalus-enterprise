@@ -106,7 +106,7 @@ describe("市场交给销售：客户分配空着补「非自持」，已有值�
   it("市场在客户层转给销售（批量转）：补非自持；撤销改负责人还成空", async () => {
     const c = await 客户(市场.id);
     await 项目(c, 市场.id);
-    const r = await 以(市场, () => assignSalesOwner([c], 甲.id));
+    const r = await 以(市场, () => assignSalesOwner([c], 甲.id, null, undefined, { 说明: "测试原因" }));
     expect(r).toMatchObject({ ok: true, updated: 1 });
     expect(await 分配of(c)).toBe("非自持");
     if (!r.ok) throw new Error("没转成");
@@ -118,7 +118,7 @@ describe("市场交给销售：客户分配空着补「非自持」，已有值�
 
   it("撤销时这一格已被人手改过：不动", async () => {
     const c = await 客户(市场.id);
-    const r = await 以(市场, () => assignSalesOwner([c], 甲.id));
+    const r = await 以(市场, () => assignSalesOwner([c], 甲.id, null, undefined, { 说明: "测试原因" }));
     if (!r.ok) throw new Error("没转成");
     await prisma.customer.update({ where: { id: c }, data: { assignWay: "自持" } });
     await 以(市场, () => 撤销改负责人(r.原值 ?? [], 甲.id, r.带过来));
@@ -127,7 +127,7 @@ describe("市场交给销售：客户分配空着补「非自持」，已有值�
 
   it("销售转销售（不是市场交给销售）：不写", async () => {
     const c = await 客户(乙.id);
-    expect(await 以(总管, () => assignSalesOwner([c], 甲.id))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 以(总管, () => assignSalesOwner([c], 甲.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true, updated: 1 });
     expect(await 分配of(c)).toBeNull();
   });
 
@@ -159,7 +159,7 @@ describe("市场交给销售：客户分配空着补「非自持」，已有值�
     vi.stubEnv("CRM_ENTERPRISE", "");
     忘掉企业版范围();
     const c = await 客户(乙.id);
-    expect(await 以(总管, () => assignSalesOwner([c], 甲.id))).toMatchObject({ ok: true });
+    expect(await 以(总管, () => assignSalesOwner([c], 甲.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true });
     expect(await 分配of(c)).toBeNull();
   });
 });

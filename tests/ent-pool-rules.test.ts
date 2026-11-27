@@ -614,7 +614,7 @@ describe("直接指定给某人：联系人、项目、沟通记录跟着客户�
     const 跟进 = await prisma.followUp.create({ data: { type: "PHONE", title: "", content: "聊了报价", customerId: c, ownerId: 乙.id, occurredAt: 今 } });
     const p = await 项目(乙.id, c);
     当(老板);
-    expect(await assignSalesOwner([c], 丙.id)).toMatchObject({ ok: true, updated: 1 });
+    expect(await assignSalesOwner([c], 丙.id, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true, updated: 1 });
     const 看 = (u: 人) => 以谁的身份(u.id, async () => [
       await prisma.customer.count({ where: { id: c } }),
       await prisma.contact.count({ where: { customerId: c } }),

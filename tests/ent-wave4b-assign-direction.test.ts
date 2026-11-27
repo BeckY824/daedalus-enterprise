@@ -84,28 +84,28 @@ const 马来西亚: 址 = { addrCountry: "马来西亚" };
 describe("市场成员指定分配暂不分配的客户：按方向挑人（P-转-26）", () => {
   it("马来西亚客户（默认外贸）：指定给内贸销售、内贸销售管理都拒，客户不动；外贸销售、外贸销售管理（11-23）照转", async () => {
     const { c } = await 建客户({ 地址: 马来西亚, 号: null });
-    expect(await assignSalesOwner([c], 内一)).toMatchObject({ ok: false, error: expect.stringContaining("外贸事业部的销售、销售管理") });
-    expect(await assignSalesOwner([c], 内组长)).toMatchObject({ ok: false });
+    expect(await assignSalesOwner([c], 内一, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: false, error: expect.stringContaining("外贸事业部的销售、销售管理") });
+    expect(await assignSalesOwner([c], 内组长, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: false });
     expect(await 客户负责人(c)).toBe(市场管);
-    expect(await assignSalesOwner([c], 外一)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c], 外一, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 客户负责人(c)).toBe(外一);
     const d = await 建客户({ 地址: 马来西亚, 号: null });
-    expect(await assignSalesOwner([d.c], 外组长)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([d.c], 外组长, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 客户负责人(d.c)).toBe(外组长);
   });
 
   it("外贸销售管理被暂停：外贸方向指定不到他", async () => {
     await setSetting(自动分配不参与key, { [外组长]: "暂停" });
     const { c } = await 建客户({ 地址: 马来西亚, 号: null });
-    expect(await assignSalesOwner([c], 外组长)).toMatchObject({ ok: false });
+    expect(await assignSalesOwner([c], 外组长, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: false });
     expect(await 客户负责人(c)).toBe(市场管);
   });
 
   it("改了方向（交 内贸）：内贸销售、内贸销售管理都能指定；暂停参与的不行", async () => {
     const { c } = await 建客户({ 地址: 马来西亚, 号: null });
     await setSetting(自动分配不参与key, { [内二]: "暂停" });
-    expect(await assignSalesOwner([c], 内二, null, "内贸")).toMatchObject({ ok: false });
-    expect(await assignSalesOwner([c], 内组长, null, "内贸")).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c], 内二, null, "内贸", { 说明: "测试原因" })).toMatchObject({ ok: false });
+    expect(await assignSalesOwner([c], 内组长, null, "内贸", { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 客户负责人(c)).toBe(内组长);
   });
 
@@ -120,9 +120,9 @@ describe("市场成员指定分配暂不分配的客户：按方向挑人（P-�
 
   it("对照：不是暂不分配的客户、系统管理员指定，都不按方向拦", async () => {
     const { c } = await 建客户({ 地址: 马来西亚, 号: null, 方式: "指定分配", 项目线: "外贸" });
-    expect(await assignSalesOwner([c], 内一)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c], 内一, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     const d = await 建客户({ 地址: 马来西亚, 号: null });
     当(老板, "老板", "ADMIN");
-    expect(await assignSalesOwner([d.c], 内一)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([d.c], 内一, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
   });
 });
