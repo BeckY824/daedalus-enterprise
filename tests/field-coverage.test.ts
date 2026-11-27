@@ -362,6 +362,30 @@ const 派生: Record<string, Record<string, string>> = {
     doneById: "谁了结的，系统打上",
     reason: "转让原因，发起时从字典「转让原因」里选（可不选），存当时的叫法，不改",
   },
+  /*
+    转让异议（2026-11-27，12-22 第 2 阶段，迁移 193）：一行 = 一位受影响的人对一次转让里一个对象的异议权，是「账」。
+    转让做成时系统记一行「可提」，本人在 /objections 提交一次（带「可提」条件，只成一次），之后只有裁定动作（B 段）推状态。没有直接改某一格的入口。
+  */
+  EntTransferObjection: {
+    ownerLogId: "哪次转让（换负责人记录），转让时定",
+    customerId: "哪位客户，转让时定",
+    projectId: "哪个项目（项目异议才有），转让时定",
+    kind: "项目 / 客户，转让时定",
+    targetKey: "唯一键：项目 id 或 customer，转让时定",
+    targetName: "对象名（转让当时的叫法），转让时定",
+    objectorUserId: "谁有权提，转让时定",
+    operatorUserId: "让这次转让生效的人，转让时定；裁定人按他算",
+    toOwnerId: "转让当时的新负责人，转让时定",
+    status: "可提 → 待裁定 → 裁定结果，只有提异议、裁定两个动作能改",
+    expiresAt: "转让那一刻 + 30 天，转让时定",
+    reason: "异议理由，提交时写一次",
+    submittedAt: "提交那一刻，系统打上",
+    judgeIds: "裁定人们，提交时按「让变动生效那位的上一级」算好",
+    judgeRole: "裁定人是哪一级（条线总管理 / 系统管理员），提交时定",
+    judgeNote: "裁定说明（B 段），裁定时写",
+    judgedAt: "裁定那一刻（B 段），系统打上",
+    judgedById: "谁裁定的（B 段），系统打上",
+  },
   EntImportBatch: {
     source: "从哪来（excel / feishu / dingtalk），建批时定",
     kind: "首次 / 同步 / 定冲突，建批时定",

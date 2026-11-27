@@ -2274,3 +2274,47 @@ model EntCustomerMerge {
   @@index([intoId, status])
   @@index([status, at])
 }
+
+/// 12-22 第 2 阶段 · 转让异议（迁移 193，判定页 #7 #8 #18）：上级 / 条线总管理 / 系统管理员直接转客户后，被换掉的客户负责人、被随客户转走在推项目的同事
+/// 各有 30 天可以提异议（E-380:12、E-414）。一行 = 一位受影响的人对一次转让里的一个对象（客户本身 或 一个项目）的异议权：
+/// 转让做成、发通知的那一刻记一行 status「可提」（铃铛通知链到 /objections；「能提异议的通知」列表就是这些行），
+/// 提交后写 reason / judgeIds、status 变「待裁定」，裁定（第 2 阶段 B 段）再写 judgeNote / judgedAt / judgedById、status 变维持 / 撤回等。
+/// 指人的列都不建外键（停用的人也照样显示），靠 sync/tables.ts 的 指向人的列 改身份
+model EntTransferObjection {
+  id          String    @id @default(cuid())
+  /// 哪次转让：CustomerOwnerLog.id（没建外键，客户软删后留痕照留）
+  ownerLogId  String
+  customerId  String
+  /// 项目异议才有；客户异议为空
+  projectId   String?
+  /// 项目 / 客户（对象类别）
+  kind        String
+  /// 唯一键里用：项目 = 项目 id，客户 = "customer"（SQLite 唯一约束里空值不算重，所以不直接用 projectId）
+  targetKey   String
+  /// 对象名（项目名 / 客户显名），列表里直接显示，转让当时的样子
+  targetName  String
+  /// 谁有权提：被换掉的客户负责人 / 项目被随客户转走的同事
+  objectorUserId  String
+  /// 让这次变动生效的人（点转让的人）；裁定人 = 他的上一级
+  operatorUserId  String
+  /// 转让当时的新负责人
+  toOwnerId   String
+  /// 可提 / 待裁定 / 维持 / 撤回 / 待手工退回 / 已退回（后三种属第 2 阶段 B 段）
+  status      String    @default("可提")
+  /// 转让时刻 + 30 天；过了不能再提
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  /// 异议理由（必填，≤200 字），提交时写
+  reason      String?
+  submittedAt DateTime?
+  /// 裁定人们（JSON 数组，提交时按「让变动生效那位的上一级」算好）与角色名（条线总管理 / 系统管理员）
+  judgeIds    String?
+  judgeRole   String?
+  judgeNote   String?
+  judgedAt    DateTime?
+  judgedById  String?
+
+  @@unique([ownerLogId, objectorUserId, targetKey])
+  @@index([objectorUserId, status])
+  @@index([status, submittedAt])
+}

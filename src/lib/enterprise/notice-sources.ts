@@ -19,6 +19,7 @@ import { 卡点显示名 } from "@/lib/project/blocker-rules";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 不跟着转的提醒, 同事在推的项目 } from "@/lib/carry-over-db";
 import { 快轮到提醒 } from "./assign-eta";
+import { 异议期天数, 异议链接 } from "./objection-core";
 import { 客户显名, 客户引, 显名列 } from "./customer-title";
 import { 草稿保留天 } from "./coach-rec";
 import { businessDayjs } from "@/lib/business-clock";
@@ -245,7 +246,7 @@ export type 同事待分配条 = { id: string; 原: string; customerId: string; 
  * 他在这些客户上的待办和计划不搬、不关，还在他名下，能照常勾完成，通知里写清。
  * 点转让的人自己、接手人、已停用的不发；一位同事一条
  */
-export async function 同事待分配随客户通知(操作人: string, 新: string, 条们: readonly 同事待分配条[]): Promise<void> {
+export async function 同事待分配随客户通知(操作人: string, 新: string, 条们: readonly 同事待分配条[], 异议项目?: ReadonlyMap<string, string>): Promise<void> {
   await 稳("同事待分配随客户通知", async () => {
     const 按人 = new Map<string, 同事待分配条[]>();
     for (const x of 条们) if (x.原 && x.原 !== 操作人 && x.原 !== 新) 按人.set(x.原, [...(按人.get(x.原) ?? []), x]);
@@ -265,11 +266,13 @@ export async function 同事待分配随客户通知(操作人: string, 新: str
       if (!人.get(原)?.active) continue;
       const 客户 = [...new Set(们.map((x) => 客户名.get(x.customerId) ?? "（一位客户）"))];
       const 项目 = 们.map((x) => `「${项目名.get(x.id) ?? "（一个项目）"}」`);
+      // 12-22 判定页 #7：随客户转走的在推项目通知里带「提异议」入口（待分配的没有，#11）；异议行是 记转让异议入口 记的
+      const 异议们 = 们.flatMap((x) => (x.在推 && 异议项目?.get(x.id) ? [异议项目.get(x.id)!] : []));
       await notify([原], {
         kind: "交接",
         title: `${谁} 把客户${客户.map((c) => `「${c}」`).join("、")}转给了 ${新名}，你名下${们.some((x) => x.在推) ? "" : "待分配"}的项目${项目.length > 3 ? `${项目.slice(0, 3).join("")} 等 ${项目.length} 个` : 项目.join("")}随客户一起给了 ${新名}`,
-        body: "这些客户上你的待办和计划还在你名下，没做完的可以照常勾完成。",
-        link: 们.length === 1 ? `/projects/${们[0].id}` : "/projects",
+        body: `这些客户上你的待办和计划还在你名下，没做完的可以照常勾完成。${异议们.length ? `有不同意见，${异议期天数} 天内可以提异议（点开这条，写明理由，由上一级裁定）。` : ""}`,
+        link: 异议们.length ? 异议链接(异议们) : 们.length === 1 ? `/projects/${们[0].id}` : "/projects",
         key: `awaiting-carry:${原}:${们.map((x) => x.id).sort().join(",").slice(0, 300)}:${分钟()}`,
       });
     }
@@ -830,7 +833,7 @@ export async function 恢复到停用负责人通知(
 }
 
 /** 直接改负责人（转给自己、规则关着）当场就换了：告诉原负责人一声（11-03 C3-3）。不发给操作人自己；新负责人走上面的 分给你通知 */
-export async function 改负责人通知(me: 人, 换了: readonly { customerId: string; 旧: string }[], 新: string): Promise<void> {
+export async function 改负责人通知(me: 人, 换了: readonly { customerId: string; 旧: string }[], 新: string, 异议客户?: ReadonlyMap<string, readonly { id: string }[]>): Promise<void> {
   await 稳("改负责人通知", async () => {
     const 按人 = new Map<string, string[]>();
     for (const c of 换了) if (c.旧 !== me.id && c.旧 !== 新) 按人.set(c.旧, [...(按人.get(c.旧) ?? []), c.customerId]);
@@ -840,10 +843,13 @@ export async function 改负责人通知(me: 人, 换了: readonly { customerId:
     for (const [旧, ids] of 按人) {
       if (!在职.has(旧)) continue;
       const 客户名 = await 交接客户名(ids);
+      // 12-22 判定页 #8：被换掉的客户负责人也带「提异议」入口（上级 / 条线总管理 / 系统管理员直转那一路）
+      const 异议们 = (异议客户?.get(旧) ?? []).map((x) => x.id);
       await notify([旧], {
         kind: "交接",
         title: `${me.name} 把你名下的 ${ids.length} 位客户${客户名} 改给了 ${新名}`,
-        link: "/customers",
+        ...(异议们.length ? { body: `有不同意见，${异议期天数} 天内可以提异议（点开这条，写明理由，由上一级裁定）。` } : {}),
+        link: 异议们.length ? 异议链接(异议们) : "/customers",
       });
     }
   });

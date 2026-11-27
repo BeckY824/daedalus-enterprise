@@ -44,6 +44,7 @@ import { 转让说明上限, type 带走数, type 转走项目预览, type 同�
 import { 带走并记下在事务里, 还项目, 带过来对不上, 数转走的项目, 数进手的持有项目, 同事在推的项目, type 带走的, type 逐项选项 } from "@/lib/carry-over-db";
 import { 等确认的申请移交, 作废申请移交 } from "@/lib/enterprise/handover-void";
 import { 同事项目保留知会 } from "@/lib/enterprise/notice-sources";
+import { 记转让异议入口 } from "@/lib/enterprise/objection";
 import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
 import { 记换负责人, 是我刚换的, 删被撤的换负责人记录, 公海前负责人, 取转让留痕 } from "@/lib/owner-log-db";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
@@ -1456,11 +1457,13 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   const 写 = await 接待分配写(ids, salesOwnerId, me.id, 要说明 ? { 随转: 勾的, 留痕 } : undefined);
   if (!写.ok) return { ok: false, error: 写.超 };
   const { res, 换成了, 带: { 数: 带走, 记下: 带过来, 没转成, 留下, 同事待分配 } } = 写.值;
-  // 转客户带走了同事的项目（待分配的、在推的）：事务提交了才告诉这位同事（P-转-19）
-  if (同事待分配.length) await 同事待分配随客户通知(me.id, salesOwnerId, 同事待分配);
   // 改完又被别人改走的不算转成：不通知、不计数、不进撤销（撤销会把别人的改动盖掉）
   const 转成了 = 换成了.filter((c) => !没转成.includes(c.id));
-  await 改负责人通知(me, 转成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId);
+  // 12-22 第 2 阶段：直接转（写了原因那一路）时，被换掉的客户负责人、随客户转走在推项目的同事各记一行异议入口（30 天），通知里带「提异议」
+  const 异议 = 要说明 && 转成了.length ? await 记转让异议入口(me, salesOwnerId, 转成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), 同事待分配) : undefined;
+  // 转客户带走了同事的项目（待分配的、在推的）：事务提交了才告诉这位同事（P-转-19）
+  if (同事待分配.length) await 同事待分配随客户通知(me.id, salesOwnerId, 同事待分配, 异议?.项目);
+  await 改负责人通知(me, 转成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), salesOwnerId, 异议?.客户);
   await 分给你通知(me, salesOwnerId, 转成了.map((c) => c.id), undefined, 留下);
   // 市场管理改分销售名下的（11-19）：原负责人上面 改负责人通知 已经说了，这里只补他的直属上级
   await 市场改分通知(me, 转成了.map((c) => ({ 原: c.salesOwnerId, 新: salesOwnerId, customerId: c.id })), { 原负责人另有通知: true });

@@ -64,6 +64,7 @@ export function 企业版页名(pathname: string, pool: string | null, 客户叫
   if (在(pathname, "/contacts")) return "联系人";
   if (在(pathname, "/settings")) return "设置";
   if (在(pathname, "/projects/handover")) return "离职交接";
+  if (在(pathname, "/objections")) return "转让异议";
   if (在(pathname, "/projects/attach")) return "挂靠申请";
   // 项目页亮「客户」（左栏没有「项目」了），标签页标题照旧叫「项目」
   if (在(pathname, "/projects")) return "项目";
