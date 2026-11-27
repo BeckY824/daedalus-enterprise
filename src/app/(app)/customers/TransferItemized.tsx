@@ -70,7 +70,7 @@ export function 逐项选块({ 预览, 选, 改, 忙 }: { 预览: 转走项目�
 export function 说明框({ 预览, 值, 改, 忙, onEnter }: { 预览: 转走项目预览 | null | undefined; 值: string; 改: (s: string) => void; 忙: boolean; onEnter?: () => void }) {
   if (!预览?.要说明) return null;
   return (
-    <div data-testid="transfer-why">
+    <div data-testid="transfer-why" className="ti-why">
       <label className="csq-why-h" htmlFor="transfer-why-input">转让原因（必填，写进变更历史）</label>
       <Input.TextArea
         id="transfer-why-input"
