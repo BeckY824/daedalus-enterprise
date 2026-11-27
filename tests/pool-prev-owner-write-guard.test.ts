@@ -3,7 +3,7 @@
  * 源码扫描，不连库：src 和 scripts 里凡是出现 "pool-release" 字样的文件都必须在下面归类——
  *   写  = 自己写这一列（含必须出现的记号）；
  *   走公共写法 = 只通过 记转让 / 记换负责人 写留痕，列由公共函数写；
- *   读  = 只读留痕或只在注释里提到；
+ *   读  = 只读留痕或只在注释里提到（断言里面没有 create / createMany / INSERT 写 pool-release）；
  *   豁免 = 一次性脚本，写明理由。
  * 新加的文件提到 pool-release 没归类就红：要么写列，要么归到读 / 走公共写法并想清楚。
  */
@@ -23,17 +23,53 @@ function 扫(dir: string, 出: string[] = []): string[] {
   return 出;
 }
 
-const 写: Record<string, { 记号: RegExp; 至少: number }> = {
-  "src/lib/project/db.ts": { 记号: /kind === "pool-release"\) await 记放回人\(/, 至少: 1 },
-  "src/lib/offboard-move.ts": { 记号: /await 记放回人\(/, 至少: 1 },
-  "src/lib/enterprise-import/project-target.ts": { 记号: /await 记放回人\(/, 至少: 2 },
-  "src/lib/owner-log-db.ts": { 记号: /kind === "pool-release"\) \{\s*await 记客户放回人\(/, 至少: 1 },
-  "src/lib/enterprise/pool-owner-backfill.ts": { 记号: /poolPrevOwnerId: c\.salesOwnerId/, 至少: 1 },
+/**
+ * 写 / 走公共写法的文件把写形态的次数钉死（多一处就红，逼着人去看有没有同时写列）。
+ * 扫不到的：不写 "pool-release" 字面量、从常量取 kind 再传给 转让痕 / 记转让 / 记换负责人 的新写法——这种要靠 review，
+ * 所以不要这样写（要加一处就改这张表，让守卫看得见）。
+ */
+type 形态 = { re: RegExp; n: number; /** true = 这一处是「直接写留痕」，必须各有一次 记放回人 / 记客户放回人 / 直接写列 对上 */ 对应?: boolean };
+const 写: Record<string, { 形态: 形态[]; 放回人: RegExp; 放回人次数: number }> = {
+  // 记转让 里 kind 是变量，pool-release 时调 记放回人（一处）；调用方只传 "pool-release"，次数钉死
+  "src/lib/project/db.ts": {
+    形态: [
+      { re: /转让痕\([^\n]*"pool-release"/g, n: 0 },
+      { re: /记转让\([^\n]*"pool-release"/g, n: 2 },
+      { re: /kind === "pool-release"\) await 记放回人\(/g, n: 1, 对应: true },
+      { re: /kind: "pool-release"/g, n: 0 },
+    ],
+    放回人: /await 记放回人\(/g, 放回人次数: 1,
+  },
+  "src/lib/offboard-move.ts": {
+    形态: [{ re: /转让痕\([^\n]*"pool-release"/g, n: 1, 对应: true }, { re: /kind: "pool-release"/g, n: 0 }],
+    放回人: /await 记放回人\(/g, 放回人次数: 1,
+  },
+  "src/lib/enterprise-import/project-target.ts": {
+    形态: [
+      { re: /projectNodeLog\.create\(\{ data: 无主留痕\(/g, n: 2, 对应: true },
+      { re: /转让痕\([^\n]*"pool-release"/g, n: 0 },
+      { re: /kind: "pool-release"/g, n: 1 }, // 无主留痕 里那一处
+    ],
+    放回人: /await 记放回人\(/g, 放回人次数: 2,
+  },
+  // 记换负责人 里 kind 是变量，pool-release 时调 记客户放回人（一处）；kind: "pool-release" 的 3 处都是读（where）
+  "src/lib/owner-log-db.ts": {
+    形态: [
+      { re: /customerOwnerLog\.create(Many)?\(/g, n: 1 },
+      { re: /kind === "pool-release"\) \{\s*await 记客户放回人\(/g, n: 1, 对应: true },
+      { re: /kind: "pool-release"/g, n: 3 },
+    ],
+    放回人: /await 记客户放回人\(/g, 放回人次数: 1,
+  },
+  "src/lib/enterprise/pool-owner-backfill.ts": {
+    形态: [{ re: /customerOwnerLog\.create\([\s\S]{0,300}kind: "pool-release"/g, n: 1, 对应: true }],
+    放回人: /poolPrevOwnerId: c\.salesOwnerId/g, 放回人次数: 1,
+  },
 };
-/** 只通过 记转让 / 记换负责人 写，必须真的调到它们 */
-const 走公共写法: Record<string, RegExp> = {
-  "src/lib/enterprise/pool-link.ts": /(记转让|记换负责人)\([^\n]*"pool-release"/g,
-  "src/lib/enterprise-import/apply.ts": /记换负责人\([^\n]*"pool-release"/g,
+/** 只通过 记转让 / 记换负责人 写，次数钉死，必须真的调到它们 */
+const 走公共写法: Record<string, { re: RegExp; n: number }> = {
+  "src/lib/enterprise/pool-link.ts": { re: /(记转让|记换负责人)\([^\n]*"pool-release"/g, n: 2 },
+  "src/lib/enterprise-import/apply.ts": { re: /记换负责人\([^\n]*"pool-release"/g, n: 1 },
 };
 const 豁免: Record<string, string> = {
   "scripts/ent-x147-record-only-backfill.ts": "一次性导入脚本（已跑完）：直接插 pool-release 且 fromOwnerId 恒为 null，新列默认就是 null，值一致",
@@ -86,17 +122,33 @@ describe("每处写 pool-release 都要同时写 poolPrevOwnerId（迁移 194）
     expect([...已归].filter((f) => !提到.includes(f))).toEqual([]);
   });
 
-  for (const [f, { 记号, 至少 }] of Object.entries(写)) {
-    it(`${f} 写留痕的同时写这一列`, () => {
-      const 命中 = 源(f).match(new RegExp(记号.source, "g"))?.length ?? 0;
-      expect(命中).toBeGreaterThanOrEqual(至少);
+  for (const [f, { 形态: 们, 放回人, 放回人次数 }] of Object.entries(写)) {
+    it(`${f} 写形态的次数钉死，且和 记放回人 / 写列的次数对上（多一处就红）`, () => {
+      const 次 = (re: RegExp) => 源(f).match(re)?.length ?? 0;
+      for (const { re, n } of 们) expect({ 形态: re.source, 次数: 次(re) }).toEqual({ 形态: re.source, 次数: n });
+      expect(次(放回人)).toBe(放回人次数);
+      expect(们.filter((x) => x.对应).reduce((和, x) => 和 + x.n, 0)).toBe(放回人次数);
     });
   }
 
-  for (const [f, re] of Object.entries(走公共写法)) {
-    it(`${f} 只走 记转让 / 记换负责人 写（列由公共函数写）`, () => {
-      expect(源(f).match(re)?.length ?? 0).toBeGreaterThan(0);
+  for (const [f, { re, n }] of Object.entries(走公共写法)) {
+    it(`${f} 只走 记转让 / 记换负责人 写（列由公共函数写），次数钉死`, () => {
+      expect(源(f).match(re)?.length ?? 0).toBe(n);
       expect(源(f)).not.toMatch(/(projectNodeLog|customerOwnerLog)\.create/);
+      expect(源(f)).not.toMatch(/INSERT INTO "(ProjectNodeLog|CustomerOwnerLog)"/);
+    });
+  }
+
+  for (const f of 读) {
+    it(`${f}（读）没有写 pool-release 留痕的地方`, () => {
+      const t = 源(f);
+      expect(t).not.toMatch(/转让痕\([^\n]*"pool-release"/);
+      expect(t).not.toMatch(/(记转让|记换负责人)\([^\n]*"pool-release"/);
+      expect(t).not.toMatch(/INSERT INTO "(ProjectNodeLog|CustomerOwnerLog)"/i);
+      // create / createMany 后面 600 字以内出现 pool-release（含 kind: "pool-release"）
+      for (const m of t.matchAll(/(projectNodeLog|customerOwnerLog)\.create(Many)?\(/g)) {
+        expect(t.slice(m.index!, m.index! + 600), `${f} 里 ${m[0]} 附近出现 pool-release`).not.toContain("pool-release");
+      }
     });
   }
 

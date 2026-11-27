@@ -66,10 +66,15 @@ export async function 记客户放回人(tx: Pick<Prisma.TransactionClient, "cus
   const 组 = new Map<string | null, string[]>();
   for (const x of 们) {
     const 人 = x.从 || null;
-    组.set(人, [...(组.get(人) ?? []), x.id]);
+    组.set(人, [...new Set([...(组.get(人) ?? []), x.id])]);
   }
   for (const [人, ids] of 组) {
-    for (let i = 0; i < ids.length; i += 500) await tx.customer.updateMany({ where: { id: { in: ids.slice(i, i + 500) } }, data: { poolPrevOwnerId: 人 } });
+    // 看全部：同 记放回人，别让限定层的公海回避条件把刚进公海的客户自己挡掉
+    for (let i = 0; i < ids.length; i += 500) {
+      const 段 = ids.slice(i, i + 500);
+      const 改 = await 看全部(() => tx.customer.updateMany({ where: { id: { in: 段 } }, data: { poolPrevOwnerId: 人 } }));
+      if (改.count !== 段.length) throw new Error(`记客户放回人：应改 ${段.length} 行，实际 ${改.count} 行（整笔回滚）`);
+    }
   }
 }
 

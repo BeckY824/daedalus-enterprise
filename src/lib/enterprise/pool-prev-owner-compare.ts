@@ -64,17 +64,27 @@ export async function 新回避集合(db: PrismaClient, id: string): Promise<{ �
   return { 项目: new Set(项目.map((r) => r.id)), 客户: new Set(客户.map((r) => r.id)) };
 }
 
-/** 互补核对：在公海的项目 / 客户里，{为空或不是我} + {是我} = 总数 */
-async function 互补成立(db: PrismaClient, id: string): Promise<boolean> {
+/**
+ * 「不是我」这一支的写法（拼进 where）。包 2 要用的是 Prisma 的 NOT {…} / not: 这一类：列可空，SQL 里 NOT (col = 我) 遇到空值得 NULL，
+ * 空列的行会被挡掉（Prisma 的 { not: 我 }、NOT { col: 我 } 都一样），所以必须显式写「为空或不是我」。默认写法就是包 2 要用的这句
+ */
+export type 不是我写法 = (id: string) => Record<string, unknown>;
+export const 为空或不是我: 不是我写法 = (id) => ({ OR: [{ poolPrevOwnerId: null }, { NOT: { poolPrevOwnerId: id } }] });
+
+/**
+ * 互补核对：在公海的项目 / 客户里，按「不是我」写法数出来的行数 + {是我} 的行数 = 总数。
+ * 写法漏了空值（空列被错挡）时 看到 + 是我 < 总数，报不成立。写法可注入（测试用最朴素的 NOT { col: 我 } 验证这里报得出来）
+ */
+export async function 互补成立(db: PrismaClient, id: string, 写法: 不是我写法 = 为空或不是我): Promise<boolean> {
   const 项目在 = { pooledAt: { not: null }, deletedAt: null };
   const 客户在 = { pool: { isNot: null }, deletedAt: null };
   const [总p, 是p, 否p, 总c, 是c, 否c] = await Promise.all([
     db.project.count({ where: 项目在 }),
     db.project.count({ where: { ...项目在, poolPrevOwnerId: id } }),
-    db.project.count({ where: { ...项目在, OR: [{ poolPrevOwnerId: null }, { poolPrevOwnerId: { not: id } }] } }),
+    db.project.count({ where: { ...项目在, ...写法(id) } }),
     db.customer.count({ where: 客户在 }),
     db.customer.count({ where: { ...客户在, poolPrevOwnerId: id } }),
-    db.customer.count({ where: { ...客户在, OR: [{ poolPrevOwnerId: null }, { poolPrevOwnerId: { not: id } }] } }),
+    db.customer.count({ where: { ...客户在, ...写法(id) } }),
   ]);
   return 是p + 否p === 总p && 是c + 否c === 总c;
 }

@@ -14,7 +14,7 @@ import { invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 算回填计划, 写回填, 汇总表, 动作of } from "@/lib/enterprise/pool-prev-owner-backfill";
-import { 对拍 } from "@/lib/enterprise/pool-prev-owner-compare";
+import { 对拍, 互补成立 } from "@/lib/enterprise/pool-prev-owner-compare";
 
 let 序号 = 0;
 const 人 = async (key: string) => (await raw.user.create({ data: { email: `${key}@x`, name: key, title: "", role: "SALES", password: "x" } })).id;
@@ -162,8 +162,32 @@ describe("对拍：旧算法 vs 按列", () => {
     expect((await 对拍(raw)).不一致人数).toBe(2);
   });
 
-  it("可空列的坑：回避以外的人（列为空）不被误挡——互补核对成立", async () => {
+  it("可空列的坑：包 2 会用的「为空或不是我」写法在列为空时不误挡——互补核对成立", async () => {
     const r = await 对拍(raw); // 没回填、列全空
     expect(r.互补不成立人数).toBe(0);
+  });
+
+  it("可空列的坑：写成 NOT { 列: 我 } 会把列为空的行错挡掉，互补核对报得出（Prisma / SQLite 下 NOT (空 = 我) 是 NULL）", async () => {
+    // 回填前：在公海的项目 / 客户列全空。朴素写法数出来的「能看到」是 0，对不上总数
+    expect(await 互补成立(raw, 甲, (id) => ({ NOT: { poolPrevOwnerId: id } }))).toBe(false);
+    expect(await 互补成立(raw, 甲, (id) => ({ poolPrevOwnerId: { not: id } }))).toBe(false);
+    expect(await 互补成立(raw, 甲)).toBe(true);
+    // 回填后仍有列为空的在公海行（导入无主 / 没留痕占位）：朴素写法照样报，默认写法成立
+    await 写回填(raw, await 算回填计划(raw), () => {});
+    expect(await 互补成立(raw, 甲, (id) => ({ NOT: { poolPrevOwnerId: id } }))).toBe(false);
+    expect(await 互补成立(raw, 甲)).toBe(true);
+  });
+});
+
+describe("回填 --dry 口径核对：最近一条 to = 占位但 kind 不是 pool-release 的客户", () => {
+  it("正常数据是 0 位；有一位最近一条是别的 kind 时数出来，按 kind 分开", async () => {
+    const 计划0 = await 算回填计划(raw);
+    expect(计划0.占位非放回).toEqual({ 位数: 0, 按种类: {} });
+    expect(汇总表(计划0)).toMatch(/口径核对[^\n]*\n0 位$/);
+    // 退过两次那位：在 pool-release 之后又有一条 assign 到占位（旧算法认这条，回填认更早的 pool-release）
+    await raw.customerOwnerLog.create({ data: { customerId: 公海客户们.退过两次, userId: 丙, fromOwnerId: 丙, toOwnerId: 占位, kind: "assign", at: t("11 10:00") } });
+    const 计划 = await 算回填计划(raw);
+    expect(计划.占位非放回).toEqual({ 位数: 1, 按种类: { assign: 1 } });
+    expect(汇总表(计划)).toContain("1 位；按 kind：assign 1");
   });
 });

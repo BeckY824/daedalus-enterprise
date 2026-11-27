@@ -29,7 +29,11 @@ export type 回填行 = {
   /** 值从哪来，逐行日志用 */
   来源: string;
 };
-export type 回填计划 = { 项目: 回填行[]; 客户: 回填行[]; 占位: string | null; 数于: Date };
+/**
+ * 口径核对（只出数，不影响写）：在公海、挂占位账号的客户里，最近一条 toOwnerId = 占位（旧算法的取法，不限 kind）的 kind 不是 pool-release 的，按 kind 数。
+ * 回填只认 pool-release；这个数是 0 两种口径一致，不是 0 对拍前就知道不一致是这几位
+ */
+export type 回填计划 = { 项目: 回填行[]; 客户: 回填行[]; 占位: string | null; 数于: Date; 占位非放回: { 位数: number; 按种类: Record<string, number> } };
 export type 回填结果 = { 写了: number; 已相同跳过: number; 无可写: number; 并发跳过: number };
 
 const 分段 = <T,>(a: T[], n: number): T[][] => {
@@ -60,6 +64,7 @@ export async function 算回填计划(db: PrismaClient): Promise<回填计划> {
 
   const 客户们 = await db.customer.findMany({ where: { pool: { isNot: null } }, select: { id: true, salesOwnerId: true, poolPrevOwnerId: true, updatedAt: true, pool: { select: { at: true } } }, orderBy: { id: "asc" } });
   const 客户行: 回填行[] = [];
+  const 占位非放回 = { 位数: 0, 按种类: {} as Record<string, number> };
   for (const 段 of 分段(客户们, 批)) {
     const 挂占位 = 段.filter((c) => 占位 && c.salesOwnerId === 占位);
     const 最近 = new Map<string, string | null>();
@@ -70,6 +75,18 @@ export async function 算回填计划(db: PrismaClient): Promise<回填计划> {
         select: { id: true, customerId: true, fromOwnerId: true },
       }));
       for (const r of 记录) if (!最近.has(r.customerId)) 最近.set(r.customerId, r.fromOwnerId || null);
+      // 口径核对：旧算法不限 kind，取最近一条 toOwnerId = 占位
+      const 全种类 = await 去掉合并挪来的(db, await db.customerOwnerLog.findMany({
+        where: { customerId: { in: 挂占位.map((c) => c.id) }, toOwnerId: 占位 },
+        orderBy: [{ at: "desc" }, { id: "desc" }],
+        select: { id: true, customerId: true, kind: true },
+      }));
+      const 看过 = new Set<string>();
+      for (const r of 全种类) {
+        if (看过.has(r.customerId)) continue;
+        看过.add(r.customerId);
+        if (r.kind !== "pool-release") { 占位非放回.位数++; 占位非放回.按种类[r.kind] = (占位非放回.按种类[r.kind] ?? 0) + 1; }
+      }
     }
     for (const c of 段) {
       const 挂的占位 = !!占位 && c.salesOwnerId === 占位;
@@ -78,7 +95,7 @@ export async function 算回填计划(db: PrismaClient): Promise<回填计划> {
       客户行.push({ id: c.id, 更新于: c.updatedAt, 现值: c.poolPrevOwnerId, 应写, 进公海于: c.pool?.at ?? null, 来源 });
     }
   }
-  return { 项目: 项目行, 客户: 客户行, 占位, 数于 };
+  return { 项目: 项目行, 客户: 客户行, 占位, 数于, 占位非放回 };
 }
 
 /** 这一行要不要写 */
@@ -136,5 +153,7 @@ export function 汇总表(计划: 回填计划): string {
     行.push("", `## ${名}：表 3 按放进公海的北京日期`);
     for (const [日, n] of [...按日].sort((a, b) => a[0].localeCompare(b[0]))) 行.push(`${日}\t${n}`);
   }
+  const { 位数, 按种类 } = 计划.占位非放回;
+  行.push("", "## 口径核对：在公海、挂占位的客户里，最近一条 to = 占位但 kind 不是 pool-release 的（0 = 回填口径和旧算法一致）", `${位数} 位${位数 ? "；按 kind：" + Object.entries(按种类).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k, n]) => `${k} ${n}`).join("、") : ""}`);
   return 行.join("\n");
 }

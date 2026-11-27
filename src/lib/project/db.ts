@@ -625,10 +625,15 @@ export async function 记放回人(tx: Pick<Prisma.TransactionClient, "project">
   const 组 = new Map<string | null, string[]>();
   for (const x of 们) {
     const 人 = x.从 || null;
-    组.set(人, [...(组.get(人) ?? []), x.id]);
+    组.set(人, [...new Set([...(组.get(人) ?? []), x.id])]);
   }
   for (const [人, ids] of 组) {
-    for (let i = 0; i < ids.length; i += 500) await tx.project.updateMany({ where: { id: { in: ids.slice(i, i + 500) } }, data: { poolPrevOwnerId: 人 } });
+    // 看全部：限定层会给 updateMany 加「公海回避」条件，放回人的回避项目过上限时退回按留痕算，刚写的这行 pool-release 会把项目自己挡掉（0 行不报错）
+    for (let i = 0; i < ids.length; i += 500) {
+      const 段 = ids.slice(i, i + 500);
+      const 改 = await 看全部(() => tx.project.updateMany({ where: { id: { in: 段 } }, data: { poolPrevOwnerId: 人 } }));
+      if (改.count !== 段.length) throw new Error(`记放回人：应改 ${段.length} 行，实际 ${改.count} 行（整笔回滚）`);
+    }
   }
 }
 

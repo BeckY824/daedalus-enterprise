@@ -28,6 +28,8 @@ import type { 停用分拣结果 } from "@/lib/offboard-db";
 import { 无主项目进公海 } from "@/lib/enterprise-import/project-target";
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
+import { 无负责人占位Id } from "@/lib/no-owner-db";
+import { 记换负责人 } from "@/lib/owner-log-db";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 let 甲: 人;
@@ -139,6 +141,24 @@ describe("项目进公海写 poolPrevOwnerId", () => {
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
     expect(await 项目列(p)).toBeNull();
   });
+
+  it("放回人的回避项目过了名单上限（101 个以上，退回按关联写）：手动放回照样写上列，不被限定层挡成 0 行", async () => {
+    const 占位 = await 无负责人占位Id(prisma);
+    const 公海客户 = await 客户(占位);
+    const 旧们: string[] = [];
+    for (let i = 0; i < 101; i++) {
+      const id = await 项目(公海客户, 占位);
+      旧们.push(id);
+    }
+    const 时刻 = new Date("2026-11-01T10:00:00Z");
+    await prisma.project.updateMany({ where: { id: { in: 旧们 } }, data: { pooledAt: 时刻, ownerId: "" } });
+    await prisma.projectNodeLog.createMany({ data: 旧们.map((id) => ({ projectId: id, userId: 甲.id, kind: "pool-release", fromOwnerId: 甲.id, toOwnerId: null, at: 时刻, toPhase: "线索", toNode: "潜客培育" })) });
+    const c = await 客户(甲.id);
+    const p = await 项目(c, 甲.id);
+    expect(await 以(甲, () => 放回公海(甲, p))).toEqual({ ok: true });
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).pooledAt).not.toBeNull();
+    expect(await 项目列(p)).toBe(甲.id);
+  });
 });
 
 describe("客户进公海写 poolPrevOwnerId", () => {
@@ -156,5 +176,22 @@ describe("客户进公海写 poolPrevOwnerId", () => {
     expect(await 客户列(c)).toBe(甲.id);
     await 以(乙, () => 放进公海([c], "客户主动终止"));
     expect(await 客户列(c)).toBe(乙.id);
+  });
+  it("放回人的回避客户过了名单上限（101 个以上，退回按关联写）：经 记换负责人 进公海照样写上列", async () => {
+    const 占位 = await 无负责人占位Id(prisma);
+    const 时刻 = new Date("2026-11-01T10:00:00Z");
+    for (let i = 0; i < 101; i++) {
+      const id = await 客户(占位);
+      await prisma.customerPool.create({ data: { customerId: id, userId: null, reason: "手动", at: 时刻 } });
+      await prisma.customerOwnerLog.create({ data: { customerId: id, userId: 甲.id, fromOwnerId: 甲.id, toOwnerId: 占位, kind: "pool-release", at: 时刻 } });
+    }
+    const c = await 客户(甲.id);
+    // 走 记换负责人（导入 / 离职那条路，外面没包 看全部），对应的 updateMany 要靠 记客户放回人 自己包 看全部
+    await 以(甲, () => prisma.$transaction(async (tx) => {
+      await tx.customer.update({ where: { id: c }, data: { salesOwnerId: 占位 } });
+      await tx.customerPool.create({ data: { customerId: c, userId: null, reason: "手动", at: 时刻 } });
+      await 记换负责人(tx, [{ customerId: c, from: 甲.id, to: 占位 }], 甲.id, "pool-release");
+    }));
+    expect(await 客户列(c)).toBe(甲.id);
   });
 });
