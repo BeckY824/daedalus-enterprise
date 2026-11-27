@@ -610,8 +610,13 @@ export default function MembersTab({
                     : [
                         { required: true, message: "请填写登录用户名" },
                         {
-                          pattern: /^[a-z0-9._-]{2,32}$/,
-                          message: "只能用小写字母、数字和 . _ -，长度 2–32 位",
+                          // 编辑时登录名和打开弹窗时的原值一样（导入来的 xx@import.invalid）不校验格式；改了才校验。服务端同口径
+                          validator: (_, v) => {
+                            const s = typeof v === "string" ? v : "";
+                            if (/^[a-z0-9._-]{2,32}$/.test(s)) return Promise.resolve();
+                            if (editing?.id && s === (editing.email ?? "").trim().toLowerCase()) return Promise.resolve();
+                            return Promise.reject(new Error("只能用小写字母、数字和 . _ -，长度 2–32 位"));
+                          },
                         },
                       ]
                 }

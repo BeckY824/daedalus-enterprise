@@ -138,9 +138,11 @@ export async function saveUser(input: {
   }
   // 职位（E-384）：去首尾空格，空串照存，最多 20 字
   const 职位 = input.title.trim();
+  // 编辑时一次读库：职位、登录名都和库里原值比对（飞书 / 钉钉同步、导入来的值不被格式校验拦）
+  const 库原值 = input.id ? await prisma.user.findUnique({ where: { id: input.id }, select: { title: true, email: true } }) : null;
   // 编辑时职位和库里一样就不查长度（飞书 / 钉钉同步写进来的超长职位，改名、改角色、重置密码不被拦）；变了才限 20 字
   if (职位.length > 20) {
-    const 库职位 = input.id ? (await prisma.user.findUnique({ where: { id: input.id }, select: { title: true } }))?.title : undefined;
+    const 库职位 = 库原值?.title;
     if (库职位 == null || 库职位.trim() !== 职位) return { ok: false as const, error: "职位最多 20 个字" };
   }
   if (!ROLES.some((r) => r.value === input.role)) {
@@ -171,7 +173,7 @@ export async function saveUser(input: {
    */
   if (托管版()) {
     if (!isEmail(登录名)) return { ok: false as const, error: "请填写正确的邮箱，他要用它登录，也要用它找回密码" };
-  } else if (!用户名格式.test(登录名)) {
+  } else if (!用户名格式.test(登录名) && !(库原值 && 库原值.email.trim().toLowerCase() === 登录名)) {
     return {
       ok: false as const,
       error: "登录用户名只能用小写字母、数字和 . _ -，长度 2–32 位",
