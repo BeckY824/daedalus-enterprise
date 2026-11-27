@@ -228,6 +228,7 @@ function MergeCustomerDialog({ customerId, 客户名, 预选, 关 }: { customerI
   const 能点 = (走申请 || !!预?.能并) && (!预?.要勾选 || 勾);
   const B名 = 并掉 ? (并掉.按号 ? 按号名 : 并掉.name || "并进来的客户") : "";
 
+  const 管理员判 = 申?.重发限制?.状态 === "管理员判";
   async function 发申请() {
     if (!申 || !预 || !并掉 || !能点) return;
     const 们 = 申.同意人;
@@ -239,8 +240,8 @@ function MergeCustomerDialog({ customerId, 客户名, 预选, 关 }: { customerI
       危: false,
       是: "发申请",
       后果: [
-        { 标: "要同意", 级: "警" as const, 话: `${们.map((x) => x.名).join("、")}（共 ${们.length} 位）都同意了才合并；一位拒绝，申请就结束` },
-        { 标: "等多久", 话: `${等待工作日} 个工作日内没有全部同意，申请失效，要重新发起` },
+        { 标: "要同意", 级: "警" as const, 话: 管理员判 ? `${们.map((x) => x.名).join("、")}（共 ${们.length} 位系统管理员）任一位同意即合并；一位拒绝，申请就结束` : `${们.map((x) => x.名).join("、")}（共 ${们.length} 位）都同意了才合并；一位拒绝，申请就结束` },
+        { 标: "等多久", 话: `${等待工作日} 个工作日内（法定节假日不算）没有全部同意，申请失效，要重新发起` },
         { 标: "等的时候", 话: "两家照常能用；两家的负责人、阶段、回款或提成、被判无效有变，申请失效" },
         ...(n ? [{ 标: "合并后", 话: `挪过来 ${n.项目} 个项目、${n.联系人} 位联系人、${n.沟通} 条沟通；项目负责人、组员都不变，${撤回天数} 天内你可整单撤回` }] : []),
         { 标: "可撤回申请", 话: `都同意之前，你可以在「合并申请」页撤回` },
@@ -409,7 +410,8 @@ function MergeCustomerDialog({ customerId, 客户名, 预选, 关 }: { customerI
           )}
           {走申请 && (
             <section className="mrg-ask" aria-label="要同意的人" data-testid="merge-approvers">
-              <p className="mrg-sec-t">要同意的人 <span className="mrg-sec-c">他们都同意了才合并；{等待工作日} 个工作日内没全部同意，申请失效</span></p>
+              <p className="mrg-sec-t">要同意的人 <span className="mrg-sec-c">{管理员判 ? "任一位同意即合并" : "他们都同意了才合并"}；{等待工作日} 个工作日内（法定节假日不算）没全部同意，申请失效</span></p>
+              {!!申!.重发限制?.话 && <p className="mrg-note" data-testid="merge-resend-limit">{申!.重发限制.话}</p>}
               <ul className="mrg-ask-l">
                 {申!.同意人.map((x) => {
                   const 身份 = [...x.凭.map((v) => 凭叫法[v]), ...(x.项目.length ? [`${x.项目.length} 个项目：${x.项目.map((p) => p.name).join("、")}`] : ((x as { 项目数?: number }).项目数 ?? 0) > 0 ? [`${(x as { 项目数?: number }).项目数} 个项目`] : [])].join("；");

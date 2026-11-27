@@ -22,10 +22,11 @@ import { 忘掉企业版范围, 以谁的身份 } from "@/lib/enterprise/visibil
 import { 规则 } from "@/lib/enterprise/rules";
 import { 只看某人键 } from "@/lib/enterprise/org-core";
 import { 等通知推完 } from "@/lib/enterprise/notify";
+import { 合并通知种类 } from "@/lib/enterprise/customer-merge";
 import { 撤回合并, 合并预览, 并掉看不到话 } from "@/lib/enterprise/customer-merge";
 import {
   算同意人, 发起人问题, 到期时刻, 比四项, 发起合并申请, 处理合并申请, 撤回合并申请, 扫过期合并申请, 到期话, 申请状态,
-  钟上扫过期合并申请, 等待工作日, 直接并话, type 快照,
+  钟上扫过期合并申请, 合并申请通知种类, 等待工作日, 直接并话, 合并申请预览, type 快照,
 } from "@/lib/enterprise/merge-request";
 import {
   发起客户合并申请, 处理客户合并申请, 撤回客户合并申请, 作废客户合并申请, 等我同意的合并申请, 我发起的合并申请, 预览合并申请,
@@ -275,6 +276,11 @@ describe("5 个工作日到期", () => {
   it("E-428 ①：扣法定节假日、调休上班的周末算工作日（国庆）", () => {
     // 2026-09-30 周三发起：10-01~07 放假，10-08 周四 1、10-09 周五 2、10-10 周六调休上班 3、10-12 周一 4、10-13 周二 5
     expect(到期时刻(new Date("2026-09-30T02:00:00Z")).toISOString()).toBe("2026-10-13T02:00:00.000Z");
+    // 春节、节假日当天发起、跨年、没录的 2028 年兜底（同一时刻）
+    expect(到期时刻(new Date("2027-02-04T02:00:00Z")).toISOString()).toBe("2027-02-18T02:00:00.000Z");
+    expect(到期时刻(new Date("2026-10-03T02:00:00Z")).toISOString()).toBe("2026-10-13T02:00:00.000Z");
+    expect(到期时刻(new Date("2026-12-31T02:00:00Z")).toISOString()).toBe("2027-01-08T02:00:00.000Z");
+    expect(到期时刻(new Date("2027-12-30T02:00:00Z")).toISOString()).toBe("2028-01-06T02:00:00.000Z");
     // 没放假的普通一周不变：周一发起 → 下周一
     expect(到期时刻(new Date("2026-11-30T02:00:00Z")).toISOString()).toBe("2026-12-07T02:00:00.000Z");
   });
@@ -728,3 +734,104 @@ describe("动作层（customers/merge-actions.ts）", () => {
   });
 });
 
+
+describe("重发限制（E-428 阶段 3）：被拒 24 小时、30 天 3 次、第 3 次交系统管理员判", () => {
+  const 小时 = (h: number) => new Date(周五下午.getTime() + h * 3600_000);
+  const 发 = async (a: string, b: string, 谁: 人, 现在: Date) => 发起合并申请(prisma, a, b, 谁, { 现在 });
+  const 发成 = async (a: string, b: string, 谁: 人, 现在: Date) => {
+    const r = await 发(a, b, 谁, 现在);
+    if (!r.ok) throw new Error(r.error);
+    return r.requestId;
+  };
+
+  it("被拒 24 小时内不能再发（两个方向都算），到点就能发；失效、撤回不算被拒", async () => {
+    const a = await 客户(乙.id), b = await 客户(丙.id);
+    const id = await 发成(a, b, 乙, 周五下午);
+    await 处理合并申请(prisma, id, 丙, "拒绝", { 原因: "不是同一家", 现在: 小时(1) });
+    expect(await 发(a, b, 乙, 小时(24 + 59 / 60))).toEqual({ ok: false, error: "这对客户的合并申请刚被拒，0 小时 1 分后才能再发" });
+    expect(await 发(b, a, 丙, 小时(10))).toEqual({ ok: false, error: "这对客户的合并申请刚被拒，15 小时 0 分后才能再发" });
+    expect((await 发(a, b, 乙, 小时(25))).ok).toBe(true);
+    // 撤回、失效：不算被拒，马上能再发
+    const c = await 客户(乙.id), d = await 客户(丁.id);
+    const 撤 = await 发成(c, d, 乙, 周五下午);
+    expect((await 撤回合并申请(prisma, 撤, 乙, 小时(1))).ok).toBe(true);
+    const 又 = await 发成(c, d, 乙, 小时(2));
+    await 扫过期合并申请(prisma, new Date("2026-12-05T07:00:00Z"));
+    expect((await 申请(又)).status).toBe(申请状态.已失效);
+    // 没有被拒记录：不受 24 小时限制，已有 2 张 = 第 3 张交系统管理员判
+    expect((await 合并申请预览(prisma, c, d, 乙, new Date("2026-12-05T07:01:00Z"))).重发限制.状态).toBe("管理员判");
+  });
+
+  it("30 天内 3 次：第 3 张交系统管理员判，第 4 张拦；预览写明；30 天外不算", async () => {
+    const a = await 客户(乙.id), b = await 客户(丙.id);
+    const 限 = async (现在: Date) => (await 合并申请预览(prisma, a, b, 乙, 现在)).重发限制.状态;
+    expect(await 限(周五下午)).toBe("正常");
+    const i1 = await 发成(a, b, 乙, 周五下午);
+    await 撤回合并申请(prisma, i1, 乙, 小时(1));
+    expect(await 限(小时(2))).toBe("正常");
+    const i2 = await 发成(a, b, 乙, 小时(2));
+    await 撤回合并申请(prisma, i2, 乙, 小时(3));
+    const 预 = await 合并申请预览(prisma, a, b, 乙, 小时(4));
+    expect(预).toMatchObject({ 能发: true, 重发限制: { 状态: "管理员判", 话: "第 3 次交系统管理员判，任一位系统管理员同意即合并" } });
+    expect(预.同意人.map((x) => x.userId)).toEqual([老板.id]);
+    const i3 = await 发成(a, b, 乙, 小时(4));
+    await 撤回合并申请(prisma, i3, 乙, 小时(5));
+    expect(await 合并申请预览(prisma, a, b, 乙, 小时(6))).toMatchObject({ 能发: false, 原因: ["这对客户 30 天内已发满 3 次"], 重发限制: { 状态: "已满" } });
+    expect(await 发(b, a, 丙, 小时(6))).toEqual({ ok: false, error: "这对客户 30 天内已发满 3 次" });
+    // 31 天后：前 3 张都在窗口外
+    expect(await 限(小时(31 * 24))).toBe("正常");
+  });
+
+  async function 造到第三张() {
+    const a = await 客户(乙.id), b = await 客户(丙.id);
+    for (const h of [0, 2]) {
+      const id = await 发成(a, b, 乙, 小时(h));
+      await 撤回合并申请(prisma, id, 乙, 小时(h + 1));
+    }
+    return { a, b };
+  }
+
+  it("第 3 张：approvers 是所有在职系统管理员，同事不在；任一位同意即合并，同事收合并通知、不收申请", async () => {
+    const 老板二 = await 造人("boss2", "老板二", "ADMIN");
+    await raw.entMember.create({ data: { userId: 老板二.id, bizRole: "director" } });
+    忘掉企业版范围();
+    const { a, b } = await 造到第三张();
+    await 等通知推完();
+    const 丙前 = await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并申请通知种类 } });
+    const id = await 发成(a, b, 乙, 小时(4));
+    const 单 = await 申请(id);
+    expect(单.approvers.map((x) => x.userId).sort()).toEqual([老板.id, 老板二.id].sort());
+    expect(JSON.parse(单.approvers[0].why)).toEqual(["系统管理员"]);
+    expect(JSON.parse(单.choices)).toMatchObject({ 管理员判: true });
+    await 等通知推完();
+    expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并申请通知种类 } })).toBe(丙前);
+    expect(await raw.entNotice.count({ where: { userId: 老板二.id, kind: 合并申请通知种类 } })).toBe(1);
+    // 同事（被并那家负责人丙）不能处理
+    expect(await 处理合并申请(prisma, id, 丙, "同意", { 现在: 小时(5) })).toMatchObject({ ok: false, error: "你不是这张合并申请要同意的人" });
+    // 新建一个丁的项目：同意人重算会多出丁，管理员判不比同意人，照常合并
+    await 项目(丁.id, a);
+    expect(await 处理合并申请(prisma, id, 老板, "同意", { 现在: 小时(5) })).toMatchObject({ ok: true, 状态: 申请状态.已合并 });
+    expect((await raw.customer.findUniqueOrThrow({ where: { id: b } })).deletedAt).not.toBeNull();
+    await 等通知推完();
+    expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并通知种类 } })).toBe(1);
+    expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并申请通知种类 } })).toBe(丙前);
+    // 没点同意的另一位管理员不收「你同意的…已合并」
+    expect(await raw.entNotice.count({ where: { userId: 老板二.id, title: { contains: "你同意的" } } })).toBe(0);
+  });
+
+  it("第 3 张：系统管理员拒绝一票结束（原因必填）；没有在职系统管理员时拦下", async () => {
+    const { a, b } = await 造到第三张();
+    const id = await 发成(a, b, 乙, 小时(4));
+    expect(await 处理合并申请(prisma, id, 老板, "拒绝", { 现在: 小时(5) })).toMatchObject({ ok: false, error: "拒绝要写一句原因" });
+    expect(await 处理合并申请(prisma, id, 老板, "拒绝", { 原因: "不并", 现在: 小时(5) })).toMatchObject({ ok: true, 状态: 申请状态.已拒绝 });
+    // 另起一对客户，没有系统管理员
+    const c = await 客户(乙.id), d = await 客户(丁.id);
+    for (const h of [0, 2]) {
+      const x = await 发成(c, d, 乙, 小时(h));
+      await 撤回合并申请(prisma, x, 乙, 小时(h + 1));
+    }
+    await raw.entMember.deleteMany({ where: { userId: 老板.id } });
+    忘掉企业版范围();
+    expect(await 发(c, d, 乙, 小时(4))).toEqual({ ok: false, error: "没有可用的系统管理员，没法交他判" });
+  });
+});

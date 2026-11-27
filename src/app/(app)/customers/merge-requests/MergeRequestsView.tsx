@@ -230,7 +230,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
 
   return (
     <div>
-      <PageHead title="合并申请" subtitle={`同事负责的客户，或名下有同事在推的项目，合并要发申请：要同意的人都同意了才合并；${等待工作日} 个工作日内没全部同意，申请失效`} />
+      <PageHead title="合并申请" subtitle={`同事负责的客户，或名下有同事在推的项目，合并要发申请：要同意的人都同意了才合并；${等待工作日} 个工作日内（法定节假日不算）没全部同意，申请失效`} />
       <div className="mrq-stack">
         {不能写 && <Alert type="info" showIcon title={`${不能写}：列表照常显示，同意、拒绝、撤回按钮都点不了`} data-testid="merge-req-ro" />}
         <Card title={<span>等我同意{待处理数 ? <span className="mrq-cnt">{待处理数} 张等你处理</span> : null}</span>} size="small">

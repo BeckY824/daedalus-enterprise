@@ -15,6 +15,7 @@ export const 凭叫法: Record<凭, string> = {
   留下客户负责人: "留下那家的客户负责人",
   被并客户负责人: "并进来那家的客户负责人",
   项目负责人: "项目负责人",
+  系统管理员: "系统管理员（第 3 次申请，由你判）",
 };
 
 /** 合并后发起人能整单撤回的天数（同 customer-merge.ts 撤回期限天数 = 回收站保留天数；tests/ent-merge-request-notice.test.ts 钉住一致） */

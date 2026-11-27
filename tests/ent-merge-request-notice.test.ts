@@ -134,7 +134,7 @@ describe("七种通知：谁收、怎么说", () => {
     expect(await 处理合并申请(prisma, r.requestId, 丙, "拒绝", { 原因: "不是同一家" })).toMatchObject({ ok: true, 状态: 申请状态.已拒绝 });
     const 乙最后 = (await 收到(乙)).at(-1)!;
     expect(乙最后.title).toMatch(/^丙拒绝了你的合并申请：「测试客户\d+」并进「测试客户\d+」$/);
-    expect(乙最后.body).toBe("原因：不是同一家。要并可以改了再发一张");
+    expect(乙最后.body).toBe("原因：不是同一家。24 小时后才能再发");
     expect((await 收到(丁)).at(-1)).toMatchObject({ title: expect.stringMatching(/^丙拒绝了合并申请：/), body: "原因：不是同一家。不用再处理" });
     expect((await 收到(戊)).at(-1)).toMatchObject({ title: expect.stringMatching(/^丙拒绝了合并申请：/) });
     expect((await 标题们(丙)).filter((t) => t.includes("拒绝"))).toEqual([]);
@@ -221,7 +221,7 @@ describe("按号放行进来、发起人看不到的那家", () => {
     expect(乙收).toHaveLength(1);
     expect(JSON.stringify(乙收)).not.toContain("看不到的同事客户");
     expect(乙收[0].title).toContain("同事负责的客户（号码撞上） 42");
-    expect(乙收[0].body).toBe("原因：同事负责的客户（号码撞上） 42还在跟。要并可以改了再发一张");
+    expect(乙收[0].body).toBe("原因：同事负责的客户（号码撞上） 42还在跟。24 小时后才能再发");
 
     登录.人 = 乙;
     const 我的 = await 以谁的身份(乙.id, () => 我发起的合并申请());
