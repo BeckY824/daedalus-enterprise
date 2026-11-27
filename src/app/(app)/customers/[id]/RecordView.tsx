@@ -1567,11 +1567,11 @@ export default function RecordView({
                 一个人用（桌面端）时这两格不摆：下拉里只有自己，摆着只是让人多想一下（和客户表单同一个 独自一人 规则） */}
             {/* 企业版项目模式：客户页不转让（待定 14 红框），负责人只读；要换人在客户列表里整客户转让（连项目一起） */}
             {!独自一人(users, customer.salesOwnerId) && (
-              <div className="rec-field" style={{ cursor: "default" }} title={去项目跟进 ? "要换负责人：点「转让」" : "要换负责人：在客户列表里勾上这位，点「转让」"}>
+              <div className="rec-field rec-owner-ro" title={去项目跟进 ? "要换负责人：点「转让」" : "要换负责人：在客户列表里勾上这位，点「转让」"}>
                 <div className="rec-field-k">销售负责人</div>
-                <div className="rec-field-v" style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customer.salesOwnerName ?? (企业 ? <span className="rec-field-empty" title="未分配">{空值符}</span> : <span className="rec-field-empty">未分配</span>)}</span>
-                  {能转让 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={开客户转让}>转让</Button>}
+                <div className="rec-field-v rec-owner-v">
+                  <span className="rec-owner-name">{customer.salesOwnerName ?? (企业 ? <span className="rec-field-empty" title="未分配">{空值符}</span> : <span className="rec-field-empty">未分配</span>)}</span>
+                  {能转让 && <Button type="link" size="small" className="rec-owner-transfer" onClick={开客户转让}>转让</Button>}
                 </div>
               </div>
             )}

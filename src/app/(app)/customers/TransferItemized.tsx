@@ -22,7 +22,6 @@ export function 随转的(选: 逐项选择): string[] {
   return Object.entries(选).filter(([, v]) => v === "go").map(([id]) => id);
 }
 
-const 省略: React.CSSProperties = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 };
 
 export function 逐项选块({ 预览, 选, 改, 忙 }: { 预览: 转走项目预览 | null | undefined; 选: 逐项选择; 改: (n: 逐项选择) => void; 忙: boolean }) {
   const 们 = 预览?.同事在推 ?? [];
@@ -30,9 +29,9 @@ export function 逐项选块({ 预览, 选, 改, 忙 }: { 预览: 转走项目�
   const 全转 = 们.every((p) => 选[p.id] === "go");
   return (
     <div data-testid="transfer-itemized" role="group" aria-label="同事在推的项目 · 逐项选">
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+      <div className="ti-head">
         <b>同事在推的项目 · 逐项选</b>
-        <span style={{ flex: 1 }} />
+        <span className="ti-grow" />
         <button type="button" className="csq-chip" disabled={忙} data-testid="transfer-itemized-all"
           onClick={() => 改(Object.fromEntries(们.map((p) => [p.id, 全转 ? "keep" : "go"])) as 逐项选择)}>
           {全转 ? "全部保留原负责人" : "全部随客户转"}
@@ -41,12 +40,12 @@ export function 逐项选块({ 预览, 选, 改, 忙 }: { 预览: 转走项目�
       {们.map((p) => {
         const 转 = 选[p.id] === "go";
         return (
-          <div key={p.id} data-testid="transfer-itemized-row" style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
-            <div style={{ flex: 1, ...省略 }}>
-              <span style={省略} title={p.项目}>{p.项目}</span>
-              <div className="cd-transfer-mut" style={省略} title={`${p.负责人} · ${p.阶段}`}>{p.负责人} · {p.阶段}</div>
+          <div key={p.id} data-testid="transfer-itemized-row" className="ti-row">
+            <div className="ti-grow ti-ell">
+              <span className="ti-ell" title={p.项目}>{p.项目}</span>
+              <div className="cd-transfer-mut ti-ell" title={`${p.负责人} · ${p.阶段}`}>{p.负责人} · {p.阶段}</div>
             </div>
-            <div className="csq-chips" role="radiogroup" aria-label={p.项目} style={{ flex: "none" }}>
+            <div className="csq-chips ti-chips" role="radiogroup" aria-label={p.项目}>
               <button type="button" role="radio" aria-checked={!转} className="csq-chip" disabled={忙} onClick={() => 改({ ...选, [p.id]: "keep" })}>保留原负责人</button>
               <button type="button" role="radio" aria-checked={转} className="csq-chip" disabled={忙} onClick={() => 改({ ...选, [p.id]: "go" })}>随客户转</button>
             </div>

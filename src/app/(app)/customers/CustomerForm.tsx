@@ -641,7 +641,7 @@ function CustomerFormInner({
                 label="销售负责人"
                 name="salesOwnerId"
                 rules={[{ required: true, message: "请选择销售负责人" }]}
-                extra={editing ? (开转让 ? <>换负责人请用「转让」，要填原因 <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={开转让}>转让</Button></> : "换负责人请用「转让」，要填原因") : 锁给自己 ? "新建的只能记在自己名下" : 外贸 ? "负责谈单、下单" : "负责谈单签约"}
+                extra={editing ? (开转让 ? <>换负责人请用「转让」，要填原因 <Button type="link" size="small" className="rec-owner-transfer" onClick={开转让}>转让</Button></> : "换负责人请用「转让」，要填原因") : 锁给自己 ? "新建的只能记在自己名下" : 外贸 ? "负责谈单、下单" : "负责谈单签约"}
               >
                 <Select placeholder="请选择" options={负责人选项} disabled={Boolean(锁给自己) || !!editing} />
               </Form.Item>
