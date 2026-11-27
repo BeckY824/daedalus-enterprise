@@ -333,8 +333,10 @@ describe("库里取数和权限", () => {
     await 建(外人, "线索", "潜客培育");
     await 建(外人, "订单", "生产备货");
 
-    const 判了 = await 建(外人, "线索", "线索验证", { result: "线索流失" });
-    await prisma.entLeadVerify.create({ data: { projectId: 判了.id, finalResult: "无效线索" } });
+    // 判无效要这一次结束对得上终判的时间（P-界面-66，lost-split.ts）
+    const 判时 = new Date();
+    const 判了 = await 建(外人, "线索", "线索验证", { result: "线索流失", closedAt: 判时 });
+    await prisma.entLeadVerify.create({ data: { projectId: 判了.id, finalResult: "无效线索", finalAt: 判时 } });
     await 建(外人, "线索", "潜客培育", { result: "线索流失" });
 
     const 全 = await 项目现在("CNY");

@@ -14,6 +14,7 @@ import { 公海客户原负责人是 } from "@/lib/owner-log-db";
 import { 离职转给接手人 } from "@/lib/offboard-move";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 待确认, 了结, 读ids, 离职范围of, 离职盖住的客户, 离职盖住的项目, 离职段 } from "@/lib/enterprise/handover-db";
+import type { 同事待分配条 } from "@/lib/enterprise/notice-sources";
 import { 客户显名, 显名列 } from "@/lib/enterprise/customer-title";
 
 export { 离职段 };
@@ -432,6 +433,8 @@ export type 离职确认 = {
   跳过: string;
   /** 全部那种的分拣明细（留痕用） */
   分?: Awaited<ReturnType<typeof 停用分拣>>;
+  /** 随客户带走的同事待分配项目（E-339）：事务提交后调用方发 离职带走待分配通知 */
+  同事待分配: 同事待分配条[];
 };
 
 /**
@@ -452,16 +455,18 @@ export async function 确认离职交接(me: { id: string; role: string }, h: { 
     if (范围 === "客户") {
       const 要 = 读ids(h.customerIds);
       const 转了: string[] = [];
+      const 同事待分配: 同事待分配条[] = [];
       for (const cid of 要) {
         const 改 = await tx.customer.updateMany({ where: { id: cid, salesOwnerId: from, pool: { is: null } }, data: { salesOwnerId: to } });
         if (!改.count) continue;
-        await 带走一位(tx, cid, from, to, 操作人, "deactivate", 带项目);
+        const 带 = await 带走一位(tx, cid, from, to, 操作人, "deactivate", 带项目);
+        同事待分配.push(...带.同事待分配);
         转了.push(cid);
       }
       await 整批核上限(tx, 起, "交接", 确认超上限尾);
       await 留交接备注(tx, 转了, from, to, 操作人);
       const 跳 = 要.length - 转了.length;
-      return { 客户: 转了, 项目: [], 段: 离职段({ 客户: 转了.length }), 跳过: 跳 ? `${跳} 位客户` : "" };
+      return { 客户: 转了, 项目: [], 同事待分配, 段: 离职段({ 客户: 转了.length }), 跳过: 跳 ? `${跳} 位客户` : "" };
     }
     if (范围 === "项目") {
       const 要 = 读ids(h.projectIds);
@@ -471,19 +476,20 @@ export async function 确认离职交接(me: { id: string; role: string }, h: { 
       if (转了.length) await tx.project.updateMany({ where: { id: { in: 转了 }, awaitAssignAt: { not: null } }, data: { awaitAssignAt: null } });
       await 整批核上限(tx, 起, "交接", 确认超上限尾);
       const 跳 = 要.length - 转了.length;
-      return { 客户: [], 项目: 转了, 段: 离职段({ 项目: 转了.length }), 跳过: 跳 ? `${跳} 个项目` : "" };
+      return { 客户: [], 项目: 转了, 同事待分配: [], 段: 离职段({ 项目: 转了.length }), 跳过: 跳 ? `${跳} 个项目` : "" };
     }
     // 全部：按此刻重新分拣（发起之后他名下又多出、少了的都对得上；进了公海的不转，谁领谁接）
     const 分 = await 停用分拣(tx, from, "转交", true);
     if (!带项目) 分.项目 = [];
-    const 项目 = await 离职转给接手人(tx, 分, from, to, 操作人, 记分配);
+    const 同事待分配: 同事待分配条[] = [];
+    const 项目 = await 离职转给接手人(tx, 分, from, to, 操作人, 记分配, 同事待分配);
     await 整批核上限(tx, 起, "交接", 确认超上限尾);
     await 留交接备注(tx, 分.客户, from, to, 操作人);
     const 原 = 读ids(h.customerIds);
     const 现 = new Set(分.客户);
     const 跳 = 原.filter((id) => !现.has(id)).length;
     return {
-      客户: 分.客户, 项目, 分,
+      客户: 分.客户, 项目, 分, 同事待分配,
       段: 离职段({ 客户: 分.客户.length, 项目: 项目.length, 计划和待办: 分.计划.length + 分.待办.length, 线索: 分.线索.length, 渠道: 分.渠道.length, 主渠道: 分.主渠道.length }),
       跳过: 跳 ? `${跳} 位客户` : "",
     };

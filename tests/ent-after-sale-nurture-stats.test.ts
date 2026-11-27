@@ -28,8 +28,10 @@ const 建 = (customerId: string, o: Record<string, unknown> = {}) =>
 async function 一套(c: string) {
   await 建(c);
   await 建(c, { pooledAt: new Date() });
-  const 判 = await 建(c, { result: "线索流失", closedAt: new Date() });
-  await prisma.entLeadVerify.create({ data: { projectId: 判.id, finalResult: "无效线索" } });
+  // 判无效要这一次结束对得上终判的时间（P-界面-66，lost-split.ts）：终判时间 = closedAt
+  const 判时 = new Date();
+  const 判 = await 建(c, { result: "线索流失", closedAt: 判时 });
+  await prisma.entLeadVerify.create({ data: { projectId: 判.id, finalResult: "无效线索", finalAt: 判时 } });
   await 建(c, { result: "线索流失", closedAt: new Date() });
   await 建(c, { source: 历史分析来源, ownerId: 李 });
   await 建(c, { source: 仅记录用来源 });

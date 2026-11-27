@@ -37,11 +37,11 @@ beforeAll(async () => {
     const 现在={
       阶段:[{phase:'线索',count:12,amount:0},{phase:'商机',count:8,amount:98765432},{phase:'订单',count:3,amount:12345678}],
       节点:阶段们.flatMap(p=>统计节点们(p).map((node,i)=>({phase:p,node,count:i+1,amount:1000000*i}))),
-      结局:[{result:'线索流失',count:2},{result:'丢单',count:1},{result:'交付结清',count:5},{result:'异常状态',count:1}],
+      流失拆出:{项目合并:1,重复线索:0},结局:[{result:'线索流失',count:2},{result:'丢单',count:1},{result:'交付结清',count:5},{result:'异常状态',count:1}],
       公海:2,外币:1,
       漏斗:项目漏斗of([...Array(12)].map(()=>({phase:'线索',result:null})).concat([...Array(8)].map(()=>({phase:'商机',result:null})),[...Array(5)].map(()=>({phase:'订单',result:'成功交付'})))),
       按人:[1,2,3].map(i=>({id:'u'+i,name:长+i,线索:4,商机:3,订单:1,商机金额:98765432,订单金额:12345678})),
-      线索节点:统计节点们('线索').map((node,i)=>({node,count:i+2,流失:i,判无效:i===1?1:0,退回公海:i===0?2:0})),
+      线索节点:统计节点们('线索').map((node,i)=>({node,count:i+2,流失:i,判无效:i===1?1:0,项目合并:i===1?1:0,重复线索:i===2?1:0,退回公海:i===0?2:0})),
       线索转商机:5,
     };
     const 一段={
@@ -50,7 +50,7 @@ beforeAll(async () => {
       按人:[1,2].map(i=>({id:'u'+i,name:长+i,新建:3,转商机:2,转订单:1,成功交付:1,交付金额:23456789,没成:1})),
       外币:0,
       漏斗:项目漏斗of([...Array(6)].map((_,i)=>({phase:i<4?'商机':'线索',result:i<3?'成功交付':null}))),
-      线索节点:统计节点们('线索').map((node,i)=>({node,count:i,流失:i===2?1:0,判无效:0,退回公海:0})),
+      线索节点:统计节点们('线索').map((node,i)=>({node,count:i,流失:i===2?1:0,判无效:0,项目合并:0,重复线索:0,退回公海:0})),
       线索转商机:4,
     };
     window.__画=(view,项目,单人,页签)=>createRoot(document.getElementById('root')).render(<App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:项目}}>
@@ -79,6 +79,8 @@ it("现在：项目的卡片、节点图、按负责人表，外币另说一句"
   expect(t).toContain("项目现状与复盘");
   for (const s of ["新线索", "商机", "订单", "异常状态", "各进程的项目", "按负责人", "公海里还有 2 个", "全周期漏斗", "另有 1 个进行中的项目不是 CNY"]) expect(t).toContain(s);
   expect(t).toContain("交付结清 5");
+  // 结局分布线索流失拆出项目合并、重复线索（P-界面-66）：线索流失写减掉两样剩下的
+  expect(t).toContain("线索流失 1 · 项目合并 1 · 重复线索 0 · ");
   expect(await page.locator("canvas").count()).toBeGreaterThan(0);
   expect(await page.locator('a[href="/leads?ownerId=u1"]').count()).toBe(1);
   expect(await page.locator('a[href="/projects?ownerId=u1"]').count()).toBe(1);

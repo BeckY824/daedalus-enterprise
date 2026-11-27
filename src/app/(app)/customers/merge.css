@@ -51,6 +51,44 @@
 .mrg-cmp-r.is-red .mrg-cmp-k, .mrg-cmp-r.is-red .mrg-cmp-a, .mrg-cmp-r.is-red .mrg-cmp-b { color: var(--danger-text); }
 .mrg-check { display: flex; flex-direction: column; gap: var(--s1); padding: var(--s2) var(--s3); border: 1px solid var(--danger-line); border-radius: var(--r-ctl); background: var(--danger-bg); }
 
+/* 合并申请（第二批 2b-3）：同事负责的候选后面的标；预览底部「要同意的人」，名字一行、身份一行，放不下省略悬停看全 */
+.mrg-cand-ask { flex: 0 0 auto; padding: 0 var(--s1); border-radius: var(--r-tag); background: var(--warning-bg); color: var(--warning-text); font-size: var(--fs-min); white-space: nowrap; }
+/* 合并申请页（customers/merge-requests）：两张卡上下排 */
+.mrq-stack { display: flex; flex-direction: column; gap: var(--s4); min-width: 0; }
+/* 申请页操作列只有约 150 宽：撤回失败的原因一行放不下就省略，全文在 title（悬停看） */
+.mrq-stack .ls-at-op .ls-row-err { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+/* 第二段：等我同意的同意 / 拒绝两颗、办完的结果（标签 + 一行省略），只读时按钮外那层 span 收悬停 */
+.mrq-cnt { margin-left: var(--s2); color: var(--text-muted); font-size: var(--fs-note); font-weight: 400; }
+.mrq-ops { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.mrq-ro { display: inline-flex; cursor: not-allowed; }
+.mrq-ro > .ant-btn { pointer-events: none; }
+.mrq-res { display: flex; align-items: center; gap: var(--s1); min-width: 0; }
+.mrq-res > .ant-tag { flex: none; margin-inline-end: 0; }
+.mrq-res > .mrg-one { flex: 1 1 auto; color: var(--text-muted); font-size: var(--fs-note); }
+.mrq-done td { color: var(--text-muted); }
+.mrq-hot { color: var(--warning-text); }
+/* 同意 / 拒绝框：两家各一行（留下 / 并掉小标签 + 一行省略），后果一句，最后一位那句加重 */
+.mrq-two { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--panel); }
+.mrq-two-r { display: flex; align-items: baseline; gap: var(--s2); min-width: 0; }
+.mrq-tg { flex: none; padding: 0 var(--s1); border-radius: var(--r-tag); background: var(--brand-bg); color: var(--brand); font-size: var(--fs-min); }
+.mrq-eff { margin: 0; }
+.mrq-last { margin: 0; padding: var(--s2) var(--s3); border-radius: var(--r-ctl); background: var(--warning-bg); color: var(--warning-text); }
+.mrq-mu { margin: 0; color: var(--text-muted); font-size: var(--fs-note); }
+.mrq-lbl { font-size: var(--fs-note); color: var(--ink-soft); }
+.mrq-count { display: flex; justify-content: space-between; gap: var(--s2); color: var(--text-muted); font-size: var(--fs-min); }
+.mrq-count .is-over { color: var(--danger-text); }
+/* 手机（≤767）：一张一块卡片，「项 值」一行一项 */
+.mrq-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.mrq-list.mrq-narrow { display: none; }
+.mrq-item { display: flex; flex-direction: column; gap: var(--s1); min-width: 0; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--panel); }
+.mrq-item.is-done { color: var(--text-muted); }
+.mrq-kv { display: grid; grid-template-columns: 4em minmax(0, 1fr); gap: var(--s2); align-items: baseline; min-width: 0; }
+.mrq-k { color: var(--text-muted); font-size: var(--fs-note); }
+.mrq-v { min-width: 0; }
+.mrg-ask { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
+.mrg-ask-l { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s1); min-width: 0; }
+.mrg-ask-r { display: grid; grid-template-columns: minmax(0, 160px) minmax(0, 1fr); gap: var(--s3); align-items: baseline; min-width: 0; }
+.mrg-ask-s { color: var(--text-muted); font-size: var(--fs-note); }
 /* 联系人配对：并进来那位 | 配留下这家的谁 | 是同一个人 */
 .mrg-ppl { display: flex; flex-direction: column; gap: var(--s2); min-width: 0; }
 .mrg-ppl-r { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 220px) auto; gap: var(--s3); align-items: center; min-width: 0; }
@@ -121,4 +159,11 @@
   .mrg-into-r > .ant-btn, .mrg-order-h > .ant-btn { min-height: var(--hit-touch); }
   .mrg-gray-note { display: block; }
   .menu-2l.mrg-gray-item { padding: 2px 0; line-height: 1.4; }
+  /* 合并申请页卡片里的同意 / 拒绝、撤回申请：整行平分、点击区 ≥ --hit-touch */
+  .mrq-wide { display: none; }
+  .mrq-list.mrq-narrow { display: flex; }
+  .mrq-item .mrq-ops { margin-top: var(--s1); }
+  .mrq-item .mrq-ops > .ant-btn, .mrq-item .mrq-ops > .mrq-ro { flex: 1 1 0; }
+  .mrq-item .mrq-ops .ant-btn, .mrq-item .ls-at-op .ant-btn { width: 100%; min-height: var(--hit-touch); }
+  .mrq-item .mrq-ro { display: flex; }
 }
