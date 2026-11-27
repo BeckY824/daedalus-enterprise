@@ -1327,11 +1327,13 @@ export default function CustomersView({
     </span>
   ) : 要跟数 > 0 && (
     <Link key="followplans" href="/follow-ups/plans?scope=mine">
-      <Button className="cust-head-follow" icon={<CalendarOutlined />} aria-label={`跟进计划和待办，要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（逾期 ${要跟.逾期}）` : ""}`}><span className="cust-head-follow-t">跟进计划</span><span className={要跟.逾期 > 0 ? "cust-head-follow-n" : "cust-head-follow-n is-calm"}>{要跟数 > 99 ? "99+" : 要跟数}</span></Button>
+      <Tooltip title={`跟进计划和待办：要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（含逾期 ${要跟.逾期} 条）` : ""}`}>
+        <Button className="cust-head-follow" icon={<CalendarOutlined />} aria-label={`跟进计划和待办，要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（逾期 ${要跟.逾期}）` : ""}`}><span className="cust-head-follow-t">跟进计划</span><span className={要跟.逾期 > 0 ? "cust-head-follow-n" : "cust-head-follow-n is-calm"}>{要跟数 > 99 ? "99+" : 要跟数}</span></Button>
+      </Tooltip>
     </Link>
   );
   /** 离职交接（C15）：页头右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */
-  const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>;
+  const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Tooltip title={待交接 ? `离职交接 ${待交接}` : "离职交接"}><Button className="cust-head-ho" icon={<UserSwitchOutlined />} aria-label={待交接 ? `离职交接 ${待交接}` : "离职交接"}><span className="cust-head-ho-t">离职交接</span>{待交接 ? <span className="cust-head-ho-n">{待交接}</span> : null}</Button></Tooltip></Link>;
   /** 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */
   const 新建钮 = <NewMenuButton key="new" 项={新建项} 载入中={项目流程载入 || 表单料取中} 预取={() => { void 取新建项目流程().catch(() => {}); void 要表单料(false); }} />;
 
@@ -1409,7 +1411,7 @@ export default function CustomersView({
             导出中 / 导完那句不再塞在这排按钮中间（L-新13：导完那句约 40 字，把按钮往左推约 440），写在页头下一行
           */
           <Space wrap>
-            {能导入导出 && <Button key="import" className="cust-head-io" aria-label="导入" icon={<UploadOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined} onClick={去导入}>导入</Button>}
+            {能导入导出 && <Button key="import" className="cust-head-io" aria-label="导入" icon={<UploadOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : "导入"} onClick={去导入}>导入</Button>}
             {能导入导出 && !空库 && (
               <Tooltip key="export" title={视图中 ? 视图外部话 : 导出说明}>
                 <Button className="cust-head-io" aria-label="导出" icon={<DownloadOutlined />} loading={导出中} disabled={视图中} onClick={导出做}>导出</Button>

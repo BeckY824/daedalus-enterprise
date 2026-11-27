@@ -694,12 +694,25 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
   :root:root .cust-head-follow > .cust-head-follow-t { display: none; }
   :root:root .cust-head-follow { min-width: 32px; padding-inline: var(--s2); }
   :root:root .cust-head-follow-n { margin-left: 0; }
-  :root:root .cust-head-follow > .ant-btn-icon + .cust-head-follow-n { margin-left: var(--s1, 4px); }
 }
+/* 离职交接：宽屏只有字 + 数（图标藏着），≤1199 收成图标 + 数 */
+.cust-head-ho > .ant-btn-icon { display: none; }
+.cust-head-ho > .cust-head-ho-n::before { content: " "; white-space: pre; }
+@media (min-width: 768px) and (max-width: 1199px) { .cust-head-ho > .cust-head-ho-n::before { content: none; } }
 /* 按钮最多的角色（导入 / 导出 / 跟进计划 / 离职交接 / 新建五颗）在 1024 左右整组被挤到标题下一行：≤1199 导入、导出也只留图标（同手机段写法，字靠 aria-label），32 宽 */
 @media (min-width: 768px) and (max-width: 1199px) {
   :root:root .cust-head-io { width: 32px; min-width: 32px; padding-inline: 0; }
   :root:root .cust-head-io > span:not(.ant-btn-icon) { display: none; }
+  :root:root .cust-head-ho { min-width: 32px; padding-inline: var(--s2); }
+  :root:root .cust-head-ho > .cust-head-ho-t { display: none; }
+  :root:root .cust-head-ho > .ant-btn-icon { display: inline-flex; }
+  :root:root .cust-head-ho > .cust-head-ho-n { margin-left: var(--s1); }
+}
+/* F-056 兜底：768–1199 客户页页头放不下时允许折行，不许出横滚 */
+@media (min-width: 768px) and (max-width: 1199px) {
+  :root:root .page-head:has(.cust-scope) { flex-wrap: wrap; row-gap: var(--s2); }
+  :root:root .page-head:has(.cust-scope) .page-head-a { flex: 0 1 auto; min-width: 0; max-width: 100%; margin-left: auto; }
+  :root:root .page-head:has(.cust-scope) .page-head-a > .ant-space { flex-wrap: wrap; row-gap: var(--s2); max-width: 100%; }
 }
 @media (min-width: 768px) and (max-width: 1439px) and (pointer: coarse) {
   :root:root .cust-head-follow, :root:root .cust-head-io { min-height: var(--hit-touch); }
@@ -3057,15 +3070,12 @@ button.ais-hd-b { cursor: pointer; }
    不是「哪些是任务哪些是计划」，而是哪些已经拖了、今天必须做哪些。 */
 .plans { display: flex; flex-direction: column; gap: var(--s5); }
 .plan-g-h { display: flex; align-items: baseline; gap: var(--s2); padding-bottom: var(--s2); border-bottom: 1px solid var(--line); }
-.plan-g-h b { font-size: var(--fs-section); font-weight: 600; color: var(--ink); }
+.plan-g-h b { font-size: var(--fs-section); font-weight: 600; color: var(--ink); flex: none; }
 .plan-g-n { font-size: var(--fs-note); color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .plan-g-s { font-size: var(--fs-note); color: var(--text-muted); margin-left: auto; min-width: 0; flex: 0 100 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* F-056 组头计数：「· 计划和待办 N · 项目下一步 M」一行，放不下截断（title 带全文）；名字不缩，说明先让 */
-.plan-g-h b { flex: none; }
 .plan-g-c { font-size: var(--fs-note); color: var(--text-muted); min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .plan-g-d { margin-inline: var(--s1); }
-.plan-g-c .plan-g-n { margin-inline: 0 var(--s1); }
-.plan-g-warn .plan-g-c { color: var(--danger); }
 /* 逾期那一组：红只给标题和数字，不给整块底色——整块红会让人以为出错了 */
 .plan-g-warn .plan-g-h b, .plan-g-warn .plan-g-n { color: var(--danger); }
 .plan-g-warn .plan-g-h { border-bottom-color: var(--danger-line); }

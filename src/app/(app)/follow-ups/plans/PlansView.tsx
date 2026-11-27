@@ -534,11 +534,11 @@ function 组块({
         <b>{名}</b>
         {/* F-056：两类分开数。「计划和待办」= 页头「跟进计划 N」、左栏红点同口径（各组合计 = N）；项目下一步是项目上填的下一步时间，另算，为 0 不写。
             一行放不下截断，悬停看全文（全站一行 + 省略号） */}
-        <span className="plan-g-c" title={`${名} · 计划和待办 ${共}${项目.length > 0 ? ` · 项目下一步 ${项目.length}` : ""}`}>
+        {共 + 项目.length > 0 && <span className="plan-g-c" title={`${名} · 计划和待办 ${共}${项目.length > 0 ? ` · 项目下一步 ${项目.length}` : ""}`}>
           <span className="plan-g-d">·</span>计划和待办 <span className="plan-g-n">{共}</span>
           {项目.length > 0 && <><span className="plan-g-d">·</span>项目下一步 <span className="plan-g-n plan-g-p">{项目.length}</span></>}
-        </span>
-        <span className="plan-g-s" title={说明}>{说明}</span>
+        </span>}
+        <span className="plan-g-s">{说明}</span>
       </div>
       {共 + 项目.length === 0 ? (
         <div className="plan-empty">{空话}</div>
