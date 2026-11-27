@@ -17,6 +17,7 @@ import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibil
 import { 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 项目链接们, 补项目去, 项目页地址 } from "@/lib/project/customer-detail-direct";
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
+import { 能看的项目, 看不到的在推数 } from "@/app/(app)/customers/[id]/project-zone";
 
 type 人 = { id: string; role: string; name: string; email: string; title: string; avatar: string | null };
 const 时刻 = (i: number) => new Date(Date.UTC(2026, 9, 1) + i * 1000);
@@ -83,5 +84,17 @@ describe.each([5, 1500])("F-057 公海客户挂 %i 个项目", (N) => {
   it("市场进不了详情的：上千个 id 不报错", async () => {
     const 挡 = await 以谁的身份(乙.id, () => 市场进不了详情的(乙.id, ids));
     expect(挡 instanceof Set).toBe(true);
+  });
+
+  it("客户详情项目区（3703 实操补）：能看的项目 / 看不到的在推数 上千个 id 不报错，和单个问一致", async () => {
+    const 能看 = await 以谁的身份(乙.id, () => 能看的项目(乙 as never, ids));
+    for (const id of [ids[0], ids[N - 1], ids[Math.floor(N / 2)]]) {
+      const 单 = await 以谁的身份(乙.id, () => 能看的项目(乙 as never, [id]));
+      expect(单.has(id)).toBe(能看.has(id));
+    }
+    const 全 = await 以谁的身份(老板.id, () => 能看的项目(老板 as never, ids));
+    expect(全.size).toBe(N);
+    expect(await 以谁的身份(乙.id, () => 看不到的在推数("bigc", ids))).toBe(0);
+    expect(await 以谁的身份(乙.id, () => 看不到的在推数("bigc", []))).toBe(0); // 都在公海，不算在推
   });
 });
