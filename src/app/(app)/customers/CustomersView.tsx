@@ -4,16 +4,18 @@ import LandingNote from "@/components/LandingNote";
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
 import { 少动 } from "@/lib/reduced-motion";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 量变形起点, 放变形 } from "../projects/view-morph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
+import { 要跟Context } from "@/components/FollowDue";
 import { Button, Space, Dropdown, Tag, Segmented, Tooltip, type MenuProps, type SelectProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
+  CalendarOutlined,
   DownloadOutlined,
   UploadOutlined,
   UserSwitchOutlined,
@@ -354,6 +356,8 @@ export default function CustomersView({
   rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 自动分配预看, 批量自动分配客户, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 抬头节点, 仅项目行 = [], 仅项目超了 = false, 待复核, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false, 客户范围,
 }: Props) {
   const router = useRouter();
+  const 要跟 = useContext(要跟Context);
+  const 要跟数 = 要跟.逾期 + 要跟.今天;
   /** 看板卡进详情：等新页时顶上的条亮、点的那张卡先高亮（lib/nav-pending.ts，跳转优化 PR-A 审查补） */
   const 去页 = useNavGo();
   const [去的卡, set去的卡] = useState<string | null>(null);
@@ -1317,6 +1321,12 @@ export default function CustomersView({
   /** 导出中旁边那颗「取消导出」：只有它 abort（离开页面不打断导出，D8-3）；摆在页头下一行 */
   const 取消导出钮 = <Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button>;
   /** 离职交接（C15）：页头右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */
+  // F-056：左栏「客户」红数是今天到期 + 逾期的跟进计划、待办条数；客户列表里看不到这些条，在页头给个入口去跟进计划页（N=0 不占位）
+  const 跟进计划钮 = 要跟数 > 0 && (
+    <Link key="followplans" href="/follow-ups/plans">
+      <Button className="cust-head-follow" icon={<CalendarOutlined />} aria-label={`跟进计划，要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（逾期 ${要跟.逾期}）` : ""}`}><span className="cust-head-follow-t">跟进计划</span><span className="cust-head-follow-n">{要跟数 > 99 ? "99+" : 要跟数}</span></Button>
+    </Link>
+  );
   const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>;
   /** 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */
   const 新建钮 = <NewMenuButton key="new" 项={新建项} 载入中={项目流程载入 || 表单料取中} 预取={() => { void 取新建项目流程().catch(() => {}); void 要表单料(false); }} />;
@@ -1401,6 +1411,7 @@ export default function CustomersView({
                 <Button className="cust-head-io" aria-label="导出" icon={<DownloadOutlined />} loading={导出中} disabled={视图中} onClick={导出做}>导出</Button>
               </Tooltip>
             )}
+            {跟进计划钮}
             {离职交接钮}
             {新建钮}
           </Space>
