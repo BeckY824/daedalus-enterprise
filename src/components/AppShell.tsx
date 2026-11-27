@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { motion, useReducedMotion } from "motion/react";
-import { 要跟Context } from "./FollowDue";
+import { 要跟Context, 要跟未到 } from "./FollowDue";
 import { 我Provider } from "@/lib/me-client";
 import Link from "next/link";
 import { Layout, Avatar, Dropdown, Button, Badge, Tooltip } from "antd";
@@ -565,7 +565,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
           {(v) => {
             const { 数, 说法 } = 要跟话(v);
             return 数 > 0 && (
-              <span className="rail-count" title={!desktop && 企业版项目 ? `今天到期或逾期的跟进计划 ${数} 条，点客户页顶上「跟进计划」看` : `${说法}${desktop ? "，和应用图标提示一致" : "，查看跟进计划中的逾期和今天"}`}>{数 > 99 ? "99+" : 数}</span>
+              <span className="rail-count" title={!desktop && 企业版项目 ? `今天到期或逾期的跟进计划和待办 ${数} 条，点客户页顶上「跟进计划」看` : `${说法}${desktop ? "，和应用图标提示一致" : "，查看跟进计划中的逾期和今天"}`}>{数 > 99 ? "99+" : 数}</span>
             );
           }}
         </晚到>
@@ -792,7 +792,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         <Content className="app-content" style={{ padding: "22px 26px" }}>
           <ListMemory />
           <PageFade 页={底下那页}>
-            <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟到了 ?? 没要跟}>{children}</要跟Context.Provider></我Provider></槽位>
+            <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟到了 ?? 要跟未到}>{children}</要跟Context.Provider></我Provider></槽位>
           </PageFade>
         </Content>
         {/* 企业版项目模式：手机上也能问一句。点浮标，面板铺满屏（globals.css 的手机 .dock），× 收起 */}
@@ -959,7 +959,7 @@ export default function AppShell({ user, workspace, 收藏 = [], 项目收藏 = 
         */}
         <ListMemory />
         <PageFade 页={底下那页} style={{ maxWidth: 1720, margin: "0 auto" }}>
-          <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟到了 ?? 没要跟}>{children}</要跟Context.Provider></我Provider></槽位>
+          <槽位 名="main"><我Provider value={{ id: user.id, name: user.name }}><要跟Context.Provider value={要跟到了 ?? 要跟未到}>{children}</要跟Context.Provider></我Provider></槽位>
         </PageFade>
       </main>
       {/*

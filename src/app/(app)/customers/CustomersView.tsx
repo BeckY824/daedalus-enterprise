@@ -1320,13 +1320,17 @@ export default function CustomersView({
   const 导出说明 = `按当前${[导出范围名 && `范围「${导出范围名}」`, 筛了 > 0 && "筛选"].filter(Boolean).join("和") || "条件"}导出 ${total.toLocaleString("zh-CN")} 位${b.customer}（含跟进记录）`;
   /** 导出中旁边那颗「取消导出」：只有它 abort（离开页面不打断导出，D8-3）；摆在页头下一行 */
   const 取消导出钮 = <Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button>;
-  /** 离职交接（C15）：页头右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */
-  // F-056：左栏「客户」红数是今天到期 + 逾期的跟进计划、待办条数；客户列表里看不到这些条，在页头给个入口去跟进计划页（N=0 不占位）
-  const 跟进计划钮 = 要跟数 > 0 && (
-    <Link key="followplans" href="/follow-ups/plans">
-      <Button className="cust-head-follow" icon={<CalendarOutlined />} aria-label={`跟进计划，要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（逾期 ${要跟.逾期}）` : ""}`}><span className="cust-head-follow-t">跟进计划</span><span className="cust-head-follow-n">{要跟数 > 99 ? "99+" : 要跟数}</span></Button>
+  // F-056：左栏「客户」红数是今天到期 + 逾期的跟进计划、待办条数；客户列表里看不到这些条，在页头给个入口去跟进计划页（数到了且为 0 不占位；数晚到时先放同宽隐形占位，避免硬刷新页头跳）
+  const 跟进计划钮 = 要跟.未到 ? (
+    <span key="followplans" aria-hidden className="cust-head-follow-ph">
+      <Button tabIndex={-1} className="cust-head-follow" icon={<CalendarOutlined />}><span className="cust-head-follow-t">跟进计划</span><span className="cust-head-follow-n">00</span></Button>
+    </span>
+  ) : 要跟数 > 0 && (
+    <Link key="followplans" href="/follow-ups/plans?scope=mine">
+      <Button className="cust-head-follow" icon={<CalendarOutlined />} aria-label={`跟进计划和待办，要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（逾期 ${要跟.逾期}）` : ""}`}><span className="cust-head-follow-t">跟进计划</span><span className={要跟.逾期 > 0 ? "cust-head-follow-n" : "cust-head-follow-n is-calm"}>{要跟数 > 99 ? "99+" : 要跟数}</span></Button>
     </Link>
   );
+  /** 离职交接（C15）：页头右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */
   const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>;
   /** 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */
   const 新建钮 = <NewMenuButton key="new" 项={新建项} 载入中={项目流程载入 || 表单料取中} 预取={() => { void 取新建项目流程().catch(() => {}); void 要表单料(false); }} />;

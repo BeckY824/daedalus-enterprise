@@ -686,6 +686,8 @@ body.rail-resizing { cursor: col-resize; user-select: none; }
   background: var(--danger); color: var(--on-ink); font-size: var(--fs-min); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
 .cust-head-follow-n { margin-left: var(--s2); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; vertical-align: middle;
   background: var(--danger); color: var(--on-ink); font-size: var(--fs-min); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.cust-head-follow-ph { visibility: hidden; }
+.cust-head-follow-n.is-calm { background: var(--text-muted); }
 .rail-item:hover { background: var(--hover); color: var(--ink); }
 .rail-item.on { color: var(--nav-on-fg); }
 /* 左栏底部「问一句 ⌘J」：AI 面板收着时的入口，长得和导航项一样，只是个按钮 */
@@ -5979,9 +5981,8 @@ button.proj-miss-chip { cursor: pointer; }
   /* M1-c：只剩图标也守触屏点击区 44（--hit-touch），不是 32 */
   :root:root .cust-head-io { width: var(--hit-touch); min-width: var(--hit-touch); height: var(--hit-touch); padding-inline: 0; }
   :root:root .cust-head-io > span:not(.ant-btn-icon) { display: none; }
-  /* F-056「跟进计划 N」同理：手机宽只留日历图标 + 红数（字靠 aria-label），不把导入 / 导出 / 新建那一排挤到换行 */
-  :root:root .cust-head-follow .cust-head-follow-t { display: none; }
-  :root:root .cust-head-follow .cust-head-follow-n { margin-left: 0; }
+  /* F-056「跟进计划 N」：手机顶栏已有日历 + 红数入口（AppShell），页头这颗整个不要，免得把导入 / 导出 / 新建那一排挤到换行 */
+  :root:root .cust-head-follow, :root:root .cust-head-follow-ph { display: none; }
   /* 筛选行三排：①「列表 | 看板」…「列」②搜索 + 重置 ③客户状态、负责人、更多筛选（阶段 / 进程收进更多筛选，同 1366，L-新5）。
      原来五排（列表 | 看板 / 搜索 / 状态 + 负责人 / 阶段 + 进程 / 更多筛选 + 重置）再单独一排「列」，表格从 y≈420 才开始。
      市场管理的客户页（我分出去的，.cust-market）同一摆法：「客户列表 | 我分出去的」…「列」/ 搜索 + 重置 / 成员、创建人、更多筛选；

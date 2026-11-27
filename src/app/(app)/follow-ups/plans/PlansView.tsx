@@ -127,6 +127,7 @@ export default function PlansView({
   预选客户,
   直接新建,
   全员 = false,
+  只看我的 = false,
   轻,
   负责人,
   紧,
@@ -149,6 +150,8 @@ export default function PlansView({
    * 原来写死「我的」：卡上写团队逾期 12，点进来「逾期 3」，对不上（2026-10-01 排查 C2）
    */
   全员?: boolean;
+  /** ?scope=mine：从客户页头「跟进计划」进来，强制「我的」，只管这一次进入（盖掉 list-keep:plans:scope 的记忆） */
+  只看我的?: boolean;
   /**
    * 分批（2026-10-24 企业版压测，lib/plans-page.ts）：事项太多时 plans / tasks 只有每组前 N 条的详情，
    * 轻 是全部未完成事项的 [key, 时间, 负责人下标]，组头条数、「我的 / 全部成员」都在它上面算。
@@ -175,7 +178,11 @@ export default function PlansView({
     「我的 / 全部成员」「待办 / 已完成」记在这个标签页里（29R 推广，11-20「之前筛选栏的保持，对其他页面也一样」）：
     点进客户详情再回来、刷新都还在。从数据页带 ?scope=all 进来的另记一份，默认「全部成员」，不被平常那份盖掉
   */
-  const [scope, setScope] = useListKeep<string | number>(全员 ? "list-keep:plans:scope-all" : "list-keep:plans:scope", 全员 ? "全部成员" : "我的");
+  const [记的scope, 记scope] = useListKeep<string | number>(全员 ? "list-keep:plans:scope-all" : "list-keep:plans:scope", 全员 ? "全部成员" : "我的");
+  // ?scope=mine 只管这一次进入：用户自己点了「我的 / 全部成员」就交还给记忆那份
+  const [强制我的, set强制我的] = useState(只看我的 && !全员);
+  const scope = 强制我的 ? "我的" : 记的scope;
+  const setScope = (v: string | number) => { set强制我的(false); 记scope(v); };
   /**
    * 看待办还是看做完的。
    *
