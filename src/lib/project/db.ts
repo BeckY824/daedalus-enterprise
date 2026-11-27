@@ -60,7 +60,7 @@ import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
 import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数, 进公海清组员, 进公海关主题, 放弃没发出的录音 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
-import { 项目有未裁定异议 } from "@/lib/enterprise/objection-guard";
+import { 项目有未裁定异议, 改回异议人记已退回 } from "@/lib/enterprise/objection-guard";
 import { 换负责人待办, 待办痕, 手动转让痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
@@ -766,6 +766,8 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       const 几条 = await 换负责人待办(tx, p, 原, 新.ownerId, 带待办);
       // 没碰待办（换负责人带待办关着、没传勾）记「手动转让」：超时未跟进自动转靠原因认手动转让（carry-tasks.ts 待办痕头）
       await 记转让(tx, p, me.id, 原, 新.ownerId, "transfer", 待办痕(带待办, 几条) ?? 手动转让痕);
+      // 12-22 审查 M1：系统管理员把项目改回给异议人（待手工退回里的），顺带记成「已退回」
+      await 改回异议人记已退回(tx, me, 新.ownerId, { projectId: p.id });
       await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: 新.ownerId }, new Date());
     }
     const 推进 = await 按必填推进(tx, 规则, me, p.id);

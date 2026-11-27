@@ -1,5 +1,5 @@
 /**
- * 12-22 第 2 阶段 B 段 · 异议未裁定时的拦截（判定页 #20）：这条客户 / 项目上有异议在「待裁定」或「待手工退回」，
+ * 12-22 第 2 阶段 B 段 · 异议未裁定时的拦截（判定页 #20）：这条客户 / 项目上有异议在「待裁定」（「待手工退回」不拦：它等系统管理员去改负责人手工退回，拦了就死锁，12-22 审查 M1），
  * 不能再转（改负责人、批量转让、项目转让）、不能申请合并（客户合并、项目合并）。
  * 单独一个小文件、只引 Prisma 类型：转让、合并、改项目几处都要问这里，不能把裁定本身那一串依赖带进去（会成环）。
  *   - 客户异议（kind = 客户）：挡这位客户转让 / 合并，也挡它名下归接手人的项目（连客户带当次随转的项目一起退，这些项目不能先被动走）
@@ -8,7 +8,9 @@
  */
 import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
-import { 未落地状态们, 未裁定拦话 } from "./objection-core";
+import { 未落地状态们, 未裁定拦话, 异议待手工退回, 异议已退回 } from "./objection-core";
+import { 读组织 } from "./org";
+import { 系统管理员们 } from "./tri-state-people";
 
 type 读 = Pick<Prisma.TransactionClient, "entTransferObjection">;
 
@@ -28,4 +30,32 @@ export async function 项目有未裁定异议(db: 读, 项目们: readonly { id
   });
   const 挡 = 行们.some((r) => 项目们.some((p) => (r.kind === "项目" ? r.projectId === p.id : r.customerId === p.customerId && r.toOwnerId === p.ownerId)));
   return 挡 ? 未裁定拦话(动作) : null;
+}
+
+type 写 = Pick<Prisma.TransactionClient, "entTransferObjection">;
+
+/**
+ * 系统管理员把客户 / 项目改回给异议人后（12-22 审查 M1）：这条对象上、异议人 = 新负责人、状态「待手工退回」的异议顺带记成「已退回」，
+ * 和「已手工退回」按钮同一个终态、同一种说明写法。不是系统管理员办的不记（要他自己去点「已手工退回」）。返回记了几条
+ */
+export async function 改回异议人记已退回(
+  db: 写, 操作人: { id: string; name?: string }, 新负责人: string, 对象: { customerId?: string; projectId?: string },
+): Promise<number> {
+  if (!企业版()) return 0;
+  const 或: Prisma.EntTransferObjectionWhereInput[] = [];
+  if (对象.customerId) 或.push({ kind: "客户", customerId: 对象.customerId });
+  if (对象.projectId) 或.push({ kind: "项目", projectId: 对象.projectId });
+  if (!或.length) return 0;
+  const org = await 读组织();
+  if (!org || !系统管理员们(org).includes(操作人.id)) return 0;
+  const 行们 = await db.entTransferObjection.findMany({ where: { status: 异议待手工退回, objectorUserId: 新负责人, OR: 或 }, select: { id: true, judgeNote: true } });
+  let n = 0;
+  for (const 行 of 行们) {
+    const r = await db.entTransferObjection.updateMany({
+      where: { id: 行.id, status: 异议待手工退回 },
+      data: { status: 异议已退回, judgeNote: `${行.judgeNote ?? ""}${行.judgeNote ? "；" : ""}手工退回：${操作人.name ?? "系统管理员"}已把负责人改回异议人（改负责人时自动记）`.slice(0, 600) },
+    });
+    n += r.count;
+  }
+  return n;
 }

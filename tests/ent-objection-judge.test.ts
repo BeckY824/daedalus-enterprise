@@ -7,7 +7,7 @@ vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: a
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
-import { assignSalesOwner } from "@/app/(app)/customers/actions";
+import { assignSalesOwner, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { 提异议 as 提异议动作 } from "@/app/(app)/objections/actions";
 import { 提异议 as 提异议核, 我的异议 } from "@/lib/enterprise/objection";
 import { 裁定, 待我裁定, 待手工退回们, 评估退回, 标记已手工退回 } from "@/lib/enterprise/objection-judge";
@@ -32,8 +32,7 @@ const 项目 = (customerId: string, ownerId: string, extra: Record<string, unkno
 const 通知们 = (userId: string) => prisma.entNotice.findMany({ where: { userId } });
 const 行们 = () => prisma.entTransferObjection.findMany({ orderBy: { createdAt: "asc" } });
 
-beforeEach(async () => {
-  await resetDb();
+async function beforeEachSetup() {
   号 = 0;
   老板 = await 建("boss", "ADMIN");
   副管 = await 建("boss2", "ADMIN");
@@ -55,7 +54,8 @@ beforeEach(async () => {
   vi.stubEnv("CRM_ENTERPRISE", "1");
   await setSetting("enterprise.rule.org_scope", true);
   await setSetting("enterprise.rule.handover_confirm", false);
-});
+}
+beforeEach(async () => { await resetDb(); await beforeEachSetup(); });
 afterEach(() => { vi.unstubAllEnvs(); });
 afterAll(async () => { await prisma.$disconnect(); });
 
@@ -230,3 +230,49 @@ describe("未裁定的异议拦再转和合并", () => {
     expect(await assignSalesOwner([a.id], 同事二.id, null, undefined, { 说明: "再转一次" })).toMatchObject({ ok: true, updated: 1 });
   });
 });
+
+describe("待手工退回不死锁（审查 M1）", () => {
+  it("撤回→已再转→待手工退回后：系统管理员能把客户改回异议人，异议记成已退回；待裁定仍拦", async () => {
+    const { a, 客户行 } = await 转一单();
+    // 可提期间客户被再转给同事二
+    当(组长);
+    expect(await assignSalesOwner([a.id], 同事二.id, null, undefined, { 说明: "再转一次" })).toMatchObject({ ok: true, updated: 1 });
+    await 提(客户行, 销售);
+    // 待裁定：改负责人仍被拦
+    当(老板);
+    expect(await assignSalesOwner([a.id], 销售.id, null, undefined, { 说明: "退回" })).toMatchObject({ ok: false, error: expect.stringContaining("这条有异议还没裁定") });
+    const r = await 裁定(线总管, 客户行.id, "撤回", "撤回");
+    expect(r).toMatchObject({ ok: true, 结果: "待手工退回" });
+    expect(await 客户有未裁定异议(prisma, [a.id])).toBeNull();
+    // 系统管理员改回异议人：不再被拦，异议顺带记成已退回
+    当(老板);
+    expect(await assignSalesOwner([a.id], 销售.id, null, undefined, { 说明: "手工退回" })).toMatchObject({ ok: true, updated: 1 });
+    expect((await prisma.customer.findUniqueOrThrow({ where: { id: a.id } })).salesOwnerId).toBe(销售.id);
+    const 后 = await prisma.entTransferObjection.findUniqueOrThrow({ where: { id: 客户行.id } });
+    expect(后.status).toBe("已退回");
+    expect(后.judgeNote).toContain("手工退回");
+  });
+});
+
+describe("撤销改负责人带走异议行（审查 M2）", () => {
+  it("可提的异议撤销后变已撤销、不再挡再转；已提（待裁定）的撤销照常放行并标已撤销", async () => {
+    for (const 先提 of [false, true]) {
+      await resetDb();
+      await beforeEachSetup();
+      const a = await 客户(销售.id, { bizLine: "内贸" });
+      当(组长);
+      const r = await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "客户说连着两周没人回" });
+      expect(r).toMatchObject({ ok: true, updated: 1 });
+      const 行 = (await 行们()).find((x) => x.kind === "客户")!;
+      if (先提) { await 提(行, 销售); 当(组长); }
+      const u = await 撤销改负责人(r.ok ? (r.原值 ?? []) : [], 接手.id, r.ok ? r.带过来 : undefined);
+      expect(u, String(先提)).toMatchObject({ ok: true, updated: 1 });
+      expect((await prisma.customer.findUniqueOrThrow({ where: { id: a.id } })).salesOwnerId).toBe(销售.id);
+      expect((await prisma.entTransferObjection.findUniqueOrThrow({ where: { id: 行.id } })).status, String(先提)).toBe("已撤销");
+      expect(await 客户有未裁定异议(prisma, [a.id]), String(先提)).toBeNull();
+      expect(await assignSalesOwner([a.id], 同事二.id, null, undefined, { 说明: "再转" }), String(先提)).toMatchObject({ ok: true, updated: 1 });
+      expect((await 我的异议(销售.id)).已提.map((x) => x.id), String(先提)).not.toContain(行.id);
+    }
+  });
+});
+

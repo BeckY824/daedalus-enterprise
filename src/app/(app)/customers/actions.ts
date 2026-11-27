@@ -45,7 +45,8 @@ import { 带走并记下在事务里, 还项目, 带过来对不上, 数转走�
 import { 等确认的申请移交, 作废申请移交 } from "@/lib/enterprise/handover-void";
 import { 同事项目保留知会 } from "@/lib/enterprise/notice-sources";
 import { 记转让异议入口 } from "@/lib/enterprise/objection";
-import { 客户有未裁定异议 } from "@/lib/enterprise/objection-guard";
+import { 客户有未裁定异议, 改回异议人记已退回 } from "@/lib/enterprise/objection-guard";
+import { 异议已撤销, 异议可提, 异议待裁定 } from "@/lib/enterprise/objection-core";
 import { 还待分配状态 } from "@/lib/enterprise/market-transfer";
 import { 记换负责人, 是我刚换的, 删被撤的换负责人记录, 公海前负责人, 取转让留痕 } from "@/lib/owner-log-db";
 import { 撤回项目公海 } from "@/lib/enterprise/pool-undo";
@@ -907,6 +908,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
     await 改外贸档案(me, input.id, 全称或显名(这位), 档案.data, b.customer);
     const 带 = first.带;
     await 带走后通知(带);
+    if (改前 && 改前.salesOwnerId !== data.salesOwnerId && !first.带?.数?.没转成) await 改回异议人记已退回(prisma, me, data.salesOwnerId, { customerId: input.id }).catch((e) => console.warn("[异议] 改回记已退回没写上：", e));
     const 带走 = 带?.数;
     if (改前 && 改前.salesOwnerId !== data.salesOwnerId && !带走?.没转成) {
       await 分给你通知(me, data.salesOwnerId, [input.id], undefined, 带?.留下);
@@ -999,6 +1001,7 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
       await 改外贸档案(me, input.id, 全称或显名(这位), 档案.data, b.customer);
       const 带 = merged.带;
       await 带走后通知(带);
+      if (mine.includes("salesOwnerId") && current.salesOwnerId !== data.salesOwnerId && !merged.带?.数?.没转成) await 改回异议人记已退回(prisma, me, data.salesOwnerId, { customerId: input.id }).catch((e) => console.warn("[异议] 改回记已退回没写上：", e));
       const 带走 = 带?.数;
       if (mine.includes("salesOwnerId") && current.salesOwnerId !== data.salesOwnerId && !带走?.没转成) {
         await 分给你通知(me, data.salesOwnerId, [input.id], undefined, 带?.留下);
@@ -1463,6 +1466,8 @@ export async function assignSalesOwner(ids: string[], salesOwnerId: string, 原�
   const { res, 换成了, 带: { 数: 带走, 记下: 带过来, 没转成, 留下, 同事待分配 } } = 写.值;
   // 改完又被别人改走的不算转成：不通知、不计数、不进撤销（撤销会把别人的改动盖掉）
   const 转成了 = 换成了.filter((c) => !没转成.includes(c.id));
+  // 12-22 审查 M1：系统管理员把客户改回给异议人（待手工退回里的），顺带记成「已退回」
+  for (const c of 转成了) await 改回异议人记已退回(prisma, me, salesOwnerId, { customerId: c.id }).catch((e) => console.warn("[异议] 改回记已退回没写上：", e));
   // 12-22 第 2 阶段：直接转（写了原因那一路）时，被换掉的客户负责人、随客户转走在推项目的同事各记一行异议入口（30 天），通知里带「提异议」
   const 异议 = 要说明 && 转成了.length ? await 记转让异议入口(me, salesOwnerId, 转成了.map((c) => ({ customerId: c.id, 旧: c.salesOwnerId })), 同事待分配) : undefined;
   // 转客户带走了同事的项目（待分配的、在推的）：事务提交了才告诉这位同事（P-转-19）
@@ -1705,6 +1710,9 @@ export async function 撤销改负责人(原值: { id: string; 值: string }[], 
         await tx.customer.updateMany({ where: { id: { in: cs }, salesOwnerId: 新负责人 }, data: { salesOwnerId: 原 } });
         // 企业版被撤的那条记录删掉、不另记（P-撤销-01），操作日志照记（下面 recordAudit）
         if (严) await 删被撤的换负责人记录(tx, cs, 原, 新负责人, me.id);
+        // 12-22 审查 M2：这次转让撤了，它记下的异议入口一起作废（可提 / 待裁定都标「已撤销」）；
+        // 状态已是「待裁定」时撤销照常放行、异议也标撤销（口径待定，交回里已写明）
+        if (严) await tx.entTransferObjection.updateMany({ where: { customerId: { in: cs }, operatorUserId: me.id, toOwnerId: 新负责人, status: { in: [异议可提, 异议待裁定] } }, data: { status: 异议已撤销, judgeNote: "转让已被撤销，异议作废" } });
         else await 记换负责人(tx, cs.map((customerId) => ({ customerId, from: 新负责人, to: 原 })), me.id, "undo");
         if (!带过来) continue;
         const 这几位 = { in: cs };

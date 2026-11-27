@@ -16,7 +16,7 @@ import { notify } from "./notify";
 import { 读组织 } from "./org";
 import { 客户显名, 显名列 } from "./customer-title";
 import type { 同事待分配条 } from "./notice-sources";
-import { 异议可提, 异议待裁定, 异议理由上限, 异议截止, 异议期天数, 算裁定人 } from "./objection-core";
+import { 异议可提, 异议已撤销, 异议待裁定, 异议理由上限, 异议截止, 异议期天数, 算裁定人 } from "./objection-core";
 
 export type 异议入口们 = {
   /** 被换掉的客户负责人 → 他那几条客户异议行 */
@@ -93,7 +93,7 @@ const 剩几天 = (截止: Date, 现在: Date) => Math.max(0, Math.ceil((截止.
 /** 我的异议：还能提的（「能提异议的通知」）和已经提了的（「我提的异议」）；过了 30 天没提的不列 */
 export async function 我的异议(userId: string, 现在: Date = new Date()): Promise<{ 能提: 异议行[]; 已提: 异议行[] }> {
   const 行们 = await prisma.entTransferObjection.findMany({
-    where: { objectorUserId: userId, OR: [{ status: { not: 异议可提 } }, { expiresAt: { gte: 现在 } }] },
+    where: { objectorUserId: userId, status: { not: 异议已撤销 }, OR: [{ status: { not: 异议可提 } }, { expiresAt: { gte: 现在 } }] },
     orderBy: { createdAt: "desc" }, take: 200,
   });
   const ids = [...new Set(行们.flatMap((r) => [r.operatorUserId, r.toOwnerId, ...(r.judgeIds ? (JSON.parse(r.judgeIds) as string[]) : [])]))];
