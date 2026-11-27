@@ -27,7 +27,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 读组织, 直属上级of, 实线下属, 虚线下属, 拆角色, type 组织 } from "@/lib/enterprise/org";
 import type { 业务角色 } from "@/lib/sync/dept-policy";
-import { 原负责人回避, 历史负责人, 我回避的公海项目 } from "./pool-owner";
+import { 原负责人回避, 历史负责人, 不回避条件 } from "./pool-owner";
 import { 能编辑项目, 业务线放行, 只读按线, 是系统管理员, 只看的人, 只看某人话 } from "@/lib/enterprise/permissions";
 import { 按线范围of, 按线项目 } from "@/lib/enterprise/line-viewer";
 import {
@@ -297,7 +297,7 @@ function 我的下属们(org: 组织 | null, 我: string): Set<string> {
 /** 「只看自己」时的查询条件，和 看得到卡点 一个意思（含 C-01：我是历史负责人、还在公海里的项目整条剔掉） */
 async function 自己的条件(我: string, org: 组织 | null): Promise<Prisma.EntBlockerWhereInput> {
   const 下属们 = [...我的下属们(org, 我)];
-  const 回避 = await 我回避的公海项目(prisma, 我);
+  const 不回避 = await 不回避条件(prisma, 我); // F-057：有界写法，不把整串名单塞 notIn
   const 线 = org ? 按线范围of(org, 我) : null;
   const 看得到: Prisma.EntBlockerWhereInput = {
     OR: [
@@ -309,7 +309,7 @@ async function 自己的条件(我: string, org: 组织 | null): Promise<Prisma.
       { claims: { some: { userId: 我 } } },
     ],
   };
-  return 回避.length ? { AND: [看得到, { projectId: { notIn: 回避 } }] } : 看得到;
+  return 不回避 ? { AND: [看得到, { project: 不回避 }] } : 看得到;
 }
 
 async function 拿卡点(tx: Prisma.TransactionClient, blockerId: string): Promise<带全的卡点 | null> {
@@ -487,9 +487,12 @@ export async function 删卡点(me: 谁, blockerId: string): Promise<卡点结�
  */
 async function 挪认领(
   tx: Prisma.TransactionClient, where: Prisma.EntBlockerWhereInput, 从: string, 到: string, 操作人: string, action: string, note: string | null,
+  /** 这几个项目上的认领行不挪（内存里滤；F-057：名单可能上千，不塞 projectId notIn 过 SQLite 参数上限） */
+  跳过项目?: ReadonlySet<string>,
 ): Promise<number> {
   if (从 === 到) return 0;
-  const 行们 = await tx.entBlockerClaim.findMany({ where: { userId: 从, done: false, blocker: { ...where, status: { not: "已解决" } } }, select: { id: true, blockerId: true } });
+  const 全部行 = await tx.entBlockerClaim.findMany({ where: { userId: 从, done: false, blocker: { ...where, status: { not: "已解决" } } }, select: { id: true, blockerId: true, blocker: { select: { projectId: true } } } });
+  const 行们 = 跳过项目?.size ? 全部行.filter((c) => !跳过项目.has(c.blocker.projectId)) : 全部行;
   for (const c of 行们) {
     const 有 = await tx.entBlockerClaim.findUnique({ where: { blockerId_userId: { blockerId: c.blockerId, userId: 到 } } });
     if (有) {
@@ -517,8 +520,8 @@ export async function 交接卡点(tx: Prisma.TransactionClient, 走的人: stri
   if (!企业版() || !走的人) return 0;
   return 看全部(async () => {
     let 数 = 0;
-    const 有交接人 = { projectId: { notIn: [...进公海项目] }, project: { pooledAt: null } } satisfies Prisma.EntBlockerWhereInput;
-    if (接手人 && 接手人 !== 走的人) 数 += await 挪认领(tx, 有交接人, 走的人, 接手人, 操作人, "handover", 离职交接理由);
+    const 有交接人 = { project: { pooledAt: null } } satisfies Prisma.EntBlockerWhereInput;
+    if (接手人 && 接手人 !== 走的人) 数 += await 挪认领(tx, 有交接人, 走的人, 接手人, 操作人, "handover", 离职交接理由, new Set(进公海项目));
     // 剩下的（没交接人）：直属上级接；上级也停用了不算
     const org = await 组织of();
     const 上级 = org ? 直属上级of(org, 走的人) : null;
