@@ -60,11 +60,54 @@ export function 读配置(目录) {
 function 读状态(目录) {
   try {
     const s = JSON.parse(fs.readFileSync(path.join(目录, "alert-state.json"), "utf8"));
-    if (s && typeof s === "object") return { alerts: {}, sent: [], health: {}, heartbeatDay: "", ...s };
+    if (s && typeof s === "object" && !Array.isArray(s)) {
+      // 字段类型不对（手改出来的 null、字符串等）当没有，用默认，不让后面 .filter / 下标处抛错（审查可改 7）
+      const 对象 = (x) => !!x && typeof x === "object" && !Array.isArray(x);
+      return {
+        ...s,
+        alerts: 对象(s.alerts) ? Object.fromEntries(Object.entries(s.alerts).filter(([, v]) => 对象(v))) : {},
+        sent: Array.isArray(s.sent) ? s.sent.filter((t) => typeof t === "number" && Number.isFinite(t)) : [],
+        health: 对象(s.health) ? s.health : {},
+        heartbeatDay: typeof s.heartbeatDay === "string" ? s.heartbeatDay : "",
+      };
+    }
   } catch {
     /* 没有或坏了：当新的 */
   }
   return { alerts: {}, sent: [], health: {}, heartbeatDay: "" };
+}
+
+const 锁陈旧毫秒 = 10 * 60_000;
+/** 非 --dry 运行的排他锁：数据目录下 alert-state.lock，O_EXCL 建，退出时删；超过 10 分钟视为陈旧可抢。拿到返回释放函数，拿不到返回 null；锁文件本身建不了（权限、磁盘）时不挡运行。 */
+function 取锁(目录, 现在) {
+  const 文件 = path.join(目录, "alert-state.lock");
+  for (let 次 = 0; 次 < 2; 次++) {
+    try {
+      const fd = fs.openSync(文件, "wx");
+      try {
+        fs.writeSync(fd, String(process.pid));
+      } finally {
+        fs.closeSync(fd);
+      }
+      return () => {
+        try {
+          fs.unlinkSync(文件);
+        } catch {
+          /* 已经没了 */
+        }
+      };
+    } catch (e) {
+      if (!e || e.code !== "EEXIST") return () => {};
+      try {
+        const 龄 = Math.max(Date.now(), 现在) - fs.statSync(文件).mtimeMs;
+        if (龄 <= 锁陈旧毫秒) return null;
+        fs.unlinkSync(文件); // 陈旧：抢
+      } catch {
+        /* 刚被别人删了：再试一次 */
+      }
+    }
+  }
+  return null;
 }
 
 function 写状态(目录, 状态) {
@@ -226,6 +269,20 @@ const 规则名 = { "R2:total": "服务端报错总量", "R2:people": "多位员
  * @returns {Promise<{ 发出: { 内容: string; 客户: boolean }[] }>} 本次发的（dry 时是将发的）
  */
 export async function 运行(选项) {
+  if (选项.dry) return 运行内(选项);
+  const 放 = 取锁(选项.目录, 选项.现在 ?? Date.now());
+  if (!放) {
+    console.error("[ent-alert] 另一个运行正在写状态（alert-state.lock），本次不跑");
+    return { 发出: [] };
+  }
+  try {
+    return await 运行内(选项);
+  } finally {
+    放();
+  }
+}
+
+async function 运行内(选项) {
   const { 目录, dry = false, 现在 = Date.now(), 取 = fetch, 输出 = (s) => console.log(s) } = 选项;
   const 配置 = 读配置(目录);
   const 实例 = 配置.ALERT_INSTANCE || "企业版";
@@ -249,8 +306,11 @@ export async function 运行(选项) {
     新健康[u] = { fails: 好 ? 0 : (状态.health[u]?.fails ?? 0) + 1 };
   }
   // 配置里已经删掉的探活地址：状态里的 R4 条目一起清掉（审查可改 8），以后同一地址加回来又不通时当新告警发
-  for (const 键 of Object.keys(状态.alerts)) {
-    if (键.startsWith("R4:") && !地址们.includes(键.slice(3))) delete 状态.alerts[键];
+  // 只在拿到非空地址列表时清：.alert-env 一时读不到（地址为空）不能把全部 R4 记录清掉（审查 s2 可改 7）
+  if (地址们.length) {
+    for (const 键 of Object.keys(状态.alerts)) {
+      if (键.startsWith("R4:") && !地址们.includes(键.slice(3))) delete 状态.alerts[键];
+    }
   }
   const 端口 = (u) => {
     try {
@@ -351,7 +411,8 @@ export async function 运行(选项) {
   // 每小时上限
   状态.sent = (状态.sent ?? []).filter((t) => t > 现在 - 3600_000);
   const 余 = Math.max(0, 每小时上限 - 状态.sent.length);
-  待发.sort((a, b) => a.优先 - b.优先);
+  // 同优先里发客户群的排前面，上限满了也不让客户那 3 类被我方的个案 / 心跳类挤掉（审查 s1 可改 6）
+  待发.sort((a, b) => a.优先 - b.优先 || Number(b.客户) - Number(a.客户));
   const 本次 = 待发.slice(0, 余);
   if (待发.length > 余) console.error(`[ent-alert] 每小时上限 ${每小时上限} 条，本次 ${待发.length - 余} 条留到下次`);
 
@@ -389,7 +450,7 @@ export async function 运行(选项) {
   }
 
   if (!dry) {
-    状态.health = 新健康;
+    if (地址们.length) 状态.health = 新健康;
     try {
       写状态(目录, 状态);
     } catch (e) {

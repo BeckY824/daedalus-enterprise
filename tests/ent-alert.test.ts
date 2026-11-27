@@ -394,8 +394,8 @@ describe("审查可改（阶段 2 一并改的）", () => {
     await 跑(T0);
     await 跑(T0 + 2 * 分);
     expect(发往(OURS)).toHaveLength(1);
-    // 地址从配置里去掉
-    fs.writeFileSync(path.join(目录, ".alert-env"), `ALERT_WEBHOOK_OURS=${OURS}\nALERT_SECRET_OURS=so\n`);
+    // 地址从配置里去掉（换成另一个地址；配置里一个地址都没有的情形见下面「配置读不到不清 R4」）
+    fs.writeFileSync(path.join(目录, ".alert-env"), `ALERT_WEBHOOK_OURS=${OURS}\nALERT_SECRET_OURS=so\nALERT_HEALTH_URLS=http://127.0.0.1:3002/api/health\n`);
     await 跑(T0 + 4 * 分);
     const 状态 = JSON.parse(fs.readFileSync(path.join(目录, "alert-state.json"), "utf8"));
     expect(Object.keys(状态.alerts).filter((k) => k.startsWith("R4:"))).toHaveLength(0);
@@ -413,5 +413,64 @@ describe("审查可改（阶段 2 一并改的）", () => {
     fs.symlinkSync(path.resolve(__dirname, "../scripts/ent-alert.mjs"), 链);
     const out = execFileSync(process.execPath, [链, "--dir", 目录, "--dry", "--now", new Date(T0).toISOString()], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
     expect(out).toContain("将发");
+  });
+
+  it("配置读不到（探活地址为空）时不清 R4 记录", async () => {
+    const 地址 = "http://127.0.0.1:3001/api/health";
+    fs.appendFileSync(path.join(目录, ".alert-env"), `ALERT_HEALTH_URLS=${地址}\n`);
+    健康好 = false;
+    await 跑(T0);
+    await 跑(T0 + 2 * 分);
+    fs.rmSync(path.join(目录, ".alert-env"));
+    await 跑(T0 + 4 * 分);
+    const 状态 = JSON.parse(fs.readFileSync(path.join(目录, "alert-state.json"), "utf8"));
+    expect(Object.keys(状态.alerts).filter((k) => k.startsWith("R4:"))).toHaveLength(1);
+  });
+});
+
+describe("审查 s1/s2 可改（第二轮）", () => {
+  it("每小时上限：发客户群的排在同优先的仅我方前面，不被挤掉", async () => {
+    for (let r = 0; r < 6; r++) 记(5, 5, { route: `/r${r}` }, ["a"]); // 6 条单人个案（仅我方）+ R2 总量
+    记(3, 5, { name: "PrismaClientKnownRequestError", code: "P2024", route: "/db" }, ["a"]); // R3 客户
+    const 出 = await 跑(T0);
+    expect(出.发出).toHaveLength(6);
+    expect(出.发出.some((x) => x.客户)).toBe(true);
+    expect(发往(EVEN)).toHaveLength(1);
+  });
+
+  it("状态文件字段类型不对：当没有，不崩，照常发", async () => {
+    fs.writeFileSync(path.join(目录, "alert-state.json"), JSON.stringify({ alerts: null, sent: "x", health: 3, heartbeatDay: 5 }));
+    记(5, 3, {}, ["a", "b"]);
+    const 出 = await 跑(T0);
+    expect(出.发出.length).toBeGreaterThan(0);
+    const 状态 = JSON.parse(fs.readFileSync(path.join(目录, "alert-state.json"), "utf8"));
+    expect(Array.isArray(状态.sent)).toBe(true);
+    expect(状态.alerts && typeof 状态.alerts).toBe("object");
+    // alerts 里个别条目不是对象也不崩
+    fs.writeFileSync(path.join(目录, "alert-state.json"), JSON.stringify({ alerts: { "R1:x": null, "R3:db": "y" }, sent: [1, "z", null] }));
+    await expect(跑(T0 + 分)).resolves.toBeTruthy();
+  });
+
+  it("排他锁：锁文件在（没过期）本次不跑不发；陈旧锁（>10 分钟）被抢；跑完锁删掉；--dry 不看锁", async () => {
+    const 锁 = path.join(目录, "alert-state.lock");
+    记(5, 3, {}, ["a", "b"]);
+    fs.writeFileSync(锁, "99999");
+    const 空 = await 跑(T0);
+    expect(空.发出).toHaveLength(0);
+    expect(调用们).toHaveLength(0);
+    expect(fs.existsSync(锁)).toBe(true); // 别人的锁不能删
+    const dry = await 跑(T0, { dry: true });
+    expect(dry.发出.length).toBeGreaterThan(0);
+    const 旧 = new Date(Date.now() - 11 * 分);
+    fs.utimesSync(锁, 旧, 旧);
+    const 出 = await 跑(T0);
+    expect(出.发出.length).toBeGreaterThan(0);
+    expect(fs.existsSync(锁)).toBe(false);
+  });
+
+  it("排他锁：运行抛错 / 正常结束都会释放", async () => {
+    记(5, 3, {}, ["a", "b"]);
+    await 跑(T0);
+    expect(fs.existsSync(path.join(目录, "alert-state.lock"))).toBe(false);
   });
 });

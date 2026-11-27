@@ -16,7 +16,7 @@
 #   <目录>/data/.alert-env                             没有就按模板建（600，键留空）；已有不覆盖（只把权限收到 600）
 #   运行记录读 <目录>/data/telemetry/（run.sh 里 DATABASE_URL=file:<目录>/data/crm.db → store.ts 写在库文件旁边的 telemetry/）
 # 幂等：重跑只补差异；单元 / 脚本内容没变就不重启 timer。
-# 注意：别在 timer 跑的时候手动跑非 --dry 的 ent-alert.mjs（两边同时发、后写的覆盖状态）；手动看看用 --dry。
+# 注意：ent-alert.mjs 非 --dry 运行带排他锁（<目录>/data/alert-state.lock，拿不到就退出 0，超 10 分钟算陈旧）；手动看看用 --dry，手动真跑用 systemctl start <服务名>-alert.service。
 # 不用 PrivateTmp：ent-alert.mjs「状态写不了」时的限频小文件放系统临时目录，私有 tmp 每次运行都清空，限频就失效了。
 set -euo pipefail
 
@@ -44,7 +44,7 @@ while [ $# -gt 0 ]; do
     --unit-dir) [ $# -ge 2 ] || die "--unit-dir 缺值"; UNIT_DIR=$2; shift 2 ;;
     --no-systemctl) NO_SYSTEMCTL=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
-    -h | --help) sed -n 2,22p "$0"; exit 0 ;;
+    -h | --help) sed -n 1,20p "$0"; exit 0 ;;
     *) die "不认识的参数 $1（--service --dir --port --workers --node --src --user --unit-dir --no-systemctl --uninstall）" ;;
   esac
 done
@@ -56,6 +56,7 @@ done
 [ -n "$NODE" ] || NODE=$DIR/node/bin/node
 [[ $NODE == /* ]] || die "--node 要绝对路径：$NODE"
 case "$DIR$NODE" in *[[:space:]\"\']*) die "路径里不许有空格和引号" ;; esac
+case "$DIR$NODE" in *%* | *\|*) die "路径里不许有 % 和 |（systemd 单元里 % 是占位符、脚本里 | 当分隔）" ;; esac
 
 A=$DIR/alert
 DATA=$DIR/data
@@ -71,7 +72,7 @@ if [ "$UNINSTALL" = 1 ]; then
   rm -rf "$A"
   ctl daemon-reload
   ctl reset-failed "$SERVICE-alert.service" >/dev/null 2>&1 || true
-  echo "已卸：$SERVICE-alert.timer / .service、$A。留着没动：$ENVF、$DATA/alert-state.json（要彻底删手动 rm）"
+  echo "已卸：$SERVICE-alert.timer / .service、${A}。留着没动：${ENVF}、$DATA/alert-state.json（要彻底删手动 rm）"
   exit 0
 fi
 
@@ -81,9 +82,9 @@ if [ -z "$SRC" ]; then
   if [ -f "$H/ent-alert.mjs" ]; then SRC=$H; elif [ -f "$H/../../../scripts/ent-alert.mjs" ]; then SRC=$(cd "$H/../../../scripts" && pwd); fi
 fi
 [ -n "$SRC" ] || die "找不到 ent-alert.mjs：用 --src 指到放两份 mjs 的目录"
-for f in ent-alert.mjs telemetry-daily.mjs; do [ -f "$SRC/$f" ] || die "$SRC 里没有 $f（两份要一起放）"; done
-[ -x "$NODE" ] || die "找不到可执行的 node：$NODE（--node 指定）"
-[ -d "$DATA" ] || die "数据目录不存在：$DATA（--dir 指到企业版装的目录；这个脚本不建库目录）"
+for f in ent-alert.mjs telemetry-daily.mjs; do [ -f "$SRC/$f" ] || die "$SRC 里没有 ${f}（两份要一起放）"; done
+[ -x "$NODE" ] || die "找不到可执行的 node：${NODE}（--node 指定）"
+[ -d "$DATA" ] || die "数据目录不存在：${DATA}（--dir 指到企业版装的目录；这个脚本不建库目录）"
 [ -d "$UNIT_DIR" ] || die "单元目录不存在：$UNIT_DIR"
 
 # 运行身份：--user > 数据目录属主（Linux stat -c %U，macOS stat -f %Su；取不到就不加）；root 等于不加
@@ -93,7 +94,7 @@ RUN_GROUP=""
 if [ -n "$RUN_USER" ]; then
   [[ $RUN_USER =~ ^[a-z_][a-z0-9_-]*$ ]] || die "运行用户名不合法：$RUN_USER"
   RUN_GROUP=$(id -gn "$RUN_USER" 2>/dev/null || true)
-  [ -n "$RUN_GROUP" ] || die "系统里没有用户 $RUN_USER（--user 指定一个存在的用户）"
+  [ -n "$RUN_GROUP" ] || die "系统里没有用户 ${RUN_USER}（--user 指定一个存在的用户）"
 fi
 chown_run() { # 只有 root 才改属主（本机试装不是 root，跳过）
   if [ -n "$RUN_USER" ] && [ "$(id -u)" = 0 ]; then chown "$RUN_USER:$RUN_GROUP" "$@"; fi
@@ -136,13 +137,16 @@ ALERT_INSTANCE=
 EOF
   )
   chown_run "$ENVF"
-  echo "已建：$ENVF（600，键都是空的，填好才会发；探活地址见文件里的注释）"
+  echo "已建：${ENVF}（600，键都是空的，填好才会发；探活地址见文件里的注释）"
 else
   MODE=$(stat -c %a "$ENVF" 2>/dev/null || stat -f %Lp "$ENVF")
   if [ "$MODE" != 600 ]; then chmod 600 "$ENVF"; echo "已把 $ENVF 的权限从 $MODE 收到 600"; fi
   chown_run "$ENVF"
-  echo "已有：$ENVF（不覆盖）"
+  echo "已有：${ENVF}（不覆盖）"
 fi
+
+# 数据目录里已有 root 属主的状态文件（以前用 root 手动跑过）：运行用户写不了会让去重 / 限频全失效，一并改属主
+[ ! -f "$DATA/alert-state.json" ] || chown_run "$DATA/alert-state.json"
 
 want_svc="[Unit]
 Description=CRM enterprise $SERVICE error alert (telemetry + health probe)
@@ -174,9 +178,9 @@ if ! ctl enable --now "$SERVICE-alert.timer" >/dev/null; then
   exit 1
 fi
 [ "$CHANGED" = 0 ] || ctl restart "$SERVICE-alert.timer"
-echo "告警定时：每 2 分钟（$SERVICE-alert.timer），脚本在 $A，读 $DATA/telemetry/，配置 $ENVF"
+echo "告警定时：每 2 分钟（$SERVICE-alert.timer），脚本在 ${A}，读 $DATA/telemetry/，配置 $ENVF"
 if [ "$NO_SYSTEMCTL" = 0 ]; then systemctl list-timers "$SERVICE-alert.timer" --no-pager | sed -n 2p; fi
 # 空跑一次：只打印将发什么，不发、不写状态；顺带验证 node 和两份脚本能跑
 echo "空跑（--dry）："
-"$NODE" "$A/ent-alert.mjs" --dir "$DATA" --dry | head -n 20
+{ "$NODE" "$A/ent-alert.mjs" --dir "$DATA" --dry | head -n 20; } || true
 echo "（空跑完。填好 $ENVF 里的地址后，看日志：journalctl -u $SERVICE-alert.service -n 20 --no-pager）"

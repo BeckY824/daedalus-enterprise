@@ -45,7 +45,7 @@ LOG=$T/stub.jsonl; : > "$LOG"
 for _ in $(seq 100); do [ -s "$T/stub.port" ] && break; sleep 0.1; done
 [ -s "$T/stub.port" ] || { echo "收件桩没起来"; exit 1; }
 SP=$(cat "$T/stub.port")
-echo "收件桩 127.0.0.1:$SP（/ours = 我方群，/even = 客户群）"
+echo "收件桩 127.0.0.1:${SP}（/ours = 我方群，/even = 客户群）"
 
 # 用法：newdir <名字> [额外的 .alert-env 行]
 newdir() {
@@ -133,6 +133,30 @@ echo "ALERT_INSTANCE=keepme" >> "$I/data/.alert-env"
 bash deploy/enterprise/tools/install-alert.sh "${IA[@]}" >"$T/i2.txt" 2>&1 && grep -q keepme "$I/data/.alert-env" && ! grep -q '已写：' "$T/i2.txt" && ok "重跑幂等：不覆盖 .alert-env、单元没变不重写" || { bad "重跑不幂等"; cat "$T/i2.txt"; }
 bash deploy/enterprise/tools/install-alert.sh --uninstall --service crm-test --dir "$I" --unit-dir "$I/units" --no-systemctl >/dev/null 2>&1
 [ ! -e "$I/units/crm-test-alert.service" ] && [ ! -e "$I/units/crm-test-alert.timer" ] && [ ! -d "$I/alert" ] && [ -f "$I/data/.alert-env" ] && ok "--uninstall：单元和脚本删了，.alert-env 留着" || bad "--uninstall 不对"
+
+echo "[8] 安装脚本：--dir 含 % 或 | 直接拒；--help 只打头注释；已有 root 属主的状态文件改属主"
+for BADDIR in "$T/in%st" "$T/in|st"; do
+  mkdir -p "$BADDIR/data"
+  bash deploy/enterprise/tools/install-alert.sh --service crm-test --dir "$BADDIR" --node "$NODE" --unit-dir "$I/units" --no-systemctl --src scripts >"$T/i3.txt" 2>&1; RC=$?
+  [ "$RC" = 2 ] && grep -q '% 和 |' "$T/i3.txt" && [ ! -d "$BADDIR/alert" ] && ok "拒绝 --dir $(basename "$BADDIR")" || bad "没拒绝 --dir $(basename "$BADDIR")（退出 ${RC}）"
+done
+bash deploy/enterprise/tools/install-alert.sh --help >"$T/h.txt" 2>&1; ! grep -q 'set -euo\|^SERVICE=' "$T/h.txt" && grep -q '装 / 卸企业版报错告警' "$T/h.txt" && ok "--help 只有头注释" || bad "--help 带出了脚本代码"
+# 假 id / chown：让脚本以为自己是 root，只记下 chown 的参数（不真改属主）
+FB=$T/fakebin; mkdir -p "$FB"
+printf '#!/bin/sh\n[ "$1" = "-u" ] && { echo 0; exit 0; }\nexec %s "$@"\n' "$(command -v id)" > "$FB/id"
+printf '#!/bin/sh\necho "$@" >> "%s"\n' "$T/chown.log" > "$FB/chown"
+chmod +x "$FB/id" "$FB/chown"
+ME=$(id -un)
+if [ "$ME" != root ]; then
+  : > "$T/chown.log"; echo '{}' > "$I/data/alert-state.json"
+  PATH="$FB:$PATH" bash deploy/enterprise/tools/install-alert.sh "${IA[@]}" --user "$ME" >"$T/i4.txt" 2>&1
+  grep -q "alert-state.json" "$T/chown.log" && grep -q "\.alert-env" "$T/chown.log" && ok "已有 alert-state.json：和 .alert-env 一起 chown 给运行用户" || { bad "没 chown alert-state.json"; cat "$T/chown.log" "$T/i4.txt"; }
+  : > "$T/chown.log"; rm -f "$I/data/alert-state.json"
+  PATH="$FB:$PATH" bash deploy/enterprise/tools/install-alert.sh "${IA[@]}" --user "$ME" >"$T/i5.txt" 2>&1
+  ! grep -q "alert-state.json" "$T/chown.log" && ok "没有状态文件就不 chown" || bad "没状态文件也 chown 了"
+else
+  ok "（root 跑，跳过 chown 用例）"
+fi
 
 echo
 if [ "$FAIL" = 0 ]; then echo "全部通过"; else echo "有失败项"; fi
