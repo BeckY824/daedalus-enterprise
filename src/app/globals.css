@@ -1230,19 +1230,6 @@ body.rail-resizing-collapse .pane-chat { opacity: .45; }
   /* 关掉的 ✕ 点击区放大到 36，用负外边距吃回去，那一行还是 24 高 */
   .mrg-landed-x { width: 36px; height: 36px; margin: -6px -6px -6px 0; }
 }
-/* 客户详情「上一条 / 下一条」（E-332，customers/[id]/CustomerStep.tsx）：「← 回到客户列表」那一行右端两颗箭头，不缩、不占新行；到头那颗灰着 */
-.rec-step { display: inline-flex; flex: none; align-items: center; gap: 2px; margin-left: auto; padding-left: var(--s2); }
-/* 并入提示也在这一行：它已经顶到右边，箭头紧跟在它后面 */
-.mrg-landed + .rec-step { margin-left: 0; }
-.rec-step-b { display: inline-grid; place-items: center; width: 24px; height: 24px; padding: 0; border: 0; border-radius: var(--r-ctl); background: none;
-  color: var(--text-muted); font-size: var(--fs-min); text-decoration: none; cursor: pointer; transition: background-color var(--t-press) var(--ease), color var(--t-press) var(--ease); }
-a.rec-step-b:hover { background: var(--row-hover); color: var(--ink); }
-.rec-step-b:focus-visible { outline: 2px solid var(--brand); outline-offset: 1px; }
-.rec-step-b:disabled { color: var(--text-faint); cursor: default; }
-@media (max-width: 767px) {
-  /* 手机点击区放大到 36，上下负外边距吃回去，那一行还是 24 高 */
-  .rec-step-b { width: 36px; height: 36px; margin: -6px 0; }
-}
 /* 回收站「已并入 → A」：恢复、彻底删除灰着，悬停说明 */
 .mrg-trash-into { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--brand); font-size: var(--fs-min); }
 .mrg-trash-acts { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 2px; }
@@ -2797,11 +2784,10 @@ button.ais-hd-b { cursor: pointer; }
 @media (min-width: 768px) and (max-width: 1199px) {
   .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 160px !important; }
   .list-bar > .ant-space > .ant-space-item > .ant-select { width: auto !important; min-width: 96px; max-width: 132px; }
-  /* 渠道页两层后多一个「主渠道」下拉，搜索框再收一点留余量（选了长主渠道名也不折行）；
-     筛选行最左多一颗「列表 / 看板」（11-12）：搜索框同样收到 140，1024 宽（正文 752）筛选行和「列」仍一行 */
-  :is(.chan-list .list-bar, .list-bar:has(> .list-view-seg)) > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 140px !important; }
-  /* 客户列表多一颗「排序」（E-332）：搜索框再让到 104，放在最后盖过上面那条 */
-  .list-bar:has(> .cust-sort-btn) > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 104px !important; }
+  /* 渠道页两层后多一个「主渠道」下拉，搜索框再收一点留余量（选了长主渠道名也不折行） */
+  .chan-list .list-bar > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 140px !important; }
+  /* 筛选行最左多一颗「列表 / 看板」（11-12）：搜索框同样收到 140，1024 宽（正文 752）筛选行和「列」仍一行 */
+  .list-bar:has(> .list-view-seg) > .ant-space > .ant-space-item > .ant-input-affix-wrapper { width: 140px !important; }
 }
 /* 「更多筛选」1440 以下只留图标和数字：加了这颗按钮，默认状态也不能比原来多占一行（1024 宽筛选行要一行）。
    公海多一排分段，到 1440 才放得下全尺寸；这段宽度把两个下拉和搜索也收一点 */
@@ -7014,15 +7000,3 @@ button.proj-miss-chip { cursor: pointer; }
 .fu-as-date { width: 200px; }
 .done-plan-as { margin-top: 6px; }
 .pd-as-btn { margin-top: 8px; }
-
-/* 客户列表「排序」按钮（E-332）：筛选行一行放不下就折两行（1024 宽差 1px 都会折），所以按钮窄于 1440 只留图标、搜索框让出一点宽；
-   宽屏（≥1440）带「排序」两个字；手机宽（<768）另起一排，字照留 */
-.cust-sort-btn { flex: none; }
-.cust-sort-gap { display: inline-block; width: 14px; }
-@media (min-width: 768px) and (max-width: 1439px) {
-  .cust-sort-btn .cust-sort-txt { display: none; }
-  .cust-sort-btn.ant-btn { min-width: 32px; padding-inline: 0; }
-}
-@media (min-width: 1200px) {
-  .list-bar:has(> .cust-sort-btn) > .ant-space > .ant-space-item > .ant-input-affix-wrapper { max-width: 216px; }
-}
