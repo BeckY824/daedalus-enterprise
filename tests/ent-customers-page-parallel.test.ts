@@ -185,4 +185,20 @@ describe("公海关键词查询按需（11-26 小修 h）：客户页签搜到�
     await 打开({}, 人们.销售管理);
     expect(mocks.查公海).toBe(0);
   });
+  // O1-N2：「我参与的」这类范围 0 条、没关键词也没别的筛选：去掉范围数出来就是整个公海，提示没信息量，不再数
+  it("范围 0 条、没关键词没筛选：不查公海，提示 0", async () => {
+    const p = await 打开({ scope: "joined" }, 人们.销售);
+    expect(p.rows.length).toBe(0);
+    expect(p.公海里匹配).toBe(0);
+    expect(mocks.查公海).toBe(0);
+  });
+  it("范围 0 条、带关键词 / 带别的筛选：照查公海，提示照出", async () => {
+    const a = await 打开({ scope: "joined", keyword: "海里" }, 人们.销售);
+    expect(a.rows.length).toBe(0);
+    expect(mocks.查公海).toBeGreaterThan(0);
+    mocks.查公海 = 0;
+    const b = await 打开({ scope: "joined", level: "A" }, 人们.销售);
+    expect(b.rows.length).toBe(0);
+    expect(mocks.查公海).toBeGreaterThan(0);
+  });
 });
