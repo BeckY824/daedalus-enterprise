@@ -45,7 +45,7 @@ const 同意人话 = (x: 合并申请一条["同意人"][number]) => `${x.名} $
 export function 我的身份话(r: 合并申请一条, 我: string): string {
   const 我那行 = r.同意人.find((x) => x.userId === 我);
   if (!我那行) return "";
-  return [...我那行.凭.map((v) => 凭叫法[v]), ...(我那行.项目.length ? [`${我那行.项目.length} 个项目：${我那行.项目.map((p) => p.name).join("、")}`] : [])].join("；");
+  return [...我那行.凭.map((v) => (v === "系统管理员" ? "系统管理员（第 3 次申请，由你判）" : 凭叫法[v])), ...(我那行.项目.length ? [`${我那行.项目.length} 个项目：${我那行.项目.map((p) => p.name).join("、")}`] : [])].join("；");
 }
 
 /**

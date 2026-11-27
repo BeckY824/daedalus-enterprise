@@ -240,7 +240,7 @@ function MergeCustomerDialog({ customerId, 客户名, 预选, 关 }: { customerI
       危: false,
       是: "发申请",
       后果: [
-        { 标: "要同意", 级: "警" as const, 话: 管理员判 ? `${们.map((x) => x.名).join("、")}（共 ${们.length} 位系统管理员）任一位同意即合并；一位拒绝，申请就结束` : `${们.map((x) => x.名).join("、")}（共 ${们.length} 位）都同意了才合并；一位拒绝，申请就结束` },
+        { 标: "要同意", 级: "警" as const, 话: 管理员判 ? `交系统管理员判（${们.map((x) => x.名).join("、")}，共 ${们.length} 位），任一位同意即合并；没有一位同意就失效` : `${们.map((x) => x.名).join("、")}（共 ${们.length} 位）都同意了才合并；一位拒绝，申请就结束` },
         { 标: "等多久", 话: `${等待工作日} 个工作日内（法定节假日不算）没有全部同意，申请失效，要重新发起` },
         { 标: "等的时候", 话: "两家照常能用；两家的负责人、阶段、回款或提成、被判无效有变，申请失效" },
         ...(n ? [{ 标: "合并后", 话: `挪过来 ${n.项目} 个项目、${n.联系人} 位联系人、${n.沟通} 条沟通；项目负责人、组员都不变，${撤回天数} 天内你可整单撤回` }] : []),
@@ -257,7 +257,7 @@ function MergeCustomerDialog({ customerId, 客户名, 预选, 关 }: { customerI
     关();
     router.refresh();
     showUndo({
-      话: `合并申请已发出，等 ${结.人数} 位同意`,
+      话: 管理员判 ? "合并申请已发出，交系统管理员判，任一位同意即合并" : `合并申请已发出，等 ${结.人数} 位同意`,
       毫秒: 8000,
       撤销: async () => {
         const u = await 撤回客户合并申请(id);
@@ -329,7 +329,7 @@ function MergeCustomerDialog({ customerId, 客户名, 预选, 关 }: { customerI
           <span className="mrg-foot-sp" />
           <Button onClick={关}>取消</Button>
           {走申请
-            ? <Button type="primary" disabled={!能点} onClick={() => void 发申请()} data-testid="merge-request-go">发合并申请（要 {申!.同意人.length} 位同意）</Button>
+            ? <Button type="primary" disabled={!能点} onClick={() => void 发申请()} data-testid="merge-request-go">{管理员判 ? "发合并申请（交系统管理员判）" : `发合并申请（要 ${申!.同意人.length} 位同意）`}</Button>
             : <Button type="primary" disabled={!能点} onClick={() => void 合并()} data-testid="merge-go">合并</Button>}
         </div>
       ) : null}
@@ -410,7 +410,7 @@ function MergeCustomerDialog({ customerId, 客户名, 预选, 关 }: { customerI
           )}
           {走申请 && (
             <section className="mrg-ask" aria-label="要同意的人" data-testid="merge-approvers">
-              <p className="mrg-sec-t">要同意的人 <span className="mrg-sec-c">{管理员判 ? "任一位同意即合并" : "他们都同意了才合并"}；{等待工作日} 个工作日内（法定节假日不算）没全部同意，申请失效</span></p>
+              <p className="mrg-sec-t">要同意的人 <span className="mrg-sec-c">{管理员判 ? "交系统管理员判，任一位同意即合并" : "他们都同意了才合并"}；{等待工作日} 个工作日内（法定节假日不算）{管理员判 ? "没有一位同意就失效" : "没全部同意，申请失效"}</span></p>
               {!!申!.重发限制?.话 && <p className="mrg-note" data-testid="merge-resend-limit">{申!.重发限制.话}</p>}
               <ul className="mrg-ask-l">
                 {申!.同意人.map((x) => {

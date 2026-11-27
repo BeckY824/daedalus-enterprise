@@ -806,6 +806,10 @@ describe("重发限制（E-428 阶段 3）：被拒 24 小时、30 天 3 次、�
     await 等通知推完();
     expect(await raw.entNotice.count({ where: { userId: 丙.id, kind: 合并申请通知种类 } })).toBe(丙前);
     expect(await raw.entNotice.count({ where: { userId: 老板二.id, kind: 合并申请通知种类 } })).toBe(1);
+    // 可改 1：给管理员的通知说明交系统管理员判、任一位同意即合并，不写「没全部同意」
+    const 收 = await raw.entNotice.findFirstOrThrow({ where: { userId: 老板二.id, kind: 合并申请通知种类 } });
+    expect(收.body).toMatch(/第 3 次申请交系统管理员判，任一位同意即合并，.*前没有一位同意，申请失效/);
+    expect(收.body).not.toMatch(/没全部同意/);
     // 同事（被并那家负责人丙）不能处理
     expect(await 处理合并申请(prisma, id, 丙, "同意", { 现在: 小时(5) })).toMatchObject({ ok: false, error: "你不是这张合并申请要同意的人" });
     // 新建一个丁的项目：同意人重算会多出丁，管理员判不比同意人，照常合并

@@ -805,14 +805,16 @@ async function 申请通知(db: 库, requestId: string, 事: 申请事件, 谁: 
       notify(收.filter((u) => u !== 谁?.id || 事 === "合并"), { kind: 合并申请通知种类, title, body, link: 合并申请页, key: `merge-req:${r.id}:${键}` });
     const 一句 = 原因.trim();
     switch (事) {
-      case "收到":
+      case "收到": {
+        const 管 = !!读选择(r.choices).管理员判;
         for (const x of r.approvers) {
           const 凭们 = 读JSON<凭[]>(x.why, []).map((v) => 凭叫法[v] ?? v);
           const 项目数 = 读JSON<涉及项目[]>(x.projects, []).length;
           await 发([x.userId], `${发起人名}发来合并申请：${给别人}，要你同意`,
-            `你是${凭们.join("、") || "要同意的人"}${项目数 ? `，涉及你的 ${项目数} 个项目` : ""}。${北京时刻(r.expiresAt)} 前没全部同意，申请失效`, "收到");
+            `你是${凭们.join("、") || "要同意的人"}${项目数 ? `，涉及你的 ${项目数} 个项目` : ""}。${管 ? "第 3 次申请交系统管理员判，任一位同意即合并，" : ""}${北京时刻(r.expiresAt)} 前${管 ? "没有一位同意" : "没全部同意"}，申请失效`, "收到");
         }
         return;
+      }
       case "同意": {
         if (r.status !== 申请状态.待同意) return;
         const 还差 = r.approvers.filter((x) => x.status !== 同意状态.同意).length;

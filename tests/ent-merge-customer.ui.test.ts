@@ -483,6 +483,9 @@ it("第 3 次申请：发起框写明交系统管理员判、任一位同意即�
       if (有) {
         expect(await page.getByTestId("merge-resend-limit").innerText()).toBe("第 3 次交系统管理员判，任一位系统管理员同意即合并");
         expect(await page.getByTestId("merge-approvers").innerText()).toContain("任一位同意即合并");
+        expect(await page.getByTestId("merge-approvers").innerText()).toContain("没有一位同意就失效");
+        expect(await page.getByTestId("merge-approvers").innerText()).not.toContain("没全部同意");
+        expect(await page.getByTestId("merge-request-go").innerText()).toBe("发合并申请（交系统管理员判）");
       }
       expect(错).toEqual([]);
     } finally { await page.close(); }

@@ -41,7 +41,7 @@ export async function 撤培育计划(tx: 撤用库, me: { id: string }, project
  * 一批项目一次撤完（批量退公海 / 批量删 / 离职交接 / 客户整体进回收站）：一次查、一次删、一次标已读、一次查操作人，
  * 每个有计划被撤的项目记一行操作日志（和单个项目同口径）；不是每个项目一轮。返回撤了几条。
  */
-async function 撤培育计划们(tx: 撤用库, me: { id: string }, projectIds: readonly string[]): Promise<number> {
+export async function 撤培育计划们(tx: 撤用库, me: { id: string }, projectIds: readonly string[]): Promise<number> {
   const ids = [...new Set(projectIds)];
   if (!ids.length) return 0;
   // 看全部：计划挂在项目负责人名下，操作人（市场成员、同事、系统）的限定读写碰不到别人的行——按组织看客户开着时会一行没撤到（同 market-assign-node.ts）

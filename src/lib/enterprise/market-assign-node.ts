@@ -20,7 +20,7 @@ import { 是市场成员of, type 组织 } from "./org-core";
 import { 是销售角色 } from "./permissions";
 import { 看全部 } from "@/lib/team-scope";
 import { 仅记录用来源 } from "@/lib/project/system-created";
-import { 撤培育计划, type 撤用库 } from "@/lib/project/nurture-plan";
+import { 撤培育计划们, type 撤用库 } from "@/lib/project/nurture-plan";
 
 /** 从哪进哪：企业版、团队版字典里线索阶段前两个节点同名（stage-dict.ts） */
 export const 市场分配从 = "潜客培育";
@@ -82,7 +82,7 @@ export async function 市场分配进线索验证(
         })),
       });
       // 潜客培育 → 线索验证 = 离开潜客培育：判 MQL 不合格自动建的培育计划一起撤（E-396；这里不经 改节点，要自己撤）
-      for (const projectId of 这批) await 撤培育计划(tx, { id: 操作人 }, projectId);
+      await 撤培育计划们(tx, { id: 操作人 }, 这批);
       推.push(...这批);
     }
     return 推;
