@@ -72,7 +72,7 @@ it.each([375, 390, 360])("%ipx 手机：系统管理员四颗按钮（含离职�
   for (const 有范围 of [true, false]) {
     const { page, errors } = await 开({ 待交接: 3, 有范围 }, w);
     try {
-      expect(await page.locator(".page-head-a button").filter({ hasText: "离职交接 3" }).count()).toBe(1);
+      expect(await page.locator('.page-head-a button[aria-label="离职交接 3"]').count()).toBe(1);  // 数字前的空格由 CSS ::before 补，textContent 里没有，按 aria-label 认
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `宽 ${w} 范围 ${有范围}`).toBe(true);
       expect(await 按钮们在屏里(page), `宽 ${w} 范围 ${有范围}`).toEqual([]);
       const 组 = await page.locator(".page-head-a").evaluate((e) => { const r = e.getBoundingClientRect(); return { 右: r.right, 宽: e.scrollWidth - e.clientWidth, 头右: e.parentElement!.getBoundingClientRect().right }; });
