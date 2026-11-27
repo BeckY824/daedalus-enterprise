@@ -52,6 +52,7 @@ import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-ma
 import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 import LevelLetter from "@/components/LevelLetter";
 import { useLocalPref } from "@/lib/local-pref";
+import { useNarrow } from "@/lib/roster";
 import LocalTime from "@/components/LocalTime";
 import { 未分级, 久未跟进天数们 } from "./query-shared";
 import IdleDaysFilter from "@/components/IdleDaysFilter";
@@ -1320,6 +1321,9 @@ export default function CustomersView({
   const 导出说明 = `按当前${[导出范围名 && `范围「${导出范围名}」`, 筛了 > 0 && "筛选"].filter(Boolean).join("和") || "条件"}导出 ${total.toLocaleString("zh-CN")} 位${b.customer}（含跟进记录）`;
   /** 导出中旁边那颗「取消导出」：只有它 abort（离开页面不打断导出，D8-3）；摆在页头下一行 */
   const 取消导出钮 = <Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button>;
+  // F-056：按钮只在收成图标时才挂悬停提示（宽屏字还在，再出一遍是重复）；服务端先按宽屏不挂，水合后按真实宽度。断点同 globals.css：导入 / 离职交接 ≤1199，跟进计划 ≤1439
+  const 图标收了 = useNarrow("(max-width: 1199px)");
+  const 跟进收了 = useNarrow("(max-width: 1439px)");
   // F-056：左栏「客户」红数是今天到期 + 逾期的跟进计划、待办条数；客户列表里看不到这些条，在页头给个入口去跟进计划页（数到了且为 0 不占位；数晚到时先放同宽隐形占位，避免硬刷新页头跳）
   const 跟进计划钮 = 要跟.未到 ? (
     <span key="followplans" aria-hidden className="cust-head-follow-ph">
@@ -1327,13 +1331,13 @@ export default function CustomersView({
     </span>
   ) : 要跟数 > 0 && (
     <Link key="followplans" href="/follow-ups/plans?scope=mine">
-      <Tooltip title={`跟进计划和待办：要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（含逾期 ${要跟.逾期} 条）` : ""}`}>
+      <Tooltip title={跟进收了 ? `跟进计划和待办：要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（含逾期 ${要跟.逾期} 条）` : ""}` : undefined}>
         <Button className="cust-head-follow" icon={<CalendarOutlined />} aria-label={`跟进计划和待办，要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（逾期 ${要跟.逾期}）` : ""}`}><span className="cust-head-follow-t">跟进计划</span><span className={要跟.逾期 > 0 ? "cust-head-follow-n" : "cust-head-follow-n is-calm"}>{要跟数 > 99 ? "99+" : 要跟数}</span></Button>
       </Tooltip>
     </Link>
   );
   /** 离职交接（C15）：页头右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */
-  const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Tooltip title={待交接 ? `离职交接 ${待交接}` : "离职交接"}><Button className="cust-head-ho" icon={<UserSwitchOutlined />} aria-label={待交接 ? `离职交接 ${待交接}` : "离职交接"}><span className="cust-head-ho-t">离职交接</span>{待交接 ? <span className="cust-head-ho-n">{待交接}</span> : null}</Button></Tooltip></Link>;
+  const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Tooltip title={图标收了 ? (待交接 ? `离职交接 ${待交接}` : "离职交接") : undefined}><Button className="cust-head-ho" icon={<UserSwitchOutlined />} aria-label={待交接 ? `离职交接 ${待交接}` : "离职交接"}><span className="cust-head-ho-t">离职交接</span>{待交接 ? <span className="cust-head-ho-n">{待交接}</span> : null}</Button></Tooltip></Link>;
   /** 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */
   const 新建钮 = <NewMenuButton key="new" 项={新建项} 载入中={项目流程载入 || 表单料取中} 预取={() => { void 取新建项目流程().catch(() => {}); void 要表单料(false); }} />;
 
@@ -1411,7 +1415,7 @@ export default function CustomersView({
             导出中 / 导完那句不再塞在这排按钮中间（L-新13：导完那句约 40 字，把按钮往左推约 440），写在页头下一行
           */
           <Space wrap>
-            {能导入导出 && <Button key="import" className="cust-head-io" aria-label="导入" icon={<UploadOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : "导入"} onClick={去导入}>导入</Button>}
+            {能导入导出 && <Button key="import" className="cust-head-io" aria-label="导入" icon={<UploadOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : 图标收了 ? "导入" : undefined} onClick={去导入}>导入</Button>}
             {能导入导出 && !空库 && (
               <Tooltip key="export" title={视图中 ? 视图外部话 : 导出说明}>
                 <Button className="cust-head-io" aria-label="导出" icon={<DownloadOutlined />} loading={导出中} disabled={视图中} onClick={导出做}>导出</Button>
