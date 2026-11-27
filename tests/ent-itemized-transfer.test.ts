@@ -16,7 +16,7 @@ vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: a
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { setSetting } from "@/lib/settings";
-import { assignSalesOwner, 转走项目预览of } from "@/app/(app)/customers/actions";
+import { assignSalesOwner, patchCustomer, saveCustomer, 转走项目预览of } from "@/app/(app)/customers/actions";
 import { 历史负责人of } from "@/lib/owner-log-db";
 import { 转让留痕一句 } from "@/lib/owner-log";
 
@@ -157,5 +157,24 @@ describe("上级直接转时作废负责人本人等确认的申请（终审 5�
     expect((await prisma.entHandover.findUniqueOrThrow({ where: { id: 申请.id } })).status).toBe("已作废");
     expect((await 通知们(销售.id)).filter((n) => n.title.includes("申请已作废"))).toHaveLength(1);
     expect((await 通知们(同事.id)).filter((n) => n.title.includes("申请已作废"))).toHaveLength(1);
+  });
+});
+
+describe("旁路关了：编辑页保存 / 行内改负责人都不能换人，换人只走转让", () => {
+  it("上级、负责人本人：patchCustomer、saveCustomer 回「请用转让」，客户不动；没换人的保存照常", async () => {
+    const a = await 客户(销售.id);
+    for (const 谁 of [组长, 销售]) {
+      当(谁);
+      expect(await patchCustomer(a.id, "salesOwnerId", 接手.id)).toMatchObject({ ok: false, error: expect.stringContaining("请用「转让」") });
+      const r = await prisma.customer.findUniqueOrThrow({ where: { id: a.id } });
+      const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: r.salesOwnerId, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
+      // 上级编辑页本来就改不了客户资料（改客户挡在前），只看负责人本人的整表保存
+      if (谁 === 销售) expect(await saveCustomer({ id: a.id, updatedAt: r.updatedAt.toISOString(), base, ...base, salesOwnerId: 接手.id } as Parameters<typeof saveCustomer>[0])).toMatchObject({ ok: false, error: expect.stringContaining("请用「转让」") });
+    }
+    expect(await 归谁(a.id)).toBe(销售.id);
+    expect(await prisma.entHandover.count()).toBe(0);
+    当(销售);
+    expect(await patchCustomer(a.id, "remark", "写一句")).toMatchObject({ ok: true });
+    expect(await patchCustomer(a.id, "salesOwnerId", 销售.id)).toMatchObject({ ok: true });
   });
 });

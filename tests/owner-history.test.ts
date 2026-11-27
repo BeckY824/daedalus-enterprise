@@ -117,7 +117,7 @@ describe("B3 换客户负责人，原负责人没做完的活跟着走", () => {
 
   it("详情页单格改负责人：没做完的计划、待办转给李四；做完的、别人的不动；商机 11-11 起一律不动（企业版商机表已清空）", async () => {
     const { 计划, 待办, 做完的, 别人的, 在谈, 赢单, 王五, 主 } = await 摆活();
-    const r = await patchCustomer(客户.id, "salesOwnerId", 李四.id);
+    const r = await assignSalesOwner([客户.id], 李四.id, null, undefined, { 说明: "测试原因" });
     expect(r).toMatchObject({ ok: true, 带走: { 计划和待办: 2, 商机: 0 } });
     expect(await 主("followPlan", 计划.id)).toBe(李四.id);
     expect(await 主("task", 待办.id)).toBe(李四.id);

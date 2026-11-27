@@ -342,6 +342,8 @@ async function 规整企业资料(
   return { ok: true, 值: 企资料 };
 }
 
+const 换负责人请用转让话 = "换负责人请用「转让」，要填原因";
+
 export async function saveCustomer(input: CustomerInput, 接着?: unknown): Promise<SaveCustomerResult> {
   const me = await requireUser();
   // 名字只有空格不收（第二轮 r2-data：原来存出一条没有名字的）。
@@ -367,6 +369,8 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (改前 && input.salesOwnerId && input.salesOwnerId !== 改前.salesOwnerId) {
     const 转挡 = await 转让挡(me, [改前.id]);
     if (转挡) return { ok: false, error: 转挡 };
+    // 12-22：换负责人只走「转让」（要填原因、逐项选同事项目）；编辑页里没动负责人格（和打开表单时一样）的不算，免得旧表单误拦
+    if (企业版() && (!input.base || input.base.salesOwnerId !== input.salesOwnerId)) return { ok: false, error: 换负责人请用转让话 };
   }
   // 来源选的是「只有主渠道」的占位（没有子渠道的主渠道）：先落成子渠道名留空的那条渠道，后面一律按真的渠道 id 走（channel-main.ts 落到渠道）
   if (企业版() && 是主渠道入口(input.channelId)) {
@@ -2097,6 +2101,8 @@ export async function patchCustomer(id: string, key: PatchableKey, value: string
   // 企业版：换负责人走转让那条规矩（只转自己的；管理、总管理随便转），公海里的走领取 / 分配；别的格只有负责人能改
   const 归属挡 = key === "salesOwnerId" ? await 转让挡(me, [id]) ?? await 公海挡([id]) : await 改客户挡(me, id);
   if (归属挡) return { ok: false, error: 归属挡 };
+  // 12-22：行内改负责人旁路关掉，换人一律走「转让」（原因必填、同事项目逐项选）；没换的不拦
+  if (企业版() && key === "salesOwnerId" && 进来时负责人 !== undefined && value !== 进来时负责人) return { ok: false, error: 换负责人请用转让话 };
   const 挡 = 客户列字段[key] ? await 挡字段(me.id, [客户列字段[key]]) : null;
   if (挡) return { ok: false, error: 挡 };
   // 动到归属的几格（负责人、渠道负责人、来源、推荐人）之前先钉住老签约（排查 X1 / 复查 R）

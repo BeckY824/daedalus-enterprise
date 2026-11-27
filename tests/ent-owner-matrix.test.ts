@@ -226,14 +226,19 @@ describe("A① 项目层动作只改项目负责人，客户负责人不动", ()
 });
 
 describe("A② 转客户：名下全部项目（含同事在推的）、公海项目和联系人一起走（Even 11-08 决策一②，用户 11-10 按 Even）", () => {
-  it("A② 矩阵·转客户：同事在推的项目一起给接手人", async () => {
+  it("A② 矩阵·转客户：同事在推的项目默认保留，转让框逐项勾随转的才给接手人", async () => {
     const c = await 客户(甲.id);
     const 自己的 = await 项目(c, 甲.id);
     const 同事的 = await 项目(c, 乙.id);
     expect(await 以(总管, () => assignSalesOwner([c], 丙.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true, updated: 1 });
     expect(await 客户负责人(c)).toBe(丙.id);
     expect((await 项目of(自己的)).ownerId).toBe(丙.id);
-    expect((await 项目of(同事的)).ownerId).toBe(丙.id);
+    expect((await 项目of(同事的)).ownerId).toBe(乙.id);
+    // 勾了随转的才带走
+    const c2 = await 客户(甲.id);
+    const 同事的2 = await 项目(c2, 乙.id);
+    expect(await 以(总管, () => assignSalesOwner([c2], 丙.id, null, undefined, { 说明: "测试原因", 随转: [同事的2] }))).toMatchObject({ ok: true, updated: 1 });
+    expect((await 项目of(同事的2)).ownerId).toBe(丙.id);
   });
 
   it("A② 矩阵·转客户：还挂在线索公海的项目也一起走", async () => {
@@ -257,10 +262,10 @@ describe("A② 转客户：名下全部项目（含同事在推的）、公海�
     expect(await 联系人们(c)).toEqual([联]);
   });
 
-  it("A② 矩阵·上级裁决移交：销售管理移交客户，同事在推的项目一起给接手人", async () => {
+  it("A② 矩阵·上级裁决移交：销售管理移交客户，同事在推的项目勾了随转才给接手人", async () => {
     const c = await 客户(甲.id);
     const 同事的 = await 项目(c, 乙.id);
-    expect(await 以(销售管理, () => assignSalesOwner([c], 丙.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 以(销售管理, () => assignSalesOwner([c], 丙.id, null, undefined, { 说明: "测试原因", 随转: [同事的] }))).toMatchObject({ ok: true, updated: 1 });
     expect(await 客户负责人(c)).toBe(丙.id);
     expect((await 项目of(同事的)).ownerId).toBe(丙.id);
   });

@@ -30,7 +30,7 @@ import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 沟通挂潜客培育 } from "@/lib/project/nurture";
 import { 第一个节点 } from "@/lib/project/nodes";
-import { patchCustomer } from "@/app/(app)/customers/actions";
+import { assignSalesOwner, patchCustomer } from "@/app/(app)/customers/actions";
 import { 试跑, 重新试跑 } from "@/lib/enterprise-import/report";
 import { 写一批, 定这批业务线 } from "@/lib/enterprise-import/apply";
 import { 撤回一批, 恢复一批, 带走对不上话 } from "@/lib/enterprise-import/revert";
@@ -97,7 +97,7 @@ describe("就地改负责人：换人记录和改写同一个事务", () => {
   it("正常换：留一条换人记录，名下项目跟着走", async () => {
     const c = await 建客户(甲);
     const p = await 建项目(c, 甲);
-    expect(await patchCustomer(c, "salesOwnerId", 乙)).toMatchObject({ ok: true });
+    expect(await assignSalesOwner([c], 乙, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(乙);
     expect(await prisma.customerOwnerLog.findMany({ where: { customerId: c } })).toEqual([expect.objectContaining({ fromOwnerId: 甲, toOwnerId: 乙, kind: "assign", userId: 我.id })]);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).ownerId).toBe(乙);
@@ -107,7 +107,7 @@ describe("就地改负责人：换人记录和改写同一个事务", () => {
     const c = await 建客户(甲);
     const p = await 建项目(c, 甲);
     mocks.炸 = true;
-    await expect(patchCustomer(c, "salesOwnerId", 乙)).rejects.toThrow("记换负责人出错");
+    await expect(assignSalesOwner([c], 乙, null, undefined, { 说明: "测试原因" })).rejects.toThrow("记换负责人出错");
     expect((await prisma.customer.findUniqueOrThrow({ where: { id: c } })).salesOwnerId).toBe(甲);
     expect((await prisma.project.findUniqueOrThrow({ where: { id: p.id } })).ownerId).toBe(甲);
     expect(await prisma.customerOwnerLog.count()).toBe(0);

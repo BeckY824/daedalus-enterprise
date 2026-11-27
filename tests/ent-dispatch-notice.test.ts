@@ -223,12 +223,15 @@ describe("saveCustomer / patchCustomer", () => {
     expect(await 分配通知们()).toEqual([]);
   });
 
-  it("编辑换负责人：新负责人收一条；只改别的不发", async () => {
+  it("编辑页换负责人被拦、转让后新负责人收一条；只改别的不发", async () => {
     当(老板, "老板", "ADMIN");
     const c = await 客户("客户一", 销售);
     expect(await 编辑(c, { remark: "改备注" })).toMatchObject({ ok: true });
     expect(await 分配通知们()).toEqual([]);
-    expect(await 编辑(c, { salesOwnerId: 另一销售 })).toMatchObject({ ok: true });
+    // 12-22：编辑页保存里换负责人被拦，换人走转让（通知照发）
+    expect(await 编辑(c, { salesOwnerId: 另一销售 })).toMatchObject({ ok: false, error: expect.stringContaining("请用「转让」") });
+    expect(await 分配通知们()).toEqual([]);
+    expect(await assignSalesOwner([c], 另一销售, null, undefined, { 说明: "测试原因" })).toMatchObject({ ok: true });
     expect(await 分配通知们()).toMatchObject([{ userId: 另一销售, link: `/customers/${c}` }]);
   });
 
@@ -236,9 +239,9 @@ describe("saveCustomer / patchCustomer", () => {
     当(老板, "老板", "ADMIN");
     const c = await 客户("客户一", 销售);
     await patchCustomer(c, "remark", "改备注");
-    await patchCustomer(c, "salesOwnerId", 销售);
+    await assignSalesOwner([c], 销售, null, undefined, { 说明: "测试原因" });
     expect(await 分配通知们()).toEqual([]);
-    await patchCustomer(c, "salesOwnerId", 另一销售);
+    await assignSalesOwner([c], 另一销售, null, undefined, { 说明: "测试原因" });
     expect(await 分配通知们()).toMatchObject([{ userId: 另一销售, link: `/customers/${c}` }]);
   });
 });

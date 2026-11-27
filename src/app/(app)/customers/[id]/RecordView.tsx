@@ -1566,14 +1566,14 @@ export default function RecordView({
             {/* 选项里带上现任：负责人是管理员或已停用时不在候选里，原来下拉直接显示一串 id（排查 D8）。
                 一个人用（桌面端）时这两格不摆：下拉里只有自己，摆着只是让人多想一下（和客户表单同一个 独自一人 规则） */}
             {/* 企业版项目模式：客户页不转让（待定 14 红框），负责人只读；要换人在客户列表里整客户转让（连项目一起） */}
-            {!独自一人(users, customer.salesOwnerId) && !摆法.转让 && (
-              <div className="rec-field" style={{ cursor: "default" }} title={去项目跟进 ? "要换负责人：点上方「客户转让」" : "要换负责人：在客户列表里勾上这位，点「转让」"}>
+            {!独自一人(users, customer.salesOwnerId) && (
+              <div className="rec-field" style={{ cursor: "default" }} title={去项目跟进 ? "要换负责人：点「转让」" : "要换负责人：在客户列表里勾上这位，点「转让」"}>
                 <div className="rec-field-k">销售负责人</div>
-                <div className="rec-field-v">{customer.salesOwnerName ?? (企业 ? <span className="rec-field-empty" title="未分配">{空值符}</span> : <span className="rec-field-empty">未分配</span>)}</div>
+                <div className="rec-field-v" style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{customer.salesOwnerName ?? (企业 ? <span className="rec-field-empty" title="未分配">{空值符}</span> : <span className="rec-field-empty">未分配</span>)}</span>
+                  {能转让 && <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={开客户转让}>转让</Button>}
+                </div>
               </div>
-            )}
-            {!独自一人(users, customer.salesOwnerId) && 摆法.转让 && (
-              <InlineField 空时横线={企业} customerId={customer.id} field="salesOwnerId" label="销售负责人" value={customer.salesOwnerId} kind="select" options={带上现任(users, customer.salesOwnerId, customer.salesOwnerName)} />
             )}
             {/* 历史负责人（企业版 D-36）：换过负责人才摆；悬停看每次谁转的、从谁到谁、什么时候。停用的人名字照旧显示 */}
             {历史负责人们(换负责人记录, customer.salesOwnerName).length > 0 && (
@@ -1958,6 +1958,7 @@ export default function RecordView({
       />
       <CustomerForm
         open={custOpen}
+        开转让={能转让 ? () => { setCustOpen(false); 开客户转让(); } : undefined}
         editing={customer}
         users={users}
         channels={channels}

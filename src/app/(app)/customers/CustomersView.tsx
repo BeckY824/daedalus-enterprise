@@ -1333,6 +1333,7 @@ export default function CustomersView({
         原因选项={转让原因?.选项}
         自己={转让原因?.自己}
         自动={转让框自动}
+        批量={(转让框?.ids.length ?? 0) > 1}
         做={async (人id, 原因, 方向, 逐项) => {
           if (!转让框) return;
           const ids = 转让框.ids;

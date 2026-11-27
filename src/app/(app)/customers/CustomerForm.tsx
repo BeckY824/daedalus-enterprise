@@ -13,7 +13,6 @@ import { PlusOutlined } from "@ant-design/icons";
 import { FOLLOW_STATUSES, DECISION_STATUSES } from "@/lib/constants";
 import { dayjs, 成员选项, 独自一人, 可选成员 } from "@/lib/utils";
 import { useMe, 默认负责人 } from "@/lib/me-client";
-import { useTransferConfirm } from "./useTransferConfirm";
 import { saveCustomer, checkDuplicate, 推荐人候选, type DuplicateHit, type SaveConflict } from "./actions";
 import { saveChannel } from "../channels/actions";
 import { useBusiness } from "@/lib/business-client";
@@ -105,6 +104,8 @@ type FormProps = {
   /** 外部渠道（如老师、中介） */
   channels: Option[];
   onClose: (saved: boolean) => void;
+  /** 编辑时负责人格只读；给了就在旁边摆「转让」，点了关表单、开转让框（12-22） */
+  开转让?: () => void;
   /** 企业版普通销售：新建的客户负责人只能是自己（10-27 会议；服务端 saveCustomer 同样强制） */
   负责人只能自己?: boolean;
   /**
@@ -174,6 +175,7 @@ function CustomerFormInner({
   users,
   channels,
   onClose,
+  开转让,
   负责人只能自己 = false,
   企业版: 企业 = false,
   客户状态选项 = [],
@@ -196,7 +198,6 @@ function CustomerFormInner({
   const 外贸档 = 外贸 && !企业;
   const [form] = Form.useForm();
   const 我 = useMe();
-  const { 先问转走的项目 } = useTransferConfirm();
   const [saving, setSaving] = useState(false);
   // 点外面不关、关前问一句、新建的草稿留在本机（2026-10-19 客户反馈，lib/form-guard.tsx）
   const 守 = useFormGuard({ open, form, 草稿键: editing ? `编辑客户:${editing.id}` : "新建客户", 编辑: !!editing, 关: () => onClose(false), 忙: saving, afterOpenChange: 聚焦首项 });
@@ -311,7 +312,6 @@ function CustomerFormInner({
     const v = await form.validateFields().catch(跳到第一处(form));
     if (!v) return { ok: false, error: "有几项没填好，看标红的" };
     // 编辑时换了销售负责人：客户名下的项目跟着走（企业版同事负责的留下，P-转-07），先列出来问一句（D-36）；取消 = 留在表单里
-    if (editing && v.salesOwnerId && v.salesOwnerId !== editing.salesOwnerId && !(await 先问转走的项目([editing.id], v.salesOwnerId))) return { ok: false, error: "没存：负责人没换" };
     setSaving(true);
     try {
       const res = await saveCustomer({
@@ -641,9 +641,9 @@ function CustomerFormInner({
                 label="销售负责人"
                 name="salesOwnerId"
                 rules={[{ required: true, message: "请选择销售负责人" }]}
-                extra={锁给自己 ? "新建的只能记在自己名下" : 外贸 ? "负责谈单、下单" : "负责谈单签约"}
+                extra={editing ? (开转让 ? <>换负责人请用「转让」，要填原因 <Button type="link" size="small" style={{ padding: 0, height: "auto" }} onClick={开转让}>转让</Button></> : "换负责人请用「转让」，要填原因") : 锁给自己 ? "新建的只能记在自己名下" : 外贸 ? "负责谈单、下单" : "负责谈单签约"}
               >
-                <Select placeholder="请选择" options={负责人选项} disabled={Boolean(锁给自己)} />
+                <Select placeholder="请选择" options={负责人选项} disabled={Boolean(锁给自己) || !!editing} />
               </Form.Item>
             </Col>
           )}

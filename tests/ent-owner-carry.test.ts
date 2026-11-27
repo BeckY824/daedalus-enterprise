@@ -1396,7 +1396,7 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
 
   it("客户页改负责人（单字段、整表保存）走同一段", async () => {
     const x = await 市场客户();
-    expect(await 以(市场, () => patchCustomer(x.c, "salesOwnerId", 甲.id))).toMatchObject({ ok: true });
+    expect(await 以(市场, () => assignSalesOwner([x.c], 甲.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true });
     await 都对(x, 甲);
 
     // 整表保存：要负责人本人且能按负责人编辑，市场管理改不了客户资料；市场角色里渠运能改，用渠运走这条
@@ -1408,7 +1408,9 @@ describe("A2：客户层把市场成员的客户转给销售", () => {
     await prisma.followPlan.update({ where: { id: y.pl }, data: { ownerId: 市场成员.id } });
     const r = await prisma.customer.findUniqueOrThrow({ where: { id: y.c } });
     const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: r.salesOwnerId, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
-    expect(await 以(市场成员, () => saveCustomer({ id: y.c, updatedAt: r.updatedAt.toISOString(), base, ...base, salesOwnerId: 乙.id } as unknown as Parameters<typeof saveCustomer>[0]))).toMatchObject({ ok: true });
+    expect(await 以(市场成员, () => saveCustomer({ id: y.c, updatedAt: r.updatedAt.toISOString(), base, ...base, salesOwnerId: 乙.id } as unknown as Parameters<typeof saveCustomer>[0]))).toMatchObject({ ok: false, error: expect.stringContaining("请用「转让」") });
+    expect(await 客户负责人(y.c)).toBe(市场成员.id);
+    expect(await 以(市场成员, () => assignSalesOwner([y.c], 乙.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true });
     expect(await 客户负责人(y.c)).toBe(乙.id);
     await 活还在(y.t, y.pl, 市场成员.id);
     expect(await 项目of(y.等分)).toMatchObject({ ownerId: 乙.id, awaitAssignAt: null, assignMode: "指定分配" });
@@ -1607,7 +1609,8 @@ describe("市场转销售：客户层三个入口的通知也写条数（P-转-1
     return { u, c, r, base };
   };
   const 存 = (x: Awaited<ReturnType<typeof 渠运带活>>, 给: 人, updatedAt: Date) =>
-    以(x.u, () => saveCustomer({ id: x.c, updatedAt: updatedAt.toISOString(), base: x.base, ...x.base, salesOwnerId: 给.id } as unknown as Parameters<typeof saveCustomer>[0]));
+    // 12-22：编辑表单改负责人的旁路关了，渠运本人换人走转让（updatedAt 不再用）
+    以(x.u, () => { void updatedAt; return assignSalesOwner([x.c], 给.id, null, undefined, { 说明: "测试原因" }); });
 
   it("批量转一位：正文就是这句，只发接手人", async () => {
     const c = await 市场带活();
@@ -1637,21 +1640,13 @@ describe("市场转销售：客户层三个入口的通知也写条数（P-转-1
 
   it("客户页单字段改负责人", async () => {
     const c = await 市场带活();
-    await 以(市场, () => patchCustomer(c, "salesOwnerId", 甲.id));
+    await 以(市场, () => assignSalesOwner([c], 甲.id, null, undefined, { 说明: "测试原因" }));
     expect((await 分配(甲))[0].body).toBe(句);
   });
 
   it("编辑表单改负责人（直接存）", async () => {
     const x = await 渠运带活();
     expect(await 存(x, 甲, x.r.updatedAt)).toMatchObject({ ok: true });
-    expect((await 分配(甲))[0].body).toBe(句);
-  });
-
-  it("编辑表单改负责人（别人先改了别的字段，合并存）", async () => {
-    const x = await 渠运带活();
-    await prisma.customer.update({ where: { id: x.c }, data: { remark: "同事先改的" } });
-    expect(await 存(x, 甲, x.r.updatedAt)).toMatchObject({ ok: true });
-    expect(await 客户负责人(x.c)).toBe(甲.id);
     expect((await 分配(甲))[0].body).toBe(句);
   });
 
@@ -1685,7 +1680,7 @@ describe("市场转销售：客户层三个入口的通知也写条数（P-转-1
     await 以(总管, () => assignSalesOwner([a], 甲.id, null, undefined, { 说明: "测试原因" }));
     const b = await 客户(乙.id);
     await 造活(b, 乙.id);
-    await 以(总管, () => patchCustomer(b, "salesOwnerId", 甲.id));
+    await 以(总管, () => assignSalesOwner([b], 甲.id, null, undefined, { 说明: "测试原因" }));
     for (const n of await 分配(甲)) expect(n.body).not.toContain("未完成");
     expect(await 分配(甲)).toHaveLength(2);
 
@@ -1719,7 +1714,6 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
   const 四入口: [string, (me: 人, c: string, 选中: string, 给: 人) => Promise<unknown>][] = [
     ["项目分配", (me, _c, 选中, 给) => 以(me, () => 分配线索({ projectId: 选中, toUserId: 给.id, line: "内贸" }))],
     ["批量转", (me, c, _选中, 给) => 以(me, () => assignSalesOwner([c], 给.id, null, undefined, { 说明: "测试原因" }))],
-    ["客户页改负责人", (me, c, _选中, 给) => 以(me, () => patchCustomer(c, "salesOwnerId", 给.id))],
     // P-转-17 起市场自己转给销售不走确认，确认交接只剩混批（P-转-16 起由原负责人的实线上级连同自己名下的一起转）
     ["确认交接", async (_me, c, _选中, 给) => {
       const { h } = await 混批走交接([c], 给);
@@ -1767,17 +1761,18 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
       expect(await 负责人of(结束的)).toBe(乙.id);
     });
 
-    it("销售转销售、总管理移交：一样连同事在推的一起带", async () => {
+    it("销售转销售、总管理移交：勾了随转的同事项目一起带；行内改负责人被拦", async () => {
       const a = await 客户(甲.id);
       const 甲的a = await 项目(a, 甲.id);
       const 乙的a = await 项目(a, 乙.id);
-      await 以(总管, () => assignSalesOwner([a], 丙.id, null, undefined, { 说明: "测试原因" }));
+      await 以(总管, () => assignSalesOwner([a], 丙.id, null, undefined, { 说明: "测试原因", 随转: [乙的a] }));
       expect([await 负责人of(甲的a), await 负责人of(乙的a)]).toEqual([丙.id, 丙.id]);
       const b = await 客户(甲.id);
       const 甲的b = await 项目(b, 甲.id);
       const 乙的b = await 项目(b, 乙.id);
-      await 以(总管, () => patchCustomer(b, "salesOwnerId", 丙.id));
-      expect([await 负责人of(甲的b), await 负责人of(乙的b)]).toEqual([丙.id, 丙.id]);
+      // 12-22：编辑页 / 行内改负责人的旁路关了，换人一律走转让
+      expect(await 以(总管, () => patchCustomer(b, "salesOwnerId", 丙.id))).toMatchObject({ ok: false, error: expect.stringContaining("请用「转让」") });
+      expect([await 负责人of(甲的b), await 负责人of(乙的b)]).toEqual([甲.id, 乙.id]);
     });
 
     it("项目分配选中的是同事负责的：选中那条照分，同客户别的同事在推的也随客户走", async () => {
@@ -1807,7 +1802,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
       const c = await 客户(甲.id);
       const 自己的 = await 项目(c, 甲.id);
       const 同事的 = await 项目(c, 乙.id);
-      const r = await 以(总管, () => assignSalesOwner([c], 丙.id, null, undefined, { 说明: "测试原因" }));
+      const r = await 以(总管, () => assignSalesOwner([c], 丙.id, null, undefined, { 说明: "测试原因", 随转: [同事的] }));
       if (!r.ok) throw new Error(r.error);
       expect(await 负责人of(同事的)).toBe(丙.id);
       expect(await 以(总管, () => 撤销改负责人(r.原值 ?? [], 丙.id, JSON.parse(JSON.stringify(r.带过来))))).toMatchObject({ ok: true, updated: 1 });
@@ -2039,7 +2034,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
       const 待分配 = await 项目(c, 丙.id, { awaitAssignAt: new Date() });
       for (const 转 of [
         () => 以(市场, () => assignSalesOwner([c], 甲.id, null, undefined, { 说明: "测试原因" })),
-        () => 以(市场, () => patchCustomer(c, "salesOwnerId", 甲.id)),
+        () => 以(市场, () => assignSalesOwner([c], 甲.id, null, undefined, { 说明: "测试原因" })),
       ]) {
         const r = await 转();
         expect(r.ok).toBe(false);
@@ -2275,7 +2270,7 @@ describe("转客户：名下全部项目（含同事在推的）随客户给接�
     it("客户页改负责人：同样清掉", async () => {
       const c = await 客户(甲.id);
       const 自己待分配 = await 项目(c, 甲.id, { awaitAssignAt: 时刻 });
-      expect(await 以(总管, () => patchCustomer(c, "salesOwnerId", 丙.id))).toMatchObject({ ok: true });
+      expect(await 以(总管, () => assignSalesOwner([c], 丙.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true });
       expect(await 负责人of(自己待分配)).toBe(丙.id);
       expect(await 待分配of(自己待分配)).toBeNull();
     });
@@ -2387,7 +2382,7 @@ describe("负责人兼任市场和销售：按销售算，转出时待办和计�
     it("客户页改负责人：待办和计划跟着走", async () => {
       const 兼任 = await 造兼任(写法);
       const x = await 他的客户(兼任.id);
-      expect(await 以(总管, () => patchCustomer(x.c, "salesOwnerId", 甲.id))).toMatchObject({ ok: true });
+      expect(await 以(总管, () => assignSalesOwner([x.c], 甲.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true });
       await 都归(x, 甲.id);
     });
 
@@ -2423,7 +2418,7 @@ describe("负责人兼任市场和销售：按销售算，转出时待办和计�
     const a = await 他的客户(市场.id);
     expect(await 以(市场, () => assignSalesOwner([a.c], 甲.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true, updated: 1 });
     const b = await 他的客户(市场.id);
-    expect(await 以(市场, () => patchCustomer(b.c, "salesOwnerId", 甲.id))).toMatchObject({ ok: true });
+    expect(await 以(市场, () => assignSalesOwner([b.c], 甲.id, null, undefined, { 说明: "测试原因" }))).toMatchObject({ ok: true });
     const d = await 他的客户(市场.id);
     const { h } = await 混批走交接([d.c], 甲);
     expect(await 以(甲, () => 确认交接(h.id))).toEqual({ ok: true, 客户: 1 });

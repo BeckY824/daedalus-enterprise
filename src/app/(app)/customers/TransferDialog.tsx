@@ -71,6 +71,7 @@ export default function TransferDialog({
   是字,
   做,
   自动,
+  批量,
 }: {
   open: boolean;
   onClose: (成了: boolean) => void;
@@ -97,6 +98,8 @@ export default function TransferDialog({
    * 市场成员批量转让才给（页面判了是市场成员、规则开着）：打开时 预看 一次，勾的里有能自动分的才摆「指定分配 / 自动分配」；
    * 预看回 null（不是市场成员、出错）= 不摆，框和原来一样
    */
+  /** 一次转多位客户：框里说一句同事项目都保留（12-22） */
+  批量?: boolean;
   自动?: { 预看: () => Promise<自动预看 | null>; 做: (原因: string | null) => Promise<自动结果> };
 }) {
   const 默认 = () => 固定人?.value ?? (人们.some((p) => p.value === 上次转给()) ? 上次转给() : undefined);
@@ -401,6 +404,7 @@ export default function TransferDialog({
               </li>
             </ul>
           )}
+          {要说明 && 批量 && <div className="cd-transfer-mut" role="note">一次转多位客户时，同事在推的项目都保留原负责人；要一起转请一位一位转</div>}
           {要说明 && <逐项选块 预览={转走?.原} 选={逐项} 改={set逐项} 忙={忙} />}
           {要说明 && <说明框 预览={转走?.原} 值={说明} 改={set说明} 忙={忙} onEnter={() => void 转()} />}
           {(谁 || 自动中) && 要原因 && !要说明 && (
