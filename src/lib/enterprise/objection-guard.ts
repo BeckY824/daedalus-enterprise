@@ -21,14 +21,29 @@ export async function 客户有未裁定异议(db: 读, customerIds: readonly st
   return n ? 未裁定拦话(动作) : null;
 }
 
+export type 待裁定行 = { projectId: string | null; kind: string; customerId: string; toOwnerId: string; createdAt: Date };
+
+/** 一次读全部「待裁定」的异议行（超时转扫描开头读一遍、内存匹配，不用每个项目各查一次） */
+export async function 读全部待裁定行(db: 读): Promise<待裁定行[]> {
+  return db.entTransferObjection.findMany({
+    where: { status: { in: [...未落地状态们] } },
+    select: { projectId: true, kind: true, customerId: true, toOwnerId: true, createdAt: true },
+  });
+}
+
+/** 内存匹配：这个项目被哪几行待裁定的异议挡着（项目自己的，或所在客户的客户异议且项目就在那次转让的接手人手里） */
+export function 挡着项目的异议(行们: readonly 待裁定行[], p: { id: string; customerId: string; ownerId: string }): 待裁定行[] {
+  return 行们.filter((r) => (r.kind === "项目" ? r.projectId === p.id : r.customerId === p.customerId && r.toOwnerId === p.ownerId));
+}
+
 /** 这几个项目有没有挂着没裁定的异议：项目自己的，或所在客户的客户异议且项目就在那次转让的接手人手里 */
 export async function 项目有未裁定异议(db: 读, 项目们: readonly { id: string; customerId: string; ownerId: string }[], 动作: "再转" | "合并" = "再转"): Promise<string | null> {
   if (!企业版() || !项目们.length) return null;
   const 行们 = await db.entTransferObjection.findMany({
     where: { status: { in: [...未落地状态们] }, OR: [{ projectId: { in: 项目们.map((p) => p.id) } }, { kind: "客户", customerId: { in: [...new Set(项目们.map((p) => p.customerId))] } }] },
-    select: { projectId: true, kind: true, customerId: true, toOwnerId: true },
+    select: { projectId: true, kind: true, customerId: true, toOwnerId: true, createdAt: true },
   });
-  const 挡 = 行们.some((r) => 项目们.some((p) => (r.kind === "项目" ? r.projectId === p.id : r.customerId === p.customerId && r.toOwnerId === p.ownerId)));
+  const 挡 = 项目们.some((p) => 挡着项目的异议(行们, p).length);
   return 挡 ? 未裁定拦话(动作) : null;
 }
 

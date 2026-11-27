@@ -4,6 +4,10 @@ const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SA
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
+vi.mock("@/lib/enterprise/objection-guard", async (原) => {
+  const m = await 原<typeof import("@/lib/enterprise/objection-guard")>();
+  return { ...m, 读全部待裁定行: vi.fn(m.读全部待裁定行), 项目有未裁定异议: vi.fn(m.项目有未裁定异议) };
+});
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -13,6 +17,7 @@ import { 自动分配不参与key } from "@/lib/enterprise/lead-assign";
 import { 规则 } from "@/lib/enterprise/rules";
 import { assignSalesOwner } from "@/app/(app)/customers/actions";
 import { 待确认的交接, 确认交接 } from "@/app/(app)/customers/handover-actions";
+import { 读全部待裁定行, 项目有未裁定异议 } from "@/lib/enterprise/objection-guard";
 import { 超时转扫一遍, 客户随线索, 超时转生效key, 超时通知种类 } from "@/lib/enterprise/reply-overdue";
 
 /**
@@ -122,17 +127,38 @@ describe("新线索超时自动转：碰到待裁定异议跳过、计时暂停�
   }
   const 超时通知们 = (userId: string) => prisma.entNotice.findMany({ where: { userId, kind: 超时通知种类 } });
 
-  it("项目上有待裁定异议：到点不提醒、不转，起点推到现在；裁定后从头算 1 小时再提醒", async () => {
+  it("项目上有待裁定异议：到点不提醒、不转，计时停表；裁定后接着走（不清零）", async () => {
     const { id, customerId } = await 线索(销售, "2026-11-20 15:00");
     const 异议 = await 记待裁定(customerId, 同事.id, 销售.id, id);
+    await prisma.entTransferObjection.update({ where: { id: 异议.id }, data: { createdAt: 京("2026-11-20 15:30") } }); // 已走 30 分钟时提的
     expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 0, 转出: 0 });
     expect(await 超时转扫一遍(京("2026-11-20 16:30"))).toMatchObject({ 提醒: 0, 转出: 0 });
     expect(await 超时通知们(销售.id)).toHaveLength(0);
     expect((await prisma.project.findUniqueOrThrow({ where: { id } })).ownerId).toBe(销售.id);
-    // 暂停期间计时点一直被推到「现在」：不会一裁定就立刻超时
+    // 停表：16:30 时仍是「已走 30 分钟」（起点 16:00），裁定后还差 30 分钟，不是再等整 1 小时
     await 裁完(异议.id);
-    expect(await 超时转扫一遍(京("2026-11-20 17:29"))).toMatchObject({ 提醒: 0, 转出: 0 });
-    expect(await 超时转扫一遍(京("2026-11-20 17:30"))).toMatchObject({ 提醒: 1 });
+    expect(await 超时转扫一遍(京("2026-11-20 16:59"))).toMatchObject({ 提醒: 0, 转出: 0 });
+    expect(await 超时转扫一遍(京("2026-11-20 17:00"))).toMatchObject({ 提醒: 1 });
+  });
+
+  it("停表：停了 2 小时，起点只往后推 2 小时（已走的 30 分钟保留）；每遍扫描只读一次待裁定行、不按项目各查", async () => {
+    const { id, customerId } = await 线索(销售, "2026-11-20 15:00");
+    const 另 = await 线索(同事, "2026-11-20 15:00"); // 链上第二条项目（没被挡）
+    const 异议 = await 记待裁定(customerId, 同事.id, 销售.id, id);
+    await prisma.entTransferObjection.update({ where: { id: 异议.id }, data: { createdAt: 京("2026-11-20 15:30") } });
+    vi.mocked(读全部待裁定行).mockClear();
+    vi.mocked(项目有未裁定异议).mockClear();
+    for (const t of ["16:00", "16:30", "17:00", "17:30"]) await 超时转扫一遍(京(`2026-11-20 ${t}`));
+    expect(vi.mocked(读全部待裁定行)).toHaveBeenCalledTimes(4); // 每遍 1 次
+    expect(vi.mocked(项目有未裁定异议)).not.toHaveBeenCalled();
+    const 行 = await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: id } });
+    expect(行.since.getTime()).toBe(京("2026-11-20 17:00").getTime()); // 15:00 + 停了的 2 小时
+    await 裁完(异议.id);
+    expect(await 超时转扫一遍(京("2026-11-20 17:59"))).toMatchObject({ 提醒: 0 });
+    expect(await 超时转扫一遍(京("2026-11-20 18:00"))).toMatchObject({ 提醒: 1 });
+    // 没被挡的那条照常走（到点提醒过），不受影响
+    expect((await 超时通知们(同事.id)).length).toBeGreaterThan(0);
+    expect(另.id).toBeTruthy();
   });
 
   it("客户上有待裁定的客户异议：线索照转，客户不跟着走（留在原负责人名下）", async () => {

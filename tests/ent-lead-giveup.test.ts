@@ -32,7 +32,7 @@ import { 超时转扫一遍, 超时转生效key, 超时通知种类, 改链若�
 import { 是超时自动转痕, 放弃转理由 } from "@/lib/project/timeout";
 import {
   放弃线索, 放弃资格, 认放弃原因, 新分配时刻, 放弃原因们, 走判无效话, 本月用过话, 放弃通知种类, 在放弃窗口, 放弃资格明细, 不给放弃话,
-  我能放弃的, 首页放弃最多,
+  我能放弃的, 首页放弃最多, 放弃被异议拦话,
 } from "@/lib/enterprise/lead-giveup";
 import { 读我的通知 } from "@/app/(app)/notice-actions";
 import { 指定回复提醒扫一遍 } from "@/lib/enterprise/reply-notice";
@@ -192,6 +192,25 @@ describe("给不给入口", () => {
 });
 
 describe("点了以后", () => {
+  it("转让异议待裁定时不能主动放弃（同超时转的暂停口径）：不扣次数、不转、不记待补；裁定后照常放弃", async () => {
+    const 现在 = 京("2026-11-20 10:10");
+    const { id, customerId } = await 分来的(甲, 京("2026-11-20 10:00"));
+    const 异议 = await prisma.entTransferObjection.create({
+      data: {
+        ownerLogId: "log-giveup", customerId, projectId: id, kind: "项目", targetKey: id, targetName: "某对象", objectorUserId: 乙.id, operatorUserId: 总管.id,
+        toOwnerId: 甲.id, status: "待裁定", expiresAt: new Date(现在.getTime() + 30 * 86_400_000), reason: "不同意",
+      },
+    });
+    expect(await 放弃(甲, id, 现在)).toEqual({ ok: false, error: 放弃被异议拦话 });
+    expect((await 项目(id)).ownerId).toBe(甲.id);
+    expect(await prisma.entLeadGiveUp.count({ where: { userId: 甲.id } })).toBe(0);
+    expect(await 待补(甲)).toBe(0);
+    // 裁定完（维持）不再拦
+    await prisma.entTransferObjection.update({ where: { id: 异议.id }, data: { status: "维持" } });
+    expect(await 放弃(甲, id, 现在)).toMatchObject({ ok: true });
+    expect((await 项目(id)).ownerId).not.toBe(甲.id);
+  });
+
   it("转本线下一位、接手人照记一次本月已分、放弃人原来那条照算、记 1 条待补、留痕、两边通知；夜里也立即转", async () => {
     const 现在 = 京("2026-11-20 23:10"); // 夜里
     const { id, customerId } = await 分来的(甲, 京("2026-11-20 23:00"));
