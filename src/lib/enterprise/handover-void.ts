@@ -61,10 +61,16 @@ export async function 作废申请移交(
         await prisma.entNotice.updateMany({ where: { userId: h.toUserId, dedupeKey: `handover:${h.id}:发起`, readAt: null }, data: { readAt: 现在 } });
       }
       const 话 = `${me.name} 已直接把${几位}转给 ${接}`;
+      // 部分作废：申请还在，原接手人只留上面改过的那一条「其余仍待你确认」，不再补「已作废」；发起人也说成部分作废
       if (本人?.active && h.byUserId !== me.id) {
-        await notify([h.byUserId], { kind: "交接", title: `你发给 ${原接手?.name ?? ""} 的转让申请已作废：${话}`, body: "客户已按新的转让生效，不用再等确认。", link: "/customers", key: `handover:${h.id}:作废:本人` });
+        await notify([h.byUserId], {
+          kind: "交接",
+          title: 余.length ? `你发给 ${原接手?.name ?? ""} 的转让申请：其中 ${全.length - 余.length} 位已由 ${me.name} 直接转给 ${接}，其余仍待对方确认` : `你发给 ${原接手?.name ?? ""} 的转让申请已作废：${话}`,
+          body: 余.length ? `还剩 ${余.length} 位客户待对方确认。` : "客户已按新的转让生效，不用再等确认。",
+          link: "/customers", key: `handover:${h.id}:作废:本人`,
+        });
       }
-      if (原接手?.active && h.toUserId !== me.id && h.toUserId !== 新负责人) {
+      if (!余.length && 原接手?.active && h.toUserId !== me.id && h.toUserId !== 新负责人) {
         await notify([h.toUserId], { kind: "交接", title: `${本人?.name ?? ""} 发给你的转让申请已作废：${话}`, body: "不用再确认。", link: "/customers", key: `handover:${h.id}:作废:接手` });
       }
     }

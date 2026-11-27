@@ -209,6 +209,13 @@ describe("审查修复（12-22 阶段 1 复审）", () => {
     expect(发起.readAt).toBeNull();
     expect(发起.title).toContain("其中 1 位已由");
     expect(发起.title).toContain("其余仍待你确认");
+    // 原接手人只收到这一条，没有再补「已作废」；发起人那边说成部分作废
+    const 接手的 = await 通知们(同事.id);
+    expect(接手的.filter((n) => n.title.includes("已作废"))).toHaveLength(0);
+    expect(接手的.filter((n) => n.title.includes("其余仍待你确认"))).toHaveLength(1);
+    const 本人的 = await 通知们(销售.id);
+    expect(本人的.filter((n) => n.title.includes("已作废"))).toHaveLength(0);
+    expect(本人的.filter((n) => n.title.includes("其余仍待对方确认"))).toHaveLength(1);
   });
 
   it("全作废：原接手人的「发起」通知标已读", async () => {
