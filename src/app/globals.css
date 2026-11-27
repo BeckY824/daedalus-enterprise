@@ -1317,7 +1317,7 @@ a.rec-step-b:hover { background: var(--row-hover); color: var(--ink); }
 .ti-row > .ti-ell > .ti-ell { display: block; }
 .csq-chips.ti-chips { flex: none; }
 /* 原因框右下的「0 / 200」绝对定位在框下方，给它留一行，别压到下面「自动带上」那行 */
-.ti-why .ant-input-textarea { margin-bottom: 24px; }
+.ti-why .ant-input-textarea-show-count { margin-bottom: 24px; }
 .rec-field-empty { color: var(--empty-fg); }
 .rec-field-saving { opacity: 0.5; }
 .rec-field-hint { margin-top: var(--s1); font-size: var(--fs-min); color: var(--text-muted); }
