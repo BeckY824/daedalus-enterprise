@@ -74,12 +74,20 @@ describe("④ 扫库检测 · 90 天清理", () => {
 
   it("一天一次：同一天再跑不动；第二天再跑", async () => {
     await 造(前几天(今天, 91), "x");
-    expect(await 钟上清扫库记录(时(今天, "00:01"))).toEqual({ 查询: 1, 触发: 1 });
+    expect(await 钟上清扫库记录(时(今天, "00:01"))).toBeNull(); // 00:05 前不清
+    expect(await 钟上清扫库记录(时(今天, "00:06"))).toEqual({ 查询: 1, 触发: 1 });
     expect(await getSetting<string>(扫库清水位键)).toBe(今天);
     await 造(前几天(今天, 91), "y");
     expect(await 钟上清扫库记录(时(今天, "09:00"))).toBeNull();
     expect((await 剩()).q).toHaveLength(1);
     expect(await 钟上清扫库记录(时("2026-11-28"))).toEqual({ 查询: 1, 触发: 1 });
+  });
+
+  it("备份窗口里不清，窗口结束后补上（E-387）", async () => {
+    await 造(前几天(今天, 91), "w");
+    for (const hm of ["00:15", "00:50", "03:15", "03:50"]) expect(await 钟上清扫库记录(时(今天, hm))).toBeNull();
+    expect((await 剩()).q).toHaveLength(1);
+    expect(await 钟上清扫库记录(时(今天, "03:51"))).toEqual({ 查询: 1, 触发: 1 });
   });
 
   it("停机几天后开机：第一遍就把所有超期的一次删光，不用逐天补", async () => {

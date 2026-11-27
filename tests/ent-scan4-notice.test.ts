@@ -54,7 +54,7 @@ describe("④ 扫库检测 · 阈值", () => {
     await setSetting("entScan4ScanDay", "");
     await 造查询(人["乙"], 天, 50, 30);
     await 造查询(人["丙"], 天, 50, 29);
-    await 钟上扫库检测(时(次日, "00:20"));
+    await 钟上扫库检测(时(次日, "00:10"));
     const t = await 触发();
     expect(t).toHaveLength(1);
     expect(t[0]).toMatchObject({ userId: 人["乙"], day: 天, queries: 50, hits: 30, noticeAt: null });
@@ -85,6 +85,23 @@ describe("④ 扫库检测 · 时刻", () => {
     const t = (await 触发())[0];
     expect(t.notifiedTo).toBe(人["上级"]);
     expect(t.noticeAt).not.toBeNull();
+  });
+
+  it("备份窗口（E-387）：开机补扫落在 00:15–00:50 / 03:15–03:50 里推迟，窗口结束后再扫；窗口前 00:14 照扫", async () => {
+    await 造查询(人["乙"], 天, 60, 60);
+    for (const hm of ["00:15", "00:30", "00:50", "03:15", "03:50"]) expect(await 钟上扫库检测(时(次日, hm))).toBeNull();
+    expect(await 触发()).toHaveLength(0);
+    expect((await 钟上扫库检测(时(次日, "00:51")))?.扫?.达标).toBe(1);
+    expect(await 触发()).toHaveLength(1);
+  });
+
+  it("备份窗口（E-387）：00:14 在窗口前，照扫；03:51 补扫", async () => {
+    await 造查询(人["乙"], 天, 60, 60);
+    expect((await 钟上扫库检测(时(次日, "00:14")))?.扫?.达标).toBe(1);
+    await prisma.entScanTrigger.deleteMany({});
+    await setSetting("entScan4ScanDay", "");
+    expect(await 钟上扫库检测(时(次日, "03:30"))).toBeNull();
+    expect((await 钟上扫库检测(时(次日, "03:51")))?.扫?.达标).toBe(1);
   });
 
   it("服务停过 08:00 后才开机：先补扫昨天再发", async () => {

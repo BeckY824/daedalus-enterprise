@@ -26,6 +26,17 @@ export const 扫库发水位键 = "entScan4NoticeDay";
 
 const 钟点 = (现在: Date) => beijingWallIso(现在).slice(11, 16);
 
+/**
+ * 备份避让（E-387：避开 c2 北京 00:30 / 03:30 备份）：北京 00:15–00:50、03:15–03:50（两头都含）不开始扫、不开始清理。
+ * 钟每分钟一遍，落在窗口里的这一遍直接跳过，窗口结束（00:51 / 03:51）后的下一遍照常补上；停机后开机补扫正好落在窗口里的同理推迟。
+ * 早 8 点发通知不受影响（不在窗口里，也不用这个判）。HH:MM 定长，字符串可直接比大小
+ */
+export const 扫库避让窗口 = [["00:15", "00:50"], ["03:15", "03:50"]] as const;
+export function 在备份窗口(现在: Date): boolean {
+  const t = 钟点(现在);
+  return 扫库避让窗口.some(([起, 止]) => t >= 起 && t <= 止);
+}
+
 /** 北京日 YYYY-MM-DD 的前一天 */
 export function 前一天(day: string): string {
   const d = new Date(`${day}T00:00:00Z`);
@@ -107,13 +118,14 @@ export async function 钟上扫库检测(现在: Date = new Date()): Promise<扫
   const 今天 = beijingDay(现在);
   const 昨天 = 前一天(今天);
   const 明细: 扫库明细 = { 扫: null, 发: null };
-  if (钟点(现在) >= 扫库扫时刻 && (await getSetting<string>(扫库扫水位键)) !== 今天) {
+  const 避让 = 在备份窗口(现在);
+  if (!避让 && 钟点(现在) >= 扫库扫时刻 && (await getSetting<string>(扫库扫水位键)) !== 今天) {
     明细.扫 = { 日: 昨天, 达标: await 扫一天(昨天) };
     await setSetting(扫库扫水位键, 今天);
   }
   if (钟点(现在) >= 扫库发时刻 && (await getSetting<string>(扫库发水位键)) !== 今天) {
     // 今天的扫还没跑过（极端：00:05–08:00 间没开机，08:00 后才开）：先补扫昨天再发
-    if (!明细.扫 && (await getSetting<string>(扫库扫水位键)) !== 今天) {
+    if (!避让 && !明细.扫 && (await getSetting<string>(扫库扫水位键)) !== 今天) {
       明细.扫 = { 日: 昨天, 达标: await 扫一天(昨天) };
       await setSetting(扫库扫水位键, 今天);
     }
@@ -135,10 +147,11 @@ export function 前几天(day: string, n: number): string {
 
 /**
  * 90 天清理（E-383）：删 EntScanQuery / EntScanTrigger 里 day < 今天 − 90 天的行（「超过 90 天删」：正好 90 天前那天还留，91 天前删）。
- * 一天一次（Setting 水位）；按范围一次删光，停机几天后开机第一遍就把所有超期的清掉。开关关着照清。不是企业版 = null
+ * 一天一次（Setting 水位），北京 00:05 后、避开备份窗口才开始；按范围一次删光，停机几天后开机第一遍就把所有超期的清掉。开关关着照清。不是企业版 = null
  */
 export async function 钟上清扫库记录(现在: Date = new Date()): Promise<{ 查询: number; 触发: number } | null> {
   if (!企业版()) return null;
+  if (在备份窗口(现在) || 钟点(现在) < 扫库扫时刻) return null; // 清理和扫一起：00:05 后、避开备份窗口（E-387）
   const 今天 = beijingDay(现在);
   if ((await getSetting<string>(扫库清水位键)) === 今天) return null;
   const 线 = 前几天(今天, 扫库保留天数);
