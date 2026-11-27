@@ -178,3 +178,56 @@ describe("旁路关了：编辑页保存 / 行内改负责人都不能换人，�
     expect(await patchCustomer(a.id, "salesOwnerId", 销售.id)).toMatchObject({ ok: true });
   });
 });
+
+describe("审查修复（12-22 阶段 1 复审）", () => {
+  it("市场成员的客户走转让框转给销售（市场转一位、全带）：预览数 = 实际带走数", async () => {
+    const 市场 = await 建("mkt");
+    await prisma.entMember.create({ data: { userId: 市场.id, managerId: 组长.id, bizRole: "channel_ops" } });
+    当(老板);
+    const a = await 客户(市场.id);
+    await 项目(a.id, 市场.id);
+    await 项目(a.id, 同事.id);
+    const 预 = await 转走项目预览of([a.id], 接手.id, true);
+    expect(预.项目数).toBe(2);
+    expect(预.要说明).toBeUndefined();
+    const r = await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "市场转一位" });
+    expect(r).toMatchObject({ ok: true, 带走: { 项目: 预.项目数 } });
+  });
+
+  it("部分作废：原接手人的「发起」通知不标已读，标题写明几位已被上级转走；申请里剩下的照旧待确认", async () => {
+    当(销售);
+    const a = await 客户(销售.id);
+    const b = await 客户(销售.id);
+    expect(await assignSalesOwner([a.id, b.id], 同事.id)).toMatchObject({ ok: true, 申请移交: true });
+    const 申请 = await prisma.entHandover.findFirstOrThrow();
+    当(组长);
+    expect(await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "上级直接定" })).toMatchObject({ ok: true, updated: 1 });
+    const 后 = await prisma.entHandover.findUniqueOrThrow({ where: { id: 申请.id } });
+    expect(后.status).toBe("待确认");
+    expect(JSON.parse(后.customerIds)).toEqual([b.id]);
+    const 发起 = await prisma.entNotice.findFirstOrThrow({ where: { userId: 同事.id, dedupeKey: `handover:${申请.id}:发起` } });
+    expect(发起.readAt).toBeNull();
+    expect(发起.title).toContain("其中 1 位已由");
+    expect(发起.title).toContain("其余仍待你确认");
+  });
+
+  it("全作废：原接手人的「发起」通知标已读", async () => {
+    当(销售);
+    const a = await 客户(销售.id);
+    await assignSalesOwner([a.id], 同事.id);
+    const 申请 = await prisma.entHandover.findFirstOrThrow();
+    当(组长);
+    await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "上级直接定" });
+    const 发起 = await prisma.entNotice.findFirstOrThrow({ where: { userId: 同事.id, dedupeKey: `handover:${申请.id}:发起` } });
+    expect(发起.readAt).not.toBeNull();
+  });
+
+  it("saveCustomer：base 伪造成和提交值一样、但和库里现值不同，照样回「请用转让」", async () => {
+    const a = await 客户(销售.id);
+    当(销售);
+    const r = await prisma.customer.findUniqueOrThrow({ where: { id: a.id } });
+    const base = { name: r.name, phone: r.phone, school: r.school, grade: r.grade, major: r.major, followStatus: r.followStatus, decisionStatus: r.decisionStatus, expectedSignAt: r.expectedSignAt, remark: r.remark, salesOwnerId: 接手.id, channelId: r.channelId, referrerCustomerId: r.referrerCustomerId };
+    expect(await saveCustomer({ id: a.id, updatedAt: r.updatedAt.toISOString(), base, ...base } as Parameters<typeof saveCustomer>[0])).toMatchObject({ ok: false, error: expect.stringContaining("请用「转让」") });
+    expect(await 归谁(a.id)).toBe(销售.id);
+  });
+});

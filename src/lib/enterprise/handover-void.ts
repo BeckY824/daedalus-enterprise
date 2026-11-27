@@ -38,7 +38,7 @@ export async function 作废申请移交(
       const 现在 = new Date();
       const r = await 看全部(() =>
         余.length
-          ? prisma.entHandover.updateMany({ where: { id: h.id, status: 待确认 }, data: { customerIds: JSON.stringify(余), counts: JSON.stringify({ 客户: 余.length }) } })
+          ? prisma.entHandover.updateMany({ where: { id: h.id, status: 待确认, customerIds: h.customerIds }, data: { customerIds: JSON.stringify(余), counts: JSON.stringify({ 客户: 余.length }) } })
           : prisma.entHandover.updateMany({ where: { id: h.id, status: 待确认 }, data: { status: 已作废, doneAt: 现在, doneById: me.id } }),
       );
       if (r.count !== 1) continue;
@@ -51,7 +51,15 @@ export async function 作废申请移交(
         summary: `${me.name} 直接把${几位}转给「${接}」，「${本人?.name ?? h.byUserId}」发给「${原接手?.name ?? h.toUserId}」的转让申请${余.length ? "里这几位" : ""}作废`,
         detail: { 交接: h.id, kind: "转让", 状态: 余.length ? "部分作废" : 已作废, fromUserId: h.fromUserId, toUserId: h.toUserId, 客户: 全.filter((c) => 转.has(c)) },
       });
-      await prisma.entNotice.updateMany({ where: { userId: h.toUserId, dedupeKey: `handover:${h.id}:发起`, readAt: null }, data: { readAt: 现在 } });
+      // 全作废：原接手人那条「发起」标已读；部分作废：申请还有人等他确认，不标已读，只把标题 / 正文改成说清哪几位已被上级转走
+      if (余.length) {
+        await prisma.entNotice.updateMany({
+          where: { userId: h.toUserId, dedupeKey: `handover:${h.id}:发起`, readAt: null },
+          data: { title: `${本人?.name ?? ""} 发给你的转让申请：其中 ${全.length - 余.length} 位已由 ${me.name} 直接转走，其余仍待你确认`, body: `还剩 ${余.length} 位客户待你确认。` },
+        });
+      } else {
+        await prisma.entNotice.updateMany({ where: { userId: h.toUserId, dedupeKey: `handover:${h.id}:发起`, readAt: null }, data: { readAt: 现在 } });
+      }
       const 话 = `${me.name} 已直接把${几位}转给 ${接}`;
       if (本人?.active && h.byUserId !== me.id) {
         await notify([h.byUserId], { kind: "交接", title: `你发给 ${原接手?.name ?? ""} 的转让申请已作废：${话}`, body: "客户已按新的转让生效，不用再等确认。", link: "/customers", key: `handover:${h.id}:作废:本人` });

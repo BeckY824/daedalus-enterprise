@@ -369,8 +369,9 @@ export async function saveCustomer(input: CustomerInput, 接着?: unknown): Prom
   if (改前 && input.salesOwnerId && input.salesOwnerId !== 改前.salesOwnerId) {
     const 转挡 = await 转让挡(me, [改前.id]);
     if (转挡) return { ok: false, error: 转挡 };
-    // 12-22：换负责人只走「转让」（要填原因、逐项选同事项目）；编辑页里没动负责人格（和打开表单时一样）的不算，免得旧表单误拦
-    if (企业版() && (!input.base || input.base.salesOwnerId !== input.salesOwnerId)) return { ok: false, error: 换负责人请用转让话 };
+    // 12-22：换负责人只走「转让」（要填原因、逐项选同事项目）。按库里现值判：提交值和库里现值不同就是换人，不看 base 里写的是什么
+    // （base 是客户端交上来的，伪造成和提交值一样就能绕过必填原因）
+    if (企业版()) return { ok: false, error: 换负责人请用转让话 };
   }
   // 来源选的是「只有主渠道」的占位（没有子渠道的主渠道）：先落成子渠道名留空的那条渠道，后面一律按真的渠道 id 走（channel-main.ts 落到渠道）
   if (企业版() && 是主渠道入口(input.channelId)) {
@@ -1311,7 +1312,7 @@ export async function 转走项目预览of(ids: string[], 新负责人?: string,
   // 顺带说转给这位要不要接手人确认：和真转时（assignSalesOwner）同一个判定，转让框照它写「生效」那一条（P-转-16）。
   // 空串 = 客户转让框选了自动分配、还没挑人：只数会一起走的项目（同批量自动分配）；自动分配是市场转销售，不走确认（P-转-17）
   // 转让框（12-22 起）：同事在推的项目不再随客户默认转，数的时候不算，改由框里逐项选（上级）或一律不带（负责人本人）
-  const [预览, 走法] = await Promise.all([数转走的项目(们, 新, [], !转让框), 新 ? 转让走交接(me, 新, 们) : null]);
+  const [预览, 走法] = await Promise.all([数转走的项目(们, 新, [], !转让框 || (!!新 && (await 都是市场转销售(们, 新)))), 新 ? 转让走交接(me, 新, 们) : null]);
   const 基 = { ...预览, 要确认: 走法 === "申请" };
   if (!转让框 || !新 || 走法 || !(await 直转要说明(me, 新, 们)) || (await 转让挡(me, 们))) return 基;
   // 直接转（上级 / 条线总管理 / 系统管理员）：原因必填；只选了一位客户时列同事在推的项目、自动带最近跟进和重复咨询

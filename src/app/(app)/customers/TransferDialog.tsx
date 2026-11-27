@@ -108,7 +108,7 @@ export default function TransferDialog({
   const [写, set写] = useState("");
   const [忙, set忙] = useState(false);
   const [错, set错] = useState("");
-  const [转走, set转走] = useState<{ 谁: string; 说法: ReturnType<typeof 转走项目说法>; 要确认?: boolean; 原?: 转走项目预览 | null } | null>(null);
+  const [转走, set转走] = useState<{ 谁: string; 说法: ReturnType<typeof 转走项目说法>; 要确认?: boolean; 原?: 转走项目预览 | null; 没取到?: boolean } | null>(null);
   /** 12-22 逐项选（只选了一位客户时服务端才列同事项目）+ 上级直接转必填的原因 */
   const [逐项, set逐项] = useState<逐项选择>({});
   const [说明, set说明] = useState("");
@@ -177,7 +177,7 @@ export default function TransferDialog({
     取转走(谁).then(
       (p) => { if (!还在) return; set转走({ 谁, 说法: 转走项目说法(p), 要确认: p?.要确认, 原: p }); set逐项(默认选(p)); },
       // 取不到不拦着：转本身照样会带走项目，这里只是提前说
-      () => 还在 && set转走({ 谁, 说法: null }),
+      () => 还在 && set转走({ 谁, 说法: null, 没取到: true }),
     );
     return () => {
       还在 = false;
@@ -186,7 +186,10 @@ export default function TransferDialog({
 
   const 名 = 固定人?.label ?? 人们.find((p) => p.value === 谁)?.label ?? "";
   const 要原因 = 原因选项.length > 0 && (自动中 || 谁 !== 自己);
-  const 要说明 = !自动中 && !!谁 && !!转走 && 转走.谁 === 谁 && !!转走.原?.要说明;
+  // 预览取失败 / 没取到：不知道是不是上级直转，原因框照样摆出来、先要填（上级身份服务端必填；负责人本人转时服务端不看这句），不等服务端回「请写原因」
+  const 没取到 = !!取转走 && !!转走 && 转走.谁 === 谁 && !!转走.没取到;
+  const 要说明 = !自动中 && !!谁 && !!转走 && 转走.谁 === 谁 && (!!转走.原?.要说明 || 没取到);
+  const 说明预览: 转走项目预览 | null | undefined = 没取到 ? { 项目数: 0, 项目: [], 要说明: true } : 转走?.原;
   const 原因齐 = !要原因 || 选 !== 其他项 || !!写.trim();
   const 转走好了 = !取转走 || (转走 && 转走.谁 === 谁);
   const 能转 = (自动中 || !!谁) && 原因齐 && !忙 && (!要说明 || !!说明.trim());
@@ -406,7 +409,7 @@ export default function TransferDialog({
           )}
           {要说明 && 批量 && <div className="cd-transfer-mut" role="note">一次转多位客户时，同事在推的项目都保留原负责人；要一起转请一位一位转</div>}
           {要说明 && <逐项选块 预览={转走?.原} 选={逐项} 改={set逐项} 忙={忙} />}
-          {要说明 && <说明框 预览={转走?.原} 值={说明} 改={set说明} 忙={忙} onEnter={() => void 转()} />}
+          {要说明 && <说明框 预览={说明预览} 值={说明} 改={set说明} 忙={忙} onEnter={() => void 转()} />}
           {(谁 || 自动中) && 要原因 && !要说明 && (
             <div className="csq-why" role="radiogroup" aria-label="转让原因">
               <div className="csq-why-h">转让原因（可不选）</div>

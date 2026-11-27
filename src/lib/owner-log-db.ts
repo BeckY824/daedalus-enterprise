@@ -37,7 +37,7 @@ async function 挂靠审批跟着换(tx: Pick<Prisma.TransactionClient, "entDupe
 /** 直接转时留在换负责人记录上的一份（12-22）：原因必填，最近跟进 / 重复咨询取不到是 null */
 export type 转让留痕 = { 原因: string; 最近跟进: Date | null; 重复咨询: number | null };
 
-/** 转的那一刻读：每位客户的最近一次跟进、重复咨询次数（出口 C 建的线索数，含回收站里的）。读不到的给 null，不拦转让 */
+/** 转的那一刻读：每位客户的最近一次跟进、重复咨询次数（出口 C 建的线索数，不含回收站里的：软删统一滤掉）。读不到的给 null，不拦转让 */
 export async function 取转让留痕(ids: readonly string[], 原因: string): Promise<Map<string, 转让留痕>> {
   const 出 = new Map<string, 转让留痕>();
   if (!ids.length) return 出;

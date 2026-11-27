@@ -61,7 +61,7 @@ export default function TransferBox({
   onClose: () => void;
 }) {
   const [谁, set谁] = useState<string | undefined>();
-  const [预览, set预览] = useState<{ 谁: string; 说: ReturnType<typeof 转走项目说法>; 原?: 转走项目预览 | null } | null>(null);
+  const [预览, set预览] = useState<{ 谁: string; 说: ReturnType<typeof 转走项目说法>; 原?: 转走项目预览 | null; 没取到?: boolean } | null>(null);
   /** 12-22 逐项选：同事在推的项目各选保留 / 随转，默认全保留；上级直接转必填的原因 */
   const [逐项, set逐项] = useState<逐项选择>({});
   const [说明, set说明] = useState("");
@@ -95,7 +95,7 @@ export default function TransferBox({
   useEffect(() => {
     if (!谁) return;
     let 作废 = false;
-    取预览(谁).then((x) => { if (!作废) { set预览({ 谁, 说: 转走项目说法(x), 原: x }); set逐项(默认选(x)); } }, () => { if (!作废) set预览({ 谁, 说: null }); });
+    取预览(谁).then((x) => { if (!作废) { set预览({ 谁, 说: 转走项目说法(x), 原: x }); set逐项(默认选(x)); } }, () => { if (!作废) set预览({ 谁, 说: null, 没取到: true }); });
     return () => { 作废 = true; };
   }, [谁, 取预览]);
 
@@ -107,7 +107,10 @@ export default function TransferBox({
   }, [open, 自动中, 自动预览, 自动]);
 
   const 原因齐 = !选 || 选 !== 其他项 || !!写.trim();
-  const 要说明 = !自动中 && !!谁 && !!预览 && 预览.谁 === 谁 && !!预览.原?.要说明;
+  // 预览取失败：不知道是不是上级直转，原因框照样摆出来先要填（负责人本人转时服务端不看这句），不等服务端回「请写原因」
+  const 没取到 = !!预览 && 预览.谁 === 谁 && !!预览.没取到;
+  const 要说明 = !自动中 && !!谁 && !!预览 && 预览.谁 === 谁 && (!!预览.原?.要说明 || 没取到);
+  const 说明预览: 转走项目预览 | null | undefined = 没取到 ? { 项目数: 0, 项目: [], 要说明: true } : 预览?.原;
   const 能发 = (自动中 || !!谁) && 原因齐 && !忙 && (!要说明 || !!说明.trim());
   const 说 = 自动中 ? 自动预览?.说 ?? null : 预览 && 预览.谁 === 谁 ? 预览.说 : null;
   /** 「一起转」那格：还在取 / 取到了 */
@@ -248,10 +251,10 @@ export default function TransferBox({
           {要说明 && (
             <div className="cd-transfer-row">
               <span className="cd-transfer-k">原因</span>
-              <div className="cd-transfer-v"><说明框 预览={预览?.原} 值={说明} 改={set说明} 忙={忙} onEnter={() => void 发()} /></div>
+              <div className="cd-transfer-v"><说明框 预览={说明预览} 值={说明} 改={set说明} 忙={忙} onEnter={() => void 发()} /></div>
             </div>
           )}
-          {!自动中 && 谁 && 预览 && 预览.谁 === 谁 && !预览.原?.要说明 && 要申请 && (
+          {!自动中 && 谁 && 预览 && 预览.谁 === 谁 && !预览.原?.要说明 && !预览.没取到 && 要申请 && (
             <div className="cd-transfer-row">
               <span className="cd-transfer-k">同事项目</span>
               <div className="cd-transfer-v cd-transfer-mut" data-testid="transfer-colleague-note">同事在推的项目不随客户转；要带请上级在转让时勾。</div>
