@@ -16,6 +16,8 @@ import type { Prisma } from "@/generated/prisma";
 import { prisma } from "../prisma";
 import { dayjs } from "../utils";
 import { 看全部 } from "../team-scope";
+import { 项目们撤培育计划 } from "../project/nurture-plan";
+import { 系统 } from "../project/timeout";
 import { 企业版 } from "./switch";
 import { 权限组织 } from "./org";
 import { 能删除, 能删一些, 能真删, 能恢复 } from "./permissions";
@@ -92,7 +94,7 @@ function 表(tx: Tx, t: 软删表名) {
  * 删客户（软删）：客户 + 客户连带的几张表记同一个时刻。只有还没删的才记（早些时候单独删的保留原来的时刻）。
  * 权限、虚线只读、推荐链这些由调用方（customers/actions deleteCustomers）先查过；连带的子行不再过一遍业务员范围
  */
-export async function 软删客户(tx: Tx, ids: string[], 时刻 = new Date()): Promise<number> {
+export async function 软删客户(tx: Tx, ids: string[], 时刻 = new Date(), 操作人: { id: string } = 系统): Promise<number> {
   if (!ids.length) return 0;
   const n = (await tx.customer.updateMany({ where: { id: { in: ids } }, data: { deletedAt: 时刻 } })).count;
   if (!n) return 0;
@@ -100,6 +102,10 @@ export async function 软删客户(tx: Tx, ids: string[], 时刻 = new Date()): 
   await 看全部(async () => {
     for (const t of 客户连带) await 表(tx, t).updateMany({ where: { customerId: { in: 删了的 } }, data: { deletedAt: 时刻 } });
   });
+  // 名下项目跟着进回收站：判 MQL 不合格自动建、没完成的培育计划一起撤（E-396；早先单独删掉的项目当时已撤；恢复不重建）
+  const 进的项目 = await 看已删(() => tx.project.findMany({ where: { customerId: { in: 删了的 }, deletedAt: 时刻 }, select: { id: true } }));
+  // 客户已进回收站，挂在它名下的计划默认读不到，要带上已删的一起看
+  await 看已删(() => 项目们撤培育计划(tx, 操作人, 进的项目.map((p) => p.id)));
   return n;
 }
 
