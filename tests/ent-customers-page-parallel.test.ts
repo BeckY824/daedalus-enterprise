@@ -6,6 +6,7 @@
  * 销售、销售管理、总管理、系统管理员，把交给 CustomersView 的那几样数（总数、页码、页签数、公海匹配提示、
  * 批量按钮那几样开关和 id 名单、删除挡、看板卡片）摊成一张表钉住。快照是改前跑出来的（c7609a60）
  */
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { describe, it, expect, beforeEach, afterAll, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -94,6 +95,8 @@ beforeEach(async () => {
     const c = await 客户(n, o, 1);
     await prisma.customerPool.create({ data: { customerId: c.id, userId: o, reason: "手动" } });
   }
+  // 直接塞的公海行没走放回公海的动作，回避只认 poolPrevOwnerId 列，补一遍回填（等于上线跑回填）
+  await 回填放回人列(prisma);
   忘掉企业版范围();
 });
 afterAll(async () => { vi.unstubAllEnvs(); invalidateSettingsCache(); await prisma.$disconnect(); });
