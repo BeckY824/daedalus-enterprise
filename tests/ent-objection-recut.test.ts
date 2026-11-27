@@ -191,6 +191,32 @@ describe("新线索超时自动转：碰到待裁定异议跳过、计时暂停�
     expect(另.id).toBeTruthy();
   });
 
+  it("停表下限用提交时刻（submittedAt），不是转让时刻（createdAt）：提交前走的那段不被抹掉（r4 必改 1）", async () => {
+    const { id, customerId } = await 线索(销售, "2026-11-20 15:00");
+    // 被挡前链行已在（10:01 那种「按换人重写链」留下的），updatedAt 早于提交时刻
+    await prisma.entReplyOverdue.create({ data: { projectId: id, anchorAt: 京("2026-11-20 15:00"), holderId: 销售.id, since: 京("2026-11-20 15:00"), overdueAt: null, updatedAt: 京("2026-11-20 15:10") } });
+    const 异议 = await 记待裁定(customerId, 同事.id, 销售.id, id);
+    // 转让在 14:00（createdAt）、15:50 才提异议（submittedAt）
+    await prisma.entTransferObjection.update({ where: { id: 异议.id }, data: { createdAt: 京("2026-11-20 14:00"), submittedAt: 京("2026-11-20 15:50") } });
+    expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 0, 转出: 0 }); // 被挡：只停提交后的 10 分钟
+    expect((await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: id } })).since.getTime()).toBe(京("2026-11-20 15:10").getTime());
+    await 裁完(异议.id);
+    expect(await 超时转扫一遍(京("2026-11-20 16:09"))).toMatchObject({ 提醒: 0 });
+    expect(await 超时转扫一遍(京("2026-11-20 16:10"))).toMatchObject({ 提醒: 1 }); // 剩的是提交前那段（不是再等 50 分钟）
+  });
+
+  it("停表：提交前已发过提醒，提醒记号只往后推提交之后的那段（r4 必改 1）", async () => {
+    const { id, customerId } = await 线索(销售, "2026-11-20 15:00");
+    expect(await 超时转扫一遍(京("2026-11-20 16:00"))).toMatchObject({ 提醒: 1 });
+    await prisma.entReplyOverdue.update({ where: { projectId: id }, data: { updatedAt: 京("2026-11-20 16:00") } });
+    const 异议 = await 记待裁定(customerId, 同事.id, 销售.id, id);
+    await prisma.entTransferObjection.update({ where: { id: 异议.id }, data: { createdAt: 京("2026-11-20 14:00"), submittedAt: 京("2026-11-20 16:20") } });
+    await 超时转扫一遍(京("2026-11-20 16:40"));
+    const 行 = await prisma.entReplyOverdue.findUniqueOrThrow({ where: { projectId: id } });
+    expect(行.overdueAt?.getTime()).toBe(京("2026-11-20 16:20").getTime()); // 16:00 + 停了的 20 分钟（不是 40）
+    expect(行.since.getTime()).toBe(京("2026-11-20 15:20").getTime());
+  });
+
   it("客户上有待裁定的客户异议：线索照转，客户不跟着走（留在原负责人名下）", async () => {
     const { id, customerId } = await 线索(销售, "2026-11-20 15:00");
     await 记待裁定(customerId, 销售.id, 销售.id);

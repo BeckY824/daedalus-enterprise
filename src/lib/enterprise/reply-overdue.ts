@@ -859,11 +859,11 @@ async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: �
   }
   // 12-22 审查 M5（口径 B3）：这条项目（或随客户转走的那次）有转让异议在「待裁定」时，不提醒、不转，计时停表：
   // 每一遍把「这一遍里停着的那段」加到起点和提醒记号上（已走的时长不变），裁定完（维持 / 撤回）后接着走，不清零
-  // 停表起点 = 这一遍之前最后一次写这行的时刻（updatedAt），不早于挡着它的最早那条异议提交的时刻、也不早于起点
+  // 停表起点 = 这一遍之前最后一次写这行的时刻（updatedAt），不早于挡着它的最早那条异议开始待裁定的时刻（submittedAt；createdAt 是转让时刻，不能用，旧行没有 submittedAt 才退回用它）、也不早于起点
   const 挡 = 待裁定们.length ? 挡着项目的异议(待裁定们, { id: p.id, customerId: p.customerId, ownerId: p.ownerId }) : [];
   if (挡.length) {
     const 上次写 = 行 && 行.updatedAt.getTime() <= 现在.getTime() ? 行.updatedAt.getTime() : 0;
-    const 停于 = Math.max(上次写, Math.min(...挡.map((r) => r.createdAt.getTime())), since.getTime());
+    const 停于 = Math.max(上次写, Math.min(...挡.map((r) => (r.submittedAt ?? r.createdAt).getTime())), since.getTime());
     const 停了 = Math.max(0, 现在.getTime() - 停于);
     await 改链若持有人是(p.id, p.ownerId, {
       anchorAt: 基, holderId: p.ownerId, since: new Date(since.getTime() + 停了), overdueAt: overdueAt ? new Date(overdueAt.getTime() + 停了) : null, tried: 试过, transfers,

@@ -318,8 +318,11 @@ export async function 确认交接(id: string): Promise<结果> {
     // 12-22 审查 M5：交出人名下这几位客户（或名下随客户走的项目）上有转让异议还在「待裁定」的，不能再转；裁定后再确认，交接留在待确认。
     // 查在事务里、了结之前（拦下就什么都不写）；只查此刻还归交出人的（已换了人的本来就不转）。离职交接（上面两条分支）照常放行：人走了总要有人接，撤回时转手工退回（口径 B3 默认）
     const 名下 = await tx.customer.findMany({ where: { id: { in: ids }, salesOwnerId: h.fromUserId }, select: 显名列 });
-    for (const c of 名下) {
-      if (await 客户有未裁定异议(tx, [c.id])) return { 话: `「${客户显名(c)}」有转让异议待裁定；交接留在待确认，裁定后再确认` };
+    // 整批查一次（交接几十上百位时不逐位各查一次）；命中了才逐位找第一个，名字用在拦话里
+    if (名下.length && (await 客户有未裁定异议(tx, 名下.map((c) => c.id)))) {
+      for (const c of 名下) {
+        if (await 客户有未裁定异议(tx, [c.id])) return { 话: `「${客户显名(c)}」有转让异议待裁定；交接留在待确认，裁定后再确认` };
+      }
     }
     if (!(await 了结(tx, h.id, "已确认", me))) return null;
     const 起 = await 持有上限起点(tx, 规则, me.id);

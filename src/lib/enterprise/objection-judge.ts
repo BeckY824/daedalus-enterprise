@@ -110,7 +110,13 @@ async function 执行退回(tx: Db, 行: EntTransferObjection, 评估: Extract<�
   const 起 = new Date(日志.at.getTime() - 当次窗口毫秒);
   const 带 = { customerId: 行.customerId, ownerId: 行.toOwnerId, done: false, createdAt: { lte: 日志.at }, updatedAt: { gte: 起 } };
   const 计划们 = await tx.followPlan.findMany({ where: 带, select: { id: true } });
-  const 待办们 = await tx.task.findMany({ where: { ...带, AND: 不跟着转的提醒("assign") }, select: { id: true } });
+  // 待办没有 projectId：此刻仍归接手人的项目（随转的同事项目、接手人自己原有的、后来建的；已退给原负责人的不算）上的待办不退，
+  // 认法同 转让带待办（carry-tasks.ts）：标题里点了「项目名」的（含将回收提醒头）。12-22 r4 必改 2
+  const 仍归他的项目 = await tx.project.findMany({ where: { customerId: 行.customerId, ownerId: 行.toOwnerId }, select: { name: true } });
+  const 待办们 = await tx.task.findMany({
+    where: { ...带, AND: [...不跟着转的提醒("assign"), ...仍归他的项目.map((p) => ({ NOT: { title: { contains: `「${p.name}」` } } }))] },
+    select: { id: true },
+  });
   const 计划r = 计划们.length ? await tx.followPlan.updateMany({ where: { id: { in: 计划们.map((x) => x.id) }, ownerId: 行.toOwnerId, done: false }, data: { ownerId: 评估.还给 } }) : { count: 0 };
   const 待办r = 待办们.length ? await tx.task.updateMany({ where: { id: { in: 待办们.map((x) => x.id) }, ownerId: 行.toOwnerId, done: false }, data: { ownerId: 评估.还给 } }) : { count: 0 };
   return { 项目数: 评估.项目.length, 退了客户: true, 计划数: 计划r.count, 待办数: 待办r.count };

@@ -1,3 +1,4 @@
+import { 将回收提醒头 } from "@/lib/project/timeout";
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ user: { id: "", name: "", email: "", role: "SALES", title: "", avatar: null as string | null } }));
@@ -183,6 +184,38 @@ describe("撤回 = 退回原负责人", () => {
     expect(await 主(完待办.id, "task")).toBe(销售.id);
     expect(await 主(新计划.id, "followPlan")).toBe(接手.id);
     expect(await 主(新待办.id, "task")).toBe(接手.id);
+  });
+
+  it("客户异议（r4 必改 2）：随转的同事项目带一条将回收提醒，客户异议撤回后这条仍归接手人（不退给原负责人）", async () => {
+    const a = await 客户(销售.id, { bizLine: "内贸" });
+    await 项目(a.id, 销售.id);
+    const 转的 = await 项目(a.id, 同事.id);
+    const 提醒 = await prisma.task.create({ data: { customerId: a.id, ownerId: 同事.id, title: `${将回收提醒头(转的.name, 转的.node)}明天会自动回到项目公海`, dueAt: new Date(Date.now() + 日) } });
+    当(组长);
+    expect(await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "客户说连着两周没人回", 随转: [转的.id] })).toMatchObject({ ok: true, updated: 1 });
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: 提醒.id } })).ownerId).toBe(接手.id); // 前提：转让时随项目换了人
+    const 客户行 = (await prisma.entTransferObjection.findMany()).find((x) => x.kind === "客户")!;
+    await 提(客户行, 销售);
+    expect(await 裁定(线总管, 客户行.id, "撤回", "客户一直是我的")).toMatchObject({ ok: true, 结果: "撤回" });
+    expect((await 项目现(转的.id)).ownerId).toBe(接手.id);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: 提醒.id } })).ownerId).toBe(接手.id);
+  });
+
+  it("客户异议（r4 必改 2）：接手人自己原有项目的待办，转让后被编辑过，客户异议撤回后仍归接手人", async () => {
+    const a = await 客户(销售.id, { bizLine: "内贸" });
+    const 自己的 = await 项目(a.id, 销售.id);
+    const 他的 = await 项目(a.id, 接手.id);
+    const 他的待办 = await prisma.task.create({ data: { customerId: a.id, ownerId: 接手.id, title: `回访「${他的.name}」`, dueAt: new Date(Date.now() + 日) } });
+    const 带待办 = await prisma.task.create({ data: { customerId: a.id, ownerId: 销售.id, title: `回访「${自己的.name}」`, dueAt: new Date(Date.now() + 日) } });
+    当(组长);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "客户说连着两周没人回", 随转: [] })).toMatchObject({ ok: true, updated: 1 });
+    await prisma.task.update({ where: { id: 他的待办.id }, data: { dueAt: new Date(Date.now() + 2 * 日) } }); // 转让后编辑过：updatedAt ≥ 转让时刻
+    const 客户行 = (await prisma.entTransferObjection.findMany()).find((x) => x.kind === "客户")!;
+    await 提(客户行, 销售);
+    expect(await 裁定(线总管, 客户行.id, "撤回", "客户一直是我的")).toMatchObject({ ok: true, 结果: "撤回" });
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: 他的待办.id } })).ownerId).toBe(接手.id);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: 带待办.id } })).ownerId).toBe(销售.id); // 对照：转让带走的仍退回
   });
 
   it("客户异议（审查 M4）：多次转让只退当次——第二次转让的异议只把第二次带走的退回上一位，不动更早的", async () => {

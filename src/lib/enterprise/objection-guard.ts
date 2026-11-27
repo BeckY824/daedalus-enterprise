@@ -21,13 +21,13 @@ export async function 客户有未裁定异议(db: 读, customerIds: readonly st
   return n ? 未裁定拦话(动作) : null;
 }
 
-export type 待裁定行 = { projectId: string | null; kind: string; customerId: string; toOwnerId: string; createdAt: Date };
+export type 待裁定行 = { projectId: string | null; kind: string; customerId: string; toOwnerId: string; createdAt: Date; submittedAt?: Date | null };
 
 /** 一次读全部「待裁定」的异议行（超时转扫描开头读一遍、内存匹配，不用每个项目各查一次） */
 export async function 读全部待裁定行(db: 读): Promise<待裁定行[]> {
   return db.entTransferObjection.findMany({
     where: { status: { in: [...未落地状态们] } },
-    select: { projectId: true, kind: true, customerId: true, toOwnerId: true, createdAt: true },
+    select: { projectId: true, kind: true, customerId: true, toOwnerId: true, createdAt: true, submittedAt: true },
   });
 }
 
