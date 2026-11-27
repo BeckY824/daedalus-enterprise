@@ -97,19 +97,26 @@ if [ -n "$RUN_USER" ]; then
   [ -n "$RUN_GROUP" ] || die "系统里没有用户 ${RUN_USER}（--user 指定一个存在的用户）"
 fi
 chown_run() { # 只有 root 才改属主（本机试装不是 root，跳过）
-  if [ -n "$RUN_USER" ] && [ "$(id -u)" = 0 ]; then chown "$RUN_USER:$RUN_GROUP" "$@"; fi
+  if [ -n "$RUN_USER" ] && [ "$(id -u)" = 0 ]; then chown -h "$RUN_USER:$RUN_GROUP" "$@"; fi
+}
+no_link() { # data/ 归服务用户，它可以把这两个文件换成指向系统文件的软链；root 不跟着软链改属主 / 权限
+  [ ! -L "$1" ] || die "$1 是软链接，拒绝继续（root 会跟着改到目标文件）；确认来历后删掉这个软链再重跑"
 }
 
 CHANGED=0
-mkdir -p "$A"
+install -d -m 755 "$A"   # 不跟 root 的 umask：加固机上 027/077 会让服务用户进不了 alert/
+chmod 755 "$A"
 for f in ent-alert.mjs telemetry-daily.mjs; do
   if ! cmp -s "$SRC/$f" "$A/$f"; then install -m 644 "$SRC/$f" "$A/$f"; CHANGED=1; echo "已放：$A/$f"; fi
+  chmod 644 "$A/$f"
 done
 
 # 探活地址：每个进程一个 /api/health（进程 i = PORT+i-1）
 URLS=""
 for i in $(seq 1 "$WORKERS"); do URLS="${URLS:+$URLS,}http://127.0.0.1:$((PORT + i - 1))/api/health"; done
 
+no_link "$ENVF"
+no_link "$DATA/alert-state.json"
 if [ ! -f "$ENVF" ]; then
   (
     umask 077
@@ -182,5 +189,14 @@ echo "告警定时：每 2 分钟（$SERVICE-alert.timer），脚本在 ${A}，�
 if [ "$NO_SYSTEMCTL" = 0 ]; then systemctl list-timers "$SERVICE-alert.timer" --no-pager | sed -n 2p; fi
 # 空跑一次：只打印将发什么，不发、不写状态；顺带验证 node 和两份脚本能跑
 echo "空跑（--dry）："
-{ "$NODE" "$A/ent-alert.mjs" --dir "$DATA" --dry | head -n 20; } || true
+# 有运行用户且当前是 root：按真实运行身份跑（验证它进得了 alert/、读得了 .alert-env 和 telemetry/）；本机 / 非 root 直接跑
+if [ -n "$RUN_USER" ] && [ "$(id -u)" = 0 ]; then
+  if command -v runuser >/dev/null 2>&1; then
+    { runuser -u "$RUN_USER" -- "$NODE" "$A/ent-alert.mjs" --dir "$DATA" --dry | head -n 20; } || true
+  else
+    { su -s /bin/sh "$RUN_USER" -c "\"$NODE\" \"$A/ent-alert.mjs\" --dir \"$DATA\" --dry" | head -n 20; } || true
+  fi
+else
+  { "$NODE" "$A/ent-alert.mjs" --dir "$DATA" --dry | head -n 20; } || true
+fi
 echo "（空跑完。填好 $ENVF 里的地址后，看日志：journalctl -u $SERVICE-alert.service -n 20 --no-pager）"

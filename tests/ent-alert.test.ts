@@ -438,6 +438,16 @@ describe("审查 s1/s2 可改（第二轮）", () => {
     expect(发往(EVEN)).toHaveLength(1);
   });
 
+  it("每小时上限：探活类（服务挂了）不计入也不受上限，报错类用满 6 条后照发", async () => {
+    for (let r = 0; r < 6; r++) 记(5, 5, { route: `/q${r}` }, ["a"]);
+    expect((await 跑(T0)).发出).toHaveLength(6); // 上限用满
+    fs.appendFileSync(path.join(目录, ".alert-env"), "ALERT_HEALTH_URLS=http://127.0.0.1:3010/api/health\n");
+    健康好 = false;
+    await 跑(T0 + 分);
+    const r2 = await 跑(T0 + 2 * 分);
+    expect(r2.发出.some((x) => x.内容.includes("服务挂了"))).toBe(true);
+  });
+
   it("状态文件字段类型不对：当没有，不崩，照常发", async () => {
     fs.writeFileSync(path.join(目录, "alert-state.json"), JSON.stringify({ alerts: null, sent: "x", health: 3, heartbeatDay: 5 }));
     记(5, 3, {}, ["a", "b"]);
