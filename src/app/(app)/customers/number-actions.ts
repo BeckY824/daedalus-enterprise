@@ -17,6 +17,7 @@ import { 查重捞回, 回收站叫法 } from "@/lib/enterprise/soft-delete";
 import { prisma, defaultClient } from "@/lib/prisma";
 import { 读的我 } from "@/lib/team-scope";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 记查询, 号码撞别组, 名字撞别组 } from "@/lib/enterprise/scan-query";
 import { 恢复到停用负责人通知 } from "@/lib/enterprise/notice-sources";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 import { 企业号码查重, type 撞到的人 } from "@/lib/enterprise/contact-dedupe";
@@ -46,7 +47,15 @@ export type 查号码结果 =
    */
   | { ok: true; 状态: "首次录入" | "公海待捞" | "我的通讯录已有" | "重复" | "回收站里有"; 提示: string; 值: string; 撞: 撞到的人 | null; 归属地: string | null; 可协同?: true; 协同?: 协同情况; 原负责人是我?: true; 挂靠?: 撞号露出; 市场可领?: true; 出口C?: 出口C按钮; 在推个数?: number };
 
-export async function 查号码(类型: string, 值: string): Promise<查号码结果> {
+export async function 查号码(类型: string, 值: string, 兜底?: boolean): Promise<查号码结果> {
+  return 查号码内核(类型, 值, !兜底);
+}
+
+/**
+ * 查号码 的本体。记 = 记一笔扫库检测的查询（lib/enterprise/scan-query.ts）：「+」查重、向导查号码（含离开框自动查）记；
+ * 点「建好」兜底核（客户端传 兜底）、从回收站捞回里的再查不记
+ */
+async function 查号码内核(类型: string, 值: string, 记: boolean): Promise<查号码结果> {
   const me = await requireUser();
   if (!企业版()) return { ok: false, 状态: "没开", 提示: "企业版才有号码类型" };
   const 号 = 验号码(类型, 值);
@@ -58,6 +67,7 @@ export async function 查号码(类型: string, 值: string): Promise<查号码�
   const 挂靠 = 结论.状态 === "重复" ? await 号码撞上(me.id, 我, 号) : null;
   const 市场可领 = 结论.状态 === "公海待捞" && await 查重可领(me.id, 号);
   const 出口C = 结论.状态 === "重复" ? await 出口C按钮给不给(me.id, 号) : null;
+  if (记) await 记查询(me.id, "号码", `${号.类型}|${号.键}`, 号码撞别组(挂靠));
   const 在推个数 = 结论.状态 === "重复" || 结论.状态 === "公海待捞" || 结论.状态 === "我的通讯录已有" ? await 撞号在推个数(me.id, 号) : null;
   return { ok: true, 状态: 结论.状态, 提示: 结论.提示, 值: 号.值, 撞: 结论.撞, 归属地: 号码归属地(号.类型, 号.值)?.文字 ?? null, ...(结论.状态 === "公海待捞" && 结论.原负责人是我 && !市场可领 ? { 原负责人是我: true as const } : {}), ...(协同 ? { 可协同: true as const, 协同 } : {}), ...(挂靠 ? { 挂靠 } : {}), ...(市场可领 ? { 市场可领: true as const } : {}), ...(出口C ? { 出口C } : {}), ...(在推个数 != null ? { 在推个数 } : {}) };
 }
@@ -68,11 +78,13 @@ export type 查客户名结果 = { ok: true; 撞: null } | { ok: true; 撞: 名�
  * 建档向导填完客户名那一步的查重（P-挂靠-01，和号码同一套）：名字（和公司）撞上有人在跟的客户，露出负责人 + 申请挂靠，记台账；
  * 撞的是我名下的只说「你名下已有」。公海、没负责人的不提示。保存时 saveCustomer 再按同一套挡一次
  */
-export async function 查客户名(名: string, 公司?: string | null): Promise<查客户名结果> {
+export async function 查客户名(名: string, 公司?: string | null, 兜底?: boolean): Promise<查客户名结果> {
   try {
     const me = await requireUser();
     if (!企业版()) return { ok: true, 撞: null };
     const r = await 客户名查重(me.id, await 读的我(defaultClient), 名, 公司);
+    // 扫库检测：向导查客户名记一笔（连公司名一起查只算一次；点「建好」兜底核不记）；名字 trim 后算指纹
+    if (!兜底 && 名.trim()) await 记查询(me.id, "名字", `${名.trim()}|${(公司 ?? "").trim()}`, 名字撞别组(r));
     return r ? { ok: true, 撞: r, 提示: 名撞说法(r) } : { ok: true, 撞: null };
   } catch (e) { return 不在了(e); }
 }
@@ -111,12 +123,12 @@ export async function 从回收站捞回(类型: string, 值: string): Promise<�
     if (只读角色(me, org)) return { ok: false, error: 只读话of(me, org) };
     const 号 = 验号码(类型, 值);
     if (!号.ok) return { ok: false, error: 号.提示 };
-    const 先查 = await 查号码(类型, 值);
+    const 先查 = await 查号码内核(类型, 值, false);
     if (!先查.ok || 先查.状态 !== "回收站里有") return { ok: true, 已不在: true, 提示: 已不在话, 查: 先查 };
     const r = await 查重捞回(号, me.id);
     if (!r.ok) {
       // 先查到捞之间被别人捞走 / 彻底删了：一样按「已不在」回新结论，不报成出错
-      const 再查 = await 查号码(类型, 值);
+      const 再查 = await 查号码内核(类型, 值, false);
       if (!再查.ok || 再查.状态 !== "回收站里有") return { ok: true, 已不在: true, 提示: 已不在话, 查: 再查 };
       return r;
     }
@@ -132,6 +144,6 @@ export async function 从回收站捞回(类型: string, 值: string): Promise<�
     const 客户 = r.回来的.filter((x) => x.t === "Customer").length;
     const 联系人 = r.回来的.length - 客户;
     const 提示 = `已从回收站捞回${客户 ? ` ${客户} 位客户（连同联系人、项目、跟进）` : ""}${客户 && 联系人 ? "、" : ""}${联系人 ? ` ${联系人} 位联系人` : ""}`;
-    return { ok: true, 提示, 查: await 查号码(类型, 值) };
+    return { ok: true, 提示, 查: await 查号码内核(类型, 值, false) };
   } catch (e) { return 不在了(e); }
 }

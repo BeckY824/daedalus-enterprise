@@ -1922,6 +1922,47 @@ model EntDupeHit {
   @@index([approverId, status])
 }
 
+/// ④ 扫库检测的查询记录（2026-11-27，迁移 178，E-383）：一行 = 同一人同一北京日同一键；只记「主动查」的三个入口（首页「+」查重、新建向导查号码、查客户名），
+/// 不存号码 / 客户名原文，只存 HMAC 指纹。撞上 = 撞别组同事负责的客户（自己名下、同组、公海不算），同键同日后来撞上的只升不降。保留 90 天（清理第 4 阶段做）。不建外键
+model EntScanQuery {
+  id        String   @id @default(cuid())
+  /// 查询人
+  userId    String
+  /// 北京自然日 YYYY-MM-DD
+  day       String
+  /// 键类型：号码 / 名字
+  keyType   String
+  /// 键指纹：HMAC-SHA256(规整后的号码或 trim 后的名字)，不存原文
+  keyHash   String
+  /// 这一天里这个键有没有撞上过别组同事负责的客户
+  hit       Boolean  @default(false)
+  /// 首次查的时刻
+  createdAt DateTime @default(now())
+
+  @@unique([userId, day, keyType, keyHash])
+  @@index([day, userId])
+}
+
+/// ④ 扫库检测的触发名单（2026-11-27，迁移 178，E-383）：同人同日一行，凌晨扫出来的「查询 ≥50 次且撞上 ≥60%」。第 1 阶段只建表不写；不建外键
+model EntScanTrigger {
+  id         String    @id @default(cuid())
+  /// 触发的那天（北京自然日 YYYY-MM-DD）
+  day        String
+  /// 被查的人（查询人）
+  userId     String
+  /// 当天查询次数
+  queries    Int
+  /// 当天撞上次数
+  hits       Int
+  /// 通知发给谁（用户 id）；还没发 = 空
+  notifiedTo String?
+  /// 发出的时刻；还没发 = 空
+  noticeAt   DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([day, userId])
+}
+
 /// 企业版选项字典（2026-10-26，迁移 057）：分配方式、回收原因、无效原因、转让原因、验证结果、客户状态、项目标签，
 /// 一张表按 kind 分。默认值由 lib/enterprise/dict.ts 第一次读时补上（迁移不许 INSERT），只停用不删。
 /// 只给选项、不设必填；谁能改同项目字典（「后台设置谁能改」的字典一行）
