@@ -40,7 +40,7 @@ import { 仅记录用的, 是仅记录用 } from "./system-created";
 import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕, 记沟通要下一步时间 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
-import { 离开了潜客培育, 撤培育计划 } from "./nurture-plan";
+import { 在潜客培育, 离开了潜客培育, 撤培育计划, 项目们撤培育计划 } from "./nurture-plan";
 import { 读团队 } from "../sync/client";
 import { dayjs } from "../utils";
 import { 看全部, 只读身份中, 系统写 } from "../team-scope";
@@ -448,6 +448,7 @@ export async function 改节点(
     // 撤销（带 期望在）且带回了推之前的下一步：换成那一份，不清（11-20 审查：撤销 = 回到原样）。
     // 只认往回退、且是能改节点的人自己撤（11-20 复审）：「仅上级推」时直属上级代推只许往前推，带 期望在 + 任意下一步往前推
     // 会把下属项目的下一步写成上级传的；往前推、上级代推带来的一律不认，照旧清掉
+    let 撤了 = 0; // 撤了几条自动培育计划（撤销条据此提示「计划不随撤销恢复」）
     const 清下一步 = 企业版() && (到.phase !== 现.phase || 到.node !== 现.node);
     const 往回 = !result && !现.result && 节点序号(到, 字典) < 节点序号(p, 字典);
     const 恢 = 选项?.期望在 && 往回 && !上级代推 && 选项.恢复下一步 && typeof 选项.恢复下一步 === "object" ? 选项.恢复下一步 : null;
@@ -466,7 +467,8 @@ export async function 改节点(
     // 企业版提成：进订单（赢单）固定实际提成（lib/project/commission-db.ts）。企业版进了订单不能退回商机（改节点问题 里拦）
     await 节点变了的提成(tx, p.id, p.phase, 到.phase);
     // 项目离开潜客培育：判 MQL 不合格时系统自动建、还没完成的培育计划一起撤（E-396）
-    if (企业版() && 离开了潜客培育(现.node, 到.node)) await 撤培育计划(tx, me, p.id);
+    // 在潜客培育上终止进程（落线索流失等结局，节点不动）也算：项目不会再培育了（E-396 客户口径）。撤销条 / 撤销不恢复计划
+    if (企业版() && (离开了潜客培育(现.node, 到.node) || (!!result && 现.result !== result && 在潜客培育(到.node)))) 撤了 = await 撤培育计划(tx, me, p.id);
     // 判无效的线索被恢复（线索流失 → 回到进行中）：判无效时记的待补没用掉的作废（invalid-makeup.ts，11-20），已用掉的不回收
     if (企业版() && 现.result === "线索流失" && result !== "线索流失") await 作废补位(tx, p.id);
     await tx.projectNodeLog.create({
@@ -479,7 +481,7 @@ export async function 改节点(
     // 手动往前推本身就是这次的一格（客户 11-19 定稿：一次只推一格）：推到的节点就算也齐了，也不接着自动推，等下一次保存或再点「完成节点」
     await 跟着项目重算(tx, 状态开, [p.customerId]);
     // 原 = 改之前在哪、下一步是什么：撤销条按它回去（不按页面上可能过时的那份，11-20 审查）
-    return { ok: true as const, 变了: true, ...(选项?.回原 ? { 原: { phase: 现.phase, node: 现.node, result: 现.result || null, 下一步文字: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? p.nextStepAt.toISOString() : null } } : {}) };
+    return { ok: true as const, 变了: true, ...(撤了 ? { 撤了培育计划: 撤了 } : {}), ...(选项?.回原 ? { 原: { phase: 现.phase, node: 现.node, result: 现.result || null, 下一步文字: p.nextStepText ?? null, 下一步时间: p.nextStepAt ? p.nextStepAt.toISOString() : null } } : {}) };
   });
 }
 
@@ -553,6 +555,8 @@ export async function 删项目(me: 谁, projectId: string): Promise<结果 & { 
       if (验?.pending) return { ok: false as const, error: `这条线索在验证中（等${验.pending}），不能删；验证走完再删` };
       if (!(await 看全部(() => tx.project.count({ where: { customerId: p.customerId, id: { not: p.id } } })))) return { ok: false as const, error: "这是客户名下最后一个项目，不能单删；要删就删客户" };
       await 软删一条(tx, "Project", p.id);
+      // 进回收站：判 MQL 不合格自动建、没完成的培育计划一起撤（E-396；从回收站恢复项目不重建）
+      await 项目们撤培育计划(tx, me, [p.id]);
       // 录音点评（PR6）：进回收站的项目上没发出的录音一起放弃（文件、通知清理一轮接着做）
       await 放弃没发出的录音(tx, [p.id]);
       // 进了回收站的项目不算进客户状态
@@ -1023,6 +1027,7 @@ export async function 放回公海(me: 谁, projectId: string, 原因?: unknown,
     await 进公海清组员(tx, [p.id], me.id);
     await 进公海清验证(tx, [p.id], me.id);
     await 进公海关主题(tx, [p.id], me.id, 现在);
+    await 项目们撤培育计划(tx, me, [p.id]);
     await 记转让(tx, p, me.id, p.ownerId, null, "pool-release", reason, 现在);
     // 企业版项目退回只进线索公海，客户不动（M-公海-02；开关 单项目客户跟着进公海 关着，pool-link.ts）；p 是改之前查的，ownerId 还是原负责人
     if (await 单项目客户跟进公海(tx, p, me.id, 现在, reason)) 客户也进了 = p.customerId;
@@ -1480,6 +1485,7 @@ async function 按规则收回(me: { id: string; name: string }, 今: Date): Pro
       await 进公海清组员(tx, [p.id], 系统.id);
       await 进公海清验证(tx, [p.id], 系统.id);
       await 进公海关主题(tx, [p.id], 系统.id, 今);
+      await 项目们撤培育计划(tx, 系统, [p.id]);
       // 是系统收的，不记在谁碰巧打开了页面的名下（QA #16）
       await 记转让(tx, p, 系统.id, p.ownerId, null, "pool-release", 超时理由, 今);
       if (await 单项目客户跟进公海(tx, p, null, 今)) 客户也进了.add(p.customerId);

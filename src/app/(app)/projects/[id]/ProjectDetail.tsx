@@ -844,8 +844,10 @@ export default function ProjectDetail({
         if (!ok) return;
         const 原 = 回.r && "原" in 回.r && 回.r.原 ? 回.r.原 : null;
         const 回到: 位置 = 原 ? { phase: 原.phase, node: 原.node, result: 原.result } : 页上;
+        // 这一下撤了判 MQL 不合格的自动培育计划：撤销只还节点，计划不回来，撤销条上说一句（E-396）
+        const 撤了计划 = !!回.r && "撤了培育计划" in 回.r && !!回.r.撤了培育计划;
         showUndo({
-          话: 附.成了 ?? `已改到 ${位置文字(到, 字典)}`,
+          话: `${附.成了 ?? `已改到 ${位置文字(到, 字典)}`}${撤了计划 ? "（培育计划已撤，不随撤销恢复）" : ""}`,
           撤销: async () => {
             const r = await 改项目节点(p.id, 回到, null, { 期望在: 到, ...(原 ? { 下一步: { 文字: 原.下一步文字, 时间: 原.下一步时间 } } : {}) });
             router.refresh();

@@ -116,12 +116,12 @@ describe("N 市场分给销售：停在潜客培育的进线索验证", () => {
       .toEqual({ userId: 市管.id, reason: 市场分配进验证理由, kind: "node" });
   });
 
-  it("N-1b 推进线索验证 = 离开潜客培育：判 MQL 不合格自动建的培育计划一起撤（负责人是市场、操作人看不到时也撤到）；人手加的不动；撤销分配不把计划带回来（E-396）", async () => {
+  it("N-1b 推进线索验证 = 离开潜客培育：判 MQL 不合格自动建的培育计划一起撤（计划在销售名下、按组织看客户开着，市场操作人也撤得到）；人手加的不动；撤销分配不把计划带回来（E-396）", async () => {
     const c = await 建客户(市管.id, 市管.id);
     const P = await 建项目(c, { ownerId: 市管.id, creatorId: 市管.id, node: "潜客培育" });
     const 别 = await 建项目(c, { ownerId: 市管.id, creatorId: 市管.id, node: "线索验证" });
     const 计划 = (projectId: string | null, autoBy: string | null, subject: string) =>
-      prisma.followPlan.create({ data: { subject, plannedAt: new Date(), customerId: c, ownerId: 市管.id, projectId, autoBy } });
+      prisma.followPlan.create({ data: { subject, plannedAt: new Date(), customerId: c, ownerId: 销售.id, projectId, autoBy } });
     await 计划(P, "mql-nurture", "潜客培育：自动");
     await 计划(P, null, "人手加的");
     await 计划(别, "mql-nurture", "别的项目的自动计划");

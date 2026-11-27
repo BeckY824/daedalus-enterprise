@@ -12,8 +12,9 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 
 import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
-import { 改节点, 改项目, 记项目沟通 } from "@/lib/project/db";
+import { 改节点, 改项目, 记项目沟通, 终止进程, 删项目, 放回公海 } from "@/lib/project/db";
 import { 判MQL } from "@/lib/project/mql";
+import { 撤培育计划 } from "@/lib/project/nurture-plan";
 import { 改项目 as 导入改项目, 读项目 as 导入读项目 } from "@/lib/enterprise-import/project-target";
 import { 缺有效沟通还差, 记沟通阶段问题, 缺本节点沟通, 要沟通的节点 } from "@/lib/project/stage-gates";
 import { 默认组织规则 } from "@/lib/project/org-rules";
@@ -267,6 +268,68 @@ describe("企业版三大阶段的门", () => {
       expect((await prisma.followPlan.findMany()).map((x) => x.subject)).toEqual(["人手加的"]);
       const 日志 = await prisma.auditLog.findFirstOrThrow({ where: { entity: "FollowPlan", action: "delete" } });
       expect(日志.summary).toContain("潜客培育：下月再问");
+    });
+
+    describe("其他撤法（E-396 客户口径）", () => {
+      const 建计划 = (p: { id: string }, subject = "潜客培育：自动") =>
+        prisma.followPlan.create({ data: { subject, plannedAt: new Date(), customerId: 客户, ownerId: 乙.id, projectId: p.id, autoBy: "mql-nurture" } });
+      const 人手加 = () => prisma.followPlan.create({ data: { subject: "人手加的", plannedAt: new Date(), customerId: 客户, ownerId: 乙.id } });
+
+      it("在潜客培育上终止进程（线索流失）：自动培育计划撤掉、人手加的不动", async () => {
+        const p = await 项目({ node: "潜客培育" });
+        await 建计划(p);
+        await 人手加();
+        expect(await 终止进程(乙, p.id, { 备注: "客户不要了" })).toMatchObject({ ok: true });
+        expect((await 现(p.id)).result).toBe("线索流失");
+        expect((await prisma.followPlan.findMany()).map((x) => x.subject)).toEqual(["人手加的"]);
+      });
+
+      it("删项目进回收站：自动培育计划撤掉（客户名下还有别的项目才能单删）", async () => {
+        const p = await 项目({ node: "潜客培育" });
+        await 项目({ name: "二号" });
+        await 建计划(p);
+        await 人手加();
+        expect(await 删项目(乙, p.id)).toMatchObject({ ok: true });
+        expect((await prisma.followPlan.findMany()).map((x) => x.subject)).toEqual(["人手加的"]);
+      });
+
+      it("项目放回公海：自动培育计划撤掉", async () => {
+        const p = await 项目({ node: "潜客培育" });
+        await prisma.contact.create({ data: { name: "联系人", customerId: 客户, phone: "13900001111", isPrimary: true } });
+        await 建计划(p);
+        await 人手加();
+        const r = await 放回公海(乙, p.id);
+        expect(r).toMatchObject({ ok: true });
+        expect((await prisma.followPlan.findMany()).map((x) => x.subject)).toEqual(["人手加的"]);
+      });
+
+      it("撤的时候这几条计划还没读的到期 / 逾期提醒标已读；别的计划的、已读的不碰", async () => {
+        const p = await 项目({ node: "潜客培育" });
+        const 计划 = await 建计划(p);
+        const 别 = await 人手加();
+        const 记 = (key: string, readAt: Date | null = null) => prisma.entNotice.create({ data: { userId: 乙.id, kind: "跟进到期", title: key, dedupeKey: key, readAt } });
+        const 到期 = await 记(`due:plan:${计划.id}:2026-11-27`);
+        const 逾期 = await 记(`overdue:plan:${计划.id}:2026-11-27`);
+        const 别的 = await 记(`due:plan:${别.id}:2026-11-27`);
+        // 返回里带撤了几条：项目页撤销条据此提示「培育计划已撤，不随撤销恢复」；没撤的不带
+        expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true, 撤了培育计划: 1 });
+        const 读 = async (id: string) => (await prisma.entNotice.findUniqueOrThrow({ where: { id } })).readAt;
+        expect(await 读(到期.id)).not.toBeNull();
+        expect(await 读(逾期.id)).not.toBeNull();
+        expect(await 读(别的.id)).toBeNull();
+      });
+
+      it("系统身份（查不到人）撤：操作日志记「系统」；返回值是实际删掉的条数", async () => {
+        const p = await 项目({ node: "潜客培育" });
+        await 建计划(p, "潜客培育：一");
+        await 建计划(p, "潜客培育：二");
+        expect(await prisma.$transaction((tx) => 撤培育计划(tx, { id: "system" }, p.id))).toBe(2);
+        expect(await prisma.$transaction((tx) => 撤培育计划(tx, { id: "system" }, p.id))).toBe(0);
+        const 日志 = await prisma.auditLog.findMany({ where: { entity: "FollowPlan", action: "delete" } });
+        expect(日志).toHaveLength(1);
+        expect(日志[0]).toMatchObject({ userName: "系统" });
+        expect(JSON.parse(日志[0].detail ?? "{}").撤了).toBe(2);
+      });
     });
 
     it("培育计划字数上限（M-节点-03）：默认不设，很长也收；管理员设了才拦，拦下一行不写", async () => {
