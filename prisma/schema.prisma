@@ -783,10 +783,16 @@ model FollowPlan {
   /// 售后回访排的下次回访（2026-11-25，迁移 173）：给哪个交付结清项目排的，记售后回访时顺带排计划那一刻系统写。
   /// 不建外键：项目删了计划照留，完成计划时核不过（项目不在 / 已不是交付结清 / 客户进了公海）就当普通计划
   afterSaleProjectId String?
+  /// 判 MQL 不合格自动建的培育计划（2026-11-27，迁移 174 / 175，客户 E-396）：记是哪个项目判的、谁建的（autoBy = "mql-nurture"）。
+  /// 项目离开「潜客培育」节点时，projectId 对得上、autoBy = mql-nurture、还没完成的计划随之撤掉（硬删 + 操作日志）。
+  /// 不建外键；人手加的计划、发版前建的计划这两列都是空，不动
+  projectId  String?
+  autoBy     String?
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
   @@index([customerId, done])
+  @@index([projectId, autoBy, done])
 }
 
 /// 操作留痕。

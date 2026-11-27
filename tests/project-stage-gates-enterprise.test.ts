@@ -210,6 +210,51 @@ describe("企业版三大阶段的门", () => {
       expect(计划.subject).toBe("潜客培育：下月再问预算");
     });
 
+    it("不合格建的培育计划带项目和来源标记（E-396）", async () => {
+      const p = await 项目({ node: "线索验证" });
+      expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "下月再问")).toEqual({ ok: true });
+      expect(await prisma.followPlan.findFirstOrThrow()).toMatchObject({ projectId: p.id, autoBy: "mql-nurture", done: false });
+    });
+
+    it("项目改回线索验证：自动培育计划撤掉（硬删、不算完成）、写操作日志；人手加的同客户计划、旧数据（两列空）不动（E-396）", async () => {
+      const p = await 项目({ node: "线索验证" });
+      const 人手 = await prisma.followPlan.create({ data: { subject: "人手加的", plannedAt: new Date(), customerId: 客户, ownerId: 乙.id } });
+      const 旧 = await prisma.followPlan.create({ data: { subject: "潜客培育：旧数据", plannedAt: new Date(), customerId: 客户, ownerId: 乙.id } });
+      await 判MQL(乙, p.id, false, 明天(), new Date(), "下月再问");
+      expect(await prisma.followPlan.count()).toBe(3);
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true });
+      const 剩 = await prisma.followPlan.findMany({ orderBy: { subject: "asc" } });
+      expect(剩.map((x) => x.id).sort()).toEqual([人手.id, 旧.id].sort());
+      expect(剩.every((x) => !x.done)).toBe(true);
+      const 日志 = await prisma.auditLog.findFirstOrThrow({ where: { entity: "FollowPlan", action: "delete" } });
+      expect(日志).toMatchObject({ userId: 乙.id });
+      expect(日志.summary).toContain("项目离开潜客培育，自动培育计划随之撤销");
+      expect(日志.summary).toContain("潜客培育：下月再问");
+    });
+
+    it("往后推（线索验证）也撤；已完成的培育计划不动；还在潜客培育里保存不撤（E-396）", async () => {
+      const p = await 项目({ node: "线索验证" });
+      await 判MQL(乙, p.id, false, 明天(), new Date(), "第一条");
+      const 做完 = await prisma.followPlan.findFirstOrThrow();
+      await prisma.followPlan.update({ where: { id: 做完.id }, data: { done: true, doneAt: new Date() } });
+      await prisma.followPlan.create({ data: { subject: "潜客培育：第二条", plannedAt: new Date(), customerId: 客户, ownerId: 乙.id, projectId: p.id, autoBy: "mql-nurture" } });
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "潜客培育" })).toMatchObject({ ok: true });
+      expect(await prisma.followPlan.count()).toBe(2);
+      expect(await 改节点(乙, p.id, { phase: "线索", node: "线索验证" })).toMatchObject({ ok: true });
+      const 剩 = await prisma.followPlan.findMany();
+      expect(剩.map((x) => x.id)).toEqual([做完.id]);
+      expect(await prisma.auditLog.count({ where: { entity: "FollowPlan", action: "delete" } })).toBe(1);
+    });
+
+    it("别的项目的自动培育计划不受影响；非企业版不撤（E-396）", async () => {
+      const p = await 项目({ node: "线索验证" });
+      const q = await 项目({ node: "线索验证", name: "二号" });
+      await 判MQL(乙, p.id, false, 明天(), new Date(), "甲的");
+      await 判MQL(乙, q.id, false, 明天(), new Date(), "乙的");
+      await 改节点(乙, p.id, { phase: "线索", node: "线索验证" });
+      expect((await prisma.followPlan.findMany()).map((x) => x.projectId)).toEqual([q.id]);
+    });
+
     it("培育计划字数上限（M-节点-03）：默认不设，很长也收；管理员设了才拦，拦下一行不写", async () => {
       const p = await 项目({ node: "线索验证" });
       expect(await 判MQL(乙, p.id, false, 明天(), new Date(), "长".repeat(1000))).toEqual({ ok: true });

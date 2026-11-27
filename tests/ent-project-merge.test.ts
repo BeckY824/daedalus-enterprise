@@ -651,7 +651,7 @@ describe("字段覆盖守卫：库里带项目 id 的表都定过挪不挪", () 
     const 不挪 = [
       "ProjectNodeLog.projectId", "EntLeadVerify.projectId", "EntLeadVerifyLog.projectId", "EntLeadAssign.projectId", "EntLeadGiveUp.projectId",
       "EntLeadMakeup.projectId", "EntLeadMakeup.usedProjectId", "EntReplyOverdue.projectId", "EntRequiredBlock.projectId", "EntProjectCold.projectId",
-      "EntProjectPayment.projectId", "EntCommission.projectId", "EntCommissionSplit.projectId", "FollowPlan.afterSaleProjectId", "AiConversation.projectId",
+      "EntProjectPayment.projectId", "EntCommission.projectId", "EntCommissionSplit.projectId", "FollowPlan.afterSaleProjectId", "FollowPlan.projectId", "AiConversation.projectId",
     ];
     // 这里只扫列名带 projectId 的。不叫 projectId、也会指项目的几处（2a 审查人工核过，处理写在 project-merge.ts 去重表旁边）：
     //   多态 targetId —— EntExternalRef（opportunity 的挪，再同步记冲突不写）、EntImportRow（不挪，整批撤回跳过合并单里的项目）、

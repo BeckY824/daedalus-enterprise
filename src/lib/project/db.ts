@@ -40,6 +40,7 @@ import { 仅记录用的, 是仅记录用 } from "./system-created";
 import { 超时回收日, 已超时, 即将回收, 将回收提醒, 将回收提醒头, 超时理由, 超时起点, 系统, 回收原因前缀, 算回收起点的留痕, 记沟通要下一步时间 } from "./timeout";
 import { getSetting, setSetting } from "../settings";
 import { recordAudit } from "../audit";
+import { 离开了潜客培育, 撤培育计划 } from "./nurture-plan";
 import { 读团队 } from "../sync/client";
 import { dayjs } from "../utils";
 import { 看全部, 只读身份中, 系统写 } from "../team-scope";
@@ -464,6 +465,8 @@ export async function 改节点(
     });
     // 企业版提成：进订单（赢单）固定实际提成（lib/project/commission-db.ts）。企业版进了订单不能退回商机（改节点问题 里拦）
     await 节点变了的提成(tx, p.id, p.phase, 到.phase);
+    // 项目离开潜客培育：判 MQL 不合格时系统自动建、还没完成的培育计划一起撤（E-396）
+    if (企业版() && 离开了潜客培育(现.node, 到.node)) await 撤培育计划(tx, me, p.id);
     // 判无效的线索被恢复（线索流失 → 回到进行中）：判无效时记的待补没用掉的作废（invalid-makeup.ts，11-20），已用掉的不回收
     if (企业版() && 现.result === "线索流失" && result !== "线索流失") await 作废补位(tx, p.id);
     await tx.projectNodeLog.create({
@@ -2052,6 +2055,7 @@ export async function 按必填推进详(tx: Prisma.TransactionClient, 规则: �
   await tx.project.update({ where: { id: p.id }, data: { phase: 下.phase, node: 下.node, ...(opt.留下一步 ? {} : 清掉的下一步) } });
   await 节点变了的提成(tx, p.id, p.phase, 下.phase);
   const 自 = 本套位置({ phase: p.phase, node: p.node, result: null }, 字典of(企业版()));
+  if (企业版() && 离开了潜客培育(自.node, 下.node)) await 撤培育计划(tx, me, p.id);
   await tx.projectNodeLog.create({
     data: {
       projectId: p.id, userId: me.id, reason: 拼备注(自动推进理由, opt.留下一步 ? null : 原下一步备注(p)),
