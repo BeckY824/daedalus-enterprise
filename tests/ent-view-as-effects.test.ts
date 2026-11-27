@@ -47,7 +47,7 @@ import { POST as 传 } from "@/app/api/attachments/route";
 import { GET as 取, DELETE as 删 } from "@/app/api/attachments/[id]/route";
 import { POST as 传导入表 } from "@/app/api/enterprise-import/upload/route";
 import { 认扫名片的人 } from "@/lib/card-scan/server/auth";
-import { 改我的资料, changeMyPassword } from "@/app/(app)/settings/actions";
+import { 改我的资料, changeMyPassword, saveUser } from "@/app/(app)/settings/actions";
 import { 视图只读错误 } from "@/lib/enterprise/view-as";
 
 const 原数据目录 = process.env.CRM_DATA_DIR;
@@ -376,6 +376,27 @@ describe("切换视图拦不经过库的动作", () => {
       await 登录成(人.甲);
       expect(await 改我的资料({ name: "改名了", title: "" })).toEqual({ ok: true });
       expect((await prisma.user.findUnique({ where: { id: 人.甲 } }))?.name).toBe("改名了");
+    });
+
+    it("E-384 职位：本人带了和库里不同的职位 → 拒绝（中文错误）、库里不动；不带 / 带原值照常改名", async () => {
+      await prisma.user.update({ where: { id: 人.甲 }, data: { title: "销售" } });
+      await 登录成(人.甲);
+      const 拒 = await 改我的资料({ name: "改名了", title: "财务" });
+      expect(拒).toEqual({ ok: false, error: "职位只能由系统管理员在「设置 → 团队成员」里修改" });
+      const 库 = await prisma.user.findUnique({ where: { id: 人.甲 } });
+      expect(库?.title).toBe("销售");
+      expect(库?.name).toBe("业务员甲");
+      expect(await 改我的资料({ name: "改名了" })).toEqual({ ok: true });
+      expect(await 改我的资料({ name: "又改了", title: "销售" })).toEqual({ ok: true });
+      const 后 = await prisma.user.findUnique({ where: { id: 人.甲 } });
+      expect([后?.name, 后?.title]).toEqual(["又改了", "销售"]);
+    });
+
+    it("E-384 职位：系统管理员在团队成员里改别人的职位照旧可用（saveUser 不受影响）", async () => {
+      await 登录成(人.老板);
+      const r = await saveUser({ id: 人.甲, name: "业务员甲", email: "sales-a", title: "财务", role: "SALES", active: true });
+      expect(r, JSON.stringify(r)).toMatchObject({ ok: true });
+      expect((await prisma.user.findUnique({ where: { id: 人.甲 } }))?.title).toBe("财务");
     });
   });
 });

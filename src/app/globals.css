@@ -338,6 +338,7 @@
 :root:root .m-top { background: var(--rail-bg); border-bottom-color: var(--mod-line); }
 /* 手机：顶栏只有一行，浮在上面会盖住菜单键，改成排在顶栏上方；电脑上内容区顶部另留了空（AppShell） */
 @media (max-width: 767px) { .view-as-bar { position: static; transform: none; align-self: center; margin: 6px 16px; } }
+.profile-title-ro { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 32px; }
 .view-as-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .view-as-text b { font-weight: 600; }
 .view-as-exit { flex: none; padding: 0 10px; border: 0; border-radius: 999px; background: var(--warning-text); color: var(--on-ink); font: inherit; line-height: 20px; cursor: pointer; }

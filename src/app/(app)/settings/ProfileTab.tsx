@@ -29,7 +29,7 @@ export default function ProfileTab({ me }: {
   async function 保存() {
     try {
       const v = await form.validateFields();
-      return await 改我的资料({ name: v.name, title: v.title ?? "" });
+      return await 改我的资料({ name: v.name });
     } catch (error) {
       return { ok: false, error: isFormValidationError(error) ? "先把标红的格填好" : "保存失败，请刷新确认结果后重试" };
     }
@@ -47,7 +47,7 @@ export default function ProfileTab({ me }: {
         </div>
       </div>
 
-      <Form form={form} layout="vertical" initialValues={{ name: me.name, title: me.title }} style={{ maxWidth: 380 }}>
+      <Form form={form} layout="vertical" initialValues={{ name: me.name }} style={{ maxWidth: 380 }}>
         <Form.Item
           name="name"
           label="名字"
@@ -59,8 +59,8 @@ export default function ProfileTab({ me }: {
         >
           <Input onChange={(e) => set预览(e.target.value)} />
         </Form.Item>
-        <Form.Item name="title" label="职位" extra="比如「销售」「课程顾问」。不填也行" rules={[{ max: 20, message: "最多 20 个字" }]}>
-          <Input placeholder="销售" />
+        <Form.Item label="职位" extra="如需修改请联系系统管理员">
+          <div className="profile-title-ro" data-testid="profile-title" title={me.title || undefined}>{me.title || "未填"}</div>
         </Form.Item>
         <Form.Item label="登录名" extra="登录用的就是它，建好之后不能改——它同时是账号的标识">
           <Input value={me.email} disabled />

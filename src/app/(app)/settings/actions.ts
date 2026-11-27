@@ -609,18 +609,23 @@ export async function 解绑飞书身份(id: string) {
  * 登录名（email 那一列）**不在这里改**：它同时是控制面账号的标识，
  * 改一边不改另一边就登不进来（见 saveUser 里那段注释）。
  */
-export async function 改我的资料(input: { name: string; title: string }) {
+export async function 改我的资料(input: { name: string; title?: string }) {
   const me = await requireUser();
   // 切换视图（只读）：写库会抛只读错，冒到界面只剩「保存失败」，这里直说
   if (await 正在切换视图()) return { ok: false as const, error: new 视图只读错误().message };
   const name = input.name.trim();
-  const title = input.title.trim();
   if (!name) return { ok: false as const, error: "名字不能为空" };
   if (name.length > 20) return { ok: false as const, error: "名字最多 20 个字" };
-  if (title.length > 20) return { ok: false as const, error: "职位最多 20 个字" };
 
   const 旧 = await prisma.user.findUnique({ where: { id: me.id }, select: { name: true, title: true } });
   if (!旧) return { ok: false as const, error: "用户不存在" };
+  /*
+    职位只让系统管理员在「团队成员」里改（E-384）：已开票名单认「职位是财务」，本人能自改职位就能绕过。
+    不带职位 = 不改；带了且和库里不同 = 想改，非系统管理员拒绝。系统管理员也统一去团队成员改，这里只留名字。
+    飞书 / 钉钉同步走 org-sync，不经过这里，不受影响。
+  */
+  const title = input.title === undefined ? 旧.title : input.title.trim();
+  if (title !== 旧.title) return { ok: false as const, error: "职位只能由系统管理员在「设置 → 团队成员」里修改" };
   if (旧.name === name && 旧.title === title) return { ok: true as const };
 
   await prisma.user.update({ where: { id: me.id }, data: { name, title } });
