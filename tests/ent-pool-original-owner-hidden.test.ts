@@ -86,6 +86,8 @@ async function 看(u: 人, c: string, p: string) {
     };
   });
 }
+/** 只有项目是他放回的（客户不是他放的，11-27：客户只认客户列）：客户照看、能领；项目看不到 */
+const 只项目看不到 = { 客户列表: true, 客户详情: true, 项目列表: false, 项目公海: false, 项目详情: false, 公海页客户: true, 公海页项目: false, 搜索: true };
 const 都看不到 = { 客户列表: false, 客户详情: false, 项目列表: false, 项目公海: false, 项目详情: false, 公海页客户: false, 公海页项目: false, 搜索: false };
 
 /** 列表条数 = 页签数：客户页两个页签，走 Prisma 老路数一遍对拍 */
@@ -203,7 +205,7 @@ describe("原负责人退到公海后看不到", () => {
 
   it("导入的（占位负责人、项目 ownerId 空）：按 pool-release 认原负责人", async () => {
     const { c, p } = await 导入的(乙.id);
-    expect(await 看(乙, c, p)).toEqual(都看不到);
+    expect(await 看(乙, c, p)).toEqual(只项目看不到);
     for (const u of [丙, 经理, 老板]) {
       expect(await 看(u, c, p), u.name).toMatchObject({ 客户列表: true, 项目公海: true, 公海页客户: true, 公海页项目: true, 搜索: true });
     }
@@ -320,12 +322,14 @@ describe("原负责人退到公海后看不到", () => {
     忘掉企业版范围();
     for (const u of [乙, 丙, 经理, 老板, 无角色]) await 页签对得上(u);
     当(乙);
-    expect(await 以谁的身份(乙.id, () => 客户页签数())).toMatchObject({ 公海: 1, 非公海: 1 });
+    expect(await 以谁的身份(乙.id, () => 客户页签数())).toMatchObject({ 公海: 2, 非公海: 1 });
   });
 
   it("退得多（名单过上限）：不报参数超限，照样回避", async () => {
     const 们: { c: string; p: string }[] = [];
     for (let i = 0; i < 130; i++) 们.push(await 导入的(乙.id, `批量${i}`));
+    // 导入的客户列是占位账号（只有项目是他放的）；客户回避只认客户列，这里把客户列也写成乙，客户名单才会过上限
+    await raw.customer.updateMany({ where: { id: { in: 们.map((x) => x.c) } }, data: { poolPrevOwnerId: 乙.id } });
     忘掉企业版范围();
     当(乙);
     await 以谁的身份(乙.id, async () => {
@@ -338,7 +342,9 @@ describe("原负责人退到公海后看不到", () => {
   });
 
   it("退得多（名单过上限）也只认最近一次：乙早先退过、后来丙领走又退的，乙看得到，丙回避（X-76，P-公海-04）", async () => {
-    for (let i = 0; i < 130; i++) await 导入的(乙.id, `批量${i}`);
+    const 批量: string[] = [];
+    for (let i = 0; i < 130; i++) 批量.push((await 导入的(乙.id, `批量${i}`)).c);
+    await raw.customer.updateMany({ where: { id: { in: 批量 } }, data: { poolPrevOwnerId: 乙.id } }); // 客户列也是乙，客户名单过上限
     // 项目级：乙退过，后来丙那一条更晚（领走再退）
     const 转手 = await 导入的(乙.id, "转手项目");
     await raw.projectNodeLog.create({ data: { projectId: 转手.p, userId: 丙.id, kind: "pool-release", fromOwnerId: 丙.id, toPhase: "线索", toNode: "线索", at: new Date(Date.now() + 60_000) } });
@@ -355,11 +361,31 @@ describe("原负责人退到公海后看不到", () => {
     expect(避).toMatchObject({ 客户: null, 项目: null });
     expect(await 看(乙, 转手.c, 转手.p)).toMatchObject({ 客户列表: true, 客户详情: true, 项目详情: true, 项目公海: true });
     expect(await 看(乙, c, p)).toMatchObject({ 客户列表: true, 客户详情: true, 项目详情: true, 项目公海: true });
-    expect(await 看(丙, 转手.c, 转手.p)).toEqual(都看不到);
+    expect(await 看(丙, 转手.c, 转手.p)).toEqual(只项目看不到); // 转手项目只有项目列是丙，客户不回避
     expect(await 看(丙, c, p)).toEqual(都看不到);
     const 还避 = await 导入的(乙.id, "还是乙最后退的");
-    expect(await 看(乙, 还避.c, 还避.p)).toEqual(都看不到);
+    // 乙的客户名单过上限（关键词分页走老路返回 null，不比搜索这一项）
+    expect(await 看(乙, 还避.c, 还避.p)).toMatchObject({ ...只项目看不到, 搜索: false });
     await 页签对得上(乙);
+  });
+
+  it("只放回了别人放回的客户名下的项目：客户不回避（能看到、能领），项目回避，领客户时项目一起归他（P-公海-04、M-公海-05、X-36）", async () => {
+    const c = await 客户(乙.id, "乙放回的客户");
+    const p = await 项目(乙.id, c, "丙放回的项目");
+    await 退客户(乙, c); // 客户和名下项目一起进公海，客户列和项目列都是乙
+    // 项目 p 是丙放回的（项目列是丙）、客户是乙放回的：用列直接造这个状态
+    await raw.project.update({ where: { id: p }, data: { poolPrevOwnerId: 丙.id } });
+    忘掉企业版范围();
+    const 避 = await 以谁的身份(丙.id, async () => (await import("@/lib/team-scope")).现在的公海回避(raw));
+    expect(避?.客户 ?? []).toEqual([]);
+    expect(避?.项目).toContain(p);
+    expect(await 看(丙, c, p)).toEqual(只项目看不到);
+    当(丙);
+    expect(await 以谁的身份(丙.id, () => 领取([c]))).toMatchObject({ ok: true, updated: 1 });
+    expect((await raw.customer.findUnique({ where: { id: c } }))?.salesOwnerId).toBe(丙.id);
+    expect(await raw.customerPool.findUnique({ where: { customerId: c } })).toBeNull();
+    expect((await raw.project.findUnique({ where: { id: p } }))?.pooledAt).toBeNull(); // 项目一起归他
+    expect((await raw.project.findUnique({ where: { id: p } }))?.customerId).toBe(c);
   });
 
   it("负责人是他的线索挂在回避客户上也不出；没挂客户的、别的客户上的照常", async () => {
@@ -384,7 +410,7 @@ describe("原负责人退到公海后看不到", () => {
     const 无角色 = await 造人("none2@x", "无角色二", "SALES", null);
     const { c, p } = await 导入的(无角色.id);
     const 别的 = await 导入的(乙.id, "别的导入");
-    expect(await 看(无角色, c, p)).toMatchObject({ 客户详情: false, 项目详情: false, 公海页客户: false, 公海页项目: false });
+    expect(await 看(无角色, c, p)).toMatchObject({ 客户详情: true, 项目详情: false, 公海页客户: true, 公海页项目: false });
     expect(await 看(无角色, 别的.c, 别的.p)).toMatchObject({ 客户详情: true, 项目详情: true });
   });
 });
@@ -403,7 +429,7 @@ describe("规则「按组织看客户」关着", () => {
     const 丙的 = await 客户(丙.id, "丙的客户");
     await 退客户(乙, c);
     expect(await 看(乙, c, p)).toEqual(都看不到);
-    expect(await 看(乙, 导.c, 导.p)).toEqual(都看不到);
+    expect(await 看(乙, 导.c, 导.p)).toEqual(只项目看不到);
     当(乙);
     expect(await 以谁的身份(乙.id, () => prisma.customer.findUnique({ where: { id: 丙的 }, select: { id: true } }))).not.toBeNull();
     expect(await 看(丙, c, p)).toMatchObject({ 客户详情: true, 项目详情: true, 公海页客户: true });

@@ -6,10 +6,10 @@
  *
  * 旧：
  *   项目 = 我最近放回的公海项目 ∪ 他负责的公海客户 / 他最近一次放走的公海客户 名下没删的项目
- *   客户 = 他负责的公海客户 ∪ 他最近一次放走的公海客户 ∪ 他最近放回的公海项目挂着的公海客户
+ *   客户 = 他负责的公海客户 ∪ 他最近一次放走的公海客户（11-27 起不含「他放回的项目挂着的客户」，客户只认客户列）
  * 新（读改按列的包 2 要用的写法）：
  *   项目 = 没删、（项目在公海且 项目.poolPrevOwnerId = 我）或（所在客户在公海且 客户.poolPrevOwnerId = 我）
- *   客户 = 没删、在公海、（客户.poolPrevOwnerId = 我 或 下面有在公海的、没删的项目 poolPrevOwnerId = 我）
+ *   客户 = 没删、在公海、客户.poolPrevOwnerId = 我
  * 可空列的坑：poolPrevOwnerId 为空的行，SQL 里 NOT (列 = 我) 是 NULL、会被一起挡掉，所以「不是我」要写成「为空或不是我」（公共写法在 pool-prev-owner-where.ts，team-scope 的回避条件拼它）。
  * 这里每位员工另做一遍互补核对：以他的身份走限定层数「能看到的公海客户 / 项目」，应等于 总数 − 新回避集合（见 互补成立），
  * 这样才真核到 team-scope 回避条件的写法（包 1 当时只核 compare 自己的式子，恒成立）。
@@ -40,10 +40,6 @@ export async function 旧回避集合(db: PrismaClient, id: string): Promise<{ �
   const 放走的 = [...(await 公海客户原负责人是(db, [id])).keys()];
   const 他的 = (await db.customer.findMany({ where: { salesOwnerId: id, pool: { isNot: null }, deletedAt: null }, select: { id: true } })).map((c) => c.id);
   const 客户 = new Set<string>([...他的, ...放走的]);
-  for (const 段 of 分段(放回的, 400)) {
-    const 行 = await db.project.findMany({ where: { id: { in: 段 }, customer: { salesOwnerId: { not: id }, pool: { isNot: null }, deletedAt: null } }, select: { customerId: true } });
-    for (const r of 行) 客户.add(r.customerId);
-  }
   const 项目 = new Set<string>(放回的);
   for (const 段 of 分段([...new Set([...他的, ...放走的])], 400)) {
     const 行 = await db.project.findMany({ where: { customerId: { in: 段 }, deletedAt: null }, select: { id: true } });
@@ -59,7 +55,7 @@ export async function 新回避集合(db: PrismaClient, id: string): Promise<{ �
     select: { id: true },
   });
   const 客户 = await db.customer.findMany({
-    where: { deletedAt: null, pool: { isNot: null }, OR: [{ poolPrevOwnerId: id }, { projects: { some: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: id } } }] },
+    where: { deletedAt: null, pool: { isNot: null }, poolPrevOwnerId: id },
     select: { id: true },
   });
   return { 项目: new Set(项目.map((r) => r.id)), 客户: new Set(客户.map((r) => r.id)) };

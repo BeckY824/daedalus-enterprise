@@ -564,16 +564,16 @@ const 跟项目的表 = new Set(["ProjectMember", "ProjectNodeLog", "FollowUpPro
 
 /**
  * 他看不到的公海客户（E-417 包 2 起认 poolPrevOwnerId 两列）。名单不过上限：id NOT IN 名单（id 非空，不踩 NULL）。
- * 名单超上限（null）退回按列写：不在公海，或「客户列为空或不是他」且「下面没有在公海的、没删的项目列是他的」。
+ * 名单超上限（null）退回按列写：不在公海，或「客户列为空或不是他」（只认客户列，11-27；名下公海项目列是他的不回避客户）。
  * 「不是他」是可空列，NOT (列 = 他) 遇到空值得 NULL、空列的行会被一起挡掉，所以用公共写法 为空或不是我（enterprise/pool-prev-owner-where.ts）；
- * 项目那段是 NOT EXISTS（none），不踩 NULL。公海里的客户人人看得到，只有回避挡得掉
+ * 公海里的客户人人看得到，只有回避挡得掉
  */
 function 回避客户条件(避: 公海回避): Record<string, unknown> {
   if (避.客户 === null) {
     return {
       OR: [
         { pool: { is: null } },
-        { AND: [为空或不是我(避.本人), { projects: { none: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: 避.本人 } } }] },
+        为空或不是我(避.本人),
       ],
     };
   }

@@ -370,7 +370,7 @@ async function 回避掉的公海客户(): Promise<string[]> {
       pool: { isNot: null },
       OR: 避.客户 === null
         // 名单过上限：按两列圈（和 team-scope 回避客户条件 同一口径，E-417 包 2）
-        ? [{ poolPrevOwnerId: 避.本人 }, { projects: { some: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: 避.本人 } } }]
+        ? [{ poolPrevOwnerId: 避.本人 }]
         : [{ id: { in: 避.客户.length ? 避.客户 : ["__无"] } }],
     },
     select: { id: true },

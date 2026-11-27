@@ -388,7 +388,8 @@ export const 回避名单上限 = 100;
  * 这个人要回避哪些公海客户和项目（11-03 用户定：原负责人退到公海，他就看不到客户和项目）。
  * E-417 包 2 起只认 Customer.poolPrevOwnerId / Project.poolPrevOwnerId 两列（放进公海时写的「最近一次放进公海的人」，
  * 曾负责、后来转走的不是它；不再从留痕、负责人推算）：
- *   - 客户：在公海、没删、客户列是他；或下面有在公海的、没删的项目，项目列是他
+ *   - 客户：在公海、没删、客户列是他（只认客户列，11-27：他只放回了客户名下的某个项目、客户是别人放回的，客户不回避，他能看到、领得到；
+ *     领客户整包带走公海项目时不看回避，含他自己放出的项目，X-36；项目照旧藏）
  *   - 项目：没删、项目在公海且项目列是他；或所在客户在公海、没删，客户列是他（客户在公海，下面的项目都算回避）
  * 别人领走客户、项目后自然从名单出来（不在公海就不算）。什么都没有的人回 undefined，查询不多任何条件。
  * 名单（客户 / 项目 id）不超上限就带下来，裸 SQL 快路 NOT IN；过上限是 null，team-scope 退回按列写的条件（回避客户条件 / 回避项目条件，
@@ -398,13 +399,12 @@ async function 公海回避of(db: PrismaClient, id: string): Promise<公海回�
   const { 原负责人回避, 一批id数 } = await import("@/lib/project/pool-owner");
   if (!原负责人回避()) return undefined;
   const 他的客户 = (await db.customer.findMany({ where: { poolPrevOwnerId: id, pool: { isNot: null }, deletedAt: null }, select: { id: true } })).map((c) => c.id);
-  // 他放回的公海项目（带所在客户：客户在公海、没删才连带回避那位客户）
+  // 他放回的公海项目（只进项目回避，不连带回避所在客户）
   const 他的项目 = await db.project.findMany({
     where: { poolPrevOwnerId: id, pooledAt: { not: null }, deletedAt: null },
-    select: { id: true, customerId: true, customer: { select: { deletedAt: true, pool: { select: { customerId: true } } } } },
+    select: { id: true },
   });
   const 客户们 = new Set<string>(他的客户);
-  for (const p of 他的项目) if (p.customer.pool && !p.customer.deletedAt) 客户们.add(p.customerId);
   const 项目们 = new Set<string>(他的项目.map((p) => p.id));
   // 客户在公海，下面的项目都算回避。名单超上限就退回按列写的条件，不用数全
   for (let i = 0; i < 他的客户.length && 项目们.size <= 回避名单上限; i += 一批id数) {
