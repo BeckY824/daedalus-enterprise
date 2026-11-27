@@ -3,8 +3,8 @@
  *   - 扫：北京 00:05 后、一天一次（Setting 水位），按「昨天」的 EntScanQuery 聚合每人 查询次数（行数）/ 撞上次数（hit 行数），
  *     查询 ≥ 50 次且 撞上 ÷ 查询 ≥ 60% 的 upsert 进 EntScanTrigger（人 + 日唯一）。50、60% 定死，不进设置。
  *     只补昨天一天，不追更早（服务停过开机后补扫昨天）。
- *   - 发：北京 08:00 后、一天一次（Setting 水位），把 EntScanTrigger 里昨天、还没发的逐条发给查询人的直属上级；
- *     直属上级没填 / 停用 → 系统管理员们（不兜条线总管理）。同人同日最多一条（去重键 + noticeAt 非空不再发）。
+ *   - 发：北京 08:00 后、一天一次（Setting 水位），把 EntScanTrigger 里最近 3 个北京日（含昨天）、还没发的按日期从早到晚逐条发给查询人的直属上级；
+ *     直属上级没填 / 停用 / 填自己 → 系统管理员们（不兜条线总管理）；收件人里永远去掉查询人本人，去掉后为空改发系统管理员（仍去掉本人），再空就不发、warn 一行。同人同日最多一条（去重键 + noticeAt 非空不再发）。
  *   - 内容只写谁、哪天、查了几次、撞上几次、撞号率，不带号码和客户名。站内通知，绑了飞书的 notify 自动推。
  *   - 总开关 enterprise.scan4.on 关了：不扫、不发（已写进 EntScanTrigger 的也不发）。
  */
@@ -33,8 +33,10 @@ export function 前一天(day: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+const 撞号百分比 = 60; // 整数常量：撞上 ×100 ≥ 查询 ×60，不用 0.6 浮点
+
 /** 达标：次数 ≥ 50 且 撞上 ×100 ≥ 查询 ×60（整数比，避免浮点） */
-export const 达标 = (查询: number, 撞上: number): boolean => 查询 >= 扫库阈值.次数 && 撞上 * 100 >= 查询 * (扫库阈值.撞号率 * 100);
+export const 达标 = (查询: number, 撞上: number): boolean => 查询 >= 扫库阈值.次数 && 撞上 * 100 >= 查询 * 撞号百分比;
 
 export type 扫库明细 = { 扫: { 日: string; 达标: number } | null; 发: { 日: string; 条: number } | null };
 
@@ -66,8 +68,14 @@ export function 扫库通知文字(名: string, day: string, 查询: number, 撞
   return { title: s, body: s };
 }
 
-async function 发一天(day: string): Promise<number> {
-  const 条们 = await prisma.entScanTrigger.findMany({ where: { day, noticeAt: null }, orderBy: { createdAt: "asc" } });
+export const 扫库补发天数 = 3;
+
+/** 发「最近 3 个北京日内（含昨天）、noticeAt 为空」的触发，日期从早到晚；通知正文里的日期照各自那天 */
+async function 发近几天(今天: string): Promise<number> {
+  const 条们 = await prisma.entScanTrigger.findMany({
+    where: { day: { gte: 前几天(今天, 扫库补发天数), lte: 前一天(今天) }, noticeAt: null },
+    orderBy: [{ day: "asc" }, { createdAt: "asc" }],
+  });
   if (!条们.length) return 0;
   const org = await 读组织();
   const 名们 = new Map((await prisma.user.findMany({ where: { id: { in: 条们.map((x) => x.userId) } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
@@ -75,10 +83,15 @@ async function 发一天(day: string): Promise<number> {
   for (const t of 条们) {
     // 在职：手填的直属上级；查询人已停用：停用前手填的上级（在职才算）。没填 / 停用 / 填自己 = null → 系统管理员们（不兜条线总管理）
     const 上 = org.成员.has(t.userId) ? 直属上级of(org, t.userId) : 离职直属上级(org, t.userId);
-    const 收 = 上 ? [上] : 系统管理员们(org);
-    if (!收.length) continue;
-    const { title, body } = 扫库通知文字(名们.get(t.userId) ?? "（已停用）", day, t.queries, t.hits);
-    await notify(收, { kind: "扫库检测", title, body, link: null, key: `扫库检测:${day}:${t.userId}` });
+    // 收件人去掉查询人本人；去掉后为空 → 全部系统管理员（仍去掉本人）；还为空 → 不发、只留一行 warn（不带号码 / 客户名）
+    let 收 = (上 ? [上] : 系统管理员们(org)).filter((id) => id !== t.userId);
+    if (!收.length) 收 = 系统管理员们(org).filter((id) => id !== t.userId);
+    if (!收.length) {
+      console.warn("[扫库检测] 没人可收", t.userId, t.day);
+      continue;
+    }
+    const { title, body } = 扫库通知文字(名们.get(t.userId) ?? "（账号已删除）", t.day, t.queries, t.hits);
+    await notify(收, { kind: "扫库检测", title, body, link: null, key: `扫库检测:${t.day}:${t.userId}` });
     await prisma.entScanTrigger.update({ where: { id: t.id }, data: { notifiedTo: 收.join(","), noticeAt: new Date() } });
     发了++;
   }
@@ -86,7 +99,7 @@ async function 发一天(day: string): Promise<number> {
 }
 
 /**
- * 钟上那一遍（nightly.ts 调；测试 / 实操用假时钟直接调）：北京 00:05 后扫昨天（一天一次）、08:00 后发昨天的（一天一次）。
+ * 钟上那一遍（nightly.ts 调；测试 / 实操用假时钟直接调）：北京 00:05 后扫昨天（一天一次）、08:00 后发最近 3 天没发的（一天一次）。
  * 开关关了 / 不是企业版 = 都不做（返回 null）。自己出错由调用方兜；扫和发各管各的水位，发失败不记水位、下一遍再试
  */
 export async function 钟上扫库检测(现在: Date = new Date()): Promise<扫库明细 | null> {
@@ -104,7 +117,7 @@ export async function 钟上扫库检测(现在: Date = new Date()): Promise<扫
       明细.扫 = { 日: 昨天, 达标: await 扫一天(昨天) };
       await setSetting(扫库扫水位键, 今天);
     }
-    明细.发 = { 日: 昨天, 条: await 发一天(昨天) };
+    明细.发 = { 日: 昨天, 条: await 发近几天(今天) };
     await setSetting(扫库发水位键, 今天);
   }
   return 明细.扫 || 明细.发 ? 明细 : null;

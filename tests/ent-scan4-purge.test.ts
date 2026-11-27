@@ -115,7 +115,7 @@ describe("④ 扫库检测 · 开关动作", () => {
   it("销售管理、市场管理、销售都改不了，开关不变、没有日志", async () => {
     for (const k of ["经理", "市场", "乙"]) {
       当(k);
-      expect(await 设扫库检测(false)).toMatchObject({ ok: false, error: "只有总管理能改这个开关" });
+      expect(await 设扫库检测(false)).toMatchObject({ ok: false, error: "只有系统管理员能改这个开关" });
     }
     expect(await 扫库检测开着()).toBe(true);
     expect(await prisma.auditLog.count({ where: { entityId: 扫库检测开关key } })).toBe(0);

@@ -5,7 +5,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { resetDb } from "./reset";
 import { prisma } from "@/lib/prisma";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
-import { 等通知推完 } from "@/lib/enterprise/notify";
+import { 等通知推完, notify } from "@/lib/enterprise/notify";
 import { 钟上扫库检测, 前一天, 达标 } from "@/lib/enterprise/scan-notice";
 import { 扫库检测开关key } from "@/lib/enterprise/scan-query";
 
@@ -158,5 +158,66 @@ describe("④ 扫库检测 · 每天一条、开关", () => {
   it("前一天跨月、跨年", () => {
     expect(前一天("2026-12-01")).toBe("2026-11-30");
     expect(前一天("2027-01-01")).toBe("2026-12-31");
+  });
+});
+
+describe("④ 扫库检测 · 收件人边界与补发", () => {
+  it("直属上级填的是自己 → 发系统管理员", async () => {
+    await 建人("戊", "sales");
+    await prisma.entMember.update({ where: { userId: 人["戊"] }, data: { managerId: 人["戊"] } });
+    await 造查询(人["戊"], 天, 50, 50);
+    await 钟上扫库检测(时(次日, "08:10"));
+    expect(await 通知(人["戊"])).toHaveLength(0);
+    expect(await 通知(人["管理员"])).toHaveLength(1);
+  });
+
+  it("没有系统管理员 → 不发、warn 一行（不带号码 / 客户名）、水位照记", async () => {
+    await prisma.entMember.delete({ where: { userId: 人["管理员"] } });
+    await 造查询(人["丙"], 天, 50, 50);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await 钟上扫库检测(时(次日, "08:10"));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0].join(" ")).toContain(人["丙"]);
+    expect(warn.mock.calls[0].join(" ")).toContain(天);
+    expect(await prisma.entNotice.count({ where: { kind: "扫库检测" } })).toBe(0);
+    expect((await 触发())[0].noticeAt).toBeNull();
+    expect(await (await import("@/lib/settings")).getSetting<string>("entScan4NoticeDay")).toBe(次日);
+  });
+
+  it("发到一半挂了重跑：通知已记、noticeAt 没写回 → 重跑不重发，noticeAt 补上", async () => {
+    await 造查询(人["乙"], 天, 50, 50);
+    await 钟上扫库检测(时(次日, "00:10"));
+    const t = (await 触发())[0];
+    await notify([人["上级"]], { kind: "扫库检测", title: "x", body: "x", link: null, key: `扫库检测:${天}:${人["乙"]}` });
+    await 等通知推完();
+    expect(await 通知(人["上级"])).toHaveLength(1);
+    await 钟上扫库检测(时(次日, "08:10"));
+    expect(await 通知(人["上级"])).toHaveLength(1);
+    expect((await prisma.entScanTrigger.findUnique({ where: { id: t.id } }))!.noticeAt).not.toBeNull();
+  });
+
+  it("查询人本人是系统管理员且没上级 → 不发给自己，发其他系统管理员", async () => {
+    await 建人("管理员2", "director");
+    await 造查询(人["管理员"], 天, 50, 50);
+    await 钟上扫库检测(时(次日, "08:10"));
+    expect(await 通知(人["管理员"])).toHaveLength(0);
+    expect(await 通知(人["管理员2"])).toHaveLength(1);
+  });
+
+  it("只有一位系统管理员且就是查询人本人 → 不发、warn", async () => {
+    await 造查询(人["管理员"], 天, 50, 50);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    await 钟上扫库检测(时(次日, "08:10"));
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(await prisma.entNotice.count({ where: { kind: "扫库检测" } })).toBe(0);
+  });
+
+  it("停机两天后开机：前两天没发的都补发、各一条，更早的（超出 3 天）不补", async () => {
+    for (const d of ["2026-11-23", "2026-11-25", 天]) await prisma.entScanTrigger.create({ data: { day: d, userId: 人["乙"], queries: 50, hits: 50 } });
+    await 钟上扫库检测(时(次日, "09:00"));
+    const ns = await 通知(人["上级"]);
+    expect(ns.map((x) => x.title)).toEqual([expect.stringContaining("11-25"), expect.stringContaining("11-26")]);
+    await 钟上扫库检测(时("2026-11-28", "09:00"));
+    expect(await 通知(人["上级"])).toHaveLength(2);
   });
 });

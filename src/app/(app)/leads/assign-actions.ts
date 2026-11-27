@@ -1200,7 +1200,7 @@ export async function 设扫库检测(on: boolean): Promise<结果> {
   const me = await requireUser();
   try {
     const org = await 读组织();
-    if (!能改后台设置(me, org)) return { ok: false, error: "只有总管理能改这个开关" };
+    if (!能改后台设置(me, org)) return { ok: false, error: "只有系统管理员能改这个开关" };
     if (typeof on !== "boolean") return { ok: false, error: "开关只能开或关" };
     if ((await 扫库检测开着()) === on) return { ok: true };
     await setSetting(扫库检测开关key, on);
