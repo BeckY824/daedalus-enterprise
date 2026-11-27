@@ -17,6 +17,7 @@ import { 企业字典, 页面字典 } from "./dict";
 import { 号码归属地 } from "./phone-region";
 import { 认号码种类, 验一行号码, 老三格, 内置号码种类, 自定种类前缀, 每人最多号码, 另一头, 联系人号查重键, type 号码种类 } from "./customer-v2";
 import { 字典定义 } from "./dict-kinds";
+import { 默认号排前, 是默认号 } from "./default-number";
 
 import { 客户显名, 显名列 } from "./customer-title";
 // ---------- 级别 D → C ----------
@@ -130,24 +131,28 @@ export async function 验联系人号码们(
 
 /**
  * 把这位联系人的号码换成交上来的这几行（事务里调）：他名下原有的几行删掉重建，客户本身的号（contactId 空）不动。
- * 返回联系人老三格（第一个手机 / 邮箱 / 微信），调用方写回 Contact.phone / email / wechat
+ * 返回联系人老三格（第一个手机 / 邮箱 / 微信），调用方写回 Contact.phone / email / wechat。
+ * 原电话 = 编辑前电话格里的号（主号，12-15 第三批 B）：交上来的几行里还有这个号就照旧是它，不按「第一个手机」换掉（改别的格不动主号）
  */
-export async function 存联系人号码(tx: Prisma.TransactionClient, customerId: string, contactId: string, 行们: readonly 验好的行[]) {
+export async function 存联系人号码(tx: Prisma.TransactionClient, customerId: string, contactId: string, 行们: readonly 验好的行[], 原电话?: string | null) {
   await tx.contactMethod.deleteMany({ where: { contactId } });
   for (const 行 of 行们) {
     await tx.contactMethod.create({ data: { customerId, contactId, kind: 行.kind, value: 行.value, numberKey: 行.numberKey, formatStatus: "ok", region: 行.region } });
   }
-  return 老三格(行们);
+  const 三 = 老三格(行们);
+  const 还在 = 原电话 ? 行们.find((x) => 是默认号(原电话, x)) : undefined;
+  return 还在 ? { ...三, phone: 还在.value } : 三;
 }
 
 /**
- * 客户页上每位联系人的号码几行。他名下子表里一行都没有的（改版前建的、个人版导过来的）：拿老三格拼出来，编辑时照样带上
+ * 客户页上每位联系人的号码几行。他名下子表里一行都没有的（改版前建的、个人版导过来的）：拿老三格拼出来，编辑时照样带上。
+ * 子表的几行带回 id（主号「设为主号」按 id 认那一行，号码打了码认不出），默认号（电话格那个，12-15 第三批 B）排最前、标 默认
  */
 export function 联系人号码们(
   联系人: { phone: string | null; email: string | null; wechat: string | null },
-  子表: readonly { kind: string; value: string }[],
-): 交上来的号[] {
-  if (子表.length) return 子表.map((x) => ({ kind: x.kind, value: x.value }));
+  子表: readonly { kind: string; value: string; id?: string }[],
+): (交上来的号 & { id?: string; 默认?: true })[] {
+  if (子表.length) return 默认号排前(联系人.phone, 子表).map((x) => ({ ...(x.id ? { id: x.id } : {}), kind: x.kind, value: x.value, ...(是默认号(联系人.phone, x) ? { 默认: true as const } : {}) }));
   return (
     [
       ["phone", 联系人.phone],
@@ -200,7 +205,7 @@ export async function 关联客户们(customerId: string): Promise<关联一行[
 
 /** 挂到这位客户上的一位联系人（主客户是别人的）。主客户看不到时只给名字，不给链接 */
 export type 挂来的联系人 = {
-  contact: Prisma.ContactGetPayload<{ include: { contactMethods: { select: { kind: true; value: true } } } }>;
+  contact: Prisma.ContactGetPayload<{ include: { contactMethods: { select: { id: true; kind: true; value: true } } } }>;
   linkId: string;
   note: string | null;
   主客户: { id: string; name: string; 看得到: boolean; 能改: boolean };
@@ -220,7 +225,7 @@ export async function 客户的联系人们(customerId: string): Promise<挂来�
     include: {
       contact: {
         include: {
-          contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true } },
+          contactMethods: { orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { id: true, kind: true, value: true } },
           customer: { select: 显名列 },
         },
       },

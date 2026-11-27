@@ -9,6 +9,7 @@
  * 撤回同合并客户：只比合成写过的那几格，还是合成写下的才改回，对不上的记进 没还原。
  */
 import type { Prisma } from "@/generated/prisma";
+import { 是默认号, 默认号种类 } from "./default-number";
 
 type Tx = Prisma.TransactionClient;
 export type 没还原 = { 类: string; id: string; 原因: string };
@@ -41,6 +42,8 @@ export type 合成明细 = {
   并原号: Record<string, string>;
   /** 「并」原来是关键联系人：去掉了它的关键标；留 = 「留」接过了关键标 */
   关键: { 并: boolean; 留: boolean };
+  /** 合成时「留」电话格里的号（主号，12-15 第三批起记；老单没有）。合成后把「并」带来的号设成了主号、又撤回时换回它 */
+  留原电话?: string | null;
 };
 
 const 改指项 = [
@@ -93,6 +96,7 @@ export async function 合成一对(tx: Tx, 留: 联系人一位, 并: 联系人�
   for (const k of [...补空格, ...号码格]) if (!有值(现留?.[k]) && 有值(现并?.[k])) 留补[k] = 现并![k] as string;
   for (const k of 号码格) if (有值(现并?.[k])) 明.并原号[k] = 现并![k] as string;
   明.补空 = 留补;
+  明.留原电话 = 现留?.phone ?? null;
   明.关键 = { 并: 并.isPrimary, 留: 并.isPrimary && !留.isPrimary };
   await tx.contact.update({ where: { id: 留.id }, data: { ...留补, ...(明.关键.留 ? { isPrimary: true } : {}) } });
   await tx.contact.update({
@@ -137,11 +141,22 @@ export async function 拆开一对(tx: Tx, 原文: string, 留id: string, 并id:
   const 现留 = await tx.contact.findUnique({ where: { id: 留id } });
   if (现留) {
     const 清: Record<string, null> = {};
+    /*
+      主号（12-15 第三批 B）：合成后把「并」带来的号设成了主号，号已随上面挪回「并」，「留」电话格不能还指着它——
+      换回合成时「留」的电话（还在他号码几行里才用），不然用他剩下的第一个手机，一个都没有就空着
+    */
+    const 留手机 = await tx.contactMethod.findMany({ where: { contactId: 留id, kind: 默认号种类 }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], select: { kind: true, value: true } });
+    const 并手机 = await tx.contactMethod.findMany({ where: { contactId: 并id, kind: 默认号种类 }, select: { kind: true, value: true } });
+    const 电话回 = 现留.phone && !留手机.some((x) => 是默认号(现留.phone, x)) && 并手机.some((x) => 是默认号(现留.phone, x))
+      ? { phone: (明.留原电话 && 留手机.find((x) => 是默认号(明.留原电话, x))?.value) || 留手机[0]?.value || null }
+      : null;
+    if (电话回) 现留.phone = 电话回.phone;
     for (const [k, v] of Object.entries(明.补空)) {
       if (现留[k as keyof typeof 现留] === v) 清[k] = null;
-      else 留.push({ 类: "联系人资料", id: 类叫(k), 原因: "合成之后被改过，保留现在的值" });
+      // 已经空着（主号挪回「并」后电话格换空了）：本来就是补之前的样子，不算没还原
+      else if (有值(现留[k as keyof typeof 现留])) 留.push({ 类: "联系人资料", id: 类叫(k), 原因: "合成之后被改过，保留现在的值" });
     }
-    await tx.contact.update({ where: { id: 留id }, data: { ...清, ...(明.关键.留 && 现留.isPrimary ? { isPrimary: false } : {}) } });
+    await tx.contact.update({ where: { id: 留id }, data: { ...(电话回 ?? {}), ...清, ...(明.关键.留 && 现留.isPrimary ? { isPrimary: false } : {}) } });
   }
   const 号回: Record<string, string> = {};
   for (const [k, v] of Object.entries(明.并原号)) if (!有值(并[k as keyof typeof 并])) 号回[k] = v;

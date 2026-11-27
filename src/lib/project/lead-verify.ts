@@ -18,6 +18,8 @@ import { 看全部 } from "../team-scope";
 import { 看已删 } from "@/lib/enterprise/soft-delete-core";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 读组织, 管理员类别们of, 能市场复核, 市场复核要读的, type 复核看的项目, type 组织 } from "@/lib/enterprise/org";
+import { 市场复核人们, 是系统管理员of } from "@/lib/enterprise/org-core";
+import { 系统 } from "./timeout";
 import { 规则开着 } from "@/lib/enterprise/rules";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
 import { 可选项, 选的原因 } from "@/lib/enterprise/dict";
@@ -167,8 +169,9 @@ async function 写状态(projectId: string, 读: 读到, data: Record<string, un
  * 先抢这一步（X-81）：别人先判过（复核判了有效、另一位也判了无效、初判已交了复核）回「已被别人判过」，项目一点不动——
  * 原来先改项目再核，核不过 return 了事务照样提交，项目白白流失。
  * 销售初判直接判死（创建人是销售）：带上这次的无效原因，不加配额——不是分来的线索，不补名额
+ * 到期 = 验证时限到期自动落定：原因写「等X超过时限，按上一步判定无效」，不写成像是 X 这个人判的
  */
-async function 判死(me: 谁, projectId: string, 读: 读到, 步: "销售初判" | "市场复核" | "总管理终判", 说明: string, 段: Record<string, unknown>): Promise<结果> {
+async function 判死(me: 谁, projectId: string, 读: 读到, 步: "销售初判" | "市场复核" | "总管理终判", 说明: string, 段: Record<string, unknown>, 到期 = false): Promise<结果> {
   const 状态开 = await 客户状态自动();
   return 看全部(() => 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: projectId }, select: 项目列 });
@@ -178,7 +181,7 @@ async function 判死(me: 谁, projectId: string, 读: 读到, 步: "销售初�
     const 现在 = new Date();
     await tx.project.update({ where: { id: p.id }, data: { result: "线索流失", closedAt: 现在 } });
     const 无效原因 = 步 === "销售初判" ? (段.invalidReason as string) : v?.invalidReason;
-    const 原因 = [无效原因 ? `无效原因：${无效原因}` : "", 步 === "销售初判" ? "负责人初判无效（创建人是销售，初判即终判）" : `${步}判无效`, 说明].filter(Boolean).join("；").slice(0, 原因上限);
+    const 原因 = [无效原因 ? `无效原因：${无效原因}` : "", 步 === "销售初判" ? "负责人初判无效（创建人是销售，初判即终判）" : 到期 ? `等${步}超过时限，按上一步判定无效` : `${步}判无效`, 说明].filter(Boolean).join("；").slice(0, 原因上限);
     await tx.projectNodeLog.create({
       data: {
         projectId: p.id, userId: me.id,
@@ -330,6 +333,56 @@ export async function 销售认领(me: 谁, projectId: string, 继续: boolean):
   return { ok: true };
 }
 
+/** 验证时限到期自动落定写进变更历史 / 验证记录的话（P-线索-05） */
+export const 到期落定话 = "验证时限到期自动落定";
+
+/** 这一步现在谁被等着（P-线索-05 提醒、通知用）：市场复核 = 能复核的人们；销售终验 = 负责人；总管理终判 = 系统管理员们 */
+export async function 被等的人们(projectId: string, 步: "市场复核" | "销售终验" | "总管理终判"): Promise<string[]> {
+  const { p, org } = await 读当前(projectId);
+  if (!p) return [];
+  if (步 === "销售终验") return [p.ownerId];
+  if (步 === "市场复核") return 市场复核人们(org, p);
+  return [...org.成员.keys()].filter((id) => 是系统管理员of(org, id));
+}
+
+/**
+ * 验证时限到期自动落定（P-线索-05）：按链上最近一次判定落定，写来源「验证时限到期自动落定」。
+ *   市场复核 / 总管理终判在等 = 上一步是销售初判无效（或销售异议）→ 按无效判死（照常记判无效待补）；
+ *   销售终验在等 = 上一步是市场复核有效 → 按接受复核落定（推到线索推进）。
+ * 只落「现在还在等这一步」的：别人先判了回「已被别人判过」、一行不写
+ * 销售终验这步被改节点拦下（必填缺、被并……）回 卡住: true（扫描据此只通知负责人一次，不每分钟重试）；别人先判了不算卡住
+ */
+export async function 到期落定(projectId: string, 步: "市场复核" | "销售终验" | "总管理终判", 现在: Date = new Date()): Promise<结果 & { 卡住?: boolean }> {
+  if (!企业版()) return 开不了;
+  const { p, v, 待, 已并入 } = await 读当前(projectId);
+  if (!p) return { ok: false, error: "这个项目已经不在了" };
+  if (已并入) return { ok: false, error: 已并入 };
+  if (待 !== 步) return 判过了;
+  if (!在验证(p)) return 作废;
+  const 读 = 快照(v);
+  const 系统人: 谁 = { id: 系统.id, role: "ADMIN" };
+  if (步 === "销售终验") {
+    // 推进程这一下替负责人做（等的就是他的终验）：系统代推——操作人记「系统」、不写必填拦截、只跳过 能改节点 / 仅上级推 / 补全期 / 字段权限（阶段只读）四道，必填照拦；
+    // 抢验证这一步 + 写痕放进改节点的同一个事务（销售中间点了「提交异议」就抢不到、整笔不动，不会出现项目走了、验证还在等总管理）
+    const 写 = { salesAck: "接受复核", ackedAt: 现在, verdict: "有效线索", finalResult: "有效线索", pending: null };
+    const r = await 改节点(系统人, p.id, { phase: "线索", node: MQL合格去 }, undefined, {
+      验证放行: true, 入口: "线索验证判定", 系统代推: true,
+      同事务: async (tx) => {
+        if (!(await 抢这一步(tx, p.id, 读, 写))) return 判过了;
+        await tx.entLeadVerifyLog.create({ data: { projectId: p.id, step: "销售终验", verdict: "接受复核", note: 到期落定话, userId: 系统人.id } });
+        return null;
+      },
+    });
+    if (!r.ok) return { ...r, 卡住: r.error !== 判过了.error };
+    return { ok: true };
+  }
+  const 说明 = `${到期落定话}（按上一步判定：无效）`;
+  const 段 = 步 === "市场复核"
+    ? { reviewResult: "无效", reviewNote: 说明, reviewedById: null, reviewedAt: 现在 }
+    : { finalNote: 说明, finalById: null, finalAt: 现在 };
+  return 判死(系统人, p.id, 读, 步, 说明, 段, true);
+}
+
 /** 撤回验证（X-77「验证中不能改派，要改先撤回验证」）：提交验证的人（初判无效交复核的那位）、系统管理员能撤 */
 function 能撤回(me: 谁, v: { pending: string | null; verifiedById: string | null } | null, org: 组织): boolean {
   return !!v?.pending && (v.verifiedById === me.id || 是总管理(me, org));
@@ -402,7 +455,7 @@ export async function 读线索验证(me: 谁, p: 项目基): Promise<线索验�
     // 最后判成有效线索：当初初判写的无效原因不再挂在结果旁边（痕里照留）
     判定, 待, 无效原因: 叫法 === "有效线索" ? null : v?.invalidReason ?? null, 叫法,
     复核结果: v?.reviewResult ?? null, 最终结果: v?.finalResult ?? null, 终验, 初判即终判: 创建人是销售(org, p.creatorId, await 读市场成员们(org)), 无效交给: 交给, 我能, 能撤回: !!待 && 能撤回(me, v ?? null, org),
-    痕: 痕.map((l) => ({ id: l.id, step: l.step, verdict: l.verdict, reason: l.reason, note: l.note, 谁: 名.get(l.userId) ?? "已不在的成员", at: l.at.toISOString() })),
+    痕: 痕.map((l) => ({ id: l.id, step: l.step, verdict: l.verdict, reason: l.reason, note: l.note, 谁: 名.get(l.userId) ?? (l.userId === 系统.id ? 系统.name : "已不在的成员"), at: l.at.toISOString() })),
   };
 }
 

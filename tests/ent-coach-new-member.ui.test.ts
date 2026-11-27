@@ -18,13 +18,13 @@ beforeAll(async () => {
     import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
     import MembersTab from '@/app/(app)/settings/MembersTab';
     const 人={id:'boss',name:'老板',email:'boss',title:'',role:'SALES',active:true,customerCount:0,oppCount:0,项目阶段:{},业务角色:['director'],系统管理员:{on:true,有线:false},followCount:0};
-    window.__render=({isAdmin})=>createRoot(document.getElementById('root')).render(<App><MembersTab users={[人]} me={{id:'boss',name:'老板',email:'boss',role:'SALES',title:'',avatar:null}} isAdmin={isAdmin} 用邮箱登录={false} 企业版 /></App>);`);
+    window.__render=({isAdmin,title,email})=>createRoot(document.getElementById('root')).render(<App><MembersTab users={[{...人,title:title??'',email:email??人.email}]} me={{id:'boss',name:'老板',email:'boss',role:'SALES',title:'',avatar:null}} isAdmin={isAdmin} 用邮箱登录={false} 企业版 /></App>);`);
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-async function open(isAdmin: boolean) {
-  const r = await 开页(browser, bundle, { isAdmin });
+async function open(isAdmin: boolean, title?: string, email?: string) {
+  const r = await 开页(browser, bundle, { isAdmin, title, email });
   await r.page.getByText("老板").first().waitFor();
   return r;
 }
@@ -150,3 +150,80 @@ it("不是系统管理员：没有「新增成员」", async () => {
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+it("E-384 职位：编辑成员（含系统管理员编辑自己）能看到「职位」输入框，改了随 saveUser 交上去；超 20 字报红不交", async () => {
+  const { page, errors } = await open(true);
+  try {
+    await page.getByRole("button", { name: "编辑 老板" }).click();
+    const 框 = page.getByRole("dialog");
+    const 职位 = 框.getByLabel("职位");
+    await 职位.waitFor();
+    await 职位.fill("财务");
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(async () => (await 调用们(page)).filter(([n]) => n === "saveUser").length).toBe(1);
+    const 交 = (await 调用们(page)).find(([n]) => n === "saveUser")![1] as { title?: string }[];
+    expect(交[0].title).toBe("财务");
+  } finally { await page.close(); }
+  const b = await open(true);
+  try {
+    await b.page.getByRole("button", { name: "编辑 老板" }).click();
+    const 框 = b.page.getByRole("dialog");
+    await 框.getByLabel("职位").fill("长".repeat(21));
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await 框.getByText("最多 20 个字").first().waitFor();
+    expect((await 调用们(b.page)).filter(([n]) => n === "saveUser").length).toBe(0);
+    expect(errors).toEqual([]);
+  } finally { await b.page.close(); }
+}, 慢);
+
+it("E-384 职位：编辑原职位就超 20 字的成员（飞书 / 钉钉同步来的）不报红，可保存；改成另一个超长职位仍报红", async () => {
+  const 长 = "长".repeat(25);
+  const a = await open(true, 长);
+  try {
+    await a.page.getByRole("button", { name: "编辑 老板" }).click();
+    const 框 = a.page.getByRole("dialog");
+    await 框.getByLabel("职位").waitFor();
+    await 框.getByLabel("姓名").fill("老板改名");
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(async () => (await 调用们(a.page)).filter(([n]) => n === "saveUser").length).toBe(1);
+    const 交 = (await 调用们(a.page)).find(([n]) => n === "saveUser")![1] as { title?: string; name?: string }[];
+    expect([交[0].name, 交[0].title]).toEqual(["老板改名", 长]);
+    expect(await 框.getByText("最多 20 个字").count()).toBe(0);
+    expect(a.errors).toEqual([]);
+  } finally { await a.page.close(); }
+  const b = await open(true, 长);
+  try {
+    await b.page.getByRole("button", { name: "编辑 老板" }).click();
+    const 框 = b.page.getByRole("dialog");
+    await 框.getByLabel("职位").fill("宽".repeat(21));
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await 框.getByText("最多 20 个字").first().waitFor();
+    expect((await 调用们(b.page)).filter(([n]) => n === "saveUser").length).toBe(0);
+    expect(b.errors).toEqual([]);
+  } finally { await b.page.close(); }
+}, 慢);
+
+it("导入来的登录名（xx@import.invalid）：编辑只改职位能保存、不报红；改成另一个不合法的报红不交", async () => {
+  const 名 = "xx@import.invalid";
+  const a = await open(true, undefined, 名);
+  try {
+    await a.page.getByRole("button", { name: "编辑 老板" }).click();
+    const 框 = a.page.getByRole("dialog");
+    await 框.getByLabel("职位").fill("销售总监");
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await expect.poll(async () => (await 调用们(a.page)).filter(([n]) => n === "saveUser").length).toBe(1);
+    const 交 = (await 调用们(a.page)).find(([n]) => n === "saveUser")![1] as { email?: string; title?: string }[];
+    expect([交[0].email, 交[0].title]).toEqual([名, "销售总监"]);
+    expect(await 框.getByText(/2–32/).count()).toBe(0);
+    expect(a.errors).toEqual([]);
+  } finally { await a.page.close(); }
+  const b = await open(true, undefined, 名);
+  try {
+    await b.page.getByRole("button", { name: "编辑 老板" }).click();
+    const 框 = b.page.getByRole("dialog");
+    await 框.getByLabel("登录用户名").fill("yy@import.invalid");
+    await 框.getByRole("button", { name: /保\s*存/ }).click();
+    await 框.getByText(/2–32/).first().waitFor();
+    expect((await 调用们(b.page)).filter(([n]) => n === "saveUser").length).toBe(0);
+  } finally { await b.page.close(); }
+}, 慢);

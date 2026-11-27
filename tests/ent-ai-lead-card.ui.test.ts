@@ -199,6 +199,40 @@ it("渠道只能选、不能手填：输入清单外的字回车后仍是原来�
   } finally { await page.close(); }
 });
 
+it("撞上自己名下客户后改了卡上客户名：「记到这位客户上」按钮消失", async () => {
+  const 填齐 = { 分配方式: 0, ownerId: "u1", 业务线: "外贸", 下一步: "发报价单", 区域去处: ["客户"] };
+  const { page, errors } = await open(1280, 900, 填齐);
+  try {
+    await page.evaluate(() => Reflect.set(window, "__回", { ok: false, error: "你名下已有同名客户", 我名下客户: { id: "c7", 名: "示例客户" } }));
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+    await page.locator(".prop-ok").click();
+    const 钮 = page.getByTestId("prop-attach-mine");
+    await 钮.waitFor();
+    await 格(page, "客户名称（组织 / 公司）").locator("input").fill("另一家示例客户");
+    await 钮.waitFor({ state: "detached" });
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("撞上自己名下客户：「记到这位客户上」手机宽（390）高 ≥ 44，电脑宽（1280）不被撑高", async () => {
+  const 填齐 = { 分配方式: 0, ownerId: "u1", 业务线: "外贸", 下一步: "发报价单", 区域去处: ["客户"] };
+  const 高 = {} as Record<number, number>;
+  for (const w of [390, 1280]) {
+    const { page, errors } = await open(w, 900, 填齐);
+    try {
+      await page.evaluate(() => Reflect.set(window, "__回", { ok: false, error: "你名下已有同名客户", 我名下客户: { id: "c7", 名: "示例客户" } }));
+      await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+      await page.locator(".prop-ok").click();
+      const 钮 = page.getByTestId("prop-attach-mine");
+      await 钮.waitFor();
+      高[w] = (await 钮.boundingBox())!.height;
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+  expect(高[390]).toBeGreaterThanOrEqual(44);
+  expect(高[1280]).toBeLessThan(40);
+});
+
 // 11-18 员工反馈「录入的时候还是添加不了截图」：对话框里带的截图摆在新线索卡上，默认勾上存成附件，确认时凭首条附件票传（服务端见 ent-ai-lead-screenshot.test.ts）
 it("对话里带了截图：缩略图 + 默认勾上「存成这条线索的附件」，确认交 首条附件、凭票传到首条沟通；不横撑（1024 / 1280 / 1366）", async () => {
   const 填齐 = { 分配方式: 0, ownerId: "u1", 业务线: "外贸", 下一步: "发报价单", 区域去处: ["客户"] };
@@ -410,6 +444,25 @@ it("撞号带后售之后改了号码，当前进程回到潜客培育", async (
     const 号 = 格(page, "联系方式").getByLabel("号码", { exact: true }).first();
     await 号.fill("13900001111");
     await expect.poll(() => 进程.innerText()).toBe("潜客培育");
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+// 12-15 第三批 E 件（E-358）：建档撞上自己名下的同名客户，错误下面给「记到这位客户上」，点了带 记到客户 再确认一次
+it("撞上自己名下的同名客户：卡上出现「记到这位客户上」，点了交 选项.记到客户 = 这位客户的 id", async () => {
+  const 填齐 = { 分配方式: 0, ownerId: "u1", 业务线: "外贸", 下一步: "发报价单", 区域去处: ["客户"] };
+  const { page, errors } = await open(1280, 900, 填齐);
+  try {
+    await page.evaluate(() => Reflect.set(window, "__回", { ok: false, error: "你名下已有同名客户", 我名下客户: { id: "c7", 名: "示例客户" } }));
+    await expect.poll(() => page.locator(".prop-ok").isDisabled()).toBe(false);
+    await page.locator(".prop-ok").click();
+    const 钮 = page.getByTestId("prop-attach-mine");
+    await 钮.waitFor();
+    expect(await 钮.innerText()).toContain("记到这位客户上");
+    await page.evaluate(() => { Reflect.deleteProperty(window, "__回"); Reflect.deleteProperty(window, "__选项"); });
+    await 钮.click();
+    await page.waitForFunction(() => Reflect.get(window, "__选项"));
+    expect(await page.evaluate(() => Reflect.get(window, "__选项"))).toEqual({ 记到客户: "c7" });
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

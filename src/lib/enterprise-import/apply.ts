@@ -625,7 +625,7 @@ export async function 改(tx: Tx, e: 实体, id: string, 改动: 值表, 现值:
     }
     return;
   }
-  if (e === "opportunity" && (await 是项目(tx, id))) return 改项目(tx, id, 改动, 现值, 现在);
+  if (e === "opportunity" && (await 是项目(tx, id))) return 改项目(tx, id, 改动, 现值, 现在, 批?.操作人);
   if (e === "opportunity") {
     const data: Prisma.OpportunityUncheckedUpdateInput = {};
     for (const k of ["name", "stage", "status", "ownerId", "customerId"] as const) if (有(k)) data[k] = String(改动[k]);

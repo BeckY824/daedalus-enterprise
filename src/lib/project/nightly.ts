@@ -15,6 +15,7 @@
  *   - 同一个钟顺带发三态提醒（lib/enterprise/tri-state-notice.ts）：北京 08:00 起一天一遍，一人一天一条汇总；停机只补当天这一条
  *   - 同一个钟顺带发「指定回复时间」提醒（lib/enterprise/reply-notice.ts，11-17）：每分钟一遍，客户要求的联系时间前 30 分钟提醒负责人；
  *     停机按状态补（截止没到的照常提醒、过了截止的不补），不用水位
+ *   - 同一个钟顺带扫过期的合并申请（lib/enterprise/merge-request.ts，11-26）：每分钟一遍，待同意过了到期时刻的记「已失效」；停机按状态补
  *   - 同一个钟顺带执行定时分配（lib/enterprise/scheduled-assign.ts，11-17）：每分钟一遍，先作废状态不对的定时，再执行到点的；
  *     停机按状态补（开机那遍把过了点、还没执行的全部执行，通知写晚了多久），不用水位
  *   - 同一个钟顺带做超时未跟进自动转（lib/enterprise/reply-overdue.ts，11-17）：指定回复时间过 1 小时没记有效沟通提醒，再 30 分钟自动转下一位；
@@ -38,10 +39,13 @@ import { 挂起移交作废 } from "@/lib/enterprise/handover-expire";
 import { 挂靠超时转上级 } from "@/lib/enterprise/attach-approval";
 import { 三态夜扫, type 三态夜扫明细 } from "@/lib/enterprise/tri-state-db";
 import { 钟上三态提醒 } from "@/lib/enterprise/tri-state-notice";
+import { 钟上扫库检测, 钟上清扫库记录 } from "@/lib/enterprise/scan-notice";
 import { 钟上指定回复提醒 } from "@/lib/enterprise/reply-notice";
 import { 钟上定时分配, type 定时分配明细 } from "@/lib/enterprise/scheduled-assign";
 import { 钟上超时自动转, type 超时转明细 } from "@/lib/enterprise/reply-overdue";
+import { 钟上验证时限 } from "./lead-verify-timeout";
 import { 收拾卡住的推送 } from "@/lib/enterprise/feishu-push";
+import { 钟上扫过期合并申请 } from "@/lib/enterprise/merge-request";
 import { dayjs } from "../utils";
 
 export const 夜扫时刻 = { 时: 0, 分: 5 } as const;
@@ -123,6 +127,12 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       // 三态提醒：排在三态那一段后面（先改状态再发），自己按北京 08:00 和当天水位判
       .then(() => 钟上三态提醒(现在))
       .then(() => undefined, (e) => console.error("[三态提醒] 出错，下一遍再试", e))
+      // ④ 扫库检测（E-383）：北京 00:05 后扫昨天、08:00 后发昨天的，各一天一次，开关关了不跑；扫和清理避开 00:15–00:50、03:15–03:50 备份窗口（E-387）
+      .then(() => 钟上扫库检测(现在))
+      .then(() => undefined, (e) => console.error("[扫库检测] 出错，下一遍再试", e))
+      // ④ 扫库记录 90 天清理：一天一次，开关关了照清；和扫各管各的
+      .then(() => 钟上清扫库记录(现在))
+      .then(() => undefined, (e) => console.error("[扫库检测] 90 天清理出错，下一遍再试", e))
       // 回收站到期清理：和超时回收各管各的，一边出错不拦另一边
       .then(() => (过了夜扫时刻(现在) ? 每天清一次(现在) : null))
       .then((清) => { r.回收站 = 清 ? Object.values(清).reduce((a, b) => a + b, 0) : 0; })
@@ -143,11 +153,17 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       .then(() => 钟上超时自动转(现在))
       .then((x) => { r.超时转 = x; })
       .then(() => undefined, (e) => console.error("[超时自动转] 出错，下一遍再试", e))
+      // 重复咨询线索的验证时限（P-线索-05）：同一个钟，等验证的 1 小时提醒、再 30 分钟自动落定；自己不抛，这里再兜一道
+      .then(() => 钟上验证时限(现在))
+      .then(() => undefined, (e) => console.error("[验证时限] 出错，下一遍再试", e))
       .then(() => 挂起移交作废(现在))
       .then(() => undefined, (e) => console.error("[移交作废] 出错，下一遍再试", e))
       // 挂靠申请 24 小时没人处理往上转一级，到总管理为止（P-挂靠-02）：自己不抛，这里再兜一道
       .then(() => 挂靠超时转上级(现在))
       .then(() => undefined, (e) => console.error("[挂靠审批] 出错，下一遍再试", e))
+      // 合并申请 5 个工作日没全部同意的记「已失效」（合并客户第二批 2b）
+      .then(() => 钟上扫过期合并申请(现在))
+      .then(() => undefined, (e) => console.error("[合并申请] 扫过期出错，下一遍再试", e))
       // 飞书推送卡在「待推 / 推送中」的（进程重启、批次出错）记成失败，不重推（M-公海-33）；每 10 分钟最多一次
       .then(() => 收拾卡住的推送(现在))
       .then(() => undefined, (e) => console.error("[飞书推送] 收拾卡住的行出错，下一遍再试", e))

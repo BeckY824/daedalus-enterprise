@@ -19,8 +19,8 @@ afterAll(async () => { await browser?.close(); });
 
 const 长 = "编造的一个特别特别长的留下项目名字用来看省略号和悬停全文是否正常显示";
 const 行 = (i: number, 状态 = "已合并") => ({
-  id: `m${i}`, at: "2026-11-28T03:00:00.000Z", 发起人: "成员甲", 客户id: `c${i}`, 客户: `编造客户${i}`, 留下id: `a${i}`, 留下项目: i === 0 ? 长 : `留下${i}`,
-  被并id: `b${i}`, 被并项目: `被并${i}`, 留下负责人: "成员甲", 被并负责人: "成员甲", 自查人: "成员甲", 自查时间: "2026-11-28T03:00:00.000Z",
+  id: `m${i}`, 类型: i === 1 ? "公海客户合并" : "项目合并", 被并客户: i === 1 ? "编造公海乙" : "", 被并编号: i === 1 ? "NO.00012" : "", at: "2026-11-28T03:00:00.000Z", 发起人: "成员甲", 客户id: `c${i}`, 客户: `编造客户${i}`, 留下id: `a${i}`, 留下项目: i === 0 ? 长 : i === 1 ? "" : `留下${i}`,
+  被并id: `b${i}`, 被并项目: i === 1 ? "" : `被并${i}`, 留下负责人: "成员甲", 被并负责人: "成员甲", 自查人: "成员甲", 自查时间: "2026-11-28T03:00:00.000Z",
   状态, 撤回人: 状态 === "已撤回" ? "成员乙" : "", 撤回时间: 状态 === "已撤回" ? "2026-11-29T03:00:00.000Z" : null,
 });
 const props = (给台账: boolean) => ({
@@ -59,6 +59,11 @@ for (const w of [390, 1024, 1440]) {
       expect(await 格.evaluate((el) => ({ 截: el.scrollWidth > el.clientWidth, 行高: el.getBoundingClientRect().height, 新页: (el as HTMLAnchorElement).target }))).toMatchObject({ 截: true, 新页: "_blank" });
       expect((await 格.boundingBox())!.height).toBeLessThan(30);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      // 公海客户合并行：「被并项目」那格写被并客户（带编号），看得出并掉的是哪家；一行省略号；顶部提示写了撤回入口
+      const 公海格 = page.locator('[data-testid=合并台账] .ml-cell[title="NO.00012 编造公海乙"]');
+      expect(await 公海格.count()).toBe(1);
+      expect((await 公海格.boundingBox())!.height).toBeLessThan(30);
+      await page.getByText(/公海客户合并到留下那家客户详情的历史变更里撤回/).first().waitFor();
 
       await page.getByRole("searchbox", { name: "按客户名或项目名搜" }).fill("编造客户0");
       await page.keyboard.press("Enter");

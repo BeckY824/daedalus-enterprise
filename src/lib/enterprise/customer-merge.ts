@@ -117,8 +117,14 @@ async function 离职交接拦(db: Pick<Tx, "entHandover" | "project">, 两家: 
   return 因;
 }
 
-/** 不能并的原因（空 = 能并）。A = 留下，B = 并掉 */
-async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null): Promise<string[]> {
+/**
+ * 不能并的原因（空 = 能并）。A = 留下，B = 并掉。
+ * 按申请（第二批 2b 跨负责人合并申请，merge-request.ts）：只判数据拦法（交接中、公海、无效、业务线不同），
+ * 「是不是自己负责」那层不判——申请模式下改成算要同意的人、全同意了才执行。
+ * 并掉看不到（按申请、并进来那家发起人看不到，靠完整号码放行进来的，PR #506 审查第 3、4 条）：拦话不超过挂靠只读卡——
+ * 那家的交接中、离职交接、标了无效统一说 并掉看不到话、不点名原因也不报名字；业务线不同只说「两家业务线不同」、不列值
+ */
+async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null, 按申请 = false, 并掉看不到 = false): Promise<string[]> {
   if (!企业版()) return ["只有企业版能合并客户"];
   if (!A || !B) return ["客户不存在或已删除，刷新看看"];
   if (A.id === B.id) return ["不能和自己合并，请选另一位客户"];
@@ -128,21 +134,44 @@ async function 拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | nu
   const 在公海 = (c: 客户行) => !!c.pool;
   if (在公海(A) !== 在公海(B)) 因.push(`「${名(在公海(A) ? A : B)}」在公海里，先领出来再并`);
   else if (在公海(A) && !管) 因.push("两家都在公海里，只有系统管理员能合并");
-  if (!管 && !在公海(A)) {
+  // 第二批 2b-3：直接并不了的两种（有一家是同事的、名下有同事在推的项目）引导发合并申请（方案第二批第 4 节：第一批拦下要找系统管理员的改成发申请）
+  if (!管 && !在公海(A) && !按申请) {
     const 不是我的 = [A, B].filter((c) => !能删除(me, org, c.salesOwnerId));
-    if (不是我的.length) 因.push(`${不是我的.map((c) => `「${名(c)}」`).join("")}不是你负责的，只能合并两家都由你负责的客户；要并同事的客户，请找系统管理员代并`);
+    if (不是我的.length) 因.push(`${不是我的.map((c) => `「${名(c)}」`).join("")}不是你负责的，只能直接合并两家都由你负责的客户；要并同事的客户，可以发合并申请，要同意的人都同意后合并`);
     else
       for (const c of [A, B]) {
         const n = await 同事在推个数(db, c.id, me.id);
-        if (n) 因.push(`「${名(c)}」名下${同事项目几个话(n)}，不能直接合并；请找系统管理员代并`);
+        if (n) 因.push(`「${名(c)}」名下${同事项目几个话(n)}，不能直接合并；可以发合并申请，要同意的人都同意后合并`);
       }
   }
+  const 藏B = 按申请 && 并掉看不到;
+  let 说过B = false;
+  /** B 的状态拦话：看不到时只说一次 并掉看不到话 */
+  const 拦B = (话: string) => {
+    if (!藏B) return void 因.push(话);
+    if (!说过B) 因.push(并掉看不到话);
+    说过B = true;
+  };
   const 交接 = await 交接中的客户([A.id, B.id], db as Tx);
-  for (const c of [A, B]) if (交接.has(c.id)) 因.push(`「${名(c)}」正在转让交接中，等接手人确认或撤回交接后再并`);
-  因.push(...(await 离职交接拦(db as Tx, [A, B], "并")));
-  for (const c of [A, B]) if (c.poolInvalidAt) 因.push(`「${名(c)}」标了无效客户，先由系统管理员恢复再并`);
-  if (有值(A.bizLine) && 有值(B.bizLine) && A.bizLine !== B.bizLine) 因.push(`两家业务线不同（${A.bizLine} / ${B.bizLine}），不能合并`);
+  if (交接.has(A.id)) 因.push(`「${名(A)}」正在转让交接中，等接手人确认或撤回交接后再并`);
+  if (交接.has(B.id)) 拦B(`「${名(B)}」正在转让交接中，等接手人确认或撤回交接后再并`);
+  因.push(...(await 离职交接拦(db as Tx, [A], "并")));
+  for (const 话 of await 离职交接拦(db as Tx, [B], "并")) 拦B(话);
+  if (A.poolInvalidAt) 因.push(`「${名(A)}」标了无效客户，先由系统管理员恢复再并`);
+  if (B.poolInvalidAt) 拦B(`「${名(B)}」标了无效客户，先由系统管理员恢复再并`);
+  if (有值(A.bizLine) && 有值(B.bizLine) && A.bizLine !== B.bizLine) 因.push(藏B ? "两家业务线不同，不能合并" : `两家业务线不同（${A.bizLine} / ${B.bizLine}），不能合并`);
   return 因;
+}
+
+/** 并进来那家发起人看不到时，它自己的状态（交接中、无效、没负责人、挂着别的申请）拦下统一这一句，不点名原因（PR #506 审查第 3 条） */
+export const 并掉看不到话 = "这家暂时不能并，请联系它的负责人";
+
+/**
+ * 第二批 2b 合并申请发起前判数据拦法（不判「是不是自己负责」，见 拦的原因）。
+ * 并掉看不到 = 并进来那家发起人看不到（按完整号码放行进来的）：拦话收窄，见 拦的原因
+ */
+export async function 申请拦的原因(db: Tx | 库, A: 客户行 | null, B: 客户行 | null, me: 合并人, org: 组织 | null, opt: { 并掉看不到?: boolean } = {}): Promise<string[]> {
+  return 拦的原因(db, A, B, me, org, true, !!opt.并掉看不到);
 }
 
 /* ───────────────────────── 只补空 ───────────────────────── */
@@ -220,7 +249,7 @@ async function 人名们(db: Pick<Tx, "user">, ids: (string | null | undefined)[
   return new Map((await db.user.findMany({ where: { id: { in: 们 } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
 }
 
-function 来源或创建人不同(A: 客户行, B: 客户行): boolean {
+export function 来源或创建人不同(A: 客户行, B: 客户行): boolean {
   return (A.channelId ?? null) !== (B.channelId ?? null) || (A.touchpoint ?? null) !== (B.touchpoint ?? null) || (A.creator?.userId ?? null) !== (B.creator?.userId ?? null);
 }
 
@@ -245,31 +274,40 @@ async function 数条数(db: Tx | 库, id: string): Promise<合并条数> {
 }
 
 /** 合并预览：A = 留下那家，B = 要并掉的那家 */
-export async function 合并预览(db: 库, 留下id: string, 并掉id: string, me: 合并人): Promise<合并预览结果> {
+/**
+ * 合并预览。按申请（第二批 2b 发合并申请前的预览，merge-request.ts 合并申请预览）：只判数据拦法；
+ * 同事那家不超过挂靠只读卡（方案第二批第 11 件第 3 条）：联系人只给姓名、职务，不给号码；并排不给地址、客户状态（只读卡不给负责人、级别、状态）。
+ * 建档时间照给：方案那条只列了条数、来源和创建人，没点名建档时间，只读卡也没这格；一个日期不露联系方式、帮着判是不是同一家，先留（2b-3 审查单 A 第 2 条）
+ */
+export async function 合并预览(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 按申请?: boolean; 并掉看不到?: boolean } = {}): Promise<合并预览结果> {
   const org = await 权限组织();
   const [A, B] = await Promise.all([读客户(db, 留下id), 读客户(db, 并掉id)]);
-  const 原因 = await 拦的原因(db, A, B, me, org);
+  const 按申请 = !!opt.按申请;
+  // 按申请且并进来那家看不到（按完整号码放行）：并排再去掉业务线（只读卡没这格，PR #506 审查第 4 条），拦话收窄见 拦的原因
+  const 藏B = 按申请 && !!opt.并掉看不到;
+  const 原因 = await 拦的原因(db, A, B, me, org, 按申请, 藏B);
   if (!A || !B) return { 能并: false, 原因, 并排: [], 条数: null, 要勾选: false, 补空: [], 号格留下有值: [], 联系人们: { 留下: [], 并掉: [] } };
   const 人 = await 人名们(db, [A.salesOwnerId, B.salesOwnerId, A.creator?.userId, B.creator?.userId]);
   const 日 = (d: Date) => d.toISOString().slice(0, 10);
   const 行 = (格: string, a: string, b: string, 标红 = false): 并排格 => ({ 格, 留下: a, 并掉: b, 不同: a !== b, ...(标红 && a !== b ? { 标红: true } : {}) });
   const 并排 = [
-    行("客户名称", A.name ?? "", B.name ?? ""),
-    行("客户简称", A.shortName ?? "", B.shortName ?? ""),
+    // 并进来那家发起人看不到（按号放行）：名称给代称、简称不给，同搜索行和确认框
+    行("客户名称", A.name ?? "", 藏B ? "同事负责的客户（号码撞上）" : B.name ?? ""),
+    行("客户简称", A.shortName ?? "", 藏B ? "" : B.shortName ?? ""),
     行("客户编号", 客户编号文字(A.customerNo) ?? "", 客户编号文字(B.customerNo) ?? ""),
     行("负责人", 人.get(A.salesOwnerId) ?? (A.pool ? "公海" : ""), 人.get(B.salesOwnerId) ?? (B.pool ? "公海" : "")),
     行("来源渠道", A.channel?.name ?? "", B.channel?.name ?? "", true),
     行("渠道触点", A.touchpoint ?? "", B.touchpoint ?? "", true),
     行("创建人", 人.get(A.creator?.userId ?? "") ?? "", 人.get(B.creator?.userId ?? "") ?? "", true),
-    行("业务线", A.bizLine ?? "", B.bizLine ?? ""),
+    ...(藏B ? [] : [行("业务线", A.bizLine ?? "", B.bizLine ?? "")]),
     行("客户类型", A.customerType ?? "", B.customerType ?? ""),
     行("客户属性", A.customerAttr ?? "", B.customerAttr ?? ""),
-    行("客户地址", 地址(A), 地址(B)),
-    行("客户状态", A.custStatus ?? "", B.custStatus ?? ""),
+    ...(按申请 ? [] : [行("客户地址", 地址(A), 地址(B)), 行("客户状态", A.custStatus ?? "", B.custStatus ?? "")]),
     行("建档时间", 日(A.createdAt), 日(B.createdAt)),
   ];
   // 拦住的不给联系人明细（只给能并的人看两家的人和号）
-  const 联系人们 = 原因.length ? { 留下: [], 并掉: [] } : { 留下: await 预览联系人们(db, A.id, me), 并掉: await 预览联系人们(db, B.id, me) };
+  const 不给号 = (们: 预览联系人[]) => (按申请 ? 们.map((c) => ({ ...c, 号: [] })) : 们);
+  const 联系人们 = 原因.length ? { 留下: [], 并掉: [] } : { 留下: 不给号(await 预览联系人们(db, A.id, me)), 并掉: 不给号(await 预览联系人们(db, B.id, me)) };
   return { 能并: 原因.length === 0, 原因, 并排, 条数: await 数条数(db, B.id), 要勾选: 来源或创建人不同(A, B), 补空: 补空叫法(算补空(A, B)), 号格留下有值: 号格留下有值(A, B), 联系人们 };
 }
 
@@ -306,6 +344,8 @@ type 合并明细 = {
   审批人: { id: string; 原: string | null; 新: string | null }[];
   补空: 补空;
   退回次数: number;
+  /** 两家都在公海（系统管理员并）：合并台账靠它把这张客户合并单列进去（P-合并-07） */
+  公海?: true;
   /** A 有备注、B 也有（不一样）：A 的照旧，B 的记在这里可查（合并单列表读得出） */
   被并备注?: string;
 };
@@ -343,8 +383,12 @@ async function 查同一个人(tx: Tx, A: string, B: string, 对们: readonly �
   return null;
 }
 
-/** 执行合并：B 并进 A。已核对 = 预览里要勾选时勾过了；同一个人 = 勾了「是同一个人」的几对联系人，合成一位 */
-export async function 执行合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 已核对?: boolean; 现在?: Date; 同一个人?: readonly 同一个人[] } = {}): Promise<结果<合并完>> {
+/**
+ * 执行合并：B 并进 A。已核对 = 预览里要勾选时勾过了；同一个人 = 勾了「是同一个人」的几对联系人，合成一位。
+ * 申请（第二批 2b，merge-request.ts 全同意后调）：me = 发起人，不判「是不是自己负责」（同意人已经同意过），
+ * 申请经过（JSON）记进合并单的 approvals 那一格；申请.并掉看不到 = 并进来那家发起人看不到（按号放行进来的），拦话照 拦的原因 收窄
+ */
+export async function 执行合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 已核对?: boolean; 现在?: Date; 同一个人?: readonly 同一个人[]; 申请?: { 经过: string; 已另通知?: readonly string[]; 并掉看不到?: boolean } } = {}): Promise<结果<合并完>> {
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
   const 开 = await 客户状态自动();
@@ -355,7 +399,8 @@ export async function 执行合并(db: 库, 留下id: string, 并掉id: string, 
       看全部(() =>
         db.$transaction(async (tx) => {
           const [A, B] = [await 读客户(tx, 留下id), await 读客户(tx, 并掉id)];
-          const 原因 = await 拦的原因(tx, A, B, me, org);
+          // 按申请且并进来那家发起人看不到：拦话收窄（拦下的话会存成申请的失效原因、发给发起人，2b-3 第二段审查第 1 条）
+          const 原因 = await 拦的原因(tx, A, B, me, org, !!opt.申请, !!opt.申请?.并掉看不到);
           if (原因.length) throw new 拦下(原因.join("；"));
           if (来源或创建人不同(A!, B!) && !opt.已核对) throw new 拦下(`两家的来源或创建人不一样，请先勾选「${已核对话}」`);
           const 对们 = opt.同一个人 ?? [];
@@ -364,6 +409,7 @@ export async function 执行合并(db: 库, 留下id: string, 并掉id: string, 
           // 先读好每对两位当时的样子（关键标、主客户），挪完再合成
           const 两位 = new Map((await tx.contact.findMany({ where: { id: { in: 对们.flatMap((x) => [x.留, x.并]) } }, select: { id: true, name: true, customerId: true, isPrimary: true, deletedAt: true } })).map((c) => [c.id, c]));
           const 结 = await 挪(tx, A!, B!, me, 现在, 开);
+          if (opt.申请) await tx.entCustomerMerge.update({ where: { id: 结.mergeId }, data: { approvals: opt.申请.经过 } });
           for (const x of 对们) {
             // 挪的时候 B 的关键标可能已经去掉了：按挪完的样子合成
             const 现 = await tx.contact.findMany({ where: { id: { in: [x.留, x.并] } }, select: { id: true, name: true, customerId: true, isPrimary: true, deletedAt: true } });
@@ -388,7 +434,7 @@ export async function 执行合并(db: 库, 留下id: string, 并掉id: string, 
   }
   忘掉企业版范围();
   await 存沟通后重算三态(留下id, 现在).catch((e) => console.warn("[合并客户] 三态没重算上：", e instanceof Error ? e.message : e));
-  if (通知要) await 合并后通知(通知要, me);
+  if (通知要) await 合并后通知(通知要, me, opt.申请?.已另通知 ?? []);
   return { ok: true, ...r! };
 }
 
@@ -508,6 +554,7 @@ async function 挪(tx: Tx, A: 客户行, B: 客户行, me: 合并人, 现在: Da
   if (B.pool) {
     const 行 = await tx.customerPool.findUnique({ where: { customerId: B.id } });
     if (行) { await tx.customerPool.delete({ where: { customerId: B.id } }); 明.删掉.customerPool.push(行); }
+    if (A.pool) 明.公海 = true;
   }
 
   // B 只软删、不连带（子行都已挪走）
@@ -613,10 +660,11 @@ export async function 重算最近跟进(tx: Tx, customerId: string) {
 
 /**
  * 合并后通知（E-280 三.2）：被并那家的创建人、来源渠道负责人（B 的 channelOwnerId，空的取 B 主渠道的负责人）各一条，站内 + 飞书。
- * 系统管理员代并时，不是操作人本人的两家负责人也各一条（🔍 我方推断，方案第六节第 3 条）。操作人自己不发
+ * 系统管理员代并时，不是操作人本人的两家负责人也各一条（🔍 我方推断，方案第六节第 3 条）。操作人自己不发。
+ * 按合并申请执行的（第二批 2b-3 第二段）：发起人、同意人已收到申请那条「已合并」，这里不再重复发（已另通知）
  */
-async function 合并后通知({ A, B }: { A: 客户行; B: 客户行 }, me: 合并人): Promise<void> {
-  const 收 = [B.creator?.userId, B.channelOwnerId || B.channel?.channelOwnerId, A.salesOwnerId, B.salesOwnerId].filter((u) => u && u !== me.id);
+async function 合并后通知({ A, B }: { A: 客户行; B: 客户行 }, me: 合并人, 已另通知: readonly string[] = []): Promise<void> {
+  const 收 = [B.creator?.userId, B.channelOwnerId || B.channel?.channelOwnerId, A.salesOwnerId, B.salesOwnerId].filter((u) => u && u !== me.id && !已另通知.includes(u));
   await notify(收, {
     kind: 合并通知种类,
     title: `「${名(B)}」已并入「${名(A)}」`,
