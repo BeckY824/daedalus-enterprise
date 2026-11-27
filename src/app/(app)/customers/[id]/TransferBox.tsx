@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, Input, Modal, Select } from "antd";
 import { 其他项, 其他补充上限, 合其他 } from "@/lib/enterprise/dict-kinds";
 import { 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
-import { 逐项选块, 说明框, 默认选, 随转的, type 逐项选择 } from "../TransferItemized";
+import { 逐项选块, 说明框, 默认选, 随转的, 含勾选, type 逐项选择 } from "../TransferItemized";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { 自动分配说明, 自动分配生效话 } from "@/lib/enterprise/cust-auto-assign-words";
 import { 方向来源说明, 区域未填提示, type 分配方向 } from "@/lib/enterprise/customer-region";
@@ -112,7 +112,7 @@ export default function TransferBox({
   const 要说明 = !自动中 && !!谁 && !!预览 && 预览.谁 === 谁 && (!!预览.原?.要说明 || 没取到);
   const 说明预览: 转走项目预览 | null | undefined = 没取到 ? { 项目数: 0, 项目: [], 要说明: true } : 预览?.原;
   const 能发 = (自动中 || !!谁) && 原因齐 && !忙 && (!要说明 || !!说明.trim());
-  const 说 = 自动中 ? 自动预览?.说 ?? null : 预览 && 预览.谁 === 谁 ? 预览.说 : null;
+  const 说 = 自动中 ? 自动预览?.说 ?? null : 预览 && 预览.谁 === 谁 ? (预览.原 ? 转走项目说法(含勾选(预览.原, 逐项)) : 预览.说) : null;
   /** 「一起转」那格：还在取 / 取到了 */
   const 取到了 = 自动中 ? !!自动预览 : !!预览 && 预览.谁 === 谁;
 

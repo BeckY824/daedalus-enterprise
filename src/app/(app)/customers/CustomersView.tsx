@@ -1657,6 +1657,9 @@ export default function CustomersView({
       {表单料 && <CustomerForm
         open={formOpen && 已水合}
         editing={editing}
+        开转让={editing && !editing.pool && !只读的.has(editing.id) && !不问归属 && !公海页 && (!企业 || 能分配公海 || 能转出自己的)
+          ? () => { const id = editing.id; setFormOpen(false); setEditing(null); set转让框挂过(true); set转让框({ ids: [id], 清空: () => {} }); }
+          : undefined}
         users={users}
         channels={表单料.channels}
         负责人只能自己={负责人只能自己}

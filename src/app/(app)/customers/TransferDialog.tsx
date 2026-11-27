@@ -18,7 +18,7 @@ import { 转走项目说法, type 转走项目预览 } from "@/lib/carry-over";
 import { 跑出原因, type 做的结果 } from "@/lib/confirm-result";
 import { 移交作废天数 } from "@/lib/enterprise/handover-expire-days";
 import { 转走项目列表 } from "./useCarryConfirm";
-import { 逐项选块, 说明框, 默认选, 随转的, type 逐项选择 } from "./TransferItemized";
+import { 逐项选块, 说明框, 默认选, 随转的, 含勾选, type 逐项选择 } from "./TransferItemized";
 import { 自动分配说明, 自动分配生效话 } from "@/lib/enterprise/cust-auto-assign-words";
 import { 动作出错话 } from "@/lib/stale-deploy";
 import { 按方向挑, 指定方向话, type 指定候选表 } from "@/lib/enterprise/assign-direction-pick-core";
@@ -192,6 +192,8 @@ export default function TransferDialog({
   const 说明预览: 转走项目预览 | null | undefined = 没取到 ? { 项目数: 0, 项目: [], 要说明: true } : 转走?.原;
   const 原因齐 = !要原因 || 选 !== 其他项 || !!写.trim();
   const 转走好了 = !取转走 || (转走 && 转走.谁 === 谁);
+  /** 勾了随客户转的同事项目算进「会一起转走的 N 个项目」 */
+  const 转走说法 = 转走?.原 ? 转走项目说法(含勾选(转走.原, 逐项)) : 转走?.说法;
   const 能转 = (自动中 || !!谁) && 原因齐 && !忙 && (!要说明 || !!说明.trim());
   /** true 要确认 / false 直接生效 / undefined 说不清（还在取、取不到） */
   const 是申请: boolean | undefined = !谁 ? undefined : 申请 ?? (转走好了 ? 转走?.要确认 : undefined);
@@ -380,15 +382,15 @@ export default function TransferDialog({
                   </span>
                 </li>
               )}
-              {转走好了 && 转走?.说法 && (
+              {转走好了 && 转走说法 && (
                 <li className="csq-row">
                   <span className="csq-tag" data-level="警">
                     一起转走
                   </span>
                   <span className="csq-t">
-                    {转走.说法.标题}
-                    {转走.说法.同事 && `；${转走.说法.同事}`}
-                    <转走项目列表 说法={转走.说法} />
+                    {转走说法.标题}
+                    {转走说法.同事 && `；${转走说法.同事}`}
+                    <转走项目列表 说法={转走说法} />
                   </span>
                 </li>
               )}
