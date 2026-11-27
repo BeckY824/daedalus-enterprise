@@ -473,7 +473,7 @@ describe("裁定人按当前组织重算（审查 M3，口径 A2 / B1）", () =>
     expect(审.some((x) => x.summary.includes("本人发起"))).toBe(true);
   });
 
-  it("接手人是唯一系统管理员、发起人不是：接手人自己裁，页面和留痕写「本人接手、无人回避」", async () => {
+  it("接手人是唯一系统管理员、发起人不是：接手人自己裁，页面和留痕写「本人接手、本人裁定」", async () => {
     await prisma.entMember.delete({ where: { userId: 副管.id } });
     await prisma.user.update({ where: { id: 副管.id }, data: { role: "SALES" } });
     await prisma.entMember.update({ where: { userId: 线总管.id }, data: { line: "外贸" } });
@@ -489,7 +489,15 @@ describe("裁定人按当前组织重算（审查 M3，口径 A2 / B1）", () =>
     当(老板);
     expect(await 裁定(老板, 行.id, "维持", "本人接手的")).toMatchObject({ ok: true });
     const 审 = await prisma.auditLog.findMany({ where: { entityId: a.id } });
-    expect(审.some((x) => x.summary.includes("本人接手、无人回避"))).toBe(true);
+    expect(审.some((x) => x.summary.includes("本人接手、本人裁定"))).toBe(true);
+    const 详 = JSON.parse(审.find((x) => x.summary.includes("本人接手、本人裁定"))!.detail as string);
+    expect(详).toMatchObject({ 类型: "本人接手", 本人接手: true, 本人裁定: true });
+    // 进特殊裁定台账：类型写「本人接手」，裁定人 = 接手人，时间是北京时间字符串
+    const { 特殊裁定台账 } = await import("@/lib/enterprise/objection-judge");
+    const 台 = await 特殊裁定台账(老板.id);
+    expect(台).toHaveLength(1);
+    expect(台[0]).toMatchObject({ id: 行.id, 类型: "本人接手", 裁定人: 老板.name, 接手人: 老板.name, 结果: "维持" });
+    expect(台[0].裁定于).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/);
   });
 
   it("全部待裁定每行带「能裁」：发起人是系统管理员、还有别的系统管理员可裁时，发起人那行不能裁（页上不出维持 / 撤回），别的系统管理员能裁", async () => {
@@ -528,8 +536,8 @@ describe("特殊裁定台账（E-436）：本人发起、本人裁定", () => {
     const { 特殊裁定台账 } = await import("@/lib/enterprise/objection-judge");
     const 台 = await 特殊裁定台账(老板.id);
     expect(台).toHaveLength(1);
-    expect(台[0]).toMatchObject({ id: 行.id, 发起人: 老板.name, 结果: "维持", 理由: "本人裁" });
-    const 月 = new Date().toISOString().slice(0, 7);
+    expect(台[0]).toMatchObject({ id: 行.id, 类型: "本人发起", 发起人: 老板.name, 结果: "维持", 理由: "本人裁" });
+    const 月 = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 7); // 北京月，和台账切月一致
     expect(await 特殊裁定台账(老板.id, 月)).toHaveLength(1);
     expect(await 特殊裁定台账(老板.id, "2001-01")).toEqual([]);
   });
