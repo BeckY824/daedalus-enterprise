@@ -146,6 +146,10 @@ describe("对拍：旧算法 vs 按列", () => {
     const 前 = await 对拍(raw, prisma);
     expect(前.不一致人数).toBeGreaterThan(0);
     await 写回填(raw, await 算回填计划(raw), () => {});
+    忘掉企业版范围(); // 每人范围有 10 秒缓存：前一次对拍缓存了「还没有回避」，不忘掉的话下面核到的是旧值（看 === 总 蒙混过去）
+    const { 以谁的身份 } = await import("@/lib/enterprise/visibility");
+    const 总p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null } });
+    expect(await 以谁的身份(甲, () => prisma.project.count({ where: { pooledAt: { not: null }, deletedAt: null } }))).toBeLessThan(总p); // 核到的是新值
     const 后 = await 对拍(raw, prisma);
     expect(后.在职人数).toBeGreaterThanOrEqual(3);
     expect(后).toMatchObject({ 不一致人数: 0, 不一致: [], 互补不成立人数: 0 });
@@ -169,6 +173,7 @@ describe("对拍：旧算法 vs 按列", () => {
 
   it("可空列的坑：回填后仍有列为空的在公海行（导入无主 / 没留痕占位），限定层只挡列是我的、空列的照样看得到；互补核对成立且真的比了个数", async () => {
     await 写回填(raw, await 算回填计划(raw), () => {});
+    忘掉企业版范围(); // 范围有 10 秒缓存，回填前别处可能已缓存了空回避
     const 总p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null } });
     const 空p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: null } });
     const 甲p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: 甲 } });
@@ -181,6 +186,20 @@ describe("对拍：旧算法 vs 按列", () => {
     expect(甲看到的).toBeGreaterThanOrEqual(总p - 甲p - 1); // 减去客户连带的（客户「退过两次」那一位名下的没进线索公海项目不算公海行，不影响这个数）
     expect((await 对拍(raw, prisma)).互补不成立人数).toBe(0);
     expect(await 互补成立(raw, 甲, prisma)).toBe(true);
+  });
+
+  it("甲放走的公海客户下面挂着一个不在公海的已结束项目：回避集合里有它，但不在公海、不进个数，互补照样成立", async () => {
+    const 甲放走的 = await 客户(占位, t("12 10:00")); await 客户痕(甲放走的, 甲, 占位, t("12 10:00"));
+    const 已结束 = await 项目(甲放走的);
+    await raw.project.update({ where: { id: 已结束 }, data: { result: "输单" } });
+    await 写回填(raw, await 算回填计划(raw), () => {});
+    忘掉企业版范围();
+    const { 新回避集合 } = await import("@/lib/enterprise/pool-prev-owner-compare");
+    const 集合 = await 新回避集合(raw, 甲);
+    expect(集合.项目.has(已结束)).toBe(true); // 集合里有（旧算法口径按客户算回避），但它不在公海
+    expect(集合.客户.has(甲放走的)).toBe(true);
+    expect(await 互补成立(raw, 甲, prisma)).toBe(true);
+    expect((await 对拍(raw, prisma)).互补不成立人数).toBe(0);
   });
 
   it("可空列的坑（证据）：朴素写 NOT { 列: 我 } / { not: 我 } 会把空列的行一起挡掉；公共写法 为空或不是我 不会", async () => {

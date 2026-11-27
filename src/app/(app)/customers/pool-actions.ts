@@ -322,18 +322,10 @@ export async function 领取(ids: string[], 带待办?: boolean, 项目ids: stri
   if (移交中) return { ok: false, error: 移交中 };
   // 企业版「非原负责人均可领取」（pool-rules.ts，10-26 定稿）：不让原负责人自己领回。
   // E-417 包 2 起认 poolPrevOwnerId 两列（放进公海时写的最近一次放进公海的人；曾经负责过、后来转走的不拦）：
-  // 客户列是我的；或名下在公海的项目、项目列是我的（领客户会把这些项目一起带走，11-03 完成度 B4-3）
+  // 只认客户列是我的拦；名下公海项目、项目列是我的不拦（领客户优先于回避，名下公海项目照 carry-over 一起带走，M-公海-05 / X-36）
   const 不能领 = new Set<string>();
   if (拦原负责人()) {
     for (const cid of (await 公海客户放回人们(prisma, [me.id], ids)).keys()) 不能领.add(cid);
-    // 一批 400 个客户一查（一次领取过 999 位也不碰 SQLite 参数上限）
-    for (let i = 0; i < ids.length; i += 400) {
-      const 我放回的项目 = await 看全部(() => prisma.project.findMany({
-        where: { customerId: { in: ids.slice(i, i + 400) }, pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: me.id },
-        select: { customerId: true },
-      }));
-      for (const p of 我放回的项目) 不能领.add(p.customerId);
-    }
   }
   // 企业版：标了无效的不能领（统一公海 P7），和原负责人领不回一样算「没权限」那几位
   const 无效 = await 无效的(ids);

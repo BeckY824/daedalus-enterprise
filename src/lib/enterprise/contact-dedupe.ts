@@ -381,12 +381,11 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
 
 /**
  * 这位公海客户是不是我退的、我领不回也看不到（11-03 B7-3）：和 team-scope 公海回避 同一口径（E-417 包 2 起认 poolPrevOwnerId 两列）——
- * 客户列是我，或这位客户下面在公海的项目、项目列是我。不看名单上限（直接查列，和名单过上限退回的按列条件一样）
+ * 只认客户列是我（M-公海-05：领客户优先于回避，名下公海项目列是我的不拦、领客户时照 carry-over 一起带走）。不看名单上限（直接查列）
  */
 export async function 我回避的(db: 库, 挑: { id: string; salesOwnerId: string | null }, 我: string): Promise<boolean> {
   if (!拦原负责人()) return false;
-  if ((await 公海客户放回人们(db, [我], [挑.id])).size) return true;
-  return 看全部(async () => !!(await db.project.findFirst({ where: { customerId: 挑.id, pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: 我 }, select: { id: true } })));
+  return (await 公海客户放回人们(db, [我], [挑.id])).size > 0;
 }
 
 /**

@@ -77,11 +77,18 @@ export { 为空或不是我, type 不是我写法 } from "@/lib/enterprise/pool-
 export async function 互补成立(db: PrismaClient, id: string, 限定端: PrismaClient = db): Promise<boolean> {
   const 项目在 = { pooledAt: { not: null }, deletedAt: null };
   const 客户在 = { pool: { isNot: null }, deletedAt: null };
-  const [总p, 总c, 新] = await Promise.all([db.project.count({ where: 项目在 }), db.customer.count({ where: 客户在 }), 新回避集合(db, id)]);
+  // 回避数只数「在公海且回避」的：新回避集合.项目 还含放走的公海客户下面不在公海的项目（已结束等），看p / 总p 不数它们
+  const 回避项目条件 = { OR: [{ pooledAt: { not: null }, poolPrevOwnerId: id }, { customer: { pool: { isNot: null }, deletedAt: null, poolPrevOwnerId: id } }] };
+  const [总p, 总c, 回避p, 新] = await Promise.all([
+    db.project.count({ where: 项目在 }),
+    db.customer.count({ where: 客户在 }),
+    db.project.count({ where: { AND: [项目在, 回避项目条件] } }),
+    新回避集合(db, id),
+  ]);
   const { 以谁的身份 } = await import("@/lib/enterprise/visibility");
   const [看p, 看c] = await 以谁的身份(id, () => Promise.all([限定端.project.count({ where: 项目在 }), 限定端.customer.count({ where: 客户在 })]));
   const 对 = (看: number, 总: number, 回避: number) => 看 === 总 - 回避 || 看 === 总;
-  return 对(看p, 总p, 新.项目.size) && 对(看c, 总c, 新.客户.size);
+  return 对(看p, 总p, 回避p) && 对(看c, 总c, 新.客户.size);
 }
 
 export async function 对拍(db: PrismaClient, 限定端: PrismaClient = db): Promise<对拍结果> {
