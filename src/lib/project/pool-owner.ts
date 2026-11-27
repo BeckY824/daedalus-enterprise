@@ -181,6 +181,27 @@ export async function 我回避的公海项目(db: 读痕, meId: string): Promis
   return 公海里历史负责人是(db, [meId]);
 }
 
+/** 回避条件 里名单（和例外）最多放几个 id：再多 notIn 过 SQLite 参数上限（否定条件 Prisma 拆不了，P2029），退回按关联写的条件。同 enterprise/visibility.ts 回避名单上限 */
+const 回避条件名单上限 = 100;
+
+/**
+ * 「不是我回避的公海项目」的 where（F-057：原来把 我回避的公海项目 整串塞进 id notIn，退过上千个项目的人一开页面就 P2029）。
+ * 名单不过上限：id notIn 名单，同原来。过了上限：退回按关联写——公海里、留痕里有我放回的就算回避；写不出「只认最后一次」，
+ * 多挡到的（早先我退、后来别人领走又退）按 id 放出来（例外），例外也过上限就宽挡（多挡不漏），同 visibility.ts 的 X-76。
+ * 不论名单多长参数数都有界（≤ 上限）。没有要回避的（回避关着、没放回过）回 null，调用方不加条件。
+ * 分页的列表用它代替 notIn：条件在库里算，页数、总数照旧对
+ */
+export async function 不回避条件(db: Pick<Prisma.TransactionClient, "projectNodeLog" | "project">, meId: string): Promise<Prisma.ProjectWhereInput | null> {
+  const 名单 = await 我回避的公海项目(db, meId);
+  if (!名单.length) return null;
+  if (名单.length <= 回避条件名单上限) return { id: { notIn: 名单 } };
+  const 留痕 = { kind: "pool-release", fromOwnerId: meId };
+  const 宽 = await 看全部(() => db.project.findMany({ where: { deletedAt: null, pooledAt: { not: null }, logs: { some: 留痕 } }, select: { id: true } }));
+  const 是 = new Set(名单);
+  const 例外 = 宽.map((r) => r.id).filter((id) => !是.has(id));
+  return { OR: [{ pooledAt: null }, { logs: { none: 留痕 } }, ...(例外.length && 例外.length <= 回避条件名单上限 ? [{ id: { in: 例外 } }] : [])] };
+}
+
 /**
  * 项目刚进公海（同一笔事务里、单项目客户跟进公海 之后调）：原负责人在这个项目上没做完的待办标成已完成，记录留着。
  * 待办挂在客户上、不挂项目：客户也进了公海或客户本来就不归他，且他在这位客户下没有别的在推项目 → 他在这位客户上没做完的都关；
