@@ -28,7 +28,7 @@ const plugin: Plugin = { name: "contact-v2-boundaries", setup(b) {
   stub(/^\.\/number-actions$/, "export const 从回收站捞回=async(类型,值)=>{window.__捞={类型,值};return {ok:true,提示:'已捞回',已不在:false,查:{}}};");
   stub(/^\.\/contact-link-actions$/, `
     const 记=(名)=>async(...a)=>{(window.__挂=window.__挂||[]).push([名,...a]);return {ok:true}};
-    export const 挂到客户=记('挂'),改挂靠说明=记('说明'),解除挂靠=记('解除'),换主客户=记('换');
+    export const 挂到客户=记('挂'),改挂靠说明=记('说明'),解除挂靠=记('解除'),换主客户=记('换'),设为主号=记('主号');
   `);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
 } };
@@ -73,12 +73,20 @@ beforeAll(async () => {
     </div>));
     window.__新建=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{window.__存好=1}} customerId='k0' record={null} 号码种类={种类}
       存法={async(x)=>{(window.__存=window.__存||[]).push(x);return {ok:true}}}/>));
+    // 12-15 第三批 B 主号：两个以上手机号时「⋯」里不是主号的每个号一项「设为主号：号码」（号码照页面给的打码样子，按号码行 id 设）
+    const 两机=[{id:'m1',kind:'phone',value:'138****6001',默认:true},{id:'m2',kind:'phone',value:'138****6002'},{id:'m3',kind:'email',value:'qa@example.com'}];
+    window.__主号=()=>root.render(壳(<div>
+      <div data-t='两机'><ContactLinks customerId='k0' 只读={false} 头={头('王五')} c={{...人,id:'c5',号码们:两机}}><div>号码行</div></ContactLinks></div>
+      <div data-t='一机'><ContactLinks customerId='k0' 只读={false} 头={头('王五二')} c={{...人,id:'c6',号码们:[两机[0],两机[2]]}}><div>号码行二</div></ContactLinks></div>
+      <div data-t='挂来的'><ContactLinks customerId='k0' 只读={false} 头={头('王五三')} c={{...人,id:'c7',号码们:两机,挂靠:{linkId:'L1',note:null,主客户Id:'k1',主客户名:'主客户甲',主客户看得到:true,能改:true}}}><div>号码行三</div></ContactLinks></div>
+      <div data-t='只读'><ContactLinks customerId='k0' 只读 头={头('王五四')} c={{...人,id:'c8',号码们:两机}}><div>号码行四</div></ContactLinks></div>
+    </div>));
     window.__编无名=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} customerId='k0' record={{...人,name:''}} 号码种类={种类}/>));
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(画: "__表单" | "__挂靠" | "__挂靠头" | "__合成灰" | "__新建" | "__编无名" | "__职务" | "__职务老" | "__非企业" | "__回收站" | "__联系人页", width = 1024) {
+async function open(画: "__表单" | "__挂靠" | "__挂靠头" | "__合成灰" | "__主号" | "__新建" | "__编无名" | "__职务" | "__职务老" | "__非企业" | "__回收站" | "__联系人页", width = 1024) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://cv2.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
   await page.goto("http://cv2.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
@@ -456,5 +464,32 @@ for (const 宽 of [1024, 390]) {
         expect(await page.evaluate(() => (window as unknown as { __合成?: number }).__合成 ?? 0)).toBe(0);
       } finally { await page.close(); }
     }
+  });
+}
+
+for (const 宽 of [1280, 390]) {
+  it(`[12-15 第三批 B] ${宽}：两个以上手机号，「⋯」里给不是主号的号「设为主号：号码」，点了按号码行 id 设、就地说「主号换好了」；一个手机、挂靠过来的不给；只读没有「⋯」`, async () => {
+    const page = await open("__主号", 宽);
+    try {
+      await page.locator("[data-t='两机']").getByRole("button", { name: "联系人 王五 的更多操作" }).click();
+      const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+      await 菜单.waitFor();
+      expect((await 菜单.getByRole("menuitem").allInnerTexts()).map((t) => t.trim())).toEqual(["挂到别的客户", "换主客户", "设为主号：138****6002"]);
+      const 框 = (await 菜单.boundingBox())!;
+      expect(框.x).toBeGreaterThanOrEqual(0);
+      expect(框.x + 框.width).toBeLessThanOrEqual(宽);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+      await 菜单.getByRole("menuitem", { name: "设为主号：138****6002" }).click();
+      await page.locator("[data-t='两机'] [role='status']").filter({ hasText: "主号换好了" }).waitFor();
+      expect(await page.evaluate(() => (window as unknown as { __挂?: unknown[] }).__挂)).toEqual([["主号", "c5", "m2"]]);
+      for (const [t, 名] of [["一机", "王五二"], ["挂来的", "王五三"]] as const) {
+        await page.keyboard.press("Escape");
+        await page.locator(`[data-t='${t}']`).getByRole("button", { name: "联系人 王五 的更多操作" }).click();
+        const 开着 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)").last();
+        await 开着.waitFor();
+        expect(await 开着.getByRole("menuitem").filter({ hasText: "设为主号" }).count(), 名).toBe(0);
+      }
+      expect(await page.locator("[data-t='只读']").getByRole("button", { name: /更多操作/ }).count()).toBe(0);
+    } finally { await page.close(); }
   });
 }

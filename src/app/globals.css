@@ -5286,6 +5286,8 @@ p.empty-demo-err, .home-rename-err { max-width: none; white-space: normal; overf
 @media (max-width: 767px) { .dc-claim-grid { grid-template-columns: minmax(0, 1fr); } }
 .dc-claim-foot { display: flex; justify-content: flex-end; gap: var(--s2); }
 .prop-err-act { margin-top: var(--s2); }
+/* 「记到这位客户上」手机（≤767 或触屏）点击区 ≥ 44（--hit-touch），电脑宽不动 */
+@media (max-width: 767px), (pointer: coarse) { :root:root .prop-err-act .ant-btn, :root:root .ant-btn[data-testid="attach-to-mine"] { min-height: var(--hit-touch); } }
 /* 撞号的在推个数是提示，不是错误：不跟 .prop-err 的红字 */
 .prop-err-note { color: var(--text-muted); }
 .cu-said-warn { color: var(--warning-text); }
@@ -5653,6 +5655,8 @@ span.cu-said { display: inline; margin: 0 0 0 var(--s2); }
 /* 号码那一列（值那一列里自己折行）。号码保护 11-24 起单独一行（字段名「号码保护」+ 状态标签），不再跟在号码后面：1280 卡宽 232 放不下 */
 .rec-contact-nv { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 2px 6px; min-width: 0; }
 .rec-contact-nv > .rec-contact-v { flex: 0 1 auto; max-width: 100%; }
+/* 主号标（12-15 第三批 B）：跟在号码后面，和组头「关键」同一号小标签 */
+.ant-tag.rec-contact-main { margin: 0; font-size: var(--fs-min); line-height: 18px; padding: 0 5px; flex: none; }
 .att-empty { display: inline-flex; align-items: center; gap: 6px; }
 .cf-rule { margin: -4px 0 12px; font-size: var(--fs-note); color: var(--text-muted); }
 .rec-contact-pick { display: grid; gap: 4px; }

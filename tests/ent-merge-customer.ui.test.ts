@@ -202,8 +202,8 @@ it("暗色：标红那几行的底和字跟 token 走，不是写死的浅色", 
 }, 60_000);
 
 it("和另一位合成：挑另一位、定留谁 → 合成两位联系人(留, 并)；成了撤销条写 30 天内可撤回", async () => {
-  const 人 = (id: string, name: string) => ({ id, name, 职务: null, 关键: false, 号: null });
-  const { page, 错 } = await open(390, { 种: "联系人", 留: 人("c1", "张三"), 们: [人("c1", "张三"), 人("c2", "张 三"), 人("c3", "李四".repeat(15))] });
+  const 人 = (id: string, name: string, 主号: string | null = null) => ({ id, name, 职务: null, 关键: false, 号: null, 主号 });
+  const { page, 错 } = await open(390, { 种: "联系人", 留: 人("c1", "张三"), 们: [人("c1", "张三"), 人("c2", "张 三", "138****0002"), 人("c3", "李四".repeat(15))] });
   try {
     const 钮 = page.getByTestId("contact-merge-go");
     await 钮.waitFor();
@@ -211,6 +211,11 @@ it("和另一位合成：挑另一位、定留谁 → 合成两位联系人(留,
     await page.getByText("张 三", { exact: true }).click();
     await page.getByText("留下「张 三」").click();
     expect(await page.locator(".mrg-out").innerText()).toContain("「张三」进回收站；30 天内可在「历史变更」里整单撤回");
+    // 主号（12-15 第三批 B）：留下那位的电话格；他空着用并进来那位的（同补空）
+    expect(await page.locator(".mrg-out").innerText()).toContain("合成后主号：138****0002，可在联系人上换");
+    await page.getByText("留下「张三」").click();
+    expect(await page.locator(".mrg-out").innerText()).toContain("合成后主号：138****0002，可在联系人上换");
+    await page.getByText("留下「张 三」").click();
     expect(await 横滚(page)).toEqual([false, false]);
     await 钮.click();
     await page.locator(".undo-bar").waitFor();

@@ -75,7 +75,7 @@ export type ContactRow = {
   hobby?: string | null;
   address?: string | null;
   /** 联系方式几行（类型 kind + 号码）；子表里没有的拿老三格拼（customer-v2-db.ts 的 联系人号码们）。不给 = 别的版本 */
-  号码们?: { kind: string; value: string }[];
+  号码们?: { kind: string; value: string; /** 子表那一行的 id（老三格拼的没有）：「设为主号」按它认 */ id?: string; /** 主号（电话格那个，12-15 第三批 B）：排在最前 */ 默认?: true }[];
   /**
    * 企业版联系人挂多位客户（2026-10-29 P13，迁移 090）：给了 = 这位是挂到这位客户上的、主客户是别人。
    * 能改 = 主客户那一头我能改（编辑资料、换主客户只在能改时摆）；解除挂靠看的是这位客户能不能改

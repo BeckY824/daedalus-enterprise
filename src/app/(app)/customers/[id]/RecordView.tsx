@@ -989,15 +989,18 @@ export default function RecordView({
         <span className="rec-contact-v"><号码保护标签 c={c} 客户={customer} /></span>
       </div>
     );
-    const 号码行 = (k: string, v: ReactNode, key?: string) => (
+    const 号码行 = (k: string, v: ReactNode, key?: string, 主号 = false) => (
       /* 号码本身一整串不拆，比整格还宽才在里面断 */
       <div key={key} className="rec-contact-line rec-contact-num">
         <span className="rec-contact-k" title={k}>{k}</span>
         <span className="rec-contact-nv">
           <span className="rec-contact-v">{v}</span>
+          {主号 && <Tag className="rec-contact-main" title="主号：要换在联系人「⋯」里设">主号</Tag>}
         </span>
       </div>
     );
+    /* 主号（12-15 第三批 B）：两个以上手机号才标（只有一个时就是它，不多一枚标）；页面已把主号排在最前 */
+    const 标主号 = (c.号码们 ?? []).filter((m) => m.kind === "phone").length >= 2;
     const 老号: { k: string; v: ReactNode }[] = [
       ...(c.phone ? [{ k: "电话", v: <CopyValue 叫法="电话" value={c.phone} /> }] : []),
       ...(c.email ? [{ k: "邮箱", v: <CopyValue 种类="邮箱" 叫法="邮箱" value={c.email} /> }] : []),
@@ -1017,7 +1020,7 @@ export default function RecordView({
           /* 改版后（定稿 P5 第 24 条）：联系方式几行（类型 + 号码），一人可以好几个；性别、生日、爱好、地址填了才摆 */
           <>
             {c.号码们.map((m, i) =>
-              号码行(号码叫法(号码种类, m.kind), m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value, `${m.kind}-${i}`),
+              号码行(号码叫法(号码种类, m.kind), m.kind === "phone" || m.kind === "landline" ? <CopyValue 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.kind === "email" ? <CopyValue 种类="邮箱" 叫法={号码叫法(号码种类, m.kind)} value={m.value} /> : m.value, `${m.kind}-${i}`, 标主号 && !!m.默认),
             )}
             {c.号码们.length === 0 && 号码行("联系方式", <span className="rec-field-empty" title="没留联系方式">{空值符}</span>)}
             {保护行}
@@ -1049,7 +1052,7 @@ export default function RecordView({
   */
   /** 和另一位合成（合并客户第一批）：同一位客户名下、不是挂靠过来的才行。有权的人（合并口、能合并.联系人、不只读）每位都摆这一项：
    *  挂靠过来的、客户只有一位自家联系人时置灰写原因（12-02，ContactLinks 合成灰）；服务端 合成两位联系人 照旧拦 */
-  const 合成人 = (c: ContactRow): 合成候选人 => ({ id: c.id, name: c.name, 职务: c.position, 关键: c.isPrimary, 号: c.号码们?.[0]?.value ?? c.phone ?? null });
+  const 合成人 = (c: ContactRow): 合成候选人 => ({ id: c.id, name: c.name, 职务: c.position, 关键: c.isPrimary, 号: c.号码们?.[0]?.value ?? c.phone ?? null, 主号: c.phone || null });
   const 可合成的人 = contacts.filter((c) => !c.挂靠).map(合成人);
   const 有合成权 = !!合并口 && !!能合并?.联系人 && !联系人只读;
   const 合成灰因 = (c: ContactRow) => (!有合成权 ? undefined : c.挂靠 ? 挂靠联系人不能合成 : 可合成的人.length < 2 ? 只有一位联系人不能合成 : undefined);
