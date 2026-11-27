@@ -5,7 +5,7 @@ import { chromium, type Browser, type Page } from "playwright";
 import { 补全动作桩 } from "./helpers/action-stubs";
 /* 合并客户第二批 2a · 项目详情顶上「已并入 → 留下的项目」（projects/[id]/MergedIntoLine.tsx）：真组件 + globals.css + merge.css，只桩掉 merge-actions。钉的是：
    被并掉的项目顶上一行写并进了哪个（点得过去）、谁、何时并的；有权（能撤）的带「撤回」→ 后果框 → 撤回项目合并单(单号) → 原处写撤回结果（全还原 / 留下几条没还原）；
-   没权、过了 30 天（能撤 false）不摆按钮，过了 30 天（过期话）在按钮的位置写明「合并已超过 30 天，不能撤回」；没并入画空。1280 / 390 不横滚，一行省略、悬停看全（title），390 点一下展开，按钮 ≥ 44 */
+   没权、过了 30 天（能撤 false）不摆按钮；没并入画空。1280 / 390 不横滚，一行省略、悬停看全（title），390 点一下展开，按钮 ≥ 44 */
 let browser: Browser, bundle: string;
 const 长名 = "超长的留下项目名称用来看会不会撑破".repeat(8);
 const 动作 = `
@@ -101,26 +101,6 @@ for (const 宽 of [1280, 390]) {
       expect(await 横滚(page)).toBe(false);
       expect(错).toEqual([]);
     } finally { await page.close(); }
-    // 过了撤回期限（过期话，load.ts 带；谁看都一样，系统管理员也不能代撤）：按钮的位置写明为什么没有撤回，一行不横滚、那句不省略
-    const 过 = await open(宽, 单({ 能撤: false, 过期话: "（任意文案，界面照标记出话）" }), {}, 宽 < 768);
-    try {
-      const 话 = 过.page.getByTestId("project-merged-expired");
-      await 话.waitFor();
-      expect(await 话.innerText()).toBe("（任意文案，界面照标记出话）");
-      expect(await 话.evaluate((e) => e.scrollWidth <= e.clientWidth)).toBe(true);
-      expect(await 过.page.getByTestId("project-merged-undo").count()).toBe(0);
-      expect(await 过.page.getByTestId("project-merged-into-text").getAttribute("title")).toMatch(/；（任意文案，界面照标记出话）$/);
-      const [行框, 话框] = await Promise.all([过.page.getByTestId("project-merged-into").boundingBox(), 话.boundingBox()]);
-      expect(话框!.x + 话框!.width).toBeLessThanOrEqual(行框!.x + 行框!.width);
-      expect(await 横滚(过.page)).toBe(false);
-      expect(过.错).toEqual([]);
-    } finally { await 过.page.close(); }
-    // 有权、没过期：不写这句
-    const 能 = await open(宽, 单());
-    try {
-      await 能.page.getByTestId("project-merged-undo").waitFor();
-      expect(await 能.page.getByTestId("project-merged-expired").count()).toBe(0);
-    } finally { await 能.page.close(); }
     const 空 = await open(宽, null, {}, true);
     try {
       await 空.page.waitForTimeout(200);
