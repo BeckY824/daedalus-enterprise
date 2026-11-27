@@ -23,7 +23,7 @@ import { 仅项目客户们 } from "@/lib/enterprise/project-only-customers";
 import { 读市场身份 } from "@/lib/enterprise/market-view-db";
 import { 市场项目条件, 只看进度, 部门市场无市场角色, 部门市场无市场角色该转向 } from "@/lib/enterprise/market-view";
 import { 读市场成员们 } from "@/lib/enterprise/market-db";
-import { 历史负责人们, 我回避的公海项目, 回避豁免 } from "./pool-owner";
+import { 历史负责人们, 不回避条件, 回避豁免 } from "./pool-owner";
 import { 渠道筛选选项 } from "@/lib/enterprise/channel-options";
 import { 企业级别 } from "@/lib/enterprise/customer-v2";
 import { 未分级 } from "@/app/(app)/customers/query-shared";
@@ -316,15 +316,14 @@ async function 列表条件(me: { id: string; role: string } & Parameters<typeof
     }),
   ];
   // 企业版 C-01：公海里我是历史负责人的项目我看不到（总管理 / 管理员不算，lib/project/pool-owner.ts 回避豁免）
-  const 回避 = (await 回避豁免(me)) ? [] : await 我回避的公海项目(prisma, me.id);
+  const 回避条件 = (await 回避豁免(me)) ? null : await 不回避条件(prisma, me.id); // F-057：名单长了退回按关联写的条件，参数数有界
   const where: Prisma.ProjectWhereInput = {
     ...(只看阶段 ? { phase: 只看阶段 } : {}),
-    ...(回避.length ? { id: { notIn: 回避 } } : {}),
     ...(typeof sp.ownerId === "string" && sp.ownerId ? { ownerId: sp.ownerId } : {}),
     // 企业版公海只有一处（/pool）：默认列表不列公海项目，不然同一个项目两边都有；团队版公海项目照旧混在列表里，页上有「在公海」标。
     // 点首页卡进来的不加：哪些算由卡的条件定（「本月新增」不管在不在推，含公海），和卡上的数对得上
     ...(sp.pool === "1" ? { pooledAt: { not: null } } : 企 && !卡 ? { pooledAt: null } : {}),
-    ...(并且.length ? { AND: 并且 } : {}),
+    ...(并且.length || 回避条件 ? { AND: [...并且, ...(回避条件 ? [回避条件] : [])] } : {}),
   };
   return { where, 词, 企, 规则, 今, 卡, 阶进, 市场, 创建人, 来源, 级别筛, 标签筛, 来源筛, 号码, 收回筛, 批, 待分配筛中, 待分配 };
 }
