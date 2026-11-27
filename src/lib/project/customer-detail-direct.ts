@@ -3,7 +3,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 权限项目选, 带已加入, type 谁 } from "@/lib/enterprise/permissions";
 import { 市场进不了详情的 } from "@/lib/enterprise/market-view-db";
-import { 原负责人回避, 回避豁免 } from "./pool-owner";
+import { 原负责人回避, 回避豁免, 一批id数 } from "./pool-owner";
 import { 看得到的客户 } from "./db";
 import { 客户页项目地址, 录音确认参数, 带录音确认参数 } from "./customer-detail-href";
 import { 仅项目客户们 } from "@/lib/enterprise/project-only-customers";
@@ -24,10 +24,10 @@ export async function 项目链接们(me: 谁, ids: readonly (string | null | un
   const 们 = [...new Set(ids.filter((x): x is string => !!x))];
   const 原 = new Map(们.map((id) => [id, 项目页地址(id)]));
   if (!企业版() || !们.length) return 原;
-  const 行 = await prisma.project.findMany({
-    where: { id: { in: 们 } },
-    select: { id: true, customerId: true, ...权限项目选 },
-  });
+  // 分段查（F-057）：公海页把「客户池并成一行」的客户名下全部项目都带进来，一位客户挂上千个项目时整串 in 过 SQLite 参数上限；
+  // 带着限定层的否定条件（回避的公海项目 notIn、软删）Prisma 拆不了批，报 P2029，所以自己一段一段查
+  const 行: Awaited<ReturnType<typeof 查项目一段>> = [];
+  for (let i = 0; i < 们.length; i += 一批id数) 行.push(...(await 查项目一段(们.slice(i, i + 一批id数))));
   if (!行.length) return 原;
   const 公海的 = 行.filter((r) => r.pooledAt).map((r) => r.id);
   const [org, 市场挡, 看得到, 上一任] = await Promise.all([
@@ -46,16 +46,23 @@ export async function 项目链接们(me: 谁, ids: readonly (string | null | un
   return 原;
 }
 
+const 查项目一段 = (ids: string[]) => prisma.project.findMany({
+  where: { id: { in: ids } },
+  select: { id: true, customerId: true, ...权限项目选 },
+});
+
 /** 公海里的项目，要判原负责人回避的：项目 id → 最近一次放公海时的负责人（没有这条痕 = 不在表里，退回项目上的 ownerId，同 项目页去向）。不用判（回避关、豁免、没有公海项目）= null */
 async function 公海上一任(me: 谁, ids: string[]): Promise<Map<string, string | null> | null> {
   if (!ids.length || !原负责人回避() || (await 回避豁免(me))) return null;
   const 表 = new Map<string, string | null>();
-  for (const l of await prisma.projectNodeLog.findMany({
-    where: { projectId: { in: ids }, kind: "pool-release" },
-    orderBy: { at: "desc" },
-    select: { projectId: true, fromOwnerId: true },
-  }))
-    if (!表.has(l.projectId)) 表.set(l.projectId, l.fromOwnerId);
+  // 每段各自按时间倒序，一个项目的记录只在一段里，所以段内先到的就是最近那条
+  for (let i = 0; i < ids.length; i += 一批id数)
+    for (const l of await prisma.projectNodeLog.findMany({
+      where: { projectId: { in: ids.slice(i, i + 一批id数) }, kind: "pool-release" },
+      orderBy: { at: "desc" },
+      select: { projectId: true, fromOwnerId: true },
+    }))
+      if (!表.has(l.projectId)) 表.set(l.projectId, l.fromOwnerId);
   return 表;
 }
 

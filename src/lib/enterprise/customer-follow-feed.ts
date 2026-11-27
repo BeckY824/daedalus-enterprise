@@ -56,11 +56,15 @@ async function 看得到的项目们(me: { id: string; role?: string }, customer
   const 直接 = new Set([...主.map((p) => p.id), ...关联.map((r) => r.projectId)]);
   const ids = [...new Set([...直接, ...挂过.map((r) => r.projectId)])];
   if (ids.length === 0) return [];
-  const ps = await prisma.project.findMany({
-    where: { id: { in: ids } },
+  // 分段查（F-057）：主客户 + 关联 + 挂过三处最多约 1,500 个 id，整串 in 走限定层（带回避否定条件）+ orderBy 时 Prisma 拆不了批 → P2029；
+  // 每段各查、合起来再按 updatedAt 倒序排（和原来整句 orderBy 同序）
+  const ps: Awaited<ReturnType<typeof 查一段>> = [];
+  const 查一段 = (段: string[]) => prisma.project.findMany({
+    where: { id: { in: 段 } },
     select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, result: true, nextStepAt: true, nextStepText: true, updatedAt: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } },
-    orderBy: { updatedAt: "desc" },
   });
+  for (let i = 0; i < ids.length; i += 400) ps.push(...(await 查一段(ids.slice(i, i + 400))));
+  ps.sort((x, y) => y.updatedAt.getTime() - x.updatedAt.getTime());
   // 公海里我是历史负责人的项目：沟通入口、时间线都不出（C-01，lib/project/pool-owner.ts；总管理 / 管理员照出）
   const [看得到, 回避表] = await Promise.all([可见(ps.map((p) => p.customerId)), 回避豁免(me).then((免) => (免 ? ([] as string[]) : 我回避的公海项目(prisma, me.id)))]);
   const 回避 = new Set(回避表);

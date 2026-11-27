@@ -63,13 +63,21 @@ export async function 市场进不了详情的(我: string, projectIds: string[]
   const 身份 = await 读市场身份(我);
   if (!身份 || !projectIds.length) return new Set();
   const ids = [...new Set(projectIds)];
-  const [行, 复核] = await Promise.all([
-    看全部(() => prisma.project.findMany({
-      where: { id: { in: ids } },
-      select: { id: true, ownerId: true, pooledAt: true, members: { where: { userId: 我, inviteStatus: "JOINED" }, select: { userId: true } } },
-    })),
-    等我复核的(我, 身份.org, ids),
-  ]);
+  // 分段查（F-057）：公海页一屏可带上千个项目，整串 in 过 SQLite 参数上限
+  const 行: { id: string; ownerId: string; pooledAt: Date | null; members: { userId: string }[] }[] = [];
+  const 复核 = new Set<string>();
+  for (let i = 0; i < ids.length; i += 400) {
+    const 段 = ids.slice(i, i + 400);
+    const [r, f] = await Promise.all([
+      看全部(() => prisma.project.findMany({
+        where: { id: { in: 段 } },
+        select: { id: true, ownerId: true, pooledAt: true, members: { where: { userId: 我, inviteStatus: "JOINED" }, select: { userId: true } } },
+      })),
+      等我复核的(我, 身份.org, 段),
+    ]);
+    行.push(...r);
+    for (const x of f) 复核.add(x);
+  }
   const out = new Set<string>();
   for (const r of 行) {
     if (市场挡详情(身份.org, 我, 身份.成员集, { ownerId: r.ownerId, pooledAt: r.pooledAt, 已加入: r.members.map((m) => m.userId) }, 复核.has(r.id))) out.add(r.id);
