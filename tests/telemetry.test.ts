@@ -198,6 +198,14 @@ describe("服务端出错", () => {
   it("跳转信号不记", () => {
     expect(服务端出错行(Object.assign(new Error("NEXT_REDIRECT"), { digest: "NEXT_REDIRECT;replace;/login;307;" }), { headers: {} }, { routeType: "render", routePath: "/x" }, 谁)).toBeNull();
   });
+  it("错误码：只收 P+4 位数字，e.code 优先，其次消息里的；别的格式不记", () => {
+    const 调 = (e: unknown) => 服务端出错行(e, { headers: {} }, { routeType: "render", routePath: "/x" }, 谁);
+    expect(调(Object.assign(new Error("boom"), { code: "P2029" }))?.code).toBe("P2029");
+    expect(调(new Error("Invalid `prisma.x.findMany()` invocation: P2024 Timed out"))?.code).toBe("P2024");
+    expect(调(Object.assign(new Error("boom"), { code: "ECONNRESET" }))?.code).toBeUndefined();
+    expect(调(new Error("boom XP20299 P12345"))?.code).toBeUndefined();
+  });
+
   it("记路由模式、错误名、脱敏首行、digest、角色", () => {
     const r = 服务端出错行(Object.assign(new TypeError("bad value bob@acme.com\nstack"), { digest: "998877" }), { headers: { "user-agent": UA_FEISHU, cookie: "crm_session=x" } }, { routeType: "action", routePath: "/customers/[id]" }, 谁);
     expect(r).toMatchObject({ k: "err", src: "server", type: "服务端出错", name: "TypeError", msg: "bad value [email]", digest: "998877", route: "/customers/[id]", kind: "action", br: "Chrome 120", shell: "飞书", role: "director" });
