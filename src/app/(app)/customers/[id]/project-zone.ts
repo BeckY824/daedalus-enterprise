@@ -37,8 +37,13 @@ export async function 能看的项目(me: SessionUser, ids: readonly string[]): 
   if (!ids.length) return new Set();
   const org = await 权限组织();
   // 能看项目 要的列同一份（含待分配本线放开那几格，P-转-42）：少带了这里会把项目页刚放行跳过来的那条筛掉
-  const 行 = await prisma.project.findMany({ where: { id: { in: [...ids] } }, select: { id: true, ...权限项目选 } });
-  return new Set(行.filter((r) => 能看项目(me, 带已加入(r), org)).map((r) => r.id));
+  // 分段查（F-057）：一位客户挂上千个项目时整串 in 过 SQLite 参数上限（限定层还带回避否定条件，Prisma 拆不了批 → P2029）
+  const 能看们 = new Set<string>();
+  for (let i = 0; i < ids.length; i += 400) {
+    const 行 = await prisma.project.findMany({ where: { id: { in: ids.slice(i, i + 400) } }, select: { id: true, ...权限项目选 } });
+    for (const r of 行) if (能看项目(me, 带已加入(r), org)) 能看们.add(r.id);
+  }
+  return 能看们;
 }
 
 /**
@@ -47,7 +52,10 @@ export async function 能看的项目(me: SessionUser, ids: readonly string[]): 
  * 仅记录用的（X-147，还停在潜客培育）不算在推，不数
  */
 export function 看不到的在推数(customerId: string, 可看ids: readonly string[]): Promise<number> {
-  return 看全部(() => prisma.project.count({ where: { customerId, ...在推项目条件, deletedAt: null, id: { notIn: [...可看ids] }, NOT: 仅记录用的 } }));
+  // 不把 可看ids 整串放进 notIn（F-057：上千个会过 SQLite 参数上限）：取这位客户名下在推项目的 id，在内存里去掉我看得到的
+  const 可看 = new Set(可看ids);
+  return 看全部(() => prisma.project.findMany({ where: { customerId, ...在推项目条件, deletedAt: null, NOT: 仅记录用的 }, select: { id: true } }))
+    .then((行) => 行.filter((r) => !可看.has(r.id)).length);
 }
 
 /**

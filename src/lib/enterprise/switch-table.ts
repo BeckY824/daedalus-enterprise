@@ -16,7 +16,7 @@ export type 开关键 =
   | "org_scope" | "field_perm" | "lead_assign" | "no_quota" | "reply_overdue" | "lead_giveup" | "market_review" | "block_meaningless"
   | "node_advance" | "first_two" | "fill_period" | "push_perm" | "record_only"
   | "hold_cap" | "node_timeout" | "record_only_recall" | "tri_state"
-  | "feishu_push" | "sync_feishu" | "coach_rec" | "scan_detect";
+  | "feishu_push" | "sync_feishu" | "coach_rec" | "scan_detect" | "verify_autosettle";
 
 export type 开关组 = "see" | "lead" | "flow" | "pool" | "link";
 export const 开关组们: readonly { id: 开关组; 名: string }[] = [
@@ -62,6 +62,8 @@ export type 开关定义 = {
   openExtra?: string;
   /** 只多一个入口的：一步完成 + 就地小条，不弹后果框 */
   小?: boolean;
+  /** 打开时后果框「会怎样」用这句（what 是关着 / 开着两段对照，不适合直接当后果） */
+  开后果?: string;
   /** 关掉不问（同原卡：持有上限） */
   关不问?: boolean;
   /** 二选一 */
@@ -96,6 +98,11 @@ export const 开关表: readonly 开关定义[] = [
     what: "开着：线索分到 1 小时负责人没记有效沟通先提醒，再过 30 分钟转给本线内本月分得最少的销售；夜里、周末、节假日不计时。",
     影响: "接线索的销售", when: "只管打开以后新分配的线索；从关拨到开会重新起算", 默认: true,
     off: "关掉以后不再发超时提醒、不再自动转；已经转出去的不收回，还在计时的停在原处。再打开只对之后新分配的计时" },
+  { k: "verify_autosettle", g: "lead", parent: "reply_overdue", 名: "重复咨询到期自动落定", alias: "重复咨询 验证 到期 自动落定 线索验证 时限 超时 复核 终判",
+    what: "关着时：重复咨询线索在验证里等人判，到 1 小时照常提醒被等的人，不自动落定，一直等人来判。开着时：再过 30 分钟按上一步的判定自动落定。「超时未跟进自动转」关着时，这条也不提醒。",
+    开后果: "打开后，重复咨询线索在验证里等到 1.5 小时没人判，系统会按上一步的判定自动落定，记为「系统」操作。只对打开之后才开始等待的线索生效。",
+    影响: "重复咨询线索在验证里等的人（市场复核、负责人、系统管理员）", when: "从关拨到开只管拨开之后才进入验证这一步的线索；关着期间积压的照旧等人判", 默认: false, 关不问: true,
+    off: "关掉以后到期只提醒不落定，一直等人来判" },
   { k: "lead_giveup", g: "lead", parent: "lead_assign", 名: "销售主动放弃线索（豁免）", tab: "org", 找: "组织规则", 位: "组织架构 → 组织规则", alias: "放弃 豁免 每月一次",
     what: "开着：销售对新分给他的线索每月能放弃 1 次，原因必填，立即转给本线内另一位（本月分得最少的先给），给他记 1 条待补。",
     影响: "参与自动分配的销售", when: "立即；按北京自然月算次数", 默认: false,
@@ -200,7 +207,7 @@ export function 开关后果of(
   }
   const 开 = 目标 === true;
   if (开) {
-    后果.push({ 标: "会怎样", 级: s.危 ? "危" : "警", 话: s.what.replace(/^开着：/, "") });
+    后果.push({ 标: "会怎样", 级: s.危 ? "危" : "警", 话: s.开后果 ?? s.what.replace(/^开着：/, "") });
     if (s.openExtra) 后果.push({ 标: "注意", 级: "警", 话: s.openExtra });
     for (const x of 上下文.注意 ?? []) 后果.push({ 标: "注意", 级: "警", 话: x });
   } else {
