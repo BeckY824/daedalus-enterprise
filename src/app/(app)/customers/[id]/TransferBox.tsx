@@ -111,7 +111,9 @@ export default function TransferBox({
   const 没取到 = !!预览 && 预览.谁 === 谁 && !!预览.没取到;
   const 要说明 = !自动中 && !!谁 && !!预览 && 预览.谁 === 谁 && (!!预览.原?.要说明 || 没取到);
   const 说明预览: 转走项目预览 | null | undefined = 没取到 ? { 项目数: 0, 项目: [], 要说明: true } : 预览?.原;
-  const 能发 = (自动中 || !!谁) && 原因齐 && !忙 && (!要说明 || !!说明.trim());
+  /** 接手人选好了、预览没回来：原因区只显示加载态，预览说了算是单选还是必填输入框（已选 / 已填的留着） */
+  const 等预览 = !自动中 && !!谁 && !(!!预览 && 预览.谁 === 谁);
+  const 能发 = (自动中 || !!谁) && !等预览 && 原因齐 && !忙 && (!要说明 || !!说明.trim());
   const 说 = 自动中 ? 自动预览?.说 ?? null : 预览 && 预览.谁 === 谁 ? (预览.原 ? 转走项目说法(含勾选(预览.原, 逐项)) : 预览.说) : null;
   /** 「一起转」那格：还在取 / 取到了 */
   const 取到了 = 自动中 ? !!自动预览 : !!预览 && 预览.谁 === 谁;
@@ -260,7 +262,13 @@ export default function TransferBox({
               <div className="cd-transfer-v cd-transfer-mut" data-testid="transfer-colleague-note">同事在推的项目不随客户转；要带请上级在转让时勾。</div>
             </div>
           )}
-          {原因选项.length > 0 && !要说明 && (
+          {等预览 && 原因选项.length > 0 && (
+            <div className="cd-transfer-row" data-testid="transfer-why-pending">
+              <span className="cd-transfer-k">原因</span>
+              <div className="cd-transfer-v"><span className="cd-transfer-mut" aria-busy>正在确认原因怎么填</span></div>
+            </div>
+          )}
+          {原因选项.length > 0 && !要说明 && !等预览 && (
             <div className="cd-transfer-row">
               <span className="cd-transfer-k">原因</span>
               <div className="cd-transfer-v csq-why" role="radiogroup" aria-label="转让原因（可不选）">

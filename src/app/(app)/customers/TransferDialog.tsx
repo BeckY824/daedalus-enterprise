@@ -194,7 +194,9 @@ export default function TransferDialog({
   const 转走好了 = !取转走 || (转走 && 转走.谁 === 谁);
   /** 勾了随客户转的同事项目算进「会一起转走的 N 个项目」 */
   const 转走说法 = 转走?.原 ? 转走项目说法(含勾选(转走.原, 逐项)) : 转走?.说法;
-  const 能转 = (自动中 || !!谁) && 原因齐 && !忙 && (!要说明 || !!说明.trim());
+  /** 接手人选好了、服务端预览没回来：原因区只显示加载态（预览说了算是单选还是必填输入框），已选 / 已填的内容留着 */
+  const 等预览 = !自动中 && !!谁 && !!取转走 && !转走好了;
+  const 能转 = (自动中 || !!谁) && !等预览 && 原因齐 && !忙 && (!要说明 || !!说明.trim());
   /** true 要确认 / false 直接生效 / undefined 说不清（还在取、取不到） */
   const 是申请: boolean | undefined = !谁 ? undefined : 申请 ?? (转走好了 ? 转走?.要确认 : undefined);
 
@@ -412,7 +414,12 @@ export default function TransferDialog({
           {要说明 && 批量 && <div className="cd-transfer-mut" role="note">一次转多位客户时，同事在推的项目都保留原负责人；要一起转请一位一位转</div>}
           {要说明 && <逐项选块 预览={转走?.原} 选={逐项} 改={set逐项} 忙={忙} />}
           {要说明 && <说明框 预览={说明预览} 值={说明} 改={set说明} 忙={忙} onEnter={() => void 转()} />}
-          {(谁 || 自动中) && 要原因 && !要说明 && (
+          {等预览 && 要原因 && (
+            <div className="csq-why" data-testid="transfer-why-pending">
+              <span className="cu-tr-skel" aria-busy>正在确认转让原因怎么填</span>
+            </div>
+          )}
+          {(谁 || 自动中) && 要原因 && !要说明 && !等预览 && (
             <div className="csq-why" role="radiogroup" aria-label="转让原因">
               <div className="csq-why-h">转让原因（可不选）</div>
               <div className="csq-chips">
