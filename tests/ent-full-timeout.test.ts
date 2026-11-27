@@ -117,6 +117,16 @@ describe("c1 60 天：真库扫", () => {
     }
   });
 
+  it("超时收回进公海：这个项目自动建的培育计划一起撤（操作日志记系统收的人），人手加的计划不动（E-396）", async () => {
+    const 内 = await 项目(销售甲.id, "内贸项目", { bizLine: "内贸" });
+    const 计划 = (subject: string, autoBy: string | null) => prisma.followPlan.create({ data: { subject, plannedAt: new Date(), customerId: 内.customerId, ownerId: 销售甲.id, projectId: 内.id, autoBy } });
+    await 计划("潜客培育：自动", "mql-nurture");
+    await 计划("人手加的", null);
+    expect(await 扫(沪("2026-12-31T00:01:00"))).toBe(1);
+    expect((await prisma.followPlan.findMany()).map((x) => x.subject)).toEqual(["人手加的"]);
+    expect(await prisma.auditLog.count({ where: { entity: "FollowPlan", action: "delete" } })).toBe(1);
+  });
+
   it("老数据（9 月建、没动过）：11-02 不收（从 11-01 起算）、12-31 收", async () => {
     const p = await 项目(销售甲.id, "老项目", { createdAt: 沪("2026-09-01T10:00:00") });
     expect(await 扫(沪("2026-11-02T09:00:00"))).toBe(0);

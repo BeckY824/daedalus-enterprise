@@ -4,16 +4,19 @@ import LandingNote from "@/components/LandingNote";
 import { 有值, 空显, 空值符 } from "@/lib/empty-value";
 import CopyValue from "@/components/CopyValue";
 import Heat from "@/components/Heat";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore, useRef, type CSSProperties, type ReactNode } from "react";
 import { 少动 } from "@/lib/reduced-motion";
 import { useMotionTheme } from "@/components/MotionTheme";
 import { 量变形起点, 放变形 } from "../projects/view-morph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
+import { 要跟Context } from "@/components/FollowDue";
+import { 疑似重复页 } from "./dupe-words";
 import { Button, Space, Dropdown, Tag, Segmented, Tooltip, type MenuProps, type SelectProps } from "antd";
 import { 客户状态色of } from "@/lib/enterprise/cust-status-color";
 import {
+  CalendarOutlined,
   DownloadOutlined,
   UploadOutlined,
   UserSwitchOutlined,
@@ -50,6 +53,7 @@ import { 主渠道显示名, 渠道显示名 } from "@/lib/enterprise/channel-ma
 import { 字典定义 } from "@/lib/enterprise/dict-kinds";
 import LevelLetter from "@/components/LevelLetter";
 import { useLocalPref } from "@/lib/local-pref";
+import { useNarrow } from "@/lib/roster";
 import LocalTime from "@/components/LocalTime";
 import { 未分级, 久未跟进天数们 } from "./query-shared";
 import IdleDaysFilter from "@/components/IdleDaysFilter";
@@ -354,6 +358,8 @@ export default function CustomersView({
   rows, total, page, requestedPage, pageSize, users, 能分配公海 = false, 能转出自己的 = false, 能导入导出 = true, 能删 = true, 负责人只能自己 = false, 能新建和领取 = true, 公海分给, channels, 渠道筛选项 = [], filters, 直接新建, 直接粘贴, 本月新增, 直接推荐 = null, 本批, 公海数 = null, 客户数 = null, 客户页签 = "我的", 公海里匹配 = 0, aiEnabled, 旧职位 = [], 国家们 = [], 部门选项 = [], 只读ids = [], 删不了ids = [], 放不了ids = [], 公海别线ids = [], 原负责人领不回ids = [], 转让原因, 自动分配预看, 批量自动分配客户, 金额排序 = "", 等级排序 = "", 创建排序 = "", 跟进排序 = "", 能按号码筛 = true, 排序币种, 企业版: 企业 = false, 客户状态选项 = [], 客户状态色, 客户状态自动 = false, 分配方式选项 = [], 客户类型选项 = [], 客户属性选项 = [], 客户属性字典 = [], 字典释义, 建档 = null, 建档要取 = false, 待交接 = null, 项目概况, 最近一句, 抬头节点, 仅项目行 = [], 仅项目超了 = false, 待复核, 三态标, 出口叫法, 项目看板 = false, 看板体, 市场视图 = false, 阶段太多 = false, 客户范围,
 }: Props) {
   const router = useRouter();
+  const 要跟 = useContext(要跟Context);
+  const 要跟数 = 要跟.逾期 + 要跟.今天;
   /** 看板卡进详情：等新页时顶上的条亮、点的那张卡先高亮（lib/nav-pending.ts，跳转优化 PR-A 审查补） */
   const 去页 = useNavGo();
   const [去的卡, set去的卡] = useState<string | null>(null);
@@ -1316,8 +1322,23 @@ export default function CustomersView({
   const 导出说明 = `按当前${[导出范围名 && `范围「${导出范围名}」`, 筛了 > 0 && "筛选"].filter(Boolean).join("和") || "条件"}导出 ${total.toLocaleString("zh-CN")} 位${b.customer}（含跟进记录）`;
   /** 导出中旁边那颗「取消导出」：只有它 abort（离开页面不打断导出，D8-3）；摆在页头下一行 */
   const 取消导出钮 = <Button size="small" onClick={() => 导出取消.current?.abort()}>取消导出</Button>;
+  // F-056：按钮只在收成图标时才挂悬停提示（宽屏字还在，再出一遍是重复）；服务端先按宽屏不挂，水合后按真实宽度。断点同 globals.css：导入 / 离职交接 ≤1199，跟进计划 ≤1439
+  const 图标收了 = useNarrow("(min-width: 768px) and (max-width: 1199px)");
+  const 跟进收了 = useNarrow("(max-width: 1439px)");
+  // F-056：左栏「客户」红数是今天到期 + 逾期的跟进计划、待办条数；客户列表里看不到这些条，在页头给个入口去跟进计划页（数到了且为 0 不占位；数晚到时先放同宽隐形占位，避免硬刷新页头跳）
+  const 跟进计划钮 = 要跟.未到 ? (
+    <span key="followplans" aria-hidden className="cust-head-follow-ph">
+      <Button tabIndex={-1} className="cust-head-follow" icon={<CalendarOutlined />}><span className="cust-head-follow-t">跟进计划</span><span className="cust-head-follow-n">00</span></Button>
+    </span>
+  ) : 要跟数 > 0 && (
+    <Link key="followplans" href="/follow-ups/plans?scope=mine">
+      <Tooltip title={跟进收了 ? `跟进计划和待办：要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（含逾期 ${要跟.逾期} 条）` : ""}` : undefined}>
+        <Button className="cust-head-follow" icon={<CalendarOutlined />} aria-label={`跟进计划和待办，要跟 ${要跟数} 条${要跟.逾期 > 0 ? `（逾期 ${要跟.逾期}）` : ""}`}><span className="cust-head-follow-t">跟进计划</span><span className={要跟.逾期 > 0 ? "cust-head-follow-n" : "cust-head-follow-n is-calm"}>{要跟数 > 99 ? "99+" : 要跟数}</span></Button>
+      </Tooltip>
+    </Link>
+  );
   /** 离职交接（C15）：页头右端。谁看得见、数怎么数照原来的入口（离职交接入口），不是这页自己数 */
-  const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Button>{待交接 ? `离职交接 ${待交接}` : "离职交接"}</Button></Link>;
+  const 离职交接钮 = 待交接 != null && <Link key="handover" href="/projects/handover"><Tooltip title={图标收了 ? (待交接 ? `离职交接 ${待交接}` : "离职交接") : undefined}><Button className="cust-head-ho" icon={<UserSwitchOutlined />} aria-label={待交接 ? `离职交接 ${待交接}` : "离职交接"}><span className="cust-head-ho-t">离职交接</span>{待交接 ? <span className="cust-head-ho-n">{待交接}</span> : null}</Button></Tooltip></Link>;
   /** 「新建 ▾」（11-12 用户：「右上角改为新建，然后可以选择新建项目或者新建客户」）：只能建一样时直接是那一样，一样都不能不摆 */
   const 新建钮 = <NewMenuButton key="new" 项={新建项} 载入中={项目流程载入 || 表单料取中} 预取={() => { void 取新建项目流程().catch(() => {}); void 要表单料(false); }} />;
 
@@ -1363,12 +1384,12 @@ export default function CustomersView({
           页签记在地址上（pool=1），翻页、搜索、筛选都留在这一页签里。
           一个人用、公海里也没人时不摆——那时公海就是个空抽屉；空库不摆；子集（筛选行上那三种标记）里不摆：那几个数本来就含公海
         */
-        titleAside={客户范围 ? (
-          /*
+        titleAside={客户范围 ? (<>
+          {/*
             「范围」（客户 11-18 第 12 题「把客户的页签直接加一个筛选项」）：企业版项目模式没有「客户 / 公海」页签（公海在 /pool），
             这一格就摆在原来页签的位置——标题旁边、不进筛选行（1024 宽筛选行本来就刚好一行），也不会被收进「更多筛选」。
             没有空值：「重置」回到这个人的默认；选中项记在地址栏 scope，换一项回第一页重查
-          */
+          */}
           <Segmented<客户范围>
             className="cust-scope"
             aria-label="范围"
@@ -1376,7 +1397,14 @@ export default function CustomersView({
             onChange={(v) => apply({ scope: v })}
             options={客户范围.选项.map((k) => ({ value: k, label: <span title={客户范围说明[k]}>{客户范围名[k]}</span> }))}
           />
-        ) : !统一公海 && !空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
+          {/*
+            疑似重复清单（12-15 第三批 C，P-合并-06）入口：「范围」旁一句淡链（企业版项目模式、不是市场视图、不是空库），不进页头按钮那一排（L-新3 页头只放导入 / 导出 / 离职交接 / 新建）。
+            谁看哪些组服务端判（负责人只看自己名下有份的，系统管理员全部）；不在这里数组数（数要整库成组，列表每次打开都算不划算）
+          */}
+          {!市场视图 && !空库 && (
+            <button type="button" className="cust-dupe-a" onClick={() => 去页.push(疑似重复页)} data-testid="cust-dupes">疑似重复 ›</button>
+          )}
+        </>) : !统一公海 && !空库 && !子集 && (users.length > 1 || (公海数 ?? 0) > 0 || f.pool) ? (
           <Segmented
             aria-label={`${b.customer} / 公海`}
             value={f.pool ? "公海" : "客户"}
@@ -1396,12 +1424,17 @@ export default function CustomersView({
             导出中 / 导完那句不再塞在这排按钮中间（L-新13：导完那句约 40 字，把按钮往左推约 440），写在页头下一行
           */
           <Space wrap>
-            {能导入导出 && <Button key="import" className="cust-head-io" aria-label="导入" icon={<UploadOutlined />} disabled={视图中} title={视图中 ? 视图外部话 : undefined} onClick={去导入}>导入</Button>}
+            {能导入导出 && (
+              <Tooltip key="import" title={视图中 ? 视图外部话 : 图标收了 ? "导入" : undefined}>
+                <Button className="cust-head-io" aria-label="导入" icon={<UploadOutlined />} disabled={视图中} onClick={去导入}>导入</Button>
+              </Tooltip>
+            )}
             {能导入导出 && !空库 && (
               <Tooltip key="export" title={视图中 ? 视图外部话 : 导出说明}>
                 <Button className="cust-head-io" aria-label="导出" icon={<DownloadOutlined />} loading={导出中} disabled={视图中} onClick={导出做}>导出</Button>
               </Tooltip>
             )}
+            {跟进计划钮}
             {离职交接钮}
             {新建钮}
           </Space>

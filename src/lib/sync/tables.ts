@@ -92,6 +92,8 @@ export const 不同步表 = [
   "EntChannelMain",
   // 企业版撞号台账（2026-11-10，migrations/115）：同上
   "EntDupeHit",
+  // 企业版扫库检测的查询记录与触发名单（2026-11-27，迁移 178）：同上
+  "EntScanQuery", "EntScanTrigger",
   // 企业版教练主题（2026-11-17，迁移 144）：企业版是一台服务器上的网页，不走团队同步
   "EntCoachTopic", "EntCoachReply",
   // 企业版录音点评的录音（2026-11-22，迁移 162）：同上
@@ -110,6 +112,8 @@ export const 不同步表 = [
   "EntRequiredBlock",
   // 企业版合并客户的合并单（2026-11-25，迁移 171）：同上；挪动明细只对这台库里的行 id 有意义，撤回也只在这台做
   "EntCustomerMerge",
+  // 企业版跨负责人合并申请和同意人（2026-11-26，迁移 174）：同上；申请执行时调的是这台库里的合并，也只在这台做
+  "EntMergeRequest", "EntMergeApprover",
 ] as const;
 
 /**
@@ -148,6 +152,7 @@ export const 指向人的列: [string, string][] = [
   ["CustomerClaim", "userId"],
   ["CustomerMerge", "userId"],
   ["CustomerNotDupe", "userId"],
+  ["CustomerNotDupe", "undoneById"],
   ["ContractOwner", "salesOwnerId"],
   ["ContractOwner", "channelOwnerId"],
   ["Opportunity", "ownerId"],
@@ -183,6 +188,10 @@ export const 指向人的列: [string, string][] = [
   ["EntDupeHit", "ownerId"],
   ["EntDupeHit", "approverId"],
   ["EntDupeHit", "decidedById"],
+  // 企业版扫库检测（2026-11-27，迁移 178）：查询人、被查的人、通知收件人，不建外键
+  ["EntScanQuery", "userId"],
+  ["EntScanTrigger", "userId"],
+  ["EntScanTrigger", "notifiedTo"],
   // 企业版教练主题（2026-11-17，迁移 144）：发起人、关的人、回复人，不建外键
   ["EntCoachTopic", "authorId"],
   ["EntCoachTopic", "closedById"],
@@ -248,6 +257,11 @@ export const 指向人的列: [string, string][] = [
   ["EntCustomerMerge", "fromOwnerId"],
   ["EntCustomerMerge", "fromCreatorId"],
   ["EntCustomerMerge", "undoneById"],
+  // 企业版合并申请（2026-11-26）：谁发起、谁结束的，要谁同意、从谁转来；不建外键
+  ["EntMergeRequest", "byUserId"],
+  ["EntMergeRequest", "endedById"],
+  ["EntMergeApprover", "userId"],
+  ["EntMergeApprover", "fromUserId"],
 ];
 
 /**

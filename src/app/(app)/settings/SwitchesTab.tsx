@@ -19,7 +19,7 @@ import { useSettingsNote } from "./InlineNote";
 import { useCountConfirm } from "./use-count-confirm";
 import { 开关现状, 读开关改动, type 开关现状 as 现状型, type 一次改动 } from "./switch-actions";
 import { 设规则, 设通讯录同步 } from "./org-actions";
-import { 设不设配额 } from "../leads/assign-actions";
+import { 设不设配额, 设扫库检测 } from "../leads/assign-actions";
 import { 改组织规则 } from "@/app/(app)/projects/actions";
 import { 设飞书推送 } from "../notice-actions";
 import { 设录音点评开关 } from "./asr-actions";
@@ -176,6 +176,7 @@ export default function SwitchesTab({ 去卡 }: { 去卡: (tab: 原页签, 找: 
     if (名) return () => 设规则(v === true, 名);
     switch (k) {
       case "no_quota": return () => 设不设配额(v === true);
+      case "scan_detect": return () => 设扫库检测(v === true);
       case "node_advance": return () => 改组织规则({ 节点推进: { 开: v === true } });
       case "first_two": return () => 改组织规则({ 阶段: { 前两节点要沟通: v === true } });
       case "fill_period": return () => 改组织规则({ 阶段: { 需求补全期: v === true } });
@@ -243,7 +244,7 @@ export default function SwitchesTab({ 去卡 }: { 去卡: (tab: 原页签, 找: 
   };
 
   const 词 = 搜.trim().toLowerCase();
-  const 命中 = useCallback((s: 开关定义) => !词 || [s.名, s.alias, s.what, s.位, 开关组们.find((g) => g.id === s.g)!.名].join(" ").toLowerCase().includes(词), [词]);
+  const 命中 = useCallback((s: 开关定义) => !词 || [s.名, s.alias, s.what, s.位 ?? "", 开关组们.find((g) => g.id === s.g)!.名].join(" ").toLowerCase().includes(词), [词]);
   const 过筛 = (s: 开关定义) =>
     筛 === "on" ? !s.opts && 开着(s.k) : 筛 === "off" ? !s.opts && !开着(s.k) : 筛 === "chg" ? 改过(s) : true;
   const 看 = 开关表.filter((s) => 命中(s) && 过筛(s));
@@ -350,7 +351,7 @@ export default function SwitchesTab({ 去卡 }: { 去卡: (tab: 原页签, 找: 
             : 最近
             ? <span title={`${new Date(最近.at).toLocaleString("zh-CN", { hour12: false, timeZone: "Asia/Shanghai" })}（北京时间）`}>上次：{最近.谁} · {时间话(最近.at)} · {最近.动作}</span>
             : <span>操作日志里没有改动（一直是默认）</span>}
-          <button type="button" className="sw-link sw-push" onClick={() => 去卡(s.tab, s.找)}>在「{原页签名[s.tab]}」里看</button>
+          {s.tab && s.找 && <button type="button" className="sw-link sw-push" onClick={() => 去卡(s.tab!, s.找!)}>在「{原页签名[s.tab]}」里看</button>}
         </div>
       </article>
     );

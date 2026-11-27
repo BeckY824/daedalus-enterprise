@@ -22,7 +22,9 @@ import { useShellNavGo } from "@/lib/nav-pending";
 import {
   搜合并候选, 预览合并, 合并客户, 撤回合并单, 合成两位联系人, 预览项目换客户, 给项目换客户, 撤销换客户, 能并同事的, type 合并候选,
   项目合并候选, 预览项目合并, 合并项目, 撤回项目合并单,
+  预览合并申请, 发起客户合并申请, 撤回客户合并申请,
 } from "../merge-actions";
+import { 合并申请页, 凭叫法, 等待工作日 } from "../merge-request-words";
 import { 合并桥, type 合成候选人 } from "./merge-bridge";
 
 /** 两家来源 / 创建人不一样时要勾的那句（同 customer-merge.ts 已核对话） */
@@ -55,13 +57,14 @@ function useMerge管(): boolean | null {
 }
 
 type 预览 = Extract<Awaited<ReturnType<typeof 预览合并>>, { ok: true }>["预览"];
+type 申请预览 = Extract<Awaited<ReturnType<typeof 预览合并申请>>, { ok: true }>["预览"];
 type 换预览 = Extract<Awaited<ReturnType<typeof 预览项目换客户>>, { ok: true }>["预览"];
 type 并项目预览 = Extract<Awaited<ReturnType<typeof 预览项目合并>>, { ok: true }>["预览"];
 
 export default function MergeHost({ customerId, 客户名 }: { customerId: string; 客户名: string }) {
   const { 请求, 收 } = useContext(合并桥);
   if (!请求) return null;
-  if (请求.种 === "客户") return <MergeCustomerDialog key={请求.次} customerId={customerId} 客户名={客户名} 关={收} />;
+  if (请求.种 === "客户") return <MergeCustomerDialog key={请求.次} customerId={customerId} 客户名={客户名} 预选={请求.预选} 关={收} />;
   if (请求.种 === "联系人") return <ContactMergeDialog key={请求.次} 留={请求.留} 们={请求.们} 关={收} />;
   if (请求.种 === "并项目") return <ProjectMergeDialog key={请求.次} projectId={请求.projectId} 项目名={请求.名} 关={收} />;
   return <ProjectMoveDialog key={请求.次} customerId={customerId} 客户名={客户名} projectId={请求.projectId} 项目名={请求.名} 关={收} />;
@@ -103,11 +106,13 @@ function CandidateSearch({ customerId, 提示, 空话, 选 }: { customerId: stri
         <ul className="mrg-cands" aria-label="搜到的客户">
           {们.map((c) => {
             const 副 = [c.编号, c.负责人].filter(Boolean).join(" · ");
+            const 名 = c.按号 ? 按号名 : c.name || "（没写名称）";
             return (
               <li key={c.id}>
-                <button type="button" className="mrg-cand" data-testid="merge-candidate" onClick={() => 选(c)} title={[c.name, 副].filter(Boolean).join(" · ")}>
-                  <span className="mrg-cand-n">{c.name || "（没写名称）"}</span>
+                <button type="button" className="mrg-cand" data-testid="merge-candidate" onClick={() => 选(c)} title={[名, 副, c.要申请 ? 要申请标 : ""].filter(Boolean).join(" · ")}>
+                  <span className="mrg-cand-n">{名}</span>
                   {副 && <span className="mrg-cand-s">{副}</span>}
+                  {c.要申请 && <span className="mrg-cand-ask" data-testid="merge-cand-ask">{要申请标}</span>}
                 </button>
               </li>
             );
@@ -120,6 +125,12 @@ function CandidateSearch({ customerId, 提示, 空话, 选 }: { customerId: stri
 
 /** 搜不到时那句：系统管理员不限，照旧；别人（含还没读到的）写明只列你负责的、要动同事的找谁 */
 const 空话of = (管: boolean | null, 找谁: string) => (管 ? "没搜到能选的客户" : `只列你负责、不在公海的客户；${找谁}`);
+/** 合并客户框搜不到时那句（第二批 2b-3）：看得到的都列，看不到的同事客户要输完整号码 */
+const 合并空话of = (管: boolean | null) => (管 ? "没搜到能选的客户" : "没搜到：只列你看得到、不在公海的客户；看不到的同事客户，请输入完整的手机号或邮箱");
+/** 同事负责的候选后面那个标（方案第二批第 9 节「合并客户框」） */
+const 要申请标 = "同事负责 · 要申请";
+/** 按完整号码搜到、看不到的同事客户：不给名称 */
+const 按号名 = "同事负责的客户（号码撞上）";
 
 /** 拦下的原因（服务端给的），一条一行 */
 function 原因块({ 原因 }: { 原因: string[] }) {
@@ -131,12 +142,24 @@ const 一行 = (v: ReactNode, 全: string, cls = "") => <span className={`mrg-on
 
 /* ───────────────────────── 合并客户 ───────────────────────── */
 
-function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: string; 客户名: string; 关: () => void }) {
+/**
+ * 疑似重复清单（12-15 第三批 C）上的「合并」：两家都预选好（留下 = 清单挑的那家，并进来的那家直接读预览，不用再搜），框里照样能「换一家」。
+ * 并进来那家是同事负责的（要申请）走第二批合并申请，同客户详情；谁能并照旧服务端判
+ */
+export function MergePairDialog({ 留下, 并掉, 关 }: { 留下: { id: string; name: string }; 并掉: 合并候选; 关: () => void }) {
+  return <MergeCustomerDialog customerId={留下.id} 客户名={留下.name} 预选={并掉} 关={关} />;
+}
+
+function MergeCustomerDialog({ customerId, 客户名, 预选, 关 }: { customerId: string; 客户名: string; 预选?: 合并候选; 关: () => void }) {
   const router = useRouter();
+  // 撤销条上的「看进度」：框已经关了，用壳里那份跳（同项目换客户）
+  const 去 = useShellNavGo();
   const [问后果, 后果框] = useConsequence();
   const 管 = useMerge管();
   const [并掉, set并掉] = useState<合并候选 | null>(null);
   const [预, set预] = useState<预览 | null>(null);
+  /** 发合并申请的预览（第二批 2b-3）：同事负责、或名下有同事在推的项目，直接并拦下时改走申请 */
+  const [申, set申] = useState<申请预览 | null>(null);
   const [读错, set读错] = useState<string | null>(null);
   const [勾, set勾] = useState(false);
   /** 并掉那家的联系人 id → 配上的留下那家联系人 id */
@@ -145,27 +168,104 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
   const [同, set同] = useState<Set<string>>(new Set());
   const 读次 = useRef(0);
 
+  /** 同名的先配上（不替人勾「是同一个人」）；留下那家每位只配一次 */
+  function 先配(p: 预览) {
+    const 用了 = new Set<string>();
+    const 初: Record<string, string | undefined> = {};
+    for (const b of p.联系人们.并掉) {
+      const a = p.联系人们.留下.find((x) => !用了.has(x.id) && x.name.trim() && x.name.trim() === b.name.trim());
+      if (a) { 初[b.id] = a.id; 用了.add(a.id); }
+    }
+    set配(初);
+  }
+  /**
+   * 选了一家：系统管理员照第一批直接并。别人：标了要申请的（同事负责）直接读申请预览；
+   * 自己负责的先读直接合并预览，拦下了再读申请预览（名下有同事在推的项目也要申请）——申请也发不了就摆申请那边的原因
+   */
   function 挑(c: 合并候选) {
     const 这次 = ++读次.current;
-    set并掉(c); set预(null); set读错(null); set勾(false); set同(new Set());
-    预览合并(customerId, c.id).then((r) => {
+    set并掉(c); set预(null); set申(null); set读错(null); set勾(false); set同(new Set());
+    const 读申请 = async (直接拦?: 预览) => {
+      const r = await 预览合并申请(customerId, c.id, c.按号);
       if (这次 !== 读次.current) return;
       if (!r.ok) { set读错(r.error); return; }
-      set预(r.预览);
-      // 同名的先配上（不替人勾「是同一个人」）；留下那家每位只配一次
-      const 用了 = new Set<string>();
-      const 初: Record<string, string | undefined> = {};
-      for (const b of r.预览.联系人们.并掉) {
-        const a = r.预览.联系人们.留下.find((x) => !用了.has(x.id) && x.name.trim() && x.name.trim() === b.name.trim());
-        if (a) { 初[b.id] = a.id; 用了.add(a.id); }
+      if (!r.预览.能发 && 直接拦) {
+        // 申请那边的原因全都是直接合并那边也有的（数据拦法，两边一样）才摆直接合并的；否则摆申请自己的原因（已挂着一张、5 张上限等）
+        const 同 = r.预览.原因.length > 0 && r.预览.原因.every((x) => 直接拦.原因.includes(x));
+        if (同) {
+          // 直接合并那组里「可以发合并申请」的句子会把人引去发一个发不了的申请：去掉再摆（去空了就摆申请这边的原因）
+          const 去后 = 直接拦.原因.filter((x) => !x.includes("可以发合并申请"));
+          set预({ ...直接拦, 原因: 去后.length ? 去后 : r.预览.原因 });
+        } else set申(r.预览);
+        return;
       }
-      set配(初);
-    }).catch((e) => { if (这次 === 读次.current) set读错(动作出错话(e, "没读到合并预览，请再试一次")); });
+      set申(r.预览);
+      if (r.预览.预览) { set预(r.预览.预览); 先配(r.预览.预览); }
+    };
+    const 读 = c.要申请 && 管 !== true
+      ? 读申请()
+      : 预览合并(customerId, c.id).then(async (r) => {
+          if (这次 !== 读次.current) return;
+          if (!r.ok) { set读错(r.error); return; }
+          if (!r.预览.能并 && 管 !== true) return 读申请(r.预览);
+          set预(r.预览);
+          先配(r.预览);
+        });
+    读.catch((e) => { if (这次 === 读次.current) set读错(动作出错话(e, "没读到合并预览，请再试一次")); });
   }
-  const 换一家 = () => { 读次.current++; set并掉(null); set预(null); set读错(null); };
+  // 预选了并进来那家（疑似重复清单）：一开框就读预览，跳过搜索那步；只在开框那一下
+  const 预选过 = useRef(false);
+  useEffect(() => {
+    // 等管理员身份读回来再预选：挑 里按 管 分走申请 / 直接预览，读回前调会走错路
+    if (预选 && 管 !== null && !预选过.current) { 预选过.current = true; 挑(预选); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [管]);
+  const 换一家 = () => { 读次.current++; set并掉(null); set预(null); set申(null); set读错(null); };
 
   const 对们 = 预 ? 预.联系人们.并掉.filter((b) => 同.has(b.id) && 配[b.id]).map((b) => ({ 留: 配[b.id]!, 并: b.id })) : [];
-  const 能点 = !!预?.能并 && (!预.要勾选 || 勾);
+  /** 走申请：申请预览说能发、拿到了并排 */
+  const 走申请 = !!申?.能发 && !!预;
+  const 能点 = (走申请 || !!预?.能并) && (!预?.要勾选 || 勾);
+  const B名 = 并掉 ? (并掉.按号 ? 按号名 : 并掉.name || "并进来的客户") : "";
+
+  async function 发申请() {
+    if (!申 || !预 || !并掉 || !能点) return;
+    const 们 = 申.同意人;
+    const 结: { 单号: string | null; 人数: number } = { 单号: null, 人数: 们.length };
+    const n = 预.条数;
+    const 成 = await 问后果({
+      题: `发合并申请：把「${B名}」并进「${客户名}」？`,
+      宽: 520,
+      危: false,
+      是: "发申请",
+      后果: [
+        { 标: "要同意", 级: "警" as const, 话: `${们.map((x) => x.名).join("、")}（共 ${们.length} 位）都同意了才合并；一位拒绝，申请就结束` },
+        { 标: "等多久", 话: `${等待工作日} 个工作日内没有全部同意，申请失效，要重新发起` },
+        { 标: "等的时候", 话: "两家照常能用；两家的负责人、阶段、回款或提成、被判无效有变，申请失效" },
+        ...(n ? [{ 标: "合并后", 话: `挪过来 ${n.项目} 个项目、${n.联系人} 位联系人、${n.沟通} 条沟通；项目负责人、组员都不变，${撤回天数} 天内你可整单撤回` }] : []),
+        { 标: "可撤回申请", 话: `都同意之前，你可以在「合并申请」页撤回` },
+      ],
+      做: async () => {
+        const r = await 发起客户合并申请(customerId, 并掉.id, { 已核对: 预.要勾选 ? 勾 : undefined, 同一个人: 对们, 按号: 并掉.按号 });
+        if (r.ok) { 结.单号 = r.requestId; 结.人数 = r.同意人.length; }
+        return r;
+      },
+    });
+    if (!成 || !结.单号) return;
+    const id = 结.单号;
+    关();
+    router.refresh();
+    showUndo({
+      话: `合并申请已发出，等 ${结.人数} 位同意`,
+      毫秒: 8000,
+      撤销: async () => {
+        const u = await 撤回客户合并申请(id);
+        router.refresh();
+        return u;
+      },
+      另一个动作: { 话: "看进度", 做: () => 去.push(合并申请页) },
+    });
+  }
 
   async function 合并() {
     if (!预 || !并掉 || !能点) return;
@@ -182,7 +282,7 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
           标: "挪过来", 级: "警" as const,
           话: `${n.项目} 个项目（其中订单阶段 ${n.订单项目} 个）、回款 ${n.回款} 笔、${n.联系人} 位联系人、${n.沟通} 条沟通、${n.待办 + n.跟进计划} 条待办和跟进计划`,
         }] : []),
-        ...(对们.length ? [{ 标: "合成", 话: `${对们.length} 对联系人合成一位，号码、沟通、名片收到留下那位` }] : []),
+        ...(对们.length ? [{ 标: "合成", 话: `${对们.length} 对联系人合成一位，号码、沟通、名片收到留下那位，主号照留下那位的电话（他空着用并进来那位的），合成后可在联系人上换` }] : []),
         { 标: "不变", 话: "项目负责人、组员都不变；来源和创建人按留下这家" },
         { 标: "回收站", 话: `「${B}」进回收站，原来的链接都会跳到这里` },
         { 标: "可撤回", 话: 管 ? 撤回话 : `${撤回话}${撤回谁话}` },
@@ -227,15 +327,18 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
           <Button onClick={换一家}>换一家</Button>
           <span className="mrg-foot-sp" />
           <Button onClick={关}>取消</Button>
-          <Button type="primary" disabled={!能点} onClick={() => void 合并()} data-testid="merge-go">合并</Button>
+          {走申请
+            ? <Button type="primary" disabled={!能点} onClick={() => void 发申请()} data-testid="merge-request-go">发合并申请（要 {申!.同意人.length} 位同意）</Button>
+            : <Button type="primary" disabled={!能点} onClick={() => void 合并()} data-testid="merge-go">合并</Button>}
         </div>
       ) : null}
     >
-      {!并掉 && <CandidateSearch customerId={customerId} 提示={`选要并进这位客户的那家：它的联系人、项目、沟通都挪过来，它进回收站；${撤回话}。`} 空话={空话of(管, "要并同事的客户请找系统管理员")} 选={挑} />}
-      {并掉 && !预 && !读错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
+      {!并掉 && <CandidateSearch customerId={customerId} 提示={`选要并进这位客户的那家：它的联系人、项目、沟通都挪过来，它进回收站；${撤回话}。`} 空话={合并空话of(管)} 选={挑} />}
+      {并掉 && !预 && !申 && !读错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
       {并掉 && 读错 && <p role="alert" className="mrg-err">{读错}</p>}
-      {并掉 && 预 && !预.能并 && <原因块 原因={预.原因} />}
-      {并掉 && 预 && 预.能并 && (
+      {并掉 && !走申请 && 申 && !申.能发 && <原因块 原因={申.原因} />}
+      {并掉 && 预 && !预.能并 && !走申请 && <原因块 原因={预.原因} />}
+      {并掉 && 预 && (预.能并 || 走申请) && (
         <div className="mrg-body">
           <div className="mrg-cmp" role="table" aria-label="两家对比">
             <div className="mrg-cmp-r mrg-cmp-h" role="row">
@@ -243,13 +346,17 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
               <span role="columnheader" className="mrg-cmp-a">{一行("留下（这位）", "留下（这位）")}</span>
               <span role="columnheader" className="mrg-cmp-b">{一行("并进来", "并进来")}</span>
             </div>
-            {预.并排.map((r) => (
+            {预.并排.map((r0) => {
+              // 按号放行进来的、看不到的同事客户：并进来一列不显示真名（服务端已换，这里再兜一道）
+              const r = 并掉.按号 && r0.格 === "客户名称" ? { ...r0, 并掉: 按号名 } : 并掉.按号 && r0.格 === "客户简称" ? { ...r0, 并掉: "" } : r0;
+              return (
               <div key={r.格} role="row" data-testid="merge-row" className={`mrg-cmp-r${r.不同 ? " is-diff" : ""}${r.标红 ? " is-red" : ""}`}>
                 <span role="rowheader" className="mrg-cmp-k">{一行(r.格, r.格)}</span>
                 <span role="cell" className="mrg-cmp-a"><span className="mrg-cmp-tag" aria-hidden>留下</span>{一行(r.留下 || "—", r.留下)}</span>
                 <span role="cell" className="mrg-cmp-b"><span className="mrg-cmp-tag" aria-hidden>并进来</span>{一行(r.并掉 || "—", r.并掉)}</span>
               </div>
-            ))}
+              );
+            })}
           </div>
           {预.补空.length > 0 && <p className="mrg-note">留下这家空着的{预.补空.join("、")}，用并进来那家的补上；其余两家不同的格都按留下这家。</p>}
           {(预.号格留下有值?.length ?? 0) > 0 && <p className="mrg-note" data-testid="merge-keep-keys">{预.号格留下有值.join("、")}两家都填了：留下这家的不动，并进来那家的随它进回收站（撤回时一起回来）。</p>}
@@ -298,6 +405,23 @@ function MergeCustomerDialog({ customerId, 客户名, 关 }: { customerId: strin
                   </div>
                 );
               })}
+            </section>
+          )}
+          {走申请 && (
+            <section className="mrg-ask" aria-label="要同意的人" data-testid="merge-approvers">
+              <p className="mrg-sec-t">要同意的人 <span className="mrg-sec-c">他们都同意了才合并；{等待工作日} 个工作日内没全部同意，申请失效</span></p>
+              <ul className="mrg-ask-l">
+                {申!.同意人.map((x) => {
+                  const 身份 = [...x.凭.map((v) => 凭叫法[v]), ...(x.项目.length ? [`${x.项目.length} 个项目：${x.项目.map((p) => p.name).join("、")}`] : ((x as { 项目数?: number }).项目数 ?? 0) > 0 ? [`${(x as { 项目数?: number }).项目数} 个项目`] : [])].join("；");
+                  return (
+                    <li key={x.userId} className="mrg-ask-r" data-testid="merge-approver">
+                      {一行(x.名, x.名, "mrg-ask-n")}
+                      {一行(身份, 身份, "mrg-ask-s")}
+                    </li>
+                  );
+                })}
+              </ul>
+              <p className="mrg-note" data-testid="merge-ask-note">{并掉?.要申请 ? "并进来那家是同事的：联系人只显示姓名、职务，号码不显示。" : "走申请时两家联系人都只显示姓名、职务，号码不显示。"}</p>
             </section>
           )}
         </div>
@@ -385,6 +509,8 @@ function ContactMergeDialog({ 留: 起点, 们, 关 }: { 留: 合成候选人; �
                 <ul className="mrg-out">
                   <li>号码、沟通、名片、项目联系人都收到「{叫(留)}」，号码一样的只留一行</li>
                   <li>「{叫(留)}」空着的资料用「{叫(并)}」的补上，填了的不改</li>
+                  {/* 主号（12-15 第三批 B）：留下那位的电话格；他空着用并进来那位的（同补空） */}
+                  {(留?.主号 || 并?.主号) && <li>合成后主号：{留?.主号 || 并?.主号}，可在联系人上换</li>}
                   <li>「{叫(并)}」进回收站；{撤回话}</li>
                 </ul>
               </>

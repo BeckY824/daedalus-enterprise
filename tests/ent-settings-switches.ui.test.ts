@@ -48,7 +48,7 @@ const 现状 = (改: Record<string, unknown> = {}) => ({
   ok: true,
   值: { org_scope: true, field_perm: true, lead_assign: false, no_quota: false, reply_overdue: true, lead_giveup: true, market_review: true, block_meaningless: true,
     node_advance: true, first_two: false, fill_period: false, push_perm: "负责人可推", hold_cap: true, node_timeout: false, tri_state: false, record_only: false, record_only_recall: false,
-    feishu_push: true, sync_feishu: false, coach_rec: false, ...改 },
+    feishu_push: true, sync_feishu: false, coach_rec: false, scan_detect: true, ...改 },
   全员: 43,
   组织规则: { 公海: { 持有上限开: true, 默认上限: 999, 每人上限: {}, 多项目客户: "客户可转让" } },
   持有上限: { 默认上限: 999, 单设人数: 0, 到上限: 0 },
@@ -73,7 +73,7 @@ it("系统管理员：目录「团队与权限」第一项是开关总览；18 �
     expect(页签.indexOf("开关总览")).toBe(页签.indexOf("团队成员") - 1);
     expect(await page.getByRole("tab", { name: /开关总览/ }).getAttribute("aria-selected")).toBe("true");
     const 左 = await page.locator(".sw-card").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().left)));
-    expect(左).toHaveLength(20);
+    expect(左).toHaveLength(21);
     expect(new Set(左).size).toBe(1);
     expect(await page.getByTestId("sw-parent-no_quota").innerText()).toBe("属于：线索分配和配额");
     expect(await page.getByTestId("sw-parent-lead_giveup").innerText()).toBe("属于：线索分配和配额");

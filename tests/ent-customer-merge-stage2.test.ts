@@ -239,7 +239,8 @@ describe("服务端动作", () => {
     const b = await 客户(乙.id, { name: "我的乙", creator: { create: { userId: 丙.id } } });
     await 客户(丙.id, { name: "我的丙" });
     登录.人 = 乙;
-    expect((await 搜合并候选(a, "我的")).map((x) => x.name)).toEqual(["我的乙"]);
+    // 第二批 2b-3：看得到的同事客户也列，标「要申请」（测试里没登录态，限定层不限，同事的都看得到）
+    expect((await 搜合并候选(a, "我的")).map((x) => [x.name, !!x.要申请])).toEqual([["我的丙", true], ["我的乙", false]]);
     // 看不到的（限定层查不到；测试里没登录态，用回收站里的代替）不给预览
     const 删了的 = await 客户(乙.id, { deletedAt: new Date() });
     expect(await 预览合并(a, 删了的)).toEqual({ ok: false, error: "客户不存在或你看不到，刷新看看" });

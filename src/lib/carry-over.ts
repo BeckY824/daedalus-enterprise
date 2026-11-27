@@ -13,7 +13,7 @@ export type 带走数 = {
 export function 带走说法(n: 带走数 | undefined): string {
   if (!n) return "";
   const 项 = [n.计划和待办 && `${n.计划和待办} 条没做完的计划和待办`, n.商机 && `${n.商机} 个进行中商机`, n.项目 && `${n.项目} 个项目`].filter(Boolean);
-  return 项.length ? `，连同${项.join("、")}` : "";
+  return 项.length ? `，连同 ${项.join("、")}` : "";
 }
 
 /** 批量操作结果的那句提示。「刚被别人改了负责人」和「已不存在」要分开说 */
