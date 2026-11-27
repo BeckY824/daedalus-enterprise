@@ -339,6 +339,13 @@ export async function 改节点(
     回原?: boolean;
     /** 被缺必填拦下时记哪个入口（lib/project/required-block.ts）；不给记「其他」 */
     入口?: 拦截入口;
+    /**
+     * 系统代推（线索验证时限到期替负责人落定，P-线索-05）：调用方传 系统 身份进来，这里只跳过「能改节点 / 仅上级推 / 补全期 / 字段权限（阶段只读）」四道谁能推的闸，
+     * 必填、推进关、被并拦照旧；缺必填被拦时不写必填拦截记录（不是负责人自己点的）；节点变更的操作人记 系统。不传 = 和原来一样
+     */
+    系统代推?: boolean;
+    /** 在改项目之前、同一个事务里先做的一步（线索验证到期落定：先抢验证这一步 + 写痕）；返回失败 = 什么都没写、整笔不动，把话原样回出去 */
+    同事务?: (tx: Prisma.TransactionClient) => Promise<{ ok: false; error: string } | null>;
   },
 ): Promise<结果 & { 变了?: boolean; 自动推到?: string[]; 原?: 推前 & { result: string | null } }> {
   const 规则 = await 生效组织规则();
@@ -348,12 +355,13 @@ export async function 改节点(
   const 级别 = await 字段权限of(me.id);
   // 企业版客户状态跟着项目算（cust-status-auto-db.ts）：开关事务外读
   const 状态开 = await 客户状态自动();
+  const 代 = !!选项?.系统代推;
   return 查完再写(async (tx) => {
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     // 「仅上级推」开着（企业版组织规则）：负责人自己推不动，直属上级只给往前推这一步，别的照旧只给负责人（11-01 闭环）
-    const 上级代推 = !能改节点(me, p, org) && 上级只推(me, p, 推的组织, 规则);
-    if (!能改节点(me, p, org) && !上级代推) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
+    const 上级代推 = !代 && !能改节点(me, p, org) && 上级只推(me, p, 推的组织, 规则);
+    if (!代 && !能改节点(me, p, org) && !上级代推) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人改进程 : "只有项目负责人、老板或主管能改进程" };
     // 待分配期间占着负责人一格的建的人不能推进、退回、点结局（P-转-21、X-68）：节点、结局都不给动，字段照改
     if (待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
     // 合并客户第二批 2a：被并掉的项目 30 天内不能重启、改结局（要动先撤回合并，免得撤回对不上；project-merge-guard.ts）。
@@ -388,7 +396,8 @@ export async function 改节点(
     // 项目页 load.ts 交付只在尾款 用同一个判断
     const 问题 = 改节点问题({ ...到, result }, { ...p, 有验收报告 }, 异常, 企业版(), 字典, 企业版() && 节点推进管(规则, p));
     if (问题) return { ok: false as const, error: 问题 };
-    const 挡 = 到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result ? 改不了的话(级别, ["商机阶段"]) : null;
+    // 系统代推：操作人是系统身份、不在组织成员里，字段权限规则开着会一律回「藏」，不是人在改，不查
+    const 挡 = !代 && (到.phase !== 现.phase || 到.node !== 现.node || result !== 现.result) ? 改不了的话(级别, ["商机阶段"]) : null;
     if (挡) return { ok: false as const, error: 挡 };
     // 有结局的改回进行中也按节点比：改回到后面的节点同样算往前推，必填门、推进关照拦（11-03 测试 A5-1：终止再改回绕过必填和线索验证）
     const 往前 = !result && 节点序号(到, 字典) > 节点序号(p, 字典);
@@ -397,12 +406,12 @@ export async function 改节点(
       if (判死) return { ok: false as const, error: 判死 };
     }
     if (上级代推 && !往前) return { ok: false as const, error: 只有负责人改进程 };
-    const 不给 = 往前
+    const 不给 = 往前 && !代
       ? (企业版() ? 补全期不给(me, org, 规则) : null) ?? 往前推不给(me, p.ownerId, 推的组织, 负责人可推(规则))
       : null;
     if (不给) return { ok: false as const, error: 不给 };
     // 缺必填被拦下记一行（必填拦截记录，客户 11-23）：入口、代推跟着记；没权限那几种上面已经回了，不记
-    const 记拦 = (种: 拦截种类, 缺: readonly string[]) =>
+    const 记拦 = (种: 拦截种类, 缺: readonly string[]) => 代 ? Promise.resolve() :
       记必填拦截(tx, { userId: me.id, p: { id: p.id, customerId: p.customerId, phase: 现.phase, node: 现.node }, 到, 种, 缺, 入口: 选项?.入口 ?? "其他", 代推: 上级代推 });
     if (往前) {
       // 推进关要的「还差」读一遍留着：拦下时记缺哪几项，不再读第二遍
@@ -441,6 +450,10 @@ export async function 改节点(
     }
     // 线索流失、丢单的原因只记在节点变更里，项目上的 exceptionReason 是异常状态专用
     const 原因 = 企业版() && 要写原因(result) ? (异常?.备注 ?? "").trim().slice(0, 原因上限) || null : 备注;
+    if (选项?.同事务) {
+      const 先 = await 选项.同事务(tx);
+      if (先) return { ok: false as const, error: 先.error };
+    }
     if (现.phase === 到.phase && 现.node === 到.node && 现.result === result && p.exceptionCategoryId === 类别 && (p.exceptionReason ?? null) === 备注) {
       return { ok: true as const, 变了: false };
     }
@@ -473,7 +486,7 @@ export async function 改节点(
     if (企业版() && 现.result === "线索流失" && result !== "线索流失") await 作废补位(tx, p.id);
     await tx.projectNodeLog.create({
       data: {
-        projectId: p.id, userId: me.id,
+        projectId: p.id, userId: 代 ? 系统.id : me.id,
         fromPhase: 现.phase, fromNode: 现.node, fromResult: 现.result,
         toPhase: 到.phase, toNode: 到.node, toResult: result, categoryId: 类别, reason: 清下一步 ? 拼备注(原因, 原下一步备注(p)) : 原因,
       },

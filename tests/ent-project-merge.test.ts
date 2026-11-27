@@ -22,7 +22,7 @@ import { 字段权限key } from "@/lib/enterprise/field-perm";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 项目合并预览, 执行项目合并, 撤回项目合并, 能并进的项目, 项目的合并单, 项目合并通知种类, 阶段和钱拦, 项目合并验证步, 项目合并撤回过期话 } from "@/lib/enterprise/project-merge";
+import { 项目合并预览, 留下在等的原因, 执行项目合并, 撤回项目合并, 能并进的项目, 项目的合并单, 项目合并通知种类, 阶段和钱拦, 项目合并验证步, 项目合并撤回过期话 } from "@/lib/enterprise/project-merge";
 import { 项目单, 被并项目拦, 换客户合并拦 } from "@/lib/enterprise/project-merge-guard";
 import { 执行合并, 撤回合并 } from "@/lib/enterprise/customer-merge";
 import { 项目换客户, 撤销换客户 } from "@/lib/enterprise/project-move-customer";
@@ -256,11 +256,46 @@ describe("前提：谁能并、哪些拦", () => {
     await raw.entLeadVerify.create({ data: { projectId: b, verdict: "有效线索", finalResult: "有效线索" } });
     expect((await 项目合并预览(prisma, a, b, 乙)).原因.join()).toContain("判过有效");
     await raw.entLeadVerify.update({ where: { projectId: b }, data: { verdict: "初验无效", finalResult: null, pending: "市场复核" } });
-    expect((await 项目合并预览(prisma, a, b, 乙)).原因.join()).toContain("在等市场复核");
+    expect((await 项目合并预览(prisma, a, b, 乙)).原因.join()).toContain("在等总管理终判"); // 存着市场复核、组织里没有市场管理：按实际在等的总管理终判说
     await raw.entLeadVerify.update({ where: { projectId: b }, data: { verdict: "无效线索", finalResult: "无效线索", pending: null } });
     expect((await 项目合并预览(prisma, a, b, 乙)).原因.join()).toContain("已判无效线索");
     // 反过来：判过有效的留下，另一个并进来
     expect(await 项目合并预览(prisma, b, a, 乙)).toMatchObject({ 能并: true });
+  });
+
+  it("留下的在等复核 / 终验 / 终判 / 认领也拦（P-合并-09）；刚分来还没初判（pending 空）不拦；候选里灰着写原因", async () => {
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
+    // 等销售初判 = 刚分来、没有验证行或 pending 空：不拦
+    expect(await 项目合并预览(prisma, a, b, 乙)).toMatchObject({ 能并: true });
+    await raw.entLeadVerify.create({ data: { projectId: a, verdict: "暂未判定" } });
+    expect(await 项目合并预览(prisma, a, b, 乙)).toMatchObject({ 能并: true });
+    expect((await 能并进的项目(prisma, b, 乙)).列).toEqual([expect.objectContaining({ id: a })]);
+    expect((await 能并进的项目(prisma, b, 乙)).列[0].不能).toBeUndefined();
+    // 存着「市场复核」但组织里没有市场管理：实际在等总管理终判，预览和候选灰着都按它说、同一句（建议 7）
+    for (const [存, 等] of [["市场复核", "总管理终判"], ["销售终验", "销售终验"], ["总管理终判", "总管理终判"], ["销售认领", "销售认领"]]) {
+      await raw.entLeadVerify.update({ where: { projectId: a }, data: { pending: 存 } });
+      const r = await 项目合并预览(prisma, a, b, 乙);
+      expect(r.能并).toBe(false);
+      const 话 = 留下在等的原因({ name: (await raw.project.findUniqueOrThrow({ where: { id: a } })).name }, 等);
+      expect(r.原因.join()).toContain(话);
+      expect((await 能并进的项目(prisma, b, 乙)).列).toEqual([expect.objectContaining({ id: a, 不能: 话 })]);
+    }
+  });
+
+  it("组织里有市场管理时存着的市场复核照实说在等市场复核；预览和候选同一句", async () => {
+    const 市 = await 造人("mkt", "市", "SALES");
+    await raw.entMember.create({ data: { userId: 市.id, bizRole: "marketing_mgr" } });
+    忘掉企业版范围();
+    const c = await 客户(乙.id);
+    const a = await 项目(乙.id, c);
+    const b = await 项目(乙.id, c);
+    await raw.entLeadVerify.create({ data: { projectId: a, verdict: "初验无效", pending: "市场复核" } });
+    const 名a = (await raw.project.findUniqueOrThrow({ where: { id: a } })).name;
+    const 话 = 留下在等的原因({ name: 名a }, "市场复核");
+    expect((await 项目合并预览(prisma, a, b, 乙)).原因.join()).toContain(话);
+    expect((await 能并进的项目(prisma, b, 乙)).列).toEqual([expect.objectContaining({ id: a, 不能: 话 })]);
   });
 
   it("只读角色（管理员类）不能并、不能撤，合并单不摆撤回", async () => {

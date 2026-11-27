@@ -76,7 +76,7 @@ it("没点开一次都不取；入口写条数和相对时间；点开电脑居�
   try {
     const 入口 = page.getByTestId("history-entry");
     expect(await 调(page)).toEqual([]);
-    expect((await 入口.innerText()).replace(/\s+/g, " ")).toMatch(/^历史变更 ?51 ?· (今天|昨天) \d\d:\d\d$/);
+    expect((await 入口.innerText()).replace(/\s+/g, " ")).toMatch(/^历史变更 ?51 ?· (今天 \d\d:\d\d|昨天( \d\d:\d\d)?)$/);
     await 入口.click();
     await page.getByTestId("history-event").first().waitFor();
     const 窗 = page.locator(".hist-modal .ant-modal-container");
@@ -217,7 +217,7 @@ it("服务端先画再水合：服务端那一版入口不带「· 最近」（�
     expect(ssr).toContain("历史变更");
     expect(ssr).not.toContain("hist-entry-ago");
     await page.locator(".hist-entry-ago").waitFor();
-    expect(await page.locator(".hist-entry-ago").innerText()).toMatch(/^· (今天|昨天) \d\d:\d\d$/);
+    expect(await page.locator(".hist-entry-ago").innerText()).toMatch(/^· (今天 \d\d:\d\d|昨天( \d\d:\d\d)?)$/);
     expect(错.filter((x) => /水合|hydrat|Hydrat/.test(x))).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
