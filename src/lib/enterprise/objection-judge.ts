@@ -27,11 +27,12 @@ import { 企业版 } from "./switch";
 import { 看已删 } from "./soft-delete-core";
 import { notify } from "./notify";
 import { 读组织 } from "./org";
+import { 重算裁定人们 } from "./objection";
 import { 客户显名, 显名列 } from "./customer-title";
 import { 系统管理员们 } from "./tri-state-people";
 import { 项目合并单们 } from "./project-merge-guard";
 import {
-  异议待裁定, 异议已撤销, 异议维持, 异议撤回, 异议待手工退回, 异议已退回, 裁定说明上限, 不能自动退话, 算不能自动退, type 不能自动退类,
+  异议待裁定, 异议已撤销, 异议维持, 异议撤回, 异议待手工退回, 异议已退回, 裁定说明上限, 不能自动退话, 算不能自动退, 能裁定, type 不能自动退类,
 } from "./objection-core";
 
 type Db = Prisma.TransactionClient;
@@ -111,6 +112,8 @@ export type 待裁定行 = {
   能自动退: boolean; 退回说明: string;
   /** 已裁定行（待手工退回）才有 */
   裁定说明?: string; 裁定人?: string;
+  /** 待裁定行才有：按当前组织重算的裁定人（名字）；只剩发起人自己一位系统管理员时 本人发起 = true，页上写明「本人发起」 */
+  现裁定人?: string; 本人发起?: boolean;
 };
 
 async function 填行(行们: EntTransferObjection[], 看退回: boolean): Promise<待裁定行[]> {
@@ -124,8 +127,11 @@ async function 填行(行们: EntTransferObjection[], 看退回: boolean): Promi
   const 名 = new Map(人们.map((u) => [u.id, u.name]));
   const 日志 = new Map(日志们.map((l) => [l.id, l]));
   const 客户名 = new Map(客户们.map((c) => [c.id, 客户显名(c)]));
+  const 现裁 = await 重算裁定人们(行们.filter((r) => r.status === 异议待裁定));
+  const 现裁名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set([...现裁.values()].flatMap((x) => x.ids))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   const 出: 待裁定行[] = [];
   for (const r of 行们) {
+    const 裁 = 现裁.get(r.id);
     const 评 = 看退回 ? await 评估退回(prisma, r) : null;
     出.push({
       id: r.id, 类别: r.kind === "项目" ? "项目" : "客户", 对象: r.targetName, 客户名: 客户名.get(r.customerId) ?? "",
@@ -135,19 +141,27 @@ async function 填行(行们: EntTransferObjection[], 看退回: boolean): Promi
       能自动退: !评 || 评.自动, 退回说明: 评 && !评.自动 ? 评.原因 : "",
       ...(r.judgeNote ? { 裁定说明: r.judgeNote } : {}),
       ...(r.judgedById ? { 裁定人: 名.get(r.judgedById) ?? "" } : {}),
+      ...(裁 ? { 现裁定人: 裁.ids.map((x) => 现裁名.get(x) ?? "").filter(Boolean).join("、"), ...(裁.本人发起 ? { 本人发起: true } : {}) } : {}),
     });
   }
   return 出;
 }
 
-/** 待我裁定：待裁定且裁定人里有我（最早提的在前） */
+/** 待我裁定：待裁定且按当前组织重算后裁定人里有我（停用、调岗的不算；最早提的在前）。系统管理员兜底的看「全部待裁定」 */
 export async function 待我裁定(userId: string): Promise<待裁定行[]> {
   if (!企业版()) return [];
-  const 行们 = await prisma.entTransferObjection.findMany({
-    where: { status: 异议待裁定, judgeIds: { contains: JSON.stringify(userId) } },
-    orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 200,
-  });
-  return 填行(行们.filter((r) => r.judgeIds && (JSON.parse(r.judgeIds) as string[]).includes(userId)), true);
+  const 行们 = await prisma.entTransferObjection.findMany({ where: { status: 异议待裁定 }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 500 });
+  const 现裁 = await 重算裁定人们(行们);
+  return 填行(行们.filter((r) => 现裁.get(r.id)?.ids.includes(userId)).slice(0, 200), true);
+}
+
+/** 全部待裁定：只给系统管理员看（调用方判断身份）；最早提的在前 */
+export async function 全部待裁定(userId: string): Promise<待裁定行[]> {
+  if (!企业版()) return [];
+  const org = await 读组织();
+  if (!系统管理员们(org).includes(userId)) return [];
+  const 行们 = await prisma.entTransferObjection.findMany({ where: { status: 异议待裁定 }, orderBy: [{ submittedAt: "asc" }, { id: "asc" }], take: 200 });
+  return 填行(行们, true);
 }
 
 /** 待手工退回：只给系统管理员看（调用方判断身份）；最早裁定的在前 */
@@ -177,9 +191,11 @@ export async function 裁定(me: { id: string; name: string }, id: unknown, 决�
   if (!话) return { ok: false, error: "请写裁定说明（会记进变更历史）" };
   if (话.length > 裁定说明上限) return { ok: false, error: `裁定说明最多 ${裁定说明上限} 字` };
   const 行 = await prisma.entTransferObjection.findUnique({ where: { id } });
-  const 我是裁定人 = !!行?.judgeIds && (JSON.parse(行.judgeIds) as string[]).includes(me.id);
-  // 不是裁定人的当没有，不透露存在
-  if (!行 || !我是裁定人) return { ok: false, error: "没找到这条待裁定的异议" };
+  // 按当前组织重算裁定人；系统管理员任何时候都能裁（兜底）。不是裁定人的当没有，不透露存在
+  const 裁定人们 = 行 ? (await 重算裁定人们([行])).get(行.id) : undefined;
+  const org = await 读组织();
+  const 本人发起 = !!裁定人们?.本人发起;
+  if (!行 || !裁定人们 || !能裁定(org, 裁定人们, me.id, 行)) return { ok: false, error: "没找到这条待裁定的异议" };
   if (行.status === 异议已撤销) return { ok: false, error: "这次转让已被撤销，异议已作废" };
   if (行.status !== 异议待裁定) return { ok: false, error: "这一条已经裁定过了，刷新看看" };
 
@@ -217,8 +233,8 @@ export async function 裁定(me: { id: string; name: string }, id: unknown, 决�
   const 接手人 = 名.get(行.toOwnerId) ?? "";
   await recordAudit({
     user: me, action: "update", entity: "Customer", entityId: 行.customerId,
-    summary: `转让异议裁定：${异议人}对${话of(行)}的异议，${me.name}裁定「${决定}」${终态 === 异议待手工退回 ? "（不满足自动退回，待系统管理员手工退回）" : ""}：${话}`,
-    detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 异议理由: 行.reason, 裁定: 决定, 结果: 终态, 裁定说明: 话, ...(退 ? { 退回: 退 } : {}), ...(手工原因 ? { 待手工原因: 手工原因 } : {}) },
+    summary: `转让异议裁定：${异议人}对${话of(行)}的异议，${本人发起 ? "（本人发起、无人回避）" : ""}${me.name}裁定「${决定}」${终态 === 异议待手工退回 ? "（不满足自动退回，待系统管理员手工退回）" : ""}：${话}`,
+    detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 异议理由: 行.reason, 裁定: 决定, 结果: 终态, 裁定说明: 话, ...(本人发起 ? { 本人发起: true } : {}), ...(退 ? { 退回: 退 } : {}), ...(手工原因 ? { 待手工原因: 手工原因 } : {}) },
   }).catch((e) => console.warn("[异议] 裁定留痕没写上：", e));
 
   const 链 = "/objections";

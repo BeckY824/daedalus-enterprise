@@ -16,7 +16,8 @@ import { notify } from "./notify";
 import { 读组织 } from "./org";
 import { 客户显名, 显名列 } from "./customer-title";
 import type { 同事待分配条 } from "./notice-sources";
-import { 异议可提, 异议已撤销, 异议待裁定, 异议理由上限, 异议截止, 异议期天数, 算裁定人 } from "./objection-core";
+import { 异议可提, 异议已撤销, 异议待裁定, 异议理由上限, 异议截止, 异议期天数, 算裁定人, type 裁定人结果 } from "./objection-core";
+import type { EntTransferObjection } from "@/generated/prisma";
 
 export type 异议入口们 = {
   /** 被换掉的客户负责人 → 他那几条客户异议行 */
@@ -88,6 +89,21 @@ export type 异议行 = {
   理由?: string; 裁定人?: string; 裁定角色?: string; 裁定说明?: string;
 };
 
+/** 按当前组织重算一批异议的裁定人（口径 A2 / B1：停用、调岗的不算，去掉发起人和接手人）；组织、客户线、转让前负责人各一次批量读 */
+export async function 重算裁定人们(行们: readonly Pick<EntTransferObjection, "id" | "customerId" | "ownerLogId" | "operatorUserId" | "objectorUserId" | "toOwnerId">[]): Promise<Map<string, 裁定人结果>> {
+  const 出 = new Map<string, 裁定人结果>();
+  if (!行们.length) return 出;
+  const org = await 读组织();
+  const [日志们, 客户们] = await Promise.all([
+    prisma.customerOwnerLog.findMany({ where: { id: { in: [...new Set(行们.map((r) => r.ownerLogId))] } }, select: { id: true, fromOwnerId: true } }),
+    看全部(() => prisma.customer.findMany({ where: { id: { in: [...new Set(行们.map((r) => r.customerId))] } }, select: { id: true, bizLine: true } })),
+  ]);
+  const 原 = new Map(日志们.map((l) => [l.id, l.fromOwnerId]));
+  const 线 = new Map(客户们.map((c) => [c.id, c.bizLine]));
+  for (const r of 行们) 出.set(r.id, 算裁定人(org, r.operatorUserId, 线.get(r.customerId), 原.get(r.ownerLogId) ?? r.objectorUserId, r.objectorUserId, r.toOwnerId));
+  return 出;
+}
+
 const 剩几天 = (截止: Date, 现在: Date) => Math.max(0, Math.ceil((截止.getTime() - 现在.getTime()) / 86_400_000));
 
 /** 我的异议：还能提的（「能提异议的通知」）和已经提了的（「我提的异议」）；过了 30 天没提的不列 */
@@ -96,14 +112,17 @@ export async function 我的异议(userId: string, 现在: Date = new Date()): P
     where: { objectorUserId: userId, status: { not: 异议已撤销 }, OR: [{ status: { not: 异议可提 } }, { expiresAt: { gte: 现在 } }] },
     orderBy: { createdAt: "desc" }, take: 200,
   });
-  const ids = [...new Set(行们.flatMap((r) => [r.operatorUserId, r.toOwnerId, ...(r.judgeIds ? (JSON.parse(r.judgeIds) as string[]) : [])]))];
+  // 待裁定的按当前组织重算裁定人（裁定人停用 / 调岗后，这里显示的是现在能裁的人）
+  const 现裁 = await 重算裁定人们(行们.filter((r) => r.status === 异议待裁定));
+  const 裁们of = (r: (typeof 行们)[number]): string[] => 现裁.get(r.id)?.ids ?? (r.judgeIds ? (JSON.parse(r.judgeIds) as string[]) : []);
+  const ids = [...new Set(行们.flatMap((r) => [r.operatorUserId, r.toOwnerId, ...裁们of(r)]))];
   const 名 = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   const 转 = (r: (typeof 行们)[number]): 异议行 => ({
     id: r.id, 类别: r.kind === "项目" ? "项目" : "客户", 对象: r.targetName, 状态: r.status, 操作人: 名.get(r.operatorUserId) ?? "", 新负责人: 名.get(r.toOwnerId) ?? "",
     转让于: r.createdAt.toISOString(), 截止: r.expiresAt.toISOString(), 剩几天: 剩几天(r.expiresAt, 现在), 过期: r.expiresAt < 现在,
     ...(r.reason ? { 理由: r.reason } : {}),
-    ...(r.judgeIds ? { 裁定人: (JSON.parse(r.judgeIds) as string[]).map((x) => 名.get(x) ?? "").filter(Boolean).join("、") } : {}),
-    ...(r.judgeRole ? { 裁定角色: r.judgeRole } : {}),
+    ...(r.judgeIds ? { 裁定人: 裁们of(r).map((x) => 名.get(x) ?? "").filter(Boolean).join("、") } : {}),
+    ...(r.judgeRole ? { 裁定角色: 现裁.get(r.id)?.角色 ?? r.judgeRole } : {}),
     ...(r.judgeNote ? { 裁定说明: r.judgeNote } : {}),
   });
   return { 能提: 行们.filter((r) => r.status === 异议可提).map(转), 已提: 行们.filter((r) => r.status !== 异议可提).map(转) };
@@ -129,7 +148,7 @@ export async function 提异议(me: { id: string; name: string }, id: unknown, �
     prisma.customerOwnerLog.findUnique({ where: { id: 行.ownerLogId }, select: { fromOwnerId: true } }),
     prisma.customer.findUnique({ where: { id: 行.customerId }, select: { bizLine: true } }),
   ]);
-  const 裁 = 算裁定人(org, 行.operatorUserId, 客户?.bizLine, 日志?.fromOwnerId ?? me.id, me.id);
+  const 裁 = 算裁定人(org, 行.operatorUserId, 客户?.bizLine, 日志?.fromOwnerId ?? me.id, me.id, 行.toOwnerId);
   if (!裁.ids.length) return { ok: false, error: "找不到裁定人，请联系系统管理员" };
   // 并发 / 双击：只有第一次把「可提」改成「待裁定」，后到的命中 0 行
   const r = await prisma.entTransferObjection.updateMany({
@@ -144,8 +163,8 @@ export async function 提异议(me: { id: string; name: string }, id: unknown, �
   const 名 = new Map(人们.map((u) => [u.id, u.name]));
   await recordAudit({
     user: me, action: "assign", entity: "Customer", entityId: 行.customerId,
-    summary: `${me.name} 对${行.kind}「${行.targetName}」的转让提了异议，由${裁.角色}裁定`,
-    detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 理由: 话, 裁定人: 裁.ids },
+    summary: `${me.name} 对${行.kind}「${行.targetName}」的转让提了异议，由${裁.角色}裁定${裁.本人发起 ? "（本人发起、无人回避）" : ""}`,
+    detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 理由: 话, 裁定人: 裁.ids, ...(裁.本人发起 ? { 本人发起: true } : {}) },
   }).catch((e) => console.warn("[异议] 留痕没写上：", e));
   await notify(人们.filter((u) => 裁.ids.includes(u.id) && u.active).map((u) => u.id), {
     kind: "异议",

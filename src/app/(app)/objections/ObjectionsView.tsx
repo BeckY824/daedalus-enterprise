@@ -15,12 +15,12 @@ import { 提异议, 裁定异议, 已手工退回 } from "./actions";
  *           「待手工退回」页签（只给系统管理员：撤回但不满足自动退回的，手工退回后点「已手工退回」留痕）。
  * 一行：对象名（项目 / 客户）、谁转给谁、还剩几天；名字都可能很长：一行省略号，悬停看全
  */
-type 页签键 = "mine" | "judge" | "hand";
+type 页签键 = "mine" | "judge" | "all" | "hand";
 type 裁定框 = { 行: 待裁定行; 动作: "维持" | "撤回" | "手工" };
 
-export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限, 待裁, 待手工, 管理员, 裁定上限, 首个页签, 打开裁定 }: {
+export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限, 待裁, 全部, 待手工, 管理员, 裁定上限, 首个页签, 打开裁定 }: {
   能提: 异议行[]; 已提: 异议行[]; 打开: string | null; 天数: number; 上限: number;
-  待裁: 待裁定行[]; 待手工: 待裁定行[]; 管理员: boolean; 裁定上限: number; 首个页签: 页签键; 打开裁定: string | null;
+  待裁: 待裁定行[]; 全部: 待裁定行[]; 待手工: 待裁定行[]; 管理员: boolean; 裁定上限: number; 首个页签: 页签键; 打开裁定: string | null;
 }) {
   const router = useRouter();
   const [页签, set页签] = useState<页签键>(首个页签);
@@ -64,14 +64,16 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
       set裁忙(false);
     }
   }
-  const 裁定行 = (r: 待裁定行, 手工: boolean) => {
+  const 裁定行 = (r: 待裁定行, 手工: boolean, 全 = false) => {
     const 名 = `${r.对象}${r.类别 === "项目" && r.客户名 ? `（${r.客户名}）` : ""}`;
     return (
-      <div key={r.id} className="obj-row" data-testid={手工 ? "obj-hand-row" : "obj-judge-row"} data-hit={r.id === 打开裁定 ? "1" : undefined}>
+      <div key={r.id} className="obj-row" data-testid={手工 ? "obj-hand-row" : 全 ? "obj-all-row" : "obj-judge-row"} data-hit={r.id === 打开裁定 ? "1" : undefined}>
         <div className="obj-main">
           <span className="obj-ell" title={`${r.类别}：${名}`}><Tag>{r.类别}</Tag>{名}</span>
           <span className="obj-ell obj-mut" title={`${r.异议人} 的理由：${r.理由}`}>{r.异议人} 的理由：{r.理由}</span>
           <span className="obj-ell obj-mut" title={r.转让原因}>转让原因：{r.转让原因 || "（没写）"} · {r.发起人} 转给 {r.接手人} · {r.转让于.slice(0, 10)}</span>
+          {全 && <span className="obj-ell obj-mut" title={`现在由 ${r.现裁定人 ?? ""} 裁定`}>{r.本人发起 ? "本人发起、无人回避，由发起人自己裁定：" : "裁定人："}{r.现裁定人}</span>}
+          {!手工 && !全 && r.本人发起 && <span className="obj-ell obj-mut" data-testid="obj-self-note">本人发起、无人回避（只有你一位系统管理员）</span>}
           {手工 && <span className="obj-ell obj-mut" title={`${r.裁定人} 裁定撤回：${r.裁定说明}`}>{r.裁定人} 裁定撤回：{r.裁定说明}</span>}
           {手工 && r.退回说明 && <span className="obj-ell obj-mut" title={r.退回说明}>{r.退回说明}</span>}
         </div>
@@ -126,6 +128,10 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
           ...(有裁定页 ? [{
             key: "judge", label: `待我裁定${待裁.length ? `（${待裁.length}）` : ""}`,
             children: <Card title="待我裁定（你是这条异议的裁定人）" className="obj-card" data-testid="obj-judge">{待裁.length ? 待裁.map((r) => 裁定行(r, false)) : <Empty description="没有等你裁定的异议" />}</Card>,
+          }] : []),
+          ...(管理员 ? [{
+            key: "all", label: `全部待裁定${全部.length ? `（${全部.length}）` : ""}`,
+            children: <Card title="全部待裁定（系统管理员兜底，谁的都能裁）" className="obj-card" data-testid="obj-all">{全部.length ? 全部.map((r) => 裁定行(r, false, true)) : <Empty description="没有待裁定的异议" />}</Card>,
           }] : []),
           ...(管理员 ? [{
             key: "hand", label: `待手工退回${待手工.length ? `（${待手工.length}）` : ""}`,

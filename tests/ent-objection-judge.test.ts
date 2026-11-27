@@ -10,7 +10,7 @@ import { setSetting } from "@/lib/settings";
 import { assignSalesOwner, 撤销改负责人 } from "@/app/(app)/customers/actions";
 import { 提异议 as 提异议动作 } from "@/app/(app)/objections/actions";
 import { 提异议 as 提异议核, 我的异议 } from "@/lib/enterprise/objection";
-import { 裁定, 待我裁定, 待手工退回们, 评估退回, 标记已手工退回 } from "@/lib/enterprise/objection-judge";
+import { 裁定, 待我裁定, 全部待裁定, 待手工退回们, 评估退回, 标记已手工退回 } from "@/lib/enterprise/objection-judge";
 import { 客户有未裁定异议, 项目有未裁定异议 } from "@/lib/enterprise/objection-guard";
 import { 裁定异议 } from "@/app/(app)/objections/actions";
 import { 裁定说明上限 } from "@/lib/enterprise/objection-core";
@@ -89,7 +89,7 @@ describe("待我裁定 + 裁定的规矩", () => {
     const 行 = (await 待我裁定(线总管.id))[0];
     expect(行).toMatchObject({ 类别: "项目", 异议人: 同事.name, 理由: "这单我在跟", 转让原因: "客户说连着两周没人回", 发起人: 组长.name, 接手人: 接手.name, 能自动退: true });
     // 不是裁定人：当没有
-    expect(await 裁定(老板, 项目行.id, "维持", "x")).toMatchObject({ ok: false, error: expect.stringContaining("没找到") });
+    expect(await 裁定(组长, 项目行.id, "维持", "x")).toMatchObject({ ok: false, error: expect.stringContaining("没找到") });
     expect(await 裁定(同事, 项目行.id, "撤回", "x")).toMatchObject({ ok: false });
     // 说明必填 / 超长 / 决定无默认
     expect(await 裁定(线总管, 项目行.id, "维持", "   ")).toMatchObject({ ok: false, error: expect.stringContaining("说明") });
@@ -311,3 +311,66 @@ describe("撤销改负责人带走异议行（审查 M2）", () => {
   });
 });
 
+
+
+describe("裁定人按当前组织重算（审查 M3，口径 A2 / B1）", () => {
+  it("提交时的裁定人停用了：不再算他，改由别的人裁（系统管理员），通知也发给重算后的人", async () => {
+    const { 项目行 } = await 转一单();
+    await 提(项目行, 同事);
+    expect((await 待我裁定(线总管.id)).map((r) => r.id)).toEqual([项目行.id]);
+    await prisma.user.update({ where: { id: 线总管.id }, data: { active: false } });
+    expect(await 待我裁定(线总管.id)).toEqual([]);
+    const 老板的 = await 待我裁定(老板.id);
+    expect(老板的.map((r) => r.id)).toEqual([项目行.id]);
+    expect(老板的[0].现裁定人).toContain(副管.name);
+    当(线总管);
+    expect(await 裁定(线总管, 项目行.id, "维持", "我已停用")).toMatchObject({ ok: false });
+    当(老板);
+    expect(await 裁定(老板, 项目行.id, "维持", "按现状")).toMatchObject({ ok: true });
+  });
+
+  it("系统管理员任何时候都能裁（兜底），不在裁定人里的普通人不行；全部待裁定只有系统管理员看得到", async () => {
+    const { 项目行 } = await 转一单();
+    await 提(项目行, 同事);
+    expect((await 待我裁定(老板.id))).toEqual([]);
+    expect((await 全部待裁定(老板.id)).map((r) => r.id)).toEqual([项目行.id]);
+    expect((await 全部待裁定(副管.id)).map((r) => r.id)).toEqual([项目行.id]);
+    for (const 非管 of [线总管, 组长, 销售, 接手, 同事]) expect(await 全部待裁定(非管.id)).toEqual([]);
+    当(组长);
+    expect(await 裁定(组长, 项目行.id, "维持", "我不是裁定人")).toMatchObject({ ok: false });
+    当(老板);
+    expect(await 裁定(老板, 项目行.id, "维持", "兜底裁定")).toMatchObject({ ok: true, 结果: "维持" });
+    expect((await 全部待裁定(老板.id))).toEqual([]);
+  });
+
+  it("发起人、接手人不当裁定人：系统管理员亲自转的，由其他系统管理员裁，发起人自己不能插手", async () => {
+    const a = await 客户(销售.id, { bizLine: "内贸" });
+    当(老板);
+    expect(await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "老板直接转" })).toMatchObject({ ok: true });
+    const 行 = (await 行们()).find((r) => r.kind === "客户")!;
+    await 提(行, 销售);
+    expect(await 待我裁定(老板.id)).toEqual([]);
+    expect((await 待我裁定(副管.id)).map((r) => r.id)).toEqual([行.id]);
+    当(老板);
+    expect(await 裁定(老板, 行.id, "维持", "我是发起人")).toMatchObject({ ok: false });
+    当(副管);
+    expect(await 裁定(副管, 行.id, "维持", "其他系统管理员裁")).toMatchObject({ ok: true });
+  });
+
+  it("只剩发起人自己一位系统管理员：仍由他裁，页面标「本人发起」并在留痕里写明", async () => {
+    await prisma.entMember.delete({ where: { userId: 副管.id } });
+    await prisma.user.update({ where: { id: 副管.id }, data: { role: "SALES" } });
+    const a = await 客户(销售.id, { bizLine: "内贸" });
+    当(老板);
+    expect(await assignSalesOwner([a.id], 接手.id, null, undefined, { 说明: "只有我一个管理员" })).toMatchObject({ ok: true });
+    const 行 = (await 行们()).find((r) => r.kind === "客户")!;
+    await 提(行, 销售);
+    const 待 = await 待我裁定(老板.id);
+    expect(待).toHaveLength(1);
+    expect(待[0].本人发起).toBe(true);
+    当(老板);
+    expect(await 裁定(老板, 行.id, "维持", "本人发起的")).toMatchObject({ ok: true });
+    const 审 = await prisma.auditLog.findMany({ where: { entityId: a.id } });
+    expect(审.some((x) => x.summary.includes("本人发起"))).toBe(true);
+  });
+});

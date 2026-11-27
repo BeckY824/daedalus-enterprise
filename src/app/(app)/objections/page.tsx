@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/auth";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 我的异议 } from "@/lib/enterprise/objection";
 import { 异议期天数, 异议理由上限, 裁定说明上限 } from "@/lib/enterprise/objection-core";
-import { 待我裁定, 待手工退回们 } from "@/lib/enterprise/objection-judge";
+import { 待我裁定, 待手工退回们, 全部待裁定 } from "@/lib/enterprise/objection-judge";
 import { 读组织 } from "@/lib/enterprise/org";
 import { 系统管理员们 } from "@/lib/enterprise/tri-state-people";
 import ObjectionsView from "./ObjectionsView";
@@ -23,11 +23,13 @@ export default async function ObjectionsPage({ searchParams }: { searchParams: P
   // 待手工退回只给系统管理员（12-22 先由他们手工退并留痕）
   const 管理员 = (await 读组织().then((org) => org && 系统管理员们(org).includes(me.id)).catch(() => false)) === true;
   const 待手工 = 管理员 ? await 待手工退回们() : [];
-  const 页签 = tab === "hand" && 待手工.length ? "hand" : j || tab === "judge" ? "judge" : "mine";
+  // 全部待裁定同样只给系统管理员（兜底：谁都能裁，不用等裁定人）
+  const 全部 = 管理员 ? await 全部待裁定(me.id) : [];
+  const 页签 = tab === "hand" && 待手工.length ? "hand" : tab === "all" && 管理员 ? "all" : j || tab === "judge" ? "judge" : "mine";
   return (
     <ObjectionsView
       能提={能提} 已提={已提} 打开={typeof o === "string" ? o : null} 天数={异议期天数} 上限={异议理由上限}
-      待裁={待裁} 待手工={待手工} 管理员={管理员} 裁定上限={裁定说明上限} 首个页签={页签} 打开裁定={typeof j === "string" ? j : null}
+      待裁={待裁} 全部={全部} 待手工={待手工} 管理员={管理员} 裁定上限={裁定说明上限} 首个页签={页签} 打开裁定={typeof j === "string" ? j : null}
     />
   );
 }

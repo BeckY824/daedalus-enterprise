@@ -201,7 +201,7 @@ describe("裁定人 = 让这次变动生效的人的上一级", () => {
     expect([...无线.ids].sort()).toEqual([老板.id, 副管.id].sort());
     await prisma.entMember.delete({ where: { userId: 副管.id } });
     const org2 = await 读组织();
-    expect(算裁定人(org2, 老板.id, "内贸", 销售.id, 同事.id)).toEqual({ ids: [老板.id], 角色: "系统管理员" });
+    expect(算裁定人(org2, 老板.id, "内贸", 销售.id, 同事.id)).toEqual({ ids: [老板.id], 角色: "系统管理员", 本人发起: true });
   });
 
   it("端到端：条线总管理转的，裁定人是系统管理员，都收到通知", async () => {

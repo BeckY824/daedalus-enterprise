@@ -4,8 +4,8 @@
  * 裁定人 = 让这次变动生效的那个人的上一级：
  *   实线上级办的 → 条线总管理（客户业务线那条线的；那条线没有就系统管理员，同 找条线总管理）；
  *   条线总管理办的 → 系统管理员；
- *   系统管理员办的 → 其他系统管理员（只有他一位时只能是他自己，🔍 判定页没覆盖，照实记「系统管理员」、通知他本人）。
- * 异议人本人不当裁定人（自己的异议不自己裁）；去掉后没人就退到系统管理员里别的人，再没有才回空（调用方拦并说清）。
+ *   系统管理员办的 → 其他系统管理员（只有他一位时仍由他裁，标「本人发起」，口径 B1）。
+ * 异议人、发起人、接手人都不当裁定人；去掉后没人就退到别的系统管理员，再没有才回空（调用方拦并说清）。
  */
 import { 是系统管理员of, type 组织 } from "./org-core";
 import { 条线的线 } from "./line-viewer";
@@ -18,21 +18,36 @@ export const 异议理由上限 = 200;
 export const 异议可提 = "可提";
 export const 异议待裁定 = "待裁定";
 
-export type 裁定人结果 = { ids: string[]; 角色: "条线总管理" | "系统管理员" };
+export type 裁定人结果 = { ids: string[]; 角色: "条线总管理" | "系统管理员"; /** 只剩发起人自己一位系统管理员，没人回避得了：仍由他裁，页面写明「本人发起」并留痕（口径 B1） */ 本人发起?: boolean };
 
-export function 算裁定人(org: 组织, 操作人: string, 客户线: string | null | undefined, 原负责人: string, 异议人: string): 裁定人结果 {
-  const 去自己 = (ids: string[]) => [...new Set(ids)].filter((id) => id !== 异议人);
+/**
+ * 裁定人按当前组织算（停用、调岗的不在组织里，自然不算）：打开页面、裁定、提交时都调这一个。
+ * 去掉异议人、发起人、接手人；去掉后没人了交给其他系统管理员；只剩发起人自己一位系统管理员时仍由他裁（本人发起，口径 B1 默认）。
+ * 系统管理员另有兜底：任何时候都能裁（见 能裁定，口径 A2）
+ */
+export function 算裁定人(org: 组织, 操作人: string, 客户线: string | null | undefined, 原负责人: string, 异议人: string, 接手人?: string): 裁定人结果 {
+  const 回避 = new Set([异议人, 操作人, ...(接手人 ? [接手人] : [])]);
+  const 去 = (ids: string[]) => [...new Set(ids)].filter((id) => !回避.has(id));
   const 管理员们 = 系统管理员们(org);
   const 管理员办的 = 是系统管理员of(org, 操作人) || !!条线的线(org, 操作人);
-  if (管理员办的) {
-    // 系统管理员办的：别的系统管理员；就他一位的话只能他自己（🔍）
-    const 别人 = 去自己(管理员们.filter((id) => id !== 操作人));
-    return { ids: 别人.length ? 别人 : 去自己(管理员们), 角色: "系统管理员" };
+  if (!管理员办的) {
+    // 实线上级办的由条线总管理裁定（操作人已停用 / 不在组织里按实线上级办的算）
+    const 线上 = 去(找条线总管理(org, 客户线, 原负责人));
+    if (线上.length) return { ids: 线上, 角色: 线上.some((id) => 条线的线(org, id)) ? "条线总管理" : "系统管理员" };
   }
-  // 条线总管理办的由系统管理员裁定，实线上级办的由条线总管理裁定（操作人已停用 / 不在组织里按实线上级办的算）
-  const 线上 = 去自己(找条线总管理(org, 客户线, 原负责人));
-  if (线上.length) return { ids: 线上, 角色: 线上.some((id) => 条线的线(org, id)) ? "条线总管理" : "系统管理员" };
-  return { ids: 去自己(管理员们), 角色: "系统管理员" };
+  const 别的管理员 = 去(管理员们);
+  if (别的管理员.length) return { ids: 别的管理员, 角色: "系统管理员" };
+  // 去到没人：只剩发起人自己一位系统管理员 → 他自己裁（本人发起）；否则放宽到只去异议人（接手人自己是系统管理员的情形）
+  if (操作人 !== 异议人 && 管理员们.includes(操作人)) return { ids: [操作人], 角色: "系统管理员", 本人发起: true };
+  return { ids: [...new Set(管理员们)].filter((id) => id !== 异议人), 角色: "系统管理员" };
+}
+
+/** 这个人能不能裁这条：在重算的裁定人里；或是系统管理员兜底（异议人本人不行；发起人 / 接手人在还有别人可裁时回避） */
+export function 能裁定(org: 组织, 裁: 裁定人结果, 我: string, 行: { objectorUserId: string; operatorUserId: string; toOwnerId: string }): boolean {
+  if (裁.ids.includes(我)) return true;
+  if (我 === 行.objectorUserId || !系统管理员们(org).includes(我)) return false;
+  if ((我 === 行.operatorUserId || 我 === 行.toOwnerId) && 裁.ids.length) return false;
+  return true;
 }
 
 /** 转让生效的这一刻起的最后一天 */
