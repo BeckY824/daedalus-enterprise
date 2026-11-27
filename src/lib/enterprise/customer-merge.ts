@@ -32,6 +32,7 @@ import { 客户编号文字 } from "@/lib/customer-no";
 import { 同事项目几个话 } from "@/lib/carry-over";
 import { 忘掉企业版范围 } from "./visibility";
 import { 合成一对, 拆开一对, 类叫 } from "./contact-merge";
+import { 挂靠联系人不能合成 } from "./merge-hints";
 import { 号码脱敏器 } from "./phone-mask";
 import { 撞上别的写入 } from "@/lib/check-then-write";
 import { 序号撞了 } from "./repeat-inquiry";
@@ -48,6 +49,8 @@ export const 已核对话 = "已核对，按留下那家的来源和创建人";
 /** 合并单 kind：客户合并 / 合成联系人（单独合成的 parentId 空；合并客户时勾的挂在客户合并单下） */
 export const 客户单 = "客户";
 export const 联系人单 = "联系人";
+/** 第二批 2a 项目合并单（同 project-merge-guard.ts 项目单；这里另写一份免得引它） */
+const 项目合并单 = "项目";
 /** 项目换客户 / 撤回合并时，项目联系人挂靠到项目新归属的客户那一行的说明（project-move-customer.ts 也用） */
 export const 挂靠说明 = "随项目换客户挂过来";
 
@@ -731,7 +734,7 @@ export async function 合成联系人(db: 库, 留id: string, 并id: string, me:
         const 留 = 们.find((c) => c.id === 留id);
         const 并 = 们.find((c) => c.id === 并id);
         if (!留 || !并) throw new 拦下("联系人不存在或已删除，刷新看看");
-        if (留.customerId !== 并.customerId) throw new 拦下("只能合成同一位客户名下的两位联系人；挂靠过来的联系人请到他的主客户上合成");
+        if (留.customerId !== 并.customerId) throw new 拦下(`只能合成同一位客户名下的两位联系人；${挂靠联系人不能合成}`);
         const c = await tx.customer.findFirst({ where: { id: 留.customerId, deletedAt: null }, select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true, poolInvalidAt: true, pool: { select: { customerId: true } } } });
         if (!c) throw new 拦下("客户不存在或已删除，刷新看看");
         if (!org || 只读角色(me, org) || 只看的人(org, me.id)) throw new 拦下("你只能看，不能合成联系人");
@@ -774,10 +777,13 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
   if (!企业版()) return { ok: false, error: "只有企业版能撤回合并" };
   const 看单 = await db.entCustomerMerge.findUnique({ where: { id: mergeId }, select: { kind: true } });
   if (看单?.kind === 联系人单) return 撤回合成(db, mergeId, me, 现在);
+  // 第二批 2a：项目合并单走 project-merge.ts（按需取：它引着这个文件）
+  if (看单?.kind === 项目合并单) return (await import("./project-merge")).撤回项目合并(db, mergeId, me, 现在);
   const org = await 权限组织();
   const 开 = await 客户状态自动();
   const 结: 没还原[] = [];
   let 拆开合成 = 0;
+  let 拆开项目 = 0;
   let 两家: [string, string] | null = null;
   let B名 = "被并的客户";
   try {
@@ -806,6 +812,22 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
           for (const c of [A, B]) if (交接.has(c.id)) throw new 拦下(`「${名(c)}」正在转让交接中，等接手人确认或撤回交接后再撤回合并`);
           const 离职 = await 离职交接拦(tx, [A, B], "撤回合并");
           if (离职.length) throw new 拦下(离职.join("；"));
+          // 合并之后单独并过这张单里挪过来的项目（第二批 2a 项目合并，被并或留下是挪过来的项目）：先撤那几次（新的先撤，「先拆后撤」）
+          const 挪来项目 = (JSON.parse(m.detail) as 合并明细).项目.filter((p) => p.挪客户).map((p) => p.id);
+          if (挪来项目.length) {
+            const { 在事务里撤回项目合并 } = await import("./project-merge");
+            for (const 段 of 分段(挪来项目, 200)) {
+              const 们 = await tx.entCustomerMerge.findMany({
+                where: { kind: 项目合并单, status: "已合并", at: { gte: m.at }, OR: [{ fromId: { in: 段 } }, { intoId: { in: 段 } }] },
+                orderBy: [{ at: "desc" }, { id: "desc" }],
+              });
+              for (const 子 of 们) {
+                if ((await tx.entCustomerMerge.findUnique({ where: { id: 子.id }, select: { status: true } }))?.status !== "已合并") continue;
+                结.push(...(await 在事务里撤回项目合并(tx, 子, me, 现在, 开)).没还原);
+                拆开项目++;
+              }
+            }
+          }
           // 合并之后单独合成过挪过来的联系人：先拆开（新的先拆），号码、沟通回到原来那位，下面再随联系人一起挪回 B（M3）
           // 只拆现在还在 A 名下合成的（留下那位主客户是 A）：B 来的人后来换主客户到 C、在 C 名下合成过的不拆（那是 C 的事；挪回时这位留在原处）（第二单 b 建议 3）
           const 人们 = (JSON.parse(m.detail) as 合并明细).联系人.map((c) => c.id);
@@ -838,7 +860,7 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
           await 重算最近跟进(tx, B.id);
           await 跟着项目重算(tx, 开, [A.id, B.id]);
           await tx.entCustomerMerge.update({ where: { id: m.id }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id, undoLeft: 存没还原(结, 拆开合成) } });
-          const 留话 = `${拆开合成 ? `；${拆开合成话(拆开合成)}` : ""}${结.length ? `；${结.length} 条之后被改过，留在原处` : ""}`;
+          const 留话 = `${拆开项目 ? `；${拆开项目话(拆开项目)}` : ""}${拆开合成 ? `；${拆开合成话(拆开合成)}` : ""}${结.length ? `；${结.length} 条之后被改过，留在原处` : ""}`;
           await tx.auditLog.createMany({
             data: [
               { userId: me.id, userName: me.name, action: "merge-undo", entity: "Customer", entityId: A.id, at: 现在, summary: `撤回合并：「${名(B)}」已拆回${留话}`, detail: JSON.stringify({ mergeId: m.id, 没还原: 结 }) },
@@ -863,11 +885,13 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
     await 存沟通后重算三态(这两家, 现在).catch((e) => console.warn("[撤回合并] 三态没重算上：", e instanceof Error ? e.message : e));
     await 回来后停用负责人(这两家[1], me);
   }
-  return { ok: true, 没还原: 结, ...(拆开合成 ? { 提示: 拆开合成话(拆开合成) } : {}) };
+  const 提示 = [拆开项目 ? 拆开项目话(拆开项目) : "", 拆开合成 ? 拆开合成话(拆开合成) : ""].filter(Boolean).join("；");
+  return { ok: true, 没还原: 结, ...(提示 ? { 提示 } : {}) };
 }
 
 export type 撤回完 = { 没还原: 没还原[]; /** 先拆开过单独合成时：「先拆开了 N 次联系人合成」 */ 提示?: string };
 const 拆开合成话 = (n: number) => `先拆开了 ${n} 次联系人合成`;
+const 拆开项目话 = (n: number) => `先撤回了 ${n} 次项目合并`;
 /**
  * 撤回合并要把 B 挪到 A 的重复咨询换回原序号，合并之后 B 名下又有一条占了这个号（同撤销换客户的 序号被占话）：整单拦下，不改成别的号。
  * 合并后在 A 上新登的接在 A 的号后面，不占 B 的原序号；拿不到占号那条的名字（并发撞上唯一索引）时只说哪家

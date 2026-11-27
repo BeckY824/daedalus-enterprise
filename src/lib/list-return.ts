@@ -82,6 +82,8 @@ let 主人 = "";
 export function 设列表主人(id: string | null | undefined) {
   主人 = id ?? "";
 }
+/** 现在报的是谁（客户详情「上一条 / 下一条」的游标记下它，换了人就作废） */
+export const 列表主人 = (): string => 主人;
 /** 这个人的键：本模块的三份记忆、list-keep 的会话偏好（useListKeep）都走它 */
 export const 带人 = (键: string): string => (主人 ? `${键}@${主人}` : 键);
 
@@ -280,4 +282,56 @@ export function 记横滚(表: string, href: string, x: number) {
 export function 记本地页(表: string, href: string, 当前: number, 每页: number) {
   const 旧 = 读勾选(表, href);
   写勾选(表, { href, ids: 旧?.ids ?? [], x: 旧?.x ?? 0, 本地: { 当前, 每页 } });
+}
+
+/*
+  客户详情「上一条 / 下一条」（E-332）：从客户列表点进客户详情时，记下那张列表当时的完整地址和这一位在第几页；
+  按箭头换到的那几位也记进 位（id → 第几页），刷新、后退回到它们照样认。别处进来（公海、项目、搜索、通知、直接开链接）一律清掉、不摆箭头。
+  这一期只做客户列表（客户口径）。和上面三份记忆同一个前缀，退出时 清列表记忆 一并清
+*/
+const 详情来源键 = "crm:list-return-nav:v1";
+export type 详情来源 = { href: string; 位: Record<string, number> };
+const 位上限 = 300;
+
+export function 读详情来源(): 详情来源 | null {
+  const v = 解析<Record<string, unknown>>(读(详情来源键));
+  if (!合法地址("客户", v.href) || !v.位 || typeof v.位 !== "object" || Array.isArray(v.位)) return null;
+  const 位: Record<string, number> = {};
+  for (const [id, p] of Object.entries(v.位 as Record<string, unknown>)) if (typeof p === "number" && Number.isSafeInteger(p) && p > 0) 位[id] = p;
+  return { href: v.href as string, 位 };
+}
+
+/** 记下来源；位 只留最近的 位上限 位（一直按箭头翻也不无限长） */
+export function 记详情来源(v: 详情来源) {
+  const ids = Object.keys(v.位);
+  const 位 = ids.length > 位上限 ? Object.fromEntries(ids.slice(-位上限).map((id) => [id, v.位[id]])) : v.位;
+  写(详情来源键, JSON.stringify({ href: v.href, 位 }));
+}
+
+export function 清详情来源() {
+  写(详情来源键, "");
+}
+
+/** 进到 pathname 之前在哪一页、这一下是不是刷新 / 后退前进（和 进来可还原 同一套判定） */
+export function 进来的前一页(pathname: string): { 从: string | null; 刷新或后退: boolean } {
+  const 已报 = 路.现 === pathname;
+  const 从 = 已报 ? 路.前 : 路.现;
+  // 是刷新 看的是整页那一次载入，只在这是标签页里第一页（从 = null）时才算数
+  return { 从, 刷新或后退: (已报 ? 路.现后退 : 待后退) || (从 === null && 是刷新()) };
+}
+
+/**
+ * 这一位客户详情算不算「从客户列表进来的」，算的话是哪张列表（纯函数，单测直接调）：
+ *   - 前一页是客户列表：新记一份，这一位在那张列表地址上的那一页
+ *   - 前一页是客户详情（按箭头换过来的）或刷新 / 后退：记的里头有这一位才认
+ *   - 别的（公海、项目、搜索、首页、新开的链接）：不算
+ */
+export function 定详情来源(id: string, 前: { 从: string | null; 刷新或后退: boolean }, 记的: 详情来源 | null, 地址们: 列表地址们): 详情来源 | null {
+  if (前.从 === 列表路径.客户) {
+    const href = 地址们.客户 ?? 列表路径.客户;
+    return { href, 位: { [id]: 页码of(href) } };
+  }
+  const 从详情 = !!前.从 && /^\/customers\/[^/]+$/.test(前.从);
+  if (记的 && 记的.位[id] && (从详情 || 前.刷新或后退)) return 记的;
+  return null;
 }

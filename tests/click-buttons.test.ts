@@ -20,6 +20,7 @@ const 原生可按 = new Set(["button", "a", "input", "select", "textarea", "sum
 const 放行: Record<string, { 个: number; 为什么: string }> = {
   "app/(app)/projects/[id]/ProjectInlineField.tsx <div>": { 个: 1, 为什么: "点字直接改是鼠标捷径；键盘走旁边那颗「改X」笔按钮" },
   "app/(app)/projects/[id]/ProjectDetail.tsx <span>": { 个: 1, 为什么: "包着灰掉的「完成节点」按钮，只为记一次必填拦截；灰按钮本身按不了，键盘也聚焦不到，不是让人点的入口" },
+  "app/(app)/projects/[id]/MergedIntoLine.tsx <span>": { 个: 1, 为什么: "「已并入 →」一行省略的那句：点一下展开 / 收起是手机没悬停的触屏捷径；整句文字都在页面里（读屏照读全），里面的项目名是链接、键盘照常聚焦跳过去，不另做成按钮（按钮里套链接更糟）" },
   "components/InlineConfirm.tsx <motion.span>": { 个: 1, 为什么: "包着调用方传进来的按钮，只接按钮冒上来的点击" },
   "components/SettingsModal.tsx <motion.div>": { 个: 1, 为什么: "设置浮层外面那层灰（role=presentation）；键盘用 Esc 或右上「关闭设置」" },
 };

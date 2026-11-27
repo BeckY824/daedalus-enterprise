@@ -1,8 +1,8 @@
 /*
  * 合并客户第一批（11-25，docs/合并客户-第一批-落地.md）：合并 / 合成 / 换客户三只框（customers/[id]/MergeHost.tsx）、
- * 历史变更里的合并单（HistoryChanges.tsx）。客户页顶上「已并入」那句、回收站「已并入 → A」不是每次都带上这几只框，样式在 globals.css（.mrg-landed / .mrg-trash-*）。
+ * 历史变更里的合并单（HistoryChanges.tsx）、项目详情顶上「已并入 → 留下的项目」（第二批 2a）。客户页顶上「已并入」那句、回收站「已并入 → A」不是每次都带上这几只框，样式在 globals.css（.mrg-landed / .mrg-trash-*）。
  * 只用 :root 的 token（暗色由 dark.css 那层 token 接）；一行放不下省略号、悬停看全（11-04 全站规矩）。
- * 手机（≤767）：两家并排改成上下两段，联系人配对一行拆成两行，点击区 ≥ --hit-touch
+ * 手机（≤767）：两家并排改成上下两段，联系人配对一行拆成两行，点击区 ≥ --hit-touch（框底按钮、并进另一个项目的选择框和组员行也是）
  */
 
 .mrg-one { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -65,7 +65,17 @@
 .mrg-pick-r > span:last-child { min-width: 0; overflow: hidden; }
 .mrg-out { margin: 0; padding-left: 1.2em; color: var(--ink-soft); font-size: var(--fs-note); line-height: 1.6; }
 .mrg-out-k { display: inline-block; min-width: 3.5em; margin-right: var(--s2); color: var(--text-muted); }
+/* 项目合并「核实」：两边各有联系人，可能是同一个人（E-331）；只提示，合成在客户详情 */
+.mrg-nobill { margin-top: 12px; overflow-wrap: anywhere; }
+.mrg-out-chk { color: var(--warning-text); overflow-wrap: anywhere; }
 .mrg-move { margin: 0; min-width: 0; }
+
+/* 并进另一个项目（第二批 2a，MergeHost ProjectMergeDialog）：留下的项目选择框通栏、可输入搜 */
+.mrg-psel { width: 100%; min-width: 0; }
+/* 灰着列的候选（已签合同 / 到商机订单，E-331）：名称一行省略，原因整句不缩；窄到名称不足 8 字时原因折到下一行 */
+.mrg-popt { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: var(--s2); min-width: 0; }
+.mrg-popt > .mrg-one { flex: 1 1 8em; }
+.mrg-popt-no { flex: none; color: var(--text-muted); font-size: var(--fs-note); }
 
 /* 历史变更里的合并单 */
 .mrg-orders { margin: 0 0 var(--s3); padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--s2); }
@@ -78,6 +88,24 @@
 .mrg-left { margin: 0; padding-left: 1.2em; color: var(--ink-soft); font-size: var(--fs-note); line-height: 1.6; }
 .mrg-left li { overflow-wrap: anywhere; }
 
+/* 项目详情顶上「已并入 → 留下的项目」（第二批 2a，projects/[id]/MergedIntoLine.tsx）：一行省略、悬停看全，点一下展开；撤回结果写在原处 */
+.mrg-into { min-width: 0; padding: var(--s2) var(--s3); border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--brand-bg); }
+.mrg-into.is-solo { margin-bottom: var(--s4); }
+.mrg-into-r { display: flex; align-items: center; gap: var(--s2); min-width: 0; }
+.mrg-into-i { flex: none; color: var(--brand); }
+.mrg-into-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mrg-into-t.is-full { white-space: normal; overflow-wrap: anywhere; }
+.mrg-into-s { color: var(--text-muted); font-size: var(--fs-note); }
+.mrg-into-b { flex: 1 1 auto; min-width: 0; }
+.mrg-into-r > .ant-btn { flex: none; }
+/* 过了撤回期限：按钮的位置写「合并已超过 N 天，不能撤回」，不省略（宁可挤前面那句） */
+.mrg-into-x { flex: none; color: var(--text-muted); font-size: var(--fs-note); white-space: nowrap; }
+.mrg-order-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 联系人「⋯」里置灰的「和另一位合成」（ContactLinks 合成灰）：电脑悬停看原因（title），这行小字只在手机（≤767，没有悬停）露出 */
+.mrg-gray-note { display: none; }
+/* 置灰项电脑上和同菜单其他项一样高（不套 menu-2l 的上下 2px / 行高 1.4）；悬停提示挂在菜单项本身（ContactLinks title），盖满整项；手机仍是两行 */
+.menu-2l.mrg-gray-item { padding: 0; line-height: inherit; }
+
 @media (max-width: 767px) {
   /* 两家改成上下两段：每一项「项」一行，下面「留下」「并进来」各一行，带小标签 */
   .mrg-cmp-h { display: none; }
@@ -87,4 +115,10 @@
   .mrg-ppl-r { grid-template-columns: minmax(0, 1fr) auto; }
   .mrg-ppl-b { grid-column: 1 / -1; }
   .mrg-cand { min-height: var(--hit-touch); }
+  /* 框底按钮、留下的项目选择框点击区 ≥ --hit-touch（飞书手机网页） */
+  .mrg-foot .ant-btn, .mrg-psel.ant-select { min-height: var(--hit-touch); }
+  /* 「已并入」那一行的撤回、知道了，历史变更里的撤回 */
+  .mrg-into-r > .ant-btn, .mrg-order-h > .ant-btn { min-height: var(--hit-touch); }
+  .mrg-gray-note { display: block; }
+  .menu-2l.mrg-gray-item { padding: 2px 0; line-height: 1.4; }
 }

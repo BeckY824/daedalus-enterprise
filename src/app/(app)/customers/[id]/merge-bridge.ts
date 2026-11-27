@@ -9,12 +9,17 @@
  */
 import { createContext } from "react";
 
+/** 联系人「⋯」里「和另一位合成」置灰的原因（12-02，RecordView 合成灰因；电脑悬停、手机灰项下面一行小字） */
+export { 挂靠联系人不能合成, 只有一位联系人不能合成 } from "@/lib/enterprise/merge-hints";
+
 export type 合成候选人 = { id: string; name: string; 职务: string | null; 关键: boolean; 号: string | null };
 
 export type 合并请求 =
   | { 种: "客户" }
   | { 种: "联系人"; 留: 合成候选人; 们: 合成候选人[] }
-  | { 种: "项目"; projectId: string; 名: string };
+  | { 种: "项目"; projectId: string; 名: string }
+  /** 并进另一个项目（第二批 2a）：从这个项目（被并掉的）出发，框里选留下的那个；客户页、项目详情页都从这里开 */
+  | { 种: "并项目"; projectId: string; 名: string };
 
 /** 次 = 点的那一下的序号：同一个入口连点两次（关了再开）也认成新的一次 */
 export type 合并桥值 = { 请求: (合并请求 & { 次: number }) | null; 收: () => void };

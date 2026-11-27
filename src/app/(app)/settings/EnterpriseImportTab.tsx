@@ -493,6 +493,7 @@ function ConflictPane({ on变了 }: { on变了: () => void }) {
             title: "不一样的地方（我们 → 原系统）",
             render: (_, c) => (
               <Space orientation="vertical" size={2}>
+                {c.说明 && <Typography.Text type="danger">{c.说明}</Typography.Text>}
                 {Object.entries(c.字段).map(([f, v]) => (
                   <span key={f}>
                     <b>{字段中文[f] ?? f}</b>：<Typography.Text>{显示(v.我们)}</Typography.Text>

@@ -187,3 +187,22 @@
 .set-block-days { width: 96px; }
 /* 导出超上限只导了最新的那些：就在按钮旁说清 */
 .set-block-cut { color: var(--warning-text); min-width: 0; overflow-wrap: anywhere; }
+/* ---- 合并台账（MergeLedgerTab.tsx，12-02）：筛选一排放不下就折行；表格每格一行、省略号，悬停看全（title） ---- */
+.ml-tip { margin-bottom: 14px; }
+.ml-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2, 8px); margin-bottom: 12px; min-width: 0; }
+.ml-range { flex: 0 1 260px; min-width: 0; }
+.ml-search { flex: 1 1 180px; min-width: 0; max-width: 280px; }
+.ml-count { color: var(--ink-soft); font-size: var(--fs-note); min-width: 0; overflow-wrap: anywhere; }
+.ml-cell { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ml-tag { margin: 0; }
+@media (max-width: 767px) {
+  .ml-range, .ml-search { flex-basis: 100%; max-width: none; }
+}
+/* 日期范围弹层双月并排约 780 宽：窄屏档（≤ 1199）有左栏 220，弹层靠右对齐会冒出视口左边（1024/1199 实测 left -33），改成上下两个月、预设排在上面 */
+@media (max-width: 1199px) {
+  .ml-range-pop .ant-picker-panel-container { max-width: calc(100vw - 16px); overflow: auto; }
+  .ml-range-pop .ant-picker-panel-layout { flex-direction: column; }
+  .ml-range-pop .ant-picker-presets { max-width: none; }
+  .ml-range-pop .ant-picker-presets ul { display: flex; flex-wrap: wrap; height: auto; }
+  .ml-range-pop .ant-picker-panels { flex-direction: column; }
+}

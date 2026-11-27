@@ -20,7 +20,8 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
   stub(/^next\/link$/, "export default function L({prefetch,scroll,replace,...p}){return <a {...p}/>}");
   stub(/(^|\/)(TaskForm|PlanForm|ContactForm|ContractForm|CustomerForm|OpportunityForm|AiPanel|StarButton|CustomerPick|NewProjectEntry|ResearchRun|ResearchPerson)$/, "export default function Empty(){return null}");
   // 联系人组头和行经 ContactLinks 摆（D3 · 方案 A 的「⋯」在它里面）：桩照样把头和行摆出来，只是不给菜单
-  stub(/(^|\/)ContactLinks$/, "export default function L(p){return <>{p.头?.(null)}{p.children}</>}");
+  // 12-02：「和另一位合成」递了什么（合成 = 能点、合成灰 = 置灰的原因）写在一只探针上；菜单本身的样子在 ent-contact-v2.ui 里钉
+  stub(/(^|\/)ContactLinks$/, "export default function L(p){return <>{p.头?.(null)}{p.children}{(p.合成||p.合成灰)&&<button type='button' hidden data-testid={'synth-'+p.c.id} data-gray={p.合成灰||''} onClick={()=>p.合成&&p.合成()}/>}</>}");
   stub(/research\/ResearchEntry$/, "export const useResearchEntry=()=>false;");
   stub(/research\/actions$/, "export const 最近背调=async()=>null,背调价目=async()=>({可用:false,原因:'桩'});");
   stub(/^\.\/pick$|customers\/\[id\]\/pick$/, "export const 搜客户=async()=>[];");
@@ -107,7 +108,7 @@ beforeAll(async () => {
       if(当前&&o.点评!==undefined) 当前.教练主题={们:[],能发:o.点评,填写人:{id:'qa',name:'QA',身份:'销售教练'},负责人:{id:'u2',name:'同事乙'},项目名:当前.p.name,当前节点:'方案报价',待回复数:0,冻结:false};
       flushSync(()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}{innerWidth>=1214&&名单}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <CustomerDetail customer={{id:'a',extra:null,name:o.公司名||'客户A',phone:'13800138000',school:null,grade:null,major:null,followStatus:'跟进中',decisionStatus:'了解中',expectedSignAt:null,lastFollowAt:null,remark:null,referrerCustomerId:null,channelId:null,channelOwnerId:null,salesOwnerId:'qa',salesOwnerName:'QA',signedAmount:0,updatedAt:'2026-01-01T02:00:00.000Z',pool:null}}
-          contacts={o.八人?八人:contacts} {...(o.名片?{联系人分类附件数:{c1:{名片:1,相册:0},c2:{名片:0,相册:0},c3:{名片:0,相册:2}}}:{})} {...(o.历史?{换负责人记录:换负责人}:{})} contracts={[]} tasks={[{id:'t1',title:'周五带合同上门',dueAt:'2026-11-13T02:00:00.000Z',done:false}]} plan={null}
+          contacts={o.八人?八人:o.挂一位?[人('c1','王总',true),{...人('c2','李工',false),挂靠:{linkId:'L1',note:null,主客户Id:'k9',主客户名:'主客户甲',主客户看得到:true,能改:false}}]:contacts} {...(o.名片?{联系人分类附件数:{c1:{名片:1,相册:0},c2:{名片:0,相册:0},c3:{名片:0,相册:2}}}:{})} {...(o.历史?{换负责人记录:换负责人}:{})} contracts={[]} tasks={[{id:'t1',title:'周五带合同上门',dueAt:'2026-11-13T02:00:00.000Z',done:false}]} plan={null}
           users={[{id:'qa',name:'QA',email:'qa@x'},{id:'u2',name:'同事乙',email:'b@x'}]} channels={[]} aiEnabled={false} followUps={客户沟通} followUpsHasMore={false}
           项目们={签.map(t=>({id:t.id,name:t.name,phase:'商机',node:t.节点,result:null,pooledAt:null,amount:0,currency:'CNY'}))} 参与项目们={[]} 关联们={[]} 旺旺们={[]}
           跟进去处={[{id:'p1',名:'项目一',主:true,结束:false,说明:null,下一步:null,下一步文字:null},...(o.售后签?[{id:'p8',名:'交付项目乙',主:true,结束:true,说明:'已结束',下一步:null,下一步文字:null,能记:false,能记售后:true}]:[]),...(o.售后?[{id:'p9',名:'交付项目甲',主:true,结束:true,说明:'已结束',下一步:null,下一步文字:null,能记:false,能记售后:true}]:[])]} 待办计划={[]} 能放公海 新建项目={{节点们:['线索验证'],要下一步:false}}
@@ -134,7 +135,7 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
 
-type 参 = { 合并?: { 客户: boolean; 联系人: boolean }; 并入话?: string; 组员?: boolean | "只看"; 名片?: boolean; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean; 售后?: boolean; 售后签?: boolean };
+type 参 = { 合并?: { 客户: boolean; 联系人: boolean }; 挂一位?: boolean; 并入话?: string; 组员?: boolean | "只看"; 名片?: boolean; 名们?: string[]; hash?: string; 项目改?: Record<string, unknown>; 八人?: boolean; 历史?: boolean; 号码?: boolean; 单?: boolean; 末?: boolean; 选?: string; 空?: boolean; 只读?: boolean; 锁数?: number; 公司名?: string; 多?: boolean; 地址?: string; 删?: boolean; 领不了?: boolean; 提醒?: boolean; 点评?: boolean; 不能转?: boolean; 不能放?: boolean; 售后?: boolean; 售后签?: boolean };
 /** 右上角下拉（11-21 教练点评改版 PR1：「发起点评 ▾」「更多操作 ▾」；原 11-12「AI / 项目操作 / 客户操作」）：点开，返回菜单 */
 const 开菜单 = async (page: Page, 名: "更多操作" | "发起点评") => {
   await page.locator(".rec-head-acts").getByRole("button", { name: new RegExp(名) }).click();
@@ -1447,6 +1448,62 @@ it("[合并客户第一批 11-25] 「更多操作 ▾」客户组有「合并客
     // 没给 合并口（只读、不是企业版）：服务端说能也不摆
     await 画(page, { 项目改: { 能换客户: true } });
     expect((await 菜单项们(await 开菜单(page, "更多操作"))).some((x) => /^(合并客户|换客户)/.test(x))).toBe(false);
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("[合并客户第二批 2a] 项目组有「并进另一个项目」（服务端给了 并进 才摆）：能并的点了经 merge-bridge 交给客户页的框（种 并项目）；不能并的灰着、下面一行写原因；没给 合并口 的不摆", async () => {
+  for (const 宽 of [1280, 390]) {
+    const { page, errors } = await 开(宽, { 合并: { 客户: false, 联系人: false }, 项目改: { 能换客户: true, 并进: {} } });
+    try {
+      const 项们 = await 菜单项们(await 开菜单(page, "更多操作"));
+      // 在换客户后、客户组前
+      const i = 项们.findIndex((x) => x.startsWith("并进另一个项目"));
+      expect(i, String(项们)).toBeGreaterThan(项们.findIndex((x) => x.startsWith("换客户")));
+      expect(i).toBeLessThan(项们.indexOf("#客户"));
+      await page.locator(".ant-dropdown:not(.ant-dropdown-hidden) li.ant-dropdown-menu-item").filter({ hasText: "并进另一个项目" }).click();
+      const 请求 = JSON.parse(await page.getByTestId("merge-probe").innerText().then((t) => t.replace(/收$/, "")));
+      expect([请求.种, 请求.projectId]).toEqual(["并项目", "p1"]);
+      expect(请求.名).toMatch(/^项目一/);
+      await page.getByTestId("merge-probe").getByRole("button").click();
+      // 不能并：灰着，下面一行写原因
+      await 画(page, { 合并: { 客户: false, 联系人: false }, 项目改: { 并进: { 灰: "这位客户名下没有同一位负责人在推的别的项目" } } });
+      await 开菜单(page, "更多操作");
+      const 灰 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden) li.ant-dropdown-menu-item").filter({ hasText: "并进另一个项目" });
+      expect(await 灰.getAttribute("aria-disabled")).toBe("true");
+      expect(await 灰.innerText()).toContain("没有同一位负责人在推的别的项目");
+      await page.keyboard.press("Escape");
+      // 服务端没给（不是负责人本人）/ 没给 合并口：都不摆
+      await 画(page, { 合并: { 客户: false, 联系人: false }, 项目改: { 并进: null } });
+      expect((await 菜单项们(await 开菜单(page, "更多操作"))).some((x) => x.startsWith("并进另一个项目"))).toBe(false);
+      await page.keyboard.press("Escape");
+      await 画(page, { 项目改: { 并进: {} } });
+      expect((await 菜单项们(await 开菜单(page, "更多操作"))).some((x) => x.startsWith("并进另一个项目"))).toBe(false);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  }
+}, 90_000);
+
+it("[12-02] 联系人「和另一位合成」：有权时每位都递——自家的、不止一位的能点（交给客户页的框）；挂靠过来的、只有一位自家联系人的递置灰原因；没权的不递", async () => {
+  const { page, errors } = await 开(1280, { 合并: { 客户: false, 联系人: true } });
+  try {
+    const 探 = (id: string) => page.getByTestId(`synth-${id}`);
+    expect(await Promise.all(["c1", "c2", "c3"].map((id) => 探(id).getAttribute("data-gray")))).toEqual(["", "", ""]);
+    await 探("c2").evaluate((e) => (e as HTMLElement).click());
+    const 请求 = JSON.parse(await page.getByTestId("merge-probe").innerText().then((t) => t.replace(/收$/, "")));
+    expect([请求.种, 请求.留.id, 请求.们.map((x: { id: string }) => x.id)]).toEqual(["联系人", "c2", ["c1", "c2", "c3"]]);
+    await page.getByTestId("merge-probe").getByRole("button").click();
+    // 一位自家的 + 一位挂靠过来的：都递置灰原因，点了不开框
+    await 画(page, { 合并: { 客户: false, 联系人: true }, 挂一位: true });
+    expect(await 探("c1").getAttribute("data-gray")).toBe("这位客户只有一位自己的联系人，没有可合成的");
+    expect(await 探("c2").getAttribute("data-gray")).toBe("挂靠过来的联系人请到他所属的客户里合成");
+    await 探("c1").evaluate((e) => (e as HTMLElement).click());
+    expect(await page.getByTestId("merge-probe").count()).toBe(0);
+    // 没权（服务端没给 联系人）、没给 合并口：都不递
+    await 画(page, { 合并: { 客户: false, 联系人: false }, 挂一位: true });
+    expect(await page.locator("[data-testid^='synth-']").count()).toBe(0);
+    await 画(page, { 挂一位: true });
+    expect(await page.locator("[data-testid^='synth-']").count()).toBe(0);
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });

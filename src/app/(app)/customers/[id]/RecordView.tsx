@@ -56,7 +56,7 @@ import ContactForm from "./ContactForm";
 import ContactAttachments from "./ContactAttachments";
 import FollowAttachments from "@/components/FollowAttachments";
 import ContactLinks from "./ContactLinks";
-import { 合并桥, type 合并请求, type 合成候选人 } from "./merge-bridge";
+import { 合并桥, type 合并请求, type 合成候选人, 挂靠联系人不能合成, 只有一位联系人不能合成 } from "./merge-bridge";
 import ContractForm, { type ContractRow } from "./ContractForm";
 import CustomerForm from "../CustomerForm";
 import InlineField from "./InlineField";
@@ -225,6 +225,7 @@ export default function RecordView({
   转让原因,
   待办计划 = [],
   醒目条 = null,
+  换人箭头 = null,
   项目区 = null,
   项目联系人 = null,
   项目页签们 = null,
@@ -850,12 +851,16 @@ export default function RecordView({
   /* 客户三态状态条（C10）：只在沉睡 / 待回收 / 暂缓回收中时服务端才给；三态关着、活跃时什么都不摆。
      有项目区时交给项目区摆（中栏宽、进程卡正上方），没有就照旧在客户名下面通栏 */
   const 提醒条 = 三态条 ? <TriStateBar 条={三态条} customerId={customer.id} 开客户转让={能转让 ? 开客户转让 : null} /> : null;
-  // 「换客户」的框在 合并口 里：没递 合并口（只读等）就不摆
-  const 项目菜单项们 = (项目区 ? 当前项目菜单?.项们 ?? [] : []).filter((x) => x.key !== "move" || !!合并口);
+  // 「换客户」「并进另一个项目」的框在 合并口 里：没递 合并口（只读等）就不摆
+  const 项目菜单项们 = (项目区 ? 当前项目菜单?.项们 ?? [] : []).filter((x) => (x.key !== "move" && x.key !== "merge") || !!合并口);
   const 点项目项 = (key: (typeof 项目菜单项们)[number]["key"]) => {
     // 「换客户」的框在 合并口 里（同合并客户），不经嵌入版 ProjectDetail
     if (key === "move") {
       if (合并口 && 当前项目菜单?.id) 开合并({ 种: "项目", projectId: 当前项目菜单.id, 名: 当前项目菜单.名 });
+      return;
+    }
+    if (key === "merge") {
+      if (合并口 && 当前项目菜单?.id) 开合并({ 种: "并项目", projectId: 当前项目菜单.id, 名: 当前项目菜单.名 });
       return;
     }
     项目动作口?.current?.(key);
@@ -1042,10 +1047,12 @@ export default function RecordView({
     顺序和分组不变：关键 → 本项目 → 这位客户的其他联系人（P-界面-16）；刚新建的那位排在其余里最前（看得见）。
     「挂到别的客户 / 换主客户」收进「⋯」（M4-c），挂靠那几行、就地填的格子由 ContactLinks 接在组里
   */
-  /** 和另一位合成（合并客户第一批）：同一位客户名下、不是挂靠过来的才行；只有一位时不摆 */
+  /** 和另一位合成（合并客户第一批）：同一位客户名下、不是挂靠过来的才行。有权的人（合并口、能合并.联系人、不只读）每位都摆这一项：
+   *  挂靠过来的、客户只有一位自家联系人时置灰写原因（12-02，ContactLinks 合成灰）；服务端 合成两位联系人 照旧拦 */
   const 合成人 = (c: ContactRow): 合成候选人 => ({ id: c.id, name: c.name, 职务: c.position, 关键: c.isPrimary, 号: c.号码们?.[0]?.value ?? c.phone ?? null });
   const 可合成的人 = contacts.filter((c) => !c.挂靠).map(合成人);
-  const 能合成联系人 = !!合并口 && !!能合并?.联系人 && !联系人只读 && 可合成的人.length > 1;
+  const 有合成权 = !!合并口 && !!能合并?.联系人 && !联系人只读;
+  const 合成灰因 = (c: ContactRow) => (!有合成权 ? undefined : c.挂靠 ? 挂靠联系人不能合成 : 可合成的人.length < 2 ? 只有一位联系人不能合成 : undefined);
   const 首位联系人 = 排好的联系人[0];
   const 企业联系人序 = 首位联系人 ? [首位联系人, ...刚加的排前(排好的联系人.slice(1), 刚加的联系人)] : [];
   const 先露几位 = 3;
@@ -1054,7 +1061,7 @@ export default function RecordView({
     <Fragment key={c.id}>
       {c.id === 其他起点 && <div className="rec-contact-sub">这位客户的其他联系人</div>}
       <div className={`rec-contact rec-cg${c.id === 刚加的联系人 ? " rec-tl-item-flash" : ""}`} data-contact={c.id}>
-        <ContactLinks customerId={customer.id} c={c} 只读={联系人只读} 头={(更多) => 联系人头(c, 更多)} 合成={能合成联系人 && !c.挂靠 ? () => 开合并({ 种: "联系人", 留: 合成人(c), 们: 可合成的人 }) : undefined}>
+        <ContactLinks customerId={customer.id} c={c} 只读={联系人只读} 头={(更多) => 联系人头(c, 更多)} 合成={有合成权 && !合成灰因(c) ? () => 开合并({ 种: "联系人", 留: 合成人(c), 们: 可合成的人 }) : undefined} 合成灰={合成灰因(c)}>
           {联系人身(c)}
         </ContactLinks>
       </div>
@@ -1280,6 +1287,8 @@ export default function RecordView({
             </button>
           </span>
         )}
+        {/* 「上一条 / 下一条」（E-332）：这一行右端，按进来前那张客户列表的顺序换人（CustomerStep.tsx） */}
+        {换人箭头}
       </div>
       <div className="rec-head">
         {/* 名单不在时（窗口太窄收成抽屉，或者人自己点了收起），最左边补一颗侧栏图标把它叫回来（components/PaneToggle.tsx） */}

@@ -17,6 +17,8 @@ import { 读受限客户详情 } from "./restricted";
 import { 读项目区, 客户页项目列表 } from "./project-zone";
 import { 历史变更摘要 } from "./history-data";
 import HistoryChanges from "./HistoryChanges";
+import MergedIntoLine from "../../projects/[id]/MergedIntoLine";
+import { 客户页项目地址 } from "@/lib/project/customer-detail-href";
 import MergeHost from "./MergeHost";
 import { 客户编号文字 } from "@/lib/customer-no";
 import { 项目详情字典们 } from "../../projects/[id]/load";
@@ -60,6 +62,7 @@ import { 显示用客户状态 } from "@/lib/enterprise/cust-status-auto-db";
 import { 读客户三态, 读冷项目 } from "@/lib/enterprise/tri-state-detail";
 import { 三态开着 } from "@/lib/enterprise/tri-state-db";
 import { 补项目去 } from "@/lib/project/customer-detail-direct";
+import CustomerStep from "./CustomerStep";
 
 export const dynamic = "force-dynamic";
 
@@ -231,6 +234,11 @@ export default async function CustomerDetailPage({
   ]);
   const 冷项目 = 三态?.冷 ?? {};
   if (项目区) 项目区.页签们 = 项目区.页签们.map((t) => (冷项目[t.id] != null ? { ...t, 冷天数: 冷项目[t.id] } : t));
+  // 当前项目顶上「已并入 → 留下的项目」（第二批 2a）：当前有项目就摆一只（没并入时画空，撤回后结果写在原处）；点留下的项目切到它的页签
+  if (项目区?.当前) {
+    const 并 = 项目区.当前.p.已并入 ?? null;
+    项目区.已并入口 = <MergedIntoLine 单={并} 项目名={项目区.当前.p.name} 去={并 ? 客户页项目地址(customer.id, 并.到id) : null} 嵌入 />;
+  }
   const [[汇总, 跟进去处], 转让选项, 待办计划] = 只项目几样 ?? [[null, null], null, null];
   // 号码类的几种（手机、座机、WhatsApp、传真）和电话一样过脱敏器；微信、邮箱、旺旺照旧（同联系人老三格的口径）
   const 打码种类 = new Set(["phone", "landline", "whatsapp", "fax"]);
@@ -271,6 +279,8 @@ export default async function CustomerDetailPage({
       抬头节点={抬头节点}
       三态条={三态?.条 ?? null}
       // 同号再次录入的醒目条：项目详情顶上那条，客户详情也摆（11-03 B6-9）；只看这页列出来的项目（已滤掉我回避的公海项目）
+      // 「上一条 / 下一条」（E-332）：只有从客户列表点进来时才摆，判定和相邻两位都在 CustomerStep 里（可见范围走列表同一份查询）
+      换人箭头={<CustomerStep customerId={customer.id} />}
       醒目条={只项目 && 项目们?.length ? <SameNumberBanner projectId={项目们.map((p) => p.id)} /> : null}
       // 合并客户第一批（11-25）：三只框（合并客户、和另一位合成、项目换客户）画好递进去；谁能做服务端再判一遍
       合并口={企 && !只读 ? <MergeHost customerId={customer.id} 客户名={customer.name.trim() || customer.shortName || 客户编号文字(customer.customerNo) || ""} /> : null}

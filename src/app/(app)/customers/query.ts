@@ -19,6 +19,7 @@ import { 三态筛选条件, 三态界面开着 } from "@/lib/enterprise/tri-sta
 import { 是三态筛选值 } from "@/lib/enterprise/tri-state-label";
 import { 按主键取没删的 } from "@/lib/enterprise/soft-delete-core";
 import { 是客户范围 } from "@/lib/enterprise/customer-scope";
+import { 看得到的范围SQL } from "@/lib/scope-sql";
 import { 组员客户编号 } from "@/lib/enterprise/visibility";
 import { 来源筛选条件, 来源筛选SQL } from "@/lib/enterprise/customer-source-filter";
 
@@ -200,10 +201,32 @@ async function 按谁算项目(userId?: string) {
     : await requireUser();
 }
 
+/**
+ * 同 客户关键词条件（当前登录的人），编号名单只留我看得到的客户（11-26 看板 + 宽关键词提速）：
+ * 范围是 scope-sql.ts 看得到的（和 Prisma 限定层 客户读条件 同一个口径，tests/scope-sql.test.ts 逐身份对拍；不限定、市场只读、回避名单过上限 = null，不收窄）。
+ * 回收站里的客户照旧留着（OR deletedAt 非空）：那句 SQL 只认没删的，老路的名单不管删没删，收窄不能比老路少。
+ * 名单只是上界：用的地方（看板 lib/project/list.ts 按客户）照旧再并 客户读条件，可见范围就是老路那一份
+ */
+async function 看得到的关键词条件(raw: unknown, 另比: Parameters<typeof 客户关键词SQL>[3]): Promise<Prisma.CustomerWhereInput> {
+  const w = await 客户关键词SQL(raw, false, undefined, 另比);
+  if (!w) return {};
+  const 范围 = await 看得到的范围SQL();
+  const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(
+    `SELECT c.id FROM "Customer" c WHERE ${w.sql}${范围 ? ` AND ((${范围.where}) OR c."deletedAt" IS NOT NULL)` : ""}`,
+    ...w.values, ...(范围?.参数 ?? []),
+  );
+  return 客户id集合(rows.map((r) => r.id));
+}
+
 export async function 客户筛选条件(
   sp: 客户条件,
   /** 关键词按谁的字段权限搜（电话藏着就不按号码匹配）；不给 = 当前登录的人。AI 助手经 MCP 调时没有 cookie，要传 */
   userId?: string,
+  /**
+   * 关键词的编号名单先按我看得到的客户收窄（客户页看板，board-query.ts，11-26）：看板拿这份条件再并上 客户读条件（lib/project/list.ts），
+   * 看不到的客户本来就不出；收窄只为名单短。只认当前登录的人（userId 不给时）
+   */
+  关键词按范围 = false,
 ): Promise<Prisma.CustomerWhereInput> {
   // 这一批导入动过的人。撤销过的批次不算（那些人已经删了 / 还原了）；撞号只记备注的客户没被动过，也不算
   const 本批 = sp.batch
@@ -214,7 +237,9 @@ export async function 客户筛选条件(
     : null;
 
   // 关键词还比我能看的项目的名字（2F，lib/project/customer-list-projects.ts 项目名另比）
-  const keyword = await 客户关键词条件(sp.keyword, false, userId, 项目名另比(() => 按谁算项目(userId)));
+  const keyword = 关键词按范围 && !userId
+    ? await 看得到的关键词条件(sp.keyword, 项目名另比(() => 按谁算项目()))
+    : await 客户关键词条件(sp.keyword, false, userId, 项目名另比(() => 按谁算项目(userId)));
 
   const 等级 = 等级条件(sp.level);
   const 部门 = 部门条件(sp.dept);
@@ -308,8 +333,25 @@ export const 客户行字段 = {
 
 type 取到的行 = Prisma.CustomerGetPayload<{ select: typeof 客户行字段 }>;
 
-/** 全范围按一种币种排序，再取页。扫描不带档案正文，避免把整库完整行交给浏览器。 */
-export async function 客户金额分页(where: Prisma.CustomerWhereInput, order: "amount-asc" | "amount-desc", currency: string, page: number, pageSize: number): Promise<取到的行[]> {
+/** 按签约金额排的两种（全范围算金额再排，见 客户金额分页） */
+export type 金额排序 = "amount-asc" | "amount-desc";
+
+/**
+ * 客户列表的排序（地址栏 sort）→ Prisma 的 orderBy；按金额排的给「金额」（另走 客户金额分页）。
+ * 列表页（page.tsx）和详情页「上一条 / 下一条」（E-332，adjacent.ts）共用这一份，两边的顺序才一样。
+ * 带关键词的快路（关键词分页）只接默认排序，那条 SQL 的序（createdAt DESC, id DESC）和这里默认的一样
+ */
+export function 客户排序(sort: string | undefined): { 金额: 金额排序 } | Prisma.CustomerOrderByWithRelationInput[] {
+  if (sort === "amount-asc" || sort === "amount-desc") return { 金额: sort };
+  if (sort === "level-asc" || sort === "level-desc") return [{ extra: { level: { sort: sort === "level-asc" ? "asc" : "desc", nulls: "last" } } }, { createdAt: "desc" }, { id: "desc" }];
+  if (sort === "follow-asc") return [{ lastFollowAt: { sort: "asc", nulls: "first" } }, { createdAt: "asc" }, { id: "asc" }];
+  if (sort === "follow-desc") return [{ lastFollowAt: { sort: "desc", nulls: "last" } }, { createdAt: "desc" }, { id: "desc" }];
+  if (sort === "created-asc") return [{ createdAt: "asc" }, { id: "asc" }];
+  return [{ createdAt: "desc" }, { id: "desc" }];
+}
+
+/** 按金额排好的全部 id（客户金额分页 切页前那一步，详情页上下条也用它） */
+export async function 金额排序ids(where: Prisma.CustomerWhereInput, order: 金额排序, currency: string): Promise<string[]> {
   const amounts: { id: string; amount: number; createdAt: number }[] = [];
   let after: string | undefined;
   for (;;) {
@@ -324,7 +366,12 @@ export async function 客户金额分页(where: Prisma.CustomerWhereInput, order
   }
   const direction = order === "amount-asc" ? 1 : -1;
   amounts.sort((a, b) => direction * (a.amount - b.amount) || b.createdAt - a.createdAt || (a.id < b.id ? 1 : a.id > b.id ? -1 : 0));
-  const ids = amounts.slice((page - 1) * pageSize, page * pageSize).map(row => row.id);
+  return amounts.map((row) => row.id);
+}
+
+/** 全范围按一种币种排序，再取页。扫描不带档案正文，避免把整库完整行交给浏览器。 */
+export async function 客户金额分页(where: Prisma.CustomerWhereInput, order: 金额排序, currency: string, page: number, pageSize: number): Promise<取到的行[]> {
+  const ids = (await 金额排序ids(where, order, currency)).slice((page - 1) * pageSize, page * pageSize);
   if (!ids.length) return [];
   const rows = await prisma.customer.findMany({ where: { AND: [where, { id: { in: ids } }] }, select: 客户行字段 });
   const positions = new Map(ids.map((id, index) => [id, index]));

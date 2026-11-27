@@ -75,6 +75,8 @@ type Props<T> = {
   没对上?: React.ReactNode;
   /** 筛选栏。空库时整条不渲染 */
   筛选?: React.ReactNode;
+  /** 工具栏右端、「列」左边的一格（客户页的「排序」按钮，E-332）；放在筛选栏外面，不参与「更多筛选」的挤。不给就没有 */
+  排序钮?: React.ReactNode;
   /** 工具栏和表格之间那一条汇总（商机页的「总额 · 加权预测」）。不给就没有 */
   汇总?: React.ReactNode;
   /** 给了就用它替掉表格（筛选栏、汇总照留，批量条和表格不摆）：企业版客户页的看板（U-客户-06） */
@@ -189,7 +191,7 @@ const 骨架格 = {
 const 手机名字宽 = 120;
 
 export default function DataList<T extends { id: string }>({
-  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 汇总, 替表格, 批量, 浮起操作条 = false, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开, 回来还原 = false, 补宽列,
+  页, 列: 全部列, 行, 空库, 空态, 没对上, 筛选, 排序钮, 汇总, 替表格, 批量, 浮起操作条 = false, 加载中, 行链接, 行点击, 横向, 分页, 截断, 亮, 行类, 不可勾, 排序, 单行 = true, 展开, 回来还原 = false, 补宽列,
 }: Props<T>) {
   const router = useRouter();
   /** 点一行进详情：等新页时顶上的条亮、这一行先高亮（lib/nav-pending.ts） */
@@ -527,6 +529,7 @@ export default function DataList<T extends { id: string }>({
         <div className="list-bar">
           {筛选}
           <span className="list-bar-gap" />
+          {排序钮}
           {可选的.length > 0 && 替表格 === undefined && (
             /*
               勾一项**不关**这张单子：选列天然是连着点好几下的事，

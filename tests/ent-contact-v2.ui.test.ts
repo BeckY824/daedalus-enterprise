@@ -66,6 +66,11 @@ beforeAll(async () => {
       <div data-t='只读'><ContactLinks customerId='k0' 只读 头={头('王五三')} c={{...人,id:'c3'}}><div>号码行三</div></ContactLinks></div>
       <div data-t='能合成'><ContactLinks customerId='k0' 只读={false} 头={头('王五四')} 合成={()=>{window.__合成=(window.__合成||0)+1}} c={{...人,id:'c4'}}><div>号码行四</div></ContactLinks></div>
     </div>));
+    // 12-02：有权但合成不了的照样摆「和另一位合成」、置灰写原因（挂靠过来的、客户只有一位联系人）
+    window.__合成灰=()=>root.render(壳(<div>
+      <div data-t='挂来的'><ContactLinks customerId='k0' 只读={false} 头={头('王五')} 合成灰='挂靠过来的联系人请到他所属的客户里合成' c={{...人,挂靠:{linkId:'L1',note:null,主客户Id:'k1',主客户名:'主客户甲',主客户看得到:true,能改:false}}}><div>号码行</div></ContactLinks></div>
+      <div data-t='只一位'><ContactLinks customerId='k0' 只读={false} 头={头('王五二')} 合成灰='这位客户只有一位自己的联系人，没有可合成的' c={{...人,id:'c2'}}><div>号码行二</div></ContactLinks></div>
+    </div>));
     window.__新建=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{window.__存好=1}} customerId='k0' record={null} 号码种类={种类}
       存法={async(x)=>{(window.__存=window.__存||[]).push(x);return {ok:true}}}/>));
     window.__编无名=()=>root.render(壳(<ContactForm open onClose={()=>{}} onSaved={()=>{}} customerId='k0' record={{...人,name:''}} 号码种类={种类}/>));
@@ -73,10 +78,11 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
-async function open(画: "__表单" | "__挂靠" | "__挂靠头" | "__新建" | "__编无名" | "__职务" | "__职务老" | "__非企业" | "__回收站" | "__联系人页", width = 1024) {
+async function open(画: "__表单" | "__挂靠" | "__挂靠头" | "__合成灰" | "__新建" | "__编无名" | "__职务" | "__职务老" | "__非企业" | "__回收站" | "__联系人页", width = 1024) {
   const page = await browser.newPage({ viewport: { width, height: 900 } }); page.setDefaultTimeout(5000);
   await page.route("http://cv2.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><div id='root'></div>" }));
-  await page.goto("http://cv2.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addScriptTag({ content: bundle });
+  await page.goto("http://cv2.test"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") });
+  await page.addStyleTag({ path: path.resolve("src/app/(app)/customers/merge.css") }); await page.addScriptTag({ content: bundle });
   await page.evaluate(f => (window as unknown as Record<string, () => void>)[f](), 画);
   return page;
 }
@@ -415,3 +421,40 @@ it("[合并客户第一批 11-25] 组头「⋯」：给了 合成 才多一项�
     expect(await 能.getByText("挂到哪位客户").count()).toBe(0);
   } finally { await page.close(); }
 });
+
+for (const 宽 of [1024, 390]) {
+  it(`[12-02] ${宽}：「和另一位合成」合成不了照样摆、置灰写原因（挂靠过来的、只有一位）；${宽 < 768 ? "手机没有悬停，灰项下面一行小字" : "电脑悬停看原因，不另占一行"}；点了不开框`, async () => {
+    for (const [t, 因, 前] of [
+      ["挂来的", "挂靠过来的联系人请到他所属的客户里合成", ["加说明", "解除挂靠"]],
+      ["只一位", "这位客户只有一位自己的联系人，没有可合成的", ["挂到别的客户", "换主客户"]],
+    ] as const) {
+      const page = await open("__合成灰", 宽);
+      try {
+        await page.locator(`[data-t='${t}']`).getByRole("button", { name: "联系人 王五 的更多操作" }).click();
+        const 菜单 = page.locator(".ant-dropdown:not(.ant-dropdown-hidden)");
+        const 项 = 菜单.getByRole("menuitem").filter({ hasText: "和另一位合成" });
+        await 项.waitFor();
+        expect(await 项.getAttribute("aria-disabled")).toBe("true");
+        // 悬停提示挂在菜单项本身（盖满整项），不只挂里层
+        expect(await 项.getAttribute("title")).toBe(因);
+        // 电脑上和同菜单其他项一样高（不套 menu-2l 的上下 2px / 行高 1.4）
+        if (宽 >= 768) {
+          const [高灰, 高他] = await Promise.all([项.boundingBox(), 菜单.getByRole("menuitem").first().boundingBox()]);
+          expect(Math.abs(高灰!.height - 高他!.height)).toBeLessThanOrEqual(0.5);
+        }
+        const 注 = 项.locator(".mrg-gray-note");
+        expect(await 注.evaluate((e) => getComputedStyle(e).display)).toBe(宽 < 768 ? "block" : "none");
+        if (宽 < 768) expect(await 注.innerText()).toBe(因);
+        const 全 = (await 菜单.getByRole("menuitem").allInnerTexts()).map((x) => x.split("\n")[0].trim());
+        expect(全).toEqual([...前, "和另一位合成"]);
+        // 菜单不出屏、页面不横滚
+        const 框 = (await 菜单.boundingBox())!;
+        expect(框.x).toBeGreaterThanOrEqual(0);
+        expect(框.x + 框.width).toBeLessThanOrEqual(宽);
+        expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
+        await 项.evaluate((e) => (e as HTMLElement).click());
+        expect(await page.evaluate(() => (window as unknown as { __合成?: number }).__合成 ?? 0)).toBe(0);
+      } finally { await page.close(); }
+    }
+  });
+}
