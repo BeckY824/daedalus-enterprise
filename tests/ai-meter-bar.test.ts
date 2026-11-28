@@ -43,3 +43,13 @@ describe("左栏 AI 用量条（H-028）", () => {
     expect(渲({ 计次: true, 还剩: null, 上限: 30 })).toBe("");
   });
 });
+
+import { 焦点该问吗, 焦点最短间隔 } from "@/components/AiCost";
+describe("切回窗口才问余额（O1-N4b）", () => {
+  it("不计次的人不问", () => expect(焦点该问吗(false, 0, 1e9)).toBe(false));
+  it("计次的人隔够久才问，刚问过不再问", () => {
+    expect(焦点该问吗(true, 1000, 1000 + 焦点最短间隔 - 1)).toBe(false);
+    expect(焦点该问吗(true, 1000, 1000 + 焦点最短间隔)).toBe(true);
+    expect(焦点该问吗(true, 0, 1e9)).toBe(true);
+  });
+});
