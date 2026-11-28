@@ -61,6 +61,7 @@ import { notify } from "@/lib/enterprise/notify";
 import { 项目业务线, 认业务线, 业务线不认得, 业务线必填, type 成员线查 } from "@/lib/enterprise/assign-line";
 import { 进公海后负责人, 历史负责人, 进公海关待办, 一批id数, 进公海清组员, 进公海关主题, 放弃没发出的录音 } from "./pool-owner";
 import { 卡点随项目换人, 公海领走接手理由, 转让接手理由, 移出组员接手理由 } from "./blocker";
+import { 项目有未裁定异议, 改回异议人记已退回 } from "@/lib/enterprise/objection-guard";
 import { 换负责人待办, 待办痕, 手动转让痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
@@ -676,7 +677,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
   const 级别 = await 字段权限of(me.id);
   const 状态开 = await 客户状态自动();
   const org = await 权限组织();
-  return 查完再写(async (tx) => {
+  let 自动退回: Awaited<ReturnType<typeof 改回异议人记已退回>> = [];
+  const 结果 = await 查完再写(async (tx) => {
+    自动退回 = [];
     const p = await tx.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!p) return { ok: false as const, error: "这个项目已经不在了，刷新看看" };
     const 能改 = 能管项目(me, p, org);
@@ -767,6 +770,9 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       // 验证中（等复核、等销售）的线索不能改负责人（X-77）
       const 验证中 = await 验证中不能改派(tx, p.id);
       if (验证中) return { ok: false as const, error: 验证中 };
+      // 12-22 异议：这个项目有没裁定的转让异议，裁定前不能再转（判定页 #20）
+      const 异议拦 = await 项目有未裁定异议(tx, [{ id: p.id, customerId: p.customerId, ownerId: p.ownerId }], "再转");
+      if (异议拦) return { ok: false as const, error: 异议拦 };
       // 这里改不了阶段和结局（规整项目只出名称、负责人、金额、备注），p 的阶段 / 结局就是改完的
       const 超 = await 超上限(tx, 规则, 新.ownerId, p);
       if (超) return { ok: false as const, error: 超 };
@@ -782,6 +788,8 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
       const 几条 = await 换负责人待办(tx, p, 原, 新.ownerId, 带待办);
       // 没碰待办（换负责人带待办关着、没传勾）记「手动转让」：超时未跟进自动转靠原因认手动转让（carry-tasks.ts 待办痕头）
       await 记转让(tx, p, me.id, 原, 新.ownerId, "transfer", 待办痕(带待办, 几条) ?? 手动转让痕);
+      // 12-22 审查 M1：系统管理员把项目改回给异议人（待手工退回里的），顺带记成「已退回」
+      自动退回 = await 改回异议人记已退回(tx, me, 新.ownerId, { projectId: p.id });
       await 勾掉将回收提醒(tx, 规则, { ...p, ownerId: 新.ownerId }, new Date());
     }
     const 推进 = await 按必填推进(tx, 规则, me, p.id);
@@ -789,6 +797,15 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     if (推进.length || (换人 && p.pooledAt)) await 跟着项目重算(tx, 状态开, [p.customerId]);
     return { ok: true as const, 变了, ...带推进(推进) };
   });
+  // 12-22 审查 M1：自动记成「已退回」的，事务提交后补留痕和通知（同「已手工退回」按钮）
+  if (自动退回.length && 结果.ok) {
+    // 事务已提交：动态引入、查操作人名字、补留痕都在这一个 catch 里，出错只记日志、不往外抛
+    await (async () => {
+      const 名 = (await prisma.user.findUnique({ where: { id: me.id }, select: { name: true } }))?.name ?? "系统管理员";
+      await (await import("@/lib/enterprise/objection-judge")).自动记已退回后补({ id: me.id, name: 名 }, 自动退回);
+    })().catch((e) => console.warn("[异议] 自动记已退回后补没做完：", e));
+  }
+  return 结果;
 }
 
 /** 存字典项名的两格：列 → 字典种类、叫法 */

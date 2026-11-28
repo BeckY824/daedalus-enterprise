@@ -12,7 +12,7 @@ import { prisma } from "../prisma";
 import { recordAudit, type Actor } from "../audit";
 import { 查完再写 } from "../check-then-write";
 import { 看全部 } from "../team-scope";
-import { 开现场, 落值, 建, 改, 读现值, 引用键, 无主客户进公海, 换人带走键, 号码待补, 补号码待补的, 库里样, 冲突说明键, type 现场, type 改的批 } from "./apply";
+import { 开现场, 落值, 建, 改, 负责人被异议拦, 读现值, 引用键, 无主客户进公海, 换人带走键, 号码待补, 补号码待补的, 库里样, 冲突说明键, type 现场, type 改的批 } from "./apply";
 import { 对照被项目合并改指, 对照已随合并话 } from "../enterprise/project-merge-guard";
 import { 企业版 } from "../enterprise/switch";
 import { 写不进, 规, type 值表 } from "./values";
@@ -159,6 +159,16 @@ export async function 定冲突(冲突Ids: string[], 选: 冲突选择, 用户: 
           }
         }
 
+        // 12-22 审查 M5：采用原系统会给「待裁定异议」的客户 / 项目换负责人的，这一笔先不定（裁定后再来）
+        if (选 === "采用原系统" && v && !c.localDeleted) {
+          // 只比这条冲突里真有的格：只改名称 / 备注的冲突，不因为 v 里带着整份原系统值（含负责人）被拦
+          const 冲突格 = Object.fromEntries(Object.entries(v).filter(([k]) => k in 字段));
+          const 拦 = await 负责人被异议拦(tx, e, c.targetId, 冲突格, 现值);
+          if (拦) {
+            结果.没定.push(明细("采用原系统会改负责人；这条有转让异议待裁定，裁定后再定"));
+            continue;
+          }
+        }
         // 占住这一笔：两个窗口同时定，晚到的那边算已经定过
         const n = await tx.entConflict.updateMany({
           where: { id, status: "待定" },

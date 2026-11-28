@@ -7093,3 +7093,15 @@ button.proj-miss-chip { cursor: pointer; }
 @media (min-width: 1200px) {
   .list-bar:has(> .cust-sort-btn) > .ant-space > .ant-space-item > .ant-input-affix-wrapper { max-width: 216px; }
 }
+
+/* 转让异议（12-22 第 2 阶段 A 段，/objections）：一行一条，名字长了一行省略号、悬停看全 */
+.obj-card { margin-bottom: 16px; }
+.obj-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border, rgba(128, 128, 128, 0.15)); }
+.obj-row:last-child { border-bottom: 0; }
+.obj-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.obj-ell { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.obj-mut { font-size: var(--dt-aux, 12px); color: var(--text-muted); }
+.obj-form { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.obj-err { color: var(--danger); }
+.obj-btns { display: flex; gap: 8px; flex: none; }
+.obj-full { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; }

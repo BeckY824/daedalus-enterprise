@@ -44,6 +44,8 @@ import { 钟上指定回复提醒 } from "@/lib/enterprise/reply-notice";
 import { 钟上定时分配, type 定时分配明细 } from "@/lib/enterprise/scheduled-assign";
 import { 钟上超时自动转, type 超时转明细 } from "@/lib/enterprise/reply-overdue";
 import { 钟上验证时限 } from "./lead-verify-timeout";
+import { 钟上特殊裁定月通知 } from "@/lib/enterprise/objection-judge";
+import { 钟上待裁提醒, 钟上手工退回提醒 } from "@/lib/enterprise/objection-remind";
 import { 收拾卡住的推送 } from "@/lib/enterprise/feishu-push";
 import { 钟上扫过期合并申请 } from "@/lib/enterprise/merge-request";
 import { dayjs } from "../utils";
@@ -156,6 +158,14 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       // 重复咨询线索的验证时限（P-线索-05）：同一个钟，等验证的 1 小时提醒、再 30 分钟自动落定；自己不抛，这里再兜一道
       .then(() => 钟上验证时限(现在))
       .then(() => undefined, (e) => console.error("[验证时限] 出错，下一遍再试", e))
+      // 特殊裁定台账月通知（E-436）：每月 1 日北京 08:00 后，上月有「本人裁定」才给系统管理员发一条，按月去重；自己不抛，这里再兜一道
+      .then(() => 钟上特殊裁定月通知(现在))
+      .then(() => undefined, (e) => console.error("[特殊裁定月通知] 出错，下一遍再试", e))
+      // 转让异议两类提醒（E-436 二 / E-444 ⑦）：待裁定每满 5 个工作日提醒裁定人和系统管理员；待手工退回满 3 个工作日没处理提醒系统管理员；北京 08:00 后、一天一遍，自己不抛，这里再兜一道
+      .then(() => 钟上待裁提醒(现在))
+      .then(() => undefined, (e) => console.error("[异议待裁提醒] 出错，下一遍再试", e))
+      .then(() => 钟上手工退回提醒(现在))
+      .then(() => undefined, (e) => console.error("[异议手工退回提醒] 出错，下一遍再试", e))
       .then(() => 挂起移交作废(现在))
       .then(() => undefined, (e) => console.error("[移交作废] 出错，下一遍再试", e))
       // 挂靠申请 24 小时没人处理往上转一级，到总管理为止（P-挂靠-02）：自己不抛，这里再兜一道

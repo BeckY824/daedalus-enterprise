@@ -65,6 +65,8 @@ export const 不同步表 = [
   "EntCommission", "EntCommissionSplit",
   // 企业版「交接中」（2026-10-26）：同上
   "EntHandover",
+  // 12-22 第 2 阶段转让异议（迁移 193）：同上
+  "EntTransferObjection",
   // 企业版联系方式子表（2026-10-26，migrations/054）：同上
   "ContactMethod",
   // 企业版卡点、沟通记录编号（2026-10-26）：同上
@@ -237,6 +239,11 @@ export const 指向人的列: [string, string][] = [
   ["EntHandover", "toUserId"],
   ["EntHandover", "byUserId"],
   ["EntHandover", "doneById"],
+  // 12-22 转让异议（迁移 193）：不建外键
+  ["EntTransferObjection", "objectorUserId"],
+  ["EntTransferObjection", "operatorUserId"],
+  ["EntTransferObjection", "toOwnerId"],
+  ["EntTransferObjection", "judgedById"],
   // 企业版线索有效性验证、配额加额（2026-10-29）：不建外键
   ["EntLeadVerify", "verifiedById"],
   ["EntLeadVerify", "reviewedById"],

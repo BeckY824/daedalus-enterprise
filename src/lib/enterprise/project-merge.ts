@@ -28,6 +28,7 @@ import { 存沟通后重算三态 } from "./tri-state-db";
 import { notify } from "./notify";
 import { 忘掉企业版范围 } from "./visibility";
 import { 拦下, 合并事务选项, 并发失败话, 重算最近跟进, 读没还原, type 合并人, type 没还原 } from "./customer-merge";
+import { 项目有未裁定异议 } from "./objection-guard";
 import { 项目单, 项目合并撤回天数, 项目合并单们, 项目合并验证步 } from "./project-merge-guard";
 import { 生效的合同状态 } from "@/lib/project/proj-fields";
 import { 在潜客培育, 培育计划来源, 撤培育计划 } from "@/lib/project/nurture-plan";
@@ -113,6 +114,9 @@ async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | nu
   if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return ["你只能看，不能合并项目"];
   const 管 = 是系统管理员(me, org);
   const 因: string[] = [];
+  // 12-22 异议：这两个项目有没裁定的转让异议，裁定前不能合并（判定页 #20）
+  const 异议拦 = await 项目有未裁定异议(db, [A, B], "合并");
+  if (异议拦) 因.push(异议拦);
   if (A.customerId !== B.customerId) 因.push("两个项目不在同一位客户名下；先「项目换客户」或先合并客户再并");
   // 业务线不同不能并（对齐第一批客户合并 customer-merge.ts 拦的原因：两边都有值、不一样才拦）；预览里同一句，框里「并过去」灰着
   const 线因 = 业务线不同的原因(A, B);

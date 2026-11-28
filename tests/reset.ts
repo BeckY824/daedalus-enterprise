@@ -91,6 +91,7 @@ async function 清空() {
   await prisma.entLeadVerify.deleteMany();
   await prisma.entFollowUpMark.deleteMany();
   await prisma.entHandover.deleteMany();
+  await prisma.entTransferObjection.deleteMany();
   await prisma.entDictItem.deleteMany();
   await prisma.entDept.deleteMany();
   await prisma.user.deleteMany();

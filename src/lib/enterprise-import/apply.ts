@@ -57,6 +57,7 @@ import { 系统 } from "../project/timeout";
 import { 导入分配方式 } from "../project/proj-fields";
 import { 企业版只用项目 } from "../enterprise/project-only";
 import { 企业版 } from "../enterprise/switch";
+import { 客户有未裁定异议, 项目有未裁定异议 } from "../enterprise/objection-guard";
 import { 对照被项目合并改指, 对照已随合并话 } from "../enterprise/project-merge-guard";
 import { 是项目线 } from "../enterprise/assign-line";
 import { 公海客户要先领取, 公海客户先领取说 } from "../enterprise/pool-customer-guard";
@@ -553,6 +554,30 @@ async function 撤回导入换的负责人(tx: Tx, customerId: string, 现: stri
   await 还待分配状态(tx, 带, customerId, 现);
   await 还项目(tx, 带.项目, customerId, 现, 还给, 谁);
   for (const id of 带.公海项目 ?? []) await 撤回项目公海(tx, id, 现, 谁);
+}
+
+/**
+ * 12-22 审查 M5：导入要给客户 / 项目换负责人（项目还有所属客户）时，碰上这条有转让异议在「待裁定」就拦（口径 A7）：
+ * 命中的行整行跳过、不写，原因进这一批「没写进去的」明细；返回拦话，没命中 / 没换负责人 / 不是企业版 = null。
+ * 只看改动里真变了的负责人格；同一客户别的格不动的行不受影响
+ */
+export async function 负责人被异议拦(tx: Tx, e: 实体, id: string, 改动: 值表, 现值: 值表 | null): Promise<string | null> {
+  if (!企业版()) return null;
+  const 变 = (k: string) => k in 改动 && 串(改动[k] ?? null) !== 串(现值?.[k] ?? null);
+  if (e === "customer") return 变("salesOwnerId") ? 客户有未裁定异议(tx, [id]) : null;
+  if (e !== "opportunity" || !(变("ownerId") || 变("customerId")) || !(await 是项目(tx, id))) return null;
+  const p = await tx.project.findUnique({ where: { id }, select: { id: true, customerId: true, ownerId: true } });
+  return p ? 项目有未裁定异议(tx, [p]) : null;
+}
+
+/** 这一行因转让异议待裁定没写：记进这一批「没写进去的」明细（batch.note），满了不再记 */
+export async function 记被异议拦的行(tx: Tx, 批次Id: string, w: { 实体: 实体; 外部ID: string; 行号?: number; 出处?: string }, 话: string): Promise<void> {
+  const 批 = await tx.entImportBatch.findUnique({ where: { id: 批次Id }, select: { note: true } });
+  if (!批) return;
+  const 们 = 解<失败明细[]>(批.note, []);
+  if (们.length >= 失败上限) return;
+  们.push({ 实体: w.实体, 外部ID: w.外部ID, 行号: w.行号, 出处: w.出处, 原因: `没改负责人，整行跳过：${话}（裁定后再导一次）` });
+  await tx.entImportBatch.update({ where: { id: 批次Id }, data: { note: J(们) } });
 }
 
 /** 改已有记录的这几格。现值 = 改之前读到的（商机结单要看原来的状态）。批 见 改的批 */
@@ -1061,6 +1086,12 @@ async function 对照(tx: Tx, 现: 现场, w: 待写, ref: 引用行): Promise<�
     else 冲[k] = { 原系统: n, 我们: c, 上次: l };
   }
   const 批: 改的批 = { 批次Id: 现.批次Id, 补培育: !!现.补培育, 操作人: 现.操作人 };
+  // 转让异议待裁定的客户 / 项目不换负责人：整行跳过（对照行不更新，裁定后再导一次照常比对），原因进「没写进去的」明细
+  const 拦 = await 负责人被异议拦(tx, w.实体, ref.targetId, 改动, 现值);
+  if (拦) {
+    await 记被异议拦的行(tx, 现.批次Id, w, 拦);
+    return "跳过";
+  }
   if (Object.keys(改动).length) await 改(tx, w.实体, ref.targetId, 改动, 现值, 现.现在, 批);
   // 换了客户负责人带走了哪些：记进这一行的 before，撤回按它原样带回（不碰接手人原本就有的）
   if (批.换人带走) before[换人带走键] = J(批.换人带走);
@@ -1154,6 +1185,9 @@ export async function 写一批(批次Id: string, 用户: Actor, opts: { 段长�
           } catch (e1) {
             if (e1 instanceof 让位) throw e1;
             const w = 段[i];
+            // 同次调用里前面的行可能已经往 note 里记了（被转让异议拦的行、电话没处落的号）：用库里最新的那份接着记，不拿开头读的旧内存整个盖掉
+            const 最新 = await prisma.entImportBatch.findUnique({ where: { id: 批次Id }, select: { note: true } });
+            失败们.splice(0, 失败们.length, ...解<失败明细[]>(最新?.note, []));
             if (失败们.length < 失败上限) 失败们.push({ 实体: w.实体, 外部ID: w.外部ID, 行号: w.行号, 出处: w.出处, 原因: 原因(e1) });
             const n = await prisma.entImportBatch.updateMany({
               where: { id: 批次Id, cursor: 游标 + i, status: "applying" },
