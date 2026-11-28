@@ -35,6 +35,7 @@ import { saveBusiness, DEFAULT_BUSINESS } from "@/lib/business";
 import { 自动掉公海 } from "@/lib/pool-db";
 import { 对拍 } from "@/lib/enterprise/pool-prev-owner-compare";
 import { defaultClient as raw } from "@/lib/prisma";
+import { 改 as 导入改 } from "@/lib/enterprise-import/apply";
 
 type 人 = { id: string; name: string; email: string; role: string; title: string; avatar: null };
 let 甲: 人;
@@ -198,6 +199,20 @@ describe("客户进公海写 poolPrevOwnerId", () => {
       await 记换负责人(tx, [{ customerId: c, from: 甲.id, to: 占位 }], 甲.id, "pool-release");
     }));
     expect(await 客户列(c)).toBe(甲.id);
+  });
+
+  it("导入换负责人到占位账号：本批新建的客户列为空（留痕照留、原负责人能看到）；导入改已有客户照写", async () => {
+    const 占位 = await 无负责人占位Id(prisma);
+    const 批 = await prisma.entImportBatch.create({ data: { source: "excel", kind: "full", status: "applying" } });
+    const 新建的 = await 客户(甲.id);
+    const 已有的 = await 客户(甲.id);
+    await prisma.entImportRow.create({ data: { batchId: 批.id, entity: "customer", externalId: "x1", targetId: 新建的, kind: "create", written: "{}" } });
+    for (const id of [新建的, 已有的]) {
+      await prisma.$transaction((tx) => 导入改(tx, "customer", id, { salesOwnerId: 占位 }, { salesOwnerId: 甲.id }, new Date().toISOString(), { 批次Id: 批.id, 补培育: false }));
+    }
+    expect(await 客户列(新建的)).toBeNull();
+    expect(await 客户列(已有的)).toBe(甲.id);
+    expect(await prisma.customerOwnerLog.count({ where: { customerId: 新建的, kind: "pool-release", fromOwnerId: 甲.id } })).toBe(1);
   });
 });
 

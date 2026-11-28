@@ -282,6 +282,21 @@ describe("E-462 去掉导入写的：导入批次窗口内的 pool-release 不�
     expect(应写.get(c2)).toBe(甲);
   });
 
+  it("跨批：A 批创建、留痕落在不相干的 B 批窗口里 → 照补；只有 kind=update 导入行的 → 照补（只认 create）", async () => {
+    const A = await 批次(t("10 10:00"), t("10 10:30"));
+    const B = await 批次(起, 止);
+    const 跨 = await 客户(占位, t("20 10:00"));
+    await 导入行(A.id, "customer", 跨);
+    await 导入行(B.id, "customer", await 客户(占位, t("20 10:00"))); // B 批自己有别的客户，和 跨 无关
+    await 客户痕(跨, 甲, 占位, 秒(起, 5));
+    const 只更新 = await 客户(占位, t("20 10:00"));
+    await raw.entImportRow.create({ data: { batchId: B.id, entity: "customer", externalId: `ext-${只更新}`, targetId: 只更新, kind: "update", before: "{}", written: "{}" } });
+    await 客户痕(只更新, 甲, 占位, 秒(起, 5));
+    const 应写 = new Map((await 算回填计划(raw)).客户.map((r) => [r.id, r.应写]));
+    expect(应写.get(跨)).toBe(甲);
+    expect(应写.get(只更新)).toBe(甲);
+  });
+
   it("项目：窗口内的不补、窗口外的照补；对拍（旧集合同样排导入）在回填后 0 不一致", async () => {
     const b = await 批次(起, 止);
     const 普 = await 客户(丙);

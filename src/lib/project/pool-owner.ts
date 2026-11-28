@@ -174,22 +174,6 @@ export async function 公海里历史负责人是(db: 读项目, 人们: readonl
 }
 
 /**
- * 【旧推算，只给对拍脚本比对用，读取不再走它】现在在公海里、历史负责人是这几位之一的项目 id（只认最后一次进公海：放回过、后来被别人领走再放回的不算）。
- * 复盘按人数「退回公海」用（企业版负责人已清空，按 ownerId 数不到了）
- */
-export async function 留痕推算公海里历史负责人是(db: 读痕, 人们: readonly string[]): Promise<string[]> {
-  if (!人们.length) return [];
-  const 放过 = await 看全部(() => db.projectNodeLog.findMany({
-    where: { kind: "pool-release", fromOwnerId: { in: [...人们] }, project: { pooledAt: { not: null }, deletedAt: null } },
-    select: { projectId: true },
-  }));
-  if (!放过.length) return [];
-  const 现 = await 历史负责人们(db, 放过.map((l) => l.projectId));
-  const 是 = new Set(人们);
-  return [...现].filter(([, uid]) => 是.has(uid)).map(([id]) => id);
-}
-
-/**
  * 现在在公海里、我是历史负责人的项目 id（原负责人回避开着才算，不然空）。列表、统一公海页用来把这些行剔掉
  */
 export async function 我回避的公海项目(db: 读项目, meId: string): Promise<string[]> {
