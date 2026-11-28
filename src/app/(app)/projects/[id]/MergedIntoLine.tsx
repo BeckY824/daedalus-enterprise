@@ -83,6 +83,9 @@ export default function MergedIntoLine({ 单, 项目名, 去, 嵌入, 待确认 
   const A = m.到 || "另一个项目";
   const 谁时 = `${m.谁 ? `${m.谁} ` : ""}${fmtDateTime(m.at)} 并入`;
   const 全话 = `已并入 → 「${A}」（${谁时}）${m.过期话 ? `；${m.过期话}` : ""}`;
+  // 合并异议（跨负责人合并，原负责人本人）：30 天内能提；提了写状态；过了期限没提的不写
+  const 能提 = !!m.异议 && m.异议.状态 === "可提" && !m.异议.过期;
+  const 异议话 = !m.异议 ? "" : m.异议.状态 === "可提" ? (m.异议.过期 ? "" : `合并异议：你的项目被并走，还剩 ${m.异议.剩几天} 天可以提异议`) : m.异议.状态 === "待裁定" ? "合并异议：已提，等裁定" : `合并异议：${m.异议.状态}`;
   const 撤 = () => void 问后果(项目合并撤回后果(项目名 || "这个项目", A, async () => {
     const r = await 撤回项目合并单(m.mergeId);
     if (!r.ok) return r;
@@ -102,6 +105,13 @@ export default function MergedIntoLine({ 单, 项目名, 去, 嵌入, 待确认 
           {m.能撤 && <Button size="small" onClick={撤} data-testid="project-merged-undo">撤回</Button>}
           {!m.能撤 && m.过期话 && <span className="mrg-into-x" data-testid="project-merged-expired">{m.过期话}</span>}
         </div>
+        {异议话 && (
+          <div className="mrg-into-r mrg-into-obj" data-testid="project-merged-objection">
+            <span className="mrg-into-t" title={异议话}>{异议话}</span>
+            {m.异议 && 能提 && <Link href={`/objections?o=${encodeURIComponent(m.异议.id)}`} className="mrg-into-a mrg-into-o" data-testid="project-merged-objection-go">提异议<LinkPending /></Link>}
+            {m.异议 && !能提 && <Link href="/objections" className="mrg-into-a mrg-into-o" data-testid="project-merged-objection-see">去看看<LinkPending /></Link>}
+          </div>
+        )}
       </div>
       {后果框}
     </>,

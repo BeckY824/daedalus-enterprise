@@ -8,7 +8,7 @@
  */
 import type { EntTransferObjection, Prisma } from "@/generated/prisma";
 import { 企业版 } from "./switch";
-import { 未落地状态们, 未裁定拦话, 异议待手工退回, 异议已退回 } from "./objection-core";
+import { 合并异议类, 未落地状态们, 未裁定拦话, 异议待手工退回, 异议已退回 } from "./objection-core";
 import { 读组织 } from "./org";
 import { 系统管理员们 } from "./tri-state-people";
 
@@ -17,8 +17,8 @@ type 读 = Pick<Prisma.TransactionClient, "entTransferObjection">;
 /** 这几位客户里有没有挂着没裁定的异议（客户或其名下项目的都算）；有 → 拦话，没有 null */
 export async function 客户有未裁定异议(db: 读, customerIds: readonly string[], 动作: "再转" | "合并" = "再转"): Promise<string | null> {
   if (!企业版() || !customerIds.length) return null;
-  const n = await db.entTransferObjection.count({ where: { customerId: { in: [...new Set(customerIds)] }, status: { in: [...未落地状态们] } } });
-  return n ? 未裁定拦话(动作) : null;
+  const 行 = await db.entTransferObjection.findFirst({ where: { customerId: { in: [...new Set(customerIds)] }, status: { in: [...未落地状态们] } }, select: { kind: true } });
+  return 行 ? 未裁定拦话(动作, 行.kind) : null;
 }
 
 export type 待裁定行 = { projectId: string | null; kind: string; customerId: string; toOwnerId: string; createdAt: Date; submittedAt?: Date | null };
@@ -33,7 +33,8 @@ export async function 读全部待裁定行(db: 读): Promise<待裁定行[]> {
 
 /** 内存匹配：这个项目被哪几行待裁定的异议挡着（项目自己的，或所在客户的客户异议且项目就在那次转让的接手人手里） */
 export function 挡着项目的异议(行们: readonly 待裁定行[], p: { id: string; customerId: string; ownerId: string }): 待裁定行[] {
-  return 行们.filter((r) => (r.kind === "项目" ? r.projectId === p.id : r.customerId === p.customerId && r.toOwnerId === p.ownerId));
+  // 只有客户异议按「客户 + 接手人」匹配；项目异议、项目合并异议都按 projectId（合并异议的 projectId = 留下项目，别的项目不受牵连）
+  return 行们.filter((r) => (r.kind !== "客户" ? r.projectId === p.id : r.customerId === p.customerId && r.toOwnerId === p.ownerId));
 }
 
 /** 这几个项目有没有挂着没裁定的异议：项目自己的，或所在客户的客户异议且项目就在那次转让的接手人手里 */
@@ -43,8 +44,8 @@ export async function 项目有未裁定异议(db: 读, 项目们: readonly { id
     where: { status: { in: [...未落地状态们] }, OR: [{ projectId: { in: 项目们.map((p) => p.id) } }, { kind: "客户", customerId: { in: [...new Set(项目们.map((p) => p.customerId))] } }] },
     select: { projectId: true, kind: true, customerId: true, toOwnerId: true, createdAt: true },
   });
-  const 挡 = 项目们.some((p) => 挡着项目的异议(行们, p).length);
-  return 挡 ? 未裁定拦话(动作) : null;
+  const 挡 = 项目们.flatMap((p) => 挡着项目的异议(行们, p));
+  return 挡.length ? 未裁定拦话(动作, 挡.find((r) => r.kind === 合并异议类)?.kind) : null;
 }
 
 type 写 = Pick<Prisma.TransactionClient, "entTransferObjection">;

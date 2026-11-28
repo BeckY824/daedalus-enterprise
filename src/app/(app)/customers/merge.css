@@ -136,6 +136,9 @@
 .mrg-into-s { color: var(--text-muted); font-size: var(--fs-note); }
 .mrg-into-b { flex: 1 1 auto; min-width: 0; }
 .mrg-into-r > .ant-btn { flex: none; }
+/* 合并异议那一行（原负责人）：状态一行省略，右端「提异议 / 去看看」不缩 */
+.mrg-into-obj { margin-top: var(--s1); }
+.mrg-into-o { flex: none; display: inline-flex; align-items: center; white-space: nowrap; }
 /* 过了撤回期限：按钮的位置写「合并已超过 N 天，不能撤回」，不省略（宁可挤前面那句） */
 .mrg-into-x { flex: none; color: var(--text-muted); font-size: var(--fs-note); white-space: nowrap; }
 .mrg-order-why { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -156,7 +159,7 @@
   /* 框底按钮、留下的项目选择框点击区 ≥ --hit-touch（飞书手机网页） */
   .mrg-foot .ant-btn, .mrg-psel.ant-select { min-height: var(--hit-touch); }
   /* 「已并入」那一行的撤回、知道了，历史变更里的撤回 */
-  .mrg-into-r > .ant-btn, .mrg-order-h > .ant-btn { min-height: var(--hit-touch); }
+  .mrg-into-r > .ant-btn, .mrg-order-h > .ant-btn, .mrg-into-o { min-height: var(--hit-touch); }
   .mrg-gray-note { display: block; }
   .menu-2l.mrg-gray-item { padding: 2px 0; line-height: 1.4; }
   /* 合并申请页卡片里的同意 / 拒绝、撤回申请：整行平分、点击区 ≥ --hit-touch */

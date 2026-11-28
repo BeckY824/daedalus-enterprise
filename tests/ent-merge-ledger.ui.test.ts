@@ -48,8 +48,8 @@ for (const w of [390, 1024, 1440]) {
       await page.evaluate(装假);
       // 第一次拉在 __act 装好之前已经发出（回的是空）：搜一下再清空，换成装好假的再拉
       await page.getByRole("tab", { name: /合并台账/ }).click();
-      await page.getByRole("searchbox", { name: "按客户名或项目名搜" }).fill("x");
-      await page.getByRole("searchbox", { name: "按客户名或项目名搜" }).fill("");
+      await page.getByRole("searchbox", { name: "按客户名、项目名、确认人或原负责人搜" }).fill("x");
+      await page.getByRole("searchbox", { name: "按客户名、项目名、确认人或原负责人搜" }).fill("");
       await page.locator("[data-testid=合并台账] .ant-table-row").first().waitFor();
       expect(await page.locator("[data-testid=合并台账] .ant-table-row").count()).toBe(3);
       await page.getByText("共 3 单").waitFor();
@@ -65,7 +65,7 @@ for (const w of [390, 1024, 1440]) {
       expect((await 公海格.boundingBox())!.height).toBeLessThan(30);
       await page.getByText(/公海客户合并到留下那家客户详情的历史变更里撤回/).first().waitFor();
 
-      await page.getByRole("searchbox", { name: "按客户名或项目名搜" }).fill("编造客户0");
+      await page.getByRole("searchbox", { name: "按客户名、项目名、确认人或原负责人搜" }).fill("编造客户0");
       await page.keyboard.press("Enter");
       await page.getByText("共 1 单").waitFor();
       await page.getByRole("button", { name: /^导\s*出$/ }).click();
@@ -78,7 +78,7 @@ for (const w of [390, 1024, 1440]) {
       // 改了词没搜就导出：导出的仍是上次查过的条件，不是输入框里的词
       await page.getByText(/已导出 \d+ 单/).waitFor();
       await page.waitForFunction(() => !document.querySelector("[data-testid=合并台账] .ant-btn-loading"));
-      await page.getByRole("searchbox", { name: "按客户名或项目名搜" }).fill("还没搜的词");
+      await page.getByRole("searchbox", { name: "按客户名、项目名、确认人或原负责人搜" }).fill("还没搜的词");
       await page.getByRole("button", { name: /导\s*出$/ }).click();
       await page.waitForFunction(() => ((window as unknown as { __calls?: [string][] }).__calls ?? []).filter(([n]) => n === "导出合并台账Action").length >= 2);
       const 调2 = await 调用们(page);
@@ -134,7 +134,7 @@ it("条件连改两次、早发的后回来：界面只认最后发出的那次"
       if(c?.词==='慢')return new Promise(f=>setTimeout(()=>f(r('慢的')),600));
       return c?.词==='快'?r('快的'):r('初始');};`);
     await page.getByRole("tab", { name: /合并台账/ }).click();
-    const 搜 = page.getByRole("searchbox", { name: "按客户名或项目名搜" });
+    const 搜 = page.getByRole("searchbox", { name: "按客户名、项目名、确认人或原负责人搜" });
     await 搜.fill("x");
     await 搜.fill("");
     await page.locator("[data-testid=合并台账] .ant-table-row").first().waitFor();
@@ -159,7 +159,7 @@ it("客户在回收站标（已删除）仍有链接；彻底删除只显示（�
       const a=m(0),b=m(1),d=m(2);
       return {ok:true,截断:false,行们:[{...a,客户状态:'在'},{...b,客户:'编造客户1（已删除）',客户状态:'回收站'},{...d,客户:'（已删除的客户）',客户状态:'已删'}]};};`);
     await page.getByRole("tab", { name: /合并台账/ }).click();
-    const 搜 = page.getByRole("searchbox", { name: "按客户名或项目名搜" });
+    const 搜 = page.getByRole("searchbox", { name: "按客户名、项目名、确认人或原负责人搜" });
     await 搜.fill("x");
     await 搜.fill("");
     await page.locator("[data-testid=合并台账] .ant-table-row").first().waitFor();
@@ -182,7 +182,7 @@ it("连续两次改日期范围、第一次的请求后回来：列表显示第�
       if(c?.止==='2026-11-26')return new Promise(f=>setTimeout(()=>f(r('止26')),700));
       return c?.止==='2026-10-03'?r('止03'):r('初始');};`);
     await page.getByRole("tab", { name: /合并台账/ }).click();
-    const 搜 = page.getByRole("searchbox", { name: "按客户名或项目名搜" });
+    const 搜 = page.getByRole("searchbox", { name: "按客户名、项目名、确认人或原负责人搜" });
     await 搜.fill("x");
     await 搜.fill("");
     await page.locator("[data-testid=合并台账] .ant-table-row").first().waitFor();
@@ -220,3 +220,31 @@ it("日期范围有「上周 / 本周 / 近 30 天」预设，真点「近 30 �
     expect(errors).toEqual([]);
   } finally { await page.close(); }
 });
+
+for (const w of [390, 1440]) {
+  it(`${w} 宽：跨负责人行带发起方式 / 申请时间 / 确认人 · 层级 / 30 天截止 / 撤回路径；类型筛选把 类型 传给服务端；同负责人行这几格是「—」；页面不横滚`, async () => {
+    const { page, errors } = await 开页(browser, bundle, props(true), w, "?tab=merges");
+    try {
+      await page.addStyleTag({ content: "body{margin:0}" });
+      await page.evaluate(`var 长=${JSON.stringify(长)};var 跨={子类:'跨负责人',发起方式:'申请确认',申请时间:'2026-11-27T03:00:00.000Z',确认人:'编造确认人',确认人层级:'销售管理',三十天截止:'2026-12-28T03:00:00.000Z',撤回路径:'异议裁定撤回'};
+        window.__act=(n,c)=>n==='查合并台账'||n==='导出合并台账Action'?{ok:true,截断:false,行们:[Object.assign((${行.toString()})(0,'已撤回'),跨,{留下id:'a0',被并id:'b0',类型:'项目合并'}),Object.assign((${行.toString()})(2),{子类:'同负责人',类型:'项目合并'})]}:{ok:true};`);
+      await page.getByRole("tab", { name: /合并台账/ }).click();
+      // 第一次拉在 __act 装好前发出：搜一下再清空，换成装好假的再拉
+      await page.getByRole("searchbox", { name: "按客户名、项目名、确认人或原负责人搜" }).fill("x");
+      await page.getByRole("searchbox", { name: "按客户名、项目名、确认人或原负责人搜" }).fill("");
+            await page.locator("[data-testid=合并台账] .ant-table-row").first().waitFor();
+      const 表 = page.locator("[data-testid=合并台账]");
+      await 表.getByText("跨负责人项目合并", { exact: true }).first().waitFor();
+      expect(await 表.locator('.ml-cell[title="编造确认人 · 销售管理"]').count()).toBe(1);
+      expect(await 表.locator('.ml-cell[title="申请确认"]').count()).toBe(1);
+      expect(await 表.locator('.ml-cell[title="异议裁定撤回"]').count()).toBe(1);
+      expect(await 表.locator(".ant-table-row").nth(1).locator('.ml-cell[title="申请确认"]').count()).toBe(0);
+      // 筛类型：选「跨负责人」→ 条件里带 类型
+      await 表.getByRole("combobox", { name: "按类型筛" }).click();
+      await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden) .ant-select-item-option", { hasText: "跨负责人" }).click();
+      await page.waitForFunction(() => ((window as unknown as { __calls?: [string, [{ 类型?: string | null }]][] }).__calls ?? []).some(([n, a]) => n === "查合并台账" && a[0].类型 === "跨负责人"));
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect(errors).toEqual([]);
+    } finally { await page.close(); }
+  });
+}

@@ -562,7 +562,9 @@ describe("s2 审查修 S4 / S5：并后通知", () => {
     const { a, b } = await 一对();
     expect((await 发起跨负责人并(prisma, a, b, 老板)).ok).toBe(true);
     await 等通知推完();
-    expect((await 通(丙.id)).map((n) => n.link)).toEqual([`/projects/${b}`]);
+    // 阶段 4：被并走的原负责人那条改成带「提异议」入口（链到 /objections?o=）
+    const 异议 = await raw.entTransferObjection.findFirstOrThrow({ where: { targetKey: b } });
+    expect((await 通(丙.id)).map((n) => n.link)).toEqual([`/objections?o=${异议.id}`]);
     expect((await 通(乙.id)).map((n) => n.link)).toEqual([`/projects/${a}`]);
   });
   it("留下项目的负责人自己发起并（本人发起）不给自己发；申请确认的发起人也不重复收", async () => {
@@ -570,7 +572,8 @@ describe("s2 审查修 S4 / S5：并后通知", () => {
     await 处理跨并申请(prisma, await 请(a, b), 销管, "确认");
     await 等通知推完();
     expect(await 通(乙.id)).toEqual([]);
-    expect((await 通(丙.id)).map((n) => n.link)).toEqual([`/projects/${b}`]);
+    const 异议 = await raw.entTransferObjection.findFirstOrThrow({ where: { targetKey: b } });
+    expect((await 通(丙.id)).map((n) => n.link)).toEqual([`/objections?o=${异议.id}`]);
   });
 });
 

@@ -29,6 +29,10 @@ import { notify } from "./notify";
 import { 忘掉企业版范围 } from "./visibility";
 import { 拦下, 合并事务选项, 并发失败话, 重算最近跟进, 读没还原, type 合并人, type 没还原 } from "./customer-merge";
 import { 项目有未裁定异议 } from "./objection-guard";
+import { 记项目合并异议入口 } from "./objection";
+import { 终止合并异议, 通知合并异议终止 } from "./objection-merge";
+import { 异议链接, 异议期天数 } from "./objection-core";
+import type { EntTransferObjection } from "@/generated/prisma";
 import { 项目单, 项目合并撤回天数, 项目合并单们, 项目合并验证步 } from "./project-merge-guard";
 import { 生效的合同状态 } from "@/lib/project/proj-fields";
 import { 在潜客培育, 培育计划来源, 撤培育计划 } from "@/lib/project/nurture-plan";
@@ -441,6 +445,7 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
   const 开 = await 客户状态自动();
   const 交给 = await 现在交给(org);
   let 通知要: { A: 项目行; B: 项目行 } | null = null;
+  let 异议id: string | null = null;
   let r: 项目合并完;
   try {
     r = await 看已删(() =>
@@ -454,7 +459,11 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
           const 原因 = await 拦的原因(tx, A, B, me, org, 交给, opt.跨负责人 ?? null);
           if (原因.length) throw new 拦下(原因.join("；"));
           const 结 = await 挪(tx, A!, B!, me, 现在);
-          if (opt.跨负责人) await 跨并后补记(tx, A!, B!, 结.mergeId, opt.跨负责人, 现在);
+          if (opt.跨负责人) {
+            await 跨并后补记(tx, A!, B!, 结.mergeId, opt.跨负责人, 现在);
+            // 阶段 4：同一事务里给被并走的原负责人记异议入口（崩在中间不丢；通知仍在提交后发）
+            异议id = await 记项目合并异议入口(tx, { mergeId: 结.mergeId, A: A!, B: B!, 生效人: opt.跨负责人.确认人id, 发起人: opt.跨负责人.发起人id, 现在 });
+          }
           await 重算最近跟进(tx, A!.customerId);
           await 跟着项目重算(tx, 开, [A!.customerId]);
           通知要 = { A: A!, B: B! };
@@ -472,7 +481,7 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
   const 要 = 通知要 as { A: 项目行; B: 项目行 } | null;
   if (要) {
     await 存沟通后重算三态(要.A.customerId, 现在).catch((e) => console.warn("[合并项目] 三态没重算上：", e instanceof Error ? e.message : e));
-    await 合并后通知(要, me, opt.跨负责人 ?? null);
+    await 合并后通知(要, me, opt.跨负责人 ?? null, 异议id);
   }
   return { ok: true, ...r! };
 }
@@ -572,34 +581,40 @@ function 组员话(组: 项目合并明细["被并组员"], A: 项目行): strin
  * 合并后通知（照第一批 E-280 三.2）：被并掉的项目创建人、来源渠道负责人各一条；系统管理员代并时负责人也一条。操作人自己不发。
  * 🔍 我方对应：第一批是被并那家客户的创建人、来源渠道负责人，项目合并换成被并项目的
  */
-async function 合并后通知({ A, B }: { A: 项目行; B: 项目行 }, me: 合并人, 跨: 跨并信息 | null = null): Promise<void> {
+async function 合并后通知({ A, B }: { A: 项目行; B: 项目行 }, me: 合并人, 跨: 跨并信息 | null = null, 异议id: string | null = null): Promise<void> {
   // 跨负责人并（审查 S5）：留下项目的负责人不是并的人（系统管理员 / 确认人直接并、申请确认的发起人除外：那条走 跨并通知）时也收一条，链接去留下的项目
   const 留下负责人收 = 跨 && A.ownerId && A.ownerId !== me.id && A.ownerId !== 跨.发起人id ? A.ownerId : null;
-  const 收 = [B.creatorId, B.channel?.channelOwnerId, B.ownerId].filter((u) => u && u !== me.id && u !== 留下负责人收);
+  // 阶段 4：被并走的原负责人（记了异议入口的）单发一条，带「提异议」入口；其余人照旧
+  const 异议人 = 异议id ? B.ownerId : null;
+  const 收 = [B.creatorId, B.channel?.channelOwnerId, B.ownerId].filter((u) => u && u !== me.id && u !== 留下负责人收 && u !== 异议人);
   const 话 = `${me.name}把项目「${名(B)}」并进了「${名(A)}」，沟通、附件、项目联系人都已挪过去；「${名(B)}」结束为重复线索，不退还已占线索名额；${项目合并撤回天数} 天内可撤回。`;
   const 标题 = `项目「${名(B)}」已并入「${名(A)}」`;
   // 链接（审查 S4）：跨负责人并时被并走那头多半看不到留下的项目，链到被并掉的项目（已并入那一行）；留下项目的负责人自己的那条链到留下的项目
   await notify(收, { kind: 项目合并通知种类, title: 标题, body: 话, link: `/projects/${跨 ? B.id : A.id}`, key: `merge-project:${B.id}:${A.id}:${Date.now()}` });
+  if (异议人 && 异议id) await notify([异议人], { kind: 项目合并通知种类, title: 标题, body: `${话}\n有不同意见，${异议期天数} 天内可以提异议（点开这条，写明理由，由上一级裁定）。`, link: 异议链接([异议id]), key: `merge-project:${B.id}:${A.id}:${Date.now()}` });
   if (留下负责人收) await notify([留下负责人收], { kind: 项目合并通知种类, title: 标题, body: 话, link: `/projects/${A.id}`, key: `merge-project-a:${B.id}:${A.id}:${Date.now()}` });
 }
 
 /* ───────────────────────── 撤回 ───────────────────────── */
 
 export type 撤回项目合并完 = { 没还原: 没还原[] };
-export type 撤回通知要 = { mergeId: string; 原负责人: string; 谁撤: string; A: { id: string; name: string }; B: { id: string; name: string } };
+export type 撤回通知要 = { mergeId: string; 原负责人: string; 谁撤: string; A: { id: string; name: string }; B: { id: string; name: string }; /** 这次撤回终止的待裁定异议（阶段 4，E-484 第 3 条）：异议人那条通知并进「已撤回合并」一条，裁定人另发作废 */ 终止?: EntTransferObjection[] };
 
 /**
  * E-484 1：撤回跨负责人合并，不管谁撤都给被并走的原负责人发一条（站内 + 飞书同一份，链到回来的项目）。事务提交后调；notify 从不抛
  */
 export async function 发撤回通知(要: 撤回通知要 | null): Promise<void> {
   if (!要) return;
-  await notify([要.原负责人], {
+  const 终止 = 要.终止 ?? [];
+  const 并了 = 终止.some((r) => r.objectorUserId === 要.原负责人);
+  if (要.原负责人) await notify([要.原负责人], {
     kind: 项目合并通知种类,
     title: `项目「${要.B.name}」已撤回合并，回到你名下`,
-    body: `${要.谁撤}撤回了把项目「${要.B.name}」并进「${要.A.name}」的合并，「${要.B.name}」已拆回，仍是你负责。`,
+    body: `${要.谁撤}撤回了把项目「${要.B.name}」并进「${要.A.name}」的合并，「${要.B.name}」已拆回，仍是你负责。${并了 ? "你提的合并异议因撤回终止，不用再等裁定。" : ""}`,
     link: `/projects/${要.B.id}`,
     key: `merge-project-undo:${要.mergeId}`,
   });
+  await 通知合并异议终止(终止, 要.谁撤).catch((e) => console.warn("[撤回合并项目] 异议终止通知没发：", e instanceof Error ? e.message : e));
 }
 
 /**
@@ -655,11 +670,29 @@ export async function 撤回项目合并(db: 库, mergeId: string, me: 合并人
 }
 
 /**
+ * 异议裁定撤回前，只读核「在事务里撤回项目合并」会不会拦（A 没再被并、两个项目都不在回收站、仍同一位客户、客户不在交接中、没人离职交接、合并单还是已合并）。
+ * 返回拦的原因，null = 能撤。30 天期限不核（异议在期内提即可，裁定撤回不再校，终审 1）；其余前置照校
+ */
+export async function 合并撤不了的原因(tx: Tx, m: { id: string; status: string; fromId: string; intoId: string }, 现在: Date = new Date()): Promise<string | null> {
+  if (m.status !== "已合并") return "这张合并单已经撤回过了";
+  const [A, B] = [await 读项目(tx, m.intoId, true), await 读项目(tx, m.fromId, true)];
+  if (!A || !B) return "项目已彻底删除，不能撤回合并";
+  for (const p of [A, B]) if (p.deletedAt) return `「${名(p)}」在回收站里，先恢复再撤回合并`;
+  if (A.customerId !== B.customerId) return "两个项目已不在同一位客户名下，撤回会对不上";
+  const 链 = (await 项目合并单们(tx, [A.id], 现在)).get(A.id);
+  if (链?.我是 === "被并") return `「${名(A)}」已并入「${链.留下名 || "另一个项目"}」，先撤回那次合并`;
+  if ((await 交接中的客户([A.customerId], tx)).has(A.customerId)) return "这位客户正在转让交接中";
+  const 离职 = await 离职交接中的项目([A, B], tx as never);
+  for (const p of [A, B]) if (离职.has(p.id)) return `「${名(p)}」正在离职交接中`;
+  return null;
+}
+
+/**
  * 在一个事务里撤一张项目合并单（单撤、整单撤回客户合并时「先拆后撤」都走这里）。谁能撤、期限调用方判过；
  * 拦交接 = 单撤时拦（客户合并撤回自己已经拦过两家的交接）
  */
 export async function 在事务里撤回项目合并(
-  tx: Tx, m: { id: string; detail: string; fromId: string; intoId: string; fromOwnerId: string | null }, me: 合并人, 现在: Date, 开: boolean, 拦交接 = false,
+  tx: Tx, m: { id: string; detail: string; fromId: string; intoId: string; fromOwnerId: string | null }, me: 合并人, 现在: Date, 开: boolean, 拦交接 = false, 排除异议?: string,
 ): Promise<{ 没还原: 没还原[]; 客户: string; 通知: 撤回通知要 | null }> {
   const 明 = JSON.parse(m.detail) as 项目合并明细;
   const [A, B] = [await 读项目(tx, m.intoId, true), await 读项目(tx, m.fromId, true)];
@@ -733,7 +766,11 @@ export async function 在事务里撤回项目合并(
 
   await 重算最近跟进(tx, A.customerId);
   await 跟着项目重算(tx, 开, [A.customerId]);
-  await tx.entCustomerMerge.update({ where: { id: m.id }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id, undoLeft: 留.length ? JSON.stringify({ 没还原: 留 }) : null } });
+  // 条件更新：并发时（自己撤和异议裁定撤回同时来）只有第一个成，后到的整笔回滚
+  const 撤了 = await tx.entCustomerMerge.updateMany({ where: { id: m.id, status: "已合并" }, data: { status: "已撤回", undoneAt: 现在, undoneById: me.id, undoLeft: 留.length ? JSON.stringify({ 没还原: 留 }) : null } });
+  if (撤了.count !== 1) throw new 拦下("这张合并单已经撤回过了");
+  // E-484 第 3 条：这张合并单下待裁定的异议因撤回终止、可提的作废（同事务）
+  const 终止们 = await 终止合并异议(tx, m.id, me, 现在, 排除异议);
   const 留话 = 留.length ? `；${留.length} 条之后被改过，留在原处` : "";
   await tx.auditLog.createMany({
     data: [
@@ -744,8 +781,9 @@ export async function 在事务里撤回项目合并(
   // E-484 1：跨负责人并撤回，原负责人（不是撤的人自己）要通知，操作日志留一条（通知本身事务提交后由调用方发）
   const 原 = 明.跨负责人?.原负责人 ?? m.fromOwnerId ?? null;
   let 通知: 撤回通知要 | null = null;
+  if (终止们.终止.length) 通知 = { mergeId: m.id, 原负责人: "", 谁撤: me.name, A: { id: A.id, name: 名(A) }, B: { id: B.id, name: 名(B) }, 终止: 终止们.终止 };
   if (原 && 原 !== me.id) {
-    通知 = { mergeId: m.id, 原负责人: 原, 谁撤: me.name, A: { id: A.id, name: 名(A) }, B: { id: B.id, name: 名(B) } };
+    通知 = { mergeId: m.id, 原负责人: 原, 谁撤: me.name, A: { id: A.id, name: 名(A) }, B: { id: B.id, name: 名(B) }, ...(终止们.终止.length ? { 终止: 终止们.终止 } : {}) };
     const 原名 = (await tx.user.findUnique({ where: { id: 原 }, select: { name: true } }))?.name ?? "";
     await tx.auditLog.create({ data: { userId: me.id, userName: me.name, action: "merge-undo-notice", entity: "Project", entityId: B.id, at: 现在, summary: `撤回合并项目：已通知原负责人${原名 ? `${原名}` : ""}：「${名(B)}」回到他名下`, detail: JSON.stringify({ mergeId: m.id, 通知给: 原 }) } });
   }

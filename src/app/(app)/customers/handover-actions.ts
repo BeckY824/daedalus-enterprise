@@ -327,7 +327,8 @@ export async function 确认交接(id: string): Promise<结果> {
     // 整批查一次（交接几十上百位时不逐位各查一次）；命中了才逐位找第一个，名字用在拦话里
     if (名下.length && (await 客户有未裁定异议(tx, 名下.map((c) => c.id)))) {
       for (const c of 名下) {
-        if (await 客户有未裁定异议(tx, [c.id])) return { 话: `「${客户显名(c)}」有转让异议待裁定；交接留在待确认，裁定后再确认` };
+        const 拦 = await 客户有未裁定异议(tx, [c.id]);
+        if (拦) return { 话: `「${客户显名(c)}」有${拦.includes("合并异议") ? "合并" : "转让"}异议待裁定；交接留在待确认，裁定后再确认` };
       }
     }
     if (!(await 了结(tx, h.id, "已确认", me))) return null;

@@ -254,6 +254,7 @@ async function 补上接手人(projectId: string, 新: string, 痕附: string, �
 
 /** 有转让异议待裁定时点放弃的拦话（同超时转：裁定前不动，裁定后再放弃；没扣次数） */
 export const 放弃被异议拦话 = "这条线索有转让异议待裁定，裁定后再放弃（没扣本月放弃次数）";
+export const 放弃被合并异议拦话 = "这条线索有合并异议待裁定，裁定后再放弃（没扣本月放弃次数）";
 
 /** 只剩放弃过的人能接时那句（别说「都暂停或禁止了」：是放弃过的人不再分回） */
 const 只剩放弃过的话 = "本线其他人都不能接（放弃过的人不会再分回）";
@@ -275,7 +276,8 @@ export async function 放弃线索(me: SessionUser, projectId: string, 原因: u
     if (!认.ok) return 认;
     // 12-22 判定页 #20：这条项目（或随客户转走的那次）有转让异议待裁定时不能主动放弃（超时转对同一项目是暂停，这里同口径）。
     // 在占次数之前拦：不扣本月次数、线索还在手上
-    if (await 项目有未裁定异议(prisma, [{ id: 资格.p.id, customerId: 资格.p.customerId, ownerId: me.id }])) return { ok: false, error: 放弃被异议拦话 };
+    const 异议拦 = await 项目有未裁定异议(prisma, [{ id: 资格.p.id, customerId: 资格.p.customerId, ownerId: me.id }]);
+    if (异议拦) return { ok: false, error: 异议拦.includes("合并异议") ? 放弃被合并异议拦话 : 放弃被异议拦话 };
     // 挑人要数全组本月已分、读同事的参与状态：同超时转在钟上那样看全部，不按点的人的可见范围。
     // 不刷新页面：转出走的 分项目给 会 revalidate，server action 里 revalidate 过 Next 就重画当前页，线索已转走 → 落「找不到」（3703 实操 r22）
     return await 不刷新页面(() => 看全部(() => 放出去(me, 资格, 认, 现在)));

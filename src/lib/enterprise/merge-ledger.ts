@@ -27,7 +27,9 @@ import { recordAudit } from "@/lib/audit";
 import { 是日期, 创建时间段 } from "@/lib/custom-date-range";
 import type { 合并人 } from "./customer-merge";
 
-type 库 = Pick<PrismaClient, "entCustomerMerge" | "user" | "customer">;
+import { 异议期天数, 撤合并结案记号 } from "./objection-core";
+
+type 库 = Pick<PrismaClient, "entCustomerMerge" | "user" | "customer"> & Partial<Pick<PrismaClient, "entProjectMergeRequest" | "entTransferObjection">>;
 type 结果<T> = ({ ok: true } & T) | { ok: false; error: string };
 
 /** 台账列的两种状态（2b 以后的 待同意 / 已拒绝 / 已作废 不进台账） */
@@ -37,11 +39,24 @@ export const 台账上限 = 5000;
 export const 只有系统管理员能看台账 = "只有系统管理员能看合并台账";
 
 /** 起 / 止：北京日历日 YYYY-MM-DD（两端都含：起日 00:00:00.000 ～ 止日 23:59:59.999，北京时间），服务端换成时刻 */
-export type 台账条件 = { 起?: string | null; 止?: string | null; 词?: string | null };
+/** 类型筛选（阶段 3）：不填 = 全部；同负责人 / 跨负责人 = 项目合并的两个子类；公海客户 = 公海客户合并 */
+export const 台账类型们 = ["同负责人", "跨负责人", "公海客户"] as const;
+export type 台账类型筛 = (typeof 台账类型们)[number];
+export type 台账条件 = { 起?: string | null; 止?: string | null; 词?: string | null; 类型?: string | null };
 export type 台账行 = {
   id: string;
   /** 项目合并 / 公海客户合并（两家都在公海的客户合并，P-合并-07）；公海客户合并行：客户 = 留下的客户、留下 / 被并项目格留空、被并客户见 被并客户 */
   类型: "项目合并" | "公海客户合并";
+  /** 项目合并的子类（阶段 3）：明细里有「跨负责人」= 跨负责人，否则同负责人；公海客户合并行空 */
+  子类: "跨负责人" | "同负责人" | "";
+  /** 以下几列只对跨负责人行有值，其余空：发起方式（本人发起 / 申请确认）、申请时间（走申请的才有；直接并没有申请）、确认人 + 层级、30 天截止（合并时刻 + 异议期） */
+  发起方式: string;
+  申请时间: string | null;
+  确认人: string;
+  确认人层级: string;
+  三十天截止: string | null;
+  /** 撤回路径（只对已撤回的跨负责人行）：异议裁定撤回 / 确认人撤 / 发起人撤 / 系统管理员撤；其余空 */
+  撤回路径: string;
   被并客户: string;
   /** 公海客户合并行：被并客户的编号（合并单 fromNo 写成 NO.xxxxx；老单没有就空） */
   被并编号: string;
@@ -64,7 +79,7 @@ export type 台账行 = {
   撤回时间: string | null;
 };
 
-type 明细 = { 公海?: unknown; 留下名?: unknown; 客户?: unknown; 负责人?: unknown; 自查?: { 谁?: unknown; 时间?: unknown } };
+type 明细 = { 公海?: unknown; 留下名?: unknown; 客户?: unknown; 负责人?: unknown; 自查?: { 谁?: unknown; 时间?: unknown }; 跨负责人?: { 申请id?: unknown; 发起人?: unknown; 确认人?: unknown; 发起方式?: unknown; 确认人层级?: unknown } };
 function 读明细(detail: string): 明细 {
   try {
     const v = JSON.parse(detail) as unknown;
@@ -96,8 +111,11 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
   if (!(await 能看合并台账(me))) return { ok: false, error: 只有系统管理员能看台账 };
   const 段 = 创建时间段(日(条件?.起) ?? undefined, 日(条件?.止) ?? undefined);
   const 词 = 规整(字(条件?.词)).slice(0, 60);
+  const 类型 = 台账类型们.find((x) => x === 条件?.类型) ?? null;
+  const 项目条件 = 类型 === "跨负责人" ? { kind: 项目单, detail: { contains: '"跨负责人"' } } : 类型 === "同负责人" ? { kind: 项目单, NOT: { detail: { contains: '"跨负责人"' } } } : { kind: 项目单 };
+  const 公海条件 = { kind: 客户合并单, detail: { contains: '"公海":true' } };
   const 单们 = await 看全部(() => db.entCustomerMerge.findMany({
-    where: { OR: [{ kind: 项目单 }, { kind: 客户合并单, detail: { contains: '"公海":true' } }], status: { in: [...台账状态] }, ...(段 ? { at: { ...(段.gte ? { gte: 段.gte } : {}), ...(段.lte ? { lte: 段.lte } : {}) } } : {}) },
+    where: { OR: 类型 === "公海客户" ? [公海条件] : 类型 ? [项目条件] : [项目条件, 公海条件], status: { in: [...台账状态] }, ...(段 ? { at: { ...(段.gte ? { gte: 段.gte } : {}), ...(段.lte ? { lte: 段.lte } : {}) } } : {}) },
     orderBy: [{ at: "desc" }, { id: "desc" }],
     // 有搜索词时先多拿一些再筛（名字不在列上）；没词直接按上限拿、多拿一条判截断
     take: 词 ? 台账上限 * 4 : 台账上限 + 1,
@@ -108,7 +126,7 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
   const 客户ids = new Set<string>();
   for (const m of 单们) {
     const 明 = 明们.get(m.id)!;
-    for (const id of [m.byUserId, m.undoneById, m.fromOwnerId, 字(明.负责人)]) if (id) 人ids.add(id);
+    for (const id of [m.byUserId, m.undoneById, m.fromOwnerId, 字(明.负责人), 字(明.跨负责人?.确认人), 字(明.跨负责人?.发起人)]) if (id) 人ids.add(id);
     const 客id = 客户idOf(m, 明);
     if (客id) 客户ids.add(客id);
   }
@@ -116,6 +134,15 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
     人ids.size ? db.user.findMany({ where: { id: { in: [...人ids] } }, select: { id: true, name: true } }) : [],
     客户ids.size ? 看全部(() => 看已删(() => db.customer.findMany({ where: { id: { in: [...客户ids] } }, select: { ...显名列, deletedAt: true } }))) : [],
   ]);
+  // 申请时间（走申请的跨负责人行）、撤回路径里「异议裁定撤回」要查的异议行
+  const 申请ids = [...new Set(单们.map((m) => 字(明们.get(m.id)?.跨负责人?.申请id)).filter(Boolean))];
+  const [申请们, 裁定撤回们] = await Promise.all([
+    申请ids.length && db.entProjectMergeRequest ? 看全部(() => db.entProjectMergeRequest!.findMany({ where: { id: { in: 申请ids } }, select: { id: true, at: true } })) : [],
+    db.entTransferObjection ? 看全部(() => db.entTransferObjection!.findMany({ where: { mergeId: { in: 单们.filter((m) => m.status === "已撤回" && 明们.get(m.id)?.跨负责人).map((m) => m.id) }, status: { in: ["撤回", "已退回"] } }, select: { mergeId: true, status: true, judgeNote: true } })) : [],
+  ]);
+  const 申请时间of = new Map(申请们.map((a) => [a.id, a.at]));
+  // 「已退回」只有在「撤回合并并结案」那一步里把合并单撤了的才算异议裁定撤回（judgeNote 带这句）；先由系统管理员自己撤了合并、事后才点已手工退回的，仍是「系统管理员撤」
+  const 异议撤回的 = new Set(裁定撤回们.filter((x) => x.status === "撤回" || (x.judgeNote ?? "").includes(撤合并结案记号)).map((x) => x.mergeId));
   const 叫 = new Map(人们.map((u) => [u.id, u.name]));
   const 人名 = (id: string | null | undefined) => (id ? 叫.get(id) ?? "（已删除的账号）" : "");
   const 客们 = new Map(客户们.map((c) => [c.id, c]));
@@ -128,9 +155,18 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
     const 客 = 客户id ? 客们.get(客户id) : undefined;
     const 客户状态 = !客户id || (客 && !客.deletedAt) ? "在" : 客 ? "回收站" : "已删";
     const 自查时间 = 读时刻(明.自查?.时间);
+    const 跨 = 公海单 ? undefined : 明.跨负责人;
+    const 撤回路径 = !跨 || m.status !== "已撤回" ? "" : 异议撤回的.has(m.id) ? "异议裁定撤回" : m.undoneById && m.undoneById === 字(跨.确认人) ? "确认人撤" : m.undoneById && m.undoneById === 字(跨.发起人) ? "发起人撤" : "系统管理员撤";
     return [{
       id: m.id,
       类型: 公海单 ? "公海客户合并" : "项目合并",
+      子类: 公海单 ? "" : 跨 ? "跨负责人" : "同负责人",
+      发起方式: 跨 ? 字(跨.发起方式) : "",
+      申请时间: 跨 && 申请时间of.get(字(跨.申请id)) ? 申请时间of.get(字(跨.申请id))!.toISOString() : null,
+      确认人: 跨 ? 人名(字(跨.确认人)) : "",
+      确认人层级: 跨 ? 字(跨.确认人层级) : "",
+      三十天截止: 跨 ? new Date(m.at.getTime() + 异议期天数 * 86_400_000).toISOString() : null,
+      撤回路径,
       被并客户: 公海单 ? m.fromName : "",
       被并编号: 公海单 ? 客户编号文字(m.fromNo) ?? "" : "",
       at: m.at.toISOString(),
@@ -151,7 +187,7 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
       撤回时间: m.status === "已撤回" && m.undoneAt ? m.undoneAt.toISOString() : null,
     }];
   });
-  const 筛 = 词 ? 全部.filter((r) => [r.客户, r.留下项目, r.被并项目, r.被并客户].some((x) => 规整(x).includes(词))) : 全部;
+  const 筛 = 词 ? 全部.filter((r) => [r.客户, r.留下项目, r.被并项目, r.被并客户, r.确认人, r.被并负责人].some((x) => 规整(x).includes(词))) : 全部;
   return { ok: true, 行们: 筛.slice(0, 台账上限), 截断: 筛.length > 台账上限 || (!!词 && 单们.length >= 台账上限 * 4) };
 }
 
@@ -164,8 +200,8 @@ export async function 导出合并台账(db: 库, me: 合并人, 条件: 台账�
   const 范围 = [起 ? `${起} 起` : "", 止 ? `${止} 止` : ""].filter(Boolean).join("、") || "全部时间";
   await recordAudit({
     user: me, action: "export", entity: "EntCustomerMerge",
-    summary: `导出合并台账：${范围}${条件?.词 ? `、搜「${条件.词.slice(0, 30)}」` : ""}，${r.行们.length} 单${r.截断 ? "（超上限，只导了最新的）" : ""}`,
-    detail: { 起, 止, 词: 条件?.词 ?? null, 行数: r.行们.length, 截断: r.截断 },
+    summary: `导出合并台账：${范围}${条件?.词 ? `、搜「${条件.词.slice(0, 30)}」` : ""}${台账类型们.find((x) => x === 条件?.类型) ? `、只看${条件?.类型}` : ""}，${r.行们.length} 单${r.截断 ? "（超上限，只导了最新的）" : ""}`,
+    detail: { 起, 止, 词: 条件?.词 ?? null, 类型: 台账类型们.find((x) => x === 条件?.类型) ?? null, 行数: r.行们.length, 截断: r.截断 },
   });
   return r;
 }

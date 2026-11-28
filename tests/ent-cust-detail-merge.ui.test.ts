@@ -50,6 +50,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
     "export const 放弃说明Action=async(id)=>{(window.__问||(window.__问=[])).push(id);return {可:false,话:'你已经在这条线索（这位客户）上记过有效沟通，不能放弃了'}};"));
   stub(/^\.\/blocker-actions$/, `const f=${空跑};export const 发布卡点Action=f,认领卡点Action=f,完成卡点Action=f,删卡点Action=f,存卡点默认Action=f,存卡点角色开关Action=f,新增原因Action=f,改原因名Action=f,改原因状态Action=f,删原因Action=f,合并原因Action=f;`);
   stub(/^\.\.\/relate-actions$/, `const f=${空跑};export const 加关联客户Action=f,改客户身份Action=f,解除关联客户Action=f,加关联联系人Action=f,改联系人角色立场Action=f,解除关联联系人Action=f,搜项目联系人=async()=>[];`);
+  stub(/(^|\/)merge-actions$/, 补全动作桩("src/app/(app)/customers/merge-actions.ts", "export const 撤回项目合并单=async()=>({ok:true,没还原:[]});"));
   stub(/project-only-contact-actions$/, `const f=${空跑};export const 新增仅项目联系人Action=f,改仅项目联系人Action=f;`);
   stub(/^\.\.\/\.\.\/favorites$/, `export const 切换项目收藏=async()=>({ok:true,收藏了:true});`);
   b.onLoad({ filter: /.*/, namespace: "fixture" }, a => ({ contents: a.pluginData, loader: "jsx", resolveDir: process.cwd() }));
@@ -58,7 +59,7 @@ const plugin: Plugin = { name: "cust-detail-merge", setup(b) {
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {flushSync} from 'react-dom';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import CustomerDetail from '@/app/(app)/customers/[id]/CustomerDetail';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';import RestrictedCustomerDetail from '@/app/(app)/customers/[id]/RestrictedCustomerDetail';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {合并桥} from '@/app/(app)/customers/[id]/merge-bridge';
+    import CustomerDetail from '@/app/(app)/customers/[id]/CustomerDetail';import {项目画像项,字典定义} from '@/lib/enterprise/dict-kinds';import RestrictedCustomerDetail from '@/app/(app)/customers/[id]/RestrictedCustomerDetail';import MergedIntoLine from '@/app/(app)/projects/[id]/MergedIntoLine';import {BusinessProvider} from '@/lib/business-client';import {DEFAULT_BUSINESS} from '@/lib/business-config';import {合并桥} from '@/app/(app)/customers/[id]/merge-bridge';
     // 合并客户第一批（11-25）：合并口 由客户页画好递进来，这里放个探针，把 RecordView 经 merge-bridge 递来的请求写出来
     function 合并探针(){const {请求,收}=React.useContext(合并桥);return 请求?<div data-testid='merge-probe'>{JSON.stringify({...请求,次:undefined})}<button type='button' onClick={收}>收</button></div>:null}
     const root=createRoot(document.getElementById('root'));
@@ -126,12 +127,12 @@ beforeAll(async () => {
       flushSync(()=>root.render(<ConfigProvider locale={zhCN}><App><BusinessProvider value={{...DEFAULT_BUSINESS,projectMode:true}}><div className='shell rail-mini'>{innerWidth>=768&&<nav className='rail' aria-label='主导航'/>}<main className='main app-content' style={{padding:'22px 26px'}}><div>
         <RestrictedCustomerDetail 数据={{客户:{id:'a',name:o.公司名||'客户A'},
           卡:{客户:{name:o.公司名||'客户A',shortName:'A',school:null,customerType:null,customerAttr:null,地区:'',addrDetail:null,website:null},联系人:[{name:'王总',position:'采购',给联系方式:true,phone:'138****0001',email:null,wechat:null,号码们:[]},{name:'李工',position:null,给联系方式:false,phone:null,email:null,wechat:null,号码们:[]}]},
-          可改联系人:[],项目区:{customerId:'a',页签们:o.空?[]:o.两个?页签们:[页签们[0]],锁数:0,当前:o.空?null:当前},
+          可改联系人:[],项目区:{customerId:'a',页签们:o.空?[]:o.两个?页签们:[页签们[0]],锁数:0,当前:o.空?null:当前,...(o.已并入?{已并入口:<MergedIntoLine 单={{mergeId:'pm1',到id:'pa',到:'留下的项目',at:'2026-11-20T06:05:00.000Z',谁:'测试销售甲',能撤:false,异议:{id:'o1',状态:'可提',过期:false,剩几天:22}}} 项目名='项目一' 去='/customers/a?project=pa' 嵌入/>}:{})},
           沟通:[{id:'rf1',type:'PHONE',method:null,content:'我项目上的沟通',occurredAt:'2026-10-03T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}},{id:'rf2',type:'OTHER',method:null,content:'没填方式的沟通',occurredAt:'2026-10-02T02:00:00.000Z',who:'QA',项目:{id:'p1',名:'项目一'}}],
           待办:{任务:[],计划:[]},号码种类:[],职务选项:[]}}/>
       </div></main></div></BusinessProvider></App></ConfigProvider>));
     };
-  `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
+  `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, loader: { ".css": "empty" }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
 }, 120_000);
 afterAll(async () => { await browser?.close(); });
@@ -846,6 +847,39 @@ it("受限客户详情（只负责项目的人）：页头「仅项目」+ 只�
     for (const w of [1024, 1280, 1366]) {
       await page.setViewportSize({ width: w, height: 800 });
       await 画R({ 公司名: "超长公司名字".repeat(10) });
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `宽 ${w}`).toBe(true);
+    }
+    expect(errors).toEqual([]);
+  } finally { await page.close(); }
+});
+
+it("受限客户详情：page.tsx 的受限分支给当前项目接上 MergedIntoLine（已并入口）", async () => {
+  const { readFileSync } = await import("node:fs");
+  const 源 = readFileSync("src/app/(app)/customers/[id]/page.tsx", "utf8");
+  const 段 = 源.slice(源.indexOf("if (!受限) notFound();"), 源.indexOf("<RestrictedCustomerDetail"));
+  expect(段).toContain("受限.项目区.已并入口 = <MergedIntoLine");
+  expect(段).toContain("受限.项目区.当前.p.已并入");
+});
+
+it("受限客户详情：被并走的项目（B 不是客户负责人）也摆「已并入 → 留下的项目」那一行（含合并异议入口、剩余天数）；没并入的人看不到；390 不横滚", async () => {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } }); page.setDefaultTimeout(5000);
+  const errors: string[] = [];
+  page.on("pageerror", e => errors.push(e.message));
+  try {
+    await page.route("http://cust-merge.test/**", r => r.fulfill({ contentType: "text/html", body: "<meta charset='utf-8'><style>body{margin:0}</style><div id='root'></div>" }));
+    await page.goto("http://cust-merge.test/customers/a"); await page.addStyleTag({ path: path.resolve("src/app/globals.css") }); await page.addStyleTag({ path: path.resolve("src/app/(app)/customers/merge.css") }); await page.addScriptTag({ content: bundle });
+    for (const w of [1280, 390]) {
+      await page.setViewportSize({ width: w, height: 844 });
+      await page.evaluate(() => (window as unknown as { __renderR: (o: object) => void }).__renderR({}));
+      await page.getByTestId("restricted-customer-detail").waitFor();
+      expect(await page.getByTestId("project-merged-into").count(), `没并入 ${w}`).toBe(0);
+      await page.evaluate(() => (window as unknown as { __renderR: (o: object) => void }).__renderR({ 已并入: true }));
+      const 行 = page.getByTestId("restricted-customer-detail").getByTestId("project-merged-into");
+      await 行.waitFor();
+      const 文 = await 行.innerText();
+      expect(文, `宽 ${w}`).toContain("留下的项目");
+      expect(文).toContain("22");
+      expect(文).toContain("异议");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), `宽 ${w}`).toBe(true);
     }
     expect(errors).toEqual([]);

@@ -20,7 +20,7 @@ import { 读组织 } from "./org";
 import { 系统管理员们 } from "./tri-state-people";
 import { 重算裁定人们 } from "./objection";
 import { 是工作日, 北京日, 下一天 } from "./cn-workday";
-import { 异议待裁定, 异议待手工退回 } from "./objection-core";
+import { 异议待裁定, 异议待手工退回, 对象叫, 异议叫, 合并异议类 } from "./objection-core";
 
 /** 待裁定每满几个工作日提醒一次 */
 export const 待裁提醒工作日 = 5;
@@ -58,7 +58,7 @@ export function 手工退回要提醒(裁定于: Date, 今天: string, 水位: s
   return 到点日 <= 今天 && (!水位 || 到点日 > 水位);
 }
 
-const 话of = (r: EntTransferObjection) => `${r.kind}「${r.targetName}」`;
+const 话of = (r: EntTransferObjection) => `${对象叫(r.kind)}「${r.targetName}」`;
 const 北京八点后 = (现在: Date) => beijingWallIso(现在).slice(11, 16) >= "08:00";
 
 async function 在职系统管理员们(): Promise<string[]> {
@@ -84,8 +84,8 @@ export async function 钟上待裁提醒(现在: Date = new Date()): Promise<num
       const 裁定人 = [...new Set(现裁.get(r.id)?.ids ?? [])];
       const 只管理员 = [...管理员集].filter((id) => !裁定人.includes(id));
       const 内容 = {
-        kind: "异议", title: `转让异议已 ${第 * 待裁提醒工作日} 个工作日没人裁定（第 ${第} 次提醒）：${话of(r)}`,
-        body: `${人名.get(r.objectorUserId) ?? "同事"}对${话of(r)}的转让异议自提出起已满 ${第 * 待裁提醒工作日} 个工作日还没裁定，请尽快裁定；这是第 ${第} 次提醒，裁定前每满 ${待裁提醒工作日} 个工作日再提醒一次`,
+        kind: "异议", title: `${异议叫(r.kind)}已 ${第 * 待裁提醒工作日} 个工作日没人裁定（第 ${第} 次提醒）：${话of(r)}`,
+        body: `${人名.get(r.objectorUserId) ?? "同事"}对${话of(r)}的${异议叫(r.kind)}自提出起已满 ${第 * 待裁提醒工作日} 个工作日还没裁定，请尽快裁定；这是第 ${第} 次提醒，裁定前每满 ${待裁提醒工作日} 个工作日再提醒一次`,
         key: `objection-remind:${r.id}:${第}`,
       };
       // 裁定人落「待我裁定」并高亮这一条；只是系统管理员的落「全部待裁定」并高亮
@@ -113,7 +113,7 @@ export async function 钟上手工退回提醒(现在: Date = new Date()): Promi
       const 列 = 到点.slice(0, 5).map((r) => `${话of(r)}`).join("、") + (到点.length > 5 ? ` 等 ${到点.length} 条` : "");
       发了 = await notify(管理员们, {
         kind: "异议", title: `${到点.length} 条待手工退回超过 ${手工退回提醒工作日} 个工作日没处理`,
-        body: `${列}。裁定撤回后需要系统管理员手工退回并点「已手工退回」`,
+        body: `${列}。裁定撤回后需要系统管理员手工退回并点「已手工退回」${到点.some((r) => r.kind === 合并异议类) ? "；合并类点「撤回合并并结案」，系统会先核能不能撤，撤不了会写明原因" : ""}`,
         link: "/objections?tab=hand", key: `objection-manual-return:${今天}`,
       });
     } else {
