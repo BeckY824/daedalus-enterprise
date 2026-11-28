@@ -377,6 +377,21 @@ describe("入口", () => {
     expect(await 作为(x.市场, () => 查号码("手机号", 号码))).not.toHaveProperty("原负责人是我");
   });
 
+  it("系统管理员、只读管理员、条线总管理查自己放回公海的号：都带原负责人是我（11-28 定维持领不回，和领取、统一公海页一致）", async () => {
+    const x = await 现场();
+    const 总 = await 人("boss1", "总管", "director");
+    const 管 = await 人("adm1", "管理", "admin");
+    const 线 = await 人("line1", "线总", "director");
+    await prisma.entMember.update({ where: { userId: 线.id }, data: { line: "内贸" } });
+    await prisma.customerPool.create({ data: { customerId: x.客户.id, reason: "手动", userId: 总.id } });
+    for (const u of [总, 管, 线]) {
+      await prisma.customer.update({ where: { id: x.客户.id }, data: { poolPrevOwnerId: u.id } });
+      const r = await 作为(u, () => 查号码("手机号", 号码));
+      expect(r, u.name).toMatchObject({ 状态: "公海待捞" });
+      expect(r, u.name).toMatchObject({ 原负责人是我: true });
+    }
+  });
+
   it("没项目的客户：协同情况说没项目（11-03 B6-8）", async () => {
     const x = await 现场({ 项目: false });
     expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 可协同: true, 协同: { 有项目: false, 自己负责: false, 已在组: false } });

@@ -381,7 +381,8 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
 
 /**
  * 这位公海客户是不是我退的、我领不回也看不到（11-03 B7-3）：和 team-scope 公海回避 同一口径（E-417 包 2 起认 poolPrevOwnerId 两列）——
- * 只认客户列是我（M-公海-05：领客户优先于回避，名下公海项目列是我的不拦、领客户时照 carry-over 一起带走）。不看名单上限（直接查列）
+ * 只认客户列是我（M-公海-05：领客户优先于回避，名下公海项目列是我的不拦、领客户时照 carry-over 一起带走）。不看名单上限（直接查列）。
+ * 系统管理员 / 只读管理员也照样标（11-28 用户定「维持领不回」）：和领取、统一公海页一致，看得到自己放回的，但领不回
  */
 export async function 我回避的(db: 库, 挑: { id: string; salesOwnerId: string | null }, 我: string): Promise<boolean> {
   if (!拦原负责人()) return false;

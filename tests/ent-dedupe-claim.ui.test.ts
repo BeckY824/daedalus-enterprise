@@ -252,6 +252,28 @@ it("原负责人是我、服务端说可领（是客户创建人）：摆键，�
   } finally { await page.close(); }
 });
 
+it("首页查重小框：原负责人是我（自己退回公海的）给提示、不给打不开的客户链接；没标的别人照旧是链接（电脑 1280、手机 390）", async () => {
+  for (const w of [1280, 390]) {
+    const 我退 = await 开(w, { __查重框: true, __我退的: true });
+    try {
+      const 框 = 我退.locator(".home-dedupe .ant-alert");
+      const 字 = await 框.innerText();
+      expect(字).toContain("星河电子");
+      expect(字).toContain("是你退回公海的，原负责人不能领回");
+      expect(字).not.toContain("可去公海领取");
+      expect(await 框.locator("a").count()).toBe(0);
+      expect(await 框.getByTestId("dedupe-claim").count()).toBe(0);
+      expect(await 我退.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    } finally { await 我退.close(); }
+    const 别人 = await 开(w, { __查重框: true });
+    try {
+      const 框 = 别人.locator(".home-dedupe .ant-alert");
+      expect(await 框.innerText()).not.toContain("是你退回公海的");
+      expect(await 框.locator("a[href='/customers/c7']").count()).toBe(1);
+    } finally { await 别人.close(); }
+  }
+});
+
 it("Windows 1024 / 1280 / 1366（768 高）、手机 375：领取框不横向溢出，「领取并自动分配」点得中；电脑上整框一屏放得下", async () => {
   for (const [w, h] of [[1024, 768], [1280, 768], [1366, 768], [375, 812], [390, 844]]) {
     const page = await 开(w, { __可领: true, __高: h, __框: { ok: true, 新建线索项目: true, 客户名: 长名, 渠道们: [{ id: "ch1", name: "小红书|笔记", attr: null, platform: "小红书", active: true }], 联系人们: [{ id: "k1", name: "王经理", position: "采购" }], 默认对接人: null } });

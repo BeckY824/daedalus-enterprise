@@ -40,7 +40,7 @@ import { 线索号码种类 } from "@/lib/agent/proposals";
 import ChannelPicker, { type 可选渠道 } from "@/components/ChannelPicker";
 import WizardCustomerAddress, { 向导客户地址值, type 向导客户地址 } from "./WizardCustomerAddress";
 import SameNumberEntry from "./SameNumberEntry";
-import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
+import { 自己退回公海提示 } from "@/lib/enterprise/pool-rules";
 import { 建档向导, 建档只建客户 } from "../actions";
 import { 搜客户, type 可挑客户 } from "../../customers/[id]/pick";
 import { 给客户建项目, 建项目带走的项目, 新项目分配数据 } from "../../customers/[id]/project-actions";
@@ -1326,7 +1326,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了
     <Alert
       type={在公海 ? "warning" : "error"}
       showIcon
-      title={去符号(查.提示)}
+      title={我退的 ? "在公海" : 去符号(查.提示)}
       description={
         <div>
           <div>
@@ -1340,7 +1340,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了
           </div>
           <Space size={8} style={{ marginTop: 8 }} wrap>
             {撞?.id && !我退的 && <Link href={`/customers/${撞.id}`}><Button size="small">打开它</Button><LinkPending /></Link>}
-            {我退的 && <span style={{ color: "var(--text-muted)" }}>是你退回公海的，{原负责人不能领回提示}</span>}
+            {我退的 && <span style={{ color: "var(--text-muted)" }}>{自己退回公海提示}</span>}
             {市场领 && (
               <DedupeClaimKey
                 类型={类型} 值={查.值} 客户id={撞?.id} 渠道={{ id: 渠道 }} 触点={触点}
