@@ -15,8 +15,9 @@
  * 这样才真核到 team-scope 回避条件的写法（包 1 当时只核 compare 自己的式子，恒成立）。
  */
 import type { PrismaClient } from "@/generated/prisma";
-import { 留痕推算公海里历史负责人是 } from "@/lib/project/pool-owner";
-import { 公海客户原负责人是 } from "@/lib/owner-log-db";
+import { 无负责人占位邮箱 } from "@/lib/pool";
+import { 去掉合并挪来的 } from "./merge-moved-logs";
+import { 去掉导入写的 } from "./pool-prev-owner-backfill";
 
 export type 对拍不一致 = { userId: string; 实体: "项目" | "客户"; 旧多出: string[]; 新多出: string[] };
 export type 对拍结果 = {
@@ -34,10 +35,57 @@ const 分段 = <T,>(a: T[], n: number): T[][] => {
   return 出;
 };
 
+/**
+ * 旧算法的取法（visibility.ts 回避读的 公海里历史负责人是 / 公海客户原负责人是：只认最近一条），
+ * 区别只有一处：先去掉导入写的留痕（E-462，导入不是员工放回），和回填 / 按列算的口径一致，对拍才不会多出导入那三万多行
+ */
+async function 放回的项目们(db: PrismaClient, id: string): Promise<string[]> {
+  const 候选 = await db.projectNodeLog.findMany({ where: { kind: "pool-release", fromOwnerId: id, project: { pooledAt: { not: null }, deletedAt: null } }, select: { projectId: true } });
+  const 出: string[] = [];
+  for (const 段 of 分段([...new Set(候选.map((l) => l.projectId))], 400)) {
+    const 行 = await 去掉导入写的(db, "opportunity", await db.projectNodeLog.findMany({
+      where: { projectId: { in: 段 }, kind: "pool-release" },
+      orderBy: [{ at: "desc" }, { id: "desc" }],
+      select: { projectId: true, fromOwnerId: true, at: true },
+    }), (x) => x.projectId);
+    const 看过 = new Set<string>();
+    for (const l of 行) {
+      if (看过.has(l.projectId)) continue;
+      看过.add(l.projectId);
+      if (l.fromOwnerId === id) 出.push(l.projectId);
+    }
+  }
+  return 出;
+}
+
+async function 放走的客户们(db: PrismaClient, id: string): Promise<string[]> {
+  const 占位 = (await db.user.findUnique({ where: { email: 无负责人占位邮箱 }, select: { id: true } }))?.id;
+  if (!占位) return [];
+  const 候选 = await db.customer.findMany({
+    where: { salesOwnerId: 占位, pool: { isNot: null }, deletedAt: null, ownerLogs: { some: { toOwnerId: 占位, fromOwnerId: id } } },
+    select: { id: true },
+  });
+  const 出: string[] = [];
+  for (const 段 of 分段(候选.map((c) => c.id), 400)) {
+    const 记录 = await 去掉导入写的(db, "customer", await 去掉合并挪来的(db, await db.customerOwnerLog.findMany({
+      where: { customerId: { in: 段 }, toOwnerId: 占位 },
+      orderBy: [{ at: "desc" }, { id: "desc" }],
+      select: { id: true, customerId: true, fromOwnerId: true, at: true },
+    })), (x) => x.customerId);
+    const 看过 = new Set<string>();
+    for (const r of 记录) {
+      if (看过.has(r.customerId)) continue;
+      看过.add(r.customerId);
+      if (r.fromOwnerId === id) 出.push(r.customerId);
+    }
+  }
+  return 出;
+}
+
 /** 旧算法：这个人的回避项目、回避客户（完整集合，不设名单上限） */
 export async function 旧回避集合(db: PrismaClient, id: string): Promise<{ 项目: Set<string>; 客户: Set<string> }> {
-  const 放回的 = await 留痕推算公海里历史负责人是(db, [id]);
-  const 放走的 = [...(await 公海客户原负责人是(db, [id])).keys()];
+  const 放回的 = await 放回的项目们(db, id);
+  const 放走的 = await 放走的客户们(db, id);
   const 他的 = (await db.customer.findMany({ where: { salesOwnerId: id, pool: { isNot: null }, deletedAt: null }, select: { id: true } })).map((c) => c.id);
   const 客户 = new Set<string>([...他的, ...放走的]);
   const 项目 = new Set<string>(放回的);
