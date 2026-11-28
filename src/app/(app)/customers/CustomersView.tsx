@@ -25,8 +25,6 @@ import {
   MoreOutlined,
   InboxOutlined,
   UserAddOutlined,
-  SwapOutlined,
-  CheckOutlined,
 } from "@ant-design/icons";
 import { FOLLOW_STATUSES, DECISION_STATUSES } from "@/lib/constants";
 import { 合计文字 } from "@/lib/currency";
@@ -694,30 +692,6 @@ export default function CustomersView({
     ],
   });
   const 进程选项: SelectProps["options"] = f.phase && (阶段们 as readonly string[]).includes(f.phase) ? 进程组(f.phase as 阶段).options : 阶段们.map(进程组);
-  /**
-   * 排序按钮（E-332）：和表头点排序用同一个地址栏参数 sort（amount / level / created / follow × asc / desc），
-   * 选了 = apply({ sort })，表头的箭头、刷新后保持都跟着地址栏走；金额排序多带 sortCurrency，同表头
-   */
-  const [排序单开着, set排序单开着] = useState(false);
-  const 排序字段们 = [
-    { 键: "amount", 名: `${签约叫(b)}金额` },
-    { 键: "level", 名: "客户等级" },
-    { 键: "created", 名: "创建时间" },
-    { 键: "follow", 名: "最近跟进" },
-  ];
-  const 当前排序 = f.sort || "";
-  const 当前排序字段 = 排序字段们.find((x) => 当前排序.startsWith(`${x.键}-`));
-  const 当前排序方向: "asc" | "desc" | null = 当前排序.endsWith("-asc") ? "asc" : 当前排序.endsWith("-desc") ? "desc" : null;
-  const 选排序 = (键: string, 方向: "asc" | "desc") =>
-    apply({ sort: 键 ? `${键}-${方向}` : "", ...(键 === "amount" ? { sortCurrency: f.sortCurrency || b.currency } : {}) });
-  const 排序菜单项: MenuProps["items"] = [
-    ...排序字段们.map((x) => ({ key: x.键, label: x.名, icon: 当前排序字段?.键 === x.键 ? <CheckOutlined /> : <span className="cust-sort-gap" /> })),
-    { type: "divider" as const },
-    { key: "dir-asc", label: "升序", disabled: !当前排序字段, icon: 当前排序方向 === "asc" ? <CheckOutlined /> : <span className="cust-sort-gap" /> },
-    { key: "dir-desc", label: "降序", disabled: !当前排序字段, icon: 当前排序方向 === "desc" ? <CheckOutlined /> : <span className="cust-sort-gap" /> },
-    { type: "divider" as const },
-    { key: "default", label: "默认排序", disabled: !当前排序字段 },
-  ];
   /** 筛选项（11-06 可自定义）：默认外露 = 系统原来摆在外面的；顺序也是原来的顺序 */
   const { 外露: 筛选外露, 更多按钮: 更多筛选按钮 } = useCustomFilters("customers", [
     ...(企业
@@ -1544,22 +1518,6 @@ export default function CustomersView({
           {看板体 !== undefined && <div className="list-bar-end" ref={set工具位} />}
           </>
         }
-        排序钮={看板体 === undefined ? (
-              <Dropdown trigger={["click"]} open={排序单开着}
-                onOpenChange={(开, info) => { if (!开 && info.source === "menu") return; set排序单开着(开); }}
-                menu={{
-                  className: "cust-sort-menu",
-                  items: 排序菜单项,
-                  onClick: ({ key }) => {
-                    const k = String(key);
-                    if (k === "dir-asc" || k === "dir-desc") { if (当前排序字段) 选排序(当前排序字段.键, k === "dir-asc" ? "asc" : "desc"); return; }
-                    if (k === "default") { 选排序("", "desc"); set排序单开着(false); return; }
-                    选排序(k, 当前排序方向 ?? "desc");
-                  },
-                }}>
-                <Button icon={<SwapOutlined rotate={90} />} aria-label="排序" title="排序" className="cust-sort-btn"><span className="cust-sort-txt">排序</span></Button>
-              </Dropdown>
-            ) : undefined}
         批量={(selected, 清空, 选中行) => {
           const 全领不回 = 选中行.some((r) => r.pool) && 选中行.filter((r) => r.pool).every((r) => 领不回.has(r.id));
           return (
