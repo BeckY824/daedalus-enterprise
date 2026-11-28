@@ -24,6 +24,19 @@ import { useRunningCount } from "@/lib/ai-jobs";
 import type { AI计次 } from "@/lib/ai-meter";
 
 const 不计次: AI计次 = { 计次: false, 还剩: null, 上限: null };
+
+/** 切回窗口时两次问之间至少隔多久（毫秒） */
+export const 焦点最短间隔 = 15_000;
+
+/**
+ * 切回窗口要不要问一次 /api/ai/meter（11-28 O1-N4b）。
+ * 这个人不计次（企业版没配云端账号时就是这样）：没有数可刷新，问了也还是「不计次」，白占一个请求，
+ * 而且正好撞在切回标签页、页面自己也在拉数据的那一刻（c2 慢请求记录里 1210 条，路由本身 3ms，慢的是排队）。
+ * 计次的人：15 秒内刚问过就不再问。
+ */
+export function 焦点该问吗(计次: boolean, 上次问: number, 现在: number): boolean {
+  return 计次 && 现在 - 上次问 >= 焦点最短间隔;
+}
 const Ctx = createContext<AI计次>(不计次);
 const RefreshCtx = createContext<() => void>(() => {});
 
@@ -32,9 +45,11 @@ export function AiMeterProvider({ 初值, children }: { 初值: AI计次; childr
   const 跑着 = useRunningCount();
   const 上一次 = useRef<number | null>(null);
   const 请求轮 = useRef(0);
+  const 上次问 = useRef(0);
 
   const 问 = useCallback(() => {
     const 轮 = ++请求轮.current;
+    上次问.current = Date.now();
     fetch("/api/ai/meter", { cache: "no-store" })
       .then((r) => (r.ok ? (r.json() as Promise<AI计次>) : null))
       .then((d) => {
@@ -48,9 +63,10 @@ export function AiMeterProvider({ 初值, children }: { 初值: AI计次; childr
 
   // 切回应用、补赠或改用自己的Key后可以恢复；零额度状态不永久锁按钮。
   useEffect(() => {
-    const refresh = () => 问();
+    const refresh = () => { if (焦点该问吗(值.计次, 上次问.current, Date.now())) 问(); };
+    const 定时 = () => 问();
     window.addEventListener("focus", refresh);
-    const timer = 值.计次 && 值.还剩 === 0 ? window.setInterval(refresh, 30_000) : undefined;
+    const timer = 值.计次 && 值.还剩 === 0 ? window.setInterval(定时, 30_000) : undefined;
     return () => { window.removeEventListener("focus", refresh); if (timer !== undefined) window.clearInterval(timer); };
   }, [问, 值.计次, 值.还剩]);
 
