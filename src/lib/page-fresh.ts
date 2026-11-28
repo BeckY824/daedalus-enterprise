@@ -136,7 +136,13 @@ export function 该合并跳过(上次刷: number, 现在: number): boolean {
 export const 新取回溯毫秒 = 5000;
 const 导航取们 = new Map<string, number>();
 export function 记导航取(键: string, 时刻: number): void {
-  if (导航取们.size > 200) 导航取们.clear();
+  导航取们.delete(键);
+  // 超 200 条删最旧的（Map 按插入顺序，重记先删再放 = 最新在后），不整表清空
+  while (导航取们.size >= 200) {
+    const 最旧 = 导航取们.keys().next();
+    if (最旧.done) break;
+    导航取们.delete(最旧.value);
+  }
   导航取们.set(键, 时刻);
 }
 export function 取导航取(键: string): number | undefined {
@@ -156,9 +162,50 @@ export function 导航取键(地址: string): string | null {
     return null;
   }
 }
-function 头值(h: HeadersInit | undefined, 名: string): string | null {
-  if (!h) return null;
-  return new Headers(h).get(名);
+/**
+ * 「能刷就刷，忙就隔 5 秒再看，最多等 2 分钟」的调度（从 PageFreshness 抽出，便于测）。
+ * 强刷待：不带键的调用（失效事件、版本不同）排队后，期间来的带键兜底调用一律按不带键处理——
+ * 不清掉排队中的强刷定时、也不因「导航已取新」跳过；真刷了或放弃时才解除。
+ */
+export type 空了刷依赖 = {
+  忙: () => boolean;
+  现在: () => number;
+  刷: () => void;
+  取导航取: (键: string) => number | undefined;
+  合并跳过: () => boolean;
+  记刷: (于: number) => void;
+  设钟: (f: () => void, 毫秒: number) => number;
+  清钟: (id: number) => void;
+  重试毫秒: number;
+  最多等毫秒: number;
+};
+export function 建空了刷(d: 空了刷依赖): (起: number, 页记键?: string) => void {
+  let 钟 = 0;
+  let 强刷待 = false;
+  const 空了刷 = (起: number, 页记键?: string): void => {
+    // 已有强刷排着队：带键兜底调用不覆盖它（不清它的定时、不因导航已取新跳过），它到点自会刷
+    if (页记键 !== undefined && 强刷待) return;
+    if (页记键 === undefined) 强刷待 = true;
+    const 键 = 页记键;
+    d.清钟(钟);
+    if (键 !== undefined && 导航已取新(d.取导航取(键), 起)) return;
+    if (!d.忙()) {
+      强刷待 = false;
+      if (d.合并跳过()) return;
+      d.记刷(d.现在());
+      d.刷();
+      return;
+    }
+    if (d.现在() - 起 >= d.最多等毫秒) {
+      强刷待 = false;
+      return;
+    }
+    钟 = d.设钟(() => 空了刷(起, 键), d.重试毫秒);
+  };
+  return 空了刷;
+}
+function 头值(h: Headers, 名: string): string | null {
+  return h.get(名);
 }
 let 装了取数 = false;
 /** 包 window.fetch：记非预取的 RSC GET 回来的时刻（预取不算：它只带壳不带动态数据）。只装一次 */
@@ -171,7 +218,9 @@ export function 装取数记录(): void {
     try {
       const req = typeof Request !== "undefined" && input instanceof Request ? input : null;
       const 方法 = (init?.method ?? req?.method ?? "GET").toUpperCase();
-      const 头 = (n: string) => (init?.headers ? 头值(init.headers, n) : req ? req.headers.get(n) : null);
+      // 头只建一次 Headers，再逐个读
+      const hs = init?.headers ? new Headers(init.headers) : req ? req.headers : null;
+      const 头 = (n: string) => (hs ? 头值(hs, n) : null);
       if (方法 === "GET" && 头("rsc") === "1" && !头("next-router-prefetch") && !头("next-router-segment-prefetch")) {
         const 地址 = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
         const 键 = 导航取键(地址);

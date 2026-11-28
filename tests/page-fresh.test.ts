@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { 该我问, 详情地址, 该走兜底, 缓存秒, 认页面, 页面键, 版本地址, 该后台刷新, 该兜底刷新, 清旧记录, 来了新通知, 该合并跳过, 刷新合并毫秒, 记渲染版, 撤渲染版, 取渲染版, 导航已取新, 导航取键, 记导航取, 取导航取, 装取数记录, 新取回溯毫秒 } from "@/lib/page-fresh";
+import { 该我问, 详情地址, 该走兜底, 缓存秒, 认页面, 页面键, 版本地址, 该后台刷新, 该兜底刷新, 清旧记录, 来了新通知, 该合并跳过, 刷新合并毫秒, 记渲染版, 撤渲染版, 取渲染版, 导航已取新, 导航取键, 记导航取, 取导航取, 装取数记录, 新取回溯毫秒, 建空了刷 } from "@/lib/page-fresh";
 import fs from "node:fs";
 
 describe("PR-D 先出缓存、后台更新：纯函数", () => {
@@ -200,10 +200,41 @@ describe("PR-D 先出缓存、后台更新：纯函数", () => {
   });
   it("接线：只有兜底刷新带页记键并在每次（含判忙重试）前看导航是否已取新；失效事件不带", () => {
     const f = fs.readFileSync("src/components/PageFreshness.tsx", "utf8");
-    expect(f).toContain("导航已取新(取导航取(页记键), 起)");
+    expect(f).toContain("建空了刷(");
     expect(f).toContain("空了刷.current(现, `${路径}?${查询}`)");
-    expect(f).toContain("空了刷.current(起, 页记键)");
     expect(f).toMatch(/到过们\.current\.clear\(\);\s*空了刷\.current\(Date\.now\(\)\);/);
     expect(f).toContain("装取数记录();");
+  });
+  it("排队中的强制刷新不被带键兜底覆盖：失效事件遇忙排队 → 期间带键兜底（导航已取新）→ 5 秒后仍刷", () => {
+    let 时 = 1_000_000;
+    let 忙 = true;
+    let 刷次 = 0;
+    const 钟 = new Map<number, { f: () => void; 到: number }>();
+    let id = 0;
+    const 走 = (毫秒: number) => {
+      时 += 毫秒;
+      for (const [k, v] of [...钟]) if (v.到 <= 时) { 钟.delete(k); v.f(); }
+    };
+    const 空了刷 = 建空了刷({
+      忙: () => 忙,
+      现在: () => 时,
+      刷: () => { 刷次++; },
+      取导航取: () => 时, // 导航刚取过新
+      合并跳过: () => false,
+      记刷: () => {},
+      设钟: (f, 毫秒) => { 钟.set(++id, { f, 到: 时 + 毫秒 }); return id; },
+      清钟: (i) => { 钟.delete(i); },
+      重试毫秒: 5000,
+      最多等毫秒: 120_000,
+    });
+    空了刷(时); // 失效事件：不带键，遇忙排队
+    expect(刷次).toBe(0);
+    空了刷(时, "/projects?"); // 兜底：导航已取新，本来会 return 并清掉强刷定时
+    忙 = false;
+    走(5000);
+    expect(刷次).toBe(1);
+    // 解除后：带键且导航已取新照旧跳过
+    空了刷(时, "/projects?");
+    expect(刷次).toBe(1);
   });
 });

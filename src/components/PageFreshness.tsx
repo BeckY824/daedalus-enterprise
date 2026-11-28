@@ -19,7 +19,7 @@
  */
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { 版本地址, 认页面, 页面键, 数据失效事件, 该后台刷新, 该兜底刷新, 该合并跳过, 该走兜底, 清旧记录, 取渲染版, 缓存秒, 导航已取新, 取导航取, 装取数记录 } from "@/lib/page-fresh";
+import { 版本地址, 认页面, 页面键, 数据失效事件, 该后台刷新, 该兜底刷新, 该合并跳过, 该走兜底, 清旧记录, 取渲染版, 缓存秒, 取导航取, 建空了刷, 装取数记录 } from "@/lib/page-fresh";
 import { 现在忙 } from "@/lib/swap-guard";
 
 const 重试毫秒 = 5000;
@@ -43,20 +43,27 @@ export default function PageFreshness() {
     路由.current = router;
   }, [router]);
 
-  /** 能刷就刷，忙就隔 5 秒再看，最多等 2 分钟 */
-  const 空了刷 = useRef((起: number, 页记键?: string) => {
-    window.clearTimeout(待刷钟.current);
-    // 兜底刷新（页记键 = 路径?查询）：导航刚带来新数据（Next 重取过期条目）就不再补一次；判忙推迟后再看一遍
-    if (页记键 !== undefined && 导航已取新(取导航取(页记键), 起)) return;
-    if (!现在忙()) {
-      if (该合并跳过(上次刷.current, Date.now())) return;
-      上次刷.current = Date.now();
-      路由.current.refresh();
-      return;
-    }
-    if (Date.now() - 起 >= 最多等毫秒) return;
-    待刷钟.current = window.setTimeout(() => 空了刷.current(起, 页记键), 重试毫秒);
-  });
+  /** 能刷就刷，忙就隔 5 秒再看，最多等 2 分钟（调度在 lib/page-fresh 的 建空了刷：排队中的强刷不被带键兜底覆盖） */
+  const 空了刷 = useRef<(起: number, 页记键?: string) => void>(() => {});
+  useEffect(() => {
+    空了刷.current = 建空了刷({
+      忙: () => 现在忙(),
+      现在: () => Date.now(),
+      刷: () => 路由.current.refresh(),
+      取导航取,
+      合并跳过: () => 该合并跳过(上次刷.current, Date.now()),
+      记刷: (于) => {
+        上次刷.current = 于;
+      },
+      设钟: (f, 毫秒) => {
+        待刷钟.current = window.setTimeout(f, 毫秒);
+        return 待刷钟.current;
+      },
+      清钟: (id) => window.clearTimeout(id),
+      重试毫秒,
+      最多等毫秒,
+    });
+  }, []);
 
   useEffect(() => {
     装取数记录();
