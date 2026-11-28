@@ -19,7 +19,7 @@ import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项
 import { 项目来历 } from "@/lib/enterprise/customer-merge";
 import { 线索流失细分 } from "@/lib/enterprise/lost-split";
 import { 看全部 } from "@/lib/team-scope";
-import { 跨并状态, 算确认人, 是确认人of } from "@/lib/enterprise/project-merge-request";
+import { 可能是确认人, 跨并状态, 算确认人, 是确认人of } from "@/lib/enterprise/project-merge-request";
 import { 有并进的候选, 能并的阶段, 签了合同, 已签合同的项目不能合并, 项目的合并单, 项目合并撤回过期话 } from "@/lib/enterprise/project-merge";
 import { 客户事项挡, 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
 import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
@@ -590,6 +590,8 @@ async function 跨并菜单(
   if (!org || 只读角色(me, org) || 只看的人(org, me.id) || p.pooledAt || p.awaitAssignAt || !p.ownerId) return null;
   // 结束了、不在线索阶段、客户名下没有同事在推的线索项目：不摆（跟「并进另一个项目」不同，这一项多数人用不上，灰着摆只会添乱）
   if (p.result || !能并的阶段.留下.includes(p.phase)) return null;
+  // 我既不是留下的负责人、也不可能是任何人的确认人（不是系统管理员 / 条线总管理 / 谁的上级）：不用查候选（省一句）
+  if (p.ownerId !== me.id && !可能是确认人(org, me.id)) return null;
   const 主 = p.ownerId;
   const 候选们 = await 看全部(() => prisma.project.findMany({
     where: { customerId: p.customerId, id: { not: p.id }, ownerId: { not: 主, notIn: [""] }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null, phase: "线索" },

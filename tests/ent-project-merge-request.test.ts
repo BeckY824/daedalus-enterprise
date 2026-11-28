@@ -9,6 +9,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
+const 登录 = vi.hoisted(() => ({ 人: null as null | { id: string; name: string; role: string } }));
+vi.mock("@/lib/auth", async (orig) => ({ ...(await orig<object>()), requireUser: async () => ({ email: "", title: "", ...登录.人! }) }));
 
 import { prisma, defaultClient as raw } from "@/lib/prisma";
 import { resetDb } from "./reset";
@@ -25,7 +27,7 @@ import { 发起合并申请 } from "@/lib/enterprise/merge-request";
 import { 待补数们 } from "@/lib/enterprise/invalid-makeup";
 import { 撤回项目合并, 执行项目合并, 读快照, 项目合并通知种类 } from "@/lib/enterprise/project-merge";
 import {
-  算确认人, 发起跨负责人并, 处理跨并申请, 撤回跨并申请, 扫过期跨并申请, 跨并预览, 跨并暂停中的项目, 跨并重新起算时刻们, 拒绝必填话, 客户合并申请挡话, 作废跨并申请, 是确认人of,
+  算确认人, 可能是确认人, 发起跨负责人并, 处理跨并申请, 撤回跨并申请, 扫过期跨并申请, 跨并预览, 跨并暂停中的项目, 跨并重新起算时刻们, 拒绝必填话, 客户合并申请挡话, 作废跨并申请, 是确认人of,
 } from "@/lib/enterprise/project-merge-request";
 
 type 人 = { id: string; name: string; role: string };
@@ -585,5 +587,32 @@ describe("s2 审查修 S1：等我确认的 = 存的名单 ∪ 现算的", () =>
     await raw.entMember.update({ where: { userId: 丙.id }, data: { managerId: 新.id } });
     expect(是确认人of(await 读组织(), r, 线, 新.id)).toBe(true);
     expect(是确认人of(await 读组织(), r, 线, 丁.id)).toBe(false);
+  });
+});
+
+describe("s2 审查修 2 N2：等我确认的先按确认人滤再限条数", () => {
+  it("全组织待确认超过 50 张时，排在后面的我的申请照样出", async () => {
+    const { a, b } = await 一对();
+    const id = await 请(a, b);
+    const 我的 = await 申请(id);
+    // 比我的更新的 55 张别人的待确认（确认人名单空、被并走的负责人是丁，销管不是他们的确认人）
+    for (let i = 0; i < 55; i++) {
+      const { id: _id, at: _at, ...余 } = 我的;
+      await raw.entProjectMergeRequest.create({ data: { ...余, fromOwnerId: 丁.id, confirmerIds: "[]", at: new Date(我的.at.getTime() + 1000 * (i + 1)) } });
+    }
+    登录.人 = 销管;
+    const { 等我确认的跨并申请 } = await import("@/app/(app)/customers/merge-actions");
+    const 们 = await 等我确认的跨并申请();
+    expect(们.map((r) => r.id)).toContain(id);
+  });
+});
+
+describe("s2 审查修 2 N3：可能是确认人（菜单先判，不可能就不查候选）", () => {
+  it("系统管理员 / 条线总管理 / 有下属的上级可能；无关的销售不可能", async () => {
+    const org = await 读组织();
+    expect(可能是确认人(org, 老板.id)).toBe(true);
+    expect(可能是确认人(org, 线总.id)).toBe(true);
+    expect(可能是确认人(org, 销管.id)).toBe(true);
+    expect(可能是确认人(org, 丁.id)).toBe(false);
   });
 });

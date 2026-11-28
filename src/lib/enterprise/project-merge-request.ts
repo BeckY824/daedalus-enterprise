@@ -19,7 +19,7 @@ import type { PrismaClient, Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "./switch";
 import { 权限组织, 是系统管理员of, type 组织 } from "./org";
-import { 管理员类别们of } from "./org-core";
+import { 管理员类别们of, 直属上级of } from "./org-core";
 import { 只读角色, 只看的人 } from "./permissions";
 import { 接手问题 } from "./lead-assign";
 import { 条线的线 } from "./line-viewer";
@@ -79,6 +79,13 @@ export function 算确认人(org: 组织, B: { ownerId: string; bizLine?: string
   if (线) for (const id of org.成员.keys()) if (条线的线(org, id) === 线) 加(id, 层级.条线);
   if (!出.length) for (const id of 系统管理员们(org)) 加(id, 层级.管理员);
   return 出;
+}
+/** 这个人在组织里有没有可能当确认人（系统管理员 / 条线总管理 / 有人把他填成上级，含停用前手填的）：都不是就不用去查候选（项目详情「并进来」菜单先判这个省一句查询） */
+export function 可能是确认人(org: 组织, 谁: string): boolean {
+  if (是系统管理员of(org, 谁) || 条线的线(org, 谁)) return true;
+  for (const id of org.成员.keys()) if (直属上级of(org, id) === 谁) return true;
+  if (org.离职上级) for (const 上 of org.离职上级.values()) if (上 === 谁) return true;
+  return false;
 }
 /** 这张申请我算不算确认人：发起时存的名单里还在职的 ∪ 现在按组织重算的（和 处理跨并申请 服务端认的同一批）。页面的「等我确认」「去确认」共用 */
 export function 是确认人of(org: 组织 | null, r: { confirmerIds: string; fromOwnerId: string }, 被并线: string | null | undefined, 谁: string): boolean {

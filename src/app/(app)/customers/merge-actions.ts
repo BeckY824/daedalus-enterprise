@@ -625,12 +625,13 @@ export type 跨并申请一条 = {
 
 async function 跨并行们(where: Prisma.EntProjectMergeRequestWhereInput, 只留我是确认人?: string): Promise<跨并申请一条[]> {
   if (!企业版()) return [];
-  let 行们 = await 看全部(() => prisma.entProjectMergeRequest.findMany({ where, orderBy: { at: "desc" }, take: 50 }));
+  // 等我确认的先在库里取多一些再按确认人滤（现算的确认人库里滤不了）：全组织待确认超过 50 张时，排在后面的我的申请不能被挤掉（审查 N2）
+  let 行们 = await 看全部(() => prisma.entProjectMergeRequest.findMany({ where, orderBy: { at: "desc" }, take: 只留我是确认人 ? 200 : 50 }));
   // 等我确认的（审查建议 1）：发起时存的名单 ∪ 现在按组织重算的（和服务端 处理跨并申请 认的同一批），原确认人停用 / 调岗后新上级也看得到、点得了
   if (只留我是确认人 && 行们.length) {
     const org = await 权限组织();
     const 线们 = new Map((await 看全部(() => prisma.project.findMany({ where: { id: { in: 行们.map((r) => r.fromProjectId) } }, select: { id: true, bizLine: true } }))).map((x) => [x.id, x.bizLine]));
-    行们 = 行们.filter((r) => 是确认人of(org, r, 线们.get(r.fromProjectId), 只留我是确认人));
+    行们 = 行们.filter((r) => 是确认人of(org, r, 线们.get(r.fromProjectId), 只留我是确认人)).slice(0, 50);
   }
   if (!行们.length) return [];
   const 项ids = [...new Set(行们.flatMap((r) => [r.fromProjectId, r.intoProjectId]))];

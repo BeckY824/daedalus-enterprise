@@ -17,6 +17,7 @@ import { notify } from "./notify";
 import { 到期话, 等待工作日 } from "./merge-request";
 import { beijingWallIso } from "@/lib/business-clock";
 import type { 合并人 } from "./customer-merge";
+import { 项目合并撤回天数 } from "./project-merge-guard";
 
 export const 跨并通知种类 = "跨负责人合并";
 export const 跨并申请页 = "/customers/merge-requests#xmerge";
@@ -48,7 +49,7 @@ export async function 跨并通知(db: PrismaClient, requestId: string, 事: 跨
           `你是被并走项目负责人的${r.confirmerRole || "确认人"}。${北京时刻(r.expiresAt)} 前没处理，申请失效；等确认期间两个项目的验证计时都暂停。`, "发起");
         return;
       case "确认":
-        await 发([r.byUserId, ...别的确认人], `${谁?.name ?? "确认人"}确认了跨负责人合并：${两个}`, "已并，被并走的项目结束为重复线索，不退还已占线索名额；30 天内可撤回。", "结束");
+        await 发([r.byUserId, ...别的确认人], `${谁?.name ?? "确认人"}确认了跨负责人合并：${两个}`, `已并，被并走的项目结束为重复线索，不退还已占线索名额；${项目合并撤回天数} 天内可撤回。`, "结束");
         return;
       case "拒绝":
         await 发([r.byUserId, ...别的确认人], `${谁?.name ?? "确认人"}拒绝了跨负责人合并申请：${两个}`, `${一句 ? `原因：${一句}` : "没写原因"}。两个项目的验证计时重新起算`, "结束");
