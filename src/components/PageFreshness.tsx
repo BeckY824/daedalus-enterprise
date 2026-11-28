@@ -11,13 +11,15 @@
  *      回来距上次超过 60 秒（没到 300 秒，到了 Next 自己重取）就 router.refresh()；60 秒内不刷。
  *   3. 收到数据失效事件（通知铃铛发现来了新通知：分到我 / 转走 / 权限变了）：后台换新当前页（router.refresh 同时清掉别页缓存，
  *      下次切过去等新数据）。被转走的客户换新后由服务端那页判，走原来的「无权」卡，前端不判权限。
+ *      兜底前先看导航是不是刚带来新数据（Next 对过期缓存条目自己重取过一次非预取 RSC）：是就不再补刷，回 A 只出 1 个请求；
+ *      版本不同、数据失效事件照刷，不看这条。
  *   4. 弹层开着、输入框有焦点、有未提交录入、有请求没回完（swap-guard 现在忙）：不刷，每 5 秒再看一次，最多等 2 分钟，
  *      等不到就放弃这次（人下次切页时还会再判）。
  * 问版本失败（断网、登出、没基线）一律当没变，不报错。在飞按页面键记（A 页的请求没回时切到 B 页，B 照样查）。
  */
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { 版本地址, 认页面, 页面键, 数据失效事件, 该后台刷新, 该兜底刷新, 该合并跳过, 该走兜底, 清旧记录, 取渲染版, 缓存秒 } from "@/lib/page-fresh";
+import { 版本地址, 认页面, 页面键, 数据失效事件, 该后台刷新, 该兜底刷新, 该合并跳过, 该走兜底, 清旧记录, 取渲染版, 缓存秒, 导航已取新, 取导航取, 装取数记录 } from "@/lib/page-fresh";
 import { 现在忙 } from "@/lib/swap-guard";
 
 const 重试毫秒 = 5000;
@@ -42,8 +44,10 @@ export default function PageFreshness() {
   }, [router]);
 
   /** 能刷就刷，忙就隔 5 秒再看，最多等 2 分钟 */
-  const 空了刷 = useRef((起: number) => {
+  const 空了刷 = useRef((起: number, 页记键?: string) => {
     window.clearTimeout(待刷钟.current);
+    // 兜底刷新（页记键 = 路径?查询）：导航刚带来新数据（Next 重取过期条目）就不再补一次；判忙推迟后再看一遍
+    if (页记键 !== undefined && 导航已取新(取导航取(页记键), 起)) return;
     if (!现在忙()) {
       if (该合并跳过(上次刷.current, Date.now())) return;
       上次刷.current = Date.now();
@@ -51,10 +55,11 @@ export default function PageFreshness() {
       return;
     }
     if (Date.now() - 起 >= 最多等毫秒) return;
-    待刷钟.current = window.setTimeout(() => 空了刷.current(起), 重试毫秒);
+    待刷钟.current = window.setTimeout(() => 空了刷.current(起, 页记键), 重试毫秒);
   });
 
   useEffect(() => {
+    装取数记录();
     const 现在 = Date.now();
     const 同路径换查询 = 上路径.current === 路径;
     // 路径变了：上次刷的合并窗口清掉，新页的检查不被上一页的刷新挡住
@@ -73,7 +78,7 @@ export default function PageFreshness() {
     const 兜底 = (上次: number | undefined, 现 = Date.now()) => {
       if (该兜底刷新(上次, 现)) {
         到过们.current.set(`${路径}?${查询}`, 现);
-        空了刷.current(现);
+        空了刷.current(现, `${路径}?${查询}`);
       }
     };
     if (!页) {

@@ -127,6 +127,63 @@ export function 该合并跳过(上次刷: number, 现在: number): boolean {
   return 上次刷 > 0 && 现在 - 上次刷 < 刷新合并毫秒;
 }
 
+/**
+ * 导航刚取过新数据就不再兜底刷新（11-28 修：回 A 出 2 个 RSC）：
+ * 60–300 秒后回到某页，Next 自己会对过期的缓存条目重取一次（非预取 RSC）；兜底刷新若再补一次（判忙推迟 5 秒后才发），就是第 2 个。
+ * 这里记「每个 路径+查询 最近一次非预取 RSC 回来的时刻」（装取数记录 包 window.fetch 记），兜底刷新前看：
+ * 取于不早于「判定时刻往前 5 秒」= 导航已带来新数据，兜底不刷。数据失效事件（权限 / 归属）、版本不同、发过版不看这个，照刷。
+ */
+export const 新取回溯毫秒 = 5000;
+const 导航取们 = new Map<string, number>();
+export function 记导航取(键: string, 时刻: number): void {
+  if (导航取们.size > 200) 导航取们.clear();
+  导航取们.set(键, 时刻);
+}
+export function 取导航取(键: string): number | undefined {
+  return 导航取们.get(键);
+}
+/** 导航已带新数据：最近一次非预取 RSC 回来的时刻 ≥ 判定时刻 − 5 秒 */
+export function 导航已取新(取于: number | undefined, 判定于: number): boolean {
+  return 取于 !== undefined && 取于 >= 判定于 - 新取回溯毫秒;
+}
+/** 地址（可带 _rsc 参数）→ 路径+查询（去掉 _rsc），和 PageFreshness 的「路径?查询」同一格式 */
+export function 导航取键(地址: string): string | null {
+  try {
+    const u = new URL(地址, "http://x");
+    u.searchParams.delete("_rsc");
+    return `${u.pathname}?${u.searchParams.toString()}`;
+  } catch {
+    return null;
+  }
+}
+function 头值(h: HeadersInit | undefined, 名: string): string | null {
+  if (!h) return null;
+  return new Headers(h).get(名);
+}
+let 装了取数 = false;
+/** 包 window.fetch：记非预取的 RSC GET 回来的时刻（预取不算：它只带壳不带动态数据）。只装一次 */
+export function 装取数记录(): void {
+  if (装了取数 || typeof window === "undefined" || typeof window.fetch !== "function") return;
+  装了取数 = true;
+  const 原 = window.fetch.bind(window);
+  window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+    const p = 原(input, init);
+    try {
+      const req = typeof Request !== "undefined" && input instanceof Request ? input : null;
+      const 方法 = (init?.method ?? req?.method ?? "GET").toUpperCase();
+      const 头 = (n: string) => (init?.headers ? 头值(init.headers, n) : req ? req.headers.get(n) : null);
+      if (方法 === "GET" && 头("rsc") === "1" && !头("next-router-prefetch") && !头("next-router-segment-prefetch")) {
+        const 地址 = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+        const 键 = 导航取键(地址);
+        if (键) p.then((r) => { if (r.ok) 记导航取(键, Date.now()); }, () => {});
+      }
+    } catch {
+      // 记不上就当没记，兜底照旧
+    }
+    return p;
+  };
+}
+
 /** 一份铃铛：那颗钮 + 是不是手机壳那份 */
 export type 铃铛位 = { 钮: { current: { getClientRects(): ArrayLike<unknown> } | null }; 手机: boolean };
 

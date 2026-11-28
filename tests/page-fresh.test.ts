@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { 该我问, 详情地址, 该走兜底, 缓存秒, 认页面, 页面键, 版本地址, 该后台刷新, 该兜底刷新, 清旧记录, 来了新通知, 该合并跳过, 刷新合并毫秒, 记渲染版, 撤渲染版, 取渲染版 } from "@/lib/page-fresh";
+import { 该我问, 详情地址, 该走兜底, 缓存秒, 认页面, 页面键, 版本地址, 该后台刷新, 该兜底刷新, 清旧记录, 来了新通知, 该合并跳过, 刷新合并毫秒, 记渲染版, 撤渲染版, 取渲染版, 导航已取新, 导航取键, 记导航取, 取导航取, 装取数记录, 新取回溯毫秒 } from "@/lib/page-fresh";
 import fs from "node:fs";
 
 describe("PR-D 先出缓存、后台更新：纯函数", () => {
@@ -163,5 +163,47 @@ describe("PR-D 先出缓存、后台更新：纯函数", () => {
     }
     const 单 = 桌面(0);
     expect(该我问(单, [单])).toBe(true); // 只挂了电脑那份：它兜底问
+  });
+  it("导航已带新数据时不再兜底刷新：取于不早于判定前 5 秒才算新；没取过 / 取得太早照刷", () => {
+    const t = 1_000_000;
+    expect(导航已取新(undefined, t)).toBe(false);
+    expect(导航已取新(t - 新取回溯毫秒, t)).toBe(true);
+    expect(导航已取新(t - 新取回溯毫秒 - 1, t)).toBe(false);
+    expect(导航已取新(t + 4_000, t)).toBe(true);
+    expect(导航取键("/projects?a=1&_rsc=xyz")).toBe("/projects?a=1");
+    expect(导航取键("/projects?_rsc=xyz")).toBe("/projects?");
+  });
+  it("装取数记录：只记非预取的 RSC GET；预取、非 RSC、失败的不记", async () => {
+    const 回 = async () => new Response("x", { status: 200 });
+    const g = globalThis as unknown as { window?: unknown; fetch: typeof fetch };
+    const 旧 = { w: g.window, f: g.fetch };
+    g.window = { fetch: 回 };
+    g.fetch = 回 as unknown as typeof fetch;
+    try {
+      装取数记录();
+      const w = (g.window as { fetch: typeof fetch }).fetch;
+      await w("/projects?s=a&_rsc=1", { headers: { rsc: "1", "next-router-prefetch": "1" } });
+      await w("/projects?s=b&_rsc=1", { headers: { rsc: "1" } });
+      await w("/projects?s=c", { headers: { accept: "application/json" } });
+      await w("/projects?s=d&_rsc=1", { method: "POST", headers: { rsc: "1" } });
+      await new Promise((r) => setTimeout(r, 0));
+      expect(取导航取("/projects?s=a")).toBeUndefined();
+      expect(取导航取("/projects?s=b")).toBeTypeOf("number");
+      expect(取导航取("/projects?s=c")).toBeUndefined();
+      expect(取导航取("/projects?s=d")).toBeUndefined();
+      记导航取("/projects?s=e", 5);
+      expect(取导航取("/projects?s=e")).toBe(5);
+    } finally {
+      g.window = 旧.w;
+      g.fetch = 旧.f;
+    }
+  });
+  it("接线：只有兜底刷新带页记键并在每次（含判忙重试）前看导航是否已取新；失效事件不带", () => {
+    const f = fs.readFileSync("src/components/PageFreshness.tsx", "utf8");
+    expect(f).toContain("导航已取新(取导航取(页记键), 起)");
+    expect(f).toContain("空了刷.current(现, `${路径}?${查询}`)");
+    expect(f).toContain("空了刷.current(起, 页记键)");
+    expect(f).toMatch(/到过们\.current\.clear\(\);\s*空了刷\.current\(Date\.now\(\)\);/);
+    expect(f).toContain("装取数记录();");
   });
 });
