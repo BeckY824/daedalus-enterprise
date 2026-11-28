@@ -34,6 +34,7 @@ import { 项目业务线 } from "./assign-line";
 import { 本线放开看得到 } from "./await-assign-open";
 import { 按线的线, 按线范围of, 条线范围of, 本线的项目 } from "./line-viewer";
 import { 实线下属, 虚线下属, 是系统管理员of, type 组织 } from "./org-core";
+import { 销售角色, 销售角色集 } from "./sales-roles";
 import { 企业版 } from "./switch";
 import { 找条线总管理 } from "./tri-state-people";
 
@@ -71,8 +72,8 @@ const 领公海角色: readonly 业务角色[] = ["sales", "sales_mgr", "directo
 const 角色们 = (org: 组织, id: string): readonly 业务角色[] => org.成员.get(id)?.角色们 ?? [];
 const 有 = (org: 组织, id: string, 们: readonly 业务角色[]) => 角色们(org, id).some((r) => 们.includes(r));
 
-/** 销售：销售、销售管理（市场分给销售算转客户时认这两个，只看业务角色） */
-const 销售角色: readonly 业务角色[] = ["sales", "sales_mgr"];
+/** 销售：销售、销售管理（市场分给销售算转客户时认这两个，只看业务角色）；数组和集合在叶子文件 sales-roles.ts，这里原样 re-export */
+export { 销售角色集 };
 export const 是市场角色 = (org: 组织, id: string): boolean => 有(org, id, 市场角色);
 export const 是销售角色 = (org: 组织, id: string): boolean => 有(org, id, 销售角色);
 

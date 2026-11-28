@@ -13,6 +13,7 @@ import { 港澳台地名 } from "./cn-place";
 import type { 组织 } from "./org-core";
 import type { 组织部门 } from "./org-tree";
 import type { 线 } from "./lead-assign";
+import { 销售角色集 } from "./sales-roles";
 
 /** 两条业务线（各条线参与的部门、成员的内贸 / 外贸标记只认这两个） */
 export const 两条线: readonly 线[] = ["内贸", "外贸"];
@@ -139,8 +140,6 @@ export function 线部门们(部门: ReadonlyMap<string, Pick<组织部门, "id"
 /** 这条线勾了还在的部门没有：没有 = 退回按成员内贸 / 外贸标记（界面上提示「还没勾部门」） */
 export const 线勾了部门 = (org: Pick<组织, "部门">, 设: 线部门, line: 线): boolean => 设[line].some((id) => org.部门.has(id));
 
-const 销售角色 = new Set(["sales", "sales_mgr"]);
-
 /**
  * 自动分配只分给有「销售」业务角色的人（11-02 用户：销售管理参不参与 →「只给销售」）；兼着销售的销售管理照样参与。
  * 候选（按部门候选 / 自动候选人们）照旧含销售管理，手动指派还能挑；只有自动分配那一步再过这一道
@@ -230,7 +229,7 @@ export function 按部门候选(
   if (!线勾了部门(org, 设, line)) return 按成员标记(org, 现负责人, line);
   const 部门 = 线部门们(org.部门, 设[line]);
   return [...org.成员.values()]
-    .filter((m) => m.userId !== 现负责人 && !!m.deptId && 部门.has(m.deptId) && m.角色们.some((r) => 销售角色.has(r)))
+    .filter((m) => m.userId !== 现负责人 && !!m.deptId && 部门.has(m.deptId) && m.角色们.some((r) => 销售角色集.has(r)))
     .map((m) => m.userId);
 }
 
@@ -250,7 +249,7 @@ export const 算市场 = (角色们: readonly string[], 部门市场成员: bool
 export function 默认分配方式(角色们: readonly string[], 能用: readonly number[], 部门市场成员 = false): number | undefined {
   const 想 = 算市场(角色们, 部门市场成员)
     ? 分配方式序号.自动分配
-    : 角色们.some((r) => 销售角色.has(r))
+    : 角色们.some((r) => 销售角色集.has(r))
       ? 分配方式序号.个人自持
       : 分配方式序号.暂不分配;
   return 能用.includes(想) ? 想 : 能用[0];
@@ -270,7 +269,7 @@ export function 新客户默认分配方式(能用: readonly number[]): number |
 }
 
 /** 选自动分配要不要再确认（A9）：有销售业务角色、又不算市场的（市场建的分出去后还能看，销售分出去就看不到了；市场口径同上，X-93） */
-export const 是销售角色 = (角色们: readonly string[], 部门市场成员 = false): boolean => !算市场(角色们, 部门市场成员) && 角色们.some((r) => 销售角色.has(r));
+export const 是销售角色 = (角色们: readonly string[], 部门市场成员 = false): boolean => !算市场(角色们, 部门市场成员) && 角色们.some((r) => 销售角色集.has(r));
 
 /** 销售选「自动分配」时的确认话（A9）：分出去以后这个项目就不在他名下了 */
 export const 销售自动分确认 = "分出去后你将看不到这个项目，确定按自动分配建吗？";

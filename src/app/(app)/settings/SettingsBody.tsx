@@ -92,7 +92,7 @@ export default async function SettingsBody() {
   const 范围 = 设置范围of(me, 权限org, 企业版());
   const { 可看, 可改, 只读, 只个人 } = 范围;
   // 导入导出、导出记录、回收站这些栏的老判断（同 可看）
-  const 可进 = 企业版() ? 能进设置(me, 权限org) : me.role === "ADMIN";
+  const 可进 = 能进设置(me, 权限org);
 
   // 项目模式（团队版 1a）开着才多一栏：组员角色字典、异常类别字典
   const 项目设置底 = business.projectMode && !只个人
