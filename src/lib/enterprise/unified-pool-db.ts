@@ -179,11 +179,12 @@ async function 算公海客户属性名单(): Promise<{ 商机: string[]; 订单
 async function 读放回留痕(ids: string[]) {
   const 行们: { projectId: string; userId: string; reason: string | null; fromOwnerId: string | null }[] = [];
   for (let i = 0; i < ids.length; i += 一批id数) {
-    行们.push(...await prisma.projectNodeLog.findMany({
+    // 看全部：传进来的 id 已是本人看得到的公海项目，不必再过范围层（省掉 ProjectNodeLog→Project 的关联子查询和范围参数）
+    行们.push(...await 看全部(() => prisma.projectNodeLog.findMany({
       where: { kind: "pool-release", projectId: { in: ids.slice(i, i + 一批id数) } },
       orderBy: [{ at: "desc" }, { id: "desc" }],
       select: { projectId: true, userId: true, reason: true, fromOwnerId: true },
-    }));
+    })));
   }
   return 行们;
 }

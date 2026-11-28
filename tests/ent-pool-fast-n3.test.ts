@@ -34,10 +34,15 @@ async function 造人(key: string, 业务?: { bizRole: string; managerId?: strin
 }
 const 时刻 = (i: number) => new Date(Date.UTC(2026, 9, 1) + i * 60_000);
 
-let 总管理: 人, 销售: 人, 同事: 人;
+let 总管理: 人, 销售: 人, 同事: 人, 只读管理员: 人, 条线总管理: 人;
+const 渠道id = "fch0001";
 const 当 = (u: 人) => { mocks.user = { ...mocks.user, id: u.id, name: u.name, role: u.role }; };
 const 新 = (u: 人) => { 当(u); return 以谁的身份(u.id, () => 读公海页(u, {}, 1, 1000)); };
 const 旧 = (u: 人) => { 当(u); return 以谁的身份(u.id, () => 旧读公海页(u, {}, 1, 1000)); };
+const 新名单 = (u: 人) => { 当(u); return 以谁的身份(u.id, () => 读公海页(u, {}, 1, 1000, { channelId: 渠道id })); };
+/** 旧写法没有名单入口：取旧的全量项目行，按渠道（项目来源）筛，和新的名单逐行对（项目 id、入池原因、原负责人是我、顺序） */
+const 旧名单行 = async (u: 人) => (await 旧(u)).行.filter((r) => r.种 === "项目" && r.来源id === 渠道id).map((r) => ({ id: r.projectId, 原因: r.入池原因, 我放的: r.原负责人是我 }));
+const 新名单行 = async (u: 人) => (await 新名单(u)).行.map((r) => ({ id: r.projectId, 原因: r.入池原因, 我放的: r.原负责人是我 }));
 /** 以谁的身份写：走带限定层的 prisma（放入、领取这类动作都走它，写库版本由它加） */
 const 写 = <T,>(u: 人, fn: () => Promise<T>) => { 当(u); return 以谁的身份(u.id, fn); };
 
@@ -54,6 +59,9 @@ beforeAll(async () => {
   const 销售管理 = await 造人("mgr", { bizRole: "sales_mgr" });
   销售 = await 造人("sales", { bizRole: "sales", managerId: 销售管理.id });
   同事 = await 造人("peer", { bizRole: "sales" });
+  只读管理员 = await 造人("admin", { bizRole: "admin" });
+  条线总管理 = await 造人("director-line", { bizRole: "director" });
+  await raw.entMember.update({ where: { userId: 条线总管理.id }, data: { line: "内贸" } });
   await 造人("placeholder", undefined, { email: 无负责人占位邮箱, active: false });
   // 公海项目（客户不在客户池）：每个都有两次放回，先同事后销售 / 先销售后同事，原因各不同；一半以上的最近一次是同事
   for (let i = 0; i < 项目数; i++) {
@@ -64,6 +72,14 @@ beforeAll(async () => {
     await raw.projectNodeLog.create({ data: { projectId: pid(i), kind: "pool-release", fromOwnerId: 甲.id, userId: 甲.id, reason: `回收原因：早${i}`, toPhase: "线索", toNode: "x", at: 时刻(1000 + i) } });
     await raw.projectNodeLog.create({ data: { projectId: pid(i), kind: "pool-release", fromOwnerId: 乙.id, userId: 乙.id, reason: `回收原因：晚${i}`, toPhase: "线索", toNode: "x", at: 时刻(1500 + i) } });
   }
+  // 只读管理员（不受回避，应看得到）、条线总管理（照样回避，应看不到）各有自己放回的项目：把这几个项目最近一次放回改成他们
+  const 他们放回: [人, number[]][] = [[只读管理员, [0, 1, 2]], [条线总管理, [3, 4, 5]]];
+  for (const [人, 们] of 他们放回) for (const i of 们) {
+    await raw.projectNodeLog.updateMany({ where: { projectId: pid(i), reason: { contains: "晚" } }, data: { fromOwnerId: 人.id, userId: 人.id } });
+  }
+  // 渠道：一批项目带渠道（渠道名单对拍用，名单里既有他们放回的、也有别人放回的）
+  await raw.channel.create({ data: { id: 渠道id, name: "测试渠道", channelOwnerId: 总管理.id } });
+  await raw.project.updateMany({ where: { id: { in: Array.from({ length: 40 }, (_, i) => pid(i)) } }, data: { channelId: 渠道id } });
   // 一位在客户公海里的客户，名下一个线索项目（属性名单用）
   await raw.customer.create({ data: { id: "fcpool", name: "池里客户", phone: "16999999999", salesOwnerId: 同事.id } });
   await raw.customerPool.create({ data: { customerId: "fcpool", userId: null, reason: "手动", at: 时刻(3000) } });
@@ -80,9 +96,9 @@ afterAll(async () => {
 
 describe("放回留痕按项目 id 点名取：最近一次放回和改前逐项相同", () => {
   for (const 缓存 of [false, true]) {
-    it(`缓存${缓存 ? "开" : "关"}：总管理、销售、同事读到的整个返回值和改前写法一样（${项目数} 个项目，两次放回、不同人）`, async () => {
+    it(`缓存${缓存 ? "开" : "关"}：总管理、销售、同事、只读管理员、条线总管理读到的整个返回值和改前写法一样（${项目数} 个项目，两次放回、不同人）`, async () => {
       测试里开公海分组缓存(缓存);
-      for (const u of [总管理, 销售, 同事]) {
+      for (const u of [总管理, 销售, 同事, 只读管理员, 条线总管理]) {
         const [n, o] = [await 新(u), await 旧(u)];
         expect(n).toEqual(o);
       }
@@ -92,6 +108,43 @@ describe("放回留痕按项目 id 点名取：最近一次放回和改前逐项
       for (const r of 行们) expect(r.入池原因).toContain("晚");
     }, 120_000);
   }
+});
+
+describe("回避按角色：只读管理员看得到自己放回的，条线总管理看不到；渠道名单对拍", () => {
+  for (const 缓存 of [false, true]) {
+    it(`缓存${缓存 ? "开" : "关"}：只读管理员看得到自己放回的 3 个，条线总管理看不到自己放回的 3 个`, async () => {
+      测试里开公海分组缓存(缓存);
+      const 项目id们 = async (u: 人) => new Set((await 新(u)).行.filter((r) => r.种 === "项目").map((r) => r.projectId));
+      const 读 = await 项目id们(只读管理员);
+      for (const i of [0, 1, 2]) expect(读.has(pid(i))).toBe(true);
+      expect(读.size).toBe(项目数);
+      const 线 = await 项目id们(条线总管理);
+      for (const i of [3, 4, 5]) expect(线.has(pid(i))).toBe(false);
+      expect(线.size).toBe(项目数 - 3);
+      expect(await 新(只读管理员)).toEqual(await 旧(只读管理员));
+      expect(await 新(条线总管理)).toEqual(await 旧(条线总管理));
+    }, 120_000);
+
+    it(`缓存${缓存 ? "开" : "关"}：带渠道名单（只要 有值）读公海页和旧读公海页（按渠道筛）逐项相同`, async () => {
+      测试里开公海分组缓存(缓存);
+      for (const u of [总管理, 销售, 同事, 只读管理员, 条线总管理]) {
+        const [n, o] = [await 新名单行(u), await 旧名单行(u)];
+        expect(n.length).toBeGreaterThan(0);
+        expect(n).toEqual(o);
+      }
+      const 线 = new Set((await 新名单(条线总管理)).行.map((r) => r.projectId));
+      expect(线.has(pid(3))).toBe(false);
+      const 读 = new Set((await 新名单(只读管理员)).行.map((r) => r.projectId));
+      expect(读.has(pid(0))).toBe(true);
+    }, 120_000);
+  }
+  it("缓存开、关两遍的渠道名单结果相同", async () => {
+    测试里开公海分组缓存(false);
+    const 关 = await 新名单(总管理);
+    测试里开公海分组缓存(true);
+    expect(await 新名单(总管理)).toEqual(关);
+    expect(await 新名单(总管理)).toEqual(关);
+  }, 120_000);
 });
 
 describe("短缓存：写后立即作废；回避在取出后按人排", () => {
