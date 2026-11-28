@@ -146,7 +146,11 @@ function 定属性的项目(where: Prisma.ProjectWhereInput) {
  * 结局所在阶段 按各阶段的出口结局（含旧名，归阶段的结局）拼进 CASE，认不出的结局退回看 phase（同 阶段与进程）。
  * 名下项目不过范围层（属性是客户本身的事），回收站里的项目不算（同 定属性的项目 走软删扩展）。历史分析回填的照算：分析定的节点 / 结局就是要它落池
  */
-async function 公海客户属性名单(): Promise<{ 商机: string[]; 订单: string[] }> {
+function 公海客户属性名单(): Promise<{ 商机: string[]; 订单: string[] }> {
+  // 与筛选、与人都无关的全量：同分组数那套 3 秒短缓存（写库作废、同刻合并；O1-N3）
+  return 缓存分组数("公海客户属性名单", [], 算公海客户属性名单);
+}
+async function 算公海客户属性名单(): Promise<{ 商机: string[]; 订单: string[] }> {
   const 阶段位 = (列: string) => `CASE ${列} WHEN '线索' THEN 0 WHEN '商机' THEN 1 WHEN '订单' THEN 2 ELSE 3 END`;
   // 各阶段的结局（含库里的旧名，stage-dict.ts 归阶段的结局，同 项目所在阶段 的认法）；认不出的结局退回看 phase
   const 分支们: string[] = [];
@@ -166,6 +170,22 @@ async function 公海客户属性名单(): Promise<{ 商机: string[]; 订单: s
   const 商机: string[] = [], 订单: string[] = [];
   for (const x of 行们) (Number(x.位) === 1 ? 商机 : 订单).push(x.id);
   return { 商机, 订单 };
+}
+
+/**
+ * 这些公海项目的放回留痕（新的在前）。按项目 id 点名取（O1-N3）：原来靠「项目在公海、客户不在客户池」回表过滤 6 万多条留痕，
+ * 点名走 projectId + at 索引；每段 一批id数 个，各项目只在一段里，每段内排序同原写法，「每个项目最近一条」结果不变
+ */
+async function 读放回留痕(ids: string[]) {
+  const 行们: { projectId: string; userId: string; reason: string | null; fromOwnerId: string | null }[] = [];
+  for (let i = 0; i < ids.length; i += 一批id数) {
+    行们.push(...await prisma.projectNodeLog.findMany({
+      where: { kind: "pool-release", projectId: { in: ids.slice(i, i + 一批id数) } },
+      orderBy: [{ at: "desc" }, { id: "desc" }],
+      select: { projectId: true, userId: true, reason: true, fromOwnerId: true },
+    }));
+  }
+  return 行们;
 }
 
 /** 一行客户行（骨架、库里分页两条路同一个拼法）。没全取的项目格先按「一个项目都看不到」摆，补这一页 再填 */
@@ -200,7 +220,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
     自动掉公海(me).catch((e) => console.error("[自动掉公海] 扫的时候出错，这次先不掉", e)),
     公海超时收回(me).catch((e) => console.error("[超时回收] 扫的时候出错，这次先不收", e)),
   ]);
-  const [查到客户, 池们, 项目们, 规则] = await Promise.all([
+  const [查到客户, 池们, 全部项目们, 规则] = await Promise.all([
     // 带限定的客户端：公海里的客户人人看得到（限定层说了算，这里不另写）
     全取.不取客户 ? [] : prisma.customer.findMany({
       where: { pool: { isNot: null }, ...(全取.只要 ? { projects: { some: 全取.只要 } } : {}) },
@@ -211,16 +231,21 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
     // 同一个带限定的客户端、同样按入池时间新的在前取，就是上面那些客户的；对不上的（两句之间刚进公海的）下面按 id 补
     全取.不取客户 ? [] : prisma.customerPool.findMany({ ...(全取.只要 ? { where: { customer: { projects: { some: 全取.只要 } } } } : {}), orderBy: { at: "desc" }, select: 池要的 }),
     // 项目公海里、客户不在客户公海的：客户在客户公海的那些已经算在客户行里（领客户即领项目）
-    prisma.project.findMany({
+    // 与人无关的全量放 3 秒短缓存（O1-N3，pool-count-cache）：公海项目人人看得到，范围层只多一段「原负责人回避」，
+    // 那一段取出后在下面按人排掉（不把带回避的结果放进缓存）。看全部 = 不加范围层的条件；键带上渠道名单的 只要
+    缓存分组数("公海项目行", [全取.只要 ?? null], () => 看全部(() => prisma.project.findMany({
       where: { pooledAt: { not: null }, customer: { pool: null }, ...(全取.只要 ? { AND: [全取.只要] } : {}) },
       orderBy: { pooledAt: "desc" },
       select: {
         id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, poolPrevOwnerId: true, customerId: true, createdAt: true, channelId: true,
         customer: { select: { name: true, shortName: true, customerNo: true, lastFollowAt: true, poolReturns: true, channelId: true } },
       },
-    }),
+    }))),
     生效组织规则(),
   ]);
+  // 原负责人回避（总管理 / 管理员不算）：公海项目取的是不分人的全量，这一步把他自己放回的排掉（范围层原来在库里挡的就是这一段）
+  const 回避 = 原负责人回避() && !(await 回避豁免(me));
+  const 项目们 = 回避 ? 全部项目们.filter((p) => p.poolPrevOwnerId !== me.id) : 全部项目们;
   const 池of = new Map(池们.map((p) => [p.customerId, p]));
   const 没对上 = 查到客户.filter((c) => !池of.has(c.id)).map((c) => c.id);
   for (let i = 0; i < 没对上.length; i += 一批id数) {
@@ -235,13 +260,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   const [客户的项目们, 定属性的项目们, 留痕们, 可见, 后售们] = await Promise.all([
     客户的项目P,
     客户们.length ? 定属性的项目(框客户) : [],
-    项目们.length
-      ? prisma.projectNodeLog.findMany({
-        where: { kind: "pool-release", project: { pooledAt: { not: null }, customer: { pool: null } } },
-        orderBy: [{ at: "desc" }, { id: "desc" }],
-        select: { projectId: true, userId: true, reason: true, fromOwnerId: true },
-      })
-      : [],
+    项目们.length ? 读放回留痕(项目们.map((p) => p.id)) : [],
     全取.客户可见 ? 看得到的客户(项目们.map((p) => p.customerId)) : null,
     // 后售培育：骨架里要写进程的项目（客户行名下的、项目行）一次判完；接在 客户的项目 那句后面，和别的几句并着跑
     Promise.resolve(客户的项目P).then((cs) => 后售项目们([...(cs ?? []), ...项目们])),
@@ -256,10 +275,9 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   for (const l of 留痕们) if (!最近放回.has(l.projectId)) 最近放回.set(l.projectId, l);
   const 拦 = 拦原负责人();
   // 原负责人看不到公海里的这个项目（总管理 / 管理员不算）。认 Project.poolPrevOwnerId（E-417 包 2），入池类 / 入池原因仍认上面最近一条放回留痕
-  const 回避 = 原负责人回避() && !(await 回避豁免(me));
 
   const 客户行: 公海行[] = 客户们.map((c) => 拼客户行(me, c, c.pool, 项目of客户?.get(c.id) ?? [], 字典, 没项目客户.has(c.id), 全部项目of客户.get(c.id) ?? [], 拦, 后售们));
-  const 留下的项目 = 项目们.filter((p) => !(回避 && p.poolPrevOwnerId === me.id));
+  const 留下的项目 = 项目们;
   const 项目行: 公海行[] = 留下的项目.map((p) => {
     const 留痕 = 最近放回.get(p.id) ?? null;
     const 类 = 项目入池类(留痕);
