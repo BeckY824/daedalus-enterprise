@@ -336,7 +336,7 @@ function BoardGate({ 框: x, style, 关, 去补齐 }: { 框: 补框; style: CSSP
   const 首钮 = useRef<HTMLButtonElement>(null);
   useEffect(() => { 首钮.current?.focus(); }, []);
   return (
-    <div className="board-gate" role="dialog" aria-label={`推到「${x.到.名}」前还差 ${x.还差.length} 项`} style={style}
+    <div className="board-gate" role="dialog" data-swap-busy="" aria-label={`推到「${x.到.名}」前还差 ${x.还差.length} 项`} style={style}
       onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); 关(); } }}>
       <div className="board-gate-t">推到「{x.到.名}」前还差 {x.还差.length} 项</div>
       <div className="board-gate-name" title={x.卡名}>{x.卡名}</div>

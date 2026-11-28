@@ -10,6 +10,7 @@
  * 换之前：刷新前事件（FormDraft / form-guard 立刻落盘）+ 记滚动位置，reload 后恢复。
  * 纯函数 + 小登记表，不带 "use client"：单测直接引，碰 window / document 的在服务端是空操作。
  */
+import { 浮层选择器 } from "@/lib/esc";
 import { 存好再刷新, 记位事件 } from "@/lib/stale-deploy";
 
 /** 页面在后台（标签页切走 / 窗口最小化）满多久可以换 */
@@ -52,14 +53,19 @@ export function 清登记(): void {
 }
 
 // ── 现场 ──
-/** 有没有弹层开着：antd 弹窗 / 抽屉、原生 dialog[open]、带 aria-modal 的 */
+/**
+ * 有没有弹层开着：antd 弹窗 / 抽屉、原生 dialog[open]、带 aria-modal 的，
+ * 再加 esc.ts 那组开着的浮层（下拉、日期、气泡含 Popconfirm、⌘K），
+ * 和自写浮层统一打的标记 data-swap-busy（给自写浮层加这个属性即可，不用改这里的类名表）
+ */
+export const 弹层选择器 = `${浮层选择器}, dialog[open], [aria-modal='true'], [data-swap-busy]`;
 export function 有弹层(doc: Document | undefined = typeof document === "undefined" ? undefined : document): boolean {
   if (!doc) return false;
   const 看得见 = (e: Element) => {
     const h = e as HTMLElement;
     return h.style.display !== "none" && !h.classList.contains("ant-modal-wrap-hidden") && (h.offsetParent !== null || getComputedStyle(h).position === "fixed");
   };
-  for (const e of Array.from(doc.querySelectorAll(".ant-modal-wrap, .ant-drawer-open, dialog[open], [aria-modal='true']"))) {
+  for (const e of Array.from(doc.querySelectorAll(弹层选择器))) {
     if (看得见(e)) return true;
   }
   return false;
