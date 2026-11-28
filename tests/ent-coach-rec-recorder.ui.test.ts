@@ -33,6 +33,7 @@ beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App} from 'antd';
     import CoachTopics,{StartReviewButton} from '@/app/(app)/projects/[id]/CoachTopics';
+    import {忙数} from '@/lib/swap-guard';window.__忙数=忙数;
     const root=createRoot(document.getElementById('root'));
     const 基=(录音)=>({们:[],能发:true,填写人:{id:'u1',name:'教练',身份:'销售教练'},负责人:{id:'u2',name:'负责人'},项目名:'项目一',当前节点:'线索验证',待回复数:0,冻结:false,...(录音?{录音:{可录:true,...录音}}:{})});
     window.__render=(what,录音)=>root.render(<App><div className="card-like" style={{maxWidth:'min(560px, calc(100vw - 32px))',margin:'0 auto',padding:16,border:'1px solid #ddd'}}>{
@@ -85,6 +86,8 @@ const 假环境 = ([不能录]: [boolean]) => {
     w.__请求.push(`${法} ${url}`);
     if (url.startsWith("/api/feishu/jsapi-sign")) return 回(200, { appId: "cli_test", timestamp: 1, nonceStr: "n", signature: "s" });
     if (url === "/api/coach-rec/start") {
+      // __start慢：松手之后才让 start 失败（503），模拟「用户已松手、开始录音请求才失败」
+      if (w.__start慢) { await new Promise<void>((ok) => { (w as Record<string, unknown>).__放start = ok; }); return 回(503, { error: "忙" }); }
       const b = JSON.parse(String(init!.body));
       w.__体.start = b;
       w.__录 = { id: "crec1", status: "上传中", sourceKind: b.sourceKind, 文件名: null, 总字节: null, 已收字节: 0, 已收片: [], 格式: null, 开始于: "", 更新于: "1", 能听: false, 时长毫秒: null, 段数: 0, 打断们: [], 能补: false, 错: null };
@@ -648,6 +651,26 @@ it("手机 390：选择板「录音点评」能点；面板从底部升起，按
     return x;
   });
   expect(坏).toEqual([]);
+  expect(errors).toEqual([]);
+  await page.close();
+});
+
+it("PR-C 三审：松手后开始录音请求才失败（编号拿不到）→ 队列停掉、「录音上传」忙数回 0", async () => {
+  const { page, errors } = await open("form", { 草稿们: [] }, { 假钟: true });
+  await 开面板(page);
+  await page.evaluate(() => { (window as unknown as Record<string, unknown>).__start慢 = true; });
+  await 按住(page);
+  await 等录着(page);
+  await page.clock.runFor(16_000); // 15 秒一片先进队列
+  await page.mouse.up(); // 松手：结束中 = true，最后一片也进队列，卡在等编号
+  await page.evaluate(() => (window as unknown as { __放start: () => void }).__放start()); // start 失败
+  await page.waitForFunction(() => (window as unknown as 页).__请求.includes("POST /api/coach-rec/start"));
+  // 503 响应走真实网络，假钟只推时间不等响应：每次轮询推 1 秒再读忙数，等到回 0（不放宽语义）
+  await expect.poll(async () => {
+    await page.clock.runFor(1_000);
+    return page.evaluate(() => (window as unknown as { __忙数: () => number }).__忙数());
+  }, { timeout: 15_000, interval: 200 }).toBe(0);
+  expect(await page.getByTestId("ptt-panel").innerText()).toMatch(/没开始录|忙/);
   expect(errors).toEqual([]);
   await page.close();
 });

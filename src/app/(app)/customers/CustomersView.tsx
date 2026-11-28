@@ -11,6 +11,7 @@ import { 量变形起点, 放变形 } from "../projects/view-morph";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
+import { 登记忙 } from "@/lib/swap-guard";
 import { 要跟Context } from "@/components/FollowDue";
 import { 疑似重复页 } from "./dupe-words";
 import { Button, Space, Dropdown, Tag, Segmented, Tooltip, type MenuProps, type SelectProps } from "antd";
@@ -574,12 +575,13 @@ export default function CustomersView({
   const [导出进度, set导出进度] = useState("");
   const 导出取消 = useRef<AbortController | null>(null);
   // 离开客户页不打断导出：请求接着跑，下完照样存 ZIP、弹提示（D8-3：原先一卸载就 abort，几万条时「点了导出没东西」）。
-  // 关标签页、刷新会真断，导出中先拦一下
+  // 关标签页、刷新会真断，导出中先拦一下；同时登记忙，静默换版不在取批之间 / Worker 打包时重载
   useEffect(() => {
     if (!导出中) return;
+    const 放忙 = 登记忙("导出");
     const 拦 = (e: BeforeUnloadEvent) => e.preventDefault();
     window.addEventListener("beforeunload", 拦);
-    return () => window.removeEventListener("beforeunload", 拦);
+    return () => { 放忙(); window.removeEventListener("beforeunload", 拦); };
   }, [导出中]);
   /** 走建档向导：首屏带了数据，或项目模式点开时再取 */
   const 有建档 = Boolean(建档) || 建档要取;

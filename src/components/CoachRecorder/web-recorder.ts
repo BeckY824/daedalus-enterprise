@@ -7,6 +7,7 @@
  * - 打断（方案 §4.6）：麦克风轨道 ended / mute（来电、别的应用占了话筒）、录音器 error → 回调 断了（界面当作松手）
  */
 import type { 打断原因 } from "@/lib/enterprise/coach-rec";
+import { 登记忙 } from "@/lib/swap-guard";
 
 export const 候选格式 = ["audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/ogg;codecs=opus", "audio/webm;codecs=opus"] as const;
 /** 约 24kbps ≈ 3KB/秒（判网络慢用） */
@@ -65,6 +66,8 @@ export type 网页录音 = {
 export function 开录(流: MediaStream, opt: { 每片毫秒: number; 片到了: (数据: Blob, 序号: number) => void; 音量?: (v: number) => void; 断了?: (原因: 打断原因) => void }): 网页录音 {
   const 格式 = 选格式();
   const rec = new MediaRecorder(流, { ...(格式 ? { mimeType: 格式 } : {}), audioBitsPerSecond: 24_000 });
+  // 录着的时候不能静默换版（lib/swap-guard.ts），收拾时放掉；登记放在 rec.start() 成功之后（start 抛错就没有人调收拾）
+  let 放忙 = () => {};
   let 序号 = 0;
   let 取消了 = false;
   let 结束了 = false;
@@ -108,6 +111,7 @@ export function 开录(流: MediaStream, opt: { 每片毫秒: number; 片到了:
   }
   function 收拾() {
     结束了 = true;
+    放忙();
     cancelAnimationFrame(帧);
     for (const t of 轨们) {
       t.removeEventListener("ended", 轨断);
@@ -116,7 +120,13 @@ export function 开录(流: MediaStream, opt: { 每片毫秒: number; 片到了:
     }
     void 上下文?.close().catch(() => {});
   }
-  rec.start(opt.每片毫秒);
+  try {
+    rec.start(opt.每片毫秒);
+  } catch (e) {
+    try { 收拾(); } catch { /* 不盖住 start 的原错误 */ }
+    throw e;
+  }
+  放忙 = 登记忙("录音");
   return {
     mime: rec.mimeType || 格式 || "",
     async 停() {

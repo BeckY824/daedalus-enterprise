@@ -28,6 +28,9 @@ export const 旧版本事件 = "crm:stale-build";
 /** 横幅上点「刷新」、真刷新之前发一声：开着的录入框趁这时把填的存起来（同步听，听完才 reload） */
 export const 刷新前事件 = "crm:before-reload";
 
+/** 同上、同一刻再发一声：记下滚动位置（swap-guard 听） */
+export const 记位事件 = "crm:remember-scroll";
+
 /** 认出 Next 客户端在「服务端没有这个动作」时抛的那个错。只认这一种，别的错照原来的话说 */
 export function 是旧版本动作错(e: unknown): boolean {
   if (!e || typeof e !== "object") return false;
@@ -59,6 +62,8 @@ export function 报旧版本(): void {
 export function 存好再刷新(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(刷新前事件));
+  // 记滚动位置，reload 后 UpdateBanner 恢复（lib/swap-guard.ts，PR-C）
+  window.dispatchEvent(new Event(记位事件));
   window.location.reload();
 }
 

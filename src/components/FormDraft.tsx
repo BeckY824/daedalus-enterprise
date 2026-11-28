@@ -12,6 +12,7 @@
  */
 import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useMe } from "@/lib/me-client";
+import { 刷新前事件 } from "@/lib/stale-deploy";
 import { 草稿全名, 读一份, 存草稿, 清草稿, 改过的格, 有字, 带回话 } from "@/lib/form-draft";
 
 /**
@@ -111,6 +112,19 @@ export function useFormDraft<T extends Record<string, unknown>>({ 键, 开 = tru
     if (Object.keys(改过).length && 填过) 存草稿(全名, 改过, { 附件: 附件数 });
     else 清草稿(全名);
   }, [串, 附件数, 开, 全名]);
+
+  // 发版静默换版（lib/swap-guard.ts）：这里不登记「未提交」——恢复回来的旧草稿没人碰也算未提交会让页面永远不换版。
+  // 正在聚焦打字的由 swap-guard 的「正在打字」挡；草稿每改都已落盘，换之前（刷新前事件）再落一次
+  useEffect(() => {
+    const 落 = () => {
+      if (!开 || !全名 || !起.current || 停.current) return;
+      const 改过 = 改过的格(起.current, 现值.current) as Partial<T>;
+      const 填过 = 手.current.算填过 ? 手.current.算填过(改过, 现值.current) : 有字(改过);
+      if (Object.keys(改过).length && 填过) 存草稿(全名, 改过, { 附件: 附件数 });
+    };
+    window.addEventListener(刷新前事件, 落);
+    return () => window.removeEventListener(刷新前事件, 落);
+  }, [开, 全名, 附件数]);
 
   const 存好了 = useCallback(() => {
     停.current = true;
