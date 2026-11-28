@@ -34,6 +34,12 @@ import { 客户显名, 显名列 } from "./customer-title";
 import { 客户编号显示 } from "@/lib/customer-no";
 import { 系统管理员们 } from "./tri-state-people";
 import { 项目合并单们 } from "./project-merge-guard";
+import { 拦下 } from "./customer-merge";
+import { 合并撤不了的原因, 在事务里撤回项目合并, 发撤回通知 } from "./project-merge";
+import { 记合并异议留痕 } from "./objection";
+import { 客户状态自动 } from "./cust-status-auto-db";
+import { 存沟通后重算三态 } from "./tri-state-db";
+import { 事of, 合并异议类 } from "./objection-core";
 import {
   异议待裁定, 异议已撤销, 异议维持, 异议撤回, 异议待手工退回, 异议已退回, 裁定说明上限, 不能自动退话, 算不能自动退, 能裁定, 台账条数上限, type 不能自动退类, type 裁定人结果,
 } from "./objection-core";
@@ -44,14 +50,20 @@ type Db = Prisma.TransactionClient;
 const 当次窗口毫秒 = 120_000;
 
 export type 退回评估 =
-  | { 自动: true; 还给: string; 项目: { id: string; name: string; customerId: string }[] }
+  | { 自动: true; 还给: string; 项目: { id: string; name: string; customerId: string }[]; /** 项目合并类：自动 = 同事务撤回这张合并单 */ 合并单?: string }
   | { 自动: false; 类: 不能自动退类; 原因: string };
 
 const 不行 = (类: 不能自动退类, 对象: string): 退回评估 => ({ 自动: false, 类, 原因: 不能自动退话(类, 对象) });
 
 /** 一条异议撤回的话能不能自动退（撤回边界，判定页 #20）。只读，裁定页预览和真退共用 */
-export async function 评估退回(db: Db, 行: Pick<EntTransferObjection, "kind" | "customerId" | "projectId" | "targetName" | "objectorUserId" | "toOwnerId" | "ownerLogId">): Promise<退回评估> {
+export async function 评估退回(db: Db, 行: Pick<EntTransferObjection, "kind" | "customerId" | "projectId" | "targetName" | "objectorUserId" | "toOwnerId" | "ownerLogId"> & { mergeId?: string | null }): Promise<退回评估> {
   const 还给 = 行.objectorUserId;
+  if (行.kind === 合并异议类) {
+    // 项目合并类：撤回 = 撤回这张合并单（被并项目的负责人没变，不看原负责人在不在职）；前置同 在事务里撤回项目合并，30 天不再校
+    const m = 行.mergeId ? await 看全部(() => 看已删(() => db.entCustomerMerge.findUnique({ where: { id: 行.mergeId! }, select: { id: true, status: true, fromId: true, intoId: true } }))) : null;
+    const 拦 = m ? await 看已删(() => 看全部(() => 合并撤不了的原因(db, m))) : "合并单不在了";
+    return 拦 ? { 自动: false, 类: "合并撤不了", 原因: `「${行.targetName}」这次合并现在不能自动撤回（${拦}）；裁定撤回后由系统管理员手工撤回合并并留痕` } : { 自动: true, 还给, 项目: [], 合并单: m!.id };
+  }
   const 在职 = (await db.user.findUnique({ where: { id: 还给 }, select: { active: true } }))?.active === true;
   if (!在职) return 不行("原负责人已停用", 行.targetName);
   const 读项目们 = (ids: string[]) => 看全部(() => 看已删(() => db.project.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, result: true, deletedAt: true } })));
@@ -126,7 +138,7 @@ async function 执行退回(tx: Db, 行: EntTransferObjection, 评估: Extract<�
 }
 
 export type 待裁定行 = {
-  id: string; 类别: "客户" | "项目"; 对象: string; 客户名: string; 异议人: string; 理由: string; 转让原因: string;
+  id: string; 类别: "客户" | "项目" | "项目合并"; 对象: string; 客户名: string; 异议人: string; 理由: string; 转让原因: string;
   发起人: string; 接手人: string; 转让于: string; 提于: string; 状态: string;
   /** 撤回能不能自动退；不能时 说明 写为什么（页上提示，撤回照样能点，裁定后转「待手工退回」） */
   能自动退: boolean; 退回说明: string;
@@ -141,13 +153,20 @@ export type 待裁定行 = {
 async function 填行(行们: EntTransferObjection[], 看退回: boolean, 我?: string, 已评?: ReadonlyMap<string, 待裁定行>): Promise<待裁定行[]> {
   if (!行们.length) return [];
   const 人ids = [...new Set(行们.flatMap((r) => [r.objectorUserId, r.operatorUserId, r.toOwnerId, ...(r.judgedById ? [r.judgedById] : [])]))];
-  const [人们, 日志们, 客户们] = await Promise.all([
+  const 合并ids = 行们.flatMap((r) => (r.kind === 合并异议类 && r.mergeId ? [r.mergeId] : []));
+  const [人们, 日志们, 客户们, 合并们] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: 人ids } }, select: { id: true, name: true } }),
     prisma.customerOwnerLog.findMany({ where: { id: { in: 行们.flatMap((r) => (r.ownerLogId ? [r.ownerLogId] : [])) } }, select: { id: true, reason: true, at: true } }),
     看全部(() => 看已删(() => prisma.customer.findMany({ where: { id: { in: 行们.map((r) => r.customerId) } }, select: 显名列 }))),
+    合并ids.length ? 看全部(() => prisma.entCustomerMerge.findMany({ where: { id: { in: 合并ids } }, select: { id: true, at: true, detail: true, fromName: true } })) : [],
   ]);
   const 名 = new Map(人们.map((u) => [u.id, u.name]));
-  const 日志 = new Map(日志们.map((l) => [l.id, l]));
+  // 合并类行：「转让于」= 合并那一刻，「转让原因」= 一句话说清哪个并进哪个
+  const 合并 = new Map(合并们.map((m) => {
+    let 留下名 = ""; try { 留下名 = String((JSON.parse(m.detail) as { 留下名?: unknown }).留下名 ?? ""); } catch { /* 明细坏了留空 */ }
+    return [m.id, { at: m.at, reason: `把「${m.fromName || "未命名项目"}」并入「${留下名 || "未命名项目"}」` }] as const;
+  }));
+  const 日志 = new Map<string, { reason: string | null; at: Date }>([...日志们.map((l) => [l.id, l] as const), ...[...合并].map(([id, m]) => [id, m] as const)]);
   const 客户名 = new Map(客户们.map((c) => [c.id, 客户显名(c)]));
   const 现裁 = await 重算裁定人们(行们.filter((r) => r.status === 异议待裁定));
   const 现裁名 = new Map((await prisma.user.findMany({ where: { id: { in: [...new Set([...现裁.values()].flatMap((x) => x.ids))] } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
@@ -159,10 +178,10 @@ async function 填行(行们: EntTransferObjection[], 看退回: boolean, 我?: 
     const 旧 = 已评?.get(r.id);
     const 评 = 看退回 && !旧 ? await 评估退回(prisma, r) : null;
     出.push({
-      id: r.id, 类别: r.kind === "项目" ? "项目" : "客户", 对象: r.targetName, 客户名: 客户名.get(r.customerId) ?? "",
-      异议人: 名.get(r.objectorUserId) ?? "", 理由: r.reason ?? "", 转让原因: 日志.get(r.ownerLogId ?? "")?.reason ?? "",
+      id: r.id, 类别: r.kind === "项目" ? "项目" : r.kind === 合并异议类 ? "项目合并" : "客户", 对象: r.targetName, 客户名: 客户名.get(r.customerId) ?? "",
+      异议人: 名.get(r.objectorUserId) ?? "", 理由: r.reason ?? "", 转让原因: 日志.get(r.ownerLogId ?? r.mergeId ?? "")?.reason ?? "",
       发起人: 名.get(r.operatorUserId) ?? "", 接手人: 名.get(r.toOwnerId) ?? "",
-      转让于: (日志.get(r.ownerLogId ?? "")?.at ?? r.createdAt).toISOString(), 提于: (r.submittedAt ?? r.createdAt).toISOString(), 状态: r.status,
+      转让于: (日志.get(r.ownerLogId ?? r.mergeId ?? "")?.at ?? r.createdAt).toISOString(), 提于: (r.submittedAt ?? r.createdAt).toISOString(), 状态: r.status,
       能自动退: 旧 ? 旧.能自动退 : !评 || 评.自动, 退回说明: 旧 ? 旧.退回说明 : 评 && !评.自动 ? 评.原因 : "",
       ...(r.judgeNote ? { 裁定说明: r.judgeNote } : {}),
       ...(r.judgedById ? { 裁定人: 名.get(r.judgedById) ?? "" } : {}),
@@ -256,7 +275,7 @@ export async function 特殊裁定台账(userId: string, 月?: string | null): P
     const c = 客.get(r.customerId);
     return {
       id: r.id, 裁定于: beijingWallIso(r.judgedAt as Date).slice(0, 16).replace("T", " "),
-      客户名: c ? 客户显名(c) : "", 客户编号: c ? 客户编号显示(c) : "", 项目: r.kind === "项目" ? r.targetName : "（客户）",
+      客户名: c ? 客户显名(c) : "", 客户编号: c ? 客户编号显示(c) : "", 项目: r.kind !== "客户" ? r.targetName : "（客户）",
       类型: r.judgedById === r.operatorUserId ? "本人发起" as const : "本人接手" as const,
       发起人: 名.get(r.operatorUserId) ?? "", 接手人: 名.get(r.toOwnerId) ?? "", 裁定人: 名.get(r.judgedById as string) ?? "",
       异议人: 名.get(r.objectorUserId) ?? "", 异议理由: r.reason ?? "", 结果: 台账结果(r.status), 裁定说明: r.judgeNote ?? "",
@@ -315,7 +334,7 @@ export type 裁定结果 = { ok: true; 结果: "维持" | "撤回" | "待手工�
 /**
  * 裁定：只有裁定人本人；说明必填 ≤200 字；无默认（决定必须是 维持 / 撤回）；同一条只能裁一次（并发只成一次）
  */
-export async function 裁定(me: { id: string; name: string }, id: unknown, 决定: unknown, 说明: unknown, 现在: Date = new Date()): Promise<裁定结果> {
+export async function 裁定(me: { id: string; name: string; role?: string }, id: unknown, 决定: unknown, 说明: unknown, 现在: Date = new Date()): Promise<裁定结果> {
   if (!企业版()) return { ok: false, error: "这个功能只有企业版有" };
   if (typeof id !== "string" || !id) return { ok: false, error: "没找到这条异议" };
   if (决定 !== "维持" && 决定 !== "撤回") return { ok: false, error: "请选择维持或撤回" };
@@ -335,8 +354,9 @@ export async function 裁定(me: { id: string; name: string }, id: unknown, 决�
 
   let 终态: string = 异议维持;
   type 退了 = { 项目数: number; 退了客户: boolean; 计划数?: number; 待办数?: number };
-  const 盒: { 退: 退了 | null } = { 退: null };
+  const 盒: { 退: 退了 | null; 合并: { 客户: string; 通知: Awaited<ReturnType<typeof 在事务里撤回项目合并>>["通知"] } | null } = { 退: null, 合并: null };
   let 手工原因 = "";
+  const 开 = 行.kind === 合并异议类 ? await 客户状态自动() : false;
   try {
     await 查完再写(async (tx) => {
       let 状态: string = 异议维持;
@@ -352,7 +372,19 @@ export async function 裁定(me: { id: string; name: string }, id: unknown, 决�
       });
       if (r.count !== 1) throw new 裁定拦("这一条已经裁定过了，刷新看看");
       终态 = 状态;
-      if (评?.自动) 盒.退 = await 执行退回(tx, 行, 评, me.id, 话);
+      if (评?.自动 && 评.合并单) {
+        // 项目合并类：同事务撤回这张合并单（谁撤 = 裁定人；30 天不再校，其余前置在 评估退回 / 事务里再核）；这一行已是撤回态，不会被「终止」覆盖
+        const m = await tx.entCustomerMerge.findUnique({ where: { id: 评.合并单 } });
+        if (!m || m.status !== "已合并") throw new 裁定拦("这次合并刚被撤回，请刷新再裁定");
+        try {
+          const 撤 = await 看已删(() => 看全部(() => 在事务里撤回项目合并(tx, m, { ...me, role: me.role ?? "" }, 现在, 开, true, 行.id)));
+          盒.合并 = { 客户: 撤.客户, 通知: 撤.通知 };
+          盒.退 = { 项目数: 0, 退了客户: false };
+        } catch (e) {
+          if (e instanceof 拦下) throw new 裁定拦(e.message);
+          throw e;
+        }
+      } else if (评?.自动) 盒.退 = await 执行退回(tx, 行, 评, me.id, 话);
       else if (评) 手工原因 = 评.原因;
     }, { timeout: 30_000 });
   } catch (e) {
@@ -365,28 +397,39 @@ export async function 裁定(me: { id: string; name: string }, id: unknown, 决�
   const 异议人 = 名.get(行.objectorUserId) ?? "";
   const 发起人 = 名.get(行.operatorUserId) ?? "";
   const 接手人 = 名.get(行.toOwnerId) ?? "";
-  await recordAudit({
+  const 事 = 事of(行.kind);
+  const 裁定摘要 = `${事}异议裁定：${异议人}对${话of(行)}的异议，${本人裁定标注(是发起人, 是接手人, 裁定人们)}${me.name}裁定「${决定}」${终态 === 异议待手工退回 ? (事 === "合并" ? "（不满足自动撤回，待系统管理员手工撤回合并）" : "（不满足自动退回，待系统管理员手工退回）") : ""}：${话}`;
+  const 裁定明细 = { 合并单: 行.mergeId, 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 异议理由: 行.reason, 裁定: 决定, 结果: 终态, 裁定说明: 话, ...(是发起人 ? { 类型: "本人发起", 本人发起: true, 本人裁定: true } : {}), ...(是接手人 ? { 类型: "本人接手", 本人接手: true, 本人裁定: true } : {}), ...(退 ? { 退回: 退 } : {}), ...(手工原因 ? { 待手工原因: 手工原因 } : {}) };
+  if (行.kind === 合并异议类) await 记合并异议留痕(me, 行, "objection-judge", 裁定摘要, 裁定明细);
+  else await recordAudit({
     user: me, action: "update", entity: "Customer", entityId: 行.customerId,
-    summary: `转让异议裁定：${异议人}对${话of(行)}的异议，${本人裁定标注(是发起人, 是接手人, 裁定人们)}${me.name}裁定「${决定}」${终态 === 异议待手工退回 ? "（不满足自动退回，待系统管理员手工退回）" : ""}：${话}`,
+    summary: 裁定摘要,
     detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 异议理由: 行.reason, 裁定: 决定, 结果: 终态, 裁定说明: 话, ...(是发起人 ? { 类型: "本人发起", 本人发起: true, 本人裁定: true } : {}), ...(是接手人 ? { 类型: "本人接手", 本人接手: true, 本人裁定: true } : {}), ...(退 ? { 退回: 退 } : {}), ...(手工原因 ? { 待手工原因: 手工原因 } : {}) },
   }).catch((e) => console.warn("[异议] 裁定留痕没写上：", e));
 
   const 链 = "/objections";
   const 裁 = `${me.name} 裁定「${决定}」`;
   if (终态 === 异议维持) {
-    await notify([行.objectorUserId], { kind: "异议", title: `你对${话of(行)}的转让异议已裁定：维持（${me.name}），仍归${接手人}`, body: `裁定说明：${话}`, link: 链, key: `objection-done:${行.id}:objector` });
-    await notify([行.operatorUserId], { kind: "异议", title: `${异议人}对${话of(行)}的转让异议已裁定：维持（${me.name}）`, body: `裁定说明：${话}`, link: 链, key: `objection-done:${行.id}:operator` });
+    await notify([行.objectorUserId], { kind: "异议", title: `你对${话of(行)}的${事}异议已裁定：维持（${me.name}）${事 === "合并" ? "，合并不动" : `，仍归${接手人}`}`, body: `裁定说明：${话}`, link: 链, key: `objection-done:${行.id}:objector` });
+    await notify([行.operatorUserId], { kind: "异议", title: `${异议人}对${话of(行)}的${事}异议已裁定：维持（${me.name}）`, body: `裁定说明：${话}`, link: 链, key: `objection-done:${行.id}:operator` });
     return { ok: true, 结果: "维持", 说: "已裁定：维持，已通知异议人和发起人" };
   }
   if (终态 === 异议待手工退回) {
-    await notify([行.objectorUserId], { kind: "异议", title: `你对${话of(行)}的转让异议已裁定：撤回（${me.name}），等系统管理员手工退回`, body: `裁定说明：${话}\n${手工原因}`, link: 链, key: `objection-done:${行.id}:objector` });
-    await notify([行.operatorUserId], { kind: "异议", title: `${异议人}对${话of(行)}的转让异议已裁定：撤回（${me.name}），等系统管理员手工退回`, body: `裁定说明：${话}\n${手工原因}`, link: 链, key: `objection-done:${行.id}:operator` });
+    await notify([行.objectorUserId], { kind: "异议", title: `你对${话of(行)}的${事}异议已裁定：撤回（${me.name}），等系统管理员手工退回`, body: `裁定说明：${话}\n${手工原因}`, link: 链, key: `objection-done:${行.id}:objector` });
+    await notify([行.operatorUserId], { kind: "异议", title: `${异议人}对${话of(行)}的${事}异议已裁定：撤回（${me.name}），等系统管理员手工退回`, body: `裁定说明：${话}\n${手工原因}`, link: 链, key: `objection-done:${行.id}:operator` });
     const org = await 读组织();
     await notify(org ? 系统管理员们(org) : [], {
       kind: "异议", title: `待手工退回：${话of(行)}（${发起人} 转给 ${接手人}，${异议人}提的异议已${裁}）`,
-      body: `${手工原因}\n裁定说明：${话}\n请手工退回原负责人${异议人}后，在「转让异议」页点「已手工退回」留痕。`, link: "/objections?tab=hand", key: `objection-hand:${行.id}`,
+      body: `${手工原因}\n裁定说明：${话}\n${事 === "合并" ? `请手工撤回这次合并（在被并项目的合并记录里撤回）后，在「异议」页点「已手工退回」留痕。` : `请手工退回原负责人${异议人}后，在「转让异议」页点「已手工退回」留痕。`}`, link: "/objections?tab=hand", key: `objection-hand:${行.id}`,
     });
     return { ok: true, 结果: "待手工退回", 说: "已裁定：撤回。不满足自动退回的条件，已通知系统管理员手工退回" };
+  }
+  if (盒.合并) {
+    // 合并类自动撤回：被并走的原负责人（异议人）收「已撤回合并」那条（发撤回通知），再加裁定结果；发起人、留下负责人也知会
+    await 存沟通后重算三态(盒.合并.客户, 现在).catch((e) => console.warn("[异议裁定撤回合并] 三态没重算上：", e instanceof Error ? e.message : e));
+    await 发撤回通知(盒.合并.通知);
+    await 通知退回完(行, me.name, 话, "自动");
+    return { ok: true, 结果: "撤回", 说: `已裁定：撤回，这次合并已撤回，「${行.targetName}」回到${异议人}名下，并通知各方` };
   }
   await 通知退回完(行, me.name, 话, "自动");
   return { ok: true, 结果: "撤回", 说: `已裁定：撤回，已退回${异议人}${退?.项目数 ? `（含 ${退.项目数} 个项目）` : ""}${退?.计划数 || 退?.待办数 ? `，客户上的 ${退.计划数 ?? 0} 条计划、${退.待办数 ?? 0} 条待办一并退回` : ""}，并通知各方` };
@@ -397,11 +440,12 @@ async function 通知退回完(行: EntTransferObjection, 谁: string, 说明: s
   const 名 = await 名们of([行.objectorUserId, 行.operatorUserId, 行.toOwnerId]);
   const c = await 看全部(() => 看已删(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { salesOwnerId: true } })));
   const 异议人 = 名.get(行.objectorUserId) ?? "";
+  const 事 = 事of(行.kind);
   const 头 = `${话of(行)}已退回${异议人}（异议裁定撤回，${方式 === "手工" ? "系统管理员手工退回" : `${谁}裁定`}）`;
   const body = `裁定说明：${说明}`;
   const 链 = "/objections";
-  await notify([行.objectorUserId], { kind: "异议", title: `你对${话of(行)}的转让异议已裁定：撤回，已退回给你`, body, link: 链, key: `objection-done:${行.id}:objector${方式 === "手工" ? ":hand" : ""}` });
-  await notify([行.operatorUserId], { kind: "异议", title: `${异议人}对${话of(行)}的转让异议已撤回，${头}`, body, link: 链, key: `objection-done:${行.id}:operator${方式 === "手工" ? ":hand" : ""}` });
+  await notify([行.objectorUserId], { kind: "异议", title: `你对${话of(行)}的${事}异议已裁定：撤回，已退回给你`, body, link: 链, key: `objection-done:${行.id}:objector${方式 === "手工" ? ":hand" : ""}` });
+  await notify([行.operatorUserId], { kind: "异议", title: `${异议人}对${话of(行)}的${事}异议已撤回，${头}`, body, link: 链, key: `objection-done:${行.id}:operator${方式 === "手工" ? ":hand" : ""}` });
   await notify([行.toOwnerId], { kind: "异议", title: `${头}，不再归你`, body, link: 链, key: `objection-done:${行.id}:taker${方式 === "手工" ? ":hand" : ""}` });
   if (c?.salesOwnerId) await notify([c.salesOwnerId], { kind: "异议", title: `${头}（你是这位客户的负责人）`, body, link: 链, key: `objection-done:${行.id}:owner${方式 === "手工" ? ":hand" : ""}` });
 }
@@ -442,13 +486,17 @@ export async function 标记已手工退回(me: { id: string; name: string }, id
   if (话.length > 裁定说明上限) return { ok: false, error: `说明最多 ${裁定说明上限} 字` };
   const 行 = await prisma.entTransferObjection.findUnique({ where: { id } });
   if (!行 || 行.status !== 异议待手工退回) return { ok: false, error: "这一条不在待手工退回里了，刷新看看" };
+  if (行.kind === 合并异议类) {
+    // 合并类：要先把合并单撤回了才能记已退回
+    const m = 行.mergeId ? await 看全部(() => prisma.entCustomerMerge.findUnique({ where: { id: 行.mergeId! }, select: { status: true } })) : null;
+    if (m?.status !== "已撤回") return { ok: false, error: "这次合并还没撤回，请先在被并项目的合并记录里撤回合并，再点已手工退回" };
+  }
   const r = await prisma.entTransferObjection.updateMany({ where: { id: 行.id, status: 异议待手工退回 }, data: { status: 异议已退回, judgeNote: `${行.judgeNote ?? ""}${行.judgeNote ? "；" : ""}手工退回：${话}`.slice(0, 600) } });
   if (r.count !== 1) return { ok: false, error: "这一条已经有人处理了，刷新看看" };
-  await recordAudit({
-    user: me, action: "update", entity: "Customer", entityId: 行.customerId,
-    summary: `转让异议：${话of(行)}由${me.name}手工退回${(await 名们of([行.objectorUserId])).get(行.objectorUserId) ?? ""}：${话}`,
-    detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 手工退回说明: 话, 时间: 现在.toISOString() },
-  }).catch((e) => console.warn("[异议] 手工退回留痕没写上：", e));
+  const 手工摘要 = `${事of(行.kind)}异议：${话of(行)}由${me.name}手工退回${(await 名们of([行.objectorUserId])).get(行.objectorUserId) ?? ""}：${话}`;
+  const 手工明细 = { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 手工退回说明: 话, 时间: 现在.toISOString() };
+  if (行.kind === 合并异议类) await 记合并异议留痕(me, 行, "objection-judge", 手工摘要, { ...手工明细, 合并单: 行.mergeId });
+  else await recordAudit({ user: me, action: "update", entity: "Customer", entityId: 行.customerId, summary: 手工摘要, detail: 手工明细 }).catch((e) => console.warn("[异议] 手工退回留痕没写上：", e));
   await 通知退回完({ ...行, status: 异议已退回 }, me.name, 话, "手工");
   return { ok: true };
 }

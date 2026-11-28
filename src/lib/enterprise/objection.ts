@@ -16,8 +16,8 @@ import { notify } from "./notify";
 import { 读组织 } from "./org";
 import { 客户显名, 显名列 } from "./customer-title";
 import type { 同事待分配条 } from "./notice-sources";
-import { 异议可提, 异议已撤销, 异议待裁定, 异议理由上限, 异议截止, 异议期天数, 算裁定人, type 裁定人结果 } from "./objection-core";
-import type { EntTransferObjection } from "@/generated/prisma";
+import { 合并异议类, 事of, 异议可提, 异议已撤销, 异议待裁定, 异议理由上限, 异议截止, 异议期天数, 算裁定人, type 裁定人结果 } from "./objection-core";
+import type { EntTransferObjection, Prisma } from "@/generated/prisma";
 
 export type 异议入口们 = {
   /** 被换掉的客户负责人 → 他那几条客户异议行 */
@@ -83,24 +83,60 @@ export async function 记转让异议入口(操作人: { id: string; name: strin
   return 出;
 }
 
+/**
+ * 跨负责人项目合并成功的同一事务里调（阶段 4）：给被并走项目的原负责人记一行「可提」（30 天，从合并那一刻起）。
+ * 挂在合并单上（mergeId = EntCustomerMerge.id，ownerLogId 空）；projectId = 留下项目 A（冻结、超时转跳过都按它匹配），targetKey = 被并项目 B 的 id。
+ * 不记行：原负责人就是让合并生效的人 / 发起人（点合并的人自己）、就是留下负责人（同负责人没有被换掉的人）、已停用。返回行 id（给并后通知带入口），不记 = null。
+ * 在事务里调：崩在中间不会丢入口（终审改）
+ */
+export async function 记项目合并异议入口(
+  tx: Pick<Prisma.TransactionClient, "entTransferObjection" | "user">,
+  p: { mergeId: string; A: { id: string; name: string | null; customerId: string; ownerId: string | null }; B: { id: string; name: string | null; ownerId: string | null }; 生效人: string; 发起人: string; 现在: Date },
+): Promise<string | null> {
+  if (!企业版()) return null;
+  const 原 = p.B.ownerId;
+  if (!原 || !p.A.ownerId || 原 === p.A.ownerId || 原 === p.生效人 || 原 === p.发起人) return null;
+  const 在职 = (await tx.user.findUnique({ where: { id: 原 }, select: { active: true } }))?.active === true;
+  if (!在职) return null;
+  const r = await tx.entTransferObjection.upsert({
+    where: { mergeId_objectorUserId_targetKey: { mergeId: p.mergeId, objectorUserId: 原, targetKey: p.B.id } },
+    create: {
+      mergeId: p.mergeId, customerId: p.A.customerId, projectId: p.A.id, kind: 合并异议类, targetKey: p.B.id, targetName: (p.B.name || "未命名项目").slice(0, 120),
+      objectorUserId: 原, operatorUserId: p.生效人, toOwnerId: p.A.ownerId, expiresAt: 异议截止(p.现在),
+    },
+    update: {},
+    select: { id: true },
+  });
+  return r.id;
+}
+
+/** 合并类异议的留痕：被并项目（targetKey）和留下项目（projectId）各记一行；任何一条写不上只记日志 */
+export async function 记合并异议留痕(user: { id: string; name: string }, 行: Pick<EntTransferObjection, "projectId" | "targetKey">, action: string, summary: string, detail: unknown): Promise<void> {
+  for (const id of [...new Set([行.targetKey, 行.projectId].filter((x): x is string => !!x))]) {
+    await recordAudit({ user, action, entity: "Project", entityId: id, summary, detail }).catch((e) => console.warn("[异议] 合并留痕没写上：", e));
+  }
+}
+
 export type 异议行 = {
-  id: string; 类别: "客户" | "项目"; 对象: string; 状态: string; 操作人: string; 新负责人: string;
+  id: string; 类别: "客户" | "项目" | "项目合并"; 对象: string; 状态: string; 操作人: string; 新负责人: string;
   转让于: string; 截止: string; 剩几天: number; 过期: boolean;
   理由?: string; 裁定人?: string; 裁定角色?: string; 裁定说明?: string;
 };
 
 /** 按当前组织重算一批异议的裁定人（口径 A2 / B1：停用、调岗的不算，去掉发起人和接手人）；组织、客户线、转让前负责人各一次批量读 */
-export async function 重算裁定人们(行们: readonly Pick<EntTransferObjection, "id" | "customerId" | "ownerLogId" | "operatorUserId" | "objectorUserId" | "toOwnerId">[]): Promise<Map<string, 裁定人结果>> {
+export async function 重算裁定人们(行们: readonly (Pick<EntTransferObjection, "id" | "customerId" | "ownerLogId" | "operatorUserId" | "objectorUserId" | "toOwnerId"> & { mergeId?: string | null })[]): Promise<Map<string, 裁定人结果>> {
   const 出 = new Map<string, 裁定人结果>();
   if (!行们.length) return 出;
   const org = await 读组织();
-  const [日志们, 客户们] = await Promise.all([
+  const 合并ids = [...new Set(行们.flatMap((r) => (!r.ownerLogId && r.mergeId ? [r.mergeId] : [])))];
+  const [日志们, 客户们, 合并们] = await Promise.all([
     prisma.customerOwnerLog.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => (r.ownerLogId ? [r.ownerLogId] : [])))] } }, select: { id: true, fromOwnerId: true } }),
     看全部(() => prisma.customer.findMany({ where: { id: { in: [...new Set(行们.map((r) => r.customerId))] } }, select: { id: true, bizLine: true } })),
+    合并ids.length ? 看全部(() => prisma.entCustomerMerge.findMany({ where: { id: { in: 合并ids } }, select: { id: true, fromOwnerId: true } })) : [],
   ]);
-  const 原 = new Map(日志们.map((l) => [l.id, l.fromOwnerId]));
+  const 原 = new Map<string, string | null>([...日志们.map((l) => [l.id, l.fromOwnerId] as const), ...合并们.map((m) => [m.id, m.fromOwnerId] as const)]);
   const 线 = new Map(客户们.map((c) => [c.id, c.bizLine]));
-  for (const r of 行们) 出.set(r.id, 算裁定人(org, r.operatorUserId, 线.get(r.customerId), 原.get(r.ownerLogId ?? "") ?? r.objectorUserId, r.objectorUserId, r.toOwnerId));
+  for (const r of 行们) 出.set(r.id, 算裁定人(org, r.operatorUserId, 线.get(r.customerId), 原.get(r.ownerLogId ?? r.mergeId ?? "") ?? r.objectorUserId, r.objectorUserId, r.toOwnerId));
   return 出;
 }
 
@@ -118,7 +154,7 @@ export async function 我的异议(userId: string, 现在: Date = new Date()): P
   const ids = [...new Set(行们.flatMap((r) => [r.operatorUserId, r.toOwnerId, ...裁们of(r)]))];
   const 名 = new Map((await prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]));
   const 转 = (r: (typeof 行们)[number]): 异议行 => ({
-    id: r.id, 类别: r.kind === "项目" ? "项目" : "客户", 对象: r.targetName, 状态: r.status, 操作人: 名.get(r.operatorUserId) ?? "", 新负责人: 名.get(r.toOwnerId) ?? "",
+    id: r.id, 类别: r.kind === "项目" ? "项目" : r.kind === 合并异议类 ? "项目合并" : "客户", 对象: r.targetName, 状态: r.status, 操作人: 名.get(r.operatorUserId) ?? "", 新负责人: 名.get(r.toOwnerId) ?? "",
     转让于: r.createdAt.toISOString(), 截止: r.expiresAt.toISOString(), 剩几天: 剩几天(r.expiresAt, 现在), 过期: r.expiresAt < 现在,
     ...(r.reason ? { 理由: r.reason } : {}),
     ...(r.judgeIds ? { 裁定人: 裁们of(r).map((x) => 名.get(x) ?? "").filter(Boolean).join("、") } : {}),
@@ -140,15 +176,19 @@ export async function 提异议(me: { id: string; name: string }, id: unknown, �
   const 行 = await prisma.entTransferObjection.findUnique({ where: { id } });
   // 别人的入口当没有，不透露存在
   if (!行 || 行.objectorUserId !== me.id) return { ok: false, error: "没找到这条异议入口" };
-  if (行.status === 异议已撤销) return { ok: false, error: "这次转让已被撤销，不用再提异议" };
+  const 合并类 = 行.kind === 合并异议类;
+  if (行.status === 异议已撤销) return { ok: false, error: 合并类 ? "这次合并已撤回，不用再提异议" : "这次转让已被撤销，不用再提异议" };
   if (行.status !== 异议可提) return { ok: false, error: "这一条已经提过异议了，等裁定" };
   if (现在 > 行.expiresAt) return { ok: false, error: `已超过 ${异议期天数} 天异议期，不能再提；有问题请直接找系统管理员` };
   const org = await 读组织();
-  const [日志, 客户] = await Promise.all([
+  const [日志, 客户, 合并单] = await Promise.all([
     prisma.customerOwnerLog.findUnique({ where: { id: 行.ownerLogId ?? "" }, select: { fromOwnerId: true } }),
     prisma.customer.findUnique({ where: { id: 行.customerId }, select: { bizLine: true } }),
+    合并类 && 行.mergeId ? 看全部(() => prisma.entCustomerMerge.findUnique({ where: { id: 行.mergeId! }, select: { status: true, fromOwnerId: true } })) : null,
   ]);
-  const 裁 = 算裁定人(org, 行.operatorUserId, 客户?.bizLine, 日志?.fromOwnerId ?? me.id, me.id, 行.toOwnerId);
+  // 合并类：合并单已撤回（入口本该已作废，兜底再核一遍）
+  if (合并类 && 合并单?.status !== "已合并") return { ok: false, error: "这次合并已撤回，不用再提异议" };
+  const 裁 = 算裁定人(org, 行.operatorUserId, 客户?.bizLine, (合并类 ? 合并单?.fromOwnerId : 日志?.fromOwnerId) ?? me.id, me.id, 行.toOwnerId);
   if (!裁.ids.length) return { ok: false, error: "找不到裁定人，请联系系统管理员" };
   // 并发 / 双击：只有第一次把「可提」改成「待裁定」，后到的命中 0 行
   const r = await prisma.entTransferObjection.updateMany({
@@ -157,18 +197,19 @@ export async function 提异议(me: { id: string; name: string }, id: unknown, �
   });
   if (r.count !== 1) {
     const 现 = await prisma.entTransferObjection.findUnique({ where: { id: 行.id }, select: { status: true } });
-    return { ok: false, error: 现?.status === 异议已撤销 ? "这次转让已被撤销，不用再提异议" : "这一条已经提过异议了，等裁定" };
+    return { ok: false, error: 现?.status === 异议已撤销 ? (合并类 ? "这次合并已撤回，不用再提异议" : "这次转让已被撤销，不用再提异议") : "这一条已经提过异议了，等裁定" };
   }
   const 人们 = await prisma.user.findMany({ where: { id: { in: [...裁.ids, 行.operatorUserId, 行.toOwnerId] } }, select: { id: true, name: true, active: true } });
   const 名 = new Map(人们.map((u) => [u.id, u.name]));
-  await recordAudit({
-    user: me, action: "assign", entity: "Customer", entityId: 行.customerId,
-    summary: `${me.name} 对${行.kind}「${行.targetName}」的转让提了异议，由${裁.角色}裁定${裁.本人发起 ? "（本人发起、无人回避）" : ""}${裁.本人接手 ? "（本人接手、本人裁定（无人回避））" : ""}`,
-    detail: { 异议: 行.id, 换负责人记录: 行.ownerLogId, 对象: 行.targetKey, 理由: 话, 裁定人: 裁.ids, ...(裁.本人发起 ? { 本人发起: true } : {}), ...(裁.本人接手 ? { 本人接手: true } : {}) },
-  }).catch((e) => console.warn("[异议] 留痕没写上：", e));
+  const 摘要 = `${me.name} 对${行.kind}「${行.targetName}」的${事of(行.kind)}提了异议，由${裁.角色}裁定${裁.本人发起 ? "（本人发起、无人回避）" : ""}${裁.本人接手 ? "（本人接手、本人裁定（无人回避））" : ""}`;
+  const 明细 = { 异议: 行.id, 换负责人记录: 行.ownerLogId, 合并单: 行.mergeId, 对象: 行.targetKey, 理由: 话, 裁定人: 裁.ids, ...(裁.本人发起 ? { 本人发起: true } : {}), ...(裁.本人接手 ? { 本人接手: true } : {}) };
+  if (合并类) await 记合并异议留痕(me, 行, "objection", 摘要, 明细);
+  else await recordAudit({ user: me, action: "assign", entity: "Customer", entityId: 行.customerId, summary: 摘要, detail: 明细 }).catch((e) => console.warn("[异议] 留痕没写上：", e));
   await notify(人们.filter((u) => 裁.ids.includes(u.id) && u.active).map((u) => u.id), {
     kind: "异议",
-    title: `${me.name} 对${行.kind}「${行.targetName}」的转让提了异议，请你裁定（${名.get(行.operatorUserId) ?? ""} 转给 ${名.get(行.toOwnerId) ?? ""}）`,
+    title: 合并类
+      ? `${me.name} 对${行.kind}「${行.targetName}」的合并提了异议，请你裁定（${名.get(行.operatorUserId) ?? ""} 并入了 ${名.get(行.toOwnerId) ?? ""} 的项目）`
+      : `${me.name} 对${行.kind}「${行.targetName}」的转让提了异议，请你裁定（${名.get(行.operatorUserId) ?? ""} 转给 ${名.get(行.toOwnerId) ?? ""}）`,
     body: `理由：${话}`,
     link: "/objections",
     key: `objection:${行.id}`,
