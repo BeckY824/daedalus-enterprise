@@ -13,4 +13,4 @@ n=$(find "$d" -name 'vitest-timing-*.json' | wc -l | tr -d ' ')
 find "$d" -name 'vitest-timing-*.json' -print0 | xargs -0 cat | jq -s '
   [.[].testResults[] | {key: (.name | sub("^.*/tests/"; "tests/")), value: (((.endTime - .startTime) / 1000 * 10 | round) / 10)}]
   | from_entries' > scripts/ci/unit-timing.json
-echo "已刷新 run $run：$(jq 'length' scripts/ci/unit-timing.json) 个文件"
+echo "已刷新 run ${run}：$(jq 'length' scripts/ci/unit-timing.json) 个文件"
