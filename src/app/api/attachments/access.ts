@@ -15,6 +15,7 @@ import { 能删除, 能改客户, 没设业务角色, 只读角色, 只读话of,
 import { 只有总管理能删话 } from "@/lib/enterprise/soft-delete";
 import { 能往项目记沟通, 核售后回访 } from "@/lib/project/follow-needs-project";
 import { 是交付 } from "@/lib/project/stage-dict";
+import { 只有负责人能改话 } from "@/lib/enterprise/project-owner-only-words";
 
 /**
  * ?opportunityId= / ?leadId= / ?contactId= / ?projectId= / ?followUpId=，多选一（沟通记录的截图、录音 10-31 F-跟进-07）。
@@ -106,7 +107,7 @@ async function 认项目(projectId: string, 要改: boolean): Promise<{ 叫法: 
   const 底 = await 认项目看(projectId);
   if ("错" in 底) return 底;
   const { 我, p } = 底;
-  if (要改 && !能管项目(我, p, await 权限组织())) return { 错: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改", 状态: 403 };
+  if (要改 && !能管项目(我, p, await 权限组织())) return { 错: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人能改话 : "只有项目负责人、老板或主管能改", 状态: 403 };
   return { 叫法: `项目「${p.name}」` };
 }
 /** 认项目 的「看」那半：看得到就给我和项目（要改 再在上面判 能管项目）。项目附件入口 看、改一起问，只走一遍这半（11-12 客户详情速度） */

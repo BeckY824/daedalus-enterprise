@@ -98,6 +98,7 @@ import { 有字 } from "@/lib/form-draft";
 import { 动作出错话, 出错原话, 刷新再提交话 } from "@/lib/stale-deploy";
 import { 本人改沟通过时话, 本人改过时提示, 改格不收, 不能再改话 } from "@/lib/enterprise/follow-edit-text";
 import type { 项目关联 } from "@/lib/project/relate";
+import { 只有负责人能改看话 } from "@/lib/enterprise/project-owner-only-words";
 
 export type 项目详情 = {
   id: string; name: string; remark: string | null; amount: number; currency: string;
@@ -690,7 +691,7 @@ export default function ProjectDetail({
   const 异常 = p.result === "异常状态";
   const 可改 = 能改 && !p.pooled;
   // 企业版 11-01：只有负责人能改内容，总管理、上级、组员都只能看
-  const 改不了话 = p.企业版 ? "只有项目负责人能改，其他人只能看" : "只有项目负责人、老板或主管能改";
+  const 改不了话 = p.企业版 ? 只有负责人能改看话 : "只有项目负责人、老板或主管能改";
   const 不能改 = p.pooled ? "这个项目在线索公海里，领取了才能改" : 能改 ? undefined : 改不了话;
   const 节点可改 = p.能改节点 && !p.pooled;
   const 节点不能改 = p.能改节点 ? (p.pooled ? 不能改 : undefined) : 不能改;
