@@ -36,7 +36,6 @@ import { 通号种类, 号键变体, 通号键, 撞号怎么办, 回收站话, �
 import { 全角转半角 } from "@/lib/fullwidth";
 import { 号码归属地 } from "./phone-region";
 import { 拦原负责人 } from "./pool-rules";
-import { 回避豁免 } from "@/lib/project/pool-owner";
 import { 离职负责人找谁 } from "./departed-owner";
 import { 看已删, 在看已删 } from "./soft-delete-core";
 
