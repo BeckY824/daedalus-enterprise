@@ -7,6 +7,7 @@
  */
 import { cache } from "react";
 import { prisma } from "@/lib/prisma";
+import { 查完再写 } from "@/lib/check-then-write";
 import { 系统写 } from "@/lib/team-scope";
 import { 视图中跳过 } from "./view-as";
 import type { EntDictItem, Prisma } from "@/generated/prisma";
@@ -33,7 +34,10 @@ const 默认id = (kind: 字典种类, i: number) => 号id(kind, 默认号of(kind
 
 type 结果 = { ok: true } | { ok: false; error: string };
 
-/** 几个人同时第一次读同一类时，别人刚建好的那项会撞唯一键 = 已经有了，跳过（10-30 CI 压测撞出来的） */
+/**
+ * 几个人同时第一次读同一类时，别人刚建好的那项会撞唯一键 = 已经有了，跳过（10-30 CI 压测撞出来的）。
+ * 注意：吞 P2002 依赖 SQLite 语句级回滚——撞键的那条语句自己回滚、外层事务照常可继续；换成别的库（整个事务作废）这里要改
+ */
 async function 建了就算(建: PromiseLike<unknown>) {
   try {
     await 建;
@@ -63,7 +67,7 @@ async function 企业字典本体(kind: 字典种类, db: Prisma.TransactionClie
     await 删多出的旧默认(kind, db);
   }
   // 补缺那段「查最大排序 → 逐个建」包进一笔事务，两个人同时第一次读客户类型时不交错（调用方已给事务就沿用）
-  if (kind === "custType") await (db === prisma ? prisma.$transaction((tx) => 并入客户属性(tx)) : 并入客户属性(db));
+  if (kind === "custType") await (db === prisma ? 查完再写((tx) => 并入客户属性(tx)) : 并入客户属性(db));
   if ((await db.entDictItem.count({ where: { kind } })) === 0) {
     for (const [i, name] of 字典定义[kind].默认.entries()) {
       await 建了就算(db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: 默认位置(kind, i), active: !停用.includes(name) } }));
@@ -532,7 +536,7 @@ export async function 加字典项(me: { id: string; role: string }, kind: unkno
   await 企业字典(k);
   // 查同名、查最大排序、写：一笔事务里做完；同时加同名的，后到的撞唯一键，回「已经有了」不抛
   try {
-    return await prisma.$transaction(async (tx) => {
+    return await 查完再写(async (tx) => {
       const 有 = await tx.entDictItem.findUnique({ where: { kind_name: { kind: k, name: n } } });
       if (有) {
         if (有.active) return { ok: false as const, error: `已经有「${n}」了` };
@@ -544,7 +548,9 @@ export async function 加字典项(me: { id: string; role: string }, kind: unkno
       return { ok: true as const, id: r.id };
     });
   } catch (e) {
-    if ((e as { code?: string })?.code === "P2002") return { ok: false, error: `已经有「${n}」了` };
+    const t = (e as { meta?: { target?: unknown } } | null)?.meta?.target;
+    const 撞名 = Array.isArray(t) ? t.some((x) => String(x).includes("name")) : typeof t === "string" ? t.includes("name") : true;
+    if ((e as { code?: string })?.code === "P2002" && 撞名) return { ok: false, error: `已经有「${n}」了` };
     throw e;
   }
 }

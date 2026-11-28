@@ -5,6 +5,7 @@ import { hasVisibleText } from "@/lib/form-validation";
 import { 版本冲突, 版本条件 } from "@/lib/edit-version";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/prisma";
+import { 查完再写 } from "@/lib/check-then-write";
 import { 认回打码号, 录入电话 } from "@/lib/phone";
 import { requireUser } from "@/lib/auth";
 import { recordAudit } from "@/lib/audit";
@@ -329,12 +330,12 @@ export async function saveMainChannel(input: {
     // 查最大排序 + 写在一笔事务里；查完到写之间别处刚建了同名主渠道，撞唯一键回友好话，不抛
     let m: { id: string };
     try {
-      m = await prisma.$transaction(async (tx) => {
+      m = await 查完再写(async (tx) => {
         const 最后 = await tx.entChannelMain.aggregate({ _max: { sort: true } });
         return tx.entChannelMain.create({ data: { name, ...开关, sort: (最后._max.sort ?? 0) + 1 } });
       });
     } catch (e) {
-      if ((e as { code?: string })?.code === "P2002") return { ok: false, error: `主渠道「${name}」已存在` };
+      if ((e as { code?: string })?.code === "P2002" && 撞的是名字(e)) return { ok: false, error: `主渠道「${name}」已存在` };
       throw e;
     }
     await recordAudit({ user: me, action: "create", entity: "EntChannelMain", entityId: m.id, summary: `新建主渠道「${name}」` });
@@ -356,7 +357,7 @@ export async function saveMainChannel(input: {
     if (重) return { ok: false, error: `改名后「${x.新}」和已有渠道重名，请先处理那个渠道` };
   }
   try {
-    await prisma.$transaction(async (tx) => {
+    await 查完再写(async (tx) => {
       await tx.entChannelMain.update({ where: { id: input.id }, data: { name, ...开关 } });
       // 先挪到临时名再改成新名，防止两个子渠道新旧名字互换时撞唯一约束
       for (const x of 新全称) await tx.channel.update({ where: { id: x.id }, data: { name: `__改名中__${x.id}` } });
@@ -499,4 +500,10 @@ export async function deleteChannelInvest(id: string): Promise<{ ok: true } | { 
   });
   revalidatePath("/channels");
   return { ok: true };
+}
+
+/** P2002 的 meta.target 含 name（唯一键是名字）才算「同名已存在」；别的唯一键撞了照抛 */
+function 撞的是名字(e: unknown): boolean {
+  const t = (e as { meta?: { target?: unknown } } | null)?.meta?.target;
+  return Array.isArray(t) ? t.some((x) => String(x).includes("name")) : typeof t === "string" ? t.includes("name") : true;
 }
