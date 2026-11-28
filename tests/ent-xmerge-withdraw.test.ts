@@ -17,7 +17,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
-import { 撤回项目合并, 执行项目合并, 项目合并通知种类 } from "@/lib/enterprise/project-merge";
+import { 撤回项目合并, 执行项目合并, 项目合并通知种类, 项目合并撤回过期话 } from "@/lib/enterprise/project-merge";
 import { 发起跨负责人并, 处理跨并申请 } from "@/lib/enterprise/project-merge-request";
 
 type 人 = { id: string; name: string; role: string };
@@ -96,7 +96,7 @@ describe("E-484 1：撤回跨负责人合并一律通知被并走的原负责人
     return { a, b, mergeId: r.mergeId };
   };
   for (const [谁, 取人] of [["发起人", () => 乙], ["确认人", () => 销管], ["系统管理员", () => 老板]] as const) {
-    it(`${谁}撤：原负责人收到站内通知（链到回来的项目）+ 两个项目各有一条通知留痕`, async () => {
+    it(`${谁}撤：原负责人收到站内通知（链到回来的项目）+ 被并走的项目 B 上有一条通知留痕`, async () => {
       const { b, mergeId } = await 并好("申请");
       expect(await 撤回项目合并(prisma, mergeId, 取人())).toMatchObject({ ok: true });
       await 等通知推完();
@@ -114,18 +114,34 @@ describe("E-484 1：撤回跨负责人合并一律通知被并走的原负责人
   });
   it("原负责人自己撤（系统管理员兼）不给自己发", async () => {
     const { b, mergeId } = await 并好("申请");
-    await raw.project.update({ where: { id: b }, data: { ownerId: 丙.id } });
-    expect(await 撤回项目合并(prisma, mergeId, 老板)).toMatchObject({ ok: true });
-    expect(await 通知们(乙.id)).toHaveLength(0);
+    // 丙（原负责人）兼系统管理员，自己撤：自己收到 0 条、不记通知留痕
+    await raw.user.update({ where: { id: 丙.id }, data: { role: "ADMIN" } });
+    await raw.entMember.update({ where: { userId: 丙.id }, data: { bizRole: "director", line: null, managerId: null } });
+    忘掉企业版范围();
+    expect(await 撤回项目合并(prisma, mergeId, { ...丙, role: "ADMIN" })).toMatchObject({ ok: true });
+    await 等通知推完();
+    expect(await 通知们(丙.id)).toHaveLength(0);
+    expect(await raw.auditLog.count({ where: { action: "merge-undo-notice", entityId: b } })).toBe(0);
   });
-  it("同负责人的合并撤回：不发这条通知、不记通知留痕（行为不变）", async () => {
+  it("同负责人的合并：本人撤不发；系统管理员撤要通知被并走那位", async () => {
     const c = await 客户(乙.id);
-    const [a, b] = [await 项目(乙.id, c), await 项目(乙.id, c)];
+    const [a, b, a2, b2] = [await 项目(乙.id, c), await 项目(乙.id, c), await 项目(乙.id, c), await 项目(乙.id, c)];
     const r = await 执行项目合并(prisma, a, b, 乙, { 已核未开票: true });
     if (!r.ok) throw new Error(r.error);
     expect(await 撤回项目合并(prisma, r.mergeId, 乙)).toMatchObject({ ok: true });
     expect(await raw.entNotice.count({ where: { dedupeKey: { startsWith: "merge-project-undo:" } } })).toBe(0);
     expect(await raw.auditLog.count({ where: { action: "merge-undo-notice" } })).toBe(0);
+    const r2 = await 执行项目合并(prisma, a2, b2, 乙, { 已核未开票: true });
+    if (!r2.ok) throw new Error(r2.error);
+    expect(await 撤回项目合并(prisma, r2.mergeId, 老板)).toMatchObject({ ok: true });
+    await 等通知推完();
+    const 们 = await 通知们(乙.id);
+    expect(们).toHaveLength(1);
+    expect(们[0].link).toBe(`/projects/${b2}`);
+    expect(await raw.auditLog.count({ where: { action: "merge-undo-notice", entityId: b2 } })).toBe(1);
+    // 留痕文案：原负责人的名字在前，项目名在后
+    const 日志 = await raw.auditLog.findFirstOrThrow({ where: { action: "merge-undo-notice", entityId: b2 } });
+    expect(日志.summary).toContain("已通知原负责人乙：「");
   });
 });
 
@@ -154,6 +170,14 @@ describe("E-484 2：撤回后合并单标已撤回，同一对项目不能再直
     const b2 = await 项目(丙.id, c);
     expect(await 发起跨负责人并(prisma, a, b2, 销管, { 现在: 周五下午 })).toMatchObject({ ok: true });
   });
+  it("撤回后 B 转到 A 的负责人名下：同负责人普通合并能成（不被「撤回过」拦）", async () => {
+    const { a, b } = await 一对();
+    const r = await 发(a, b, 销管);
+    if (r.方式 !== "直接并") throw new Error("应该直接并");
+    expect(await 撤回项目合并(prisma, r.mergeId, 销管)).toMatchObject({ ok: true });
+    await raw.project.update({ where: { id: b }, data: { ownerId: 乙.id } });
+    expect(await 执行项目合并(prisma, a, b, 乙, { 已核未开票: true })).toMatchObject({ ok: true });
+  });
   it("30 天从合并生效时刻起算（不是申请发起时刻）", async () => {
     const { a, b } = await 一对();
     const id = await 请(a, b, 乙, 京("2026-10-01 10:00"));
@@ -162,5 +186,12 @@ describe("E-484 2：撤回后合并单标已撤回，同一对项目不能再直
     expect((await raw.entCustomerMerge.findUniqueOrThrow({ where: { id: mergeId } })).at.getTime()).toBe(京("2026-10-03 10:00").getTime());
     // 距合并 29 天可撤（距申请已超 30 天）
     expect(await 撤回项目合并(prisma, mergeId, 乙, 京("2026-11-01 10:00"))).toMatchObject({ ok: true });
+  });
+  it("合并满 30 天后第 31 天撤回被拒", async () => {
+    const { a, b } = await 一对();
+    const id = await 请(a, b, 乙, 京("2026-10-01 10:00"));
+    expect(await 处理跨并申请(prisma, id, 销管, "确认", { 现在: 京("2026-10-03 10:00") })).toMatchObject({ ok: true });
+    const mergeId = (await raw.entProjectMergeRequest.findUniqueOrThrow({ where: { id } })).mergeId!;
+    expect(await 撤回项目合并(prisma, mergeId, 乙, 京("2026-11-03 10:00"))).toMatchObject({ ok: false, error: 项目合并撤回过期话 });
   });
 });

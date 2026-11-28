@@ -559,8 +559,12 @@ describe("撤回", () => {
     const mergeId = await 并(a, b, 乙);
     const h = await raw.entHandover.create({ data: { kind: "离职", fromUserId: 乙.id, toUserId: 丙.id, byUserId: 老板.id, way: "项目", projectIds: JSON.stringify([a]) } });
     expect(await 撤回项目合并(prisma, mergeId, 老板)).toMatchObject({ ok: false, error: expect.stringContaining("离职交接中") });
+    // 回滚（被拦）时不发通知
+    expect(await raw.entNotice.count({ where: { dedupeKey: { startsWith: "merge-project-undo:" } } })).toBe(0);
     await raw.entHandover.update({ where: { id: h.id }, data: { status: "已撤回" } });
     expect((await 撤回项目合并(prisma, mergeId, 老板)).ok).toBe(true);
+    await 等通知推完();
+    expect(await raw.entNotice.count({ where: { userId: 乙.id, dedupeKey: { startsWith: "merge-project-undo:" } } })).toBe(1);
   });
 
   it("连环：留下的又并进了别的项目，先撤那次", async () => {
@@ -663,6 +667,32 @@ describe("整单撤回客户合并：先撤之后并过的项目", () => {
     expect(await 项(pb)).toMatchObject({ customerId: B, result: null });
     expect((await raw.followUpProject.findUniqueOrThrow({ where: { followUpId: f } })).projectId).toBe(pb);
     expect((await raw.followUp.findUniqueOrThrow({ where: { id: f } })).customerId).toBe(B);
+  });
+
+  it("E-484：整单撤回（系统管理员撤）先拆的项目合并，被并走那位收到通知；本人撤不发", async () => {
+    const mk = async () => {
+      const A = await 客户(乙.id);
+      const B = await 客户(乙.id);
+      const pa = await 项目(乙.id, A);
+      const pb = await 项目(乙.id, B);
+      const cm = await 执行合并(prisma, A, B, 乙);
+      if (!cm.ok) throw new Error(cm.error);
+      await 并(pa, pb, 乙);
+      return { cm, pb };
+    };
+    const { cm, pb } = await mk();
+    const r = await 撤回合并(prisma, cm.mergeId, 老板);
+    if (!r.ok) throw new Error(r.error);
+    await 等通知推完();
+    const 们 = await raw.entNotice.findMany({ where: { userId: 乙.id, kind: 项目合并通知种类, dedupeKey: { startsWith: "merge-project-undo:" } } });
+    expect(们).toHaveLength(1);
+    expect(们[0].link).toBe(`/projects/${pb}`);
+    // 乙自己整单撤：不给自己发（上面那条仍是 1 条）
+    const 二 = await mk();
+    const r2 = await 撤回合并(prisma, 二.cm.mergeId, 乙);
+    if (!r2.ok) throw new Error(r2.error);
+    await 等通知推完();
+    expect(await raw.entNotice.count({ where: { userId: 乙.id, dedupeKey: { startsWith: "merge-project-undo:" } } })).toBe(1);
   });
 });
 

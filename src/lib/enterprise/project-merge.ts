@@ -179,7 +179,8 @@ export async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目�
   const 管 = 是系统管理员(me, org);
   const 因: string[] = [];
   // E-484 2：这对项目（正向、反向）有撤回过的跨负责人合并，直接并入口拦下；走申请（申请确认）仍可
-  if (!跨 || (跨.发起方式 === "本人发起" && 跨.期望)) {
+  // 同负责人的普通合并不拦（撤回后 B 转到 A 的负责人名下，两条路都走不通）
+  if (跨?.发起方式 === "本人发起" && 跨.期望) {
     if (await 撤回过的跨并对(db, A.id, B.id)) 因.push(撤回过不能直接并话);
   }
   // 12-22 异议：这两个项目有没裁定的转让异议，裁定前不能合并（判定页 #20）
@@ -658,7 +659,7 @@ export async function 撤回项目合并(db: 库, mergeId: string, me: 合并人
  * 拦交接 = 单撤时拦（客户合并撤回自己已经拦过两家的交接）
  */
 export async function 在事务里撤回项目合并(
-  tx: Tx, m: { id: string; detail: string; fromId: string; intoId: string }, me: 合并人, 现在: Date, 开: boolean, 拦交接 = false,
+  tx: Tx, m: { id: string; detail: string; fromId: string; intoId: string; fromOwnerId: string | null }, me: 合并人, 现在: Date, 开: boolean, 拦交接 = false,
 ): Promise<{ 没还原: 没还原[]; 客户: string; 通知: 撤回通知要 | null }> {
   const 明 = JSON.parse(m.detail) as 项目合并明细;
   const [A, B] = [await 读项目(tx, m.intoId, true), await 读项目(tx, m.fromId, true)];
@@ -741,11 +742,12 @@ export async function 在事务里撤回项目合并(
     ],
   });
   // E-484 1：跨负责人并撤回，原负责人（不是撤的人自己）要通知，操作日志留一条（通知本身事务提交后由调用方发）
-  const 原 = 明.跨负责人?.原负责人;
+  const 原 = 明.跨负责人?.原负责人 ?? m.fromOwnerId ?? null;
   let 通知: 撤回通知要 | null = null;
   if (原 && 原 !== me.id) {
     通知 = { mergeId: m.id, 原负责人: 原, 谁撤: me.name, A: { id: A.id, name: 名(A) }, B: { id: B.id, name: 名(B) } };
-    await tx.auditLog.create({ data: { userId: me.id, userName: me.name, action: "merge-undo-notice", entity: "Project", entityId: B.id, at: 现在, summary: `撤回合并项目：已通知原负责人「${名(B)}」回到他名下`, detail: JSON.stringify({ mergeId: m.id, 通知给: 原 }) } });
+    const 原名 = (await tx.user.findUnique({ where: { id: 原 }, select: { name: true } }))?.name ?? "";
+    await tx.auditLog.create({ data: { userId: me.id, userName: me.name, action: "merge-undo-notice", entity: "Project", entityId: B.id, at: 现在, summary: `撤回合并项目：已通知原负责人${原名 ? `${原名}` : ""}：「${名(B)}」回到他名下`, detail: JSON.stringify({ mergeId: m.id, 通知给: 原 }) } });
   }
   return { 没还原: 留, 客户: A.customerId, 通知 };
 }
