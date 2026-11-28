@@ -236,3 +236,18 @@ describe("review 补的几条（11-08）", () => {
     expect((await prisma.entChannelMain.findUniqueOrThrow({ where: { id: m.id } })).active).toBe(true);
   });
 });
+
+describe("saveMainChannel 新建：两笔交错（O5-S2 C7）", () => {
+  it("同时新建同名主渠道：一个建成，另一个回「已存在」，不抛、只一行", async () => {
+    const rs = await Promise.all([saveMainChannel({ name: "并发主渠道", allowSub: true, selfDev: false }), saveMainChannel({ name: "并发主渠道", allowSub: true, selfDev: false })]);
+    expect(rs.filter((r) => r.ok)).toHaveLength(1);
+    expect(rs.find((r) => !r.ok)).toMatchObject({ error: expect.stringContaining("已存在") });
+    expect(await prisma.entChannelMain.count({ where: { name: "并发主渠道" } })).toBe(1);
+  });
+  it("同时新建不同名主渠道：排序号各不相同", async () => {
+    const rs = await Promise.all(["并发甲", "并发乙", "并发丙"].map((name) => saveMainChannel({ name, allowSub: true, selfDev: false })));
+    expect(rs.every((r) => r.ok)).toBe(true);
+    const 行们 = await prisma.entChannelMain.findMany({ where: { name: { startsWith: "并发" } } });
+    expect(new Set(行们.map((x) => x.sort)).size).toBe(3);
+  });
+});

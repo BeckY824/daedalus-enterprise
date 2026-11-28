@@ -326,8 +326,17 @@ export async function saveMainChannel(input: {
   const 开关 = { allowSub: Boolean(input.allowSub), selfDev: Boolean(input.selfDev), category, ...(typeof input.active === "boolean" ? { active: input.active } : {}), ...归属 };
 
   if (!input.id) {
-    const 最后 = await prisma.entChannelMain.aggregate({ _max: { sort: true } });
-    const m = await prisma.entChannelMain.create({ data: { name, ...开关, sort: (最后._max.sort ?? 0) + 1 } });
+    // 查最大排序 + 写在一笔事务里；查完到写之间别处刚建了同名主渠道，撞唯一键回友好话，不抛
+    let m: { id: string };
+    try {
+      m = await prisma.$transaction(async (tx) => {
+        const 最后 = await tx.entChannelMain.aggregate({ _max: { sort: true } });
+        return tx.entChannelMain.create({ data: { name, ...开关, sort: (最后._max.sort ?? 0) + 1 } });
+      });
+    } catch (e) {
+      if ((e as { code?: string })?.code === "P2002") return { ok: false, error: `主渠道「${name}」已存在` };
+      throw e;
+    }
     await recordAudit({ user: me, action: "create", entity: "EntChannelMain", entityId: m.id, summary: `新建主渠道「${name}」` });
     revalidatePath("/channels");
     return { ok: true, id: m.id };

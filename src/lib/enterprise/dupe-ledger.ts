@@ -405,7 +405,12 @@ export async function 申请挂靠(我: { id: string; name: string }, 撞号id: 
   // 审批人 = 客户现在的负责人（P-挂靠-02；之后客户换负责人，审批人跟着换，见 owner-log-db.ts）。离职了也还是他、不另找人，24 小时后转他的实线上级
   const 客户 = await 看全部(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true } }));
   const 收 = 客户?.salesOwnerId ?? null;
-  await prisma.entDupeHit.update({ where: { id: 行.id }, data: { action: "申请挂靠", actionAt: new Date(), status: "待处理", approverId: 收 } });
+  // 条件写：只有这行还没申请过才写；连点两下后到的写不进（count 0），按已申请回话、不再发第二次审批通知
+  const 写 = await prisma.entDupeHit.updateMany({ where: { id: 行.id, OR: [{ action: null }, { action: { not: "申请挂靠" } }] }, data: { action: "申请挂靠", actionAt: new Date(), status: "待处理", approverId: 收 } });
+  if (写.count === 0) {
+    const 现 = await prisma.entDupeHit.findUnique({ where: { id: 行.id }, select: { status: true } });
+    return { ok: true, 提示: 已有话(现?.status ?? "待处理") };
+  }
   const org = await 读组织();
   const n = 收 && org.成员.has(收) ? await notify([收], {
     kind: "挂靠",

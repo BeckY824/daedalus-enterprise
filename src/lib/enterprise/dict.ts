@@ -62,7 +62,8 @@ async function 企业字典本体(kind: 字典种类, db: Prisma.TransactionClie
     await 补换默认(kind, db);
     await 删多出的旧默认(kind, db);
   }
-  if (kind === "custType") await 并入客户属性(db);
+  // 补缺那段「查最大排序 → 逐个建」包进一笔事务，两个人同时第一次读客户类型时不交错（调用方已给事务就沿用）
+  if (kind === "custType") await (db === prisma ? prisma.$transaction((tx) => 并入客户属性(tx)) : 并入客户属性(db));
   if ((await db.entDictItem.count({ where: { kind } })) === 0) {
     for (const [i, name] of 字典定义[kind].默认.entries()) {
       await 建了就算(db.entDictItem.upsert({ where: { kind_name: { kind, name } }, update: {}, create: { id: 默认id(kind, i), kind, name, sort: 默认位置(kind, i), active: !停用.includes(name) } }));
@@ -529,15 +530,23 @@ export async function 加字典项(me: { id: string; role: string }, kind: unkno
   const n = 规整名(name);
   if (typeof n !== "string") return { ok: false, ...n };
   await 企业字典(k);
-  const 有 = await prisma.entDictItem.findUnique({ where: { kind_name: { kind: k, name: n } } });
-  if (有) {
-    if (有.active) return { ok: false, error: `已经有「${n}」了` };
-    await prisma.entDictItem.update({ where: { id: 有.id }, data: { active: true } });
-    return { ok: true, id: 有.id };
+  // 查同名、查最大排序、写：一笔事务里做完；同时加同名的，后到的撞唯一键，回「已经有了」不抛
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const 有 = await tx.entDictItem.findUnique({ where: { kind_name: { kind: k, name: n } } });
+      if (有) {
+        if (有.active) return { ok: false as const, error: `已经有「${n}」了` };
+        await tx.entDictItem.update({ where: { id: 有.id }, data: { active: true } });
+        return { ok: true as const, id: 有.id };
+      }
+      const 末 = await tx.entDictItem.aggregate({ where: { kind: k }, _max: { sort: true } });
+      const r = await tx.entDictItem.create({ data: { kind: k, name: n, sort: (末._max.sort ?? -1) + 1 } });
+      return { ok: true as const, id: r.id };
+    });
+  } catch (e) {
+    if ((e as { code?: string })?.code === "P2002") return { ok: false, error: `已经有「${n}」了` };
+    throw e;
   }
-  const 末 = await prisma.entDictItem.aggregate({ where: { kind: k }, _max: { sort: true } });
-  const r = await prisma.entDictItem.create({ data: { kind: k, name: n, sort: (末._max.sort ?? -1) + 1 } });
-  return { ok: true, id: r.id };
 }
 
 /** 改名 / 停用 / 启用。不删：停用的不能再选，已经用过的照样显示 */
