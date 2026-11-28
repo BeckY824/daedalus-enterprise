@@ -207,7 +207,7 @@ export { 台账条数上限 };
 
 /** 台账「结果」列：撤回按状态细分（待手工退回 = 还没人退；已退回 = 手工退完；撤回 = 裁定时自动退了） */
 const 台账结果 = (status: string): string =>
-  status === 异议维持 ? "维持" : status === 异议待手工退回 ? "撤回（待手工退回）" : status === 异议已退回 ? "撤回（已退回）" : "撤回（已自动退回）";
+  status === 异议维持 ? "维持" : status === 异议待手工退回 ? "撤回（待手工退回）" : status === 异议已退回 ? "撤回（已退回）" : status === 异议撤回 ? "撤回（已自动退回）" : status;
 
 /** 北京月 YYYY-MM 的起止（UTC 时刻，左闭右开） */
 const 月区间 = (月: string): { gte: Date; lt: Date } | null => {
@@ -273,14 +273,14 @@ export function 本人裁定标注(是发起人: boolean, 是接手人: boolean,
 }
 
 /**
- * 每月 1 日（北京）给全部在职系统管理员发一条站内通知：上月有几条特殊裁定，链到台账上月。上月 0 条不发；
+ * 每月 1 日 08:00 起（北京；错过了 2 日以后水位不是本月就补发）给全部在职系统管理员发一条站内通知：上月有几条特殊裁定，链到台账上月。上月 0 条不发；
  * 通知去重键按月（同一人同一月只记一行），再加设置水位，钟每分钟来也不重复查库。早 8 点后才发（别半夜推飞书）
  */
 export const 特殊裁定月通知水位键 = "entObjSpecialMonthNotice";
 export async function 钟上特殊裁定月通知(现在: Date = new Date()): Promise<number> {
   if (!企业版()) return 0;
   const 墙 = beijingWallIso(现在);
-  if (墙.slice(8, 10) !== "01" || 墙.slice(11, 16) < "08:00") return 0;
+  if (墙.slice(8, 10) === "01" && 墙.slice(11, 16) < "08:00") return 0;
   const 本月 = 墙.slice(0, 7);
   if ((await getSetting<string>(特殊裁定月通知水位键)) === 本月) return 0;
   const [y, mo] = 本月.split("-").map(Number);

@@ -490,7 +490,7 @@ describe("裁定人按当前组织重算（审查 M3，口径 A2 / B1）", () =>
     expect(await 裁定(老板, 行.id, "维持", "本人接手的")).toMatchObject({ ok: true });
     const 审 = await prisma.auditLog.findMany({ where: { entityId: a.id } });
     expect(审.some((x) => x.summary.includes("本人接手、本人裁定"))).toBe(true);
-    const 详 = JSON.parse(审.find((x) => x.summary.includes("本人接手、本人裁定"))!.detail as string);
+    const 详 = JSON.parse(审.find((x) => x.summary.startsWith("转让异议裁定") && x.summary.includes("本人接手、本人裁定"))!.detail as string);
     expect(详).toMatchObject({ 类型: "本人接手", 本人接手: true, 本人裁定: true });
     // 进特殊裁定台账：类型写「本人接手」，裁定人 = 接手人，时间是北京时间字符串
     const { 特殊裁定台账 } = await import("@/lib/enterprise/objection-judge");
@@ -635,13 +635,37 @@ describe("特殊裁定台账（E-436）：留痕文案、结果细分、条数�
       }
     });
 
-    it("上月 0 条不发；不是 1 日、1 日 08:00 前也不发", async () => {
+    it("上月 0 条不发；1 日 08:00 前也不发", async () => {
       await 钟上特殊裁定月通知(北京("2026-12-01T09:00:00"));
       expect(await 管理员收到(老板.id)).toHaveLength(0);
+      await setSetting("entObjSpecialMonthNotice", "");
       await 上月有一条();
-      await 钟上特殊裁定月通知(北京("2026-12-02T09:00:00"));
       await 钟上特殊裁定月通知(北京("2026-12-01T07:59:00"));
       expect(await 管理员收到(老板.id)).toHaveLength(0);
+    });
+
+    it("1 日没跑成：2 日水位不是本月就补发", async () => {
+      await 上月有一条();
+      await 钟上特殊裁定月通知(北京("2026-12-02T09:00:00"));
+      const n = await 管理员收到(老板.id);
+      expect(n).toHaveLength(1);
+      expect(n[0].link).toBe("/objections?tab=special&month=2026-11");
+    });
+
+    it("本月水位已写，2 日不重发", async () => {
+      await 上月有一条();
+      await 钟上特殊裁定月通知(北京("2026-12-01T09:00:00"));
+      await 钟上特殊裁定月通知(北京("2026-12-02T09:00:00"));
+      expect(await 管理员收到(老板.id)).toHaveLength(1);
+    });
+
+    it("停用的系统管理员不收", async () => {
+      await 上月有一条();
+      await prisma.user.update({ where: { id: 副管.id }, data: { role: "ADMIN", active: false } });
+      await prisma.entMember.create({ data: { userId: 副管.id, bizRole: "director" } });
+      await 钟上特殊裁定月通知(北京("2026-12-01T09:00:00"));
+      expect(await 管理员收到(老板.id)).toHaveLength(1);
+      expect(await 管理员收到(副管.id)).toHaveLength(0);
     });
 
     it("同一月重复跑不重发（水位 + 去重键）；清掉水位再跑也只有一行", async () => {

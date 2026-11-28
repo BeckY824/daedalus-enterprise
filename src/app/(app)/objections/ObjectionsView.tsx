@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Alert, Button, Card, Empty, Input, Modal, Tabs, Tag } from "antd";
+import { Alert, Button, Card, Empty, Input, Modal, Spin, Tabs, Tag } from "antd";
 import { PageHead } from "@/components/ui";
 import DatePicker from "@/components/BusinessDatePicker";
 import { dayjs } from "@/lib/utils";
@@ -133,7 +133,7 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
         activeKey={页签} onChange={(k) => {
           set页签(k as 页签键);
           // 台账只在打开这个页签时才由服务端查：还没查过就带着 tab=special 重新取一次
-          if (k === "special" && !台账已查) router.push(`/objections?tab=special&month=${月}`);
+          if (k === "special" && !台账已查) router.replace(`/objections?tab=special&month=${月}`);
         }}
         items={[
           { key: "mine", label: "我的异议", children: 我的页 },
@@ -157,7 +157,7 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
                   onChange={(d) => { if (d) router.push(`/objections?tab=special&month=${d.format("YYYY-MM")}`); }} />}>
                 <div className="obj-mut" data-testid="obj-special-note">本人发起、本人裁定 / 本人接手、本人裁定的记录，每月看一次；当前只看 {月}{月是默认 ? "（没选月份，默认当前月）" : ""}。</div>
                 {台账满了(台账.length) && <div className="obj-mut" data-testid="obj-special-cap">记录较多，只列最近 {台账条数上限} 条，请按月筛选。</div>}
-                {台账.length ? 台账.map((r) => {
+                {!台账已查 ? <div className="obj-mut" data-testid="obj-special-loading"><Spin size="small" /> 正在读取台账…</div> : 台账.length ? 台账.map((r) => {
                   const 标 = r.类型 === "本人发起" ? "本人发起、本人裁定" : "本人接手、本人裁定";
                   const 客 = r.客户名 && r.客户名 !== r.客户编号 ? `${r.客户名}（${r.客户编号}）` : r.客户编号;
                   return (
