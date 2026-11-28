@@ -49,18 +49,19 @@ async function 登录管理员(page: Page) {
 export async function 配好AI(page: Page, baseUrl = "http://127.0.0.1:9/v1") {
   await page.goto("/settings?tab=ai");
   // AI 接入 2026-09-17 起是「两个选择」：先说要用自己的 Key，再选「其它」才出现接口地址
-  await page.getByRole("radio", { name: /用你自己的 API Key/ }).click();
-  await page.getByLabel("用哪一家").click();
+  await page.getByRole("radio", { name: /用你自己的 API Key/ }).locator("visible=true").click();
+  // 流式首屏里藏着一份副本，定位一律只取可见那份，免得严格模式解析到 2 个元素
+  await page.getByLabel("用哪一家").locator("visible=true").click();
   await page.locator(".ant-select-dropdown:not(.ant-select-dropdown-hidden)").getByText("其它（自己填接口地址）").click();
-  await page.locator("#baseUrl").fill(baseUrl);
+  await page.locator("#baseUrl").locator("visible=true").fill(baseUrl);
   // 纯 ASCII：中文塞进 Authorization 头会在 fetch 那一层就报错，掩盖掉真正的失败原因
-  await page.locator("#apiKey").fill("e2e-not-a-real-key");
-  await page.locator("#model").fill("e2e-model");
-  await page.getByRole("button", { name: /保\s*存/ }).click();
+  await page.locator("#apiKey").locator("visible=true").fill("e2e-not-a-real-key");
+  await page.locator("#model").locator("visible=true").fill("e2e-model");
+  await page.getByRole("button", { name: /保\s*存/ }).locator("visible=true").click();
   // 没测过连接会先拦一下：整套 AI 都走这套配置，地址不对会一起失灵
-  await page.getByRole("button", { name: "仍然保存" }).click();
+  await page.getByRole("button", { name: "仍然保存" }).locator("visible=true").click();
   // 设置页 11-15 起不弹顶部 message：成没成写在页签底部的就地小条里（InlineNote，role=status）
-  await expect(page.getByRole("status").filter({ hasText: "已保存" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "已保存" }).locator("visible=true")).toBeVisible();
 }
 
 /** 给 `test.beforeAll({ browser })` 用：自己开一页、自己登录、填完关掉 */
