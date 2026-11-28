@@ -32,6 +32,7 @@ import { 自动分配不参与key, 本月已分 } from "@/lib/enterprise/lead-as
 import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 查重领取, 查重领取框数据, 领取, type 查重领取沟通, type 查重领取新项目 } from "@/app/(app)/customers/pool-actions";
 import { 查号码 } from "@/app/(app)/customers/number-actions";
+import { AI建档查重, AI建档查重详 } from "@/lib/enterprise/ai-lead-dedupe";
 import { 不是市场成员查重领取话, 没撞上公海话, 查重领取口径, 落对接人, 查重领取作废 } from "@/lib/enterprise/dedupe-claim";
 import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 只看某人键 } from "@/lib/enterprise/org-core";
@@ -508,6 +509,25 @@ describe("原负责人回避（用户 11-19：仅对创建人豁免，对其他�
     expect(await 以谁的身份(市场.id, () => 查重领取框数据("手机号", c.号))).toEqual({ ok: false, error: 原负责人不能领回提示 });
     expect(await 以谁的身份(市场.id, () => 查重领取("手机号", c.号, 沟通(), c.id, 新(c)))).toEqual({ ok: false, error: 原负责人不能领回提示 });
     await 没动(c.id, 占位.id);
+  });
+
+  it("首页 AI 对话查重卡（A3）：原负责人拿到「不能领回」那句、不说「可去公海领取」；别人和豁免的系统管理员照旧", async () => {
+    const 号们 = (c: { 号: string }) => [{ 类型: "手机号" as const, 值: c.号, 键: c.号 }];
+    const c = await 公海客户(甲.id, 总管.id);
+    当(甲);
+    const 原 = await AI建档查重详(号们(c), 甲);
+    expect(原?.话).toBe(原负责人不能领回提示);
+    expect(原?.话).not.toContain("可去公海领取");
+    expect(原).not.toHaveProperty("公海");
+    expect(await AI建档查重(号们(c), 甲)).toBe(原负责人不能领回提示);
+    // 别人（乙）撞同一个号：通用句
+    当(乙);
+    expect((await AI建档查重详(号们(c), 乙))?.话).toContain("可去公海领取");
+    // 系统管理员 / 总管理是原负责人：回避豁免，照旧
+    const d = await 公海客户(总管.id);
+    当(总管);
+    expect((await AI建档查重详(号们(d), 总管))?.话).toContain("可去公海领取");
+    await 没动(c.id, 甲.id);
   });
 
   it("发起的市场成员是原负责人、又是客户创建人：放行，照常领取 + 写沟通 + 自动分配", async () => {
