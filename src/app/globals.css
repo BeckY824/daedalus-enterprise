@@ -2430,6 +2430,7 @@ button.ais-hd-b { cursor: pointer; }
 .pipe-card-m .proj-repeat-tag { flex: none; margin-inline-end: var(--s1); }
 /* 首页查重框里「在 X 名下新建线索」（重复咨询出口 C）：另起一行，键和结果那句可折行 */
 .home-dedupe-act { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); margin-top: var(--s2); }
+.home-dedupe-note { color: var(--text-muted); }
 /* 手机宽查重小框（11-23）：放不下时整块挪进屏（DedupeKey 挪进屏 shiftX）会贴住屏边（查出结果变高时可能贴左边），外框左右各垫 12px 透明边，看得到的那块离屏边 12px */
 @media (max-width: 767px) { .ant-popover.home-dedupe-pop { padding-inline: var(--s3, 12px); } }
 /* 问答贴着输入框往上长。原来是 flex:1 顶在上边，于是只问了一句、答案还在流的时候，

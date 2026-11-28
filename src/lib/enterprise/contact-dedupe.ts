@@ -36,6 +36,7 @@ import { 通号种类, 号键变体, 通号键, 撞号怎么办, 回收站话, �
 import { 全角转半角 } from "@/lib/fullwidth";
 import { 号码归属地 } from "./phone-region";
 import { 拦原负责人 } from "./pool-rules";
+import { 回避豁免 } from "@/lib/project/pool-owner";
 import { 离职负责人找谁 } from "./departed-owner";
 import { 看已删, 在看已删 } from "./soft-delete-core";
 
@@ -381,11 +382,15 @@ export async function 撞号结论(db: 库, ids: string[], 我: string, 读的�
 
 /**
  * 这位公海客户是不是我退的、我领不回也看不到（11-03 B7-3）：和 team-scope 公海回避 同一口径（E-417 包 2 起认 poolPrevOwnerId 两列）——
- * 只认客户列是我（M-公海-05：领客户优先于回避，名下公海项目列是我的不拦、领客户时照 carry-over 一起带走）。不看名单上限（直接查列）
+ * 只认客户列是我（M-公海-05：领客户优先于回避，名下公海项目列是我的不拦、领客户时照 carry-over 一起带走）。不看名单上限（直接查列）。
+ * 回避豁免的人（系统管理员 / 只读管理员，P-公海-04 / X-43）不标：和项目详情、客户页的回避同一个判断（lib/project/pool-owner.ts 回避豁免）
  */
 export async function 我回避的(db: 库, 挑: { id: string; salesOwnerId: string | null }, 我: string): Promise<boolean> {
   if (!拦原负责人()) return false;
-  return (await 公海客户放回人们(db, [我], [挑.id])).size > 0;
+  if ((await 公海客户放回人们(db, [我], [挑.id])).size === 0) return false;
+  // 回避豁免认业务角色（总管理 / 管理员），要账号 role：只在命中时才查，常规查重不多一次读
+  const u = await db.user.findUnique({ where: { id: 我 }, select: { id: true, role: true } });
+  return !(u && (await 回避豁免(u)));
 }
 
 /**
