@@ -80,6 +80,8 @@ let 组字中 = false;
 let 选文件放: (() => void) | null = null;
 let 装了输入 = false;
 const 选文件宽限毫秒 = 3_000;
+/** 兜底：旧 iOS Safari 不发 cancel / focus、点击被 preventDefault 文件框没开时，最多忙这么久 */
+const 选文件上限毫秒 = 10 * 60_000;
 export function 装输入监听(): void {
   if (装了输入 || typeof document === "undefined" || typeof document.addEventListener !== "function") return;
   装了输入 = true;
@@ -99,8 +101,11 @@ export function 装输入监听(): void {
         放忙();
         t.removeEventListener("change", 放);
         t.removeEventListener("cancel", 放);
+        clearTimeout(上限定时);
         document.removeEventListener("visibilitychange", 回来);
         window.removeEventListener("focus", 回来);
+        document.removeEventListener("pointerdown", 放, true);
+        document.removeEventListener("keydown", 放, true);
         if (选文件放 === 放) 选文件放 = null;
       };
       const 回来 = () => {
@@ -112,6 +117,10 @@ export function 装输入监听(): void {
       t.addEventListener("cancel", 放);
       document.addEventListener("visibilitychange", 回来);
       window.addEventListener("focus", 回来);
+      // 兜底：页面上下一次点按 / 按键就放（用户已回到页面操作），再加 10 分钟上限强制放
+      document.addEventListener("pointerdown", 放, true);
+      document.addEventListener("keydown", 放, true);
+      const 上限定时 = setTimeout(放, 选文件上限毫秒);
       选文件放 = 放;
     },
     true,

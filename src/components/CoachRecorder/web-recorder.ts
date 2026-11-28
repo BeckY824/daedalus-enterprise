@@ -123,7 +123,7 @@ export function 开录(流: MediaStream, opt: { 每片毫秒: number; 片到了:
   try {
     rec.start(opt.每片毫秒);
   } catch (e) {
-    收拾();
+    try { 收拾(); } catch { /* 不盖住 start 的原错误 */ }
     throw e;
   }
   放忙 = 登记忙("录音");

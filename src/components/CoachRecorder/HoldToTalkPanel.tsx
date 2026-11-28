@@ -156,7 +156,7 @@ export function HoldToTalkPanel({ projectId, 项目名, 续, 关, 改传文件 }
       return;
     }
     const id = await x.编号;
-    if (!id) { 这次.current = null; set阶("空"); return; }
+    if (!id) { x.队列.停(); 这次.current = null; set阶("空"); return; }
     // 等片传完：网络断了一直重试（界面写「联网后自动补传」），服务器明说不行的停下
     for (;;) {
       if (await x.队列.等传完(60_000)) break;

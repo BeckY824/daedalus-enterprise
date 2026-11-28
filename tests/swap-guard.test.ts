@@ -250,6 +250,33 @@ describe("O3 PR-C 审查修复 1：忙的登记补漏", () => {
     expect(m.忙数()).toBe(0);
   });
 
+  it("点开 file input 的兜底：下一次 pointerdown / keydown 放；都没有则 10 分钟上限强制放", async () => {
+    vi.useFakeTimers();
+    const 听: Record<string, (e?: unknown) => void> = {};
+    vi.stubGlobal("window", { addEventListener: () => {}, removeEventListener: () => {} });
+    vi.stubGlobal("document", {
+      visibilityState: "hidden",
+      addEventListener: (n: string, f: () => void) => { 听[n] = f; },
+      removeEventListener: (n: string, f: () => void) => { if (听[n] === f) delete 听[n]; },
+    });
+    const m = await import("@/lib/swap-guard");
+    m.装输入监听();
+    const 点开 = () => 听.click({ target: { tagName: "INPUT", type: "file", addEventListener: () => {}, removeEventListener: () => {} } });
+    点开();
+    expect(m.忙数()).toBe(1);
+    听.pointerdown();
+    expect(m.忙数()).toBe(0);
+    点开();
+    expect(m.忙数()).toBe(1);
+    听.keydown();
+    expect(m.忙数()).toBe(0);
+    点开();
+    vi.advanceTimersByTime(10 * 60_000 - 1_000);
+    expect(m.忙数()).toBe(1);
+    vi.advanceTimersByTime(2_000);
+    expect(m.忙数()).toBe(0);
+  });
+
   it("导出中登记忙：客户页导出的 effect 同时登记忙 / 卸载时放", async () => {
     const { readFileSync } = await import("node:fs");
     const 源 = readFileSync("src/app/(app)/customers/CustomersView.tsx", "utf8");
