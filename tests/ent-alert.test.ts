@@ -488,3 +488,74 @@ describe("审查 s1/s2 可改（第二轮）", () => {
     expect(fs.existsSync(path.join(目录, "alert-state.lock"))).toBe(false);
   });
 });
+
+describe("客户群 @ 当班负责人（ALERT_AT_EVEN）", () => {
+  const 写配置 = (at: string | null) =>
+    fs.writeFileSync(path.join(目录, ".alert-env"), `ALERT_WEBHOOK_OURS=${OURS}\nALERT_WEBHOOK_EVEN=${EVEN}\nALERT_INSTANCE=c2\n${at === null ? "" : `ALERT_AT_EVEN=${at}\n`}`);
+
+  it("空 / 没配：客户群不带 @", async () => {
+    for (const at of [null, ""]) {
+      调用们 = [];
+      目录 = path.join(根, `d${++序}`);
+      fs.mkdirSync(path.join(目录, "telemetry"), { recursive: true });
+      写配置(at);
+      记(6, 3);
+      await 跑();
+      expect(发往(EVEN)).toHaveLength(1);
+      expect(文本(发往(EVEN)[0])).not.toContain("<at");
+    }
+  });
+
+  it("一个 / 两个：客户群正文最前面带 @，我方群不带", async () => {
+    写配置("ou_abc123");
+    记(6, 3);
+    await 跑();
+    expect(文本(发往(EVEN)[0]).startsWith('<at user_id="ou_abc123"></at>')).toBe(true);
+    expect(文本(发往(OURS)[0])).not.toContain("<at");
+    expect(文本(发往(EVEN)[0])).not.toContain("伦敦");
+
+    调用们 = [];
+    目录 = path.join(根, `d${++序}`);
+    fs.mkdirSync(path.join(目录, "telemetry"), { recursive: true });
+    写配置(" ou_abc123 , ou_9z ");
+    记(6, 3);
+    await 跑();
+    expect(文本(发往(EVEN)[0]).startsWith('<at user_id="ou_abc123"></at><at user_id="ou_9z"></at>')).toBe(true);
+    expect(文本(发往(OURS)[0])).not.toContain("<at");
+  });
+
+  it("恢复消息发客户群也带 @", async () => {
+    写配置("ou_abc123");
+    记(6, 3);
+    await 跑();
+    调用们 = [];
+    await 跑(T0 + 45 * 分);
+    const 恢复 = 发往(EVEN).find((c) => 文本(c).includes("[已恢复]"));
+    expect(恢复 && 文本(恢复).startsWith("<at")).toBe(true);
+  });
+
+  it("不合法的跳过，只在我方群提醒一次（去重），合法的照 @", async () => {
+    写配置("ou_ok1,BAD,ou_UPPER,https://x");
+    记(6, 3);
+    await 跑();
+    expect(文本(发往(EVEN)[0])).toContain('<at user_id="ou_ok1"></at>');
+    expect(文本(发往(EVEN)[0])).not.toContain("BAD");
+    const 提醒 = 发往(OURS).filter((c) => 文本(c).includes("配置提醒"));
+    expect(提醒).toHaveLength(1);
+    expect(文本(提醒[0])).not.toContain("BAD");
+    expect(发往(EVEN).some((c) => 文本(c).includes("配置提醒"))).toBe(false);
+    调用们 = [];
+    await 跑(T0 + 2 * 分);
+    expect(发往(OURS).filter((c) => 文本(c).includes("配置提醒"))).toHaveLength(0);
+  });
+
+  it("--dry：打印客户群实际文本，带 @", async () => {
+    写配置("ou_abc123");
+    记(6, 3);
+    const 印: string[] = [];
+    await 跑(T0, { dry: true, 输出: (s: string) => 印.push(s) });
+    const 全 = 印.join("\n");
+    expect(全).toContain("客户群实际文本");
+    expect(全).toContain('<at user_id="ou_abc123"></at>');
+  });
+});

@@ -92,7 +92,7 @@ if [ -z "$RUN_USER" ]; then RUN_USER=$(stat -c %U "$DATA" 2>/dev/null || stat -f
 [ "$RUN_USER" != root ] || RUN_USER=""
 RUN_GROUP=""
 if [ -n "$RUN_USER" ]; then
-  [[ $RUN_USER =~ ^[a-z_][a-z0-9_-]*$ ]] || die "运行用户名不合法：${RUN_USER}（取不到或不认识的属主请用 --user 指定）"
+  [[ $RUN_USER =~ ^[a-z_][a-z0-9_-]*$ ]] || die "运行用户名不合法：${RUN_USER}（属主不认识，如 UNKNOWN，请用 --user 指定）"
   RUN_GROUP=$(id -gn "$RUN_USER" 2>/dev/null || true)
   [ -n "$RUN_GROUP" ] || die "系统里没有用户 ${RUN_USER}（--user 指定一个存在的用户）"
 fi
@@ -134,6 +134,8 @@ ALERT_SECRET_OURS=
 ALERT_WEBHOOK_EVEN=
 # 客户群机器人的签名密钥；没开签名校验就留空
 ALERT_SECRET_EVEN=
+# 客户群消息最前面 @ 的当班负责人：飞书 open_id（ou_ 开头的小写字母数字），逗号分隔，如 ou_abc123,ou_def456。留空 = 不 @；只对客户群，我方群不带；格式不对的会跳过并在我方群提醒一次
+ALERT_AT_EVEN=
 
 # 探活地址，逗号分隔，每个进程一个（连续 2 次不通发「服务挂了」，只发我方）。留空 = 不探活
 # 这台按 --port $PORT --workers $WORKERS 推出来的是：

@@ -9,6 +9,7 @@
  *   ALERT_WEBHOOK_OURS / ALERT_SECRET_OURS   我方技术群：收全部（报警、恢复、心跳）
  *   ALERT_WEBHOOK_EVEN / ALERT_SECRET_EVEN   客户群：只收 3 类（同类 ≥5 次且不止 1 人、≥3 位员工同时撞上、数据库类 ≥3 次）及其恢复；可空，空就不发
  *   ALERT_HEALTH_URLS                        探活地址，逗号分隔（每个进程端口一个，如 http://127.0.0.1:3010/api/health）；空就不探
+ *   ALERT_AT_EVEN                            客户群消息最前面 @ 的当班负责人：飞书 open_id（ou_ 开头），逗号分隔；可空，空就不 @；只对客户群，我方群不带；格式不对的跳过并在我方群提醒一次
  *   ALERT_INSTANCE                           消息里的实例名，默认「企业版」
  * 密钥空 = 不签名（群机器人没开签名校验时）。签名：timestamp(秒) + "\n" + secret 作 HmacSHA256 的 key、内容为空，取 base64。
  *
@@ -20,7 +21,7 @@
  * 去重 / 静默：同一条 60 分钟内只报一次；还在发生每满 60 分钟补一条；连续 30 分钟为 0 发「已恢复」（探活通了立即恢复）；
  * 全局每小时最多 6 条（心跳不算），超出的留到下一次；每天北京 09:00 起第一次运行发一条心跳（只发我方，带 24 小时摘要）。
  * 发送失败只写 stderr，不重试，退出码 0（不影响任何业务）。--dry：不发、不写状态，只把「将发什么」打印出来。
- * 消息里没有姓名、客户数据、号码（运行记录本来就没有，见 lib/telemetry/fields.ts）；时间写北京 + 伦敦。
+ * 消息里没有姓名、客户数据、号码（运行记录本来就没有，见 lib/telemetry/fields.ts）；时间：我方群北京 + 伦敦，客户群只写北京。
  * 读运行记录复用 scripts/telemetry-daily.mjs 的 读记录 / 汇总，部署时两个文件放同一目录。只用 node 自带模块。
  */
 import crypto from "node:crypto";
@@ -36,6 +37,20 @@ export const 重报毫秒 = 60 * 60_000;
 export const 恢复毫秒 = 30 * 60_000;
 export const 每小时上限 = 6;
 const 数据库码 = /^P20\d{2}$/;
+const 开放号 = /^ou_[0-9a-z]+$/;
+
+/** ALERT_AT_EVEN → { 有效: open_id[], 无效: string[] }；空配置两个都是空 */
+export function 解析艾特(串) {
+  const 有效 = [];
+  const 无效 = [];
+  for (const x of (串 || "").split(",").map((v) => v.trim()).filter(Boolean)) {
+    if (!开放号.test(x)) 无效.push(x);
+    else if (!有效.includes(x)) 有效.push(x);
+  }
+  return { 有效, 无效 };
+}
+/** 客户群文本：北京时间 + 最前面 @ 当班负责人（没配就不加） */
+export const 客户群文本 = (内容, 有效) => `${有效.map((id) => `<at user_id="${id}"></at>`).join("")}${有效.length ? " " : ""}${仅北京(内容)}`;
 
 /* ---------------- 配置 / 状态 ---------------- */
 
@@ -78,7 +93,7 @@ function 读状态(目录) {
 }
 
 const 锁陈旧毫秒 = 10 * 60_000;
-/** 非 --dry 运行的排他锁：数据目录下 alert-state.lock，O_EXCL 建，退出时删；超过 10 分钟视为陈旧可抢。拿到返回释放函数，拿不到返回 null；锁文件本身建不了（权限、磁盘）时不挡运行。 */
+/** 非 --dry 运行的排他锁：数据目录下 alert-state.lock，O_EXCL 建，退出时删；超过 10 分钟视为陈旧可抢。拿到返回释放函数，拿不到返回 null；锁文件本身建不了（权限、磁盘）时不挡运行（内层 catch 里写失败会重新抛出，由外层 catch 接住，按建不了锁处理，返回空释放函数）。 */
 function 取锁(目录, 现在) {
   const 文件 = path.join(目录, "alert-state.lock");
   for (let 次 = 0; 次 < 2; 次++) {
@@ -297,6 +312,8 @@ async function 运行内(选项) {
   const 配置 = 读配置(目录);
   const 实例 = 配置.ALERT_INSTANCE || "企业版";
   const 状态 = 读状态(目录);
+  const 艾特 = 解析艾特(配置.ALERT_AT_EVEN);
+  const 发出提醒 = [];
   const 待发 = []; // { 优先, 内容, 客户, 应用() }
 
   // 记录
@@ -418,6 +435,18 @@ async function 运行内(选项) {
     }
   }
 
+  // @ 配置里有不合法的 open_id：只发我方、不计每小时上限；同一组不合法值只提醒一次（记在状态里），配置改对后清掉
+  const 无效串 = 艾特.无效.join(",");
+  if (无效串 && 状态.cfgWarnAt !== 无效串) {
+    const 内容 = `[告警] ${实例} 配置提醒：ALERT_AT_EVEN 有 ${艾特.无效.length} 个 open_id 格式不对（应为 ou_ 开头的小写字母数字），已跳过，客户群这几位不会被 @\n时间：${双时区(现在)}`;
+    发出提醒.push({ 内容, 客户: false });
+    if (dry) 输出(`--- 将发：仅我方（配置提醒）---\n${内容}`);
+    else {
+      if (配置.ALERT_WEBHOOK_OURS) await 发(取, 配置.ALERT_WEBHOOK_OURS, 配置.ALERT_SECRET_OURS, 内容, 现在, "我方群");
+      状态.cfgWarnAt = 无效串;
+    }
+  } else if (!无效串 && 状态.cfgWarnAt && !dry) delete 状态.cfgWarnAt;
+
   // 每小时上限
   状态.sent = (状态.sent ?? []).filter((t) => t > 现在 - 3600_000);
   const 余 = Math.max(0, 每小时上限 - 状态.sent.length);
@@ -429,15 +458,16 @@ async function 运行内(选项) {
   const 本次 = [...探活项, ...常规项.slice(0, 余)];
   if (常规项.length > 余) console.error(`[ent-alert] 每小时上限 ${每小时上限} 条，本次 ${常规项.length - 余} 条留到下次`);
 
-  const 发出 = [];
+  const 发出 = [...发出提醒];
   for (const 项 of 本次) {
     发出.push({ 内容: 项.内容, 客户: 项.客户 });
     if (dry) {
       输出(`--- 将发${项.客户 ? "：我方 + 客户群" : "：仅我方"} ---\n${项.内容}`);
+      if (项.客户) 输出(`--- 客户群实际文本 ---\n${客户群文本(项.内容, 艾特.有效)}`);
       continue;
     }
     if (配置.ALERT_WEBHOOK_OURS) await 发(取, 配置.ALERT_WEBHOOK_OURS, 配置.ALERT_SECRET_OURS, 项.内容, 现在, "我方群");
-    if (项.客户 && 配置.ALERT_WEBHOOK_EVEN) await 发(取, 配置.ALERT_WEBHOOK_EVEN, 配置.ALERT_SECRET_EVEN, 仅北京(项.内容), 现在, "客户群");
+    if (项.客户 && 配置.ALERT_WEBHOOK_EVEN) await 发(取, 配置.ALERT_WEBHOOK_EVEN, 配置.ALERT_SECRET_EVEN, 客户群文本(项.内容, 艾特.有效), 现在, "客户群");
     项.应用();
     if (!项.探活) 状态.sent.push(现在);
   }
