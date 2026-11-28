@@ -92,7 +92,7 @@ if [ -z "$RUN_USER" ]; then RUN_USER=$(stat -c %U "$DATA" 2>/dev/null || stat -f
 [ "$RUN_USER" != root ] || RUN_USER=""
 RUN_GROUP=""
 if [ -n "$RUN_USER" ]; then
-  [[ $RUN_USER =~ ^[a-z_][a-z0-9_-]*$ ]] || die "运行用户名不合法：$RUN_USER"
+  [[ $RUN_USER =~ ^[a-z_][a-z0-9_-]*$ ]] || die "运行用户名不合法：${RUN_USER}（取不到或不认识的属主请用 --user 指定）"
   RUN_GROUP=$(id -gn "$RUN_USER" 2>/dev/null || true)
   [ -n "$RUN_GROUP" ] || die "系统里没有用户 ${RUN_USER}（--user 指定一个存在的用户）"
 fi
@@ -104,6 +104,7 @@ no_link() { # data/ 归服务用户，它可以把这两个文件换成指向系
 }
 
 CHANGED=0
+no_link "$A"             # alert/ 本身也可能被换成软链（install -d / chmod 会跟着改到目标）；增量审查 9977e7cc 可改
 install -d -m 755 "$A"   # 不跟 root 的 umask：加固机上 027/077 会让服务用户进不了 alert/
 chmod 755 "$A"
 for f in ent-alert.mjs telemetry-daily.mjs; do

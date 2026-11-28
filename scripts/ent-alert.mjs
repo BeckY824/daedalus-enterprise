@@ -86,6 +86,14 @@ function 取锁(目录, 现在) {
       const fd = fs.openSync(文件, "wx");
       try {
         fs.writeSync(fd, String(process.pid));
+      } catch (we) {
+        // 磁盘满等写不进去：别留一个空锁（会让之后每 10 分钟才真跑一轮）
+        try {
+          fs.unlinkSync(文件);
+        } catch {
+          /* 没了 */
+        }
+        throw we;
       } finally {
         fs.closeSync(fd);
       }
@@ -132,6 +140,8 @@ function 伦敦(ms) {
     return `${new Date(ms).toISOString().slice(5, 16).replace("T", " ")} UTC`;
   }
 }
+/** 给客户群的稿按约定只写北京时间：去掉「 / 伦敦 …」 */
+export const 仅北京 = (文本) => 文本.replace(/ \/ 伦敦 \d{2}-\d{2} \d{2}:\d{2}( UTC)?/g, "");
 const 双时区 = (ms) => `北京 ${北京(ms)} / 伦敦 ${伦敦(ms)}`;
 const 北京日 = (ms) => new Date(ms + 8 * 3600_000).toISOString().slice(0, 10);
 const 北京时 = (ms) => new Date(ms + 8 * 3600_000).getUTCHours();
@@ -383,7 +393,7 @@ async function 运行内(选项) {
       // 这条自己的限频不能靠状态文件，退路用系统临时目录里按数据目录区分的小文件，记上次发的时刻，满 60 分钟才再发。
       // 选临时目录而不是「只在整点那次发」：timer 间隔不一定踩中整点，整点法可能一整小时一条都发不出，也可能同一整点发两次。
       // 临时目录也写不了时宁可不发（只写 stderr），也不每 2 分钟刷我方群。
-      const 退路 = path.join(os.tmpdir(), `ent-alert-unwritable-${crypto.createHash("sha1").update(path.resolve(目录)).digest("hex").slice(0, 12)}`);
+      const 退路 = path.join(os.tmpdir(), `ent-alert-unwritable-${process.getuid?.() ?? "u"}-${crypto.createHash("sha1").update(path.resolve(目录)).digest("hex").slice(0, 12)}`);
       let 上次 = 0;
       try {
         上次 = Number(fs.readFileSync(退路, "utf8")) || 0;
@@ -427,7 +437,7 @@ async function 运行内(选项) {
       continue;
     }
     if (配置.ALERT_WEBHOOK_OURS) await 发(取, 配置.ALERT_WEBHOOK_OURS, 配置.ALERT_SECRET_OURS, 项.内容, 现在, "我方群");
-    if (项.客户 && 配置.ALERT_WEBHOOK_EVEN) await 发(取, 配置.ALERT_WEBHOOK_EVEN, 配置.ALERT_SECRET_EVEN, 项.内容, 现在, "客户群");
+    if (项.客户 && 配置.ALERT_WEBHOOK_EVEN) await 发(取, 配置.ALERT_WEBHOOK_EVEN, 配置.ALERT_SECRET_EVEN, 仅北京(项.内容), 现在, "客户群");
     项.应用();
     if (!项.探活) 状态.sent.push(现在);
   }

@@ -319,6 +319,10 @@ describe("发送、dry、消息内容", () => {
     const t = 文本(发往(OURS)[0]);
     expect(t).toContain("c2");
     expect(t).toContain("北京 11-20 06:57 / 伦敦 11-19 22:57");
+    // 客户群那份只写北京时间
+    const 客 = 文本(发往(EVEN)[0]);
+    expect(客).toContain("北京 11-20 06:57");
+    expect(客).not.toContain("伦敦");
     expect(t).toContain("TypeError");
     expect(t).toContain("/customers/[id]");
     expect(t).toContain("6 次");
@@ -378,7 +382,7 @@ describe("审查必改", () => {
     } finally {
       fs.chmodSync(目录, 0o755);
       try {
-        fs.rmSync(path.join(os.tmpdir(), `ent-alert-unwritable-${crypto.createHash("sha1").update(path.resolve(目录)).digest("hex").slice(0, 12)}`), { force: true });
+        fs.rmSync(path.join(os.tmpdir(), `ent-alert-unwritable-${process.getuid?.() ?? "u"}-${crypto.createHash("sha1").update(path.resolve(目录)).digest("hex").slice(0, 12)}`), { force: true });
       } catch {
         /* 忽略 */
       }
