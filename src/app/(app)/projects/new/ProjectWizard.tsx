@@ -1326,7 +1326,7 @@ function 撞号面板({ 查, users, 类型, 捞回了, 渠道, 触点, 领成了
     <Alert
       type={在公海 ? "warning" : "error"}
       showIcon
-      title={去符号(查.提示)}
+      title={我退的 ? "在公海" : 去符号(查.提示)}
       description={
         <div>
           <div>
