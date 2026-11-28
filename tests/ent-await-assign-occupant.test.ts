@@ -16,7 +16,8 @@ import { prisma } from "@/lib/prisma";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 销售初判, 读线索验证 } from "@/lib/project/lead-verify";
-import { 改节点, 改项目, 终止进程, 删项目 } from "@/lib/project/db";
+import { 改节点, 改项目, 终止进程, 删项目, 记项目沟通 } from "@/lib/project/db";
+import dayjs from "dayjs";
 import { 分配线索 } from "@/app/(app)/leads/assign-actions";
 import { 待分配不能动 } from "@/lib/enterprise/await-assign";
 import { 默认组织规则 } from "@/lib/project/org-rules";
@@ -119,5 +120,53 @@ describe("待分配期间占位的建的人（X-68、P-转-21）", () => {
     expect((await 读线索验证(接手, 后))?.我能).toBe("初判");
     当(接手);
     expect(await 销售初判(接手, id, "无效", { invalidReason: "联系方式无效" })).toEqual({ ok: true });
+  });
+});
+
+describe("待分配期间占位的建的人：不能记沟通、不能转让 / 改负责人（29M、P-转-21）", () => {
+  const 向导 = () => ({ type: "PHONE", content: "聊了", occurredAt: dayjs().subtract(1, "hour").toISOString(), 下一步: "发报价", 阶段: "线索" });
+
+  it("记项目沟通被拒，没写任何沟通", async () => {
+    const id = await 待分配线索();
+    expect(await 记项目沟通(销售, id, 向导())).toMatchObject(拦);
+    expect(await prisma.followUp.count()).toBe(0);
+  });
+
+  it("改负责人（转让）被拒，负责人和待分配标记不动；改字段照常能存", async () => {
+    const id = await 待分配线索();
+    expect(await 改项目(销售, id, { name: "项目0", amount: 0, ownerId: 接手.id })).toMatchObject({ ok: false });
+    expect(await 项(id)).toMatchObject({ ownerId: 销售.id });
+    expect((await 项(id)).awaitAssignAt).not.toBeNull();
+    expect((await 改项目(销售, id, { name: "改了名", amount: 0 })).ok).toBe(true);
+    expect(await 项(id)).toMatchObject({ name: "改了名", ownerId: 销售.id });
+  });
+
+  it("能转让项目 / 能往项目记沟通 对占位的人为假，对不占位的人照旧", async () => {
+    const { 能转让项目 } = await import("@/lib/enterprise/permissions");
+    const { 能往项目记沟通 } = await import("@/lib/project/follow-needs-project");
+    const { 权限组织 } = await import("@/lib/enterprise/org");
+    const org = await 权限组织();
+    const 待 = { ownerId: 销售.id, awaitAssignAt: new Date(), pooledAt: null };
+    const 正常 = { ownerId: 销售.id, awaitAssignAt: null, pooledAt: null };
+    expect(能转让项目(销售, 待, org)).toBe(false);
+    expect(能往项目记沟通(销售, 待, org, null)).toBe(false);
+    expect(能转让项目(销售, 正常, org)).toBe(true);
+    expect(能往项目记沟通(销售, 正常, org, null)).toBe(true);
+    // 上级（销售管理）不是占位的人：照常能转
+    expect(能转让项目(组长, 待, org)).toBe(true);
+  });
+
+  it("能分配的人（销售管理）照常分；分完负责人变成接手人，接手人能记沟通", async () => {
+    const id = await 待分配线索();
+    当(组长);
+    expect(await 分配线索({ projectId: id, toUserId: 接手.id, line: "内贸" })).toEqual({ ok: true });
+    当(接手);
+    expect((await 记项目沟通(接手, id, 向导())).ok).toBe(true);
+  });
+
+  it("分配以后（标记清掉）原建档人若再成为负责人：沟通、转让照常", async () => {
+    const id = await 待分配线索({ awaitAssignAt: null });
+    expect((await 记项目沟通(销售, id, 向导())).ok).toBe(true);
+    expect((await 改项目(销售, id, { name: "项目0", amount: 0, ownerId: 接手.id })).ok).toBe(true);
   });
 });

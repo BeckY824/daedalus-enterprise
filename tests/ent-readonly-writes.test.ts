@@ -112,7 +112,7 @@ describe("只看某人进组的项目：能看，写一律拒（P-看-19）", ()
 
   it("记沟通：项目详情、客户页兜底、客户页选了项目都拒，库里不多一条", async () => {
     const org = await 读组织();
-    expect(能往项目记沟通(我(盯的人), { ownerId: 负责人, pooledAt: null }, org, "JOINED")).toBe(false);
+    expect(能往项目记沟通(我(盯的人), { ownerId: 负责人, pooledAt: null, awaitAssignAt: null }, org, "JOINED")).toBe(false);
     await 作为(盯的人, async () => {
       expect(await 记项目沟通(我(盯的人), 项目P, 向导())).toEqual({ ok: false, error: 只看某人话 });
       expect((await 可记沟通项目们(我(盯的人), 客户A)).可记).toEqual([]);

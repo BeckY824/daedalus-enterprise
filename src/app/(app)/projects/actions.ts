@@ -1094,7 +1094,7 @@ export async function 预览客户回收(改: 规则改动) {
  */
 async function 项目能记沟通(me: Awaited<ReturnType<typeof requireUser>>, projectId: string, 售后回访: boolean): Promise<boolean> {
   if (typeof projectId !== "string" || !projectId) return false;
-  const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, customerId: true, ownerId: true, pooledAt: true, result: true } }));
+  const p = await 看全部(() => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, customerId: true, ownerId: true, pooledAt: true, awaitAssignAt: true, result: true } }));
   if (!p || p.pooledAt) return false;
   const 组员 = await prisma.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
   if (是交付(p.result)) return !(await 核售后回访(me, p, 售后回访, 组员?.inviteStatus));
@@ -1181,7 +1181,7 @@ export async function 项目沟通须知(projectId: string): Promise<项目沟�
   try {
     const me = await requireUser();
     if (!(await 开着()) || !企业版() || typeof projectId !== "string" || !projectId) return { ok: true, 能记: false };
-    const 取 = () => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true, source: true } });
+    const 取 = () => prisma.project.findUnique({ where: { id: projectId }, select: { id: true, ownerId: true, pooledAt: true, awaitAssignAt: true, phase: true, node: true, result: true, nextStepAt: true, createdAt: true, customerId: true, contactId: true, bizLine: true, source: true } });
     // 客户负责人不一定看得到别人负责的项目（企业版项目不跟客户走）：限定层没给的只认交付结清的（售后回访，下面再核人），同 记项目沟通
     const p = (await 取()) ?? await 看全部(取).then((x) => (x && 是交付(x.result) ? x : null));
     if (!p || p.pooledAt) return { ok: true, 能记: false };

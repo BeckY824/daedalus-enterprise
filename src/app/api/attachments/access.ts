@@ -156,7 +156,7 @@ async function 认沟通(followUpId: string, 要改: boolean | "删"): Promise<{
   if (要改 === "删") return (await 能删沟通(我, { customerId: f.customerId, id: f.id })) ? { 叫法 } : { 错: 不能删沟通话, 状态: 403 };
   if (await 能改这条沟通(我, { customerId: f.customerId, id: f.id })) return { 叫法 };
   if (f.ownerId !== 我.id) return { 错: "只有负责人或记这条沟通的人能传附件", 状态: 403 };
-  const p = await prisma.project.findFirst({ where: { id: 挂.projectId }, select: { id: true, ownerId: true, pooledAt: true, result: true } });
+  const p = await prisma.project.findFirst({ where: { id: 挂.projectId }, select: { id: true, ownerId: true, pooledAt: true, awaitAssignAt: true, result: true } });
   if (!p || p.pooledAt) return { 错: "这个项目在公海里，先领取再传", 状态: 403 };
   const org = await 权限组织();
   if (!能管项目(我, p, org)) {

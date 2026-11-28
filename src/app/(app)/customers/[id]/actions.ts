@@ -16,10 +16,11 @@ import { 领取 } from "../pool-actions";
 import { 认回打码号, 号键 } from "@/lib/phone";
 import { 号码脱敏器 } from "@/lib/enterprise/phone-mask";
 import { 企业版 } from "@/lib/enterprise/switch";
+import { 待分配不能动 } from "@/lib/enterprise/await-assign";
 import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读话of, 能新建和领取 } from "@/lib/enterprise/permissions";
+import { 占着待分配, 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读话of, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 无效客户不能记沟通话 } from "@/lib/enterprise/pool-rules";
 import type { 组织 } from "@/lib/enterprise/org-core";
@@ -166,13 +167,13 @@ async function 跟着改待办(customerId: string, 旧: 带时间的跟进, 新:
 async function 挂项目(me: { id: string; role: string }, followUpId: string, customerId: string, projectId: string, db: Prisma.TransactionClient, org: 组织 | null, 售后回访 = false): Promise<string | null> {
   // 售后回访（11-25）：挂交付结清的项目，再核一遍客户不在公海、我能记（期间项目刚撤回交付结清 / 客户进了公海 / 我被移出组）
   const 条件 = 售后回访 ? { result: { in: 同名们("交付结清") } } : 在推项目条件;
-  const p = await 看全部(() => db.project.findFirst({ where: { id: projectId, customerId, ...条件 }, select: { id: true, name: true, node: true, phase: true, ownerId: true, pooledAt: true, result: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } } }));
+  const p = await 看全部(() => db.project.findFirst({ where: { id: projectId, customerId, ...条件 }, select: { id: true, name: true, node: true, phase: true, ownerId: true, pooledAt: true, awaitAssignAt: true, result: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } } }));
   if (!p) return 沟通项目不在话;
   if (售后回访) {
     const c = await 看全部(() => db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, pool: { select: { customerId: true } } } }));
     if (c?.pool) return 售后客户在公海话;
     if (!能记售后回访(me, { ...p, 客户负责人: c?.salesOwnerId, 客户在公海: false }, org, p.members[0]?.inviteStatus)) return 售后不能记话;
-  } else if (!能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)) return 沟通不是组员话;
+  } else if (!能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)) return 企业版() && 占着待分配(me, p) ? 待分配不能动 : 沟通不是组员话;
   // 库里存着旧节点名的按企业版的新名记（10-31 改名，写入一律新名）
   await db.followUpProject.create({ data: { followUpId, projectId: p.id, node: 本套名(p.node, 企业版字典) } });
   await 记沟通编号(db, followUpId, p.id, null);

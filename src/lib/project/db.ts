@@ -736,6 +736,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     变了.push(...回复改了);
     if (!变了.length) return { ok: true as const, 变了 };
     // 改负责人 = 转让，要 能转让项目；别的字段 = 编辑内容，要 能管项目（11-01：总管理、上级能转不能改；11-02：负责人本人能改，也能把自己的转出去）
+    if (变了.includes("ownerId") && 待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
     if (变了.includes("ownerId") && !能转) return { ok: false as const, error: "只有负责人本人、直属上级、条线总管理或系统管理员能转让这个项目" };
     if (变了.some((k) => k !== "ownerId" && !(录入人改回复 && (回复键们 as readonly string[]).includes(k))) && !能改) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只能转让负责人，项目内容只有负责人能改" };
     // 企业版字段权限：动了「只能看」的金额（含合同金额、定金金额、成交需求）/ 负责人 / 预计成交日期 / 痛点标注 / 合同状态就拒（名称、备注、联系人不在表里，照旧能改）
@@ -1648,6 +1649,8 @@ export async function 记项目沟通(
     // 沟通必须挂在推项目（11-17 客户定）：已结束的项目不再记沟通
     if (企业版() && p.result && !售后) return { ok: false as const, error: 沟通项目已结束话 };
     if (企业版() && !售后 && input.售后回访 === true) return { ok: false as const, error: 售后只在交付结清话 };
+    // 待分配期间占着负责人一格的建的人只能看和改字段，不能记沟通（P-转-21、29M）
+    if (!售后 && 待分配占位(me, p)) return { ok: false as const, error: 待分配不能动 };
     const 能管 = 能管项目(me, p, org);
     if (!能管 && !售后) {
       const 组员 = await tx.projectMember.findUnique({ where: { projectId_userId: { projectId: p.id, userId: me.id } }, select: { inviteStatus: true } });
