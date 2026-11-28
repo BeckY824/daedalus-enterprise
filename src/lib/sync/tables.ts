@@ -271,7 +271,7 @@ export const 指向人的列: [string, string][] = [
   ["EntMergeRequest", "endedById"],
   ["EntMergeApprover", "userId"],
   ["EntMergeApprover", "fromUserId"],
-  // 跨负责人项目合并申请（2026-11-28，迁移 195）：不建外键
+  // 跨负责人项目合并申请（2026-11-28，迁移 195）：不建外键。confirmerIds 是 JSON 快照（确认人 id 在里面），不随改指走，确认时以现算 ∪ 存的为准
   ["EntProjectMergeRequest", "byUserId"],
   ["EntProjectMergeRequest", "fromOwnerId"],
   ["EntProjectMergeRequest", "intoOwnerId"],

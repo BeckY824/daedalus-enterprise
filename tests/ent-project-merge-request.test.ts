@@ -23,9 +23,9 @@ import { 验证时限生效key, 验证时限扫一遍, 验证时限通知种类 
 import { 到期时刻 } from "@/lib/enterprise/merge-request";
 import { 发起合并申请 } from "@/lib/enterprise/merge-request";
 import { 待补数们 } from "@/lib/enterprise/invalid-makeup";
-import { 撤回项目合并 } from "@/lib/enterprise/project-merge";
+import { 撤回项目合并, 执行项目合并, 读快照 } from "@/lib/enterprise/project-merge";
 import {
-  算确认人, 发起跨负责人并, 处理跨并申请, 撤回跨并申请, 扫过期跨并申请, 跨并预览, 跨并暂停中的项目, 跨并重新起算时刻们, 拒绝必填话, 客户合并申请挡话,
+  算确认人, 发起跨负责人并, 处理跨并申请, 撤回跨并申请, 扫过期跨并申请, 跨并预览, 跨并暂停中的项目, 跨并重新起算时刻们, 拒绝必填话, 客户合并申请挡话, 作废跨并申请,
 } from "@/lib/enterprise/project-merge-request";
 
 type 人 = { id: string; name: string; role: string };
@@ -338,11 +338,12 @@ describe("暂停：待确认期间被并走那条新线索的验证时限和超�
     const { a, b } = await 一对();
     const id = await 请(a, b);
     const 到 = (await 申请(id)).expiresAt;
-    expect([...(await 跨并暂停中的项目(prisma, [a, b], 周五下午))]).toEqual([b]); // 只算被并走那条
+    expect([...(await 跨并暂停中的项目(prisma, [a, b], 周五下午))].sort()).toEqual([a, b].sort()); // 两条都暂停（方向无关，s1 审查建议 1）
     expect((await 跨并暂停中的项目(prisma, [b], 到)).size).toBe(0);
     await 撤回跨并申请(prisma, id, 乙, 京("2026-11-27 17:00"));
     expect((await 跨并暂停中的项目(prisma, [b])).size).toBe(0);
     expect((await 跨并重新起算时刻们(prisma, [b])).get(b)?.toISOString()).toBe(京("2026-11-27 17:00").toISOString());
+    expect((await 跨并重新起算时刻们(prisma, [a])).get(a)?.toISOString()).toBe(京("2026-11-27 17:00").toISOString());
     const id2 = await 请(a, b, 乙, 京("2026-11-30 10:00"));
     await 处理跨并申请(prisma, id2, 销管, "拒绝", { 原因: "再看看", 现在: 京("2026-11-30 11:00") });
     expect((await 跨并重新起算时刻们(prisma, [b])).get(b)?.toISOString()).toBe(京("2026-11-30 11:00").toISOString());
@@ -438,5 +439,79 @@ describe("暂停：待确认期间被并走那条新线索的验证时限和超�
       await 超时转扫一遍(京("2026-12-02 13:00"));
       expect(await 通知()).toBe(1);
     });
+  });
+});
+
+describe("s1 审查修（必改 1–3 + 建议）", () => {
+  it("必改 1：客户负责人是兼市场管理（销售管理 + 市场管理）的，这条路径不开", async () => {
+    const 戊 = await 造人("wu", "戊兼市场", "SALES");
+    await raw.entMember.create({ data: { userId: 戊.id, bizRole: "sales_mgr,marketing_mgr", line: "内贸" } });
+    const c = await 客户(戊.id);
+    const a = await 项目(乙.id, c), b = await 项目(丙.id, c);
+    expect(await 发起跨负责人并(prisma, a, b, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("兼市场管理") });
+    expect(await 跨并预览(prisma, a, b, 乙)).toMatchObject({ ok: false });
+    expect(await raw.entProjectMergeRequest.count()).toBe(0);
+  });
+
+  it("必改 2：事务里再核——执行项目合并带「期望」，负责人 / 四项 / 另判有变整笔不并", async () => {
+    const { a, b } = await 一对();
+    const 基 = { 已核未开票: true, 现在: 周五下午 };
+    const 信 = { 申请id: null, 发起人id: 销管.id, 确认人id: 销管.id, 发起方式: "本人发起" as const, 确认人层级: "实线上级" };
+    // 空档里 b 被转给别人
+    await raw.project.update({ where: { id: b }, data: { ownerId: 丁.id } });
+    expect(await 执行项目合并(prisma, a, b, 销管, { ...基, 跨负责人: { ...信, 期望: { 留下负责人: 乙.id, 并掉负责人: 丙.id } } })).toMatchObject({ ok: false, error: expect.stringContaining("负责人") });
+    expect((await 项(b)).result).toBeNull();
+    await raw.project.update({ where: { id: b }, data: { ownerId: 丙.id } });
+    // 四项：快照之后 b 被判无效
+    const 快 = await 读快照(prisma, await 项(a) as never, await 项(b) as never);
+    await raw.entLeadVerify.create({ data: { projectId: b, verdict: "初验无效" } });
+    expect(await 执行项目合并(prisma, a, b, 销管, { ...基, 跨负责人: { ...信, 期望: { 留下负责人: 乙.id, 并掉负责人: 丙.id, 快照: 快 } } })).toMatchObject({ ok: false, error: expect.stringContaining("被判无效") });
+    expect((await 项(b)).result).toBeNull();
+    await raw.entLeadVerify.delete({ where: { projectId: b } });
+    // 另判（确认人身份 / 客户负责人）不过
+    expect(await 执行项目合并(prisma, a, b, 销管, { ...基, 跨负责人: { ...信, 期望: { 留下负责人: 乙.id, 并掉负责人: 丙.id, 另判: async () => "不行" } } })).toMatchObject({ ok: false, error: "不行" });
+    expect((await 项(b)).result).toBeNull();
+  });
+
+  it("必改 2：确认时项目被转走 / 客户被转给渠运或兼市场管理（四项外）= 已失效、不并", async () => {
+    let { a, b, c } = await 一对();
+    let id = await 请(a, b);
+    await raw.customer.update({ where: { id: c }, data: { salesOwnerId: 渠运.id } });
+    expect(await 处理跨并申请(prisma, id, 销管, "确认")).toMatchObject({ ok: false, error: expect.stringContaining("不是销售") });
+    expect(await 申请(id)).toMatchObject({ status: "已失效" });
+    expect((await 项(b)).result).toBeNull();
+    const 戊 = await 造人("wu", "戊兼市场", "SALES");
+    await raw.entMember.create({ data: { userId: 戊.id, bizRole: "sales_mgr,marketing_mgr", line: "内贸" } });
+    ({ a, b, c } = await 一对());
+    id = await 请(a, b);
+    await raw.customer.update({ where: { id: c }, data: { salesOwnerId: 戊.id } });
+    expect(await 处理跨并申请(prisma, id, 销管, "确认")).toMatchObject({ ok: false, error: expect.stringContaining("兼市场管理") });
+    expect((await 项(b)).result).toBeNull();
+  });
+
+  it("必改 3：卡在「执行中」的申请到期被扫成已失效，暂停解除；没到期的执行中仍算暂停", async () => {
+    const { a, b } = await 一对();
+    const id = await 请(a, b);
+    await raw.entProjectMergeRequest.update({ where: { id }, data: { status: "执行中" } });
+    const 到 = (await 申请(id)).expiresAt;
+    expect((await 跨并暂停中的项目(prisma, [b], 周五下午)).has(b)).toBe(true);
+    expect((await 跨并暂停中的项目(prisma, [b], 到)).has(b)).toBe(false);
+    expect(await 扫过期跨并申请(prisma, new Date(到.getTime() - 1))).toBe(0);
+    expect(await 扫过期跨并申请(prisma, 到)).toBe(1);
+    expect(await 申请(id)).toMatchObject({ status: "已失效" });
+    expect((await 跨并暂停中的项目(prisma, [b], 到)).size).toBe(0);
+    expect((await 发起跨负责人并(prisma, a, b, 乙, { 现在: 到 })).ok).toBe(true); // 不再被「在等确认」挡
+  });
+
+  it("建议 2：系统管理员作废待确认申请（原因必填）；非系统管理员不行", async () => {
+    const { a, b } = await 一对();
+    const id = await 请(a, b);
+    expect(await 作废跨并申请(prisma, id, 销管, "不该并")).toMatchObject({ ok: false, error: expect.stringContaining("系统管理员") });
+    expect(await 作废跨并申请(prisma, id, 老板, " ")).toMatchObject({ ok: false });
+    expect(await 作废跨并申请(prisma, id, 老板, "不该并")).toMatchObject({ ok: true });
+    expect(await 申请(id)).toMatchObject({ status: "已失效", reason: "不该并", endedById: 老板.id });
+    expect(await 作废跨并申请(prisma, id, 老板, "再来")).toMatchObject({ ok: false });
+    expect(await raw.auditLog.count({ where: { action: "project-merge-request-void", entityId: { in: [a, b] } } })).toBe(2);
+    expect((await 发起跨负责人并(prisma, a, b, 乙)).ok).toBe(true);
   });
 });

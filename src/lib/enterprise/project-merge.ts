@@ -113,7 +113,52 @@ const 等谁 = (pending: string, 交给: "市场复核" | "总管理终判") => 
  * 跨负责人并（E-380）时由 project-merge-request.ts 带进来：放开「负责人不同」和「不是你负责的」两条（谁能发起、谁能确认由申请那边判），
  * 其余照旧；申请 id = 正在执行的那张申请（自己不挡自己）
  */
-export type 跨并信息 = { 申请id: string | null; 发起人id: string; 确认人id: string; 发起方式: "本人发起" | "申请确认"; 确认人层级: string };
+export type 跨并信息 = {
+  申请id: string | null; 发起人id: string; 确认人id: string; 发起方式: "本人发起" | "申请确认"; 确认人层级: string;
+  /** 事务里再核一遍（s1 审查必改 2）：负责人还是发起时那两位、有快照的四项没变、另判（确认人身份 / 客户负责人）；不过 = 抛 拦下，整笔回滚 */
+  期望?: { 留下负责人: string; 并掉负责人: string; 快照?: 快照; 另判?: (tx: Tx, A: 项目行, B: 项目行) => Promise<string | null> };
+};
+
+/* 确认时比四项的快照（从 project-merge-request.ts 挪来，事务里要用；那边照旧导出） */
+export const 四项 = ["负责人", "阶段", "回款或提成", "被判无效"] as const;
+export type 变动项 = (typeof 四项)[number];
+export type 项目快照 = { 名: string; 负责人: string; 阶段: string; 回款: number; 提成: number; 无效: boolean };
+export type 快照 = { 项目: Record<string, 项目快照> };
+const 变动句 = (项: readonly string[]) => `两个项目的${项.join("、")}有变`;
+export const 变动话 = (项: readonly string[]) => `${变动句(项)}，申请已失效，要重新发起`;
+const 判无效 = (v: { verdict: string; finalResult: string | null } | null) => !!v && (v.verdict === "初验无效" || v.verdict === "无效线索" || v.finalResult === "无效线索");
+export async function 读快照(db: Tx | 库, A: 项目行, B: 项目行): Promise<快照> {
+  const 项目: Record<string, 项目快照> = {};
+  for (const p of [A, B]) {
+    const [m, v] = await Promise.all([
+      钱(db as Tx, p.id),
+      看全部(() => db.entLeadVerify.findUnique({ where: { projectId: p.id }, select: { verdict: true, finalResult: true } })),
+    ]);
+    项目[p.id] = { 名: p.name, 负责人: p.ownerId, 阶段: `${p.phase}/${p.node ?? ""}/${p.result ?? ""}`, 回款: m.回款, 提成: m.提成, 无效: 判无效(v) };
+  }
+  return { 项目 };
+}
+export function 比四项(旧: 快照, 新: 快照): 变动项[] {
+  const 变 = new Set<变动项>();
+  for (const [id, a] of Object.entries(旧.项目)) {
+    const b = 新.项目[id];
+    if (!b) { 变.add("阶段"); continue; }
+    if (a.负责人 !== b.负责人) 变.add("负责人");
+    if (a.阶段 !== b.阶段) 变.add("阶段");
+    if (a.回款 !== b.回款 || a.提成 !== b.提成) 变.add("回款或提成");
+    if (a.无效 !== b.无效) 变.add("被判无效");
+  }
+  return 四项.filter((x) => 变.has(x));
+}
+/** 事务里的「还是发起时那样吗」：null = 没变；有话 = 不能并（调用方抛 拦下） */
+async function 跨并期望判(tx: Tx, A: 项目行, B: 项目行, 期: NonNullable<跨并信息["期望"]>): Promise<string | null> {
+  if (A.ownerId !== 期.留下负责人 || B.ownerId !== 期.并掉负责人) return 变动句(["负责人"]);
+  if (期.快照) {
+    const 变 = 比四项(期.快照, await 读快照(tx, A, B));
+    if (变.length) return 变动句(变);
+  }
+  return 期.另判 ? await 期.另判(tx, A, B) : null;
+}
 export const 跨并待确认挡话 = (p: { name?: string | null }) => `「${p.name || "未命名项目"}」有一张跨负责人合并申请在等确认，先处理那张`;
 
 export async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | null, me: 合并人, org: 组织 | null, 交给: "市场复核" | "总管理终判", 跨: 跨并信息 | null = null): Promise<string[]> {
@@ -385,6 +430,10 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
       看全部(() =>
         db.$transaction(async (tx) => {
           const [A, B] = [await 读项目(tx, 留下id), await 读项目(tx, 并掉id)];
+          if (opt.跨负责人?.期望 && A && B) {
+            const 变 = await 跨并期望判(tx, A, B, opt.跨负责人.期望);
+            if (变) throw new 拦下(变);
+          }
           const 原因 = await 拦的原因(tx, A, B, me, org, 交给, opt.跨负责人 ?? null);
           if (原因.length) throw new 拦下(原因.join("；"));
           const 结 = await 挪(tx, A!, B!, me, 现在);
