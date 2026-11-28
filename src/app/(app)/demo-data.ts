@@ -11,7 +11,7 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 能改后台设置 } from "@/lib/enterprise/permissions";
 
 /** 演示数据灌 / 清：企业版只认业务角色——能改后台设置的总管理（11-01）；别的版本照旧账号管理员 */
-const 能管演示数据 = async (me: { id: string; role: string }) => (企业版() ? 能改后台设置(me, await 权限组织()) : me.role === "ADMIN");
+const 能管演示数据 = async (me: { id: string; role: string }) => 能改后台设置(me, await 权限组织());
 
 /**
  * 「灌一套演示数据」——给自己架一套网页版的团队看这东西装满之后长什么样。

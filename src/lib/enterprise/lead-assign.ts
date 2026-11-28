@@ -21,7 +21,7 @@ import { businessDayjs } from "@/lib/business-clock";
 import { 随客户痕 } from "@/lib/project/carry-tasks";
 import { 是补发来的 } from "./invalid-makeup";
 import type { 组织 } from "./org-core";
-import { 能分配线索, 能拨参与暂停, 是总管理 } from "./permissions";
+import { 能分配线索, 能拨参与暂停, 是总管理, 销售角色集 } from "./permissions";
 import { 能改设置, type 改权限配置 } from "./edit-perm-table";
 
 export const 线索种类 = ["营销", "营销企划"] as const;
@@ -38,9 +38,6 @@ export const 企划线索计数key = "enterprise.lead_assign.plan_counted";
 export function 月份(d = new Date()): string {
   return businessDayjs(d).format("YYYY-MM");
 }
-
-/** 能接分配线索的业务角色：销售、销售管理 */
-const 能接的角色 = new Set(["sales", "sales_mgr"]);
 
 /**
  * 能点「分配」（手动指派 / 自动分配）的人：总管理员、市场管理、销售管理（11-01 清单 A7 / A9）。
@@ -62,7 +59,7 @@ export function 能设配额(org: 组织, 我: { id: string; role: string }, 目
 export function 接手问题(org: 组织, 接手人: string, line: 线 | null): string | null {
   const m = org.成员.get(接手人);
   if (!m) return "接手人不在组织里，或者已经停用";
-  if (!m.角色们.some((r) => 能接的角色.has(r))) return "线索只能分给销售或销售管理";
+  if (!m.角色们.some((r) => 销售角色集.has(r))) return "线索只能分给销售或销售管理";
   if (line && m.line && m.line !== line) return `他是${m.line}销售，这条线索走${line}`;
   return null;
 }

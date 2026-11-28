@@ -73,6 +73,8 @@ const 有 = (org: 组织, id: string, 们: readonly 业务角色[]) => 角色们
 
 /** 销售：销售、销售管理（市场分给销售算转客户时认这两个，只看业务角色） */
 const 销售角色: readonly 业务角色[] = ["sales", "sales_mgr"];
+/** 同一份集合给自动分配（assign-line.ts）、线索分配（lead-assign.ts）按字符串角色判断用，三处不再各抄一份 */
+export const 销售角色集: ReadonlySet<string> = new Set<string>(销售角色);
 export const 是市场角色 = (org: 组织, id: string): boolean => 有(org, id, 市场角色);
 export const 是销售角色 = (org: 组织, id: string): boolean => 有(org, id, 销售角色);
 
