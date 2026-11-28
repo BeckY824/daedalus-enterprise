@@ -293,6 +293,18 @@ describe("没指定默认负责人（11-02：不自动挑人，进公海）", ()
       expect(p.pooledAt).toBeNull();
     });
 
+    it("poolPrevOwnerId（E-417 包 1）：新建无主项目进公海列为空；指定默认负责人再导出公海、撤回这次回公海，列 = 当时的负责人（覆盖，不是空）", async () => {
+      await 导([无主客户表(), 无主商机表()]);
+      const 读 = () => prisma.project.findFirstOrThrow({ where: { name: "示例商机" } });
+      expect((await 读()).poolPrevOwnerId).toBeNull();
+      const 二 = await 导带默认([无主客户表(), 无主商机表()], 李娜);
+      expect((await 读()).pooledAt).toBeNull();
+      await 撤回一批(二.id, 我);
+      const 回 = await 读();
+      expect(回.pooledAt).not.toBeNull();
+      expect(回.poolPrevOwnerId).toBe(李娜);
+    });
+
     it("线索行：新建的客户挂占位进公海，项目进公海", async () => {
       const { r } = await 导([无主线索表()]);
       expect(r.失败).toBe(0);

@@ -428,6 +428,7 @@ describe("C 客户进公海：清空负责人、记历史负责人、原负责�
     const c = await 客户(占位.id);
     await prisma.customerPool.create({ data: { customerId: c, reason: "客户主动终止", userId: 甲.id } });
     await prisma.customerOwnerLog.create({ data: { customerId: c, userId: 甲.id, fromOwnerId: 甲.id, toOwnerId: 占位.id, kind: "assign" } });
+    await prisma.customer.update({ where: { id: c }, data: { poolPrevOwnerId: 甲.id } }); // E-417 包 2 起回避认这一列
     忘掉企业版范围();
     const r = await 以(甲, () => 领取([c]));
     expect(await 客户在公海(c)).toBe(true);

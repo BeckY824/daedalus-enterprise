@@ -27,7 +27,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 视图中跳过 } from "@/lib/enterprise/view-as";
 import { 读组织, 直属上级of, 实线下属, 虚线下属, 拆角色, type 组织 } from "@/lib/enterprise/org";
 import type { 业务角色 } from "@/lib/sync/dept-policy";
-import { 原负责人回避, 历史负责人, 不回避条件 } from "./pool-owner";
+import { 原负责人回避, 项目放回人, 不回避条件 } from "./pool-owner";
 import { 能编辑项目, 业务线放行, 只读按线, 是系统管理员, 只看的人, 只看某人话 } from "@/lib/enterprise/permissions";
 import { 按线范围of, 按线项目 } from "@/lib/enterprise/line-viewer";
 import {
@@ -274,7 +274,7 @@ const 组织of = async (): Promise<组织 | null> => (企业版() ? 读组织() 
 
 /** 单条判断用：项目在公海、且历史负责人要回避（C-01）时把历史负责人一起带上 */
 async function 相关人(tx: Prisma.TransactionClient, b: 带全的卡点) {
-  const 回避人 = b.project.pooledAt !== null && 原负责人回避() ? await 历史负责人(tx, b.projectId) : null;
+  const 回避人 = b.project.pooledAt !== null && 原负责人回避() ? await 项目放回人(tx, b.projectId) : null;
   return {
     creatorId: b.creatorId, ownerId: b.project.ownerId, 在公海: b.project.pooledAt !== null,
     组员们: b.project.members.map((m) => m.userId), 认领人们: b.claims.map((c) => c.userId), 回避人,

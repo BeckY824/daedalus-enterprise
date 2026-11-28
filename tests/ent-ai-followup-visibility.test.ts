@@ -9,6 +9,7 @@ import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from "vites
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 
 import { prisma } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { dayjs } from "@/lib/utils";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
@@ -137,6 +138,7 @@ describe("首页 AI 读跟进按跟进可见条件", () => {
     // 项目放回公海：留痕记原负责人甲
     await prisma.project.update({ where: { id: 甲项目id }, data: { pooledAt: new Date() } });
     await prisma.projectNodeLog.create({ data: { projectId: 甲项目id, userId: 甲.id, kind: "pool-release", fromOwnerId: 甲.id, toPhase: "线索", toNode: "线索" } });
+    await 回填放回人列(prisma); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
     invalidateSettingsCache();
     忘掉企业版范围();
     const 后 = 搜到((await 以(甲, () => 跑("search_followups", { keyword: "售后回访" }, 甲))) as 读);

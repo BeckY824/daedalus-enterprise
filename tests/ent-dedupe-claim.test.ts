@@ -23,6 +23,7 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
 import { prisma } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -67,6 +68,7 @@ async function 公海客户(原: string, 创建人?: string): Promise<{ id: stri
   const 号 = 号of(序);
   const c = await prisma.customer.create({ data: { name: `公海客户${序}`, phone: "", salesOwnerId: 原, channelId: 老渠道, attributionChannelId: 老渠道 } });
   await prisma.customerPool.create({ data: { customerId: c.id, userId: 原, reason: "手动" } });
+  await 回填放回人列(prisma); // 直接塞公海行的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
   if (创建人) await prisma.customerCreator.create({ data: { customerId: c.id, userId: 创建人 } });
   const 李 = await prisma.contact.create({ data: { name: "李工", position: "技术", customerId: c.id, createdAt: new Date("2026-01-02T00:00:00Z") } });
   const 王 = await prisma.contact.create({ data: { name: "王经理", position: "采购", phone: 号, isPrimary: true, customerId: c.id, createdAt: new Date("2026-01-03T00:00:00Z") } });
@@ -80,6 +82,7 @@ async function 公海项目(customerId: string, 放的人: string, pooledAt: Dat
   序 += 1;
   const p = await prisma.project.create({ data: { name: `公海项目${序}`, customerId, ownerId: "", creatorId: 放的人, pooledAt } });
   await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 放的人, kind: "pool-release", fromOwnerId: 放的人, toPhase: "线索", toNode: "潜客培育", at: pooledAt } });
+  await 回填放回人列(prisma);
   return p.id;
 }
 const 沟通 = (补: Partial<查重领取沟通> = {}): 查重领取沟通 => ({ type: "PHONE", content: "客户来电咨询报价", occurredAt: "2026-11-19 10:00", ...补 });
@@ -477,6 +480,7 @@ describe("原负责人回避（用户 11-19：仅对创建人豁免，对其他�
     const 占位 = await prisma.user.create({ data: { email: 无负责人占位邮箱, name: "无负责人", role: "SALES", password: "x", active: false } });
     const c = await 公海客户(占位.id);
     await prisma.customerOwnerLog.create({ data: { customerId: c.id, userId: 甲.id, fromOwnerId: 甲.id, toOwnerId: 占位.id, kind: "pool-release" } });
+    await 回填放回人列(prisma);
     当(市场);
     const r = await 查重领取("手机号", c.号, 沟通(), null, 新(c));
     if (!r.ok) throw new Error(r.error);
@@ -496,6 +500,7 @@ describe("原负责人回避（用户 11-19：仅对创建人豁免，对其他�
     const 占位 = await prisma.user.create({ data: { email: 无负责人占位邮箱, name: "无负责人", role: "SALES", password: "x", active: false } });
     const c = await 公海客户(占位.id, 总管.id);
     await prisma.customerOwnerLog.create({ data: { customerId: c.id, userId: 市场.id, fromOwnerId: 市场.id, toOwnerId: 占位.id, kind: "pool-release" } });
+    await 回填放回人列(prisma);
     当(市场);
     const 查 = await 以谁的身份(市场.id, () => 查号码("手机号", c.号));
     expect(查).toMatchObject({ 状态: "公海待捞", 原负责人是我: true });

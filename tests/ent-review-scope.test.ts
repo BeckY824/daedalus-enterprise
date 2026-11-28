@@ -13,6 +13,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from "vites
 vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {} }));
 
 import { prisma } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { resetDb } from "./reset";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 只读角色话 } from "@/lib/enterprise/permissions";
@@ -48,6 +49,7 @@ async function 建项目(名: string, 负责: 名字, 公海 = false) {
   项目[名] = (await prisma.project.create({ data: { name: 名, customerId: c.id, ownerId: 公海 ? 公海无负责人 : 他, creatorId: 他, pooledAt: 公海 ? new Date() : null } })).id;
   if (公海) {
     await prisma.projectNodeLog.create({ data: { projectId: 项目[名], userId: 他, kind: "pool-release", fromOwnerId: 他, toPhase: "线索", toNode: "线索" } });
+    await 回填放回人列(prisma); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
   }
   const f = await prisma.followUp.create({ data: { customerId: c.id, ownerId: 他, type: "CALL", title: "", content: "发卡点", status: "已完成" } });
   await prisma.entBlocker.create({

@@ -35,7 +35,7 @@ async function 挂靠审批跟着换(tx: Pick<Prisma.TransactionClient, "entDupe
 }
 
 export async function 记换负责人(
-  tx: Pick<Prisma.TransactionClient, "customerOwnerLog" | "entDupeHit" | "setting" | "entCustomerStateLog" | "entCustomerMerge">,
+  tx: Pick<Prisma.TransactionClient, "customer" | "customerOwnerLog" | "entDupeHit" | "setting" | "entCustomerStateLog" | "entCustomerMerge">,
   换: { customerId: string; from: string | null; to: string }[],
   操作人: string,
   kind: 换负责人种类,
@@ -50,10 +50,35 @@ export async function 记换负责人(
   // 进公海：公海客户没有负责人、也不是挂靠对象（P-挂靠-01），审批人不跟到占位账号上，待处理的直接关
   // 出口 C「重复咨询待补建」记录同样自动关（客户 E-227 三处默认 ③：客户中途进了公海，改走公海领取）
   if (kind === "pool-release") {
+    await 记客户放回人(tx, 真换了.map((x) => ({ id: x.customerId, 从: x.from })));
     await 挂靠申请进公海关(tx, 真换了.map((x) => x.customerId));
     await 待补建进公海关(tx, 真换了.map((x) => x.customerId));
   }
   else await 挂靠审批跟着换(tx, 真换了);
+}
+
+/**
+ * 客户放进公海时把原负责人存在 Customer.poolPrevOwnerId（迁移 194）：和 pool-release 留痕同一笔事务，每次进公海覆盖；
+ * 值 = 那条 pool-release 的 from（toOwnerId 是占位账号）。只在在公海里时有意义，出公海不清。
+ * 没走 记换负责人 直接写 pool-release 的地方（pool-owner-backfill.ts）自己调它
+ */
+export async function 记客户放回人(tx: Pick<Prisma.TransactionClient, "customer">, 们: { id: string; 从: string | null }[]): Promise<void> {
+  const 组 = new Map<string | null, Set<string>>();
+  for (const x of 们) {
+    const 人 = x.从 || null;
+    let 集 = 组.get(人);
+    if (!集) 组.set(人, (集 = new Set()));
+    集.add(x.id);
+  }
+  for (const [人, 集] of 组) {
+    const ids = [...集];
+    // 看全部：同 记放回人，别让限定层的公海回避条件把刚进公海的客户自己挡掉
+    for (let i = 0; i < ids.length; i += 500) {
+      const 段 = ids.slice(i, i + 500);
+      const 改 = await 看全部(() => tx.customer.updateMany({ where: { id: { in: 段 } }, data: { poolPrevOwnerId: 人 } }));
+      if (改.count !== 段.length) throw new Error(`记客户放回人：应改 ${段.length} 行，实际 ${改.count} 行（整笔回滚）`);
+    }
+  }
 }
 
 /** 挂靠申请（EntDupeHit）客户进了公海被关掉时记的状态，同 已批准 / 已拒绝 一列 */
@@ -162,14 +187,30 @@ export async function 公海客户原负责人是(db: Pick<Prisma.TransactionCli
 }
 
 /**
- * 界面灰领取按钮用（接口拦在 pool-actions.ts 领取）：这几位公海客户里原负责人是我的，
- * 负责人还是我的老数据 + 最近一次进公海时负责人是我的。回客户 id
+ * 公海里的客户，人们 里谁是「最近一次进公海时的负责人」（回避认 Customer.poolPrevOwnerId，E-417 包 2）：回 客户 id → 那位。
+ * 在公海、没删、列在 人们 里的才算；领走时列留着、不在公海的不算。不再区分占位负责人 / 真人负责人（老数据靠回填写了列）。
+ * 包 看全部：公海里的客户原负责人本来就看不到，读列不能被回避自己挡住
+ */
+export async function 公海客户放回人们(db: Pick<Prisma.TransactionClient, "customer">, 人们: string[], 限定客户?: string[]): Promise<Map<string, string>> {
+  const 出 = new Map<string, string>();
+  if (!人们.length || (限定客户 && !限定客户.length)) return 出;
+  for (let i = 0; i < (限定客户?.length ?? 1); i += 400) {
+    const 行 = await 看全部(() => db.customer.findMany({
+      where: { pool: { isNot: null }, deletedAt: null, poolPrevOwnerId: { in: 人们 }, ...(限定客户 ? { id: { in: 限定客户.slice(i, i + 400) } } : {}) },
+      select: { id: true, poolPrevOwnerId: true },
+    }));
+    for (const r of 行) if (r.poolPrevOwnerId) 出.set(r.id, r.poolPrevOwnerId);
+  }
+  return 出;
+}
+
+/**
+ * 界面灰领取按钮用（接口拦在 pool-actions.ts 领取）：这几位公海客户里原负责人是我的（Customer.poolPrevOwnerId，E-417 包 2）。回客户 id
  */
 export async function 我放出去的公海客户(们: { id: string; 在公海: boolean; salesOwnerId: string }[], 我: string): Promise<string[]> {
   const 公海们 = 们.filter((c) => c.在公海);
   if (!公海们.length) return [];
-  const 放走的 = await 看全部(() => 公海客户原负责人是(prisma, [我], 公海们.map((c) => c.id)));
-  return 公海们.filter((c) => c.salesOwnerId === 我 || 放走的.has(c.id)).map((c) => c.id);
+  return [...(await 公海客户放回人们(prisma, [我], 公海们.map((c) => c.id))).keys()];
 }
 
 /**

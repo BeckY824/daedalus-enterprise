@@ -15,6 +15,7 @@ vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
 import { prisma } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
@@ -68,9 +69,11 @@ const 公海回执 = (r: Awaited<ReturnType<typeof 领取>>) => {
   if (!r.ok) throw new Error(r.error);
   return r;
 };
-/** 部署前的老数据：进了公海，负责人还挂原负责人，没有 pool-release 记录 */
-const 老数据进公海 = async (c: string, 谁: string, at = new Date("2026-10-01T08:00:00Z")) =>
-  prisma.customerPool.create({ data: { customerId: c, userId: 谁, reason: "手动", at } });
+/** 部署前的老数据：进了公海，负责人还挂原负责人，没有 pool-release 记录；上线回填脚本跑过后列里是当时的负责人（E-417 包 2：回避只认 poolPrevOwnerId） */
+const 老数据进公海 = async (c: string, 谁: string, at = new Date("2026-10-01T08:00:00Z")) => {
+  await prisma.customerPool.create({ data: { customerId: c, userId: 谁, reason: "手动", at } });
+  await 回填放回人列(prisma);
+};
 
 beforeEach(async () => {
   await resetDb();
@@ -116,7 +119,7 @@ describe("P-公海-04 原负责人只认最近一次进公海时那位", () => {
   });
 });
 
-describe("部署空档：老数据旧字段照样认", () => {
+describe("部署空档：老数据（回填过列）照样认", () => {
   it("负责人还是原负责人的老公海客户：他领不回、灰按钮，别人领得到；领走后他记进历史", async () => {
     const c = await 客户(甲.id);
     await 老数据进公海(c, 甲.id);

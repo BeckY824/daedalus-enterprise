@@ -1,0 +1,316 @@
+/**
+ * 回填脚本和对拍脚本的逻辑（E-417 包 1）：scripts/pool-prev-owner-backfill.ts、scripts/pool-prev-owner-compare.ts 只管开关和打印，
+ * 规矩在 src/lib/enterprise/pool-prev-owner-backfill.ts、pool-prev-owner-compare.ts。
+ *   - dry（只算计划 + 出三张表）不写库；真写后值对；再跑一次没有变化（重复跑）
+ *   - 回填后对拍 0 不一致；列被改坏（含「为空」这个坑）对拍报得出
+ */
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+
+vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
+
+import { prisma, defaultClient as raw } from "@/lib/prisma";
+import { resetDb } from "./reset";
+import { invalidateSettingsCache } from "@/lib/settings";
+import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
+import { 无负责人占位Id } from "@/lib/no-owner-db";
+import { 算回填计划, 写回填, 汇总表, 动作of } from "@/lib/enterprise/pool-prev-owner-backfill";
+import { 对拍, 互补成立, 为空或不是我 } from "@/lib/enterprise/pool-prev-owner-compare";
+
+let 序号 = 0;
+const 人 = async (key: string) => (await raw.user.create({ data: { email: `${key}@x`, name: key, title: "", role: "SALES", password: "x" } })).id;
+const 客户 = async (ownerId: string, 进公海?: Date) => {
+  序号 += 1;
+  const c = await raw.customer.create({ data: { name: `客户${序号}`, phone: `139${String(序号).padStart(8, "0")}`, salesOwnerId: ownerId } });
+  if (进公海) await raw.customerPool.create({ data: { customerId: c.id, userId: null, reason: "手动", at: 进公海 } });
+  return c.id;
+};
+const 项目 = async (customerId: string, 进公海?: Date) => {
+  序号 += 1;
+  return (await raw.project.create({ data: { name: `项目${序号}`, customerId, ownerId: "", creatorId: "x", phase: "线索", node: "潜客培育", ...(进公海 ? { pooledAt: 进公海 } : {}) } })).id;
+};
+const 项目痕 = (projectId: string, from: string | null, at: Date) =>
+  raw.projectNodeLog.create({ data: { projectId, userId: from ?? "sys", kind: "pool-release", fromOwnerId: from, at, toPhase: "线索", toNode: "潜客培育" } });
+const 客户痕 = (customerId: string, from: string, to: string, at: Date) =>
+  raw.customerOwnerLog.create({ data: { customerId, userId: from, fromOwnerId: from, toOwnerId: to, kind: "pool-release", at } });
+
+let 甲: string, 乙: string, 丙: string, 占位: string;
+const t = (s: string) => new Date(`2026-11-${s}:00+08:00`);
+let 公海项目们: Record<string, string>;
+let 公海客户们: Record<string, string>;
+
+beforeEach(async () => {
+  await resetDb();
+  invalidateSettingsCache();
+  忘掉企业版范围();
+  vi.stubEnv("CRM_ENTERPRISE", "1");
+  甲 = await 人("jia");
+  乙 = await 人("yi");
+  丙 = await 人("bing");
+  占位 = await 无负责人占位Id(prisma);
+
+  // 项目侧：客户都在非公海，项目各自在公海
+  const 普 = await 客户(丙);
+  const 单 = await 项目(普, t("03 10:00")); await 项目痕(单, 甲, t("03 10:00"));
+  const 多次 = await 项目(普, t("09 09:30")); await 项目痕(多次, 乙, t("02 08:00")); await 项目痕(多次, 甲, t("09 09:30"));
+  const 导入无主 = await 项目(普, t("04 12:00")); await 项目痕(导入无主, null, t("04 12:00"));
+  const 没留痕 = await 项目(普, t("05 12:00"));
+  const 不在公海 = await 项目(普); await 项目痕(不在公海, 乙, t("01 08:00"));
+  公海项目们 = { 单, 多次, 导入无主, 没留痕, 不在公海 };
+
+  // 客户侧
+  const 新式 = await 客户(占位, t("06 10:00")); await 客户痕(新式, 甲, 占位, t("06 10:00"));
+  const 退过两次 = await 客户(占位, t("10 10:00")); await 客户痕(退过两次, 乙, 占位, t("02 10:00")); await 客户痕(退过两次, 丙, 占位, t("10 10:00"));
+  const 老数据 = await 客户(乙, t("01 10:00"));
+  const 没留痕占位 = await 客户(占位, t("07 10:00"));
+  const 不在公海客户 = await 客户(甲);
+  公海客户们 = { 新式, 退过两次, 老数据, 没留痕占位, 不在公海客户 };
+  // 项目连带：在公海的客户「退过两次」下面挂一个没进线索公海的项目（旧算法按客户算回避）
+  await 项目(退过两次);
+});
+afterEach(() => {
+  vi.unstubAllEnvs();
+  忘掉企业版范围();
+});
+
+const 列们 = async () => ({
+  项目: Object.fromEntries(await Promise.all(Object.entries(公海项目们).map(async ([k, id]) => [k, (await raw.project.findUniqueOrThrow({ where: { id } })).poolPrevOwnerId]))),
+  客户: Object.fromEntries(await Promise.all(Object.entries(公海客户们).map(async ([k, id]) => [k, (await raw.customer.findUniqueOrThrow({ where: { id } })).poolPrevOwnerId]))),
+});
+
+describe("回填：dry 不写，真写后值对，重复跑没有变化", () => {
+  it("dry：只出计划和三张表，库里一格没动；表里有数于北京时刻、总行数、按人、按北京日期", async () => {
+    const 计划 = await 算回填计划(raw);
+    const 表 = 汇总表(计划);
+    expect(表).toMatch(/^数于（北京时刻）\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/);
+    expect(表).toContain("## 项目：表 1 总行数");
+    expect(表).toContain("## 项目：表 2 按人（原负责人 id，前 20 + 其余合计）");
+    expect(表).toContain("## 客户：表 3 按放进公海的北京日期");
+    expect(表).toContain("在公海里 4 行"); // 项目：单 / 多次 / 导入无主 / 没留痕
+    expect(表).toContain("在公海里 4 行；将写 3");
+    expect(表).toContain("2026-11-03\t1");
+    expect(await 列们()).toEqual({
+      项目: { 单: null, 多次: null, 导入无主: null, 没留痕: null, 不在公海: null },
+      客户: { 新式: null, 退过两次: null, 老数据: null, 没留痕占位: null, 不在公海客户: null },
+    });
+  });
+
+  it("真写：项目按最近一条 pool-release 的 from；客户按最近一条（占位那条）的 from，老数据取当前负责人；留痕没记人 / 没留痕不写；不在公海的不碰", async () => {
+    const 计划 = await 算回填计划(raw);
+    const 日志: string[] = [];
+    const r = await 写回填(raw, 计划, (l) => 日志.push(l));
+    expect(r.项目).toEqual({ 写了: 2, 已相同跳过: 0, 无可写: 2, 并发跳过: 0 });
+    expect(r.客户).toEqual({ 写了: 3, 已相同跳过: 0, 无可写: 1, 并发跳过: 0 });
+    expect(await 列们()).toEqual({
+      项目: { 单: 甲, 多次: 甲, 导入无主: null, 没留痕: null, 不在公海: null },
+      客户: { 新式: 甲, 退过两次: 丙, 老数据: 乙, 没留痕占位: null, 不在公海客户: null },
+    });
+    expect(日志.length).toBe(计划.项目.length + 计划.客户.length); // 逐行都有日志
+    expect(日志.some((l) => l.startsWith("项目\t") && l.includes("写"))).toBe(true);
+  });
+
+  it("重复跑：第二次全是已相同 / 无可写，一行不写，库不变", async () => {
+    await 写回填(raw, await 算回填计划(raw), () => {});
+    const 前 = await 列们();
+    const 二 = await 算回填计划(raw);
+    expect([...二.项目, ...二.客户].filter((r) => 动作of(r) === "写")).toEqual([]);
+    const r = await 写回填(raw, 二, () => {});
+    expect(r.项目.写了 + r.客户.写了).toBe(0);
+    expect(r.项目.已相同跳过).toBe(2);
+    expect(r.客户.已相同跳过).toBe(3);
+    expect(await 列们()).toEqual(前);
+  });
+
+  it("只写这一列：别的列（updatedAt、负责人、公海时刻）一格不变；读到旧值后被别人改了的行不覆盖", async () => {
+    const 前c = await raw.customer.findUniqueOrThrow({ where: { id: 公海客户们.老数据 } });
+    const 前p2 = await raw.project.findUniqueOrThrow({ where: { id: 公海项目们.多次 } });
+    const 计划 = await 算回填计划(raw);
+    // 算完计划、写之前，别处刚把这个项目放进公海写了新值
+    await raw.project.update({ where: { id: 公海项目们.单 }, data: { poolPrevOwnerId: 丙 } });
+    const r = await 写回填(raw, 计划, () => {});
+    expect(r.项目.并发跳过).toBe(1);
+    const 后p = await raw.project.findUniqueOrThrow({ where: { id: 公海项目们.单 } });
+    expect(后p.poolPrevOwnerId).toBe(丙);
+    // 别的行照写，且 updatedAt 一格不刷
+    const 后p2 = await raw.project.findUniqueOrThrow({ where: { id: 公海项目们.多次 } });
+    expect(后p2).toEqual({ ...前p2, poolPrevOwnerId: 甲 });
+    const 后c = await raw.customer.findUniqueOrThrow({ where: { id: 公海客户们.老数据 } });
+    expect(后c.salesOwnerId).toBe(乙);
+    expect(后c.poolPrevOwnerId).toBe(乙);
+    expect(前c.updatedAt).toEqual(后c.updatedAt);
+    expect(后c).toEqual({ ...前c, poolPrevOwnerId: 乙 });
+  });
+});
+
+describe("对拍：旧算法 vs 按列", () => {
+  it("回填之后每位在职员工两个集合完全相同（0 不一致）；回填之前列是空的，会报出不一致", async () => {
+    const 前 = await 对拍(raw, prisma);
+    expect(前.不一致人数).toBeGreaterThan(0);
+    await 写回填(raw, await 算回填计划(raw), () => {});
+    忘掉企业版范围(); // 每人范围有 10 秒缓存：前一次对拍缓存了「还没有回避」，不忘掉的话下面核到的是旧值（看 === 总 蒙混过去）
+    const { 以谁的身份 } = await import("@/lib/enterprise/visibility");
+    const 总p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null } });
+    expect(await 以谁的身份(甲, () => prisma.project.count({ where: { pooledAt: { not: null }, deletedAt: null } }))).toBeLessThan(总p); // 核到的是新值
+    const 后 = await 对拍(raw, prisma);
+    expect(后.在职人数).toBeGreaterThanOrEqual(3);
+    expect(后).toMatchObject({ 不一致人数: 0, 不一致: [], 互补不成立人数: 0 });
+  });
+
+  it("列被改坏报得出，报的是哪位、哪个 id；改成别人的也报", async () => {
+    await 写回填(raw, await 算回填计划(raw), () => {});
+    await raw.project.update({ where: { id: 公海项目们.单 }, data: { poolPrevOwnerId: null } });
+    const r = await 对拍(raw);
+    expect(r.不一致人数).toBe(1);
+    expect(r.不一致[0]).toMatchObject({ userId: 甲, 实体: "项目", 旧多出: [公海项目们.单], 新多出: [] });
+    expect(r.不一致.some((x) => x.实体 === "客户")).toBe(false);
+    await raw.project.update({ where: { id: 公海项目们.单 }, data: { poolPrevOwnerId: 乙 } });
+    expect((await 对拍(raw)).不一致人数).toBe(2);
+  });
+
+  it("可空列的坑：回填前列全空，限定层（team-scope 回避条件）不误挡——互补核对成立", async () => {
+    const r = await 对拍(raw, prisma); // 没回填、列全空：甲看到的在公海行 = 全部
+    expect(r.互补不成立人数).toBe(0);
+  });
+
+  it("可空列的坑：回填后仍有列为空的在公海行（导入无主 / 没留痕占位），限定层只挡列是我的、空列的照样看得到；互补核对成立且真的比了个数", async () => {
+    await 写回填(raw, await 算回填计划(raw), () => {});
+    忘掉企业版范围(); // 范围有 10 秒缓存，回填前别处可能已缓存了空回避
+    const 总p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null } });
+    const 空p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: null } });
+    const 甲p = await raw.project.count({ where: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: 甲 } });
+    expect(空p).toBeGreaterThan(0); // 空列的行确实存在（不然这条测不到坑）
+    expect(甲p).toBeGreaterThan(0);
+    const { 以谁的身份 } = await import("@/lib/enterprise/visibility");
+    const 甲看到的 = await 以谁的身份(甲, () => prisma.project.count({ where: { pooledAt: { not: null }, deletedAt: null } }));
+    // 甲回避自己放回的 + 他放走的客户名下的项目；空列的行（导入无主、没留痕）一个不少
+    expect(甲看到的).toBeLessThan(总p);
+    expect(甲看到的).toBeGreaterThanOrEqual(总p - 甲p - 1); // 减去客户连带的（客户「退过两次」那一位名下的没进线索公海项目不算公海行，不影响这个数）
+    expect((await 对拍(raw, prisma)).互补不成立人数).toBe(0);
+    expect(await 互补成立(raw, 甲, prisma)).toBe(true);
+  });
+
+  it("甲放走的公海客户下面挂着一个不在公海的已结束项目：回避集合里有它，但不在公海、不进个数，互补照样成立", async () => {
+    const 甲放走的 = await 客户(占位, t("12 10:00")); await 客户痕(甲放走的, 甲, 占位, t("12 10:00"));
+    const 已结束 = await 项目(甲放走的);
+    await raw.project.update({ where: { id: 已结束 }, data: { result: "输单" } });
+    await 写回填(raw, await 算回填计划(raw), () => {});
+    忘掉企业版范围();
+    const { 新回避集合 } = await import("@/lib/enterprise/pool-prev-owner-compare");
+    const 集合 = await 新回避集合(raw, 甲);
+    expect(集合.项目.has(已结束)).toBe(true); // 集合里有（旧算法口径按客户算回避），但它不在公海
+    expect(集合.客户.has(甲放走的)).toBe(true);
+    expect(await 互补成立(raw, 甲, prisma)).toBe(true);
+    expect((await 对拍(raw, prisma)).互补不成立人数).toBe(0);
+  });
+
+  it("可空列的坑（证据）：朴素写 NOT { 列: 我 } / { not: 我 } 会把空列的行一起挡掉；公共写法 为空或不是我 不会", async () => {
+    await 写回填(raw, await 算回填计划(raw), () => {});
+    const 在 = { pooledAt: { not: null }, deletedAt: null };
+    const 总 = await raw.project.count({ where: 在 });
+    const 是我 = await raw.project.count({ where: { ...在, poolPrevOwnerId: 甲 } });
+    expect(await raw.project.count({ where: { ...在, NOT: { poolPrevOwnerId: 甲 } } })).toBeLessThan(总 - 是我);
+    expect(await raw.project.count({ where: { ...在, poolPrevOwnerId: { not: 甲 } } })).toBeLessThan(总 - 是我);
+    expect(await raw.project.count({ where: { ...在, ...(为空或不是我(甲) as object) } })).toBe(总 - 是我);
+  });
+});
+
+describe("回填 --dry 口径核对：最近一条 to = 占位但 kind 不是 pool-release 的客户", () => {
+  it("正常数据是 0 位；有一位最近一条是别的 kind 时数出来，按 kind 分开", async () => {
+    const 计划0 = await 算回填计划(raw);
+    expect(计划0.占位非放回).toEqual({ 位数: 0, 按种类: {} });
+    expect(汇总表(计划0)).toMatch(/口径核对[^\n]*\n0 位$/);
+    // 退过两次那位：在 pool-release 之后又有一条 assign 到占位（旧算法认这条，回填认更早的 pool-release）
+    await raw.customerOwnerLog.create({ data: { customerId: 公海客户们.退过两次, userId: 丙, fromOwnerId: 丙, toOwnerId: 占位, kind: "assign", at: t("11 10:00") } });
+    const 计划 = await 算回填计划(raw);
+    expect(计划.占位非放回).toEqual({ 位数: 1, 按种类: { assign: 1 } });
+    expect(汇总表(计划)).toContain("1 位；按 kind：assign 1");
+    // 回收站里的客户不算（对拍只比没删的）
+    await raw.customer.update({ where: { id: 公海客户们.退过两次 }, data: { deletedAt: t("11 11:00") } });
+    expect((await 算回填计划(raw)).占位非放回).toEqual({ 位数: 0, 按种类: {} });
+  });
+});
+
+describe("E-462 去掉导入写的：导入批次窗口内的 pool-release 不当放回人", () => {
+  const 批次 = (起: Date, 止: Date | null) => raw.entImportBatch.create({ data: { source: "excel", status: "done", createdAt: 起, finishedAt: 止 } });
+  const 导入行 = (batchId: string, entity: "customer" | "opportunity", targetId: string) =>
+    raw.entImportRow.create({ data: { batchId, entity, externalId: `ext-${targetId}`, targetId, kind: "create", written: "{}" } });
+  const 秒 = (d: Date, s: number) => new Date(d.getTime() + s * 1000);
+  const 起 = t("14 10:00");
+  const 止 = t("14 10:30");
+
+  it("客户：窗口内的不补、窗口外的照补；边界 ±60 秒含、61 秒外；管理员代操作（操作人不是原负责人）窗口外照补", async () => {
+    const b = await 批次(起, 止);
+    const 新客 = async (留痕们: { from: string; at: Date; 操作人?: string }[]) => {
+      const c = await 客户(占位, t("20 10:00"));
+      await 导入行(b.id, "customer", c);
+      for (const l of 留痕们) await raw.customerOwnerLog.create({ data: { customerId: c, userId: l.操作人 ?? l.from, fromOwnerId: l.from, toOwnerId: 占位, kind: "pool-release", at: l.at } });
+      return c;
+    };
+    const 窗内 = await 新客([{ from: 甲, at: 秒(起, 5) }]);
+    const 窗内后员工放回 = await 新客([{ from: 甲, at: 秒(起, 5) }, { from: 乙, at: t("18 09:00") }]);
+    const 员工放回后导入覆盖 = await 新客([{ from: 乙, at: t("12 09:00") }, { from: 甲, at: 秒(起, 5) }]);
+    const 起边界 = await 新客([{ from: 甲, at: 秒(起, -60) }]);
+    const 起外 = await 新客([{ from: 甲, at: 秒(起, -61) }]);
+    const 止边界 = await 新客([{ from: 甲, at: 秒(止, 60) }]);
+    const 止外 = await 新客([{ from: 甲, at: 秒(止, 61) }]);
+    const 管理员代操作 = await 新客([{ from: 乙, at: t("18 10:00"), 操作人: 丙 }]);
+    const 非导入创建 = await 客户(占位, t("20 10:00")); // 没有导入行，同样落在窗口内也照补
+    await 客户痕(非导入创建, 甲, 占位, 秒(起, 5));
+
+    const 计划 = await 算回填计划(raw);
+    const 应写 = new Map(计划.客户.map((r) => [r.id, r.应写]));
+    expect(应写.get(窗内)).toBeNull();
+    expect(应写.get(窗内后员工放回)).toBe(乙);
+    expect(应写.get(员工放回后导入覆盖)).toBe(乙);
+    expect(应写.get(起边界)).toBeNull();
+    expect(应写.get(起外)).toBe(甲);
+    expect(应写.get(止边界)).toBeNull();
+    expect(应写.get(止外)).toBe(甲);
+    expect(应写.get(管理员代操作)).toBe(乙);
+    expect(应写.get(非导入创建)).toBe(甲);
+  });
+
+  it("批次没结束时间：按开始时间 +60 秒算窗口", async () => {
+    const b = await 批次(起, null);
+    const c = await 客户(占位, t("20 10:00"));
+    await 导入行(b.id, "customer", c);
+    await 客户痕(c, 甲, 占位, 秒(起, 30));
+    const c2 = await 客户(占位, t("20 10:00"));
+    await 导入行(b.id, "customer", c2);
+    await 客户痕(c2, 甲, 占位, 秒(起, 90));
+    const 应写 = new Map((await 算回填计划(raw)).客户.map((r) => [r.id, r.应写]));
+    expect(应写.get(c)).toBeNull();
+    expect(应写.get(c2)).toBe(甲);
+  });
+
+  it("跨批：A 批创建、留痕落在不相干的 B 批窗口里 → 照补；只有 kind=update 导入行的 → 照补（只认 create）", async () => {
+    const A = await 批次(t("10 10:00"), t("10 10:30"));
+    const B = await 批次(起, 止);
+    const 跨 = await 客户(占位, t("20 10:00"));
+    await 导入行(A.id, "customer", 跨);
+    await 导入行(B.id, "customer", await 客户(占位, t("20 10:00"))); // B 批自己有别的客户，和 跨 无关
+    await 客户痕(跨, 甲, 占位, 秒(起, 5));
+    const 只更新 = await 客户(占位, t("20 10:00"));
+    await raw.entImportRow.create({ data: { batchId: B.id, entity: "customer", externalId: `ext-${只更新}`, targetId: 只更新, kind: "update", before: "{}", written: "{}" } });
+    await 客户痕(只更新, 甲, 占位, 秒(起, 5));
+    const 应写 = new Map((await 算回填计划(raw)).客户.map((r) => [r.id, r.应写]));
+    expect(应写.get(跨)).toBe(甲);
+    expect(应写.get(只更新)).toBe(甲);
+  });
+
+  it("项目：窗口内的不补、窗口外的照补；对拍（旧集合同样排导入）在回填后 0 不一致", async () => {
+    const b = await 批次(起, 止);
+    const 普 = await 客户(丙);
+    const 窗内 = await 项目(普, t("20 10:00")); await 导入行(b.id, "opportunity", 窗内); await 项目痕(窗内, 甲, 秒(起, 5));
+    const 窗外 = await 项目(普, t("20 10:00")); await 导入行(b.id, "opportunity", 窗外); await 项目痕(窗外, 甲, t("18 09:00"));
+    const 导入后员工放回 = await 项目(普, t("20 10:00")); await 导入行(b.id, "opportunity", 导入后员工放回); await 项目痕(导入后员工放回, 甲, 秒(起, 5)); await 项目痕(导入后员工放回, 乙, t("18 09:00"));
+    // 导入的客户也在公海：对拍旧集合不能多出
+    const 导入客 = await 客户(占位, t("20 10:00")); await 导入行(b.id, "customer", 导入客); await 客户痕(导入客, 甲, 占位, 秒(起, 5));
+    const 计划 = await 算回填计划(raw);
+    const 应写 = new Map(计划.项目.map((r) => [r.id, r.应写]));
+    expect(应写.get(窗内)).toBeNull();
+    expect(应写.get(窗外)).toBe(甲);
+    expect(应写.get(导入后员工放回)).toBe(乙);
+    await 写回填(raw, 计划, () => {});
+    expect(await 对拍(raw)).toMatchObject({ 不一致人数: 0, 不一致: [], 互补不成立人数: 0 });
+  });
+});

@@ -672,6 +672,10 @@ const 派生: Record<string, Record<string, string>> = {
 type 系统事实项 = { 写入方: string[]; 说明: string; 仓库外?: string; 漏写?: string };
 const 系统事实: Record<string, Record<string, 系统事实项>> = {
   Customer: {
+    poolPrevOwnerId: {
+      写入方: ["src/lib/owner-log-db.ts", "src/lib/enterprise/pool-owner-backfill.ts", "src/lib/enterprise/pool-prev-owner-backfill.ts"],
+      说明: "最近一次放进公海时的原负责人（迁移 194，E-417 包 1）：和 pool-release 留痕同一笔事务写（owner-log-db.ts 记客户放回人），出公海不清；老数据由 scripts/pool-prev-owner-backfill.ts 回填",
+    },
     flowLine: {
       写入方: ["src/lib/enterprise/flow-line.ts"],
       说明: "流转线（迁移 158，32G）：名下线索最近一次写的流转线，跟着 Project.flowLine 一起写（flow-line.ts 写流转线，裸 SQL 不碰 updatedAt）；公海按线可见用它",
@@ -688,6 +692,10 @@ const 系统事实: Record<string, Record<string, 系统事实项>> = {
     },
   },
   Project: {
+    poolPrevOwnerId: {
+      写入方: ["src/lib/project/db.ts", "src/lib/enterprise/pool-prev-owner-backfill.ts"],
+      说明: "最近一次放进公海时的原负责人（迁移 194，E-417 包 1）：和 pool-release 留痕同一笔事务写（project/db.ts 记放回人，导入、离职、客户连带都走它），出公海不清；老数据由 scripts/pool-prev-owner-backfill.ts 回填",
+    },
     flowLine: {
       写入方: ["src/lib/enterprise/flow-line.ts"],
       说明: "流转线（迁移 157，32G）：内贸 / 外贸，市场分配那一刻按方向写、销售 / 市场新增按新增人事业部写、管理手动指定按接收人事业部改；超时转、公海领取不改（规则见 flow-line-core.ts）；超时转只在这条线里转",

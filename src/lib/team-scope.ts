@@ -44,6 +44,7 @@ import { 去掉已删, 在看已删 } from "./enterprise/soft-delete-core";
 import { 市场相关客户 } from "./enterprise/market";
 import { 视图写拦, 会写库的SQL, 原文SQL } from "./enterprise/view-as";
 import { 记一次写库 } from "./enterprise/pool-count-cache";
+import { 为空或不是我 } from "./enterprise/pool-prev-owner-where";
 
 const 不限 = 全进程上下文<true>("看全部");
 
@@ -132,13 +133,12 @@ export type 按线读 = { 本人: string; 项目: Record<string, unknown>; 客�
  */
 export type 条线建的读 = { 项目: Record<string, unknown>; 客户: string[] | null; 客户条件: Record<string, unknown> };
 /**
- * 原负责人回避（11-03 用户定：原负责人退到公海，他就看不到客户和项目）。范围里算好带下来，钩子里不现查（enterprise/visibility.ts 公海回避of）：
- * 本人 = 这个人；客户 = 负责人不是他、但他退过项目的公海客户；项目 = 他退的公海项目 + 他负责的公海客户下面的项目。
- * 名单过上限是 null：退回按关联写的条件（关联写不出「最后一次」，会多挡），裸 SQL 快路走回 Prisma。没东西要回避的人没有这一项，查询不多任何条件。
- * 客户例外 / 项目例外（X-76，P-公海-04）：名单 null 时，关联条件多挡的那几条（他早先退过、最后一次不是他退的）按 id 放出来，
- * 于是过上限也只认最后一次；例外本身也过上限就没有这一项，照旧宽挡
+ * 原负责人回避（11-03 用户定：原负责人退到公海，他就看不到客户和项目）。范围里算好带下来，钩子里不现查（enterprise/visibility.ts 公海回避of）。
+ * E-417 包 2 起认 Customer / Project 的 poolPrevOwnerId 两列（放进公海时写的最近一次放进公海的人）：
+ * 客户 = 他放走的公海客户 + 他放回项目所在的公海客户；项目 = 他放回的公海项目 + 他放走的公海客户下面的项目。
+ * 名单过上限是 null：退回按列写的条件（和名单同一口径，不再多挡、没有例外），裸 SQL 快路走回 Prisma。没东西要回避的人没有这一项，查询不多任何条件。
  */
-export type 公海回避 = { 本人: string; 客户: string[] | null; 项目: string[] | null; 客户例外?: string[]; 项目例外?: string[] };
+export type 公海回避 = { 本人: string; 客户: string[] | null; 项目: string[] | null };
 export type 限定 = {
   我: 谁 | null; 互看: boolean; 别人的: ReadonlySet<string>; 读?: 谁; 全拦?: boolean; 话?: string; 线索全看?: boolean; 线索圈?: readonly string[]; 市场?: readonly string[]; 按线?: 按线读; 市场全看?: readonly string[];
   /** 企业版管理员（业务角色 admin，11-01）：看全部、写一律拒，这一句就是拒的时候给人看的话（加上限定 统一拦） */
@@ -563,41 +563,44 @@ function 跟客户走(model: string, 客户: Record<string, unknown>): Record<st
 const 跟项目的表 = new Set(["ProjectMember", "ProjectNodeLog", "FollowUpProject", "EntFollowUpMeta", "ProjectCustomer", "ProjectContact"]);
 
 /**
- * 他看不到的公海客户。负责人是他且在公海（部署前进公海的老数据）：一句写完，不用名单；
- * M-公海-03 起进公海负责人清空挂占位账号，最近一次进公海时的负责人是他的、占位负责人（导入）和别人名下的按名单。
- * 名单超上限（null）退回按关联写的条件：曾有 pool-release 就算，比名单宽（写不出「最近一次」），同项目那一半；
- * 宽出来的那几位在 客户例外 里按 id 放出来（X-76），所以照样只认最近一次。
- * 不认 CustomerPool.userId：那是操作的人，可能是上级，超时的是空。
- * salesOwnerId 非空，NOT 里算得出真（channelOwnerId 那种可空的才会踩 可见客户 上面说的坑）
+ * 他看不到的公海客户（E-417 包 2 起认 poolPrevOwnerId 两列）。名单不过上限：id NOT IN 名单（id 非空，不踩 NULL）。
+ * 名单超上限（null）退回按列写：不在公海，或「客户列为空或不是他」（只认客户列，11-27；名下公海项目列是他的不回避客户）。
+ * 「不是他」是可空列，NOT (列 = 他) 遇到空值得 NULL、空列的行会被一起挡掉，所以用公共写法 为空或不是我（enterprise/pool-prev-owner-where.ts）；
+ * 公海里的客户人人看得到，只有回避挡得掉
  */
 function 回避客户条件(避: 公海回避): Record<string, unknown> {
-  const 留痕 = { kind: "pool-release", fromOwnerId: 避.本人 };
-  return {
-    AND: [
-      { NOT: { salesOwnerId: 避.本人, pool: { isNot: null } } },
-      ...(避.客户 === null
-        ? [{ NOT: { pool: { isNot: null }, OR: [{ projects: { some: { pooledAt: { not: null }, logs: { some: 留痕 } } } }, { ownerLogs: { some: 留痕 } }], ...(避.客户例外?.length ? { id: { notIn: 避.客户例外 } } : {}) } }]
-        : 避.客户.length ? [{ NOT: { id: { in: 避.客户 } } }] : []),
-    ],
-  };
+  if (避.客户 === null) {
+    return {
+      OR: [
+        { pool: { is: null } },
+        为空或不是我(避.本人),
+      ],
+    };
+  }
+  return 避.客户.length ? { NOT: { id: { in: 避.客户 } } } : {};
 }
 
 /**
- * 回避客户条件 在「不在公海」的查询里化简：头一段 NOT (负责人是他 ∧ 在公海)、名单过上限那段 NOT (在公海 ∧ …) 都恒真，只剩名单那段；
+ * 回避客户条件 在「不在公海」的查询里化简：只认客户列：名单那段、名单过上限那段 NOT (在公海 ∧ …) 都恒真，只剩名单那段；
  * 名单空或过上限（null）就什么都不加（null）
  */
 function 非公海的回避条件(避: 公海回避): Record<string, unknown> | null {
   return 避.客户?.length ? { NOT: { id: { in: 避.客户 } } } : null;
 }
 
-/** 他看不到的项目：他退的公海项目 + 他负责的公海客户下面的项目。按项目 id 不留空 NOT，空名单返回 {} */
+/**
+ * 他看不到的项目：他放回的公海项目 + 他放走的公海客户下面的项目（E-417 包 2 起认 poolPrevOwnerId）。
+ * 名单不过上限：按项目 id 不留空 NOT，空名单返回 {}。过上限（null）按列写：
+ * 「不在公海，或项目列为空或不是他」且「所在客户不在公海 / 已删，或客户列为空或不是他」，同样用 为空或不是我 防空列被挡
+ */
 function 回避项目条件(避: 公海回避): Record<string, unknown> {
   if (避.项目 === null) {
-    return { NOT: { OR: [
-      { pooledAt: { not: null }, logs: { some: { kind: "pool-release", fromOwnerId: 避.本人 } } },
-      { customer: { salesOwnerId: 避.本人, pool: { isNot: null } } },
-      { customer: { pool: { isNot: null }, ownerLogs: { some: { kind: "pool-release", fromOwnerId: 避.本人 } } } },
-    ], ...(避.项目例外?.length ? { id: { notIn: 避.项目例外 } } : {}) } };
+    return {
+      AND: [
+        { OR: [{ pooledAt: null }, 为空或不是我(避.本人)] },
+        { customer: { OR: [{ pool: { is: null } }, { deletedAt: { not: null } }, 为空或不是我(避.本人)] } },
+      ],
+    };
   }
   return 避.项目.length ? { NOT: { id: { in: 避.项目 } } } : {};
 }

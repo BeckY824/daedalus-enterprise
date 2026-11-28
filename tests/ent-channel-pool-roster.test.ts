@@ -15,6 +15,7 @@ vi.mock("next/cache", () => ({ revalidatePath: () => {}, revalidateTag: () => {}
 vi.mock("@/lib/auth", async (原) => ({ ...(await 原<object>()), requireUser: async () => mocks.user, getCurrentUser: async () => mocks.user }));
 
 import { prisma } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -71,11 +72,13 @@ beforeEach(async () => {
   const 客 = async (name: string, phone: string, owner: 人, channelId: string, 进客户公海 = false) => {
     const id = (await prisma.customer.create({ data: { name, phone, salesOwnerId: owner.id, channelId } })).id;
     if (进客户公海) await prisma.customerPool.create({ data: { customerId: id, userId: owner.id, reason: "手动" } });
+    await 回填放回人列(prisma); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
     return id;
   };
   const 项 = async (name: string, customerId: string, owner: 人 | null, phase: string, extra: Record<string, unknown> = {}, 放回的人?: 人) => {
     const p = await prisma.project.create({ data: { name, customerId, ownerId: owner?.id ?? "", creatorId: (owner ?? 市场).id, phase, node: phase === "线索" ? "潜客培育" : phase === "商机" ? "痛点挖掘" : "生产备货", currency: "CNY", ...extra } });
     if (放回的人) await prisma.projectNodeLog.create({ data: { projectId: p.id, userId: 放回的人.id, kind: "pool-release", fromOwnerId: 放回的人.id, toPhase: phase, toNode: "潜客培育" } });
+    if (放回的人) await 回填放回人列(prisma);
     return p.id;
   };
   const 公 = { pooledAt: new Date() };

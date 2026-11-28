@@ -923,20 +923,28 @@ describe("客户级放公海、占位负责人的原负责人（11-03 完成度 
     expect(await 在客户公海(有单)).toBe(false);
   });
 
-  it("客户挂在占位账号下、项目是乙放回的：乙领客户、领项目都报「原负责人不能领回」，丙照领（B4-3）", async () => {
+  it("客户是别人放走的、项目是乙放回的：乙领项目照拦，乙领客户成功、项目一起归乙（领客户优先于回避，M-公海-05 / X-36），丙照领", async () => {
     const u = await prisma.user.create({ data: { email: 无负责人占位邮箱, name: 无负责人占位名, title: "", role: "SALES", password: "x", active: false } });
-    const c = await 客户(u.id);
-    const p = await 项目(乙.id, c);
-    await 放回公海(乙, p);
-    await prisma.customerPool.upsert({ where: { customerId: c }, update: {}, create: { customerId: c, userId: u.id, reason: "导入：原系统公海" } });
-    await prisma.customer.update({ where: { id: c }, data: { salesOwnerId: u.id } });
-    忘掉企业版范围();
+    const 造 = async () => {
+      const c = await 客户(u.id);
+      const p = await 项目(乙.id, c);
+      await 放回公海(乙, p);
+      await prisma.customerPool.upsert({ where: { customerId: c }, update: {}, create: { customerId: c, userId: u.id, reason: "导入：原系统公海" } });
+      await prisma.customer.update({ where: { id: c }, data: { salesOwnerId: u.id, poolPrevOwnerId: 丙.id } }); // 客户是丙放走的，项目列是乙
+      忘掉企业版范围();
+      return { c, p };
+    };
+    const { c, p } = await 造();
     当(乙);
-    expect(await 以谁的身份(乙.id, () => 领取([c]))).toEqual({ ok: false, error: 原负责人不能领回提示 });
     expect(await 以谁的身份(乙.id, () => 领取公海项目(乙, p))).toEqual({ ok: false, error: 原负责人不能领回提示 });
-    expect(await 在客户公海(c)).toBe(true);
+    expect(await 以谁的身份(乙.id, () => 领取([c]))).toMatchObject({ ok: true, updated: 1 });
+    expect(await 在客户公海(c)).toBe(false);
+    expect(await 负责人(c)).toBe(乙.id);
+    expect(await 项目在公海(p)).toBe(false);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: p } })).ownerId).toBe(乙.id);
+    const 另 = await 造();
     当(丙);
-    expect(await 以谁的身份(丙.id, () => 领取([c]))).toMatchObject({ ok: true, updated: 1 });
-    expect(await 负责人(c)).toBe(丙.id);
+    // 另一位同样的客户：客户列是丙，丙领不回（只认客户列）
+    expect(await 以谁的身份(丙.id, () => 领取([另.c]))).toEqual({ ok: false, error: 原负责人不能领回提示 });
   });
 });

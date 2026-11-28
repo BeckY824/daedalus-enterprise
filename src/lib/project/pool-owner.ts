@@ -9,6 +9,7 @@ import type { Prisma } from "@/generated/prisma";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 公海规则, 进公海关待办尾 } from "@/lib/enterprise/pool-rules";
 import { 看全部, 主题写 } from "@/lib/team-scope";
+import { 为空或不是我 } from "@/lib/enterprise/pool-prev-owner-where";
 import { 自动删头, 自动删话 } from "@/lib/enterprise/coach-rec";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看全部, 只读按线, type 谁 } from "@/lib/enterprise/permissions";
@@ -124,6 +125,7 @@ export function 原负责人回避(): boolean {
 }
 
 type 读痕 = Pick<Prisma.TransactionClient, "projectNodeLog">;
+type 读项目 = Pick<Prisma.TransactionClient, "project">;
 
 /**
  * 按 id 查的大名单一批多少个：SQLite 一句最多 999 个参数，留足范围层那些条件的位置（11-02）。
@@ -158,70 +160,49 @@ export async function 历史负责人(db: 读痕, projectId: string): Promise<st
 }
 
 /**
- * 现在在公海里、历史负责人是这几位之一的项目 id（只认最后一次进公海：放回过、后来被别人领走再放回的不算）。
- * 复盘按人数「退回公海」用（企业版负责人已清空，按 ownerId 数不到了）
+ * 现在在公海里、原负责人是这几位之一的项目 id（回避认 Project.poolPrevOwnerId，E-417 包 2：放进公海时写的「最近一次放进公海的人」，
+ * 放回过、后来被别人领走再放回的看最后一次；领走时列留着、不在公海的不算）。复盘按人数「退回公海」用（企业版负责人已清空，按 ownerId 数不到了）。
+ * 列的读取不被回避自己挡住：包 看全部
  */
-export async function 公海里历史负责人是(db: 读痕, 人们: readonly string[]): Promise<string[]> {
+export async function 公海里历史负责人是(db: 读项目, 人们: readonly string[]): Promise<string[]> {
   if (!人们.length) return [];
-  const 放过 = await 看全部(() => db.projectNodeLog.findMany({
-    where: { kind: "pool-release", fromOwnerId: { in: [...人们] }, project: { pooledAt: { not: null }, deletedAt: null } },
-    select: { projectId: true },
+  const 行 = await 看全部(() => db.project.findMany({
+    where: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: { in: [...人们] } },
+    select: { id: true },
   }));
-  if (!放过.length) return [];
-  const 现 = await 历史负责人们(db, 放过.map((l) => l.projectId));
-  const 是 = new Set(人们);
-  return [...现].filter(([, uid]) => 是.has(uid)).map(([id]) => id);
+  return 行.map((r) => r.id);
 }
 
 /**
  * 现在在公海里、我是历史负责人的项目 id（原负责人回避开着才算，不然空）。列表、统一公海页用来把这些行剔掉
  */
-export async function 我回避的公海项目(db: 读痕, meId: string): Promise<string[]> {
+export async function 我回避的公海项目(db: 读项目, meId: string): Promise<string[]> {
   if (!原负责人回避()) return [];
   return 公海里历史负责人是(db, [meId]);
 }
 
-/** 回避条件 里名单（和例外）最多放几个 id：再多 notIn 过 SQLite 参数上限（否定条件 Prisma 拆不了，P2029），退回按关联写的条件。同 enterprise/visibility.ts 回避名单上限 */
-const 回避条件名单上限 = 100;
-
 /**
- * 「不是我回避的公海项目」的 where（F-057：原来把 我回避的公海项目 整串塞进 id notIn，退过上千个项目的人一开页面就 P2029）。
- * 名单不过上限：id notIn 名单，同原来。过了上限：退回按关联写——公海里、留痕里有我放回的就算回避；写不出「只认最后一次」，
- * 多挡到的（早先我退、后来别人领走又退）按 id 放出来（例外），例外也过上限就宽挡（多挡不漏），同 visibility.ts 的 X-76。
- * 不论名单多长参数数都有界（≤ 上限）。没有要回避的（回避关着、没放回过）回 null，调用方不加条件。
- * 分页的列表用它代替 notIn：条件在库里算，页数、总数照旧对
+ * 「不是我回避的公海项目」的 where（F-057：原来把名单整串塞 id notIn，退过上千个项目的人一开页面就 P2029）。
+ * E-417 包 2 起直接按 Project.poolPrevOwnerId 写，不再有名单、上限和例外：不在公海，或 原负责人为空或不是我（为空或不是我，空列不被挡）。
+ * 参数数恒定。没有要回避的（回避关着、库里没有我放回的公海项目）回 null，调用方不加条件，别人的查询一个字不变
  */
-export async function 不回避条件(db: Pick<Prisma.TransactionClient, "projectNodeLog" | "project">, meId: string): Promise<Prisma.ProjectWhereInput | null> {
-  const 名单 = await 我回避的公海项目(db, meId);
-  if (!名单.length) return null;
-  if (名单.length <= 回避条件名单上限) return { id: { notIn: 名单 } };
-  const 留痕 = { kind: "pool-release", fromOwnerId: meId };
-  const 宽 = await 看全部(() => db.project.findMany({ where: { deletedAt: null, pooledAt: { not: null }, logs: { some: 留痕 } }, select: { id: true } }));
-  const 是 = new Set(名单);
-  const 例外 = 宽.map((r) => r.id).filter((id) => !是.has(id));
-  return { OR: [{ pooledAt: null }, { logs: { none: 留痕 } }, ...(例外.length && 例外.length <= 回避条件名单上限 ? [{ id: { in: 例外 } }] : [])] };
+export async function 不回避条件(db: 读项目, meId: string): Promise<Prisma.ProjectWhereInput | null> {
+  if (!原负责人回避()) return null;
+  const 有 = await 看全部(() => db.project.findFirst({ where: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: meId }, select: { id: true } }));
+  if (!有) return null;
+  return { OR: [{ pooledAt: null }, 为空或不是我(meId) as Prisma.ProjectWhereInput] };
 }
 
 /**
- * 「现在在公海里、最后一次是这几位放的」项目的 where（F-057 同类：数据页 project-stats 原来把 公海里历史负责人是 整串塞进 id in，
- * 销售只看自己、总管理看全队时 1000+ 个 id 过 SQLite 参数上限，P2029）。口径同 公海里历史负责人是（只认最近一次 pool-release）。
- * 名单不过上限：id in 名单，同原来。过了上限：按关联写——公海里、留痕里有这些人放回的（宽集合），再 NOT id in 例外
- * （例外 = 宽集合 − 名单，早先他们放过、最后一次是别人放的）。例外也过上限时宁可少算不多算：不再列例外，
- * 改成更窄的子集——宽集合里「从来没有别人放过」的（logs none 别人放的 pool-release），它一定是名单的子集，只会漏掉
- * 「别人早先放过、最后一次又是他们放」的，不会把别人最后放的算进来。参数数都有界（≤ 上限 + 人们 个数）。
- * 没有（名单空）回 null，调用方不加条件
+ * 「现在在公海里、最后一次是这几位放的」项目的 where（数据页 project-stats：销售只看自己、总管理看全队）。
+ * E-417 包 2 起按 Project.poolPrevOwnerId 写：在公海、列在这几位里；参数数 = 人数，不再有名单上限和例外。没有（库里没有这几位放回的）回 null
  */
-export async function 是我放回的公海项目条件(db: Pick<Prisma.TransactionClient, "projectNodeLog" | "project">, 人们: readonly string[]): Promise<Prisma.ProjectWhereInput | null> {
-  const 名单 = await 公海里历史负责人是(db, 人们);
-  if (!名单.length) return null;
-  if (名单.length <= 回避条件名单上限) return { id: { in: 名单 } };
+export async function 是我放回的公海项目条件(db: 读项目, 人们: readonly string[]): Promise<Prisma.ProjectWhereInput | null> {
+  if (!人们.length) return null;
   const 是 = [...人们];
-  const 宽条件: Prisma.ProjectWhereInput = { deletedAt: null, pooledAt: { not: null }, logs: { some: { kind: "pool-release", fromOwnerId: { in: 是 } } } };
-  const 宽 = await 看全部(() => db.project.findMany({ where: 宽条件, select: { id: true } }));
-  const 在名单 = new Set(名单);
-  const 例外 = 宽.map((r) => r.id).filter((id) => !在名单.has(id));
-  if (例外.length <= 回避条件名单上限) return { AND: [宽条件, ...(例外.length ? [{ NOT: { id: { in: 例外 } } }] : [])] };
-  return { AND: [宽条件, { logs: { none: { kind: "pool-release", OR: [{ fromOwnerId: null }, { fromOwnerId: { notIn: 是 } }] } } }] };
+  const 有 = await 看全部(() => db.project.findFirst({ where: { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: { in: 是 } }, select: { id: true } }));
+  if (!有) return null;
+  return { pooledAt: { not: null }, deletedAt: null, poolPrevOwnerId: { in: 是 } };
 }
 
 /**
@@ -270,7 +251,24 @@ export async function 回避豁免(me: 谁): Promise<boolean> {
  * 这个项目在公海里、我是它的历史负责人、回避开着、我又不是总管理 / 管理员 → 挡（对它没有任何权限，C-01）。
  * 详情页、附件接口等按单个项目认权限的地方用；列表用 我回避的公海项目 一次剔
  */
-export async function 原负责人挡着(db: 读痕, me: 谁, p: { id: string; pooledAt?: Date | null }): Promise<boolean> {
+export async function 原负责人挡着(db: 读项目, me: 谁, p: { id: string; pooledAt?: Date | null }): Promise<boolean> {
   if (!p.pooledAt || !原负责人回避() || (await 回避豁免(me))) return false;
-  return (await 历史负责人(db, p.id)) === me.id;
+  return (await 项目放回人(db, p.id)) === me.id;
+}
+
+/** 一个项目的原负责人（Project.poolPrevOwnerId，E-417 包 2）；没记（空列）返回 null。不看在不在公海，调用方自己先判 pooledAt。包 看全部 */
+export async function 项目放回人(db: 读项目, projectId: string): Promise<string | null> {
+  const p = await 看全部(() => db.project.findUnique({ where: { id: projectId }, select: { poolPrevOwnerId: true } }));
+  return p?.poolPrevOwnerId ?? null;
+}
+
+/** 几个项目的原负责人（Project.poolPrevOwnerId）：项目 id → 那位；空列的不在表里。调用方只传公海里的项目。包 看全部 */
+export async function 项目放回人们(db: 读项目, projectIds: string[]): Promise<Map<string, string>> {
+  const 们 = new Map<string, string>();
+  const ids = [...new Set(projectIds)];
+  for (let i = 0; i < ids.length; i += 一批id数) {
+    const 行 = await 看全部(() => db.project.findMany({ where: { id: { in: ids.slice(i, i + 一批id数) } }, select: { id: true, poolPrevOwnerId: true } }));
+    for (const r of 行) if (r.poolPrevOwnerId) 们.set(r.id, r.poolPrevOwnerId);
+  }
+  return 们;
 }

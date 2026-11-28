@@ -42,7 +42,7 @@ import type { 转走项目预览 } from "@/lib/carry-over";
 import type { Prisma } from "@/generated/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 项目业务线, 线部门key, 规整线部门, 线勾了部门, 按部门候选, 自动可接, 在不进自动分配部门, 两条线, 是业务线, type 线部门, type 项目线 } from "@/lib/enterprise/assign-line";
-import { 历史负责人, 原负责人回避, 原负责人挡着 } from "@/lib/project/pool-owner";
+import { 历史负责人, 原负责人回避, 原负责人挡着, 项目放回人 } from "@/lib/project/pool-owner";
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 import { 超时转的线 } from "@/lib/enterprise/flow-line-core";
 import { 换人定线 } from "@/lib/enterprise/flow-line";
@@ -720,7 +720,7 @@ async function 自动分给(
   if (排除?.length) 人们 = 人们.filter((id) => !排除.includes(id));
   // 公海里的项目自动分配不挑把它放回公海的人（P-公海-04 回避；上级指定分回给他另说，X-67）
   if (看.公海 && 哪条.projectId !== undefined && 原负责人回避()) {
-    const 放的人 = await 历史负责人(prisma, 哪条.projectId);
+    const 放的人 = await 项目放回人(prisma, 哪条.projectId);
     if (放的人) 人们 = 人们.filter((id) => id !== 放的人);
   }
   const 月 = 月份();

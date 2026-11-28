@@ -16,6 +16,7 @@ vi.mock("@/lib/sync/client", () => ({ 读团队: () => null }));
 vi.mock("@/lib/llm", () => ({ llmEnabled: async () => false }));
 
 import { prisma, defaultClient as raw } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
@@ -209,6 +210,7 @@ beforeAll(async () => {
   await raw.channel.createMany({ data: [{ id: 来源.甲, name: "来源甲|其他", channelOwnerId: 总管理.id }, { id: 来源.乙, name: "来源乙|其他", channelOwnerId: 总管理.id }] });
   await 造公海客户(客户几位);
   await 造公海项目(项目几个);
+  await 回填放回人列(raw); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）；对拍的旧写法照旧认留痕，数据一致才对得上
   忘掉企业版范围();
 }, 120_000);
 afterAll(async () => {
@@ -357,6 +359,7 @@ describe("统一公海：公海过 2000 位，更早入池的照样搜得到、�
     // 最早入池的那一位：全公海排最后
     await raw.customer.create({ data: { id: "t-earliest", name: "最早入池的客户", phone: "16612000000", salesOwnerId: 占位.id } });
     await raw.customerPool.create({ data: { customerId: "t-earliest", reason: "手动", userId: 组.同事.id, at: 时刻(-100000) } });
+    await 回填放回人列(raw);
     忘掉企业版范围();
   }, 120_000);
   afterAll(() => 设内存上限(Number.POSITIVE_INFINITY));
@@ -439,6 +442,7 @@ describe("统一公海：回避名单过上限（null）", () => {
         await raw.projectNodeLog.create({ data: { projectId: pid, kind: "pool-release", fromOwnerId: 退得多.id, userId: 退得多.id, toPhase: "线索", toNode: "x", at: 时刻(1500 + i) } });
       }
     }
+    await 回填放回人列(raw);
     忘掉企业版范围();
   }, 120_000);
 

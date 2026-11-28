@@ -16,7 +16,7 @@ import { getBusiness } from "@/lib/business";
 import { recordAudit } from "@/lib/audit";
 import { 钉住老签约 } from "@/lib/contract-owner";
 import { 带走并记下在事务里, 还项目, 带走公海项目, type 带走的 } from "@/lib/carry-over-db";
-import { 记换负责人, 是我刚换的, 撤销时限毫秒, 公海前负责人, 公海客户原负责人是, 删被撤的换负责人记录, 还原进公海前负责人 } from "@/lib/owner-log-db";
+import { 记换负责人, 是我刚换的, 撤销时限毫秒, 公海前负责人, 公海客户放回人们, 删被撤的换负责人记录, 还原进公海前负责人 } from "@/lib/owner-log-db";
 import type { 带走数 } from "@/lib/carry-over";
 import { 拦原负责人, 原负责人不能领回提示, 公海规则 } from "@/lib/enterprise/pool-rules";
 import { 客户名下在推项目进公海, 客户进公海清负责人 } from "@/lib/enterprise/pool-link";
@@ -33,7 +33,7 @@ import { 在事务里分公海项目们, type 分项目上下文, type 分项目
 import { 能进公海的阶段, 持有上限起点, 整批核上限, 整批或不做, 领公海项目准备, 领取公海项目们, 在事务里领公海项目们, type 领项目上下文 } from "@/lib/project/db";
 import { 生效组织规则 } from "@/lib/project/org-rules-store";
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
-import { 历史负责人, 历史负责人们, 还原清掉的组员 } from "@/lib/project/pool-owner";
+import { 项目放回人, 还原清掉的组员 } from "@/lib/project/pool-owner";
 import { 换负责人待办 } from "@/lib/project/carry-tasks";
 import { 查完再写 } from "@/lib/check-then-write";
 import { 有同事在推的客户, 同事在推不能放公海话, 同事在推项目说法, 订单项目说法 } from "@/lib/enterprise/colleague-projects";
@@ -321,24 +321,11 @@ export async function 领取(ids: string[], 带待办?: boolean, 项目ids: stri
   const 移交中 = await 移交中不能领(ids, "领");
   if (移交中) return { ok: false, error: 移交中 };
   // 企业版「非原负责人均可领取」（pool-rules.ts，10-26 定稿）：不让原负责人自己领回。
-  // 负责人还是他的 = 部署前进公海的老数据（存量脚本没跑到的空档也挡住），新进的认下面 公海客户原负责人是
-  const 不能领 = 拦原负责人()
-    ? new Set((await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, salesOwnerId: me.id, pool: { isNot: null } }, select: { id: true } }))).map((c) => c.id))
-    : new Set<string>();
-  // M-公海-03 起进公海负责人清空：最近一次进公海时的负责人是我的，也领不回（只认最近一次，曾经负责过、后来转走的不拦）
+  // E-417 包 2 起认 poolPrevOwnerId 两列（放进公海时写的最近一次放进公海的人；曾经负责过、后来转走的不拦）：
+  // 只认客户列是我的拦；名下公海项目、项目列是我的不拦（领客户优先于回避，名下公海项目照 carry-over 一起带走，M-公海-05 / X-36）
+  const 不能领 = new Set<string>();
   if (拦原负责人()) {
-    const 我放的 = await 看全部(() => 公海客户原负责人是(prisma, [me.id], ids));
-    for (const id of 我放的.keys()) 不能领.add(id);
-  }
-  // 客户挂在「没人负责」占位账号下（导入的原系统公海、离职转公海）：客户上看不出原负责人，
-  // 按名下公海项目的历史负责人认，是我放回的就领不回（11-03 完成度 B4-3；领客户会把这些项目一起带走）
-  if (拦原负责人()) {
-    const 占位的 = (await 看全部(() => prisma.customer.findMany({ where: { id: { in: ids }, pool: { isNot: null }, salesOwner: { email: 无负责人占位邮箱 } }, select: { id: true } }))).map((c) => c.id);
-    if (占位的.length) {
-      const 公海项目们 = await 看全部(() => prisma.project.findMany({ where: { customerId: { in: 占位的 }, pooledAt: { not: null } }, select: { id: true, customerId: true } }));
-      const 原 = await 历史负责人们(prisma, 公海项目们.map((p) => p.id));
-      for (const p of 公海项目们) if (原.get(p.id) === me.id) 不能领.add(p.customerId);
-    }
+    for (const cid of (await 公海客户放回人们(prisma, [me.id], ids)).keys()) 不能领.add(cid);
   }
   // 企业版：标了无效的不能领（统一公海 P7），和原负责人领不回一样算「没权限」那几位
   const 无效 = await 无效的(ids);
@@ -940,9 +927,9 @@ export async function 查重领取(类型: string, 值: string, 沟通: 查重�
     渠道 = 落.id!;
   }
   const 目标 = await 最近的公海项目(prisma, cid);
-  // 回避：客户的原负责人、最近那条公海项目的历史负责人（都是「最近一次把它放进公海的人」），客户创建人豁免
+  // 回避：客户的原负责人、最近那条公海项目的原负责人（都认 poolPrevOwnerId 列 = 「最近一次把它放进公海的人」），客户创建人豁免
   const 回避 = 拦原负责人()
-    ? [原负责人, 目标 ? await 看全部(() => 历史负责人(prisma, 目标.id)) : null].filter((x): x is string => !!x && 要回避(x, 创建人))
+    ? [原负责人, 目标 ? await 项目放回人(prisma, 目标.id) : null].filter((x): x is string => !!x && 要回避(x, 创建人))
     : [];
   // 分配方向看客户地址 → 项目所在地（只领旧项目那条路看那条公海项目）→ 客户的号 → 我的事业部
   // 判无效待补（invalid-makeup.ts）：只在这次算本月已分时用（新建线索项目、或没有公海项目可挂；同下面 查满）

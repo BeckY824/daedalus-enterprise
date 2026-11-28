@@ -50,7 +50,7 @@ import { 线索建项目 } from "../project/from-lead";
 import { 记出公海待补, 回公海收回培育, 补待补的 } from "./nurture-rows";
 import { 沟通挂潜客培育 } from "../project/nurture";
 import { 带走并记下在事务里, 还项目, type 带走的 } from "../carry-over-db";
-import { 记换负责人, 删被撤的换负责人记录, 公海前负责人 } from "../owner-log-db";
+import { 记换负责人, 记客户放回人, 删被撤的换负责人记录, 公海前负责人 } from "../owner-log-db";
 import { 还待分配状态 } from "../enterprise/market-transfer";
 import { 撤回项目公海 } from "../enterprise/pool-undo";
 import { 系统 } from "../project/timeout";
@@ -525,6 +525,10 @@ async function 导入换客户负责人(tx: Tx, customerId: string, 旧: string,
   if (批?.撤回) return 撤回导入换的负责人(tx, customerId, 旧, 新, 批.撤回.带走, 谁);
   if (await 是占位账号(tx, 新)) {
     await 记换负责人(tx, [{ customerId, from: 旧, to: 新 }], 谁, "pool-release");
+    // E-462：本批新建的客户挂占位账号不写放回人列（导入账号不是「原负责人」，写了回避会把它封死）；留痕照留。导入改已有客户的照写，和补写口径一致
+    if (批 && (await tx.entImportRow.findFirst({ where: { batchId: 批.批次Id, entity: "customer", kind: "create", targetId: customerId }, select: { id: true } }))) {
+      await 记客户放回人(tx, [{ id: customerId, 从: null }]);
+    }
     if (批) 批.换人带走 = { 从: 旧, 到: 新, 带走: 空带走() };
     return;
   }

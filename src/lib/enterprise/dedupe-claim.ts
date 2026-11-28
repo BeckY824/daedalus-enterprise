@@ -21,11 +21,9 @@
  */
 import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
-import { 无负责人占位邮箱 } from "@/lib/pool";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
 import { 企业版 } from "./switch";
-import { 去掉合并挪来的 } from "./merge-moved-logs";
 import { 是市场成员of, type 组织 } from "./org-core";
 import { 自动分配池, 读线部门, 读挑人底子, 补记销售管理起算 } from "./assign-eta";
 import { 两条线 } from "./assign-line";
@@ -70,23 +68,11 @@ export class 查重领取换人 extends Error {
 }
 
 /**
- * 公海客户的原负责人 = 最近一次把它放进公海的人（P-公海-04、M-公海-03）：客户挂占位账号的，认最近一条换到占位账号的记录的 from
- *（不限种类，同 owner-log-db.ts 公海客户原负责人是，向导里「原负责人是我」和这里一个口径）；负责人还是真人的（部署前进公海的老数据）就是他。认不出 = null。
- * 整个包 看全部：公海回避会把「我放进公海的客户」的换负责人记录藏掉（team-scope 里跟着客户走），限定读读成 null 就等于放行原负责人领回
+ * 公海客户的原负责人 = 最近一次把它放进公海的人（P-公海-04、M-公海-03）：认 Customer.poolPrevOwnerId（E-417 包 2，放进公海时写的列，
+ * 向导里「原负责人是我」和这里一个口径）。认不出（空列）= null。整个包 看全部：公海回避会把「我放进公海的客户」藏起来，读成 null 就等于放行原负责人领回
  */
 export async function 公海客户的原负责人(db: 库, customerId: string): Promise<string | null> {
-  return 看全部(async () => {
-    const c = await db.customer.findUnique({ where: { id: customerId }, select: { salesOwnerId: true, salesOwner: { select: { email: true } } } });
-    if (!c) return null;
-    if (c.salesOwner?.email !== 无负责人占位邮箱) return c.salesOwnerId || null;
-    // 合并客户挪来的不认（同 公海客户原负责人是，merge-moved-logs.ts）
-    const [r] = await 去掉合并挪来的(db, await db.customerOwnerLog.findMany({
-      where: { customerId, toOwnerId: c.salesOwnerId },
-      orderBy: [{ at: "desc" }, { id: "desc" }],
-      select: { id: true, customerId: true, fromOwnerId: true },
-    }));
-    return r?.fromOwnerId ?? null;
-  });
+  return 看全部(async () => (await db.customer.findUnique({ where: { id: customerId }, select: { poolPrevOwnerId: true } }))?.poolPrevOwnerId ?? null);
 }
 
 /** 客户创建人（CustomerCreator）；没记 = null */
@@ -104,7 +90,7 @@ export function 要回避(原负责人: string | null, 创建人: string | null)
 
 /**
  * 发起领取的这位是不是「原负责人领不回」（P-公海-04）：和查重向导的「原负责人是我」同一个判断（contact-dedupe.ts 我回避的：
- * 负责人还是我、换到占位账号的最近一条是我放的、公海回避名单里有它），再按用户 11-19「仅对创建人豁免」放过客户创建人。
+ * 客户列是我、换到占位账号的最近一条是我放的、公海回避名单里有它），再按用户 11-19「仅对创建人豁免」放过客户创建人。
  * 这样向导里「原负责人是我」和「市场可领」不会同时为真
  */
 export async function 发起人领不回(db: 库, 挑: { id: string; salesOwnerId: string | null }, meId: string): Promise<boolean> {

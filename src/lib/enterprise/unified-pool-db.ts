@@ -21,7 +21,7 @@ import { 包含模式, 客户名索引式, 含词 } from "@/lib/search-keyword";
 import { 分组数SQL, 取一段SQL, 键毫秒, 按快捷分组数SQL, 非线索分组数SQL, 排掉分组数SQL, 合分组, 减分组, type 客户行筛 } from "./unified-pool-sql";
 import { 缓存分组数 } from "./pool-count-cache";
 import { 按主键取没删的 } from "./soft-delete-core";
-import { 公海客户原负责人是 } from "@/lib/owner-log-db";
+import { 公海客户放回人们 } from "@/lib/owner-log-db";
 import { 看得到的客户, 露客户, 公海超时收回 } from "@/lib/project/db";
 import { 字典of, 本套位置 } from "@/lib/project/nodes";
 import { 阶段与进程, 阶段们, 归阶段的结局, 企业版字典 } from "@/lib/project/stage-dict";
@@ -183,8 +183,8 @@ function 拼客户行(me: { id: string }, c: 客户片, pool: 池片, 看得到�
     入池时间: pool.at.toISOString(),
     创建时间: c.createdAt.toISOString(),
     类, 累计: c.poolReturns, 入池原因: 入池原因文字(原类, pool.reason), 快捷: 归到快捷({ 类, 累计: c.poolReturns }),
-    // 负责人还是我的这一半；进公海清了负责人、原负责人在历史记录里的那一半 补这一页 再认
-    原负责人是我: 拦 && c.salesOwnerId === me.id,
+    // 原负责人是我认 Customer.poolPrevOwnerId（E-417 包 2），只查这一页的客户，补这一页 再认；不再看负责人是不是我
+    原负责人是我: false,
     来源id: c.channelId,
     ...(pool.phoneIncomplete ? { 号码不全: true } : {}),
   };
@@ -192,7 +192,7 @@ function 拼客户行(me: { id: string }, c: 客户片, pool: 池片, 看得到�
 
 /**
  * 取全量公海行（还没筛）。先跑一遍两种自动回收（同客户页 / 项目页：先收再列），收不动不挡列表。
- * 全取 里没要的那几格先空着（客户行的 项目名 / 进程 / 进程明细 / projectId、项目行的 客户名 / 来源id、客户行的 原负责人是我 只算了「负责人还是我」那一半），
+ * 全取 里没要的那几格先空着（客户行的 项目名 / 进程 / 进程明细 / projectId、项目行的 客户名 / 来源id、客户行的 原负责人是我 先空着、由补这一页按客户列填），
  * 筛排之后由 补这一页 填；没补过的行不能往外给
  */
 async function 读公海骨架(me: { id: string; name: string; role?: string }, 全取: 全取) {
@@ -215,7 +215,7 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
       where: { pooledAt: { not: null }, customer: { pool: null }, ...(全取.只要 ? { AND: [全取.只要] } : {}) },
       orderBy: { pooledAt: "desc" },
       select: {
-        id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, customerId: true, createdAt: true, channelId: true,
+        id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, poolPrevOwnerId: true, customerId: true, createdAt: true, channelId: true,
         customer: { select: { name: true, shortName: true, customerNo: true, lastFollowAt: true, poolReturns: true, channelId: true } },
       },
     }),
@@ -255,11 +255,11 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
   const 最近放回 = new Map<string, (typeof 留痕们)[number]>();
   for (const l of 留痕们) if (!最近放回.has(l.projectId)) 最近放回.set(l.projectId, l);
   const 拦 = 拦原负责人();
-  // 历史负责人看不到公海里的这个项目（总管理 / 管理员不算）
+  // 原负责人看不到公海里的这个项目（总管理 / 管理员不算）。认 Project.poolPrevOwnerId（E-417 包 2），入池类 / 入池原因仍认上面最近一条放回留痕
   const 回避 = 原负责人回避() && !(await 回避豁免(me));
 
   const 客户行: 公海行[] = 客户们.map((c) => 拼客户行(me, c, c.pool, 项目of客户?.get(c.id) ?? [], 字典, 没项目客户.has(c.id), 全部项目of客户.get(c.id) ?? [], 拦, 后售们));
-  const 留下的项目 = 项目们.filter((p) => !(回避 && 最近放回.get(p.id)?.fromOwnerId === me.id));
+  const 留下的项目 = 项目们.filter((p) => !(回避 && p.poolPrevOwnerId === me.id));
   const 项目行: 公海行[] = 留下的项目.map((p) => {
     const 留痕 = 最近放回.get(p.id) ?? null;
     const 类 = 项目入池类(留痕);
@@ -277,7 +277,8 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
       创建时间: p.createdAt.toISOString(),
       类, 累计, 入池原因: 入池原因文字(类, 留痕?.reason), 快捷: 归到快捷({ 类, 累计 }),
       // 项目公海原负责人一律领不回（企业版看规则，别的版本本来就不能）
-      原负责人是我: (留痕?.fromOwnerId || p.ownerId) === me.id,
+      // 列没记（老数据没留痕）、ownerId 还挂着的，照旧按 ownerId 认，同改前
+      原负责人是我: (p.poolPrevOwnerId || p.ownerId) === me.id,
     };
   });
   return {
@@ -305,7 +306,7 @@ async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof �
       // 一页的客户按 id 点名；一页大过 一批id数（只有测试、导出这类一次要全部的）照旧按公海全部框，不拼过长的名单
       : 查客户的项目(客户ids.length <= 一批id数 ? { customerId: { in: 客户ids } } : 骨.框客户).then(按客户分),
     // 客户进公海清负责人后（M-公海-03）原负责人在历史记录里；管理员不回避、看得到这一行，按钮照样要灰
-    骨.拦 && 客户ids.length ? 看全部(() => 公海客户原负责人是(prisma, [me.id], 客户ids)) : new Map<string, string>(),
+    骨.拦 && 客户ids.length ? 公海客户放回人们(prisma, [me.id], 客户ids) : new Map<string, string>(),
     骨.有客户可见 || !页里的项目.length ? null : 看得到的客户(页里的项目.map((p) => p.customerId)),
   ]);
   // 后售培育：这一页客户名下的项目一次判完
@@ -358,21 +359,19 @@ export async function 读公海页(me: { id: string; name: string; role?: string
 
 /**
  * 原负责人回避掉的公海客户（这个人看不到的那几位）。公海客户人人看得到（team-scope 可见客户 第三条），限定层只可能因为回避把公海客户挡掉：
- * 先不过范围层把「可能被回避的」圈出来（负责人是他、回避名单上的、名单过上限时按留痕认的），再用带限定的客户端问一遍哪几位看得到，剩下的就是回避掉的。
+ * 先不过范围层把「可能被回避的」圈出来（回避名单上的、名单过上限时按客户的 poolPrevOwnerId 列认的），再用带限定的客户端问一遍哪几位看得到，剩下的就是回避掉的。
  * 不另写一遍回避的规矩，限定层怎么挡这里就怎么排
  */
 async function 回避掉的公海客户(): Promise<string[]> {
   const 避 = await 现在的公海回避(defaultClient);
   if (!避) return [];
-  const 留痕 = { kind: "pool-release", fromOwnerId: 避.本人 };
   const 圈 = await 看全部(() => prisma.customer.findMany({
     where: {
       pool: { isNot: null },
-      OR: [
-        { salesOwnerId: 避.本人 },
-        ...(避.客户?.length ? [{ id: { in: 避.客户 } }] : []),
-        ...(避.客户 === null ? [{ ownerLogs: { some: 留痕 } }, { projects: { some: { pooledAt: { not: null }, logs: { some: 留痕 } } } }] : []),
-      ],
+      OR: 避.客户 === null
+        // 名单过上限：按客户列圈（和 team-scope 回避客户条件 同一口径，E-417 包 2）
+        ? [{ poolPrevOwnerId: 避.本人 }]
+        : [{ id: { in: 避.客户.length ? 避.客户 : ["__无"] } }],
     },
     select: { id: true },
   }));

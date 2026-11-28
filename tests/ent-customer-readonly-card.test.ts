@@ -29,6 +29,7 @@ vi.mock("@/app/(app)/projects/[id]/SameNumberBanner", () => ({ default: () => nu
 
 import type { ReactElement } from "react";
 import { prisma } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { resetDb } from "./reset";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
@@ -334,6 +335,7 @@ describe("项目详情到卡的入口", () => {
     await prisma.customer.update({ where: { id: c }, data: { salesOwnerId: 占位 } });
     await prisma.customerPool.create({ data: { customerId: c } });
     await prisma.customerOwnerLog.create({ data: { customerId: c, userId: 乙.id, fromOwnerId: 乙.id, toOwnerId: 占位, kind: "pool-release" } });
+    await 回填放回人列(prisma); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
     忘掉企业版范围();
     expect(await 以(乙, () => prisma.customer.findUnique({ where: { id: c }, select: { id: true } }))).toBeNull();
     await expect(打开(乙, p)).rejects.toThrow("NOT_FOUND");

@@ -24,7 +24,7 @@ import { 进公海清验证 } from "@/lib/project/lead-verify-guard";
 import { 在推项目条件 } from "@/lib/project/active";
 import { 系统 } from "@/lib/project/timeout";
 import { 有同事在推的客户 } from "./colleague-projects";
-import { 记换负责人, type 换负责人种类 } from "@/lib/owner-log-db";
+import { 记换负责人, 记客户放回人, type 换负责人种类 } from "@/lib/owner-log-db";
 import { 无负责人占位Id } from "@/lib/no-owner-db";
 import { 交接中的客户 } from "./handover-db";
 import { 换负责人 } from "@/lib/project/owner-write";
@@ -38,9 +38,14 @@ import { 进出公海重算 } from "./cust-status-auto-db";
  * 换负责人之前调用方要在事务外先 钉住老签约（这也是一次换负责人）。操作人 null = 系统（超时）
  */
 export async function 客户进公海清负责人(tx: Prisma.TransactionClient, 们: { id: string; salesOwnerId: string }[], 操作人: string | null): Promise<void> {
-  if (!企业版() || !公海规则.进公海清负责人 || !们.length) return;
+  if (!企业版() || !们.length) return;
   await 看全部(async () => {
     const 占位 = await 无负责人占位Id(tx);
+    // 清负责人开关关着：负责人留在客户上、不记放回留痕，但回避认 Customer.poolPrevOwnerId（E-417 包 2），这里照样把入池前的负责人写进列（占位账号不是人，写空）
+    if (!公海规则.进公海清负责人) {
+      await 记客户放回人(tx, 们.map((c) => ({ id: c.id, 从: c.salesOwnerId === 占位 ? null : c.salesOwnerId })));
+      return;
+    }
     const 要清 = 们.filter((c) => c.salesOwnerId !== 占位);
     if (!要清.length) return;
     await 记换负责人(tx, 要清.map((c) => ({ customerId: c.id, from: c.salesOwnerId, to: 占位 })), 操作人 ?? 系统.id, "pool-release");

@@ -29,6 +29,7 @@ vi.mock("@/lib/prisma", async () => {
 });
 
 import { prisma as db, defaultClient as raw } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { PrismaClient } from "@/generated/prisma";
 import { 等日志齐 } from "./query-log";
 import { 加上限定 } from "@/lib/team-scope";
@@ -92,6 +93,7 @@ beforeAll(async () => {
     await raw.customerPool.create({ data: { customerId: c.id, userId: 回避人, reason: "手动" } });
     await raw.customerOwnerLog.create({ data: { customerId: c.id, userId: 回避人, fromOwnerId: 回避人, toOwnerId: 占位, kind: "pool-release" } });
   }
+  await 回填放回人列(raw); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
   // 同键（lastFollowAt、createdAt 都一样）的不放：两边都没定同键先后，比不出「同一顺序」
   const 键 = await raw.$queryRawUnsafe<{ n: bigint }[]>(`SELECT COUNT(*) AS n FROM (SELECT 1 FROM "Customer" GROUP BY "lastFollowAt", "createdAt" HAVING COUNT(*) > 1)`);
   expect(Number(键[0].n)).toBe(0);

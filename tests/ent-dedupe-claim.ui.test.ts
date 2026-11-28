@@ -499,3 +499,26 @@ it("首页查重框（电脑 1280、手机 375）：撞上看不到的同事客�
     expect(await 不带.locator(".home-dedupe .ant-alert").innerText()).not.toContain("在推项目");
   } finally { await 不带.close(); }
 });
+
+it("首页查重框公海待捞：原负责人是我（X-03b）写向导那句、不给客户名链接 / 去领取；不是原负责人照旧给客户名链接；窄屏不溢出", async () => {
+  for (const w of [1280, 375]) {
+    const 我退 = await 开(w, { __查重框: true, __我退的: true });
+    try {
+      const 框 = 我退.locator(".home-dedupe .ant-alert");
+      const 字 = await 框.innerText();
+      expect(字).toContain("是你退回公海的，原负责人不能领回");
+      expect(字).not.toContain("可去公海领取");
+      expect(字).not.toContain("星河电子");
+      expect(await 框.locator("a").count()).toBe(0);
+      for (const 键 of ["去领取", "领取并记沟通"]) expect(await 框.getByRole("button", { name: 键 }).count(), 键).toBe(0);
+      expect(await 我退.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    } finally { await 我退.close(); }
+  }
+  const 非原 = await 开(1280, { __查重框: true });
+  try {
+    const 框 = 非原.locator(".home-dedupe .ant-alert");
+    expect(await 框.innerText()).toContain("可去公海领取");
+    expect(await 框.locator("a[href='/customers/c7']").count()).toBe(1);
+    expect(await 框.innerText()).not.toContain("原负责人不能领回");
+  } finally { await 非原.close(); }
+});

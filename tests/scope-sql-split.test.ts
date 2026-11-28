@@ -27,6 +27,7 @@ vi.mock("@/lib/prisma", async () => {
 });
 
 import { prisma as db, defaultClient as raw } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 规则 } from "@/lib/enterprise/rules";
 import { 无负责人占位邮箱 } from "@/lib/pool";
@@ -103,6 +104,7 @@ beforeAll(async () => {
     await raw.customerOwnerLog.create({ data: { customerId: c.id, userId: 回避人, fromOwnerId: 回避人, toOwnerId: 占位, kind: "pool-release" } });
     await raw.followUp.create({ data: { customerId: c.id, type: "PHONE", ownerId: 回避人, title: "跟进", content: "跟进" } });
   }
+  await 回填放回人列(raw); // 直接塞公海行 / 留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
 });
 
 beforeEach(() => 忘掉企业版范围());

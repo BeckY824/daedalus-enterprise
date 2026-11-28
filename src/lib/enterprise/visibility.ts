@@ -382,99 +382,41 @@ export async function 组员客户编号(db: PrismaClient, 人们: string[]): Pr
 }
 
 /** 回避名单的上限：再多 NOT IN 又长又慢、也怕碰 SQLite 参数上限（否定条件不能拆批），退回按关联写的条件 */
-const 回避名单上限 = 100;
+export const 回避名单上限 = 100;
 
 /**
  * 这个人要回避哪些公海客户和项目（11-03 用户定：原负责人退到公海，他就看不到客户和项目）。
- * 判「原负责人」用已有字段，不加 schema：
- *   - 项目：最后一次 pool-release 留痕的 fromOwnerId（退项目、超时回收、离职都写；公海项目 ownerId 已清空）
- *   - 客户：最近一次进公海时的负责人是他（M-公海-03 起进公海负责人清空挂占位账号，按 pool-release 认，owner-log-db 公海客户原负责人是）；
- *     负责人还是他（部署前进公海的老数据，存量脚本没跑到的空档也挡住）；
- *     或者他退的项目挂着的公海客户（占位负责人、别人名下的都靠这条）。只认最近一次，曾经负责过、后来转走的不算
- * 不看 CustomerPool.userId：那是操作的人，可能是上级，超时的是空。
- * 客户在公海，下面的项目都算回避（客户都看不到，项目点进去也打不开）。别人领走客户、项目后自然从名单出来，
- * 他是不是还能看回到原来的范围（负责人、组员、上级）。什么都没有的人回 undefined，查询不多任何条件。
- * db 是底层 defaultClient（不过软删扩展），自己带 deletedAt
+ * E-417 包 2 起只认 Customer.poolPrevOwnerId / Project.poolPrevOwnerId 两列（放进公海时写的「最近一次放进公海的人」，
+ * 曾负责、后来转走的不是它；不再从留痕、负责人推算）：
+ *   - 客户：在公海、没删、客户列是他（只认客户列，11-27：他只放回了客户名下的某个项目、客户是别人放回的，客户不回避，他能看到、领得到；
+ *     领客户整包带走公海项目时不看回避，含他自己放出的项目，X-36；项目照旧藏）
+ *   - 项目：没删、项目在公海且项目列是他；或所在客户在公海、没删，客户列是他（客户在公海，下面的项目都算回避）
+ * 别人领走客户、项目后自然从名单出来（不在公海就不算）。什么都没有的人回 undefined，查询不多任何条件。
+ * 名单（客户 / 项目 id）不超上限就带下来，裸 SQL 快路 NOT IN；过上限是 null，team-scope 退回按列写的条件（回避客户条件 / 回避项目条件，
+ * 和这里同一口径，不再有「多挡」和例外）。db 是底层 defaultClient（不过软删扩展），自己带 deletedAt
  */
 async function 公海回避of(db: PrismaClient, id: string): Promise<公海回避 | undefined> {
-  const { 原负责人回避, 公海里历史负责人是, 一批id数 } = await import("@/lib/project/pool-owner");
+  const { 原负责人回避, 一批id数 } = await import("@/lib/project/pool-owner");
   if (!原负责人回避()) return undefined;
-  const { 公海客户原负责人是 } = await import("@/lib/owner-log-db");
-  const 放回的 = await 公海里历史负责人是(db, [id]);
-  const 放走的 = [...(await 公海客户原负责人是(db, [id])).keys()];
-  const 他公海客户 = { salesOwnerId: id, pool: { isNot: null }, deletedAt: null };
-  // 先按负责人取他名下的公海客户（走 Customer 负责人索引），再按客户编号取下面的项目（11-18 渠道页提速）。
-  // 原来一句 project where customer: 他公海客户 + take：库里没有统计信息时 SQLite 走 Project_deletedAt_idx 把全部项目扫一遍再连客户，
-  // 6 万多项目约 120ms，名下一个公海客户都没有也照扫；每个人的范围缓存 10 秒，过期后头一个页面都吃这一下。
-  // 结果同原来：有没有这样的客户；这些客户下面没删的项目，最多取 回避名单上限 + 1 条（只用来判过没过上限，过了不用名单）
-  const 他的公海客户 = (await db.customer.findMany({ where: 他公海客户, select: { id: true } })).map((c) => c.id);
-  const 有客户 = 他的公海客户.length > 0;
-  const 挂着的: { id: string }[] = [];
-  for (let i = 0; i < 他的公海客户.length && 挂着的.length <= 回避名单上限; i += 一批id数) {
-    const 行 = await db.project.findMany({ where: { deletedAt: null, customerId: { in: 他的公海客户.slice(i, i + 一批id数) } }, select: { id: true }, take: 回避名单上限 + 1 - 挂着的.length });
-    挂着的.push(...行);
-  }
-  // 他退的项目挂着的公海客户里，负责人不是他的（负责人是他的 回避客户条件 一句带上了）
-  const 客户们 = new Set<string>();
-  for (let i = 0; i < 放回的.length; i += 一批id数) {
-    const 行 = await db.project.findMany({
-      where: { id: { in: 放回的.slice(i, i + 一批id数) }, customer: { salesOwnerId: { not: id }, pool: { isNot: null }, deletedAt: null } },
-      select: { customerId: true },
-    });
-    for (const r of 行) 客户们.add(r.customerId);
-  }
-  for (const c of 放走的) 客户们.add(c);
-  const 项目们 = new Set([...放回的, ...挂着的.map((p) => p.id)]);
-  // 客户在公海，下面的项目都算回避：放走的客户名下的项目也进名单。名单超上限就退回按关联写的条件，不用数全
-  for (let i = 0; i < 放走的.length && 项目们.size <= 回避名单上限; i += 一批id数) {
-    const 行 = await db.project.findMany({ where: { customerId: { in: 放走的.slice(i, i + 一批id数) }, deletedAt: null }, select: { id: true }, take: 回避名单上限 + 1 });
-    for (const r of 行) 项目们.add(r.id);
-  }
-  if (!有客户 && !客户们.size && !项目们.size) return undefined;
-  const 客户过 = 客户们.size > 回避名单上限;
-  const 项目过 = 项目们.size > 回避名单上限;
-  const [客户例外, 项目例外] = await Promise.all([
-    客户过 ? 宽挡多出的客户(db, id, 客户们) : undefined,
-    项目过 ? 宽挡多出的项目(db, id, new Set(放回的), new Set(放走的)) : undefined,
-  ]);
-  return {
-    本人: id,
-    客户: 客户过 ? null : [...客户们],
-    项目: 项目过 ? null : [...项目们],
-    ...(客户例外?.length ? { 客户例外 } : {}),
-    ...(项目例外?.length ? { 项目例外 } : {}),
-  };
-}
-
-/**
- * 名单过上限时 team-scope 退回按关联写的条件，关联写不出「最后一次」，会多挡他早先退过、后来别人领走又退的（X-76，P-公海-04）。
- * 这里把宽条件挡到的（正着查一遍，只取 id）减掉准名单，多出的就是例外，范围里按 id 放出来。
- * 只在过上限的人身上多一句查询；例外也过上限回 undefined，照旧宽挡（多挡不漏）。
- * 客户：准名单 = 客户们（他退的项目挂着的、最近一次放走的是他）+ 负责人是他的（一句条件带上，这里排掉）
- */
-async function 宽挡多出的客户(db: PrismaClient, id: string, 准: ReadonlySet<string>): Promise<string[] | undefined> {
-  const 留痕 = { kind: "pool-release", fromOwnerId: id };
-  const 宽 = await db.customer.findMany({
-    where: { pool: { isNot: null }, deletedAt: null, salesOwnerId: { not: id }, OR: [{ projects: { some: { pooledAt: { not: null }, logs: { some: 留痕 } } } }, { ownerLogs: { some: 留痕 } }] },
+  const 他的客户 = (await db.customer.findMany({ where: { poolPrevOwnerId: id, pool: { isNot: null }, deletedAt: null }, select: { id: true } })).map((c) => c.id);
+  // 他放回的公海项目（只进项目回避，不连带回避所在客户）
+  const 他的项目 = await db.project.findMany({
+    where: { poolPrevOwnerId: id, pooledAt: { not: null }, deletedAt: null },
     select: { id: true },
   });
-  const 出 = 宽.map((c) => c.id).filter((c) => !准.has(c));
-  return 出.length > 回避名单上限 ? undefined : 出;
-}
-
-/** 项目：准名单 = 他最后放回的 + 负责人是他的公海客户下面的 + 他最近一次放走的公海客户下面的；宽条件挡到、又不在这三样里的是例外 */
-async function 宽挡多出的项目(db: PrismaClient, id: string, 放回的: ReadonlySet<string>, 放走的: ReadonlySet<string>): Promise<string[] | undefined> {
-  const 留痕 = { kind: "pool-release", fromOwnerId: id };
-  const 宽 = await db.project.findMany({
-    where: {
-      deletedAt: null,
-      NOT: { customer: { salesOwnerId: id, pool: { isNot: null } } },
-      OR: [{ pooledAt: { not: null }, logs: { some: 留痕 } }, { customer: { pool: { isNot: null }, ownerLogs: { some: 留痕 } } }],
-    },
-    select: { id: true, customerId: true },
-  });
-  const 出 = 宽.filter((p) => !放回的.has(p.id) && !放走的.has(p.customerId)).map((p) => p.id);
-  return 出.length > 回避名单上限 ? undefined : 出;
+  const 客户们 = new Set<string>(他的客户);
+  const 项目们 = new Set<string>(他的项目.map((p) => p.id));
+  // 客户在公海，下面的项目都算回避。名单超上限就退回按列写的条件，不用数全
+  for (let i = 0; i < 他的客户.length && 项目们.size <= 回避名单上限; i += 一批id数) {
+    const 行 = await db.project.findMany({ where: { customerId: { in: 他的客户.slice(i, i + 一批id数) }, deletedAt: null }, select: { id: true }, take: 回避名单上限 + 1 });
+    for (const r of 行) 项目们.add(r.id);
+  }
+  if (!客户们.size && !项目们.size) return undefined;
+  return {
+    本人: id,
+    客户: 客户们.size > 回避名单上限 ? null : [...客户们],
+    项目: 项目们.size > 回避名单上限 ? null : [...项目们],
+  };
 }
 
 /**

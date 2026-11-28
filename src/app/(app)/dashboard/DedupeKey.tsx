@@ -16,6 +16,7 @@ import DedupeClaimKey from "../customers/DedupeClaimKey";
 import RepeatInquiryKey from "../customers/RepeatInquiryKey";
 import { 向导能选类型, 号码类型叫法, 查重提示, type 号码类型 } from "@/lib/enterprise/contact-format";
 import { 动作出错话 } from "@/lib/stale-deploy";
+import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
 
 /** 小框放不下：能翻就翻，左右放不下就整块挪进屏（放外面，每次渲染同一个对象） */
 const 挪进屏 = { adjustX: 1, adjustY: 1, shiftX: true } as Exclude<PopoverProps["autoAdjustOverflow"], boolean | undefined>;
@@ -82,10 +83,12 @@ export default function DedupeKey({ 宽, 藏键 = false, 开: 开ref }: {
           <Alert
             type="error"
             showIcon
-            title={结果.提示}
+            title={结果.原负责人是我 ? 结果.提示.replace("，可去公海领取", "") : 结果.提示}
             description={结果.状态 === "回收站里有" ? <RescueKey 类型={类型} 值={结果.值} 捞回了={set结果} />
               // 市场成员撞上公海（F-016）：就地领取并记沟通，领了自动分给销售
               : 结果.市场可领 ? <>{结果.在推个数 != null && <div>{查重提示.在推个数(结果.在推个数)}</div>}<DedupeClaimKey 类型={类型} 值={结果.值} 客户id={结果.撞?.id} /></>
+              // 自己退回公海的（X-03b）：企业版原负责人看不到也领不回，不给客户名链接、不给「去领取」，话同建档向导撞号面板
+              : 结果.原负责人是我 ? <span className="home-dedupe-mine">在公海 · 是你退回公海的，{原负责人不能领回提示}{结果.归属地 ? ` · 归属地：${结果.归属地}` : ""}</span>
               : 结果.撞?.id || 结果.归属地 || 结果.出口C || 结果.在推个数 != null ? (
               <span>
                 {结果.撞?.id && <><Link href={`/customers/${结果.撞.id}`} onClick={() => set开(false)}>{结果.撞.name}<LinkPending /></Link>{结果.撞.school ? ` · ${结果.撞.school}` : ""} · 在 {结果.撞.salesOwnerName} 名下</>}

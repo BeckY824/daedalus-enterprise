@@ -10,6 +10,7 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user, currentUser:
 vi.mock("@/lib/sync/dedupe-client", async (原) => ({ ...(await 原<object>()), 问同事: async () => null }));
 
 import { resetDb } from "./reset";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { prisma } from "@/lib/prisma";
 import { invalidateSettingsCache, setSetting } from "@/lib/settings";
 import { 规则 } from "@/lib/enterprise/rules";
@@ -359,15 +360,20 @@ describe("入口", () => {
     expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 协同: { 有项目: true, 自己负责: false, 已在组: true } });
   });
 
-  it("查重撞到自己退回公海的：带原负责人是我（向导不给打开它、去领取）；别人查不带（11-03 B7-3）", async () => {
+  it("查重撞到自己退回公海的：带原负责人是我（向导不给打开它、去领取）；别人查不带；只有项目是我退的不带（11-03 B7-3，M-公海-05）", async () => {
     const x = await 现场();
     await prisma.customerPool.create({ data: { customerId: x.客户.id, reason: "手动", userId: x.负责人.id } });
+    await 回填放回人列(prisma);
     expect(await 作为(x.负责人, () => 查号码("手机号", 号码))).toMatchObject({ 状态: "公海待捞", 原负责人是我: true });
     expect(await 作为(x.销售, () => 查号码("手机号", 号码))).not.toHaveProperty("原负责人是我");
-    // 负责人不是我、但项目是我退的：同样领不回
+    // 客户不是我放回的、只有项目是我退的：M-公海-05 领客户带项目优先于回避 → 查重不带「原负责人是我」，他能领客户、项目一起带走（项目本身的回避在公海名单 / 领项目接口里判）
     await prisma.project.update({ where: { id: x.项目!.id }, data: { pooledAt: new Date(), ownerId: "" } });
     await prisma.projectNodeLog.create({ data: { projectId: x.项目!.id, userId: x.销售.id, kind: "pool-release", fromOwnerId: x.销售.id, toPhase: "线索", toNode: "线索" } });
-    expect(await 作为(x.销售, () => 查号码("手机号", 号码))).toMatchObject({ 状态: "公海待捞", 原负责人是我: true });
+    await 回填放回人列(prisma);
+    expect((await prisma.project.findUniqueOrThrow({ where: { id: x.项目!.id } })).poolPrevOwnerId).toBe(x.销售.id);
+    const 销售查 = await 作为(x.销售, () => 查号码("手机号", 号码));
+    expect(销售查).toMatchObject({ 状态: "公海待捞" });
+    expect(销售查).not.toHaveProperty("原负责人是我");
     expect(await 作为(x.市场, () => 查号码("手机号", 号码))).not.toHaveProperty("原负责人是我");
   });
 

@@ -16,6 +16,7 @@ vi.mock("@/lib/auth", () => ({ requireUser: async () => mocks.user }));
 vi.mock("@/lib/enterprise/switch", () => ({ 企业版: () => true }));
 
 import { prisma } from "@/lib/prisma";
+import { 回填放回人列 } from "./helpers/pool-prev-owner-seed";
 import { setSetting } from "@/lib/settings";
 import { resetDb } from "./reset";
 import { 分配线索, 自动分配线索, 批量自动分配, 设线部门 } from "@/app/(app)/leads/assign-actions";
@@ -33,6 +34,7 @@ const 建项目 = async (name: string, extra: { pooledAt?: Date; ownerId?: strin
   // 放回公海的留痕：历史负责人 = 最近一次 pool-release 的 fromOwnerId（企业版进公海清了负责人）
   if (extra.放的人) {
     await prisma.projectNodeLog.create({ data: { projectId: id, userId: extra.放的人, toPhase: "线索", toNode: "潜客培育", kind: "pool-release", fromOwnerId: extra.放的人 } });
+    await 回填放回人列(prisma); // 直接塞留痕的造数，补两列（回避只认 poolPrevOwnerId，E-417 包 2）
   }
   return id;
 };
