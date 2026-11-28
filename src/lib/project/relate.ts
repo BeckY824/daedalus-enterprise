@@ -32,6 +32,7 @@ import { 客户显名, 引用联系人, 短号, 概览名称 } from "./relate-na
 import { 显名列 } from "@/lib/enterprise/customer-title";
 import type { 阶段字典 } from "./stage-dict";
 import { 权限组织 } from "@/lib/enterprise/org";
+import { 只有负责人能改话 } from "@/lib/enterprise/project-owner-only-words";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -44,7 +45,7 @@ const 项目不在 = { ok: false as const, error: "这个项目已经不在了�
 const 客户不在 = { ok: false as const, error: "这位客户已经不在了（或你看不到），刷新看看" };
 const 人不在 = { ok: false as const, error: "这位联系人已经不在了（或你看不到），刷新看看" };
 const 已关联 = { ok: false as const, error: "已经关联过了，刷新看看" };
-const 管不了 = (p: { pooledAt: Date | null }) => ({ ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? "只有项目负责人能改" : "只有项目负责人、老板或主管能改" });
+const 管不了 = (p: { pooledAt: Date | null }) => ({ ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 企业版() ? 只有负责人能改话 : "只有项目负责人、老板或主管能改" });
 
 /** 多选：要是字符串数组；新选的得在启用着的里，已经存着的（停用了也算）不再对字典 */
 async function 认多选(kind: 字典种类, 名: string, v: unknown, 已有: readonly string[]): Promise<{ ok: true; 值: string | null } | { ok: false; error: string }> {

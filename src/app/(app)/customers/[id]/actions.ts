@@ -19,7 +19,7 @@ import { 企业版 } from "@/lib/enterprise/switch";
 import { 定沟通方式, 定发起主体 } from "@/lib/enterprise/dict";
 import { 软删开着, 撤销软删, 删除挡, 看已删 } from "@/lib/enterprise/soft-delete";
 import { 查完再写 } from "@/lib/check-then-write";
-import { 能恢复, 没设业务角色, 没业务角色不能领话, 能领公海, 不能领公海话, 只读角色, 只读话of, 能新建和领取 } from "@/lib/enterprise/permissions";
+import { 能恢复, 领公海前两步不过, 没业务角色不能领话, 能领公海, 不能领公海话, 只读话of, 能新建和领取 } from "@/lib/enterprise/permissions";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 无效客户不能记沟通话 } from "@/lib/enterprise/pool-rules";
 import type { 组织 } from "@/lib/enterprise/org-core";
@@ -354,9 +354,10 @@ export async function saveFollowUp(input: FollowUpInput) {
     */
     const 在公海 = !input.id && !!(await prisma.customerPool.findUnique({ where: { customerId: input.customerId }, select: { customerId: true } }));
     // 没设业务角色的领不了（11-03）：记了就等于没领到却留了条沟通，直接说清楚，不记
-    if (在公海 && 企业版() && 没设业务角色(await 权限组织(), user.id)) return { ok: false as const, error: 没业务角色不能领话 };
+    const 前两步 = 在公海 && 企业版() ? 领公海前两步不过(await 权限组织(), user) : null;
+    if (前两步 === "没设业务角色") return { ok: false as const, error: 没业务角色不能领话 };
     // 角色不领公海的（市管、渠运、项目组员，V3.5.1）同样不记
-    if (在公海 && 企业版() && !能领公海(user, await 权限组织())) return { ok: false as const, error: 只读角色(user, await 权限组织()) ? 只读话of(user, await 权限组织()) : 不能领公海话 };
+    if (在公海 && 企业版() && !能领公海(user, await 权限组织())) return { ok: false as const, error: 前两步 === "只读" ? 只读话of(user, await 权限组织()) : 不能领公海话 };
     /*
       标了无效的（公海回收站，P-公海-09）领不了（M-权限-03）：不顺手领取。真正的沟通（不是待办 / 提醒、不在背调存档那一段）
       挂不上在推项目就整条不存、说先恢复（原来照存一条、领取悄悄没成）；挂上了自己能记的在推项目（同事名下留在原处的那种）照存，

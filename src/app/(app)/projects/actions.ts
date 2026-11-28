@@ -77,6 +77,7 @@ import { 沟通无意义挡 } from "@/lib/enterprise/meaningless-follow";
 import { 存沟通后重算三态, 三态改天数预览 } from "@/lib/enterprise/tri-state-db";
 import { 新建后定线 } from "@/lib/enterprise/flow-line";
 import { 项目链接们 } from "@/lib/project/customer-detail-direct";
+import { 只有负责人能改看话 } from "@/lib/enterprise/project-owner-only-words";
 
 const 没开 = { ok: false as const, error: "项目模式没开：请管理员在「设置 → 业务配置」里打开" };
 
@@ -560,7 +561,7 @@ export async function 看板补必填料(projectId: string): Promise<
     return {
       ok: true, p, 联系人们,
       能就地改: 能改 && !p.pooled && !!p.企业版,
-      改不了话: p.企业版 ? "只有项目负责人能改，其他人只能看" : "只有项目负责人、老板或主管能改",
+      改不了话: p.企业版 ? 只有负责人能改看话 : "只有项目负责人、老板或主管能改",
     };
   } catch {
     return { ok: false, error: "没读到这个项目，进项目里补" };

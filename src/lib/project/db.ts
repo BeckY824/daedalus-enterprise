@@ -26,7 +26,7 @@ import { 落到渠道 } from "@/lib/enterprise/channel-main";
 import { 是主渠道入口, 渠道启用 } from "@/lib/enterprise/channel-main-core";
 import { parseDateInput } from "@/lib/date-input";
 import { 直属上级of, 权限组织, 读组织, 负责人和上级, type 组织 } from "@/lib/enterprise/org";
-import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 没设业务角色, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读话of, 有业务角色, 是系统管理员, 只看的人, 只看某人话 } from "@/lib/enterprise/permissions";
+import { 能编辑项目, 能转让项目, 能放回公海 as 能放回公海判, 是总管理, 是经理, 能删除, 能删一些, 领公海前两步不过, 没业务角色不能领话, 不能领公海话, 能领公海, 只读角色, 只读话of, 有业务角色, 是系统管理员, 只看的人, 只看某人话 } from "@/lib/enterprise/permissions";
 import { 公海按线拦 } from "@/lib/enterprise/pool-line-guard";
 import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 软删一条 } from "@/lib/enterprise/soft-delete";
@@ -65,6 +65,7 @@ import { 换负责人待办, 待办痕, 手动转让痕 } from "./carry-tasks";
 import { 换负责人 } from "@/lib/project/owner-write";
 import { 待分配占位, 待分配不能动 } from "@/lib/enterprise/await-assign";
 import { 规整指定回复, 时刻转北京墙钟, 回复键们 } from "./time-fields";
+import { 只有负责人能改话, 只有负责人能改组员话 } from "@/lib/enterprise/project-owner-only-words";
 
 type 谁 = { id: string; role: string };
 type 结果 = { ok: true } | { ok: false; error: string };
@@ -661,7 +662,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
   if (企业版() && 是主渠道入口(patch.channelId)) {
     const 现 = await prisma.project.findUnique({ where: { id: String(projectId ?? "") } });
     if (!现) return { ok: false, error: "这个项目已经不在了，刷新看看" };
-    if (!能管项目(me, 现, await 权限组织())) return { ok: false, error: 现.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人能改" };
+    if (!能管项目(me, 现, await 权限组织())) return { ok: false, error: 现.pooledAt ? "这个项目在公海里，先领取再改" : 只有负责人能改话 };
     if (现.channelId) return { ok: false, error: 项目来源不能改 };
     const 落 = await 落到渠道(patch.channelId, me);
     if (!落.ok) return { ok: false, error: 落.error };
@@ -683,7 +684,7 @@ export async function 改项目(me: 谁, projectId: string, patch: 编辑项目�
     const 能转 = 能转让项目(me, p, org);
     // 指定回复时间（11-17）：定时 / 待分配期间录入人也能改（方案「谁能改」；市场管理当负责人也不能编辑 P-判定-02 不因此放开别的格）
     const 录入人改回复 = 企业版() && !!p.awaitAssignAt && !p.pooledAt && p.creatorId === me.id;
-    if (!能改 && !能转 && !录入人改回复) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : "只有项目负责人能改" };
+    if (!能改 && !能转 && !录入人改回复) return { ok: false as const, error: p.pooledAt ? "这个项目在公海里，先领取再改" : 只有负责人能改话 };
     // 只校验、只写这次传了的格子（11-02 就地改）：老项目名称、备注超长或带首尾空白，改别的格子不报错，也不被顺手规整掉
     const 传 = 传了的(patch);
     const 好 = 规整项目({ ...项目现值(p), name: "未传", remark: null, ...传 }, p.ownerId);
@@ -1148,9 +1149,10 @@ type 同事待分配们 = Awaited<ReturnType<typeof import("@/lib/enterprise/mar
 export async function 领公海项目准备(me: 谁, projectIds: string[], 带待办?: boolean): Promise<{ ok: true; 上下文: 领项目上下文 } | { ok: false; error: string }> {
   // 没设业务角色的不能领（11-03 用户定）：权限只认业务角色。分配（别人分给他）不走这里
   // 停用的人业务角色已清，先说停用，话才准
-  if (企业版() && 没设业务角色(await 权限组织(), me.id)) return { ok: false, error: (await 在职(prisma, me.id)) ? 没业务角色不能领话 : "账号已停用" };
+  const 前两步 = 企业版() ? 领公海前两步不过(await 权限组织(), me) : null;
+  if (前两步 === "没设业务角色") return { ok: false, error: (await 在职(prisma, me.id)) ? 没业务角色不能领话 : "账号已停用" };
   // 只读管理员先说只读（11-03 B2-1：原来落到「项目不能单独领」，同领客户 pool-actions 领取）
-  if (企业版() && 只读角色(me, await 权限组织())) return { ok: false, error: 只读话of(me, await 权限组织()) };
+  if (前两步 === "只读") return { ok: false, error: 只读话of(me, await 权限组织()) };
   // 角色不领公海的（市管、渠运、项目组员、只看某人的，V3.5.1）
   if (企业版() && !能领公海(me, await 权限组织())) return { ok: false, error: 不能领公海话 };
   const 规则 = await 生效组织规则();
@@ -1881,7 +1883,7 @@ export async function 换组员角色(me: 谁, memberId: string, roleId: string 
   return 查完再写(async (tx) => {
     const m = await tx.projectMember.findUnique({ where: { id: String(memberId ?? "") }, include: { project: { select: { ownerId: true, pooledAt: true } } } });
     if (!m) return { ok: false as const, error: "这位已经不在项目组里了，刷新看看" };
-    if (!能改组员(me, m.project, org)) return { ok: false as const, error: "只有项目负责人能改组员" };
+    if (!能改组员(me, m.project, org)) return { ok: false as const, error: 只有负责人能改组员话 };
     if ((roleId || null) === m.roleId) return { ok: true as const };
     const 角色 = await 可用角色(tx, roleId);
     if (typeof 角色 === "object" && 角色) return 角色;
@@ -1899,7 +1901,7 @@ export async function 移出组员(me: 谁, memberId: string): Promise<结果> {
   return 查完再写(async (tx) => {
     const m = await tx.projectMember.findUnique({ where: { id: String(memberId ?? "") }, include: { project: { select: { ownerId: true, pooledAt: true } } } });
     if (!m) return { ok: true as const };
-    if (!能改组员(me, m.project, org)) return { ok: false as const, error: "只有项目负责人能改组员" };
+    if (!能改组员(me, m.project, org)) return { ok: false as const, error: 只有负责人能改组员话 };
     await tx.projectMember.delete({ where: { id: m.id } });
     if (m.project.pooledAt === null && m.project.ownerId && m.userId !== m.project.ownerId) {
       await 卡点随项目换人(tx, m.projectId, m.userId, m.project.ownerId, me.id, 移出组员接手理由);
