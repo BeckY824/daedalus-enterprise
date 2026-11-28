@@ -546,6 +546,23 @@ describe("特殊裁定台账（E-436）：本人发起、本人裁定", () => {
     expect(await 特殊裁定台账(老板.id, "2001-01")).toEqual([]);
   });
 
+  it("读通道开着（#523）：台账和月条数读得出，内容和关读通道时一致（不用字段引用）", async () => {
+    const { 读通道开着 } = await import("@/lib/read-pool");
+    const { 本月特殊裁定条数 } = await import("@/lib/enterprise/objection-judge");
+    await 本人裁一条("维持");
+    const 月 = new Date(Date.now() + 8 * 3_600_000).toISOString().slice(0, 7);
+    vi.stubEnv("CRM_READ_POOL", "0");
+    expect(读通道开着()).toBe(false);
+    const 关 = await 台账们(老板.id), 关数 = await 本月特殊裁定条数(月);
+    vi.stubEnv("CRM_READ_POOL", "");
+    expect(读通道开着()).toBe(true);
+    const 开 = await 台账们(老板.id), 开数 = await 本月特殊裁定条数(月);
+    expect(关).toHaveLength(1);
+    expect(开).toEqual(关);
+    expect(开数).toBe(关数);
+    expect(开数).toBe(1);
+  });
+
   it("非系统管理员拿不到台账；别人裁的（裁定人不是发起人）不进台账", async () => {
     const { 特殊裁定台账 } = await import("@/lib/enterprise/objection-judge");
     await 本人裁一条("撤回");

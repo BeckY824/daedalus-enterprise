@@ -216,33 +216,35 @@ const 月区间 = (月: string): { gte: Date; lt: Date } | null => {
   const y = Number(m[1]), mo = Number(m[2]);
   return { gte: new Date(Date.UTC(y, mo - 1, 1) - 8 * 3_600_000), lt: new Date(Date.UTC(y, mo, 1) - 8 * 3_600_000) };
 };
-/** 「本人裁定」的库里条件：裁定人 = 发起人 或 = 接手人（字段引用，下推到库里） */
-const 本人裁定条件 = (): Prisma.EntTransferObjectionWhereInput => {
-  const 字段 = prisma.entTransferObjection.fields;
-  return { OR: [{ judgedById: { equals: 字段.operatorUserId } }, { judgedById: { equals: 字段.toOwnerId } }] };
-};
+/**
+ * 「本人裁定」：裁定人 = 发起人 或 = 接手人。不用字段引用（prisma.xxx.fields）：开着读通道时字段引用被当普通对象传下去丢了 _ref，
+ * 整句 PrismaClientValidationError（#523）。改成先按时间取行、在 JS 里比
+ */
+const 是本人裁定 = (r: { judgedById: string | null; operatorUserId: string; toOwnerId: string }): boolean =>
+  !!r.judgedById && (r.judgedById === r.operatorUserId || r.judgedById === r.toOwnerId);
 
 /** 某个北京月里「本人裁定」的条数（每月 1 日通知用；不看身份，调用方保证只发给系统管理员） */
 export async function 本月特殊裁定条数(月: string): Promise<number> {
   const 时间 = 月区间(月);
   if (!时间) return 0;
-  return prisma.entTransferObjection.count({ where: { judgedAt: 时间, ...本人裁定条件() } });
+  const 行们 = await prisma.entTransferObjection.findMany({ where: { judgedAt: 时间 }, select: { judgedById: true, operatorUserId: true, toOwnerId: true } });
+  return 行们.filter(是本人裁定).length;
 }
 
 /**
  * 特殊裁定台账（E-436）：列「本人发起、本人裁定」（裁定人 = 发起人）和「本人接手、本人裁定」（裁定人 = 接手人）的异议，
  * 按裁定时间倒序，月份（YYYY-MM，北京时间）可选；只给系统管理员，非系统管理员返回空（服务端判）。
- * 不另存标记列：judgedById 等于 operatorUserId / toOwnerId 就是「本人裁定」，条件下推到库里（字段引用），时间回北京时间字符串。
+ * 不另存标记列：judgedById 等于 operatorUserId / toOwnerId 就是「本人裁定」，在 JS 里比（不用字段引用，见 是本人裁定），时间回北京时间字符串。
  */
 export async function 特殊裁定台账(userId: string, 月?: string | null): Promise<特殊裁定行[]> {
   if (!企业版()) return [];
   const org = await 读组织();
   if (!org || !系统管理员们(org).includes(userId)) return [];
   const 时间 = typeof 月 === "string" ? 月区间(月) : null;
-  const 行们 = await prisma.entTransferObjection.findMany({
-    where: { judgedAt: 时间 ?? { not: null }, ...本人裁定条件() },
-    orderBy: [{ judgedAt: "desc" }, { id: "asc" }], take: 台账条数上限,
-  });
+  const 行们 = (await prisma.entTransferObjection.findMany({
+    where: { judgedAt: 时间 ?? { not: null } },
+    orderBy: [{ judgedAt: "desc" }, { id: "asc" }],
+  })).filter(是本人裁定).slice(0, 台账条数上限);
   if (!行们.length) return [];
   const [人们, 客户们] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => [r.operatorUserId, r.toOwnerId, r.objectorUserId]))] } }, select: { id: true, name: true } }),
