@@ -171,3 +171,16 @@ it("筛选后页签数字按筛后条数；因撤回终止不再重复出状态�
     expect(错).toEqual([]);
   } finally { await page.close(); }
 }, 60_000);
+
+it("系统管理员：只有特殊裁定台账里有合并行时也摆类别筛选、副标题带「合并」", async () => {
+  const { page, 错 } = await open(1280, {
+    管理员: true, 首个页签: "special", 台账已查: true,
+    台账: [{ id: "t1", 裁定于: "2026-11-20 10:00", 客户名: "编造客户甲", 客户编号: "C-1", 项目: "被并的线索", 类别: "项目合并", 类型: "本人发起", 发起人: "甲", 接手人: "乙", 裁定人: "甲", 异议人: "丙", 异议理由: "x", 结果: "维持", 裁定说明: "y" }],
+  });
+  try {
+    await page.locator(".ant-segmented").waitFor();
+    expect(await page.locator(".ant-segmented").innerText()).toContain("合并异议");
+    expect(await page.locator("body").innerText()).toContain("以及项目被并走的原负责人");
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 30_000);

@@ -118,6 +118,12 @@ export default async function CustomerDetailPage({
     // 只负责项目的人（用户 11-12 定）：客户看不到、名下有自己负责的项目 = 受限详情（只读卡 + 只有自己的项目）；别的照旧 404
     const 受限 = 只项目 ? await 读受限客户详情(me, id, sp.project ?? null) : null;
     if (!受限) notFound();
+    // 被并走的项目负责人一般不是客户负责人，会落在这条受限分支：同样给「已并入 → 留下的项目 · 合并异议」那一行。
+    // 数据同正常分支（读项目区 已带 已并入 / 跨并待确认，只含我自己负责的项目），不多放客户信息
+    if (受限.项目区.当前) {
+      const 并 = 受限.项目区.当前.p.已并入 ?? null;
+      受限.项目区.已并入口 = <MergedIntoLine 待确认={受限.项目区.当前.p.跨并待确认 ?? null} 单={并} 项目名={受限.项目区.当前.p.name} 去={并 ? 客户页项目地址(id, 并.到id) : null} 嵌入 />;
+    }
     return <RestrictedCustomerDetail key={id} 数据={受限} />;
   }
   // 叫你的那条已经做完 / 删了：照旧摆最早那条没做完的

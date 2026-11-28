@@ -43,7 +43,7 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
   const [裁错, set裁错] = useState<string | null>(null);
   const [裁忙, set裁忙] = useState(false);
   const [筛, set筛] = useState<类别筛>("全部");
-  const 有合并 = [...能提, ...已提, ...待裁, ...全部, ...待手工].some((r) => 合并(r.类别));
+  const 有合并 = [...能提, ...已提, ...待裁, ...全部, ...待手工, ...台账].some((r) => 合并(r.类别));
   const 关 = () => { set选(null); set理由(""); set错(null); };
   const 关裁 = () => { set裁(null); set说明(""); set裁错(null); };
   async function 交() {
