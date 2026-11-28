@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { 数据失效事件, 来了新通知 } from "@/lib/page-fresh";
 import { useRouter } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
 import { Badge, Button, ConfigProvider, Drawer, Tooltip } from "antd";
@@ -9,7 +10,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { businessDayjs } from "@/lib/business-clock";
 import { useSystemReducedMotion } from "@/lib/reduced-motion";
 import { 时长, 曲线, 间隔 } from "@/lib/motion";
-import { 读我的通知, 读未读通知数, 标已读, 全部标已读 } from "@/app/(app)/notice-actions";
+import { 读我的通知, 读通知动静, 标已读, 全部标已读 } from "@/app/(app)/notice-actions";
 import type { 通知行 } from "@/lib/enterprise/notify";
 import { 去放弃参数, 放弃后要离开 } from "@/lib/enterprise/lead-giveup-core";
 import GiveUpDialog from "@/app/(app)/projects/[id]/GiveUpDialog";
@@ -55,6 +56,9 @@ export function 多久以前(iso: string, 现在 = Date.now()): string {
  * 初始未读：layout 不等这个数（11-26），可以是 Promise——铃铛先出，红数到了在流里填进角上（components/LateCount.tsx）。
  * 之后的数照旧是这里自己问的（每分钟、打开抽屉、点了已读），以那个为准
  */
+/** 上次见到的最新通知时间（模块级：AppShell 里手机 + 电脑各挂一份铃铛，共用这一个，失效事件只发一次） */
+const 上次最新通知: { 值: number | null } = { 值: null };
+
 export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初始未读?: 或晚到<number>; 手机?: boolean }) {
   const router = useRouter();
   /** 去别的页 / 详情：等新页时顶上的条亮（lib/nav-pending.ts） */
@@ -71,6 +75,8 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
     };
   }, [初始未读]);
   const 未读 = 未读值 ?? 0;
+  /** 铃铛那颗钮（判这一份是不是屏上看得见的那份：两份壳里只让看得见的轮询） */
+  const 钮Ref = useRef<HTMLElement>(null);
   const [开着, set开着] = useState(false);
   const [挂过, set挂过] = useState(false);
   /** 第几次打开：列表按它换 key，每次打开条目都依次落位一遍（原型 g.notice「改后」） */
@@ -86,19 +92,32 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
       return 新;
     });
 
-  // 每分钟、切回这个标签页时问一次未读数
+  // 挂载即问一次（定基线：之后新来的通知才算「新」，不用等第一分钟）；每分钟、切回这个标签页时再问
   useEffect(() => {
     let 还在 = true;
-    const 问 = () => {
+    const 问 = (只定基线 = false) => {
       if (document.visibilityState !== "visible") return;
-      读未读通知数().then((n) => 还在 && set未读(n)).catch(() => {});
+      // 电脑壳 / 手机壳各挂一份、另一份被样式藏起来（没有布局框）：它不问，省一半请求
+      const 钮 = 钮Ref.current;
+      if (钮 && 钮.getClientRects().length === 0) return;
+      读通知动静().then((r) => {
+        if (!还在) return;
+        // 来了新通知（分到我 / 转走 / 权限变了都走通知；看最新一条的时间，不看未读数）：缓存里的页不可信了，PageFreshness 听到后台换新（PR-D）
+        // 上次见到的记在模块级，电脑壳和手机壳两份铃铛共用，同一条只发一次
+        if (来了新通知(上次最新通知.值, r.最新)) window.dispatchEvent(new Event(数据失效事件));
+        if (上次最新通知.值 === null || r.最新 > 上次最新通知.值) 上次最新通知.值 = r.最新;
+        // 挂载那次只定基线：红数还是 layout 给的初始数（晚到的数不被这次抢先填进去）
+        if (!只定基线) set未读(r.未读);
+      }).catch(() => {});
     };
-    const t = window.setInterval(问, 60_000);
-    document.addEventListener("visibilitychange", 问);
+    问(true);
+    const t = window.setInterval(() => 问(), 60_000);
+    const 回来 = () => 问();
+    document.addEventListener("visibilitychange", 回来);
     return () => {
       还在 = false;
       window.clearInterval(t);
-      document.removeEventListener("visibilitychange", 问);
+      document.removeEventListener("visibilitychange", 回来);
     };
   }, []);
 
@@ -161,12 +180,12 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
            红数收进铃铛这颗钮的右上角（globals.css .notice-bell-badge），99+ 也不压出钮外、不压到左栏边 */
         <Tooltip title={说法} placement="bottom" mouseEnterDelay={0.3}>
           <Badge count={未读} size="small" overflowCount={99} className="notice-bell-badge">
-            <Button type="text" className="notice-bell" icon={<BellOutlined />} aria-label={说法} onClick={打开} />
+            <Button ref={钮Ref as never} type="text" className="notice-bell" icon={<BellOutlined />} aria-label={说法} onClick={打开} />
           </Badge>
         </Tooltip>
       ) : (
         <Badge count={未读} size="small" overflowCount={99}>
-          <Button type="text" icon={<BellOutlined />} aria-label={说法} title={说法} onClick={打开} />
+          <Button ref={钮Ref as never} type="text" icon={<BellOutlined />} aria-label={说法} title={说法} onClick={打开} />
         </Badge>
       );
   };

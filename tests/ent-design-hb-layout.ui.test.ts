@@ -20,7 +20,7 @@ const 壳插件: Plugin = { name: "ent-design-hb-shell", setup(b) {
   const stub = (filter: RegExp, code: string) => b.onResolve({ filter }, (a) => ({ path: a.path, namespace: "stub", pluginData: code }));
   stub(/^next\/navigation$/, "export const useRouter=()=>({push:p=>{window.__route=p},refresh(){},replace(){},prefetch(){}});export const usePathname=()=>location.pathname;export const useSearchParams=()=>new URLSearchParams(location.search);");
   stub(/^next\/link$/, "import React from 'react';export default function Link({href,onClick,prefetch,unstable_dynamicOnHover,children,...p}){return React.createElement('a',{...p,href,onClick:e=>{onClick?.(e);if(!e.defaultPrevented){e.preventDefault();window.__route=href}}},children)}");
-  stub(/notice-actions$/, "export const 读我的通知=async()=>({行们:[],未读:window.__未读});export const 读未读通知数=async()=>window.__未读;export const 标已读=async()=>0;export const 全部标已读=async()=>0;");
+  stub(/notice-actions$/, "export const 读我的通知=async()=>({行们:[],未读:window.__未读});export const 读通知动静=async()=>({未读:window.__未读,最新:0});export const 标已读=async()=>0;export const 全部标已读=async()=>0;");
   stub(/^\.\/giveup-actions$/, 补全动作桩("src/app/(app)/projects/[id]/giveup-actions.ts"));
   b.onResolve({ filter: /(^|\/)(WhatsNew|UpdateRow|FeedbackButton|AiCost|RailResizer|AwaitAssignTodo|RecordView|ProjectDetail|AiDock)$/ }, (a) => ({ path: a.path, namespace: "empty" }));
   b.onLoad({ filter: /.*/, namespace: "empty" }, () => ({ contents: "export default function Empty(){return null} export function AiMeterBar(){return null}" }));

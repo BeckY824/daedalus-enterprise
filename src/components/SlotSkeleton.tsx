@@ -3,6 +3,7 @@
 import { createContext, Suspense, useContext } from "react";
 import { usePathname } from "next/navigation";
 import { Skeleton, Card, Row, Col } from "antd";
+import { 详情地址 } from "@/lib/page-fresh";
 import CustomerDetailSkeleton from "@/components/CustomerDetailSkeleton";
 import { CustomerRosterSkeleton, ChatPaneSkeleton } from "@/components/RosterSkeleton";
 
@@ -42,8 +43,8 @@ export function 槽位({ 名, 有AI = false, children }: { 名: 槽位名; 有AI
   );
 }
 
-const 客户详情 = /^\/customers\/[^/]+$/;
-const 项目详情 = /^\/projects\/(?!attach$|handover$|new$)[^/]+$/;
+const 客户详情 = { test: (p: string) => 详情地址(p)?.区 === "customers" };
+const 项目详情 = { test: (p: string) => 详情地址(p)?.区 === "projects" };
 /** 客户详情 / 项目详情（有名单中栏的两种详情页）：这里摆名单骨架、AppShell 手机上挂名单抽屉，两处认这一个判定 */
 export const 名单详情页 = (p: string): boolean => 客户详情.test(p) || 项目详情.test(p);
 

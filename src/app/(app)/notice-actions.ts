@@ -48,6 +48,14 @@ export async function 读未读通知数(): Promise<number> {
   return 未读通知数(me.id);
 }
 
+/** 铃铛每分钟问一次：未读数 + 最新一条通知的时间（毫秒；没有通知 = 0）。数据失效判「来了新通知」看最新时间，不看未读数（读了几条同时来了新的，数不变也算） */
+export async function 读通知动静(): Promise<{ 未读: number; 最新: number }> {
+  if (!企业版()) return { 未读: 0, 最新: 0 };
+  const me = await requireUser();
+  const [未读, 最新] = await Promise.all([未读通知数(me.id), prisma.entNotice.aggregate({ where: { userId: me.id }, _max: { createdAt: true } })]);
+  return { 未读, 最新: 最新._max.createdAt?.getTime() ?? 0 };
+}
+
 export async function 标已读(id: string): Promise<number> {
   if (!企业版()) return 0;
   const me = await requireUser();

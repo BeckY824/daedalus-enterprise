@@ -137,10 +137,15 @@ export const nextConfig: NextConfig = {
      * 且新建/修改后我们本来就会主动 router.refresh()。
      *
      * static 管的是「整页预取」（悬停预取、左栏空闲时预热，见 lib/prefetch-full）存多久。
-     * 原来 300 秒：预热进来的页五分钟内不再问服务器，比点进去看的页还旧。改成和 dynamic 一样 60 秒（10-27）
+     * 10-27 曾改 60 秒：预热进来的页五分钟内不问服务器，比点进去看的页还旧。
+     * 11-28（跳转优化 PR-D「先出缓存、后台更新」）只把 dynamic 调到 300（static 仍 60，预取的页行为不变）：切回去直接出缓存，
+     * 旧的问题由 components/PageFreshness.tsx 补——切到客户详情 / 项目详情 / 客户列表时问一次「这页变了没」（/api/page-version），
+     * 和页面渲染时下发的版本比（components/RenderedVersion），变了才 router.refresh；收到通知（权限 / 归属）、发版、超过 5 分钟（Next 自己重取）都不会拿老数据当新的。
+     * 没纳入的页（公海、看板、首页、跟进计划、项目列表、线索）回来距上次取超过 60 秒也刷，保持原来 60 秒的效果。
+     * dynamic 的数字同步在 lib/page-fresh.ts 的 缓存秒
      */
     staleTimes: {
-      dynamic: 60,
+      dynamic: 300,
       static: 60,
     },
   },

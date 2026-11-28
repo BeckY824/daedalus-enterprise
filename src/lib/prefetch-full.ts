@@ -9,7 +9,7 @@ import { PrefetchKind } from "next/dist/client/components/router-reducer/router-
  *
  * 服务端出页只要十几到几十毫秒，慢的是来回：本机看不出，放到云上每点一下都要等一趟网络。
  * Link 默认的预取只取到 loading.tsx 那层骨架，点进去还要再跑一趟拿数据；整页预取把数据也一起取回来，
- * 点下去直接从本地出页。取回的页按 next.config 的 staleTimes.static（60 秒）算新鲜，过了照常再问服务器。
+ * 点下去直接从本地出页。取回的页按 next.config 的 staleTimes.static（60 秒，PR-D 没动它）算新鲜，过了照常再问服务器；进页后三个纳入页另有「这页变了没」（PageFreshness）兜底。
  *
  * 只在人「要点了」的时候取：悬停停住一小会儿（扫过去的不算）、手指按下去、左栏空闲时预热那几项。
  * 列表一屏几十行，不能一进视口就全取（见 ui.tsx RowLink）。
