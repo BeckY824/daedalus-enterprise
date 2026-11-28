@@ -105,13 +105,21 @@ jobs:
           SHARDS: ${{ needs.select.outputs.shards }}
         run: |
           if [ "$MODE" != related ]; then
-            echo "run=true" >> "$GITHUB_OUTPUT"; echo "args=--shard=${{ matrix.shard }}/8" >> "$GITHUB_OUTPUT"; echo "全套：--shard=${{ matrix.shard }}/8"; exit 0
+            # 11-28 O4：全套按耗时表均分（scripts/ci/shard-unit.mjs），不再用 vitest --shard（按文件数切，8 片 334–752 秒，最慢片拖整轮）。
+            # 需要先 checkout，所以只在这里标记，实际文件清单在下一步「分片清单」里算
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "args=" >> "$GITHUB_OUTPUT"; echo "timed=true" >> "$GITHUB_OUTPUT"; echo "全套：按耗时表分片 ${{ matrix.shard }}/8"; exit 0
           fi
           files=$(echo "$SHARDS" | jq -r '.[${{ matrix.shard }} - 1][]?' | tr '\n' ' ')
           if [ -z "$files" ]; then echo "run=false" >> "$GITHUB_OUTPUT"; echo "相关模式：这片没分到用例，直接通过"; exit 0; fi
           echo "run=true" >> "$GITHUB_OUTPUT"; echo "args=$files" >> "$GITHUB_OUTPUT"; echo "相关模式：$files"
       - uses: actions/checkout@v4
         if: steps.scope.outputs.run == 'true'
+      - id: timed
+        name: 分片清单（全套按耗时均分）
+        if: steps.scope.outputs.timed == 'true'
+        run: |
+          node scripts/ci/shard-unit.mjs --check 8
+          echo "args=$(node scripts/ci/shard-unit.mjs ${{ matrix.shard }} 8)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         if: steps.scope.outputs.run == 'true'
         with:
@@ -142,7 +150,7 @@ jobs:
         # 每片在自己的机器上跑，测试库 prisma/test.db 各建各的，互不干扰
         # 多挂一个 json 报告只为留逐文件耗时（dot 不带），过不过仍由 vitest 退出码定
       - if: steps.scope.outputs.run == 'true'
-        run: npx vitest run ${{ steps.scope.outputs.args }} --passWithNoTests --reporter=dot --reporter=json --outputFile.json=test-results/vitest-timing-${{ matrix.shard }}.json
+        run: npx vitest run ${{ steps.timed.outputs.args || steps.scope.outputs.args }} --passWithNoTests --reporter=dot --reporter=json --outputFile.json=test-results/vitest-timing-${{ matrix.shard }}.json
         env:
           TZ: Asia/Shanghai
       # 下面两步只看耗时，自己出错不许把这一片变红
