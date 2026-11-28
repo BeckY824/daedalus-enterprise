@@ -17,6 +17,7 @@ const 动作 = `
   export const 预览跨并=async(a,b)=>{记('预览',a,b);return window.__预览};
   export const 发起跨并=async(a,b)=>{记('发起',a,b);return window.__发起结果??{ok:true,方式:'申请',requestId:'r1',到期:new Date().toISOString()}};
   export const 处理跨并=async(id,结论,原因)=>{记('处理',id,结论,原因);return (window.__处理结果??{})[id]??{ok:true,状态:结论==='拒绝'?'已拒绝':'已合并'}};
+  export const 作废跨并申请单=async(id,原因)=>{记('作废',id,原因);return {ok:true}};
   export const 撤回跨并申请单=async(id)=>{记('撤回申请',id);return {ok:true}};
   export const 撤回项目合并单=async(id)=>{记('撤回',id);return {ok:true,没还原:[]}};
   export const 能并同事的=async()=>false;`;
@@ -84,7 +85,7 @@ it("发起框：选同事的项目 → 预览写等谁确认 / 5 个工作日 / 
     const 表 = await page.locator('[data-testid="xmerge-list"]').innerText();
     expect(表).toContain("示例上级甲（实线上级）、示例线总乙（条线总管理）");
     expect(表).toContain("5 个工作日");
-    expect(表).toContain("验证计时暂停");
+    expect(表).toContain("验证计时都暂停");
     expect(表).toContain("不退还已占线索名额");
     expect(await page.locator('[data-testid="xmerge-go"]').innerText()).toBe("发起合并申请");
     await page.locator('[data-testid="xmerge-go"]').click();
@@ -187,5 +188,20 @@ it("390：确认页不横滚、长项目名一行省略、按钮 ≥ 44px；1280
     expect(await 横滚(page)).toBe(false);
     const h = await page.locator('[data-testid="xmerge-go"]').evaluate((e) => Math.round(e.getBoundingClientRect().height));
     expect(h).toBeGreaterThanOrEqual(44);
+  } finally { await page.close(); }
+});
+
+it("系统管理员：待确认的申请带「作废申请」，原因必填、超 100 字点不了，调 作废跨并申请单(id,原因)", async () => {
+  const { page } = await open(1280, "list", { 等我: [], 我发起: [], 可作废: [行("v1")] });
+  try {
+    await page.locator('[data-testid="xmerge-void"]').click();
+    const ok = page.locator('[data-testid="xmerge-void-ok"]');
+    expect(await ok.isDisabled()).toBe(true);
+    await page.locator('[data-testid="xmerge-why"]').fill("字".repeat(101));
+    expect(await ok.isDisabled()).toBe(true);
+    await page.locator('[data-testid="xmerge-why"]').fill("确认人已停用");
+    await ok.click();
+    await page.locator('[data-testid="xmerge-done"]').waitFor();
+    expect((await 调(page)).filter((c) => c[0] === "作废")).toEqual([["作废", "v1", "确认人已停用"]]);
   } finally { await page.close(); }
 });

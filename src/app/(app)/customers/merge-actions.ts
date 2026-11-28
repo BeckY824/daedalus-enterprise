@@ -40,7 +40,7 @@ import {
   type 发起完, type 处理完, type 快照, type 凭, type 涉及项目, type 合并申请预览结果,
 } from "@/lib/enterprise/merge-request";
 import {
-  发起跨负责人并, 跨并预览, 处理跨并申请, 撤回跨并申请, 算确认人, 跨并状态, type 确认人层级,
+  发起跨负责人并, 跨并预览, 处理跨并申请, 撤回跨并申请, 作废跨并申请, 作废原因超话, 算确认人, 跨并状态, type 确认人层级,
 } from "@/lib/enterprise/project-merge-request";
 import { 跨并通知 } from "@/lib/enterprise/project-merge-request-notice";
 import { 通知里的客户名 } from "@/lib/enterprise/notice-mask";
@@ -664,4 +664,25 @@ export async function 等我确认的跨并申请(): Promise<跨并申请一条[
 export async function 我发起的跨并申请(): Promise<跨并申请一条[]> {
   const me = await requireUser();
   return 跨并行们({ byUserId: me.id });
+}
+
+/** 系统管理员作废一张待确认的申请（确认人停用、等不到人时）：原因必填 ≤100 字；成了通知发起人和确认人（失效那条，带原因） */
+export async function 作废跨并申请单(requestId: string, 原因: string): Promise<结果> {
+  const me = await 我();
+  if (!是id(requestId) || typeof 原因 !== "string") return 坏参数;
+  if (原因.trim().length > 拒绝原因上限) return { ok: false, error: 作废原因超话 };
+  const r = await 作废跨并申请(prisma, requestId, me, 原因);
+  if (r.ok) {
+    await 跨并通知(prisma, requestId, "失效", me, `系统管理员${me.name}作废了申请：${原因.trim()}`);
+    await 刷新跨并(requestId);
+  }
+  return r;
+}
+
+/** 给系统管理员看的：所有还在待确认的申请（作废入口用）；不是系统管理员给空 */
+export async function 待确认的跨并申请们(): Promise<跨并申请一条[]> {
+  const me = await requireUser();
+  const org = await 权限组织();
+  if (!org || !是系统管理员(me, org)) return [];
+  return 跨并行们({ status: 跨并状态.待确认 });
 }

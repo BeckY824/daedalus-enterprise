@@ -43,6 +43,7 @@ export type 确认人 = { userId: string; 层级: 确认人层级 };
 
 export const 拒绝必填话 = "拒绝要写一句原因";
 export const 拒绝原因超话 = `拒绝原因最多 ${拒绝原因上限} 字`;
+export const 作废原因超话 = `作废原因最多 ${拒绝原因上限} 字`;
 export const 客户合并申请挡话 = "这位客户有一张客户合并申请在等同意，先处理那张再发跨负责人合并";
 export const 渠运不开话 = "这位客户的负责人不是销售，暂不开跨负责人合并";
 export const 兼市场不开话 = "这位客户的负责人兼市场管理，暂不开跨负责人合并";
@@ -331,7 +332,7 @@ export async function 作废跨并申请(db: 库, requestId: string, me: 合并�
   if (!org || !是系统管理员of(org, me.id)) return { ok: false, error: "只有系统管理员能作废合并申请" };
   const 话 = 原因.trim();
   if (!话) return { ok: false, error: "作废要写一句原因" };
-  if (话.length > 拒绝原因上限) return { ok: false, error: 拒绝原因超话 };
+  if (话.length > 拒绝原因上限) return { ok: false, error: 作废原因超话 };
   try {
     return await 看全部(() => db.$transaction(async (tx) => {
       const r = await tx.entProjectMergeRequest.findUnique({ where: { id: requestId } });

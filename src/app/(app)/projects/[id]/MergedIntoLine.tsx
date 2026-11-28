@@ -52,7 +52,7 @@ export default function MergedIntoLine({ 单, 项目名, 去, 嵌入, 待确认 
         <InfoCircleOutlined className="mrg-into-i" aria-hidden />
         <span className="mrg-into-t" title={`跨负责人合并申请待确认：${待确认.角色 === "并走" ? "这个项目要并进" : "要把"}「${待确认.另一个}」${待确认.角色 === "并走" ? "" : "并进来"}，等 ${待确认.等} 确认；${天话(待确认.到期)}`}>
           跨负责人合并申请待确认：{待确认.角色 === "并走" ? `这个项目要并进「${待确认.另一个}」` : `要把「${待确认.另一个}」并进来`}，等 {待确认.等} 确认
-          <span className="mrg-into-s">（{天话(待确认.到期)}{待确认.角色 === "并走" ? "；这个项目的验证计时已暂停" : ""}）</span>
+          <span className="mrg-into-s">（{天话(待确认.到期)}；这个项目的验证计时已暂停）</span>
         </span>
         {待确认.我确认 && <Link href={合并申请页 + "#xmerge"} className="mrg-into-a" data-testid="project-xmerge-go">去确认<LinkPending /></Link>}
         {待确认.我发起 && (

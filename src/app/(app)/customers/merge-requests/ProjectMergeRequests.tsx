@@ -6,7 +6,7 @@ import { Alert, Button, Card, Input, Modal, Tag } from "antd";
 import InlineConfirm from "@/components/InlineConfirm";
 import { useViewAs } from "@/components/ViewAsContext";
 import { dayjs } from "@/lib/utils";
-import { 撤回跨并申请单, 处理跨并, type 跨并申请一条 } from "../merge-actions";
+import { 撤回跨并申请单, 处理跨并, 作废跨并申请单, type 跨并申请一条 } from "../merge-actions";
 import { 撤回天数, 拒绝原因上限, 看别人视角话, 等待工作日 } from "../merge-request-words";
 import "../merge.css";
 
@@ -24,7 +24,7 @@ export function 跨并剩几天(到期: Date | string, 现在 = Date.now()): str
 export const 跨并两个话 = (r: Pick<跨并申请一条, "留下" | "并掉">) => `「${r.并掉.名}」（${r.并掉.负责人}）并进「${r.留下.名}」（${r.留下.负责人}）`;
 const 一行 = (话: string) => <span className="mrg-one" title={话}>{话}</span>;
 
-type 办完 = { 行: 跨并申请一条; 状态: string; 话: string };
+type 办完 = { 行: 跨并申请一条; 状态: string; 话: string; 作废?: true };
 
 /**
  * 合并申请页「项目合并」一节（跨负责人合并，E-380 阶段 2；通知都链到这里的 #xmerge）：
@@ -33,31 +33,35 @@ type 办完 = { 行: 跨并申请一条; 状态: string; 话: string };
  * 每张一块，电脑和手机同一套（一项一行、值一行省略悬停看全）；手机（≤767）按钮整行 ≥ 触屏点击区。办成了这一块留着置灰写结果，没办成原因写在框里、框不关。
  * 只读身份、切换视图在看别人：列表照常，按钮置灰悬停写原因；服务端本来就拦
  */
-export default function ProjectMergeRequests({ 等我, 我发起, 只读原因 = null }: { 等我: 跨并申请一条[]; 我发起: 跨并申请一条[]; 只读原因?: string | null }) {
+export default function ProjectMergeRequests({ 等我, 我发起, 可作废 = [], 只读原因 = null }: { 等我: 跨并申请一条[]; 我发起: 跨并申请一条[]; /** 系统管理员才有：所有待确认的申请，可作废（原因必填） */ 可作废?: 跨并申请一条[]; 只读原因?: string | null }) {
   const router = useRouter();
   const 切换视图 = useViewAs();
   const 不能写 = 只读原因 ?? (切换视图 ? 看别人视角话 : null);
   const [忙, set忙] = useState<string | null>(null);
   const [行错, set行错] = useState<{ id: string; 话: string } | null>(null);
   const [办了, set办了] = useState<Record<string, 办完>>({});
-  const [开着, set开着] = useState<{ 种: "确认" | "拒绝"; 行: 跨并申请一条 } | null>(null);
+  const [开着, set开着] = useState<{ 种: "确认" | "拒绝" | "作废"; 行: 跨并申请一条 } | null>(null);
   const [原因, set原因] = useState("");
   const [框错, set框错] = useState<string | null>(null);
-  if (!等我.length && !我发起.length && !Object.keys(办了).length) return null;
+  if (!等我.length && !我发起.length && !可作废.length && !Object.keys(办了).length) return null;
 
   const 超了 = 原因.trim().length > 拒绝原因上限;
-  const 没写 = 开着?.种 === "拒绝" && !原因.trim();
-  const 开 = (种: "确认" | "拒绝", 行: 跨并申请一条) => { set开着({ 种, 行 }); set原因(""); set框错(null); };
+  const 没写 = 开着?.种 !== "确认" && !!开着 && !原因.trim();
+  const 开 = (种: "确认" | "拒绝" | "作废", 行: 跨并申请一条) => { set开着({ 种, 行 }); set原因(""); set框错(null); };
   const 关 = () => { if (!忙) set开着(null); };
   const 定 = async () => {
     if (!开着 || 忙 || 超了 || 没写) return;
     const { 种, 行 } = 开着;
     set忙(行.id);
     set框错(null);
-    const r = await 处理跨并(行.id, 种, 种 === "拒绝" ? 原因.trim() : undefined).catch(() => ({ ok: false as const, error: 网断话 }));
+    const r = 种 === "作废"
+      ? await 作废跨并申请单(行.id, 原因.trim()).catch(() => ({ ok: false as const, error: 网断话 }))
+      : await 处理跨并(行.id, 种, 种 === "拒绝" ? 原因.trim() : undefined).catch(() => ({ ok: false as const, error: 网断话 }));
     set忙(null);
     if (!r.ok) { set框错(r.error); router.refresh(); return; }
-    set办了((m) => ({ ...m, [行.id]: 种 === "拒绝"
+    set办了((m) => ({ ...m, [行.id]: 种 === "作废"
+      ? { 行, 状态: "已失效", 话: `你已作废：${原因.trim()}（已通知发起人和确认人）`, 作废: true }
+      : 种 === "拒绝"
       ? { 行, 状态: "已拒绝", 话: `你已拒绝：${原因.trim()}（已通知发起人）` }
       : { 行, 状态: "已合并", 话: `已合并 · ${撤回天数} 天内可在「历史变更」里撤回` } }));
     set开着(null);
@@ -123,14 +127,30 @@ export default function ProjectMergeRequests({ 等我, 我发起, 只读原因 =
     </li>
   );
 
-  const 等我行 = [...等我.map((r) => 办了[r.id]?.行 ?? r), ...Object.values(办了).map((x) => x.行).filter((x) => !等我.some((r) => r.id === x.id))];
+  const 作废卡 = (r: 跨并申请一条) => (
+    <li key={r.id} className={`mrq-item${办了[r.id] ? " is-done" : ""}`} data-testid="xmerge-void-item">
+      {共同项(r)}
+      {项("发起人", 一行(r.发起人))}
+      {项("确认人", 一行(r.确认人.map((x) => `${x.名}（${x.层级}）`).join("、")))}
+      {办了[r.id]
+        ? <div className="mrq-res" data-testid="xmerge-done"><Tag color="default">已失效</Tag>{一行(办了[r.id].话)}</div>
+        : <div className="mrq-ops">{钮(<Button size="small" danger disabled={!!不能写 || (!!忙 && 忙 !== r.id)} onClick={() => 开("作废", r)} data-testid="xmerge-void">作废申请</Button>)}</div>}
+    </li>
+  );
+  const 等我行 = [...等我.map((r) => 办了[r.id]?.行 ?? r), ...Object.values(办了).filter((x) => !x.作废).map((x) => x.行).filter((x) => !等我.some((r) => r.id === x.id))];
   const 待处理数 = 等我.filter((r) => !办了[r.id]).length;
+  const 要等我卡 = 等我行.filter((r) => !办了[r.id]?.作废);
   const 框行 = 开着?.行;
   return (
     <div id="xmerge" className="mrq-stack">
-      {等我行.length > 0 && (
+      {要等我卡.length > 0 && (
         <Card title={<span>项目合并 · 等我确认{待处理数 ? <span className="mrq-cnt">{待处理数} 张等你处理</span> : null}</span>} size="small">
-          <ul className="mrq-list" data-testid="xmerge-wait-list">{等我行.map(等我卡)}</ul>
+          <ul className="mrq-list" data-testid="xmerge-wait-list">{要等我卡.map(等我卡)}</ul>
+        </Card>
+      )}
+      {可作废.length > 0 && (
+        <Card title="项目合并 · 系统管理员：待确认的申请" size="small">
+          <ul className="mrq-list" data-testid="xmerge-void-list">{可作废.map(作废卡)}</ul>
         </Card>
       )}
       {我发起.length > 0 && (
@@ -141,7 +161,7 @@ export default function ProjectMergeRequests({ 等我, 我发起, 只读原因 =
       <Modal
         open={!!开着}
         onCancel={关}
-        title={开着?.种 === "拒绝" ? "拒绝这张项目合并申请" : "确认这张项目合并申请？"}
+        title={开着?.种 === "作废" ? "作废这张项目合并申请" : 开着?.种 === "拒绝" ? "拒绝这张项目合并申请" : "确认这张项目合并申请？"}
         width={520}
         className="mrg-modal"
         destroyOnHidden
@@ -150,8 +170,8 @@ export default function ProjectMergeRequests({ 等我, 我发起, 只读原因 =
           <div className="mrg-foot">
             <span className="mrg-foot-sp" />
             <Button onClick={关} disabled={!!忙}>取消</Button>
-            {开着?.种 === "拒绝"
-              ? <Button type="primary" danger loading={!!忙} disabled={超了 || 没写} onClick={() => void 定()} data-testid="xmerge-reject-ok">确认拒绝</Button>
+            {开着?.种 === "拒绝" || 开着?.种 === "作废"
+              ? <Button type="primary" danger loading={!!忙} disabled={超了 || 没写} onClick={() => void 定()} data-testid={开着.种 === "作废" ? "xmerge-void-ok" : "xmerge-reject-ok"}>{开着.种 === "作废" ? "确认作废" : "确认拒绝"}</Button>
               : <Button type="primary" loading={!!忙} onClick={() => void 定()} data-testid="xmerge-confirm-ok">确认合并</Button>}
           </div>
         )}
@@ -162,7 +182,19 @@ export default function ProjectMergeRequests({ 等我, 我发起, 只读原因 =
               <div className="mrq-two-r"><span className="mrq-tg">留下</span>{一行(`${框行.留下.名}（${框行.留下.负责人}）`)}</div>
               <div className="mrq-two-r"><span className="mrq-tg">并走</span>{一行(`${框行.并掉.名}（${框行.并掉.负责人}）`)}</div>
             </div>
-            {开着?.种 === "确认"
+            {开着?.种 === "作废"
+              ? (
+                <>
+                  <label className="mrq-lbl" htmlFor="xmerge-why">作废原因（必填，最多 {拒绝原因上限} 字）</label>
+                  <Input.TextArea id="xmerge-why" value={原因} onChange={(e) => set原因(e.target.value)} autoSize={{ minRows: 2, maxRows: 5 }} placeholder="写一句，发起人和确认人会看到" data-testid="xmerge-why" />
+                  <div className="mrq-count">
+                    <span className={超了 ? "is-over" : ""} role={超了 ? "alert" : undefined}>{超了 ? `超出 ${原因.trim().length - 拒绝原因上限} 字` : ""}</span>
+                    <span className={超了 ? "is-over" : ""}>{原因.trim().length} / {拒绝原因上限}</span>
+                  </div>
+                  <p className="mrq-mu">作废后申请结束为已失效，发起人和确认人收到通知；用于确认人停用、等不到人时。</p>
+                </>
+              )
+              : 开着?.种 === "确认"
               ? <p className="mrq-eff" data-testid="xmerge-effect">确认后立即合并：「{框行.并掉.名}」的沟通、附件、联系人并进「{框行.留下.名}」，归{框行.留下.负责人}；它结束为重复线索，不退还已占线索名额；{撤回天数} 天内可撤回。{框行.并掉.负责人}不用事先同意，并后会收到通知。</p>
               : (
                 <>
@@ -172,7 +204,7 @@ export default function ProjectMergeRequests({ 等我, 我发起, 只读原因 =
                     <span className={超了 ? "is-over" : ""} role={超了 ? "alert" : undefined}>{超了 ? `超出 ${原因.trim().length - 拒绝原因上限} 字` : ""}</span>
                     <span className={超了 ? "is-over" : ""}>{原因.trim().length} / {拒绝原因上限}</span>
                   </div>
-                  <p className="mrq-mu">拒绝后申请结束，发起人收到通知；被并走那条的验证计时重新起算。{等待工作日} 个工作日内没人处理会自动失效。</p>
+                  <p className="mrq-mu">拒绝后申请结束，发起人收到通知；两个项目的验证计时重新起算。{等待工作日} 个工作日内没人处理会自动失效。</p>
                 </>
               )}
             {框错 && <Alert type="warning" showIcon title={框错} data-testid="xmerge-err" />}
