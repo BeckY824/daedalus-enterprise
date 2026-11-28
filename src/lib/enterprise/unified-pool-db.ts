@@ -231,11 +231,12 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
     // 进公海那一行单独取、不用 select 关联带（11-10）：关联加载是 客户 id IN (上面所有行)，一千多位时比取行本身还慢。
     // 同一个带限定的客户端、同样按入池时间新的在前取，就是上面那些客户的；对不上的（两句之间刚进公海的）下面按 id 补
     全取.不取客户 ? [] : prisma.customerPool.findMany({ ...(全取.只要 ? { where: { customer: { projects: { some: 全取.只要 } } } } : {}), orderBy: { at: "desc" }, select: 池要的 }),
-    // 项目公海里、客户不在客户公海的：客户在客户公海的那些已经算在客户行里（领客户即领项目）
+    // 项目公海里、客户不在客户公海的：客户在客户公海的那些已经算在客户行里（领客户即领项目）。
+    // 客户已删（进回收站）的不列（O1-N4c）：删客户时名下项目本就一起进回收站（软删客户），漏网的项目行不留在公海里被领成挂在已删客户下
     // 与人无关的全量放 3 秒短缓存（O1-N3，pool-count-cache）：公海项目人人看得到，范围层只多一段「原负责人回避」，
     // 那一段取出后在下面按人排掉（不把带回避的结果放进缓存）。看全部 = 不加范围层的条件；键带上渠道名单的 只要
     缓存分组数("公海项目行", [全取.只要 ?? null], () => 看全部(() => prisma.project.findMany({
-      where: { pooledAt: { not: null }, customer: { pool: null }, ...(全取.只要 ? { AND: [全取.只要] } : {}) },
+      where: { pooledAt: { not: null }, customer: { pool: null, deletedAt: null }, ...(全取.只要 ? { AND: [全取.只要] } : {}) },
       orderBy: { pooledAt: "desc" },
       select: {
         id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, poolPrevOwnerId: true, customerId: true, createdAt: true, channelId: true,
@@ -344,6 +345,17 @@ async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof �
     }
     return r.子 ? 并客户池(r.子.map(补项目)) : 补项目(r);
   });
+}
+
+/**
+ * 客户页「公海里有 N 位匹配 ›」要加上的项目行数：公海页总数 = 客户行 + 项目行（项目在公海、客户不在客户公海），客户页只数客户时少了项目行。
+ * 和公海页同一套：项目行取法同 读公海页_库里分页（读公海骨架，公海项目行走 3 秒短缓存、排掉本人回避），
+ * 关键词照 筛排 同一写法（项目名 / 客户名 / 编号，各词都要中）。回避在这里按服务端身份判，不在页面判
+ */
+export async function 公海项目行匹配数(me: { id: string; name: string; role?: string }, keyword?: string): Promise<number> {
+  const 词 = 公海词们(keyword).length > 0;
+  const 骨 = await 读公海骨架(me, { 客户的项目: false, 客户可见: 词, 不取客户: true });
+  return 筛排(骨.行, { keyword }).行.length;
 }
 
 /**

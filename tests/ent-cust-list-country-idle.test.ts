@@ -39,6 +39,7 @@ import { resetDb } from "./reset";
 import { setSetting, invalidateSettingsCache } from "@/lib/settings";
 import { 以谁的身份, 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import CustomersPage from "@/app/(app)/customers/page";
+import { 读公海页 } from "@/lib/enterprise/unified-pool-db";
 import { 久未跟进条件, 久未跟进天数 } from "@/app/(app)/customers/query";
 import { dayjs } from "@/lib/utils";
 
@@ -194,5 +195,62 @@ describe("F-049 审查：「公海里有 N 位匹配 ›」不带客户来源", 
     for (const channelId of ["未填", "触点:客户介绍", 渠.id, "触点:公司资源"]) {
       expect((await 匹配({ keyword: "F049", channelId })).公海里匹配, channelId).toBe(只带词.公海里匹配);
     }
+  });
+});
+
+describe("公海里有 N 位匹配 = 公海页对应总数（含项目行、排本人回避）", () => {
+  it("有 / 无关键词：项目在公海、客户不在客户公海的项目行也算；排掉本人回避的；数和 /pool 总数一致", async () => {
+    const 海客户 = await 客户("匹配词公海客户", 乙.id);
+    await prisma.customerPool.create({ data: { customerId: 海客户.id, reason: "手动" } });
+    const 项目 = (name: string, customerId: string, data: Record<string, unknown> = {}) =>
+      prisma.project.create({ data: { name, customerId, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育", pooledAt: new Date(), ...data } });
+    // 项目行按客户并（同一位客户的几个公海项目算一行，同公海页），所以每个项目挂不同客户
+    const 在 = async (n: string) => (await 客户(`在手客户${n}`, 乙.id)).id;
+    await 项目("匹配词项目一", await 在("一"));
+    await 项目("匹配词项目二", await 在("二"));
+    // 甲自己放进公海的：回避，页上看不到、数里也不能有
+    await 项目("匹配词回避项目", await 在("三"), { poolPrevOwnerId: 甲.id });
+    // 词对不上的项目行：有关键词时不算
+    await 项目("别的项目", await 在("四"));
+    const 数 = async (sp: Record<string, string>) => (await 打开(sp, 甲)) as unknown as { total: number; 公海里匹配: number };
+    const 公海总数 = async (keyword?: string) => (await 读公海页(甲, { keyword }, 1, 20)).总数;
+    const 带词 = await 数({ keyword: "匹配词" });
+    expect(带词.total).toBe(0);
+    expect(带词.公海里匹配).toBe(await 公海总数("匹配词"));
+    expect(带词.公海里匹配).toBe(3); // 1 个客户行 + 2 个项目行（回避那个排掉）
+    // 客户公海里一个都没有、只有项目行：之前这里整句不出
+    await prisma.customerPool.deleteMany({});
+    const 只项目 = await 数({ keyword: "匹配词项目" });
+    expect(只项目.公海里匹配).toBe(await 公海总数("匹配词项目"));
+    expect(只项目.公海里匹配).toBe(2);
+    // 客户已删（进回收站）、项目没删还在公海：公海页和客户页匹配数都不算这一行（O1-N4c）
+    const 已删客户 = await 客户("匹配词已删客户", 乙.id);
+    await 项目("匹配词已删客户项目", 已删客户.id);
+    await prisma.customer.update({ where: { id: 已删客户.id }, data: { deletedAt: new Date() } });
+    const 删后 = await 数({ keyword: "匹配词项目" });
+    expect(删后.公海里匹配).toBe(2);
+    expect(await 公海总数("匹配词项目")).toBe(2);
+    expect((await 读公海页({ id: 甲.id, name: 甲.name, role: "SALES" }, { keyword: "已删客户" }, 1, 20)).行.length).toBe(0);
+    // 无关键词：客户页签有客户，不出兜底
+    await 客户("甲自己的", 甲.id);
+    expect((await 数({})).公海里匹配).toBe(0);
+  });
+
+  it("有别的筛选（国家）时项目行不计入；已删项目不计入", async () => {
+    const 项目 = (name: string, customerId: string, data: Record<string, unknown> = {}) =>
+      prisma.project.create({ data: { name, customerId, ownerId: 乙.id, creatorId: 乙.id, phase: "线索", node: "潜客培育", pooledAt: new Date(), ...data } });
+    const 在 = async (n: string, data: Record<string, unknown> = {}) => (await 客户(`筛选客户${n}`, 乙.id, data)).id;
+    await 项目("筛选词项目一", await 在("一"));
+    await 项目("筛选词项目二", await 在("二"));
+    await 项目("筛选词已删项目", await 在("三"), { deletedAt: new Date() });
+    const 数 = async (sp: Record<string, string>) => (await 打开(sp, 甲)) as unknown as { total: number; 公海里匹配: number };
+    // 只有关键词：只数没删的两个项目行
+    const 只词 = await 数({ keyword: "筛选词" });
+    expect(只词.公海里匹配).toBe(await 读公海页(甲, { keyword: "筛选词" }, 1, 20).then((r) => r.总数));
+    expect(只词.公海里匹配).toBe(2);
+    // 只筛国家、无关键词：项目行是全量、不按国家筛，不计入
+    expect((await 数({ country: "不存在国" })).公海里匹配).toBe(0);
+    // 关键词 + 国家：同样不计入
+    expect((await 数({ keyword: "筛选词", country: "不存在国" })).公海里匹配).toBe(0);
   });
 });

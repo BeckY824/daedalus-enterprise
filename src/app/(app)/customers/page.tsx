@@ -24,6 +24,7 @@ import { 读的我, 虚线只读的 } from "@/lib/team-scope";
 import { defaultClient } from "@/lib/prisma";
 import { 读团队 } from "@/lib/sync/client";
 import { 客户页签归属 } from "@/lib/pool";
+import { 公海项目行匹配数 } from "@/lib/enterprise/unified-pool-db";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能管公海, 能转出自己的, 能删除, 能新建和领取, 能放回客户公海, 有管理范围 } from "@/lib/enterprise/permissions";
 import { 生效客户范围, 默认客户范围, 客户范围选项, 是客户范围 } from "@/lib/enterprise/customer-scope";
@@ -262,10 +263,21 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   // 除了页签什么都没筛（最常见的「点进客户页」）：总数就是页签上那个数，不再数一遍
   const total = 筛出 ?? (就是页签 === "公海" ? 公海总数 : 非公海总数) ?? 0;
   // 公海兜底（口径见上面 去公海筛）：客户页签 0 条才查
-  const 公海里匹配 = 可能兜底 && total === 0 && 公海总数
-    ? ((快 ? await 关键词分页(去公海筛, 1, 1) : null)?.total
-      ?? await 数公海筛())
-    : 0;
+  const 公海客户P = 可能兜底 && total === 0 && 公海总数
+    ? (async () => (((快 ? await 关键词分页(去公海筛, 1, 1) : null)?.total) ?? await 数公海筛()))()
+    : Promise.resolve(0);
+  /*
+    企业版项目模式：点过去是统一公海页，总数 = 客户行 + 项目行（项目在公海、客户不在客户公海）；只数客户会少项目行，加上（同公海页的取法与关键词口径）。
+    项目行只认关键词：去公海筛里还有别的有效筛选（国家、久未跟进、状态等）时，项目行是全量、不按它们筛，数会虚高，这时记 0（O1-N4 审查）。
+    项目一半不要求公海客户总数不为 0（公海里只有项目行时也要出提示），但同样受这条筛选约束
+  */
+  const 去公海还有别的筛选 = ([
+    "grade", "followStatus", "decisionStatus", "custStatus", "customerType", "archiveTier", "channelOwnerId", "country", "source",
+    "level", "dept", "createdFrom", "createdTo", "phone", "phase", "node", "triState", "idleDays",
+  ] as const).some((k) => !!sp[k]);
+  const 公海项目P = 可能兜底 && total === 0 && 按项目 && !去公海还有别的筛选 ? 公海项目行匹配数(me, sp.keyword) : Promise.resolve(0);
+  const [公海客户匹配, 公海项目匹配] = await Promise.all([公海客户P, 公海项目P]);
+  const 公海里匹配 = 公海客户匹配 + 公海项目匹配;
   const page = 快?.page ?? Math.min(正整数(sp.page, 1), Math.max(1, Math.ceil(total / pageSize)));
 
   // 这一页的行和页面上别的几样互不依赖，一次并起来取（10-29 提速：原来行取完以后再一个个 await，十来次往返串着）
