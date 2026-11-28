@@ -124,6 +124,55 @@ describe("请求计数 / 滚动（浏览器环境，用最小桩）", () => {
     expect(Object.keys(存)).toHaveLength(0);
   });
 
+  it("滚动恢复：内容晚撑高也恢复——每 200ms 试一次，够高才停，最多试 10 次", async () => {
+    const m = await import("@/lib/swap-guard");
+    m.记滚动();
+    let 总高 = 500;
+    let 次 = 0;
+    const 排队: (() => void)[] = [];
+    const w = window as unknown as { setTimeout: unknown; innerHeight: number };
+    w.innerHeight = 800;
+    w.setTimeout = (f: () => void) => { 排队.push(f); return 0; };
+    vi.stubGlobal("document", { documentElement: { get scrollHeight() { return 总高; } }, querySelectorAll: () => [{ scrollTop: 0, scrollHeight: 3000, clientHeight: 800 }] });
+    m.恢复滚动();
+    const 滚 = window.scrollTo as unknown as { mock: { calls: unknown[][] } };
+    expect(滚.mock.calls).toHaveLength(1);
+    // 还没撑起来：一直排下一次
+    while (排队.length && 次++ < 3) 排队.shift()!();
+    expect(滚.mock.calls.length).toBe(4);
+    expect(排队).toHaveLength(1);
+    // 撑起来了（总高 − 窗口高 ≥ 120）：放完这一次就停
+    总高 = 2000;
+    排队.shift()!();
+    expect(排队).toHaveLength(0);
+    expect(滚.mock.calls.length).toBe(5);
+  });
+
+  it("滚动恢复：一直撑不起来也最多试 10 次", async () => {
+    const m = await import("@/lib/swap-guard");
+    m.记滚动();
+    const 排队: (() => void)[] = [];
+    const w = window as unknown as { setTimeout: unknown; innerHeight: number };
+    w.innerHeight = 800;
+    w.setTimeout = (f: () => void) => { 排队.push(f); return 0; };
+    vi.stubGlobal("document", { documentElement: { scrollHeight: 500 }, querySelectorAll: () => [] });
+    m.恢复滚动();
+    let 次 = 0;
+    while (排队.length && 次++ < 50) 排队.shift()!();
+    expect((window.scrollTo as unknown as { mock: { calls: unknown[][] } }).mock.calls).toHaveLength(10);
+  });
+
+  it("5 分钟内已悄悄换过就不再悄悄换，过了 5 分钟又可以；不影响人手点刷新", async () => {
+    const m = await import("@/lib/swap-guard");
+    const 现 = { 后台多久: 60_000, 空闲多久: 0, 忙: 0, 弹层: false, 未提交: 0, 打字中: false };
+    expect(m.近期换过()).toBe(false);
+    expect(m.能静默换(现)).toBe(true);
+    m.悄悄换();
+    expect(m.近期换过()).toBe(true);
+    expect(m.能静默换({ ...现, 刚换过: m.近期换过() })).toBe(false);
+    expect(m.近期换过(Date.now() + 5 * 60_000 + 1000)).toBe(false);
+  });
+
   it("换了地址不恢复", async () => {
     const m = await import("@/lib/swap-guard");
     m.记滚动();

@@ -10,10 +10,9 @@
  * - 之后每次值变了：和起始值比，打过字（算填过 默认 = 改过的格里有字）就把**改过的那几格**存下来；改回原样 / 全删了就把草稿删掉
  * - 清空 = 各格回到打开时的样子、草稿删掉；存好了 / 丢掉 = 删草稿、这一回不再存
  */
-import { createContext, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useMe } from "@/lib/me-client";
 import { 刷新前事件 } from "@/lib/stale-deploy";
-import { 撤未提交, 登记未提交 } from "@/lib/swap-guard";
 import { 草稿全名, 读一份, 存草稿, 清草稿, 改过的格, 有字, 带回话 } from "@/lib/form-draft";
 
 /**
@@ -64,7 +63,6 @@ export function useFormDraft<T extends Record<string, unknown>>({ 键, 开 = tru
   const 我 = useMe();
   const 全名 = 键 ? 草稿全名(我?.id, 键) : null;
   const 起 = useRef<T | null>(null);
-  const 登记号 = useId();
   const 停 = useRef(false);
   const [带回了, set带回了] = useState<{ 附件: number } | null>(null);
   // 带回 / 算填过 是每次渲染新给的函数：放进 ref，免得 effect 跟着它们重跑
@@ -111,16 +109,12 @@ export function useFormDraft<T extends Record<string, unknown>>({ 键, 开 = tru
     }
     const 改过 = 改过的格(起.current, 现值.current) as Partial<T>;
     const 填过 = 手.current.算填过 ? 手.current.算填过(改过, 现值.current) : 有字(改过);
-    if (Object.keys(改过).length && 填过) {
-      存草稿(全名, 改过, { 附件: 附件数 });
-      登记未提交(登记号);
-    } else {
-      清草稿(全名);
-      撤未提交(登记号);
-    }
-  }, [串, 附件数, 开, 全名, 登记号]);
+    if (Object.keys(改过).length && 填过) 存草稿(全名, 改过, { 附件: 附件数 });
+    else 清草稿(全名);
+  }, [串, 附件数, 开, 全名]);
 
-  // 发版静默换版（lib/swap-guard.ts）：没提交的字登记着，换版等它交完；换之前（刷新前事件）把现在的值再落一次盘；框关了 / 卸载就撤
+  // 发版静默换版（lib/swap-guard.ts）：这里不登记「未提交」——恢复回来的旧草稿没人碰也算未提交会让页面永远不换版。
+  // 正在聚焦打字的由 swap-guard 的「正在打字」挡；草稿每改都已落盘，换之前（刷新前事件）再落一次
   useEffect(() => {
     const 落 = () => {
       if (!开 || !全名 || !起.current || 停.current) return;
@@ -131,17 +125,12 @@ export function useFormDraft<T extends Record<string, unknown>>({ 键, 开 = tru
     window.addEventListener(刷新前事件, 落);
     return () => window.removeEventListener(刷新前事件, 落);
   }, [开, 全名, 附件数]);
-  useEffect(() => {
-    if (!开) 撤未提交(登记号);
-    return () => 撤未提交(登记号);
-  }, [开, 登记号]);
 
   const 存好了 = useCallback(() => {
     停.current = true;
-    撤未提交(登记号);
     if (全名) 清草稿(全名);
     set带回了(null);
-  }, [全名, 登记号]);
+  }, [全名]);
   /** 人明说不要了（取消、Esc）：和 存好了 一样删掉，只是说法不同 */
   const 丢掉 = 存好了;
   const 清空 = useCallback(() => {

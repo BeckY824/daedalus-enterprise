@@ -142,11 +142,13 @@ export type 换版现场 = {
   弹层: boolean;
   未提交: number;
   打字中: boolean;
+  /** 5 分钟内这个标签页已经悄悄换过一次 */
+  刚换过?: boolean;
 };
 
 /** 该不该悄悄换：时间到了，而且三样都空 */
 export function 能静默换(x: 换版现场): boolean {
-  if (x.忙 > 0 || x.弹层 || x.未提交 > 0 || x.打字中) return false;
+  if (x.忙 > 0 || x.弹层 || x.未提交 > 0 || x.打字中 || x.刚换过) return false;
   if (x.后台多久 !== null) return x.后台多久 >= 后台满毫秒;
   return x.空闲多久 >= 前台空闲毫秒;
 }
@@ -159,6 +161,7 @@ export function 取现场(后台起: number | null, 动静: number, 现在 = Dat
     弹层: 有弹层(),
     未提交: 未提交数(),
     打字中: 正在打字(),
+    刚换过: 近期换过(现在),
   };
 }
 
@@ -198,6 +201,8 @@ export function 装请求计数(): void {
 // ── 滚动位置：换之前记，换之后恢复 ──
 const 滚动键 = "daedalus:换版滚动";
 const 滚动有效毫秒 = 2 * 60_000;
+const 滚动间隔毫秒 = 200;
+const 滚动试次 = 10;
 const 滚动容器 = "main.app-content, .pane-rows";
 
 /** 换之前记：当前路径 + 窗口 / 主区 / 列表的滚动 */
@@ -218,15 +223,23 @@ export function 恢复滚动(): void {
     sessionStorage.removeItem(滚动键);
     const r = JSON.parse(raw) as { at: number; 路径: string; 窗: number; 们: [number, number][] };
     if (Date.now() - r.at > 滚动有效毫秒 || r.路径 !== location.pathname + location.search) return;
+    // 内容是慢慢撑起来的：每 200ms 放一次，页面够高、各容器够高就停，最多 2 秒（再高的页面此时也该好了）
+    const 够 = (总: number | undefined, 可视: number | undefined, 目标: number) => 总 === undefined || 可视 === undefined || 总 - 可视 >= 目标 - 1;
+    let 次 = 0;
     const 放 = () => {
       window.scrollTo(0, r.窗 || 0);
       const 容器们 = document.querySelectorAll<HTMLElement>(滚动容器);
-      for (const [i, top] of r.们) if (容器们[i]) 容器们[i].scrollTop = top;
+      let 全够 = 够(document.documentElement?.scrollHeight, window.innerHeight, r.窗 || 0);
+      for (const [i, top] of r.们) {
+        const e = 容器们[i];
+        if (!e) continue;
+        e.scrollTop = top;
+        if (!够(e.scrollHeight, e.clientHeight, top)) 全够 = false;
+      }
+      // 够了也至少再放一次：浏览器自己的滚动还原可能在第一次之后又把位置拉回去
+      if ((!全够 || 次 < 1) && ++次 < 滚动试次) window.setTimeout(放, 滚动间隔毫秒);
     };
-    requestAnimationFrame(() => {
-      放();
-      window.setTimeout(放, 400);
-    });
+    requestAnimationFrame(放);
   } catch {
     /* 坏了就不恢复 */
   }
@@ -234,7 +247,24 @@ export function 恢复滚动(): void {
 
 /** 悄悄换：和人点「刷新」同一条路（存好再刷新：刷新前事件 + 记位事件，再整页重载） */
 export function 悄悄换(): void {
+  try {
+    sessionStorage.setItem(静默换键, String(Date.now()));
+  } catch {
+    /* 隐私模式：记不下就算了 */
+  }
   存好再刷新();
+}
+
+/** 防循环：刚悄悄换过（5 分钟内，同一个标签页）就不再悄悄换——万一落到旧进程上，换完还是旧的，会一直刷。人手点「刷新」不受限 */
+const 静默换键 = "daedalus:静默换过";
+const 静默换间隔毫秒 = 5 * 60_000;
+export function 近期换过(现在 = Date.now()): boolean {
+  try {
+    const t = Number(sessionStorage.getItem(静默换键));
+    return t > 0 && 现在 - t < 静默换间隔毫秒;
+  } catch {
+    return false;
+  }
 }
 
 /** 挂上监听：「存好再刷新」发记位事件时记滚动。返回摘掉的函数 */

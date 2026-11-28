@@ -18,12 +18,15 @@ type 窗 = Window & { __sg: { 登记未提交(k: string): void; 撤未提交(k: 
 beforeAll(async () => {
   bundle = (await build({ stdin: { contents: `
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider,Popconfirm,Button} from 'antd';import zhCN from 'antd/locale/zh_CN';
-    import UpdateBanner from '@/components/UpdateBanner';import {登记未提交,撤未提交} from '@/lib/swap-guard';
+    import UpdateBanner from '@/components/UpdateBanner';import {useFormDraft} from '@/components/FormDraft';import {登记未提交,撤未提交} from '@/lib/swap-guard';
     window.__sg={登记未提交,撤未提交};
+    function 草稿框(){const [t,setT]=React.useState('');useFormDraft({键:'测稿',值:{t},带回:(v)=>setT(String(v.t??''))});return <textarea data-testid="ta" value={t} onChange={e=>setT(e.target.value)}/>;}
+    function 晚撑高(){const [h,setH]=React.useState(location.search.includes('late')?300:4000);React.useEffect(()=>{if(h<4000){const k=setTimeout(()=>setH(4000),1000);return()=>clearTimeout(k)}},[]);return <div style={{height:h}}/>;}
     window.addEventListener('crm:before-reload',()=>{sessionStorage.setItem('刷新前','1')});
     createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App>
       <UpdateBanner 载入时="build-A"/>
-      <div style={{height:4000}}>
+      <草稿框/><晚撑高/>
+      <div style={{height:location.search.includes('late')?300:4000}}>
         <Popconfirm title="确定？" okText="好" cancelText="不" getPopupContainer={()=>document.body}><Button data-testid="pc">删除</Button></Popconfirm>
       </div>
     </App></ConfigProvider>);
@@ -171,5 +174,56 @@ it("滚动位置：换了地址、超过 2 分钟的记录都不恢复", async (
     await page.getByTestId("pc").waitFor();
     await page.waitForTimeout(900);
     expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  } finally { await page.close(); }
+});
+
+it("滚动位置：内容晚撑高（1 秒后才够高）也能恢复", async () => {
+  const { page } = await 开("/projects/p3?late=1", false);
+  try {
+    await page.evaluate(() => { sessionStorage.setItem("daedalus:换版滚动", JSON.stringify({ at: Date.now(), 路径: "/projects/p3?late=1", 窗: 1500, 们: [] })); });
+    await page.reload();
+    await page.getByTestId("pc").waitFor();
+    await expect.poll(() => page.evaluate(() => Math.round(window.scrollY)), { timeout: 4000 }).toBe(1500);
+  } finally { await page.close(); }
+});
+
+it("5 分钟内不二次换：换过一次后，落回旧进程又亮横幅，后台 60 秒不换，满 5 分钟才再换", async () => {
+  const { page, 文档 } = await 开();
+  try {
+    await 点亮(page);
+    await page.getByTestId("update-bar").waitFor();
+    await 过(page, 11 * 60_000);
+    await 换了(page, 文档, 1);
+    await 点亮(page);
+    await page.getByTestId("update-bar").waitFor();
+    await page.evaluate(() => {
+      Object.defineProperty(document, "visibilityState", { get: () => "hidden", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    await 过(page, 60_000);
+    expect(文档.次).toBe(2);
+    await 过(page, 5 * 60_000);
+    await 换了(page, 文档, 2);
+  } finally { await page.close(); }
+});
+
+it("恢复回来的旧草稿：没聚焦不挡换版；聚焦在框里（有字）才挡，失焦又放行", async () => {
+  const { page, 文档 } = await 开("/projects/p4", false);
+  try {
+    await page.evaluate(() => { localStorage.setItem("daedalus:草稿:-:测稿", JSON.stringify({ at: Date.now(), v: { t: "上回没写完的话" } })); });
+    await page.reload();
+    await page.getByTestId("ta").waitFor();
+    expect(await page.getByTestId("ta").inputValue()).toBe("上回没写完的话");
+    await page.clock.install();
+    await 点亮(page);
+    await page.getByTestId("update-bar").waitFor();
+    // 聚焦在有字的框里：挡
+    await page.getByTestId("ta").focus();
+    await 过(page, 11 * 60_000);
+    expect(文档.次).toBe(2);
+    // 失焦：不挡（恢复的草稿本身不算未提交）
+    await page.evaluate(() => (document.activeElement as HTMLElement).blur());
+    await 过(page, 11 * 60_000);
+    await 换了(page, 文档, 2);
   } finally { await page.close(); }
 });
