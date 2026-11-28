@@ -102,6 +102,7 @@ const 读 = new Set([
   "src/lib/enterprise/merge-moved-logs.ts",
   "src/lib/enterprise/notice-sources.ts",
   "src/lib/enterprise/pool-prev-owner-backfill.ts", // 回填脚本的逻辑：读最近一条 pool-release 回填，只写列、不写留痕
+  "src/lib/enterprise/pool-prev-owner-compare.ts", // 对拍的旧算法集合：只读最近一条 pool-release（去掉导入写的），不写
   "src/lib/enterprise/pool-rules.ts",
   "src/lib/enterprise/pool-undo.ts",
   "src/lib/enterprise/restore-inactive-owner.ts",

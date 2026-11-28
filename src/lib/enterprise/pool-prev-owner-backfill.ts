@@ -16,6 +16,44 @@ import { 无负责人占位邮箱 } from "@/lib/pool";
 
 const 批 = 400;
 
+/** 导入批次窗口的容差：留痕时刻落在 [批次开始 - 60 秒, 批次结束 + 60 秒] 里，且这个实体就是该批导入创建的，认作导入写的（E-462） */
+export const 导入窗口容差毫秒 = 60_000;
+
+/**
+ * 去掉导入写的（E-462）：导入时顺手写下的 pool-release 留痕不是员工放回，不能当「放回人」。
+ * 认法：EntImportRow（entity = customer / opportunity、kind = create）记了每个实体由哪个导入批次创建，
+ * 留痕时刻落在创建它的批次 [createdAt - 60 秒, (finishedAt ?? createdAt) + 60 秒] 里的，剔掉。
+ * 窗口外的（包括同一个实体导入之后员工、管理员的放回、管理员代操作）都留着；不看操作人角色，非销售账号也不在这里排。
+ */
+export async function 去掉导入写的<T extends { at: Date }>(
+  db: Pick<PrismaClient, "entImportRow">,
+  实体: "customer" | "opportunity",
+  行们: T[],
+  实体id: (r: T) => string,
+): Promise<T[]> {
+  if (!行们.length) return 行们;
+  const 窗口 = new Map<string, { 起: number; 止: number }[]>();
+  const ids = [...new Set(行们.map(实体id))];
+  for (const 段 of 分段(ids, 批)) {
+    const 导入行 = await db.entImportRow.findMany({
+      where: { entity: 实体, kind: "create", targetId: { in: 段 } },
+      select: { targetId: true, batch: { select: { createdAt: true, finishedAt: true } } },
+    });
+    for (const r of 导入行) {
+      const 起 = r.batch.createdAt.getTime() - 导入窗口容差毫秒;
+      const 止 = (r.batch.finishedAt ?? r.batch.createdAt).getTime() + 导入窗口容差毫秒;
+      窗口.set(r.targetId, [...(窗口.get(r.targetId) ?? []), { 起, 止 }]);
+    }
+  }
+  if (!窗口.size) return 行们;
+  return 行们.filter((r) => {
+    const ws = 窗口.get(实体id(r));
+    if (!ws) return true;
+    const t = r.at.getTime();
+    return !ws.some((w) => t >= w.起 && t <= w.止);
+  });
+}
+
 export type 回填行 = {
   id: string;
   /** 库里现在的值 */
@@ -53,10 +91,10 @@ export async function 算回填计划(db: PrismaClient): Promise<回填计划> {
     const 留痕 = await db.projectNodeLog.findMany({
       where: { projectId: { in: 段.map((p) => p.id) }, kind: "pool-release" },
       orderBy: [{ at: "desc" }, { id: "desc" }],
-      select: { projectId: true, fromOwnerId: true },
+      select: { projectId: true, fromOwnerId: true, at: true },
     });
     const 最近 = new Map<string, string | null>();
-    for (const l of 留痕) if (!最近.has(l.projectId)) 最近.set(l.projectId, l.fromOwnerId || null);
+    for (const l of await 去掉导入写的(db, "opportunity", 留痕, (x) => x.projectId)) if (!最近.has(l.projectId)) 最近.set(l.projectId, l.fromOwnerId || null);
     for (const p of 段) {
       项目行.push({ id: p.id, 更新于: p.updatedAt, 现值: p.poolPrevOwnerId, 应写: 最近.get(p.id) ?? null, 进公海于: p.pooledAt, 来源: 最近.has(p.id) ? "最近一条 pool-release 的 from" : "没有 pool-release 留痕" });
     }
@@ -72,9 +110,9 @@ export async function 算回填计划(db: PrismaClient): Promise<回填计划> {
       const 记录 = await 去掉合并挪来的(db, await db.customerOwnerLog.findMany({
         where: { customerId: { in: 挂占位.map((c) => c.id) }, toOwnerId: 占位, kind: "pool-release" },
         orderBy: [{ at: "desc" }, { id: "desc" }],
-        select: { id: true, customerId: true, fromOwnerId: true },
+        select: { id: true, customerId: true, fromOwnerId: true, at: true },
       }));
-      for (const r of 记录) if (!最近.has(r.customerId)) 最近.set(r.customerId, r.fromOwnerId || null);
+      for (const r of await 去掉导入写的(db, "customer", 记录, (x) => x.customerId)) if (!最近.has(r.customerId)) 最近.set(r.customerId, r.fromOwnerId || null);
       // 口径核对：旧算法不限 kind，取最近一条 toOwnerId = 占位
       // 回收站里的客户不算（对拍和旧算法的候选都带 deletedAt: null）
       const 全种类 = await 去掉合并挪来的(db, await db.customerOwnerLog.findMany({

@@ -194,3 +194,74 @@ describe("回填 --dry 口径核对：最近一条 to = 占位但 kind 不是 po
     expect((await 算回填计划(raw)).占位非放回).toEqual({ 位数: 0, 按种类: {} });
   });
 });
+
+describe("E-462 去掉导入写的：导入批次窗口内的 pool-release 不当放回人", () => {
+  const 批次 = (起: Date, 止: Date | null) => raw.entImportBatch.create({ data: { source: "excel", status: "done", createdAt: 起, finishedAt: 止 } });
+  const 导入行 = (batchId: string, entity: "customer" | "opportunity", targetId: string) =>
+    raw.entImportRow.create({ data: { batchId, entity, externalId: `ext-${targetId}`, targetId, kind: "create", written: "{}" } });
+  const 秒 = (d: Date, s: number) => new Date(d.getTime() + s * 1000);
+  const 起 = t("14 10:00");
+  const 止 = t("14 10:30");
+
+  it("客户：窗口内的不补、窗口外的照补；边界 ±60 秒含、61 秒外；管理员代操作（操作人不是原负责人）窗口外照补", async () => {
+    const b = await 批次(起, 止);
+    const 新客 = async (留痕们: { from: string; at: Date; 操作人?: string }[]) => {
+      const c = await 客户(占位, t("20 10:00"));
+      await 导入行(b.id, "customer", c);
+      for (const l of 留痕们) await raw.customerOwnerLog.create({ data: { customerId: c, userId: l.操作人 ?? l.from, fromOwnerId: l.from, toOwnerId: 占位, kind: "pool-release", at: l.at } });
+      return c;
+    };
+    const 窗内 = await 新客([{ from: 甲, at: 秒(起, 5) }]);
+    const 窗内后员工放回 = await 新客([{ from: 甲, at: 秒(起, 5) }, { from: 乙, at: t("18 09:00") }]);
+    const 员工放回后导入覆盖 = await 新客([{ from: 乙, at: t("12 09:00") }, { from: 甲, at: 秒(起, 5) }]);
+    const 起边界 = await 新客([{ from: 甲, at: 秒(起, -60) }]);
+    const 起外 = await 新客([{ from: 甲, at: 秒(起, -61) }]);
+    const 止边界 = await 新客([{ from: 甲, at: 秒(止, 60) }]);
+    const 止外 = await 新客([{ from: 甲, at: 秒(止, 61) }]);
+    const 管理员代操作 = await 新客([{ from: 乙, at: t("18 10:00"), 操作人: 丙 }]);
+    const 非导入创建 = await 客户(占位, t("20 10:00")); // 没有导入行，同样落在窗口内也照补
+    await 客户痕(非导入创建, 甲, 占位, 秒(起, 5));
+
+    const 计划 = await 算回填计划(raw);
+    const 应写 = new Map(计划.客户.map((r) => [r.id, r.应写]));
+    expect(应写.get(窗内)).toBeNull();
+    expect(应写.get(窗内后员工放回)).toBe(乙);
+    expect(应写.get(员工放回后导入覆盖)).toBe(乙);
+    expect(应写.get(起边界)).toBeNull();
+    expect(应写.get(起外)).toBe(甲);
+    expect(应写.get(止边界)).toBeNull();
+    expect(应写.get(止外)).toBe(甲);
+    expect(应写.get(管理员代操作)).toBe(乙);
+    expect(应写.get(非导入创建)).toBe(甲);
+  });
+
+  it("批次没结束时间：按开始时间 +60 秒算窗口", async () => {
+    const b = await 批次(起, null);
+    const c = await 客户(占位, t("20 10:00"));
+    await 导入行(b.id, "customer", c);
+    await 客户痕(c, 甲, 占位, 秒(起, 30));
+    const c2 = await 客户(占位, t("20 10:00"));
+    await 导入行(b.id, "customer", c2);
+    await 客户痕(c2, 甲, 占位, 秒(起, 90));
+    const 应写 = new Map((await 算回填计划(raw)).客户.map((r) => [r.id, r.应写]));
+    expect(应写.get(c)).toBeNull();
+    expect(应写.get(c2)).toBe(甲);
+  });
+
+  it("项目：窗口内的不补、窗口外的照补；对拍（旧集合同样排导入）在回填后 0 不一致", async () => {
+    const b = await 批次(起, 止);
+    const 普 = await 客户(丙);
+    const 窗内 = await 项目(普, t("20 10:00")); await 导入行(b.id, "opportunity", 窗内); await 项目痕(窗内, 甲, 秒(起, 5));
+    const 窗外 = await 项目(普, t("20 10:00")); await 导入行(b.id, "opportunity", 窗外); await 项目痕(窗外, 甲, t("18 09:00"));
+    const 导入后员工放回 = await 项目(普, t("20 10:00")); await 导入行(b.id, "opportunity", 导入后员工放回); await 项目痕(导入后员工放回, 甲, 秒(起, 5)); await 项目痕(导入后员工放回, 乙, t("18 09:00"));
+    // 导入的客户也在公海：对拍旧集合不能多出
+    const 导入客 = await 客户(占位, t("20 10:00")); await 导入行(b.id, "customer", 导入客); await 客户痕(导入客, 甲, 占位, 秒(起, 5));
+    const 计划 = await 算回填计划(raw);
+    const 应写 = new Map(计划.项目.map((r) => [r.id, r.应写]));
+    expect(应写.get(窗内)).toBeNull();
+    expect(应写.get(窗外)).toBe(甲);
+    expect(应写.get(导入后员工放回)).toBe(乙);
+    await 写回填(raw, 计划, () => {});
+    expect(await 对拍(raw)).toMatchObject({ 不一致人数: 0, 不一致: [], 互补不成立人数: 0 });
+  });
+});
