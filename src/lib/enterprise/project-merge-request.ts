@@ -29,7 +29,7 @@ import { 拦下, 合并事务选项, 并发失败话, 刚被改过话, type 合�
 import { 拒绝原因上限 } from "@/app/(app)/customers/merge-request-words";
 import { 到期时刻, 到期了, 到期话, 等待工作日 } from "./merge-request";
 import { 跨并通知 } from "./project-merge-request-notice";
-import { 拦的原因, 读项目, 现在交给, 执行项目合并, 读快照, 比四项, 四项, 变动话, type 快照, type 变动项, type 项目快照, type 跨并信息, type 项目行, type 项目合并完 } from "./project-merge";
+import { 拦的原因, 撤回过的跨并对, 撤回过不能直接并话, 读项目, 现在交给, 执行项目合并, 读快照, 比四项, 四项, 变动话, type 快照, type 变动项, type 项目快照, type 跨并信息, type 项目行, type 项目合并完 } from "./project-merge";
 
 type 库 = PrismaClient;
 type Tx = Prisma.TransactionClient;
@@ -130,6 +130,8 @@ export async function 发起前判(db: Tx | 库, 留下id: string, 并掉id: str
   const 直接 = 是系统管理员of(org, me.id) || 人们.some((x) => x.userId === me.id);
   if (!直接 && me.id !== A.ownerId) return { ok: false, 原因: ["只有留下项目的负责人，或被并走那位负责人的上级 / 条线总管理 / 系统管理员能发起"] };
   const 因 = await 拦的原因(db, A, B, me, org, 交给, { 申请id: null, 发起人id: me.id, 确认人id: me.id, 发起方式: "本人发起", 确认人层级: "" });
+  // E-484 2：这对项目撤回过的跨负责人合并，直接并拦下（走申请仍可）
+  if (直接 && await 撤回过的跨并对(db, A.id, B.id)) 因.push(撤回过不能直接并话);
   // 互斥：这位客户有客户合并申请在等同意
   const 客户申请 = await db.entMergeRequest.findFirst({ where: { status: { in: ["待同意", "执行中"] }, OR: [{ fromId: A.customerId }, { intoId: A.customerId }] }, select: { id: true } });
   if (客户申请) 因.push(客户合并申请挡话);
