@@ -838,6 +838,7 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
   let 拆开项目 = 0;
   let 两家: [string, string] | null = null;
   let B名 = "被并的客户";
+  const 项目撤回通知: import("./project-merge").撤回通知要[] = [];
   try {
     await 看已删(() =>
       看全部(() =>
@@ -875,7 +876,9 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
               });
               for (const 子 of 们) {
                 if ((await tx.entCustomerMerge.findUnique({ where: { id: 子.id }, select: { status: true } }))?.status !== "已合并") continue;
-                结.push(...(await 在事务里撤回项目合并(tx, 子, me, 现在, 开)).没还原);
+                const 撤 = await 在事务里撤回项目合并(tx, 子, me, 现在, 开);
+                结.push(...撤.没还原);
+                if (撤.通知) 项目撤回通知.push(撤.通知);
                 拆开项目++;
               }
             }
@@ -933,6 +936,7 @@ export async function 撤回合并(db: 库, mergeId: string, me: 合并人, 现�
   }
   忘掉企业版范围();
   const 这两家 = 两家 as [string, string] | null;
+  if (项目撤回通知.length) { const { 发撤回通知 } = await import("./project-merge"); for (const n of 项目撤回通知) await 发撤回通知(n); }
   if (这两家) {
     await 存沟通后重算三态(这两家, 现在).catch((e) => console.warn("[撤回合并] 三态没重算上：", e instanceof Error ? e.message : e));
     await 回来后停用负责人(这两家[1], me);

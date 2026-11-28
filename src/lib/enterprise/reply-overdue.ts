@@ -114,6 +114,7 @@
  * 挂在夜扫那个每分钟的钟上（lib/project/nightly.ts，多进程只一个进程跑），排在定时分配、指定回复提醒后面。
  * 一条只发一次靠 EntNotice 的 (userId, dedupeKey) 唯一键；链走到哪一步记在 EntReplyOverdue（迁移 150）。任何一步出错只记日志，从不往外抛
  */
+import { 跨并暂停中的项目 } from "./project-merge-request";
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 看已删 } from "./soft-delete-core";
@@ -757,9 +758,10 @@ export async function 超时转扫一遍(现在: Date = new Date()): Promise<超
       const 回了 = await 记过有效沟通的(们);
       // 一次读全部待裁定行、内存匹配（不按项目各查一次）；库里一条都没有 = 空数组
       const 待裁定们 = await 读全部待裁定行(prisma);
+      const 并等 = await 跨并暂停中的项目(prisma, 们.map((p) => p.id), 现在);
       for (const p of 们) {
         try {
-          await 走一步(p, 回了.has(p.id), 现在, 明细, org, 待裁定们);
+          await 走一步(p, 回了.has(p.id), 现在, 明细, org, 待裁定们, 并等);
         } catch (e) {
           明细.没转成++;
           console.error(`[超时自动转] ${p.id} 出错，下一遍再试`, e);
@@ -829,7 +831,7 @@ export async function 超时转重新起算(现在: Date = new Date()): Promise<
   }
 }
 
-async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: 超时转明细, org: 组织, 待裁定们: readonly 待裁定行[] = []): Promise<void> {
+async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: 超时转明细, org: 组织, 待裁定们: readonly 待裁定行[] = [], 并等: ReadonlySet<string> = new Set()): Promise<void> {
   const 基 = p.基;
   let 行 = p.replyOverdue;
   // 基准变了（改过指定回复时间、从空填上 / 清空换了起算方式、停了的按分配链又分了一次，含停了的链）：整行重来（按新基准算，还没到的这一遍不动）
@@ -856,6 +858,13 @@ async function 走一步(p: 链项目, 回了: boolean, 现在: Date, 明细: �
     await 记链(p.id, { anchorAt: 基, holderId: p.ownerId, since, overdueAt: null });
   } else {
     since = 行.since; overdueAt = 行.overdueAt; 试过 = 读试过(行.tried); transfers = 行.transfers;
+  }
+  // 跨负责人并申请待确认（E-380，project-merge-request.ts）：被并走的这条新线索暂停，不提醒、不转；每一遍把起点重置到现在，
+  // 申请结束（失效 / 确认 / 拒绝 / 撤回）后从头计时（确认 = 这条结束为重复线索，链随线索结束停掉）
+  if (并等.has(p.id)) {
+    await 改链若持有人是(p.id, p.ownerId, { anchorAt: 基, holderId: p.ownerId, since: 现在, overdueAt: null, tried: 试过, transfers, updatedAt: 现在 });
+    明细.停++;
+    return;
   }
   // 12-22 审查 M5（口径 B3）：这条项目（或随客户转走的那次）有转让异议在「待裁定」时，不提醒、不转，计时停表：
   // 每一遍把「这一遍里停着的那段」加到起点和提醒记号上（已走的时长不变），裁定完（维持 / 撤回）后接着走，不清零

@@ -9,9 +9,11 @@ import type { 项目详情Props } from "./ProjectDetail";
  */
 /** move = 换客户（合并客户第一批，11-25）：框在客户页 MergeHost 里，客户页「更多操作 ▾」直接开，不经嵌入版 ProjectDetail。
  *  merge = 并进另一个项目（第二批 2a）：同在 MergeHost 里（项目详情页自己也挂一份），同样不经嵌入版 ProjectDetail */
-export type 项目动作键 = "claim" | "transfer" | "pool" | "move" | "merge" | "delete";
+export type 项目动作键 = "claim" | "transfer" | "pool" | "move" | "merge" | "xmerge" | "delete";
 /** 「并进另一个项目」那一项的两行说明（客户页菜单、项目详情「⋯」同一句） */
 export const 并进说明 = "同一位负责人的重复项目：并过去，这个结束为重复线索";
+/** 「把同事的项目并进来」（跨负责人合并，E-380 阶段 2）那一项的说明 */
+export const 跨并说明 = "同客户下同事负责的重复项目：你发申请，对方负责人的上级确认后并进来";
 export type 项目菜单项 = { key: 项目动作键; 字: string; /** 灰着的原因；有 = 点不了 */ 灰?: string; /** 悬停说明 */ 注?: string; 危险?: boolean };
 
 /** 线索还在等复核 / 终判：暂时不能退回公海（项目详情页头同一句） */
@@ -32,6 +34,7 @@ export function 项目菜单项们({ p, 候选 }: Pick<项目详情Props, "p" | 
   }
   if (p.能换客户) 项们.push({ key: "move", 字: "换客户", 注: "项目挂错了客户：连沟通、项目联系人挪到另一位客户" });
   if (p.并进) 项们.push({ key: "merge", 字: "并进另一个项目", 注: 并进说明, 灰: p.并进.灰 });
+  if (p.跨并) 项们.push({ key: "xmerge", 字: "把同事的项目并进来", 注: 跨并说明, 灰: p.跨并.灰 });
   if (p.能删) 项们.push({ key: "delete", 字: "删除项目", 危险: true });
   return 项们;
 }

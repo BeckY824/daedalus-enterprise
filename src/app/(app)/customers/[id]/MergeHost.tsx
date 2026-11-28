@@ -22,6 +22,7 @@ import { useShellNavGo } from "@/lib/nav-pending";
 import {
   搜合并候选, 预览合并, 合并客户, 撤回合并单, 合成两位联系人, 预览项目换客户, 给项目换客户, 撤销换客户, 能并同事的, type 合并候选,
   项目合并候选, 预览项目合并, 合并项目, 撤回项目合并单,
+  跨并候选们, 预览跨并, 发起跨并, type 跨并候选, type 跨并预览话,
   预览合并申请, 发起客户合并申请, 撤回客户合并申请,
 } from "../merge-actions";
 import { 合并申请页, 凭叫法, 等待工作日 } from "../merge-request-words";
@@ -66,6 +67,7 @@ export default function MergeHost({ customerId, 客户名 }: { customerId: strin
   if (!请求) return null;
   if (请求.种 === "客户") return <MergeCustomerDialog key={请求.次} customerId={customerId} 客户名={客户名} 预选={请求.预选} 关={收} />;
   if (请求.种 === "联系人") return <ContactMergeDialog key={请求.次} 留={请求.留} 们={请求.们} 关={收} />;
+  if (请求.种 === "跨并项目") return <CrossMergeDialog key={请求.次} projectId={请求.projectId} 项目名={请求.名} 关={收} />;
   if (请求.种 === "并项目") return <ProjectMergeDialog key={请求.次} projectId={请求.projectId} 项目名={请求.名} 关={收} />;
   return <ProjectMoveDialog key={请求.次} customerId={customerId} 客户名={客户名} projectId={请求.projectId} 项目名={请求.名} 关={收} />;
 }
@@ -780,6 +782,159 @@ function ProjectMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 
               {清单.map((x) => <li key={x.标} data-testid={`pmerge-${x.标}`} className={x.标 === "核实" ? "mrg-out-chk" : undefined}><span className="mrg-out-k">{x.标}</span>{x.话}</li>)}
             </ul>
             <Checkbox className="mrg-nobill" checked={没开票} onChange={(e) => set没开票(e.target.checked)} data-testid="pmerge-nobill">{没开票话}</Checkbox>
+          </>
+        )}
+      </div>
+      {后果框}
+    </Modal>
+  );
+}
+
+
+/* ───────────────────────── 把同事的项目并进来（跨负责人，E-380 阶段 2） ───────────────────────── */
+
+/** 申请等多久（同 merge-request-words 等待工作日 = 5） */
+const 跨并撤回话 = `${撤回天数} 天内可在「历史变更」里撤回`;
+
+/**
+ * 从留下的项目（这个）出发，选同客户别人负责、线索阶段在推的那个并进来：
+ *   - 留下项目的负责人：发申请，等被并走那位负责人的实线上级 / 条线总管理确认（都没有给系统管理员），5 个工作日内没人确认就失效；被并走的负责人不用事先同意，并后收到通知
+ *   - 确认人本人、系统管理员：不用申请，直接并（留痕「本人发起」）
+ * 谁能发、能不能并、直接还是申请都在服务端判，这里只摆服务端说的话
+ */
+function CrossMergeDialog({ projectId, 项目名, 关 }: { projectId: string; 项目名: string; 关: () => void }) {
+  const router = useRouter();
+  const 去页 = useShellNavGo();
+  const [问后果, 后果框] = useConsequence();
+  const [候选, set候选] = useState<跨并候选[] | null>(null);
+  const [候选错, set候选错] = useState<string | null>(null);
+  const [并掉, set并掉] = useState<string | null>(null);
+  const [预, set预] = useState<跨并预览话 | null>(null);
+  const [读错, set读错] = useState<string | null>(null);
+  const [发出, set发出] = useState<string | null>(null);
+  const 读次 = useRef(0);
+
+  useEffect(() => {
+    let 还在 = true;
+    跨并候选们(projectId).then((r) => { if (还在) set候选(r); })
+      .catch((e) => { if (还在) set候选错(动作出错话(e, "没读到能并进来的项目，请再试一次")); });
+    return () => { 还在 = false; };
+  }, [projectId]);
+
+  function 挑(id: string) {
+    const 这次 = ++读次.current;
+    set并掉(id); set预(null); set读错(null);
+    预览跨并(projectId, id).then((r) => { if (这次 === 读次.current) set预(r); })
+      .catch((e) => { if (这次 === 读次.current) set读错(动作出错话(e, "没读到合并预览，请再试一次")); });
+  }
+
+  const 好 = 预?.ok ? 预 : null;
+  const A = 好?.留下.name || 项目名 || "这个项目";
+  const B = 好?.并掉.name || 候选?.find((c) => c.id === 并掉)?.name || "同事的项目";
+  const 确认话 = 好 ? 好.确认人.map((x) => `${x.名}（${x.层级}）`).join("、") : "";
+  const 清单 = 好 ? [
+    ...(好.直接
+      ? [{ 标: "方式", 话: "你本人就是确认人（或系统管理员），不用申请，点「并过来」直接并；会留痕「本人发起」", 级: "警" as const }]
+      : [
+        { 标: "确认", 话: `等 ${确认话} 确认，任一位点确认就并；${等待工作日} 个工作日内没人处理申请失效`, 级: "警" as const },
+        { 标: "暂停", 话: `等确认期间，「${B}」和「${A}」的线索验证计时都暂停；申请结束（确认 / 拒绝 / 失效 / 撤回）后重新起算`, 级: "常" as const },
+      ]),
+    { 标: "并过来", 话: `「${B}」（${好.并掉.负责人}）的沟通、附件、联系人都挪进「${A}」，归${好.留下.负责人}`, 级: "警" as const },
+    { 标: "结束", 话: `「${B}」结束为重复线索，不退还已占线索名额；${跨并撤回话}`, 级: "警" as const },
+    { 标: "通知", 话: `${好.并掉.负责人}不用事先同意，并成后会收到通知`, 级: "常" as const },
+  ] : [];
+
+  async function 发() {
+    if (!并掉 || !好) return;
+    const 直接 = 好.直接;
+    const 结: { 申请: boolean; 单号: string | null } = { 申请: false, 单号: null };
+    const 成 = await 问后果({
+      题: 直接 ? `把「${B}」并进「${A}」？` : `发起合并申请：把「${B}」并进「${A}」？`,
+      宽: 480,
+      危: false,
+      是: 直接 ? "并过来" : "发起合并申请",
+      后果: 清单,
+      做: async () => {
+        const r = await 发起跨并(projectId, 并掉);
+        if (r.ok) { 结.申请 = r.方式 === "申请"; if (r.方式 === "直接并") 结.单号 = r.mergeId; }
+        return r;
+      },
+    });
+    if (!成) return;
+    router.refresh();
+    if (结.申请) {
+      set发出(`申请已发出，等 ${确认话} 确认；${等待工作日} 个工作日内没人处理自动失效，在「合并申请」页能看进度、撤回。`);
+      return;
+    }
+    关();
+    const 单 = 结.单号;
+    if (!单) return;
+    showUndo({
+      话: `已把「${B}」并进「${A}」，${跨并撤回话}`, 毫秒: 8000,
+      另一个动作: { 话: "去看看", 做: () => 去页.push(`/projects/${projectId}`) },
+      撤销: async () => { const u = await 撤回项目合并单(单); router.refresh(); return u; },
+    });
+  }
+
+  const 选项 = (候选 ?? []).map((c) => ({ value: c.id, label: c.name, node: c.node, 负责人: c.负责人 }));
+  return (
+    <Modal
+      open
+      onCancel={关}
+      title={<span className="mrg-title"><span className="mrg-title-t">把同事的项目并进来</span><span className="mrg-title-who" title={项目名}>项目「{项目名}」</span></span>}
+      width={560}
+      className="mrg-modal"
+      destroyOnHidden
+      footer={
+        <div className="mrg-foot">
+          <span className="mrg-foot-sp" />
+          {发出
+            ? <><Button onClick={关}>知道了</Button><Button type="primary" onClick={() => { 关(); 去页.push(合并申请页); }} data-testid="xmerge-see">看进度</Button></>
+            : (
+              <>
+                <Button onClick={关}>取消</Button>
+                <Button type="primary" disabled={!好} onClick={() => void 发()} data-testid="xmerge-go">{好?.直接 ? "并过来" : "发起合并申请"}</Button>
+              </>
+            )}
+        </div>
+      }
+    >
+      <div className="mrg-body">
+        {发出 ? <Alert type="success" showIcon title={发出} data-testid="xmerge-sent" /> : (
+          <>
+            <p className="mrg-note">选同一位客户名下、同事负责、线索阶段在推的那个项目并进这个项目：它的沟通、附件、联系人挪进来，它结束为重复线索。你是这个项目的负责人时发申请，要它负责人的上级确认；{跨并撤回话}。</p>
+            {!候选 && !候选错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
+            {候选错 && <p role="alert" className="mrg-err">{候选错}</p>}
+            {候选 && 候选.length === 0 && <p className="mrg-empty" data-testid="xmerge-empty">这位客户名下没有同事负责、在推的线索项目，没有能并进来的。</p>}
+            {候选 && 候选.length > 0 && (
+              <Select
+                className="mrg-psel"
+                aria-label="并进来的项目"
+                placeholder="选要并进来的同事的项目，可输入名称搜"
+                showSearch={{ optionFilterProp: "label" }}
+                value={并掉 ?? undefined}
+                onChange={挑}
+                options={选项}
+                optionRender={(o) => (
+                  <span className="mrg-popt">
+                    {一行(<>{o.label}<span className="mrg-ppl-s"> · {o.data.node} · {o.data.负责人}</span></>, [o.data.label, o.data.node, o.data.负责人].filter(Boolean).join(" · "))}
+                  </span>
+                )}
+                notFoundContent="没有名称对得上的项目"
+                data-testid="xmerge-pick"
+              />
+            )}
+            {并掉 && !预 && !读错 && <p className="mrg-empty" aria-live="polite">正在读取…</p>}
+            {并掉 && 读错 && <p role="alert" className="mrg-err">{读错}</p>}
+            {预 && !预.ok && <原因块 原因={预.原因} />}
+            {好 && (
+              <>
+                <p className="mrg-move" data-testid="xmerge-move">{一行(<>「{B}」 → <b>「{A}」</b></>, `「${B}」 → 「${A}」`)}</p>
+                <ul className="mrg-out" data-testid="xmerge-list">
+                  {清单.map((x) => <li key={x.标} data-testid={`xmerge-${x.标}`}><span className="mrg-out-k">{x.标}</span>{x.话}</li>)}
+                </ul>
+              </>
+            )}
           </>
         )}
       </div>

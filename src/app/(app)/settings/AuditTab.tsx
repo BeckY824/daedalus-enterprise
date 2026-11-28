@@ -39,7 +39,7 @@ const ACTION_LABEL: Record<string, string> = {
 };
 /** 同一个动作按对象另起叫法：项目合并（第二批 2a，project-merge.ts 在两个项目上各记一条 merge / merge-undo）和客户合并分开 */
 const ACTION_LABEL_BY_ENTITY: Record<string, Record<string, string>> = {
-  Project: { merge: "合并项目", "merge-undo": "撤回合并项目" },
+  Project: { merge: "合并项目", "merge-undo": "撤回合并项目", "merge-undo-notice": "通知原负责人" },
 };
 const 动作叫法 = (action: string, entity: string) => ACTION_LABEL_BY_ENTITY[entity]?.[action] ?? ACTION_LABEL[action] ?? action;
 const ENTITY_LABEL: Record<string, string> = {

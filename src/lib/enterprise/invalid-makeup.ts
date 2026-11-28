@@ -29,6 +29,8 @@ export const 线对得上 = (补: string | null, 这次: string | null | undefin
 const 待用 = { usedAt: null, voidAt: null } as const;
 /** 主动放弃（豁免）记的待补（EntLeadMakeup.kind，迁移 161）；空 = 判无效记的 */
 export const 放弃待补种类 = "giveup";
+/** 项目被跨负责人并走记的待补（kind = merge-out，project-merge-request.ts / E-337:13）：被并走的原负责人记 1 个（自己新建、没占过名额的不记）；用法同判无效待补（优先补、补发不计数） */
+export const 并走待补种类 = "merge-out";
 /** 判无效记的那种（kind 空）：判无效记补位查重、恢复作废只看它 */
 const 判无效的 = { kind: null } as const;
 
@@ -41,6 +43,22 @@ export async function 记补位(tx: Pick<Prisma.TransactionClient, "entLeadMakeu
   const 分 = await tx.entLeadAssign.findFirst({ where: { projectId, toUserId: userId }, orderBy: { createdAt: "desc" }, select: { line: true } });
   await tx.entLeadMakeup.create({ data: { userId, projectId, line: 分?.line ?? null, createdAt: at } });
   return true;
+}
+
+/**
+ * 跨负责人并走记待补（事务里调，和并同一笔）：同一条线索同一个人已有待用的并走待补就不再记（防重复），回 false。
+ * 调用方先判 占过名额（lead-assign.ts）：自己新建的、随客户分来的不补
+ */
+export async function 记并走待补(tx: Pick<Prisma.TransactionClient, "entLeadMakeup" | "entLeadAssign">, userId: string, projectId: string, at = new Date()): Promise<boolean> {
+  if (await tx.entLeadMakeup.findFirst({ where: { userId, projectId, ...待用, kind: 并走待补种类 }, select: { id: true } })) return false;
+  const 分 = await tx.entLeadAssign.findFirst({ where: { projectId, toUserId: userId }, orderBy: { createdAt: "desc" }, select: { line: true } });
+  await tx.entLeadMakeup.create({ data: { userId, projectId, line: 分?.line ?? null, kind: 并走待补种类, createdAt: at } });
+  return true;
+}
+
+/** 撤回跨负责人并：这条线索上记的、没用掉的并走待补作废；已用掉的不回收 */
+export async function 作废并走待补(tx: Pick<Prisma.TransactionClient, "entLeadMakeup">, projectId: string, now = new Date()): Promise<number> {
+  return (await tx.entLeadMakeup.updateMany({ where: { projectId, ...待用, kind: 并走待补种类 }, data: { voidAt: now } })).count;
 }
 
 /** 这几个人待用的补位，按退名额时间先后（再按 id，结果不随查询顺序变） */

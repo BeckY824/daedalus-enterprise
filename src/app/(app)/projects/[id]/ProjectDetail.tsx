@@ -52,7 +52,7 @@ import { CustomerReadonlyCard } from "./CustomerReadonlyCard";
 import { 填法表, 客户格, type 窗外去处, type 草稿们, type 已签收格 } from "@/lib/project/required-fill";
 import ProjectStages from "./ProjectStages";
 import ProjectStarButton from "./ProjectStarButton";
-import { 两行, 等复核说法, 能项目转让, 并进说明, type 项目动作键 } from "./project-menu";
+import { 两行, 等复核说法, 能项目转让, 并进说明, 跨并说明, type 项目动作键 } from "./project-menu";
 import { 合并桥, type 合并请求 } from "../../customers/[id]/merge-bridge";
 import AiWait from "@/components/AiWait";
 import AiCost, { AiRemaining, useAiOutOfCredits } from "@/components/AiCost";
@@ -146,6 +146,10 @@ export type 项目详情 = {
   能换客户?: boolean;
   /** 摆不摆「并进另一个项目」（合并客户第二批 2a，load.ts 并进菜单）：负责人本人或系统管理员才有；灰 = 摆着灰、悬停写原因；拦不拦整套在预览里说 */
   并进?: { 灰?: string } | null;
+  /** 摆不摆「把同事的项目并进来」（跨负责人合并，E-380 阶段 2，load.ts 跨并菜单）：留下项目的负责人本人或系统管理员；灰 = 摆着灰、悬停写原因；能不能并、直接还是申请在框里预览说 */
+  跨并?: { 灰?: string } | null;
+  /** 这个项目有一张等确认的跨负责人合并申请（load.ts 跨并待确认of）：顶上一行（MergedIntoLine）写等谁、被并走那条验证计时暂停；发起人带「撤回申请」、确认人带「去确认」 */
+  跨并待确认?: { requestId: string; 角色: "留下" | "并走"; 另一个: string; 等: string; 到期: string; 我发起: boolean; 我确认: boolean } | null;
   /** 这个项目是怎么到这位客户名下的：「从 NO.xxxxx「B」并入」（合并客户 / 项目换客户，customer-merge.ts 项目来历）；没有 = 不摆那一行 */
   并入自?: { 话: string; 怎么来: "合并客户" | "项目换客户"; at: string } | null;
   /** 这个项目并进了另一个项目（合并客户第二批 2a，load.ts 已并入of：没撤回的项目合并单，过了 30 天也给）：顶上「已并入 → 留下的项目」那一行（MergedIntoLine，页面当槽递进来）；留下的项目不给。过期话 = 过了撤回期限（谁看都带，系统管理员也不能代撤），那一行在按钮的位置写这句 */
@@ -613,6 +617,7 @@ export default function ProjectDetail({
   const [并进请, set并进请] = useState<(合并请求 & { 次: number }) | null>(null);
   const 并进桥 = useMemo(() => ({ 请求: 并进请, 收: () => set并进请(null) }), [并进请]);
   const 摆并进 = !嵌入 && !!合并口 && !!p.企业版 && !!p.并进;
+  const 摆跨并 = !嵌入 && !!合并口 && !!p.企业版 && !!p.跨并;
   // 无意义沟通（F-052）：沟通列表里就地改内容那一行要的判定，一页取一次（FollowMeaningLine 读共用那份）
   useFollowJudge(p.企业版);
   const router = useRouter();
@@ -2101,19 +2106,20 @@ export default function ProjectDetail({
   const 放回钮 = p.能放公海 && (等复核
     ? <Tooltip title={`${等复核文字}，暂时不能退回公海`}><Button size={钮号} disabled>项目退回公海</Button></Tooltip>
     : <Button size={钮号} disabled={忙} onClick={放回问} title={嵌入 ? "只退回当前页签的项目，客户不动" : undefined}>项目退回公海</Button>);
-  const 删钮 = (p.能删 || 摆并进) && (
+  const 删钮 = (p.能删 || 摆并进 || 摆跨并) && (
     <Dropdown trigger={["click"]} placement="bottomRight" disabled={忙} menu={{
       items: [
         // 灰着的下面一行写原因（同客户页「更多操作 ▾」），能点的悬停看说明
         ...(摆并进 ? [{ key: "merge", disabled: !!p.并进?.灰, label: p.并进?.灰 ? 两行("并进另一个项目", p.并进.灰) : <span title={并进说明}>并进另一个项目</span> }] : []),
+        ...(摆跨并 ? [{ key: "xmerge", disabled: !!p.跨并?.灰, label: p.跨并?.灰 ? 两行("把同事的项目并进来", p.跨并.灰) : <span title={跨并说明}>把同事的项目并进来</span> }] : []),
         ...(p.能删 ? [{ key: "delete", danger: true, label: "删除项目" }] : []),
       ],
-      onClick: ({ key }) => (key === "merge" ? set并进请({ 种: "并项目", projectId: p.id, 名: p.name, 次: Date.now() }) : 删问()),
+      onClick: ({ key }) => (key === "merge" ? set并进请({ 种: "并项目", projectId: p.id, 名: p.name, 次: Date.now() }) : key === "xmerge" ? set并进请({ 种: "跨并项目", projectId: p.id, 名: p.name, 次: Date.now() }) : 删问()),
     }}>
       <Button size={钮号} icon={<MoreOutlined />} aria-label="项目的更多操作">{嵌入 ? null : "更多"}</Button>
     </Dropdown>
   );
-  const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海 || !!p.能删 || 摆并进) && (
+  const 企业版页头钮 = (p.能领取 || !!p.领取不给 || !!转给钮 || p.能放公海 || !!p.能删 || 摆并进 || 摆跨并) && (
     <Space wrap>
       {领取钮}
       {转给钮}

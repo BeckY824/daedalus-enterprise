@@ -559,8 +559,12 @@ describe("撤回", () => {
     const mergeId = await 并(a, b, 乙);
     const h = await raw.entHandover.create({ data: { kind: "离职", fromUserId: 乙.id, toUserId: 丙.id, byUserId: 老板.id, way: "项目", projectIds: JSON.stringify([a]) } });
     expect(await 撤回项目合并(prisma, mergeId, 老板)).toMatchObject({ ok: false, error: expect.stringContaining("离职交接中") });
+    // 回滚（被拦）时不发通知
+    expect(await raw.entNotice.count({ where: { dedupeKey: { startsWith: "merge-project-undo:" } } })).toBe(0);
     await raw.entHandover.update({ where: { id: h.id }, data: { status: "已撤回" } });
     expect((await 撤回项目合并(prisma, mergeId, 老板)).ok).toBe(true);
+    await 等通知推完();
+    expect(await raw.entNotice.count({ where: { userId: 乙.id, dedupeKey: { startsWith: "merge-project-undo:" } } })).toBe(1);
   });
 
   it("连环：留下的又并进了别的项目，先撤那次", async () => {
@@ -664,6 +668,32 @@ describe("整单撤回客户合并：先撤之后并过的项目", () => {
     expect((await raw.followUpProject.findUniqueOrThrow({ where: { followUpId: f } })).projectId).toBe(pb);
     expect((await raw.followUp.findUniqueOrThrow({ where: { id: f } })).customerId).toBe(B);
   });
+
+  it("E-484：整单撤回（系统管理员撤）先拆的项目合并，被并走那位收到通知；本人撤不发", async () => {
+    const mk = async () => {
+      const A = await 客户(乙.id);
+      const B = await 客户(乙.id);
+      const pa = await 项目(乙.id, A);
+      const pb = await 项目(乙.id, B);
+      const cm = await 执行合并(prisma, A, B, 乙);
+      if (!cm.ok) throw new Error(cm.error);
+      await 并(pa, pb, 乙);
+      return { cm, pb };
+    };
+    const { cm, pb } = await mk();
+    const r = await 撤回合并(prisma, cm.mergeId, 老板);
+    if (!r.ok) throw new Error(r.error);
+    await 等通知推完();
+    const 们 = await raw.entNotice.findMany({ where: { userId: 乙.id, kind: 项目合并通知种类, dedupeKey: { startsWith: "merge-project-undo:" } } });
+    expect(们).toHaveLength(1);
+    expect(们[0].link).toBe(`/projects/${pb}`);
+    // 乙自己整单撤：不给自己发（上面那条仍是 1 条）
+    const 二 = await mk();
+    const r2 = await 撤回合并(prisma, 二.cm.mergeId, 乙);
+    if (!r2.ok) throw new Error(r2.error);
+    await 等通知推完();
+    expect(await raw.entNotice.count({ where: { userId: 乙.id, dedupeKey: { startsWith: "merge-project-undo:" } } })).toBe(1);
+  });
 });
 
 describe("字段覆盖守卫：库里带项目 id 的表都定过挪不挪", () => {
@@ -689,6 +719,8 @@ describe("字段覆盖守卫：库里带项目 id 的表都定过挪不挪", () 
       "EntProjectPayment.projectId", "EntCommission.projectId", "EntCommissionSplit.projectId", "FollowPlan.afterSaleProjectId", "AiConversation.projectId",
       // 转让异议（12-22）：合并不挪；被并的项目上有没裁定的异议时合并被拦（objection-guard.ts），已裁定的留着当历史
       "EntTransferObjection.projectId",
+      // 跨负责人项目合并申请（迁移 195）：两头都是申请自己的记录，合并不挪；有待确认申请的项目别的合并被拦（project-merge.ts 拦的原因）
+      "EntProjectMergeRequest.fromProjectId", "EntProjectMergeRequest.intoProjectId",
     ];
     // 这里只扫列名带 projectId 的。不叫 projectId、也会指项目的几处（2a 审查人工核过，处理写在 project-merge.ts 去重表旁边）：
     //   多态 targetId —— EntExternalRef（opportunity 的挪，再同步记冲突不写）、EntImportRow（不挪，整批撤回跳过合并单里的项目）、

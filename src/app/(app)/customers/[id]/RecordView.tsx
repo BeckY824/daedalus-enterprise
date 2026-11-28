@@ -855,7 +855,7 @@ export default function RecordView({
      有项目区时交给项目区摆（中栏宽、进程卡正上方），没有就照旧在客户名下面通栏 */
   const 提醒条 = 三态条 ? <TriStateBar 条={三态条} customerId={customer.id} 开客户转让={能转让 ? 开客户转让 : null} /> : null;
   // 「换客户」「并进另一个项目」的框在 合并口 里：没递 合并口（只读等）就不摆
-  const 项目菜单项们 = (项目区 ? 当前项目菜单?.项们 ?? [] : []).filter((x) => (x.key !== "move" && x.key !== "merge") || !!合并口);
+  const 项目菜单项们 = (项目区 ? 当前项目菜单?.项们 ?? [] : []).filter((x) => (x.key !== "move" && x.key !== "merge" && x.key !== "xmerge") || !!合并口);
   const 点项目项 = (key: (typeof 项目菜单项们)[number]["key"]) => {
     // 「换客户」的框在 合并口 里（同合并客户），不经嵌入版 ProjectDetail
     if (key === "move") {
@@ -864,6 +864,10 @@ export default function RecordView({
     }
     if (key === "merge") {
       if (合并口 && 当前项目菜单?.id) 开合并({ 种: "并项目", projectId: 当前项目菜单.id, 名: 当前项目菜单.名 });
+      return;
+    }
+    if (key === "xmerge") {
+      if (合并口 && 当前项目菜单?.id) 开合并({ 种: "跨并项目", projectId: 当前项目菜单.id, 名: 当前项目菜单.名 });
       return;
     }
     项目动作口?.current?.(key);
