@@ -95,12 +95,12 @@ export async function 重算裁定人们(行们: readonly Pick<EntTransferObject
   if (!行们.length) return 出;
   const org = await 读组织();
   const [日志们, 客户们] = await Promise.all([
-    prisma.customerOwnerLog.findMany({ where: { id: { in: [...new Set(行们.map((r) => r.ownerLogId))] } }, select: { id: true, fromOwnerId: true } }),
+    prisma.customerOwnerLog.findMany({ where: { id: { in: [...new Set(行们.flatMap((r) => (r.ownerLogId ? [r.ownerLogId] : [])))] } }, select: { id: true, fromOwnerId: true } }),
     看全部(() => prisma.customer.findMany({ where: { id: { in: [...new Set(行们.map((r) => r.customerId))] } }, select: { id: true, bizLine: true } })),
   ]);
   const 原 = new Map(日志们.map((l) => [l.id, l.fromOwnerId]));
   const 线 = new Map(客户们.map((c) => [c.id, c.bizLine]));
-  for (const r of 行们) 出.set(r.id, 算裁定人(org, r.operatorUserId, 线.get(r.customerId), 原.get(r.ownerLogId) ?? r.objectorUserId, r.objectorUserId, r.toOwnerId));
+  for (const r of 行们) 出.set(r.id, 算裁定人(org, r.operatorUserId, 线.get(r.customerId), 原.get(r.ownerLogId ?? "") ?? r.objectorUserId, r.objectorUserId, r.toOwnerId));
   return 出;
 }
 
@@ -145,7 +145,7 @@ export async function 提异议(me: { id: string; name: string }, id: unknown, �
   if (现在 > 行.expiresAt) return { ok: false, error: `已超过 ${异议期天数} 天异议期，不能再提；有问题请直接找系统管理员` };
   const org = await 读组织();
   const [日志, 客户] = await Promise.all([
-    prisma.customerOwnerLog.findUnique({ where: { id: 行.ownerLogId }, select: { fromOwnerId: true } }),
+    prisma.customerOwnerLog.findUnique({ where: { id: 行.ownerLogId ?? "" }, select: { fromOwnerId: true } }),
     prisma.customer.findUnique({ where: { id: 行.customerId }, select: { bizLine: true } }),
   ]);
   const 裁 = 算裁定人(org, 行.operatorUserId, 客户?.bizLine, 日志?.fromOwnerId ?? me.id, me.id, 行.toOwnerId);

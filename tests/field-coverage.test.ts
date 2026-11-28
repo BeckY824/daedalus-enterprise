@@ -369,7 +369,8 @@ const 派生: Record<string, Record<string, string>> = {
     转让做成时系统记一行「可提」，本人在 /objections 提交一次（带「可提」条件，只成一次），之后只有裁定动作（B 段）推状态。没有直接改某一格的入口。
   */
   EntTransferObjection: {
-    ownerLogId: "哪次转让（换负责人记录），转让时定",
+    ownerLogId: "哪次转让（换负责人记录），转让时定；项目合并类为空",
+    mergeId: "哪次项目合并（跨负责人并的合并记录），项目合并类异议才有，只建结构、流程另做",
     customerId: "哪位客户，转让时定",
     projectId: "哪个项目（项目异议才有），转让时定",
     kind: "项目 / 客户，转让时定",

@@ -71,7 +71,7 @@ export async function 评估退回(db: Db, 行: Pick<EntTransferObjection, "kind
   if (!c || c.deletedAt) return 不行("已删除", 行.targetName);
   if (c.pool) return 不行("进公海", 行.targetName);
   if (c.salesOwnerId !== 行.toOwnerId) return 不行("已再转", 行.targetName);
-  const 日志 = await db.customerOwnerLog.findUnique({ where: { id: 行.ownerLogId }, select: { at: true, fromOwnerId: true } });
+  const 日志 = await db.customerOwnerLog.findUnique({ where: { id: 行.ownerLogId ?? "" }, select: { at: true, fromOwnerId: true } });
   const 痕们 = 日志
     ? await db.projectNodeLog.findMany({
       where: {
@@ -108,7 +108,7 @@ async function 执行退回(tx: Db, 行: EntTransferObjection, 评估: Extract<�
   // 12-22 审查 M4：转让时客户上的未完成计划、待办也一起带去了接手人名下，撤回时一并退给原负责人。异议行没有存「当次带走的 id」的列（不加迁移），
   // 按条件找：这位客户 + 现在归接手人 + 没做完 + 转让时刻前就有（接手人转让后自己新建的不退）+ 转让那一刻被换过手（updatedAt ≥ 转让时刻前一点，
   // 接手人转让前就有、没被带动过的不算）；已完成的不动；转让时不跟着转的提醒待办也不动。同一事务里做
-  const 日志 = await tx.customerOwnerLog.findUnique({ where: { id: 行.ownerLogId }, select: { at: true } });
+  const 日志 = await tx.customerOwnerLog.findUnique({ where: { id: 行.ownerLogId ?? "" }, select: { at: true } });
   if (!日志) return { 项目数: 评估.项目.length, 退了客户: true, 计划数: 0, 待办数: 0 };
   const 起 = new Date(日志.at.getTime() - 当次窗口毫秒);
   const 带 = { customerId: 行.customerId, ownerId: 行.toOwnerId, done: false, createdAt: { lte: 日志.at }, updatedAt: { gte: 起 } };
@@ -143,7 +143,7 @@ async function 填行(行们: EntTransferObjection[], 看退回: boolean, 我?: 
   const 人ids = [...new Set(行们.flatMap((r) => [r.objectorUserId, r.operatorUserId, r.toOwnerId, ...(r.judgedById ? [r.judgedById] : [])]))];
   const [人们, 日志们, 客户们] = await Promise.all([
     prisma.user.findMany({ where: { id: { in: 人ids } }, select: { id: true, name: true } }),
-    prisma.customerOwnerLog.findMany({ where: { id: { in: 行们.map((r) => r.ownerLogId) } }, select: { id: true, reason: true, at: true } }),
+    prisma.customerOwnerLog.findMany({ where: { id: { in: 行们.flatMap((r) => (r.ownerLogId ? [r.ownerLogId] : [])) } }, select: { id: true, reason: true, at: true } }),
     看全部(() => 看已删(() => prisma.customer.findMany({ where: { id: { in: 行们.map((r) => r.customerId) } }, select: 显名列 }))),
   ]);
   const 名 = new Map(人们.map((u) => [u.id, u.name]));
@@ -160,9 +160,9 @@ async function 填行(行们: EntTransferObjection[], 看退回: boolean, 我?: 
     const 评 = 看退回 && !旧 ? await 评估退回(prisma, r) : null;
     出.push({
       id: r.id, 类别: r.kind === "项目" ? "项目" : "客户", 对象: r.targetName, 客户名: 客户名.get(r.customerId) ?? "",
-      异议人: 名.get(r.objectorUserId) ?? "", 理由: r.reason ?? "", 转让原因: 日志.get(r.ownerLogId)?.reason ?? "",
+      异议人: 名.get(r.objectorUserId) ?? "", 理由: r.reason ?? "", 转让原因: 日志.get(r.ownerLogId ?? "")?.reason ?? "",
       发起人: 名.get(r.operatorUserId) ?? "", 接手人: 名.get(r.toOwnerId) ?? "",
-      转让于: (日志.get(r.ownerLogId)?.at ?? r.createdAt).toISOString(), 提于: (r.submittedAt ?? r.createdAt).toISOString(), 状态: r.status,
+      转让于: (日志.get(r.ownerLogId ?? "")?.at ?? r.createdAt).toISOString(), 提于: (r.submittedAt ?? r.createdAt).toISOString(), 状态: r.status,
       能自动退: 旧 ? 旧.能自动退 : !评 || 评.自动, 退回说明: 旧 ? 旧.退回说明 : 评 && !评.自动 ? 评.原因 : "",
       ...(r.judgeNote ? { 裁定说明: r.judgeNote } : {}),
       ...(r.judgedById ? { 裁定人: 名.get(r.judgedById) ?? "" } : {}),

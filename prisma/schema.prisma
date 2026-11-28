@@ -2333,12 +2333,14 @@ model EntCustomerMerge {
 /// 指人的列都不建外键（停用的人也照样显示），靠 sync/tables.ts 的 指向人的列 改身份
 model EntTransferObjection {
   id          String    @id @default(cuid())
-  /// 哪次转让：CustomerOwnerLog.id（没建外键，客户软删后留痕照留）
-  ownerLogId  String
+  /// 哪次转让：CustomerOwnerLog.id（没建外键，客户软删后留痕照留）；项目合并类异议为空，改挂 mergeId
+  ownerLogId  String?
+  /// 哪次项目合并（跨负责人直接并）：项目合并类异议才有，转让类为空（只建结构，流程另做；没建外键）
+  mergeId     String?
   customerId  String
   /// 项目异议才有；客户异议为空
   projectId   String?
-  /// 项目 / 客户（对象类别）
+  /// 项目 / 客户 / 项目合并（对象类别）
   kind        String
   /// 唯一键里用：项目 = 项目 id，客户 = "customer"（SQLite 唯一约束里空值不算重，所以不直接用 projectId）
   targetKey   String
@@ -2366,6 +2368,7 @@ model EntTransferObjection {
   judgedById  String?
 
   @@unique([ownerLogId, objectorUserId, targetKey])
+  @@unique([mergeId, objectorUserId, targetKey])
   @@index([objectorUserId, status])
   @@index([status, submittedAt])
 }
