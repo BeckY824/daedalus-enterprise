@@ -439,11 +439,16 @@ async function 运行内(选项) {
   const 无效串 = 艾特.无效.join(",");
   if (无效串 && 状态.cfgWarnAt !== 无效串) {
     const 内容 = `[告警] ${实例} 配置提醒：ALERT_AT_EVEN 有 ${艾特.无效.length} 个 open_id 格式不对（应为 ou_ 开头的小写字母数字），已跳过，客户群这几位不会被 @\n时间：${双时区(现在)}`;
-    发出提醒.push({ 内容, 客户: false });
-    if (dry) 输出(`--- 将发：仅我方（配置提醒）---\n${内容}`);
-    else {
-      if (配置.ALERT_WEBHOOK_OURS) await 发(取, 配置.ALERT_WEBHOOK_OURS, 配置.ALERT_SECRET_OURS, 内容, 现在, "我方群");
-      状态.cfgWarnAt = 无效串;
+    if (dry) {
+      发出提醒.push({ 内容, 客户: false });
+      输出(`--- 将发：仅我方（配置提醒）---\n${内容}`);
+    } else {
+      // 发送失败不记「已提醒」，下一轮再提醒；没配我方群时照旧记上，免得每轮空跑
+      const 成功 = 配置.ALERT_WEBHOOK_OURS ? await 发(取, 配置.ALERT_WEBHOOK_OURS, 配置.ALERT_SECRET_OURS, 内容, 现在, "我方群") : true;
+      if (成功) {
+        发出提醒.push({ 内容, 客户: false });
+        状态.cfgWarnAt = 无效串;
+      }
     }
   } else if (!无效串 && 状态.cfgWarnAt && !dry) delete 状态.cfgWarnAt;
 

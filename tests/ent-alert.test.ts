@@ -549,6 +549,63 @@ describe("客户群 @ 当班负责人（ALERT_AT_EVEN）", () => {
     expect(发往(OURS).filter((c) => 文本(c).includes("配置提醒"))).toHaveLength(0);
   });
 
+  it("提醒发送失败（500）不记已提醒，下一轮再提醒；成功后不再重复", async () => {
+    写配置("ou_ok1,BAD");
+    记(6, 3);
+    发送模式 = "http500";
+    const r1 = await 跑();
+    expect(r1.发出.some((x) => x.内容.includes("配置提醒"))).toBe(false);
+    expect(发往(OURS).filter((c) => 文本(c).includes("配置提醒"))).toHaveLength(1);
+    调用们 = [];
+    发送模式 = "ok";
+    await 跑(T0 + 2 * 分);
+    expect(发往(OURS).filter((c) => 文本(c).includes("配置提醒"))).toHaveLength(1);
+    调用们 = [];
+    await 跑(T0 + 4 * 分);
+    expect(发往(OURS).filter((c) => 文本(c).includes("配置提醒"))).toHaveLength(0);
+  });
+
+  it("「仍在发生」发客户群带 @；心跳只发我方不带 <at", async () => {
+    写配置("ou_abc123");
+    记(6, 3);
+    await 跑(T0);
+    const 文件 = path.join(目录, "telemetry", "tel-2026-11-19.p1.jsonl");
+    const 前 = T0 + 60 * 分;
+    fs.appendFileSync(文件, `${Array.from({ length: 6 }, (_, i) => JSON.stringify({ t: new Date(前 - 3 * 分 + i * 1000).toISOString(), k: "err", src: "server", type: "服务端出错", name: "TypeError", route: "/customers/[id]", role: "sales", u: i % 2 ? "a" : "b" })).join("\n")}\n`);
+    调用们 = [];
+    await 跑(前);
+    const 仍 = 发往(EVEN).find((c) => 文本(c).includes("[告警·仍在发生]"));
+    expect(仍 && 文本(仍).startsWith('<at user_id="ou_abc123"></at>')).toBe(true);
+
+    目录 = path.join(根, `d${++序}`);
+    fs.mkdirSync(path.join(目录, "telemetry"), { recursive: true });
+    写配置("ou_abc123");
+    调用们 = [];
+    await 跑(Date.parse("2026-11-20T01:00:00Z"));
+    expect(发往(EVEN)).toHaveLength(0);
+    const 心跳 = 发往(OURS).filter((c) => 文本(c).includes("[心跳]"));
+    expect(心跳).toHaveLength(1);
+    expect(文本(心跳[0])).not.toContain("<at");
+  });
+
+  it("配置提醒不占每小时上限；改对后再改错能再提醒一次", async () => {
+    for (let i = 0; i < 8; i++) 记(5, 3, { route: `/r${i}` }, ["a", "b"]);
+    写配置("ou_ok1");
+    await 跑(T0);
+    expect(JSON.parse(fs.readFileSync(path.join(目录, "alert-state.json"), "utf8")).sent).toHaveLength(6);
+    调用们 = [];
+    写配置("ou_ok1,BAD");
+    await 跑(T0 + 2 * 分);
+    expect(发往(OURS).filter((c) => 文本(c).includes("配置提醒"))).toHaveLength(1);
+    expect(JSON.parse(fs.readFileSync(path.join(目录, "alert-state.json"), "utf8")).sent).toHaveLength(6);
+    写配置("ou_ok1");
+    await 跑(T0 + 4 * 分);
+    调用们 = [];
+    写配置("ou_ok1,BAD2");
+    await 跑(T0 + 6 * 分);
+    expect(发往(OURS).filter((c) => 文本(c).includes("配置提醒"))).toHaveLength(1);
+  });
+
   it("--dry：打印客户群实际文本，带 @", async () => {
     写配置("ou_abc123");
     记(6, 3);
