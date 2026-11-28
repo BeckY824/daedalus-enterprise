@@ -665,8 +665,11 @@ it("PR-C 三审：松手后开始录音请求才失败（编号拿不到）→ �
   await page.mouse.up(); // 松手：结束中 = true，最后一片也进队列，卡在等编号
   await page.evaluate(() => (window as unknown as { __放start: () => void }).__放start()); // start 失败
   await page.waitForFunction(() => (window as unknown as 页).__请求.includes("POST /api/coach-rec/start"));
-  await page.clock.runFor(1_000);
-  expect(await page.evaluate(() => (window as unknown as { __忙数: () => number }).__忙数())).toBe(0);
+  // 503 响应走真实网络，假钟只推时间不等响应：每次轮询推 1 秒再读忙数，等到回 0（不放宽语义）
+  await expect.poll(async () => {
+    await page.clock.runFor(1_000);
+    return page.evaluate(() => (window as unknown as { __忙数: () => number }).__忙数());
+  }, { timeout: 15_000, intervals: [100, 200, 400] }).toBe(0);
   expect(await page.getByTestId("ptt-panel").innerText()).toMatch(/没开始录|忙/);
   expect(errors).toEqual([]);
   await page.close();
