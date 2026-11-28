@@ -260,6 +260,7 @@ it("首页查重小框：原负责人是我（自己退回公海的）给提示�
       const 字 = await 框.innerText();
       expect(字).toContain("星河电子");
       expect(字).toContain("是你退回公海的，原负责人不能领回");
+      expect(字).not.toContain("可去公海领取");
       expect(await 框.locator("a").count()).toBe(0);
       expect(await 框.getByTestId("dedupe-claim").count()).toBe(0);
       expect(await 我退.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);

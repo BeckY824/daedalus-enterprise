@@ -38,7 +38,7 @@ import { 以谁的身份 } from "@/lib/enterprise/visibility";
 import { 只看某人键 } from "@/lib/enterprise/org-core";
 import { 默认组织规则 } from "@/lib/project/org-rules";
 import { 分配谁能用key } from "@/lib/enterprise/assign-use";
-import { 原负责人不能领回提示 } from "@/lib/enterprise/pool-rules";
+import { 原负责人不能领回提示, 自己退回公海AI话 } from "@/lib/enterprise/pool-rules";
 import { 盘点超时链, 超时提醒到期, 超时转生效key } from "@/lib/enterprise/reply-overdue";
 /** pool-actions.ts 里的那句（"use server" 文件不导出常量） */
 const 无效不能领提示 = "标了无效的客户不能领取，要系统管理员先恢复";
@@ -511,22 +511,23 @@ describe("原负责人回避（用户 11-19：仅对创建人豁免，对其他�
     await 没动(c.id, 占位.id);
   });
 
-  it("首页 AI 对话查重卡（A3）：原负责人拿到「不能领回」那句、不说「可去公海领取」；别人和豁免的系统管理员照旧", async () => {
+  it("首页 AI 对话查重卡（A3）：原负责人拿到「在公海、是你退回的、不能领回、没建」整句、不说「可去公海领取」；别人照旧，总管理是原负责人也一样领不回", async () => {
     const 号们 = (c: { 号: string }) => [{ 类型: "手机号" as const, 值: c.号, 键: c.号 }];
     const c = await 公海客户(甲.id, 总管.id);
     当(甲);
     const 原 = await AI建档查重详(号们(c), 甲);
-    expect(原?.话).toBe(原负责人不能领回提示);
+    expect(原?.话).toBe(自己退回公海AI话);
+    expect(原?.话).toContain(原负责人不能领回提示);
     expect(原?.话).not.toContain("可去公海领取");
     expect(原).not.toHaveProperty("公海");
-    expect(await AI建档查重(号们(c), 甲)).toBe(原负责人不能领回提示);
+    expect(await AI建档查重(号们(c), 甲)).toBe(自己退回公海AI话);
     // 别人（乙）撞同一个号：通用句
     当(乙);
     expect((await AI建档查重详(号们(c), 乙))?.话).toContain("可去公海领取");
-    // 系统管理员 / 总管理是原负责人：回避豁免，照旧
+    // 总管理是原负责人：也领不回（11-28 定维持领不回），拿到同一句
     const d = await 公海客户(总管.id);
     当(总管);
-    expect((await AI建档查重详(号们(d), 总管))?.话).toContain("可去公海领取");
+    expect((await AI建档查重详(号们(d), 总管))?.话).toBe(自己退回公海AI话);
     await 没动(c.id, 甲.id);
   });
 

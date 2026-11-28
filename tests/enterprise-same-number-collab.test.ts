@@ -377,7 +377,7 @@ describe("入口", () => {
     expect(await 作为(x.市场, () => 查号码("手机号", 号码))).not.toHaveProperty("原负责人是我");
   });
 
-  it("回避豁免的人（系统管理员、只读管理员）查自己放回公海的号：不带原负责人是我；条线总管理照样带（P-公海-04 / X-43）", async () => {
+  it("系统管理员、只读管理员、条线总管理查自己放回公海的号：都带原负责人是我（11-28 定维持领不回，和领取、统一公海页一致）", async () => {
     const x = await 现场();
     const 总 = await 人("boss1", "总管", "director");
     const 管 = await 人("adm1", "管理", "admin");
@@ -388,8 +388,7 @@ describe("入口", () => {
       await prisma.customer.update({ where: { id: x.客户.id }, data: { poolPrevOwnerId: u.id } });
       const r = await 作为(u, () => 查号码("手机号", 号码));
       expect(r, u.name).toMatchObject({ 状态: "公海待捞" });
-      if (u === 线) expect(r, u.name).toMatchObject({ 原负责人是我: true });
-      else expect(r, u.name).not.toHaveProperty("原负责人是我");
+      expect(r, u.name).toMatchObject({ 原负责人是我: true });
     }
   });
 

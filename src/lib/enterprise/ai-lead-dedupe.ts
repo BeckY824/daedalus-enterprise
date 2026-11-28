@@ -23,7 +23,7 @@ import { 全公司查号, 撞号结论, 首条撞的, 问同事撞没撞, 回收
 import { notify } from "./notify";
 import { 同号再次录入, type 录入信息 } from "./same-number-collab";
 import { 查重可领 } from "./dedupe-claim";
-import { 原负责人不能领回提示 } from "./pool-rules";
+import { 自己退回公海AI话 } from "./pool-rules";
 import { 出口C按钮给不给, 撞号在推个数, type 出口C按钮 } from "./repeat-inquiry";
 
 // 认备注里的号码是纯函数，11-17 搬到 remark-numbers.ts（新线索卡的必填在浏览器里也要用）；这里照旧导出
@@ -59,8 +59,8 @@ export async function AI建档查重详(号们: 认出的号[], 我: { id: strin
     const 带上 = 在推 == null ? {} : { 在推, ...((await 撞的后售(ids)) ? { 后售: true as const } : {}) };
     // 市场成员撞上公海（F-016）：卡片上给「领取并记沟通」（customers/pool-actions.ts 查重领取），话照旧
     if (结论.状态 === "公海待捞" && (await 查重可领(我.id, 号))) return { 话: 结论.提示, 公海: 号, ...带上 };
-    // 公海待捞且原负责人是我（撞号结论 已按 我回避的 判过，系统管理员 / 只读管理员豁免不标）：回「不能领回」那句，不说「可去公海领取」；卡片不加客户链接。市场可领的上一行已先走
-    if (结论.状态 === "公海待捞" && 结论.原负责人是我) return { 话: 原负责人不能领回提示, ...带上 };
+    // 公海待捞且原负责人是我（撞号结论 已按 我回避的 判过，系统管理员 / 只读管理员也照样标）：回「在公海 + 是你退回的、不能领回 + 没建」整句，不说「可去公海领取」；卡片不加客户链接。市场可领的上一行已先走
+    if (结论.状态 === "公海待捞" && 结论.原负责人是我) return { 话: 自己退回公海AI话, ...带上 };
     if (结论.状态 !== "重复") return { 话: 结论.提示, ...带上 };
     const 原 = await 首条撞的(prisma, ids);
     if (原?.salesOwnerId) await 提醒原负责人(原.id, 全称或显名(原), 原.salesOwnerId, 我, !协同?.走);
