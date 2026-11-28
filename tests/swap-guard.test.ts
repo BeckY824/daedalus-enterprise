@@ -250,7 +250,7 @@ describe("O3 PR-C 审查修复 1：忙的登记补漏", () => {
     expect(m.忙数()).toBe(0);
   });
 
-  it("点开 file input 的兜底：下一次 pointerdown / keydown 放；都没有则 10 分钟上限强制放", async () => {
+  it("点开 file input 的兜底：下一次 pointerdown / keydown 后 3 秒宽限放；都没有则 10 分钟上限强制放", async () => {
     vi.useFakeTimers();
     const 听: Record<string, (e?: unknown) => void> = {};
     vi.stubGlobal("window", { addEventListener: () => {}, removeEventListener: () => {} });
@@ -264,12 +264,30 @@ describe("O3 PR-C 审查修复 1：忙的登记补漏", () => {
     const 点开 = () => 听.click({ target: { tagName: "INPUT", type: "file", addEventListener: () => {}, removeEventListener: () => {} } });
     点开();
     expect(m.忙数()).toBe(1);
+    // 3 秒内页面还藏着：pointerdown 不放
     听.pointerdown();
+    vi.advanceTimersByTime(5_000);
+    expect(m.忙数()).toBe(1);
+    (document as unknown as { visibilityState: string }).visibilityState = "visible";
+    听.pointerdown();
+    vi.advanceTimersByTime(2_900);
+    expect(m.忙数()).toBe(1);
+    vi.advanceTimersByTime(200);
     expect(m.忙数()).toBe(0);
     点开();
     expect(m.忙数()).toBe(1);
     听.keydown();
+    vi.advanceTimersByTime(2_900);
+    expect(m.忙数()).toBe(1);
+    vi.advanceTimersByTime(200);
     expect(m.忙数()).toBe(0);
+    // 宽限计时中又藏起来：清掉计时，不放
+    点开();
+    听.pointerdown();
+    (document as unknown as { visibilityState: string }).visibilityState = "hidden";
+    听.visibilitychange();
+    vi.advanceTimersByTime(5_000);
+    expect(m.忙数()).toBe(1);
     点开();
     vi.advanceTimersByTime(10 * 60_000 - 1_000);
     expect(m.忙数()).toBe(1);

@@ -667,6 +667,7 @@ it("PR-C 三审：松手后开始录音请求才失败（编号拿不到）→ �
   await page.waitForFunction(() => (window as unknown as 页).__请求.includes("POST /api/coach-rec/start"));
   await page.clock.runFor(1_000);
   expect(await page.evaluate(() => (window as unknown as { __忙数: () => number }).__忙数())).toBe(0);
+  expect(await page.getByTestId("ptt-panel").innerText()).toMatch(/没开始录|忙/);
   expect(errors).toEqual([]);
   await page.close();
 });

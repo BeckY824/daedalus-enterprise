@@ -96,6 +96,7 @@ export function 装输入监听(): void {
       选文件放?.();
       const 放忙 = 登记忙("选文件");
       let 定时: ReturnType<typeof setTimeout> | undefined;
+      const 上限定时 = setTimeout(() => 放(), 选文件上限毫秒);
       const 放 = () => {
         clearTimeout(定时);
         放忙();
@@ -104,23 +105,23 @@ export function 装输入监听(): void {
         clearTimeout(上限定时);
         document.removeEventListener("visibilitychange", 回来);
         window.removeEventListener("focus", 回来);
-        document.removeEventListener("pointerdown", 放, true);
-        document.removeEventListener("keydown", 放, true);
+        document.removeEventListener("pointerdown", 宽限, true);
+        document.removeEventListener("keydown", 宽限, true);
         if (选文件放 === 放) 选文件放 = null;
       };
       const 回来 = () => {
-        if (document.visibilityState === "hidden") return;
+        if (document.visibilityState === "hidden") { clearTimeout(定时); return; }
         clearTimeout(定时);
         定时 = setTimeout(放, 选文件宽限毫秒);
       };
+      const 宽限 = () => { 回来(); };
       t.addEventListener("change", 放);
       t.addEventListener("cancel", 放);
       document.addEventListener("visibilitychange", 回来);
       window.addEventListener("focus", 回来);
       // 兜底：页面上下一次点按 / 按键就放（用户已回到页面操作），再加 10 分钟上限强制放
-      document.addEventListener("pointerdown", 放, true);
-      document.addEventListener("keydown", 放, true);
-      const 上限定时 = setTimeout(放, 选文件上限毫秒);
+      document.addEventListener("pointerdown", 宽限, true);
+      document.addEventListener("keydown", 宽限, true);
       选文件放 = 放;
     },
     true,
