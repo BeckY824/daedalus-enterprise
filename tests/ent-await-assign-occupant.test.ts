@@ -134,11 +134,25 @@ describe("待分配期间占位的建的人：不能记沟通、不能转让 / �
 
   it("改负责人（转让）被拒，负责人和待分配标记不动；改字段照常能存", async () => {
     const id = await 待分配线索();
-    expect(await 改项目(销售, id, { name: "项目0", amount: 0, ownerId: 接手.id })).toMatchObject({ ok: false });
+    expect(await 改项目(销售, id, { name: "项目0", amount: 0, ownerId: 接手.id })).toEqual({ ok: false, error: 待分配不能动 });
     expect(await 项(id)).toMatchObject({ ownerId: 销售.id });
     expect((await 项(id)).awaitAssignAt).not.toBeNull();
     expect((await 改项目(销售, id, { name: "改了名", amount: 0 })).ok).toBe(true);
     expect(await 项(id)).toMatchObject({ name: "改了名", ownerId: 销售.id });
+  });
+
+  it("客户页记沟通：选了待分配项目被拒；没选项目（只剩这一个）也说待分配；库里不新增沟通行", async () => {
+    const { 核沟通项目, 定沟通挂哪个项目, 可记沟通项目们 } = await import("@/lib/project/follow-needs-project");
+    const id = await 待分配线索();
+    const 客户id = (await 项(id)).customerId;
+    expect((await 可记沟通项目们(销售, 客户id)).可记).toEqual([]);
+    expect(await 核沟通项目(销售, 客户id, id)).toBe(待分配不能动);
+    expect(await 定沟通挂哪个项目(销售, 客户id, id)).toEqual({ ok: false, error: 待分配不能动 });
+    expect(await 定沟通挂哪个项目(销售, 客户id, null)).toEqual({ ok: false, error: 待分配不能动 });
+    expect(await prisma.followUp.count()).toBe(0);
+    // 标记清掉后客户页照常能记
+    await prisma.project.update({ where: { id }, data: { awaitAssignAt: null } });
+    expect(await 核沟通项目(销售, 客户id, id)).toBeNull();
   });
 
   it("能转让项目 / 能往项目记沟通 对占位的人为假，对不占位的人照旧", async () => {

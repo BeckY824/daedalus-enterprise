@@ -83,7 +83,7 @@ export type 可记项目 = { id: string; name: string };
  * 这位客户名下的项目：一共几个、在推几个、我能记沟通的在推项目（最近动过的在前）；
  * 售后 = 我能记售后回访的交付结清项目（客户在公海时为空），另列一组，自动挂不从这里挑
  */
-export async function 可记沟通项目们(me: 谁, customerId: string): Promise<{ 总数: number; 在推数: number; 可记: 可记项目[]; 售后: 可记项目[] }> {
+export async function 可记沟通项目们(me: 谁, customerId: string): Promise<{ 总数: number; 在推数: number; 占位数: number; 可记: 可记项目[]; 售后: 可记项目[] }> {
   const org = await 权限组织();
   // 组员不一定看得到这位客户（P-看-08 连带只读）：项目按客户 id 取全，能不能记下面逐个判
   const 们 = await 看全部(() => prisma.project.findMany({
@@ -98,6 +98,8 @@ export async function 可记沟通项目们(me: 谁, customerId: string): Promis
   return {
     总数: 们.length,
     在推数: 在推.length,
+    // 在推项目里我占着待分配的几个：只用来把「都不能记」的提示说准（不影响权限判断）
+    占位数: 企业版() ? 在推.filter((p) => 占着待分配(me, p)).length : 0,
     可记: 在推.filter((p) => 能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)).map((p) => ({ id: p.id, name: p.name })),
     售后: 客 ? 交付.filter((p) => 能记售后回访(me, { ...p, ...客 }, org, p.members[0]?.inviteStatus)).map((p) => ({ id: p.id, name: p.name })) : [],
   };
@@ -163,5 +165,7 @@ export async function 定沟通挂哪个项目(
   if (们.售后.length) return { ok: false, error: 请选在推或售后话, 售后: 们.售后, ...(们.在推数 === 0 ? { 没项目: true as const } : {}) };
   if (们.总数 === 0) return { ok: false, error: 沟通没项目话, 没项目: true };
   if (们.在推数 === 0) return { ok: false, error: 沟通没在推项目话, 没项目: true };
+  // 在推项目全是我占着的待分配项目：说待分配那句，不说「你不是负责人或组员」
+  if (们.占位数 > 0 && 们.占位数 === 们.在推数) return { ok: false, error: 待分配不能动 };
   return { ok: false, error: 沟通都不能记话 };
 }
