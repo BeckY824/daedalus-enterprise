@@ -24,6 +24,7 @@ import { 读的我, 虚线只读的 } from "@/lib/team-scope";
 import { defaultClient } from "@/lib/prisma";
 import { 读团队 } from "@/lib/sync/client";
 import { 客户页签归属 } from "@/lib/pool";
+import { 公海项目行匹配数 } from "@/lib/enterprise/unified-pool-db";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能管公海, 能转出自己的, 能删除, 能新建和领取, 能放回客户公海, 有管理范围 } from "@/lib/enterprise/permissions";
 import { 生效客户范围, 默认客户范围, 客户范围选项, 是客户范围 } from "@/lib/enterprise/customer-scope";
@@ -262,10 +263,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   // 除了页签什么都没筛（最常见的「点进客户页」）：总数就是页签上那个数，不再数一遍
   const total = 筛出 ?? (就是页签 === "公海" ? 公海总数 : 非公海总数) ?? 0;
   // 公海兜底（口径见上面 去公海筛）：客户页签 0 条才查
-  const 公海里匹配 = 可能兜底 && total === 0 && 公海总数
+  const 公海客户匹配 = 可能兜底 && total === 0 && 公海总数
     ? ((快 ? await 关键词分页(去公海筛, 1, 1) : null)?.total
       ?? await 数公海筛())
     : 0;
+  // 企业版项目模式：点过去是统一公海页，总数 = 客户行 + 项目行（项目在公海、客户不在客户公海）；只数客户会少项目行，加上（同公海页的取法与关键词口径）
+  const 公海项目匹配 = 可能兜底 && total === 0 && 按项目 ? await 公海项目行匹配数(me, sp.keyword) : 0;
+  const 公海里匹配 = 公海客户匹配 + 公海项目匹配;
   const page = 快?.page ?? Math.min(正整数(sp.page, 1), Math.max(1, Math.ceil(total / pageSize)));
 
   // 这一页的行和页面上别的几样互不依赖，一次并起来取（10-29 提速：原来行取完以后再一个个 await，十来次往返串着）

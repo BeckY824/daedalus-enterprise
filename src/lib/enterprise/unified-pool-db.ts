@@ -347,6 +347,17 @@ async function 补这一页(me: { id: string }, 骨: Awaited<ReturnType<typeof �
 }
 
 /**
+ * 客户页「公海里有 N 位匹配 ›」要加上的项目行数：公海页总数 = 客户行 + 项目行（项目在公海、客户不在客户公海），客户页只数客户时少了项目行。
+ * 和公海页同一套：项目行取法同 读公海页_库里分页（读公海骨架，公海项目行走 3 秒短缓存、排掉本人回避），
+ * 关键词照 筛排 同一写法（项目名 / 客户名 / 编号，各词都要中）。回避在这里按服务端身份判，不在页面判
+ */
+export async function 公海项目行匹配数(me: { id: string; name: string; role?: string }, keyword?: string): Promise<number> {
+  const 词 = 公海词们(keyword).length > 0;
+  const 骨 = await 读公海骨架(me, { 客户的项目: false, 客户可见: 词, 不取客户: true });
+  return 筛排(骨.行, { keyword }).行.length;
+}
+
+/**
  * 页面用：取骨架 → 筛排 → 切这一页 → 补这一页。
  * 每翻一页不再把公海全部的项目名、当前进程、原负责人、客户可见都取一遍；筛、数、排的口径和原来逐条一致
  * （tests/ent-unified-pool-paging.test.ts 拿改前的写法逐个筛选组合、逐页对）
