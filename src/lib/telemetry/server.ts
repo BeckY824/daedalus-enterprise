@@ -85,12 +85,13 @@ export function 盯慢请求(e: 起点事件, d: 慢请求依赖) {
   const 现在 = d.现在 ?? (() => performance.now());
   const 起 = 现在();
   const 墙钟 = Date.now();
-  const qk = 查询键名(e.request.url);
+  const url = e.request.url; // 先存下来（后面 req.url 可能被改写）；qk 到超过门槛再算
   e.response.once("close", () => {
     try {
       const ms = Math.round(现在() - 起);
       if (ms < d.门槛) return;
       const h = e.request.headers;
+      const qk = 查询键名(url);
       const 基: 一行 = {
         t: new Date(墙钟).toISOString(),
         k: "slow",

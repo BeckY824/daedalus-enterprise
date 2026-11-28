@@ -70,6 +70,6 @@ describe("站点图标缓存头", () => {
       return 值;
     };
     for (const p of ["/favicon.ico", "/icon.svg", "/apple-icon.png"]) expect(头(p), p).toBe("public, max-age=604800");
-    for (const p of ["/login", "/dashboard", "/customers", "/api/version", "/icons.svg", "/favicon.ico.bak"]) expect(头(p), p).toBeUndefined();
+    for (const p of ["/login", "/dashboard", "/customers", "/api/version", "/icons.svg", "/favicon.ico.bak", "/faviconXico", "/iconXsvg"]) expect(头(p), p).toBeUndefined();
   });
 });

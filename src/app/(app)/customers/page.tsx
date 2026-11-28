@@ -265,11 +265,13 @@ export default async function CustomersPage({ searchParams }: { searchParams: SP
   // 除了页签什么都没筛（最常见的「点进客户页」）：总数就是页签上那个数，不再数一遍
   const total = 筛出 ?? (就是页签 === "公海" ? 公海总数 : 非公海总数) ?? 0;
   // 公海兜底（口径见上面 去公海筛）：客户页签 0 条才查
-  // 没关键词、也没别的筛选（只剩「我参与的」这类范围、翻页、排序）：去掉范围数出来就是整个公海，和页签上的公海数一样，提示没信息量，不查
-  const 兜底有条件 = Object.entries(sp).some(([k, v]) => !不算兜底条件.has(k) && typeof v === "string" && v.trim() !== "");
-  const 公海里匹配 = 可能兜底 && total === 0 && 公海总数 && 兜底有条件
-    ? ((快 ? await 关键词分页(去公海筛, 1, 1) : null)?.total
-      ?? await 数公海筛())
+  // 没关键词、也没别的筛选（只剩「我参与的」「负责人」「项目模式的渠道」这类去公海时会清掉的条件、翻页、排序）：去掉它们数出来就是整个公海，和页签上的公海数一样，直接用，不查
+  // 用 去公海筛 判断：它清掉的 scope / salesOwnerId / 项目模式 channelId 自然不算条件
+  const 兜底有条件 = Object.entries(去公海筛).some(([k, v]) => !不算兜底条件.has(k) && typeof v === "string" && v.trim() !== "");
+  const 公海里匹配 = 可能兜底 && total === 0 && 公海总数
+    ? (兜底有条件
+      ? ((快 ? await 关键词分页(去公海筛, 1, 1) : null)?.total ?? await 数公海筛())
+      : 公海总数)
     : 0;
   const page = 快?.page ?? Math.min(正整数(sp.page, 1), Math.max(1, Math.ceil(total / pageSize)));
 
