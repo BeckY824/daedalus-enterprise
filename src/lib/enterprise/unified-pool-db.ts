@@ -231,11 +231,12 @@ async function 读公海骨架(me: { id: string; name: string; role?: string }, 
     // 进公海那一行单独取、不用 select 关联带（11-10）：关联加载是 客户 id IN (上面所有行)，一千多位时比取行本身还慢。
     // 同一个带限定的客户端、同样按入池时间新的在前取，就是上面那些客户的；对不上的（两句之间刚进公海的）下面按 id 补
     全取.不取客户 ? [] : prisma.customerPool.findMany({ ...(全取.只要 ? { where: { customer: { projects: { some: 全取.只要 } } } } : {}), orderBy: { at: "desc" }, select: 池要的 }),
-    // 项目公海里、客户不在客户公海的：客户在客户公海的那些已经算在客户行里（领客户即领项目）
+    // 项目公海里、客户不在客户公海的：客户在客户公海的那些已经算在客户行里（领客户即领项目）。
+    // 客户已删（进回收站）的不列（O1-N4c）：删客户时名下项目本就一起进回收站（软删客户），漏网的项目行不留在公海里被领成挂在已删客户下
     // 与人无关的全量放 3 秒短缓存（O1-N3，pool-count-cache）：公海项目人人看得到，范围层只多一段「原负责人回避」，
     // 那一段取出后在下面按人排掉（不把带回避的结果放进缓存）。看全部 = 不加范围层的条件；键带上渠道名单的 只要
     缓存分组数("公海项目行", [全取.只要 ?? null], () => 看全部(() => prisma.project.findMany({
-      where: { pooledAt: { not: null }, customer: { pool: null }, ...(全取.只要 ? { AND: [全取.只要] } : {}) },
+      where: { pooledAt: { not: null }, customer: { pool: null, deletedAt: null }, ...(全取.只要 ? { AND: [全取.只要] } : {}) },
       orderBy: { pooledAt: "desc" },
       select: {
         id: true, name: true, phase: true, node: true, result: true, pooledAt: true, ownerId: true, poolPrevOwnerId: true, customerId: true, createdAt: true, channelId: true,

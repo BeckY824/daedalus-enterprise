@@ -223,6 +223,14 @@ describe("公海里有 N 位匹配 = 公海页对应总数（含项目行、排�
     const 只项目 = await 数({ keyword: "匹配词项目" });
     expect(只项目.公海里匹配).toBe(await 公海总数("匹配词项目"));
     expect(只项目.公海里匹配).toBe(2);
+    // 客户已删（进回收站）、项目没删还在公海：公海页和客户页匹配数都不算这一行（O1-N4c）
+    const 已删客户 = await 客户("匹配词已删客户", 乙.id);
+    await 项目("匹配词已删客户项目", 已删客户.id);
+    await prisma.customer.update({ where: { id: 已删客户.id }, data: { deletedAt: new Date() } });
+    const 删后 = await 数({ keyword: "匹配词项目" });
+    expect(删后.公海里匹配).toBe(2);
+    expect(await 公海总数("匹配词项目")).toBe(2);
+    expect((await 读公海页({ id: 甲.id, name: 甲.name, role: "SALES" }, { keyword: "已删客户" }, 1, 20)).行.length).toBe(0);
     // 无关键词：客户页签有客户，不出兜底
     await 客户("甲自己的", 甲.id);
     expect((await 数({})).公海里匹配).toBe(0);
