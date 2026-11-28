@@ -36,17 +36,20 @@ describe("换 id 不出骨架", () => {
     expect(带参, "这些 loading 会让换一个 id 时先出骨架、旧内容立刻没了").toEqual([]);
   });
 
-  it("客户详情、项目详情的中栏名单在 (detail)/layout 里、自带 Suspense，[id] 页本身什么都不画", () => {
+  it("客户详情、项目详情的中栏名单在 (detail)/layout 里、自带 Suspense，[id] 页本身不画名单（只下发版本号）", () => {
     for (const 段 of ["customers", "projects"]) {
       expect(有(`@pane/${段}/[id]/page.tsx`), `@pane/${段}/[id]/page.tsx 不该再有：名单放在 page 里每换一位都重挂`).toBe(false);
       const 层 = 读(`@pane/${段}/(detail)/layout.tsx`);
       expect(层).toMatch(/<Suspense fallback=\{<CustomerRosterSkeleton[^>]*\/>\}>/);
       expect(层).toMatch(段 === "customers" ? /<学员名单 \/>/ : /<项目名单 \/>/);
-      expect(读(`@pane/${段}/(detail)/[id]/page.tsx`)).toMatch(/return null;/);
+      // 这页不画名单，只下发「这页渲染时的版本」（O3 PR-D 审查修复 1），什么都不显示
+      expect(读(`@pane/${段}/(detail)/[id]/page.tsx`)).toMatch(/<RenderedVersion /);
+      expect(读(`@pane/${段}/(detail)/[id]/page.tsx`)).not.toMatch(/<(学员|项目)名单/);
     }
     // /customers 列表页没有中栏，不能被名单 layout 套住
     expect(有("@pane/customers/layout.tsx")).toBe(false);
-    expect(读("@pane/customers/page.tsx")).toMatch(/无中栏/);
+    expect(读("@pane/customers/page.tsx")).toMatch(/<RenderedVersion /);
+    expect(读("@pane/customers/page.tsx")).not.toMatch(/<(学员|项目)名单/);
   });
 
   it("壳里正文不按地址重挂（不用 key={底下那页}），淡入走 PageFade", () => {

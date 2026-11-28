@@ -25,7 +25,7 @@ const plugin: Plugin = { name: "ent-notice-bell", setup(b) {
     const 记=(x)=>{(window.__调||(window.__调=[])).push(x)};
     const 未=()=>window.__通知.filter(r=>!r.read).length;
     export const 读我的通知=async()=>{记('读');return {行们:window.__通知.map(r=>({...r})),未读:未()}};
-    export const 读未读通知数=async()=>未();
+    export const 读通知动静=async()=>({未读:未(),最新:window.__最新||0});
     export const 标已读=async(id)=>{记('标:'+id);window.__通知=window.__通知.map(r=>r.id===id?{...r,read:true}:r);return 未()};
     export const 全部标已读=async()=>{记('全部');window.__通知=window.__通知.map(r=>({...r,read:true}));return 0};
   `);

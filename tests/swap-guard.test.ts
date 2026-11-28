@@ -2,7 +2,7 @@
  * 发版不打断（PR-C，lib/swap-guard.ts）：静默换版的条件、登记表、请求计数、滚动位置。
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { 前台空闲毫秒, 后台满毫秒, 登记忙, 登记未提交, 撤未提交, 清登记, 能静默换, 忙数, 未提交数, 取现场, type 换版现场 } from "@/lib/swap-guard";
+import { 前台空闲毫秒, 后台满毫秒, 登记忙, 登记未提交, 撤未提交, 清登记, 能静默换, 忙数, 未提交数, 取现场, 现在忙, type 换版现场 } from "@/lib/swap-guard";
 
 const 空闲现场: 换版现场 = { 后台多久: null, 空闲多久: 0, 忙: 0, 弹层: false, 未提交: 0, 打字中: false };
 
@@ -322,5 +322,21 @@ describe("O3 PR-C 审查修复 1：忙的登记补漏", () => {
     expect(m.忙数()).toBe(1);
     await r.停();
     expect(m.忙数()).toBe(0);
+  });
+});
+
+describe("现在忙（PR-D 后台刷新判忙，和静默换版同一套）", () => {
+  afterEach(() => 清登记());
+  it("有进行中的事 / 未提交录入就忙，都空就不忙", () => {
+    清登记();
+    expect(现在忙()).toBe(false);
+    const 放 = 登记忙("t");
+    expect(现在忙()).toBe(true);
+    放();
+    expect(现在忙()).toBe(false);
+    登记未提交("k");
+    expect(现在忙()).toBe(true);
+    撤未提交("k");
+    expect(现在忙()).toBe(false);
   });
 });

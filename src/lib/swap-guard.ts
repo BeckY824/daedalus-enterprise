@@ -163,6 +163,11 @@ export function 能静默换(x: 换版现场): boolean {
   return x.空闲多久 >= 前台空闲毫秒;
 }
 
+/** 此刻有没有不能被打断的事（进行中的请求 / 弹层 / 未提交录入 / 正在打字）：后台刷新（PR-D）判忙用，和静默换版同一套 */
+export function 现在忙(): boolean {
+  return 忙数() > 0 || 有弹层() || 未提交数() > 0 || 正在打字();
+}
+
 export function 取现场(后台起: number | null, 动静: number, 现在 = Date.now()): 换版现场 {
   return {
     后台多久: 后台起 === null ? null : 现在 - 后台起,
