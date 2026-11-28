@@ -669,7 +669,7 @@ it("PR-C 三审：松手后开始录音请求才失败（编号拿不到）→ �
   await expect.poll(async () => {
     await page.clock.runFor(1_000);
     return page.evaluate(() => (window as unknown as { __忙数: () => number }).__忙数());
-  }, { timeout: 15_000, intervals: [100, 200, 400] }).toBe(0);
+  }, { timeout: 15_000, interval: 200 }).toBe(0);
   expect(await page.getByTestId("ptt-panel").innerText()).toMatch(/没开始录|忙/);
   expect(errors).toEqual([]);
   await page.close();
