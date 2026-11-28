@@ -121,7 +121,8 @@ test.describe("全局 AI 面板", () => {
 
   test("首页的对话列表也能拖", async ({ page }) => {
     await 登录(page);
-    const 列 = page.locator(".pane-chat");
+    // 流式首屏里藏着一份副本，只取可见那份，免得严格模式解析到 2 个元素
+    const 列 = page.locator(".pane-chat:visible");
     await expect(列).toBeVisible();
     const 原 = (await 列.boundingBox())!.width;
     const 缝 = page.getByRole("separator", { name: /调整对话列表宽度/ });
