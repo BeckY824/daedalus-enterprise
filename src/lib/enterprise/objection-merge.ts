@@ -45,6 +45,6 @@ export async function 通知合并异议终止(终止: readonly EntTransferObjec
   for (const 行 of 终止) {
     const 异议人 = 异议人们.get(行.objectorUserId) ?? "";
     const 裁 = (现裁.get(行.id)?.ids ?? (行.judgeIds ? (JSON.parse(行.judgeIds) as string[]) : [])).filter((x) => x !== 行.objectorUserId && x !== undefined);
-    await notify(裁, { kind: "异议", title: `合并已撤回：${异议人}对${行.kind}「${行.targetName}」的合并异议因撤回终止`, body: `${谁撤}撤回了这次合并，无需再裁定`, link: "/objections", key: `objection-void:${行.id}:judge` });
+    await notify(裁, { kind: "异议", title: `合并已撤回：${异议人}对项目「${行.targetName}」的合并异议因撤回终止`, body: `${谁撤}撤回了这次合并，无需再裁定`, link: "/objections", key: `objection-void:${行.id}:judge` });
   }
 }

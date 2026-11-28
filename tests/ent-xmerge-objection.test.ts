@@ -24,6 +24,7 @@ import { 裁定, 标记已手工退回, 待我裁定, 待手工退回们, 特殊
 import { 客户有未裁定异议, 项目有未裁定异议, 读全部待裁定行, 挡着项目的异议 } from "@/lib/enterprise/objection-guard";
 import { 读合并台账, 导出合并台账 } from "@/lib/enterprise/merge-ledger";
 import { 记项目合并异议入口 } from "@/lib/enterprise/objection";
+import { 钟上待裁提醒, 钟上手工退回提醒 } from "@/lib/enterprise/objection-remind";
 
 type 人 = { id: string; name: string; role: string };
 let 老板: 人, 销管: 人, 线总: 人, 乙: 人, 丙: 人, 丁: 人, 渠运: 人;
@@ -258,25 +259,108 @@ describe("阶段 4 ④⑤⑥：裁定", () => {
     const 台账 = await 读合并台账(prisma, 老板, null);
     expect(台账.ok && 台账.行们.find((x) => x.id === mergeId)?.撤回路径).toBe("异议裁定撤回");
     await 等通知推完();
-    expect(await raw.entNotice.count({ where: { userId: 丙.id, dedupeKey: `merge-project-undo:${mergeId}` } })).toBe(1);
+    // 通知（必改 2）：合并类单独一组，只发异议人（丙）+ 留下负责人（乙）各一条，文案按合并；不沿用转让那组（客户负责人、发起人不另发，也不说「不再归你」）
+    expect(await raw.entNotice.count({ where: { dedupeKey: { startsWith: `objection-done:${行!.id}` } } })).toBe(2);
+    expect(await raw.entNotice.count({ where: { dedupeKey: `merge-project-undo:${mergeId}` } })).toBe(0);
+    const 丙收 = await raw.entNotice.findFirstOrThrow({ where: { userId: 丙.id, dedupeKey: `objection-done:${行!.id}:objector` } });
+    expect(丙收.title).toMatch(/合并异议已裁定：撤回，合并已撤回/);
+    expect(丙收.title).not.toContain("项目合并「");
+    const 乙收 = await raw.entNotice.findFirstOrThrow({ where: { userId: 乙.id, dedupeKey: `objection-done:${行!.id}:taker` } });
+    expect(乙收.title).toContain("合并已撤回");
+    expect(乙收.title).toContain("回到丙名下");
+    expect(乙收.title).not.toContain("不再归你");
+    expect(await raw.entNotice.count({ where: { userId: 销管.id, dedupeKey: { startsWith: `objection-done:${行!.id}` } } })).toBe(0);
   });
-  it("撤回但不满足（留下项目进了回收站）：转待手工退回；没撤合并就点已手工退回被拦，撤了才行", async () => {
-    const { a, 行, mergeId } = await 提好();
+  it("撤回但不满足（留下项目进了回收站）：转待手工退回；点「已手工退回」先核，撤不了回原因、什么都不改；恢复后点一下撤回合并并结案", async () => {
+    const { a, b, 行, mergeId } = await 提好();
     await raw.project.update({ where: { id: a }, data: { deletedAt: new Date() } });
     expect(await 裁定(线总, 行!.id, "撤回", "不该并")).toMatchObject({ ok: true, 结果: "待手工退回" });
     expect((await 单(mergeId)).status).toBe("已合并");
     expect((await 待手工退回们()).map((x) => x.类别)).toEqual(["项目合并"]);
-    expect(await 标记已手工退回(老板, 行!.id, "已手工撤回合并")).toMatchObject({ ok: false, error: expect.stringContaining("还没撤回") });
+    expect(await 标记已手工退回(老板, 行!.id, "已手工撤回合并")).toMatchObject({ ok: false, error: expect.stringContaining("在回收站里") });
+    expect((await 单(mergeId)).status).toBe("已合并");
+    expect((await raw.entTransferObjection.findUniqueOrThrow({ where: { id: 行!.id } })).status).toBe("待手工退回");
+    await raw.project.update({ where: { id: a }, data: { deletedAt: null } });
+    expect(await 标记已手工退回(老板, 行!.id, "已恢复，撤回合并")).toMatchObject({ ok: true });
+    expect(await 单(mergeId)).toMatchObject({ status: "已撤回", undoneById: 老板.id });
+    expect((await raw.entTransferObjection.findUniqueOrThrow({ where: { id: 行!.id } })).status).toBe("已退回");
+    expect((await raw.project.findUniqueOrThrow({ where: { id: b } })).result).toBeNull();
+    // 手工路径同一组通知：异议人、留下负责人各一条（:hand），不发客户负责人
+    await 等通知推完();
+    const 手工们 = await raw.entNotice.findMany({ where: { dedupeKey: { startsWith: `objection-done:${行!.id}`, endsWith: ":hand" } } });
+    expect(手工们.map((n) => [n.userId, n.dedupeKey.split(":").slice(2).join(":")]).sort()).toEqual([[丙.id, "objector:hand"], [乙.id, "taker:hand"]].sort());
+    expect(手工们.every((n) => !n.title.includes("不再归你"))).toBe(true);
+    expect(await 读合并台账(prisma, 老板, null).then((t) => t.ok && t.行们.find((x) => x.id === mergeId)?.撤回路径)).toBe("异议裁定撤回");
+  });
+  it("第 31 天裁定撤回、A 在回收站 → 待手工退回 → 恢复 A → 标记已手工退回：合并单已撤、异议结案（超 30 天也不卡死）", async () => {
+    const { a, 行, mergeId } = await 提好();
+    const 第31天 = new Date(周五下午.getTime() + 31 * 天);
+    // 异议期 30 天：提的那一刻在期内，裁定落在第 31 天（裁定不再校期限）
+    await raw.project.update({ where: { id: a }, data: { deletedAt: new Date() } });
+    expect(await 裁定(线总, 行!.id, "撤回", "不该并", 第31天)).toMatchObject({ ok: true, 结果: "待手工退回" });
+    // 单个「撤回项目合并」已过 30 天，系统管理员也撤不了
+    await raw.project.update({ where: { id: a }, data: { deletedAt: null } });
+    expect(await 撤回项目合并(prisma, mergeId, 老板, 第31天)).toMatchObject({ ok: false });
+    expect(await 标记已手工退回(老板, 行!.id, "撤回合并并结案", 第31天)).toMatchObject({ ok: true });
+    expect(await 单(mergeId)).toMatchObject({ status: "已撤回", undoneById: 老板.id });
+    expect((await raw.entTransferObjection.findUniqueOrThrow({ where: { id: 行!.id } })).status).toBe("已退回");
+    expect(await 待手工退回们()).toEqual([]);
+  });
+  it("不满足自动撤回：A 又被并进别的项目 → 待手工退回；先撤那次再点才行", async () => {
+    const { a, c, 行, mergeId } = await 提好();
+    const 新 = await 项目(乙.id, c);
+    const 另 = await raw.entCustomerMerge.create({ data: { kind: "项目", fromId: a, intoId: 新, status: "已合并", byUserId: 乙.id, fromName: "A", detail: JSON.stringify({ 留下名: "新项目" }), at: 周五下午 } });
+    expect(await 裁定(线总, 行!.id, "撤回", "不该并", 周五下午)).toMatchObject({ ok: true, 结果: "待手工退回" });
+    expect((await 单(mergeId)).status).toBe("已合并");
+    expect(await 标记已手工退回(老板, 行!.id, "x", 周五下午)).toMatchObject({ ok: false, error: expect.stringContaining("已并入") });
+    await raw.entCustomerMerge.update({ where: { id: 另.id }, data: { status: "已撤回" } });
+    expect(await 标记已手工退回(老板, 行!.id, "x", 周五下午)).toMatchObject({ ok: true });
+    expect((await 单(mergeId)).status).toBe("已撤回");
+  });
+  it("不满足自动撤回：客户在转让交接中 → 待手工退回；交接结束后能撤回并结案", async () => {
+    const { c, 行, mergeId } = await 提好();
+    const 交 = await raw.entHandover.create({ data: { kind: "转让", fromUserId: 乙.id, toUserId: 丁.id, byUserId: 乙.id, customerIds: JSON.stringify([c]), status: "待确认" } });
+    expect(await 裁定(线总, 行!.id, "撤回", "不该并", 周五下午)).toMatchObject({ ok: true, 结果: "待手工退回" });
+    expect((await 单(mergeId)).status).toBe("已合并");
+    expect(await 标记已手工退回(老板, 行!.id, "x", 周五下午)).toMatchObject({ ok: false, error: expect.stringContaining("转让交接中") });
+    await raw.entHandover.update({ where: { id: 交.id }, data: { status: "已撤回" } });
+    expect(await 标记已手工退回(老板, 行!.id, "x", 周五下午)).toMatchObject({ ok: true });
+    expect((await 单(mergeId)).status).toBe("已撤回");
+  });
+  it("先由系统管理员自己撤了合并、事后才点已手工退回：只结案，台账撤回路径仍是系统管理员撤", async () => {
+    const { a, 行, mergeId } = await 提好();
+    await raw.project.update({ where: { id: a }, data: { deletedAt: new Date() } });
+    await 裁定(线总, 行!.id, "撤回", "不该并");
     await raw.project.update({ where: { id: a }, data: { deletedAt: null } });
     expect(await 撤回项目合并(prisma, mergeId, 老板)).toMatchObject({ ok: true });
-    expect(await 标记已手工退回(老板, 行!.id, "已手工撤回合并")).toMatchObject({ ok: true });
+    expect(await 标记已手工退回(老板, 行!.id, "已自己撤")).toMatchObject({ ok: true });
     expect((await raw.entTransferObjection.findUniqueOrThrow({ where: { id: 行!.id } })).status).toBe("已退回");
+    expect(await 读合并台账(prisma, 老板, null).then((t) => t.ok && t.行们.find((x) => x.id === mergeId)?.撤回路径)).toBe("系统管理员撤");
+  });
+  it("裁定过 / 因撤回终止的行再裁：话按合并说", async () => {
+    const { 行, mergeId } = await 提好();
+    await 撤回项目合并(prisma, mergeId, 销管);
+    expect(await 裁定(老板, 行!.id, "撤回", "x")).toMatchObject({ ok: false, error: "这次合并已撤回，这条异议已终止，不用再裁" });
+  });
+  it("提醒：合并类行的标题 / 正文是「合并异议」，对象叫「项目「…」」不出「项目合并「」；待手工退回汇总提醒补一句合并怎么点", async () => {
+    const { 行 } = await 提好();
+    await raw.entTransferObjection.update({ where: { id: 行!.id }, data: { submittedAt: 京("2026-12-01 10:00") } });
+    await 钟上待裁提醒(京("2026-12-09 09:00"));
+    const n = await raw.entNotice.findFirstOrThrow({ where: { userId: 线总.id, dedupeKey: { startsWith: "objection-remind:" } } });
+    expect(n.title).toContain("合并异议已");
+    expect(n.title).not.toContain("转让异议");
+    expect(n.title + n.body).not.toContain("项目合并「");
+    expect(n.body).toContain("的合并异议自提出起");
+    await raw.entTransferObjection.update({ where: { id: 行!.id }, data: { status: "待手工退回", judgedAt: 京("2026-12-01 10:00"), judgedById: 线总.id, judgeNote: "撤回" } });
+    await 钟上手工退回提醒(京("2026-12-09 09:00"));
+    const m = await raw.entNotice.findFirstOrThrow({ where: { userId: 老板.id, dedupeKey: { startsWith: "objection-manual-return:" } } });
+    expect(m.body).toContain("撤回合并并结案");
   });
   it("特殊裁定台账：项目格是被并项目名", async () => {
     const { 行, b } = await (async () => { const x = await 直接并(undefined, undefined, 老板); await 提(x.行!.id); return x; })();
     expect(await 裁定(老板, 行!.id, "维持", "没问题")).toMatchObject({ ok: true });
     const 台 = await 特殊裁定台账(老板.id);
-    expect(台[0]).toMatchObject({ 类型: "本人发起", 项目: (await raw.project.findUniqueOrThrow({ where: { id: b } })).name });
+    expect(台[0]).toMatchObject({ 类型: "本人发起", 类别: "项目合并", 项目: (await raw.project.findUniqueOrThrow({ where: { id: b } })).name });
   });
   it("待我裁定 / 全部待裁定认项目合并类行", async () => {
     const { 行 } = await 提好();

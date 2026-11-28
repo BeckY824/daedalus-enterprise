@@ -27,7 +27,7 @@ import { recordAudit } from "@/lib/audit";
 import { 是日期, 创建时间段 } from "@/lib/custom-date-range";
 import type { 合并人 } from "./customer-merge";
 
-import { 异议期天数 } from "./objection-core";
+import { 异议期天数, 撤合并结案记号 } from "./objection-core";
 
 type 库 = Pick<PrismaClient, "entCustomerMerge" | "user" | "customer"> & Partial<Pick<PrismaClient, "entProjectMergeRequest" | "entTransferObjection">>;
 type 结果<T> = ({ ok: true } & T) | { ok: false; error: string };
@@ -138,10 +138,11 @@ export async function 读合并台账(db: 库, me: 合并人, 条件: 台账条�
   const 申请ids = [...new Set(单们.map((m) => 字(明们.get(m.id)?.跨负责人?.申请id)).filter(Boolean))];
   const [申请们, 裁定撤回们] = await Promise.all([
     申请ids.length && db.entProjectMergeRequest ? 看全部(() => db.entProjectMergeRequest!.findMany({ where: { id: { in: 申请ids } }, select: { id: true, at: true } })) : [],
-    db.entTransferObjection ? 看全部(() => db.entTransferObjection!.findMany({ where: { mergeId: { in: 单们.filter((m) => m.status === "已撤回" && 明们.get(m.id)?.跨负责人).map((m) => m.id) }, status: { in: ["撤回", "已退回"] } }, select: { mergeId: true } })) : [],
+    db.entTransferObjection ? 看全部(() => db.entTransferObjection!.findMany({ where: { mergeId: { in: 单们.filter((m) => m.status === "已撤回" && 明们.get(m.id)?.跨负责人).map((m) => m.id) }, status: { in: ["撤回", "已退回"] } }, select: { mergeId: true, status: true, judgeNote: true } })) : [],
   ]);
   const 申请时间of = new Map(申请们.map((a) => [a.id, a.at]));
-  const 异议撤回的 = new Set(裁定撤回们.map((x) => x.mergeId));
+  // 「已退回」只有在「撤回合并并结案」那一步里把合并单撤了的才算异议裁定撤回（judgeNote 带这句）；先由系统管理员自己撤了合并、事后才点已手工退回的，仍是「系统管理员撤」
+  const 异议撤回的 = new Set(裁定撤回们.filter((x) => x.status === "撤回" || (x.judgeNote ?? "").includes(撤合并结案记号)).map((x) => x.mergeId));
   const 叫 = new Map(人们.map((u) => [u.id, u.name]));
   const 人名 = (id: string | null | undefined) => (id ? 叫.get(id) ?? "（已删除的账号）" : "");
   const 客们 = new Map(客户们.map((c) => [c.id, c]));

@@ -90,11 +90,11 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
           {!手工 && !全 && r.本人接手 && <span className="obj-ell obj-mut" data-testid="obj-self-note">本人接手、本人裁定（只有你一位系统管理员，会记进特殊裁定台账）</span>}
           {!手工 && r.能裁 === false && <span className="obj-ell obj-mut" data-testid="obj-recuse" title={`你是这次的发起人 / ${事 === "合并" ? "留下负责人" : "接手人"} / 异议人，需回避；现由 ${r.现裁定人 ?? ""} 裁定`}>你是这次的发起人 / {事 === "合并" ? "留下负责人" : "接手人"} / 异议人，需回避；现由 {r.现裁定人} 裁定</span>}
           {手工 && <span className="obj-ell obj-mut" title={`${r.裁定人} 裁定撤回：${r.裁定说明}`}>{r.裁定人} 裁定撤回：{r.裁定说明}</span>}
-          {手工 && 事 === "合并" && <span className="obj-ell obj-mut" data-testid="obj-hand-merge-note" title="先到被并项目详情里撤回这次合并，再点「已手工退回」">先到被并项目详情里撤回这次合并，再点「已手工退回」</span>}
+          {手工 && 事 === "合并" && <span className="obj-ell obj-mut" data-testid="obj-hand-merge-note" title="点「撤回合并并结案」：系统会先核能不能撤，撤不了会写明原因（先处理掉再点）">点「撤回合并并结案」：系统会先核能不能撤，撤不了会写明原因（先处理掉再点）</span>}
           {手工 && r.退回说明 && <span className="obj-ell obj-mut" title={r.退回说明}>{r.退回说明}</span>}
         </div>
         {手工
-          ? <Button onClick={() => set裁({ 行: r, 动作: "手工" })}>已手工退回</Button>
+          ? <Button onClick={() => set裁({ 行: r, 动作: "手工" })}>{事 === "合并" ? "撤回合并并结案" : "已手工退回"}</Button>
           : r.能裁 === false ? null
           : (
             <div className="obj-btns">
@@ -130,7 +130,7 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
                 <span className="obj-ell obj-mut" title={r.理由}>理由：{r.理由}</span>
                 <span className="obj-ell obj-mut" title={已提话(r)}>{已提话(r)}</span>
               </div>
-              <Tag>{r.状态}</Tag>
+              {r.状态 !== "因撤回终止" && <Tag>{r.状态}</Tag>}
             </div>
           ))}
         </Card>
@@ -140,7 +140,7 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
   const 有裁定页 = 待裁.length > 0 || 管理员 || 首个页签 === "judge";
   return (
     <div>
-      <PageHead title={有合并 ? "转让与合并异议" : "转让异议"} subtitle={`客户转让后，被换掉的客户负责人、被随客户转走项目的同事${有合并 ? "，以及项目被并走的原负责人" : ""}，${天数} 天内可以提异议；由让这次${有合并 ? "转让 / 合并" : "转让"}生效的那位的上一级裁定`} />
+      <PageHead title="转让与合并异议" subtitle={`客户转让后，被换掉的客户负责人、被随客户转走项目的同事${有合并 ? "，以及项目被并走的原负责人" : ""}，${天数} 天内可以提异议；由让这次${有合并 ? "转让 / 合并" : "转让"}生效的那位的上一级裁定`} />
       {有合并 && <Segmented<类别筛> className="obj-kind" aria-label="按类别筛" value={筛} onChange={set筛} options={["全部", "转让", "合并异议"]} />}
       <Tabs
         activeKey={页签} onChange={(k) => {
@@ -151,32 +151,32 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
         items={[
           { key: "mine", label: "我的异议", children: 我的页 },
           ...(有裁定页 ? [{
-            key: "judge", label: `待我裁定${数(待裁.length)}`,
+            key: "judge", label: `待我裁定${数(过(待裁, 筛).length)}`,
             children: <Card title="待我裁定（你是这条异议的裁定人）" className="obj-card" data-testid="obj-judge">{过(待裁, 筛).length ? 过(待裁, 筛).map((r) => 裁定行(r, false)) : <Empty description="没有等你裁定的异议" />}</Card>,
           }] : []),
           ...(管理员 ? [{
-            key: "all", label: `全部待裁定${数(全部.length)}`,
+            key: "all", label: `全部待裁定${数(过(全部, 筛).length)}`,
             children: <Card title="全部待裁定（系统管理员兜底，谁的都能裁）" className="obj-card" data-testid="obj-all">{过(全部, 筛).length ? 过(全部, 筛).map((r) => 裁定行(r, false, true)) : <Empty description="没有待裁定的异议" />}</Card>,
           }] : []),
           ...(管理员 ? [{
-            key: "hand", label: `待手工退回${数(待手工.length)}`,
+            key: "hand", label: `待手工退回${数(过(待手工, 筛).length)}`,
             children: <Card title="待手工退回（裁定撤回、但不满足自动退回的条件）" className="obj-card" data-testid="obj-hand">{过(待手工, 筛).length ? 过(待手工, 筛).map((r) => 裁定行(r, true)) : <Empty description="没有等手工退回的" />}</Card>,
           }] : []),
           ...(管理员 ? [{
-            key: "special", label: `特殊裁定${台账已查 ? 数(台账.length, 台账条数上限) : ""}`,
+            key: "special", label: `特殊裁定${台账已查 ? 数(过(台账, 筛).length, 台账条数上限) : ""}`,
             children: (
               <Card title="特殊裁定台账" className="obj-card" data-testid="obj-special"
                 extra={<DatePicker picker="month" allowClear={false} aria-label="按月筛选" value={dayjs(`${月}-01`)} format="YYYY-MM"
                   onChange={(d) => { if (d) router.push(`/objections?tab=special&month=${d.format("YYYY-MM")}`); }} />}>
                 <div className="obj-mut" data-testid="obj-special-note">本人发起、本人裁定 / 本人接手、本人裁定的记录，每月看一次；当前只看 {月}{月是默认 ? "（没选月份，默认当前月）" : ""}。</div>
                 {台账满了(台账.length) && <div className="obj-mut" data-testid="obj-special-cap">记录较多，只列最近 {台账条数上限} 条，请按月筛选。</div>}
-                {!台账已查 ? <div className="obj-mut" data-testid="obj-special-loading"><Spin size="small" /> 正在读取台账…</div> : 台账.length ? 台账.map((r) => {
+                {!台账已查 ? <div className="obj-mut" data-testid="obj-special-loading"><Spin size="small" /> 正在读取台账…</div> : 过(台账, 筛).length ? 过(台账, 筛).map((r) => {
                   const 标 = r.类型 === "本人发起" ? "本人发起、本人裁定" : "本人接手、本人裁定";
                   const 客 = r.客户名 && r.客户名 !== r.客户编号 ? `${r.客户名}（${r.客户编号}）` : r.客户编号;
                   return (
                     <div key={r.id} className="obj-row" data-testid="obj-special-row">
                       <div className="obj-main">
-                        <span className="obj-ell" title={`${客} · ${r.项目}`}>{客} · {r.项目}</span>
+                        <span className="obj-ell" title={`${客} · ${r.项目}`}>{合并(r.类别) && <Tag>合并异议</Tag>}{客} · {r.项目}</span>
                         <span className="obj-ell obj-mut" title={`${r.裁定于} · ${标}：${r.裁定人}`}>{r.裁定于} · {标}：{r.裁定人}</span>
                         <span className="obj-ell obj-mut" title={`${r.异议人} 的异议理由：${r.异议理由}`}>异议人 {r.异议人}：{r.异议理由}</span>
                         <span className="obj-ell obj-mut" title={r.裁定说明}>裁定说明：{r.裁定说明}</span>
@@ -203,7 +203,7 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
         )}
       </Modal>
       <Modal
-        open={!!裁} title={裁?.动作 === "手工" ? "已手工退回" : `裁定：${裁?.动作 ?? ""}`} onCancel={关裁} onOk={交裁} okText={裁?.动作 === "手工" ? "确认已退回" : 裁?.动作} cancelText="取消"
+        open={!!裁} title={裁?.动作 === "手工" ? (裁.行 && 合并(裁.行.类别) ? "撤回合并并结案" : "已手工退回") : `裁定：${裁?.动作 ?? ""}`} onCancel={关裁} onOk={交裁} okText={裁?.动作 === "手工" ? (裁.行 && 合并(裁.行.类别) ? "撤回合并并结案" : "确认已退回") : 裁?.动作} cancelText="取消"
         okButtonProps={{ danger: 裁?.动作 === "撤回", disabled: !说明.trim() }} confirmLoading={裁忙} destroyOnHidden>
         {裁 && (
           <div className="obj-form" data-testid="obj-judge-form">
@@ -215,7 +215,7 @@ export default function ObjectionsView({ 能提, 已提, 打开, 天数, 上限,
             {裁.动作 === "撤回" && (
               <div className="obj-mut" data-testid="obj-judge-hint">
                 {合并(裁.行.类别) && 裁.行.能自动退
-                  ? `撤回：撤回这次合并，「${裁.行.对象}」回到 ${裁.行.异议人} 名下。会通知 ${裁.行.异议人}、${裁.行.接手人}、${裁.行.发起人}。`
+                  ? `撤回：撤回这次合并，「${裁.行.对象}」回到 ${裁.行.异议人} 名下。会通知 ${裁.行.异议人}、${裁.行.接手人}（留下负责人）。`
                   : 裁.行.能自动退
                   ? `撤回：退回 ${裁.行.异议人}，期间 ${裁.行.接手人} 记的跟进留在项目上；已计提的提成不动，未计提的随项目回；待办跟项目走，新线索验证钟从头计时。会通知 ${裁.行.异议人}、${裁.行.接手人}、客户负责人、${裁.行.发起人}。`
                   : `${裁.行.退回说明}。会通知 ${裁.行.异议人}、${裁.行.发起人} 和系统管理员。`}

@@ -113,16 +113,16 @@ for (const 宽 of [1280, 390]) {
 
  
 for (const 宽 of [1280, 390]) {
-  it(`${宽}：待手工退回 —— 合并类行带原因和「先到被并项目详情里撤回这次合并」，已手工退回 → 已手工退回(id, 说明)`, async () => {
+  it(`${宽}：待手工退回 —— 合并类行带原因和「撤回合并并结案」入口，点它 → 已手工退回(id, 说明)`, async () => {
     const { page, 错 } = await open(宽, { 待手工: [待裁({ id: "h1", 状态: "待手工退回", 能自动退: false, 退回说明: "留下的线索又被并走了", 裁定人: "测试条线总管理", 裁定说明: "维持不了" })], 管理员: true, 首个页签: "hand" });
     try {
       const 手 = page.getByTestId("obj-hand-row");
       await 手.waitFor();
       expect(await 手.innerText()).toContain("留下的线索又被并走了");
-      expect(await 手.getByTestId("obj-hand-merge-note").innerText()).toContain("先到被并项目详情里撤回这次合并");
-      await 手.getByRole("button", { name: "已手工退回" }).click();
+      expect(await 手.getByTestId("obj-hand-merge-note").innerText()).toContain("撤回合并并结案");
+      await 手.getByRole("button", { name: "撤回合并并结案" }).click();
       await page.getByLabel("裁定说明").fill("已撤回合并");
-      await page.locator(".ant-modal").getByRole("button", { name: "确认已退回" }).click();
+      await page.locator(".ant-modal").getByRole("button", { name: "撤回合并并结案" }).click();
       await page.waitForFunction(() => ((window as unknown as { __调?: unknown[][] }).__调 ?? []).length > 0);
       expect(await 调(page)).toEqual([["已手工退回", "h1", "已撤回合并"]]);
       expect(await 横滚(page)).toBe(false);
@@ -131,12 +131,43 @@ for (const 宽 of [1280, 390]) {
   }, 60_000);
 }
 
-it("没有合并类行：标题仍是「转让异议」、不摆类别筛选（老界面不变）", async () => {
+it("没有合并类行：不摆类别筛选；页头与导航页名同一个「转让与合并异议」", async () => {
   const { page, 错 } = await open(1280, { 能提: [转让()] });
   try {
     await page.getByTestId("obj-open").waitFor();
-    expect(await page.getByText("转让异议", { exact: true }).count()).toBe(1);
+    expect(await page.getByText("转让与合并异议", { exact: true }).count()).toBe(1);
     expect(await page.locator(".ant-segmented").count()).toBe(0);
     expect(错).toEqual([]);
   } finally { await page.close(); }
 }, 30_000);
+
+it("筛选后页签数字按筛后条数；因撤回终止不再重复出状态标签；特殊裁定台账合并行带「合并异议」标签", async () => {
+  const { page, 错 } = await open(1280, {
+    管理员: true, 首个页签: "all",
+    已提: [异议({ id: "o2", 状态: "因撤回终止", 理由: "我的线索", 裁定说明: "因撤回终止" })],
+    全部: [待裁({ id: "a1" }), 待裁({ id: "a2", 类别: "客户", 对象: "编造客户乙" }), 待裁({ id: "a3", 类别: "客户", 对象: "编造客户丙" })],
+    待手工: [待裁({ id: "h1", 状态: "待手工退回", 能自动退: false, 退回说明: "x" }), 待裁({ id: "h2", 类别: "客户", 对象: "编造客户丁", 状态: "待手工退回" })],
+    台账: [{ id: "t1", 裁定于: "2026-11-20 10:00", 客户名: "编造客户甲", 客户编号: "C-1", 项目: "被并的线索", 类别: "项目合并", 类型: "本人发起", 发起人: "甲", 接手人: "乙", 裁定人: "甲", 异议人: "丙", 异议理由: "x", 结果: "维持", 裁定说明: "y" }, { id: "t2", 裁定于: "2026-11-21 10:00", 客户名: "编造客户乙", 客户编号: "C-2", 项目: "（客户）", 类别: "客户", 类型: "本人接手", 发起人: "甲", 接手人: "乙", 裁定人: "乙", 异议人: "丙", 异议理由: "x", 结果: "维持", 裁定说明: "y" }],
+    台账已查: true,
+  });
+  try {
+    const 页签 = (名: RegExp) => page.getByRole("tab", { name: 名 });
+    await 页签(/全部待裁定/).waitFor();
+    expect(await 页签(/全部待裁定/).innerText()).toContain("（3）");
+    await page.locator(".ant-segmented").getByText("合并异议").click();
+    expect(await 页签(/全部待裁定/).innerText()).toContain("（1）");
+    expect(await 页签(/待手工退回/).innerText()).toContain("（1）");
+    expect(await page.getByTestId("obj-all-row").count()).toBe(1);
+    await 页签(/特殊裁定/).click();
+    expect(await 页签(/特殊裁定/).innerText()).toContain("（1）");
+    const 行 = page.getByTestId("obj-special-row");
+    expect(await 行.count()).toBe(1);
+    expect(await 行.innerText()).toContain("合并异议");
+    await 页签(/我的异议/).click();
+    await page.locator(".ant-segmented").getByText("全部").click();
+    const 已 = page.getByTestId("obj-sent-row");
+    expect(await 已.innerText()).toContain("这次合并已撤回，这条异议不用再裁");
+    expect(await 已.locator(".ant-tag").allInnerTexts()).toEqual(["合并异议"]);
+    expect(错).toEqual([]);
+  } finally { await page.close(); }
+}, 60_000);

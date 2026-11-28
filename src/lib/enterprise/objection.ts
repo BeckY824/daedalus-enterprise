@@ -16,7 +16,7 @@ import { notify } from "./notify";
 import { 读组织 } from "./org";
 import { 客户显名, 显名列 } from "./customer-title";
 import type { 同事待分配条 } from "./notice-sources";
-import { 合并异议类, 事of, 异议可提, 异议已撤销, 异议待裁定, 异议理由上限, 异议截止, 异议期天数, 算裁定人, type 裁定人结果 } from "./objection-core";
+import { 合并异议类, 事of, 对象叫, 异议可提, 异议已撤销, 异议待裁定, 异议理由上限, 异议截止, 异议期天数, 算裁定人, type 裁定人结果 } from "./objection-core";
 import type { EntTransferObjection, Prisma } from "@/generated/prisma";
 
 export type 异议入口们 = {
@@ -211,15 +211,15 @@ export async function 提异议(me: { id: string; name: string }, id: unknown, �
   }
   const 人们 = await prisma.user.findMany({ where: { id: { in: [...裁.ids, 行.operatorUserId, 行.toOwnerId] } }, select: { id: true, name: true, active: true } });
   const 名 = new Map(人们.map((u) => [u.id, u.name]));
-  const 摘要 = `${me.name} 对${行.kind}「${行.targetName}」的${事of(行.kind)}提了异议，由${裁.角色}裁定${裁.本人发起 ? "（本人发起、无人回避）" : ""}${裁.本人接手 ? "（本人接手、本人裁定（无人回避））" : ""}`;
+  const 摘要 = `${me.name} 对${对象叫(行.kind)}「${行.targetName}」的${事of(行.kind)}提了异议，由${裁.角色}裁定${裁.本人发起 ? "（本人发起、无人回避）" : ""}${裁.本人接手 ? "（本人接手、本人裁定（无人回避））" : ""}`;
   const 明细 = { 异议: 行.id, 换负责人记录: 行.ownerLogId, 合并单: 行.mergeId, 对象: 行.targetKey, 理由: 话, 裁定人: 裁.ids, ...(裁.本人发起 ? { 本人发起: true } : {}), ...(裁.本人接手 ? { 本人接手: true } : {}) };
   if (合并类) await 记合并异议留痕(me, 行, "objection", 摘要, 明细);
   else await recordAudit({ user: me, action: "assign", entity: "Customer", entityId: 行.customerId, summary: 摘要, detail: 明细 }).catch((e) => console.warn("[异议] 留痕没写上：", e));
   await notify(人们.filter((u) => 裁.ids.includes(u.id) && u.active).map((u) => u.id), {
     kind: "异议",
     title: 合并类
-      ? `${me.name} 对${行.kind}「${行.targetName}」的合并提了异议，请你裁定（${名.get(行.operatorUserId) ?? ""} 并入了 ${名.get(行.toOwnerId) ?? ""} 的项目）`
-      : `${me.name} 对${行.kind}「${行.targetName}」的转让提了异议，请你裁定（${名.get(行.operatorUserId) ?? ""} 转给 ${名.get(行.toOwnerId) ?? ""}）`,
+      ? `${me.name} 对${对象叫(行.kind)}「${行.targetName}」的合并提了异议，请你裁定（${名.get(行.operatorUserId) ?? ""} 并入了 ${名.get(行.toOwnerId) ?? ""} 的项目）`
+      : `${me.name} 对${对象叫(行.kind)}「${行.targetName}」的转让提了异议，请你裁定（${名.get(行.operatorUserId) ?? ""} 转给 ${名.get(行.toOwnerId) ?? ""}）`,
     body: `理由：${话}`,
     link: "/objections",
     key: `objection:${行.id}`,

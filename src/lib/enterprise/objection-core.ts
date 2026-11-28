@@ -81,6 +81,12 @@ export const 合并异议类 = "项目合并";
 export const 异议因撤回终止 = "因撤回终止";
 export const 终止说明 = "因撤回终止";
 /** 异议行是转让类还是合并类：通知 / 留痕文案用 */
+/** 合并类「撤回合并并结案」时写进 judgeNote 的记号（台账据此认「异议裁定撤回」） */
+export const 撤合并结案记号 = "撤回合并并结案";
+/** 通知 / 提醒里「对象」怎么叫：转让类照 kind（客户 / 项目），合并类叫「项目」（不出「项目合并「B」」） */
+export const 对象叫 = (kind: string): string => (kind === 合并异议类 ? "项目" : kind);
+/** 「转让异议」/「合并异议」 */
+export const 异议叫 = (kind: string): string => `${事of(kind)}异议`;
 export const 事of = (kind: string): "转让" | "合并" => (kind === 合并异议类 ? "合并" : "转让");
 /**
  * 拦「再转」和合并的状态（判定页 #20）：只有「待裁定」拦。可提（没人提）不算；
