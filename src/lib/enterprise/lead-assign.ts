@@ -21,7 +21,8 @@ import { businessDayjs } from "@/lib/business-clock";
 import { 随客户痕 } from "@/lib/project/carry-tasks";
 import { 是补发来的 } from "./invalid-makeup";
 import type { 组织 } from "./org-core";
-import { 能分配线索, 能拨参与暂停, 是总管理, 销售角色集 } from "./permissions";
+import { 能分配线索, 能拨参与暂停, 是总管理 } from "./permissions";
+import { 销售角色集 } from "./sales-roles";
 import { 能改设置, type 改权限配置 } from "./edit-perm-table";
 
 export const 线索种类 = ["营销", "营销企划"] as const;

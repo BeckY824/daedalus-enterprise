@@ -13,7 +13,7 @@ import { 港澳台地名 } from "./cn-place";
 import type { 组织 } from "./org-core";
 import type { 组织部门 } from "./org-tree";
 import type { 线 } from "./lead-assign";
-import { 销售角色集 } from "./permissions";
+import { 销售角色集 } from "./sales-roles";
 
 /** 两条业务线（各条线参与的部门、成员的内贸 / 外贸标记只认这两个） */
 export const 两条线: readonly 线[] = ["内贸", "外贸"];
