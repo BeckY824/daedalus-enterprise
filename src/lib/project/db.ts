@@ -610,8 +610,33 @@ export async function 记转让(
   at?: Date,
 ) {
   await tx.projectNodeLog.create({ data: 转让痕(p, 操作人, 从, 到, kind, reason, at) });
+  if (kind === "pool-release") await 记放回人(tx, [{ id: p.id, 从 }]);
   if (kind !== "pool-release" && 从 && 到 && 从 !== 到) {
     await 卡点随项目换人(tx, p.id, 从, 到, 操作人, kind === "pool-claim" ? 公海领走接手理由 : 转让接手理由);
+  }
+}
+
+/**
+ * 项目放进公海时把原负责人存在 Project.poolPrevOwnerId（迁移 194）：和 pool-release 留痕同一笔事务里写，每次进公海覆盖。
+ * 只在在公海里时有意义，出公海不清；空串（没负责人）和 null 一样存 null。每处写 pool-release 留痕的地方都要调它或走 记转让
+ * （守卫 tests/pool-prev-owner-write-guard.test.ts）；一次放很多个（停用成员）按原负责人分组 updateMany
+ */
+export async function 记放回人(tx: Pick<Prisma.TransactionClient, "project">, 们: { id: string; 从: string | null }[]): Promise<void> {
+  const 组 = new Map<string | null, Set<string>>();
+  for (const x of 们) {
+    const 人 = x.从 || null;
+    let 集 = 组.get(人);
+    if (!集) 组.set(人, (集 = new Set()));
+    集.add(x.id);
+  }
+  for (const [人, 集] of 组) {
+    const ids = [...集];
+    // 看全部：限定层会给 updateMany 加「公海回避」条件，放回人的回避项目过上限时退回按留痕算，刚写的这行 pool-release 会把项目自己挡掉（0 行不报错）
+    for (let i = 0; i < ids.length; i += 500) {
+      const 段 = ids.slice(i, i + 500);
+      const 改 = await 看全部(() => tx.project.updateMany({ where: { id: { in: 段 } }, data: { poolPrevOwnerId: 人 } }));
+      if (改.count !== 段.length) throw new Error(`记放回人：应改 ${段.length} 行，实际 ${改.count} 行（整笔回滚）`);
+    }
   }
 }
 

@@ -13,7 +13,7 @@ import { 是结局, 本套名, 企业版字典, type 阶段 } from "../project/n
 import { 公海无负责人 } from "../project/pool-owner";
 import { 回收原因前缀 } from "../project/timeout";
 import { 卡点随项目换人, 转让接手理由 } from "../project/blocker";
-import { 将回收提醒跟着换人 } from "../project/db";
+import { 将回收提醒跟着换人, 记放回人 } from "../project/db";
 import { 规, 写不进, type 值表, type 标量 } from "./values";
 import { 节点所在阶段 } from "./project-values";
 import { 在潜客培育, 离开了潜客培育, 撤培育计划 } from "../project/nurture-plan";
@@ -115,6 +115,7 @@ export async function 无主项目进公海(tx: Tx, id: string, 操作人: strin
     select: { phase: true, node: true, result: true },
   });
   await tx.projectNodeLog.create({ data: 无主留痕(p, id, 操作人, null, 现在) });
+  await 记放回人(tx, [{ id, 从: null }]);
 }
 
 /**
@@ -211,7 +212,10 @@ export async function 改项目(tx: Tx, id: string, 改动: 值表, 现值: 值�
   if (出) data.pooledAt = null;
   if (Object.keys(data).length) await tx.project.update({ where: { id }, data });
   const 位 = { phase: String(data.phase ?? 原.phase), node: String(data.node ?? 原.node), result: "result" in data ? (data.result as string | null) : 原.result };
-  if (进) await tx.projectNodeLog.create({ data: 无主留痕(位, id, 原.ownerId || 原.creatorId, 原.ownerId || null, 现在) });
+  if (进) {
+    await tx.projectNodeLog.create({ data: 无主留痕(位, id, 原.ownerId || 原.creatorId, 原.ownerId || null, 现在) });
+    await 记放回人(tx, [{ id, 从: 原.ownerId || null }]);
+  }
   // 导入把负责人清空使项目进公海：自动培育计划一起撤（E-396；撤回导入不重建）
   if (进) await 撤培育计划(tx, { id: 操作人 || 原.ownerId || 原.creatorId }, id);
   if (出) {

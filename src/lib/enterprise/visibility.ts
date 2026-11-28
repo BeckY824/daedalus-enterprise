@@ -382,7 +382,7 @@ export async function 组员客户编号(db: PrismaClient, 人们: string[]): Pr
 }
 
 /** 回避名单的上限：再多 NOT IN 又长又慢、也怕碰 SQLite 参数上限（否定条件不能拆批），退回按关联写的条件 */
-const 回避名单上限 = 100;
+export const 回避名单上限 = 100;
 
 /**
  * 这个人要回避哪些公海客户和项目（11-03 用户定：原负责人退到公海，他就看不到客户和项目）。
