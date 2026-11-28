@@ -48,6 +48,8 @@ export type 一行 = {
   name?: string;
   msg?: string;
   digest?: string;
+  /** 服务端报错：Prisma 这类 P+4位数字的错误码（只收这个格式；报警脚本 scripts/ent-alert.mjs 用它认数据库类） */
+  code?: string;
   /** 慢请求：HTML / RSC / RSC预取 / ACTION / API；服务端报错：render / route / action / proxy */
   kind?: string;
   ms?: number;
@@ -141,6 +143,11 @@ export function 脱敏报错(原: unknown): string {
 /** 错误名：像 TypeError、ChunkLoadError 的才留，别的一律 Error */
 export function 错误名(x: unknown): string {
   return typeof x === "string" && /^[A-Za-z][\w.]{0,40}$/.test(x) ? x : "Error";
+}
+
+/** 错误码：只收 P+4 位数字（Prisma 的 P2029 / P2024 / P2034…），别的一律不要 */
+export function 认错误码(x: unknown): string | undefined {
+  return typeof x === "string" && /^P\d{4}$/.test(x) ? x : undefined;
 }
 
 /** Next 的 digest：数字或短串，留着能和服务端日志对上 */

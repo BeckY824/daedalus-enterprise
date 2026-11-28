@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { 纯路径, 路由模式, 读路由表, 请求种类 } from "../request-log";
-import { 认浏览器, 脱敏报错, 错误名, 认digest, 统一占位, 报错类们, type 一行, type 上报 } from "./fields";
+import { 认浏览器, 脱敏报错, 错误名, 认digest, 认错误码, 统一占位, 报错类们, type 一行, type 上报 } from "./fields";
 import { 写一条, 遥测开着 } from "./store";
 import { 认身份, type 身份 } from "./who";
 
@@ -163,6 +163,9 @@ export function 服务端出错行(
   };
   const d = 认digest(o.digest);
   if (d) 行.digest = d;
+  // 错误码：优先 e.code，没有就从消息里找第一个独立的 P+4 位数字（Prisma 报错文本里带）
+  const 码 = 认错误码((e as { code?: unknown } | null)?.code) ?? 认错误码(typeof o.message === "string" ? o.message.match(/\bP\d{4}\b/)?.[0] : undefined);
+  if (码) 行.code = 码;
   return 行;
 }
 
