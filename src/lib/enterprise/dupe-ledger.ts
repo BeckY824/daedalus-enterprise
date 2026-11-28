@@ -11,6 +11,7 @@
  * - 申请挂靠记下来、定审批人（客户现在的负责人，换负责人时跟着换）、在职就通知他；审批、24 小时转实线上级、批准后的只读卡在 attach-approval.ts（P-挂靠-02 / P-看-13）。
  */
 import { prisma } from "@/lib/prisma";
+import { 查完再写 } from "@/lib/check-then-write";
 import { 企业版 } from "./switch";
 import { 看全部, 看得到, type 谁 } from "@/lib/team-scope";
 import { 名键 } from "@/lib/enterprise-import/clean";
@@ -389,23 +390,34 @@ export async function 申请挂靠(我: { id: string; name: string }, 撞号id: 
         : "已经申请过了，等负责人处理";
   if (行.action === "申请挂靠") return { ok: true, 提示: 已有话(行.status) };
   const 起 = new Date(Date.now() - 撞号预警.天数 * 86_400_000);
-  const 早 = await prisma.entDupeHit.findFirst({
-    where: {
-      userId: 我.id, customerId: 行.customerId, action: "申请挂靠", id: { not: 行.id },
-      OR: [{ status: { in: ["待处理", "已批准"] } }, { status: "已拒绝", decidedAt: { gte: 起 } }],
-    },
-    orderBy: { actionAt: "desc" },
-    select: { status: true },
-  });
-  if (早) {
-    await prisma.entDupeHit.update({ where: { id: 行.id }, data: { action: "申请挂靠", actionAt: new Date() } });
-    return { ok: true, 提示: 已有话(早.status) };
-  }
-
   // 审批人 = 客户现在的负责人（P-挂靠-02；之后客户换负责人，审批人跟着换，见 owner-log-db.ts）。离职了也还是他、不另找人，24 小时后转他的实线上级
   const 客户 = await 看全部(() => prisma.customer.findUnique({ where: { id: 行.customerId }, select: { id: true, name: true, shortName: true, customerNo: true, salesOwnerId: true } }));
   const 收 = 客户?.salesOwnerId ?? null;
-  await prisma.entDupeHit.update({ where: { id: 行.id }, data: { action: "申请挂靠", actionAt: new Date(), status: "待处理", approverId: 收 } });
+  // 查早 + 条件写放进同一笔事务：同一销售两条撞号行同时抢同一客户，后到的看得见先到的已写，按已申请回话，只发一次审批通知
+  const 结果 = await 查完再写(async (tx) => {
+    const 早 = await tx.entDupeHit.findFirst({
+      where: {
+        userId: 我.id, customerId: 行.customerId, action: "申请挂靠", id: { not: 行.id },
+        OR: [{ status: { in: ["待处理", "已批准"] } }, { status: "已拒绝", decidedAt: { gte: 起 } }],
+      },
+      orderBy: { actionAt: "desc" },
+      select: { status: true },
+    });
+    if (早) {
+      await tx.entDupeHit.update({ where: { id: 行.id }, data: { action: "申请挂靠", actionAt: new Date() } });
+      return { 新: false as const, status: 早.status };
+    }
+    // 条件写：只有这行还没申请过才写；连点两下后到的写不进（count 0），按已申请回话、不再发第二次审批通知
+    const 写 = await tx.entDupeHit.updateMany({ where: { id: 行.id, OR: [{ action: null }, { action: { not: "申请挂靠" } }] }, data: { action: "申请挂靠", actionAt: new Date(), status: "待处理", approverId: 收 } });
+    if (写.count === 0) {
+      const 现 = await tx.entDupeHit.findUnique({ where: { id: 行.id }, select: { status: true } });
+      if (!现) return { 新: false as const, 没了: true as const, status: "" };
+      return { 新: false as const, status: 现.status };
+    }
+    return { 新: true as const, status: "待处理" };
+  });
+  if ("没了" in 结果) return { ok: false, error: "找不到这条撞号记录" };
+  if (!结果.新) return { ok: true, 提示: 已有话(结果.status) };
   const org = await 读组织();
   const n = 收 && org.成员.has(收) ? await notify([收], {
     kind: "挂靠",

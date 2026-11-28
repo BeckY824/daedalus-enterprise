@@ -301,3 +301,18 @@ describe("通知不带号码（审核 11-18 P1-2，P-转-12「提醒里不带手
     }
   });
 });
+
+describe("申请挂靠：两笔交错（O5-S2 C8）", () => {
+  it("同一人同一条同时点两下：只一笔写进、只发一次审批通知，后到的回已申请过", async () => {
+    const x = await 现场();
+    const r = await 作为(x.乙, () => 查客户名("编的客户甲"));
+    const id = r.ok && r.撞 && "撞" in r.撞 ? r.撞.撞.撞号id : null;
+    expect(id).toBeTruthy();
+    const rs = await 作为(x.乙, () => Promise.all([记申请挂靠(x.乙, id!), 记申请挂靠(x.乙, id!)]));
+    const 提示们 = rs.map((a) => (a.ok ? a.提示 : "出错")).sort();
+    expect(提示们).toEqual(["已申请挂靠，等负责人处理", "已经申请过了，等负责人处理"].sort());
+    await 等通知推完();
+    expect(await 通知们(x.负责人.id, "挂靠")).toHaveLength(1);
+    expect(await prisma.entDupeHit.findUnique({ where: { id: id! } })).toMatchObject({ action: "申请挂靠", status: "待处理" });
+  });
+});

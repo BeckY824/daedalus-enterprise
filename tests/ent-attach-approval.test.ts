@@ -122,6 +122,28 @@ describe("申请挂靠 → 待审批", () => {
     await 等通知推完();
     expect(await 通知们(x.负责人.id)).toHaveLength(1);
   });
+
+  it("同一销售两条撞号行同时申请同一客户：只一条待处理、只通知一次", async () => {
+    const x = await 现场();
+    const 取 = async () => {
+      const r = await 作为(x.乙, () => 查客户名("编的客户甲"));
+      return r.ok && r.撞 && "撞" in r.撞 ? r.撞.撞.撞号id! : "";
+    };
+    const id1 = await 取();
+    await prisma.entDupeHit.updateMany({ data: { createdAt: new Date(Date.now() - (撞号预警.合并分钟 + 1) * 60_000) } });
+    const id2 = await 取();
+    expect(id1).not.toBe(id2);
+    const 两个 = await Promise.all([作为(x.乙, () => 申请挂靠(id1)), 作为(x.乙, () => 申请挂靠(id2))]);
+    expect(两个.every((r) => r.ok)).toBe(true);
+    await 等通知推完();
+    expect(await prisma.entDupeHit.count({ where: { status: "待处理", action: "申请挂靠" } })).toBe(1);
+    expect(await 通知们(x.负责人.id)).toHaveLength(1);
+  });
+
+  it("撞号记录不存在 / 不是自己的：回找不到，不抛", async () => {
+    const x = await 现场();
+    expect(await 作为(x.乙, () => 申请挂靠("不存在的id"))).toEqual({ ok: false, error: "找不到这条撞号记录" });
+  });
 });
 
 describe("审批", () => {

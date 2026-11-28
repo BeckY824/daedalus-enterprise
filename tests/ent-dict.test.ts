@@ -133,3 +133,18 @@ describe("企业版选项字典", () => {
     expect(await prisma.entDictItem.count()).toBe(0);
   });
 });
+
+describe("加字典项：两笔交错（O5-S2 C6）", () => {
+  it("两个人同时加同名：一个加上，另一个回「已经有了」，不抛、只一行", async () => {
+    const [甲, 乙] = await Promise.all([加字典项(老板, "recycle", "并发同名"), 加字典项(老板, "recycle", "并发同名")]);
+    expect([甲.ok, 乙.ok].sort()).toEqual([false, true]);
+    expect([甲, 乙].find((x) => !x.ok)).toMatchObject({ error: expect.stringContaining("已经有") });
+    expect(await prisma.entDictItem.count({ where: { kind: "recycle", name: "并发同名" } })).toBe(1);
+  });
+  it("两个人同时加不同名：排序号各不相同", async () => {
+    const rs = await Promise.all([加字典项(老板, "recycle", "并发甲"), 加字典项(老板, "recycle", "并发乙"), 加字典项(老板, "recycle", "并发丙")]);
+    expect(rs.every((x) => x.ok)).toBe(true);
+    const 行们 = await prisma.entDictItem.findMany({ where: { kind: "recycle", name: { startsWith: "并发" } } });
+    expect(new Set(行们.map((x) => x.sort)).size).toBe(3);
+  });
+});
