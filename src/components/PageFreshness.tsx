@@ -77,13 +77,13 @@ export default function PageFreshness() {
       }
     };
     if (!页) {
-      // 没纳入的页：兜底，保持 60 秒缓存的效果；点筛选（路径没变、查询变）只记不刷
+      // 没纳入的页：兜底，保持 60 秒缓存的效果；第一次去的「路径+查询」没记录，不会刷
       const 上次 = 记到过();
-      if (!同路径换查询) 兜底(上次, 现在);
+      兜底(上次, 现在);
       return;
     }
     // 纳入的页也记到过：渲染版和现版都是 gone（没有可比的基线）时走 60 秒兜底
-    const 上次到 = 记到过();
+    记到过();
     const 键 = 页面键(页);
     let 还在 = true;
     const 问 = async () => {
@@ -96,7 +96,7 @@ export default function PageFreshness() {
         if (!还在 || !现版) return;
         const 渲染版 = 取渲染版(键);
         if (该后台刷新(渲染版, 现版)) 空了刷.current(Date.now());
-        else if (该走兜底(渲染版, 现版)) 兜底(上次到);
+        else if (该走兜底(渲染版, 现版)) 兜底(到过们.current.get(`${路径}?${查询}`));
       } catch {
         // 断网、登出：当没变
       } finally {

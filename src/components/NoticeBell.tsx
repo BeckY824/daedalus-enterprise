@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { 数据失效事件, 来了新通知 } from "@/lib/page-fresh";
+import { 数据失效事件, 来了新通知, 该我问, type 铃铛位 } from "@/lib/page-fresh";
 import { useRouter } from "next/navigation";
 import { useNavGo } from "@/lib/nav-pending";
 import { Badge, Button, ConfigProvider, Drawer, Tooltip } from "antd";
@@ -58,6 +58,8 @@ export function 多久以前(iso: string, 现在 = Date.now()): string {
  */
 /** 上次见到的最新通知时间（模块级：AppShell 里手机 + 电脑各挂一份铃铛，共用这一个，失效事件只发一次） */
 const 上次最新通知: { 值: number | null } = { 值: null };
+/** 挂着的铃铛们（钮 + 是不是手机那份）：两份都看不见时，让手机那份兜底问，保证至少一份在问 */
+const 挂着的铃铛们 = new Set<铃铛位>();
 
 export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初始未读?: 或晚到<number>; 手机?: boolean }) {
   const router = useRouter();
@@ -95,11 +97,13 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
   // 挂载即问一次（定基线：之后新来的通知才算「新」，不用等第一分钟）；每分钟、切回这个标签页时再问
   useEffect(() => {
     let 还在 = true;
+    const 我 = { 钮: 钮Ref, 手机 };
+    挂着的铃铛们.add(我);
     const 问 = (只定基线 = false) => {
       if (document.visibilityState !== "visible") return;
       // 电脑壳 / 手机壳各挂一份、另一份被样式藏起来（没有布局框）：它不问，省一半请求
-      const 钮 = 钮Ref.current;
-      if (钮 && 钮.getClientRects().length === 0) return;
+      // 两份都看不见（如电脑壳铃铛藏在收起的区域里）：手机那份兜底问，别没人问
+      if (!该我问(我, 挂着的铃铛们)) return;
       读通知动静().then((r) => {
         if (!还在) return;
         // 来了新通知（分到我 / 转走 / 权限变了都走通知；看最新一条的时间，不看未读数）：缓存里的页不可信了，PageFreshness 听到后台换新（PR-D）
@@ -117,9 +121,10 @@ export default function NoticeBell({ 初始未读 = 0, 手机 = false }: { 初�
     return () => {
       还在 = false;
       window.clearInterval(t);
+      挂着的铃铛们.delete(我);
       document.removeEventListener("visibilitychange", 回来);
     };
-  }, []);
+  }, [手机]);
 
   const 拉 = useCallback(async () => {
     try {

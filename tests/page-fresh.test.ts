@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { 详情地址, 该走兜底, 缓存秒, 认页面, 页面键, 版本地址, 该后台刷新, 该兜底刷新, 清旧记录, 来了新通知, 该合并跳过, 刷新合并毫秒, 记渲染版, 撤渲染版, 取渲染版 } from "@/lib/page-fresh";
+import { 该我问, 详情地址, 该走兜底, 缓存秒, 认页面, 页面键, 版本地址, 该后台刷新, 该兜底刷新, 清旧记录, 来了新通知, 该合并跳过, 刷新合并毫秒, 记渲染版, 撤渲染版, 取渲染版 } from "@/lib/page-fresh";
 import fs from "node:fs";
 
 describe("PR-D 先出缓存、后台更新：纯函数", () => {
@@ -116,16 +116,52 @@ describe("PR-D 先出缓存、后台更新：纯函数", () => {
     expect(该走兜底(undefined, "gone")).toBe(false);
     expect(该后台刷新("gone", "gone")).toBe(false);
   });
-  it("接线：到过记录的键 = 路径+查询；查询变只记不刷；路径变清上次刷；铃铛挂载即问、只让看得见的那份问", () => {
+  it("接线：到过记录的键 = 路径+查询；同一路径+查询回来会刷、第一次去的不刷；路径变清上次刷；铃铛挂载即问、只让看得见的那份问", () => {
     const f = fs.readFileSync("src/components/PageFreshness.tsx", "utf8");
     expect(f).toContain("`${路径}?${查询}`");
-    expect(f).toContain("if (!同路径换查询) 兜底(上次, 现在)");
+    expect(f).toContain("兜底(上次, 现在);");
+    expect(f).not.toContain("if (!同路径换查询) 兜底");
+    expect(f).toContain("兜底(到过们.current.get(`${路径}?${查询}`))");
     expect(f).toContain("if (!同路径换查询) 上次刷.current = 0");
     const b = fs.readFileSync("src/components/NoticeBell.tsx", "utf8");
     expect(b).toMatch(/问\(true\);\s*const t = window\.setInterval\(\(\) => 问\(\), 60_000\)/);
-    expect(b).toContain("getClientRects().length === 0");
+    expect(b).toContain("该我问(我, 挂着的铃铛们)");
     for (const x of ["@pane/customers/page.tsx", "@pane/customers/(detail)/[id]/page.tsx", "@pane/projects/(detail)/[id]/page.tsx"]) {
       expect(fs.readFileSync(`src/app/(app)/${x}`, "utf8")).toContain("<Suspense fallback={null}><RenderedVersion");
     }
+  });
+  it("同一「路径+查询」60–300 秒内回来会刷；第一次去的筛选不刷", () => {
+    const m = new Map<string, number>();
+    const t0 = 1_000_000;
+    // 第一次去 A：没记录，不刷
+    expect(该兜底刷新(m.get("/projects?a"), t0)).toBe(false);
+    m.set("/projects?a", t0);
+    // 去 B（第一次）：不刷
+    expect(该兜底刷新(m.get("/projects?b"), t0 + 5_000)).toBe(false);
+    m.set("/projects?b", t0 + 5_000);
+    // 65 秒后回 A：刷；回 B（才过 60 秒）：不刷
+    expect(该兜底刷新(m.get("/projects?a"), t0 + 65_000)).toBe(true);
+    expect(该兜底刷新(m.get("/projects?b"), t0 + 65_000)).toBe(false);
+    // 超过缓存期：不刷（Next 自己重取）
+    expect(该兜底刷新(m.get("/projects?a"), t0 + 301_000)).toBe(false);
+  });
+  it("停在 gone 页：兜底刷新后现取记录，再切回标签页不重复刷", () => {
+    const m = new Map<string, number>([["/customers/x?", 0]]);
+    const t1 = 70_000;
+    expect(该兜底刷新(m.get("/customers/x?"), t1)).toBe(true);
+    m.set("/customers/x?", t1); // 兜底刷新时写回
+    expect(该兜底刷新(m.get("/customers/x?"), t1 + 2_000)).toBe(false);
+  });
+  it("铃铛：两份都看不见时手机那份兜底问；有一份看得见只让它问", () => {
+    const 框 = (n: number) => ({ getClientRects: () => ({ length: n }) as ArrayLike<unknown> });
+    const 桌面 = (n: number) => ({ 钮: { current: 框(n) }, 手机: false });
+    const 手机 = (n: number) => ({ 钮: { current: 框(n) }, 手机: true });
+    for (const [d, p, 桌问, 手问] of [[1, 0, true, false], [0, 1, false, true], [0, 0, false, true]] as const) {
+      const a = 桌面(d), b = 手机(p);
+      expect(该我问(a, [a, b]), `桌面 ${d}/${p}`).toBe(桌问);
+      expect(该我问(b, [a, b]), `手机 ${d}/${p}`).toBe(手问);
+    }
+    const 单 = 桌面(0);
+    expect(该我问(单, [单])).toBe(true); // 只挂了电脑那份：它兜底问
   });
 });

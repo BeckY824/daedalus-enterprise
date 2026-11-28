@@ -126,3 +126,18 @@ export const 刷新合并毫秒 = 2000;
 export function 该合并跳过(上次刷: number, 现在: number): boolean {
   return 上次刷 > 0 && 现在 - 上次刷 < 刷新合并毫秒;
 }
+
+/** 一份铃铛：那颗钮 + 是不是手机壳那份 */
+export type 铃铛位 = { 钮: { current: { getClientRects(): ArrayLike<unknown> } | null }; 手机: boolean };
+
+/** 这份铃铛要不要问通知：看得见的问；都看不见时手机那份兜底问（没手机那份就电脑那份），保证至少一份在问 */
+export function 该我问(我: 铃铛位, 们: Iterable<铃铛位>): boolean {
+  if (!我.钮.current || 我.钮.current.getClientRects().length !== 0) return true;
+  let 有手机 = 我.手机;
+  for (const x of 们) {
+    if (x === 我) continue;
+    if (x.钮.current && x.钮.current.getClientRects().length !== 0) return false;
+    if (x.手机) 有手机 = true;
+  }
+  return 我.手机 || !有手机;
+}
