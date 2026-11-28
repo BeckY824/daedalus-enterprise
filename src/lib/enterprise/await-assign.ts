@@ -14,6 +14,7 @@ import type { Prisma } from "@/generated/prisma";
 import { prisma } from "@/lib/prisma";
 import { 看全部 } from "@/lib/team-scope";
 import { 企业版 } from "./switch";
+import { 占着待分配 } from "./permissions";
 import { 发待分配提醒, 满额提醒收件人 } from "./lead-full-notice";
 import type { 组织 } from "./org-core";
 
@@ -49,7 +50,7 @@ export async function 待分配占着(db: Prisma.TransactionClient | typeof pris
  * 能分配的人、系统管理员不是占位的人，照各自原来的权限；进了公海（pooledAt）的不算待分配
  */
 export function 待分配占位(me: { id: string }, p: { ownerId: string; awaitAssignAt?: Date | null; pooledAt?: Date | null }): boolean {
-  return 企业版() && !!p.awaitAssignAt && !p.pooledAt && p.ownerId === me.id;
+  return 占着待分配(me, p);
 }
 export const 待分配不能动 = "这条新线索在等分配，你只是先占着负责人一格：能看、能改字段，初判、推进、删除要等分给负责人以后";
 

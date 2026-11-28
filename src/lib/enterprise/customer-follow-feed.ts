@@ -39,7 +39,7 @@ export const 汇总每页 = 50;
 /** 一位客户最多汇总多少个项目（查询里 in 的上限；正常远到不了） */
 const 项目上限 = 500;
 
-type 项目行 = { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null; result: string | null; nextStepAt: Date | null; nextStepText: string | null; updatedAt: Date; members: { inviteStatus: string }[] };
+type 项目行 = { id: string; name: string; customerId: string; ownerId: string; pooledAt: Date | null; awaitAssignAt: Date | null; result: string | null; nextStepAt: Date | null; nextStepText: string | null; updatedAt: Date; members: { inviteStatus: string }[] };
 
 /**
  * 这位客户、当前这位看得到沟通内容的项目（主客户是它的 + 关联进来的；连挂过 = 再加历史上挂过这位跟进的）。
@@ -58,7 +58,7 @@ async function 看得到的项目们(me: { id: string; role?: string }, customer
   if (ids.length === 0) return [];
   const ps = await prisma.project.findMany({
     where: { id: { in: ids } },
-    select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, result: true, nextStepAt: true, nextStepText: true, updatedAt: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } },
+    select: { id: true, name: true, customerId: true, ownerId: true, pooledAt: true, awaitAssignAt: true, result: true, nextStepAt: true, nextStepText: true, updatedAt: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } },
     orderBy: { updatedAt: "desc" },
   });
   // 公海里我是历史负责人的项目：沟通入口、时间线都不出（C-01，lib/project/pool-owner.ts；总管理 / 管理员照出）

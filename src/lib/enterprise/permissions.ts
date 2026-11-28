@@ -223,6 +223,11 @@ export function 能看项目(me: 谁, p: 权限项目, org: 组织 | null): bool
   return 看得到下属的(org, me.id, p.ownerId);
 }
 
+/** 待分配期间占着负责人一格的人（按 ownerId 判，离职交接接来的也算；进了公海的不算）。同 await-assign.ts 的 待分配占位，这里放纯函数给权限判断用 */
+export function 占着待分配(me: { id: string }, p: { ownerId: string; awaitAssignAt?: Date | null; pooledAt?: Date | null }): boolean {
+  return 企业版() && !!p.awaitAssignAt && !p.pooledAt && p.ownerId === me.id;
+}
+
 /**
  * 编辑项目内容（字段、节点推进、沟通、交付勾选、组员）：系统管理员；或负责人本人，且是销售 / 销管 / 渠运 / 项目组员 / 条线总管理（V3.5.1、X-07）。
  * 别人负责的：条线总管理、上级、市场、管理员只读都只能看。公海里的项目没有负责人：谁都改不了，先领
@@ -247,6 +252,8 @@ function 能按负责人编辑(org: 组织, id: string): boolean {
  */
 export function 能转让项目(me: 谁, p: 权限项目, org: 组织 | null): boolean {
   if (老()) return 老管(me) || (!p.pooledAt && me.id === p.ownerId);
+  // 待分配期间占着负责人一格的建的人只能看和改字段，不能转让 / 改负责人（P-转-21、29M）；分配是别的入口，能分配的人照常分
+  if (占着待分配(me, p)) return false;
   if (!org || 只读角色(me, org) || 没设业务角色(org, me.id) || 只看的人(org, me.id)) return false;
   if (是系统管理员(me, org)) return true;
   if (p.pooledAt) return 能管公海(me, org) && 业务线放行(org, me.id, p);

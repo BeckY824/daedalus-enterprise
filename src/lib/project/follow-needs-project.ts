@@ -17,8 +17,9 @@ import { 全进程上下文 } from "../process-als";
 import { 企业版 } from "../enterprise/switch";
 import { 权限组织 } from "../enterprise/org";
 import type { 组织 } from "../enterprise/org-core";
-import { 能编辑项目, 只读角色, 没设业务角色, 只看的人, 只看某人话, type 谁 } from "../enterprise/permissions";
+import { 占着待分配, 能编辑项目, 只读角色, 没设业务角色, 只看的人, 只看某人话, type 谁 } from "../enterprise/permissions";
 import { 是交付 } from "./stage-dict";
+import { 待分配不能动 } from "../enterprise/await-assign";
 
 export { 售后回访名, 交付结清要售后回访话, 请选在推或售后话, 售后只在交付结清话, 售后不能记话, 售后客户在公海话, 下次回访日期不对话, 下次回访早于今天话, 售后回访主题 } from "./follow-needs-project-text";
 import { 交付结清要售后回访话, 请选在推或售后话, 售后只在交付结清话, 售后不能记话, 售后客户在公海话 } from "./follow-needs-project-text";
@@ -42,7 +43,9 @@ export function 免挂项目中(): boolean {
  * 公海里的、只读角色（管理员只读、教练）、没设业务角色、设了「只看某人」的组员不行
  * （P-看-19 只放开看：只看某人进了组也是只读身份，同 能编辑项目 一律拒）
  */
-export function 能往项目记沟通(me: 谁, p: { ownerId: string; pooledAt?: Date | null }, org: 组织 | null, 组员状态: string | null | undefined): boolean {
+export function 能往项目记沟通(me: 谁, p: { ownerId: string; pooledAt?: Date | null; awaitAssignAt: Date | null }, org: 组织 | null, 组员状态: string | null | undefined): boolean {
+  // 待分配期间占着负责人一格的建的人只能看和改字段，不能记沟通（P-转-21、29M）
+  if (占着待分配(me, p)) return false;
   if (能编辑项目(me, p, org)) return true;
   return 企业版() && !!org && !p.pooledAt && 组员状态 === "JOINED" && !只读角色(me, org) && !没设业务角色(org, me.id) && !只看的人(org, me.id);
 }
@@ -80,14 +83,14 @@ export type 可记项目 = { id: string; name: string };
  * 这位客户名下的项目：一共几个、在推几个、我能记沟通的在推项目（最近动过的在前）；
  * 售后 = 我能记售后回访的交付结清项目（客户在公海时为空），另列一组，自动挂不从这里挑
  */
-export async function 可记沟通项目们(me: 谁, customerId: string): Promise<{ 总数: number; 在推数: number; 可记: 可记项目[]; 售后: 可记项目[] }> {
+export async function 可记沟通项目们(me: 谁, customerId: string): Promise<{ 总数: number; 在推数: number; 占位数: number; 可记: 可记项目[]; 售后: 可记项目[] }> {
   const org = await 权限组织();
   // 组员不一定看得到这位客户（P-看-08 连带只读）：项目按客户 id 取全，能不能记下面逐个判
   const 们 = await 看全部(() => prisma.project.findMany({
     where: { customerId },
     orderBy: { updatedAt: "desc" },
     take: 200,
-    select: { id: true, name: true, ownerId: true, pooledAt: true, result: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } },
+    select: { id: true, name: true, ownerId: true, pooledAt: true, awaitAssignAt: true, result: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } },
   }));
   const 在推 = 们.filter((p) => !p.result && !p.pooledAt);
   const 交付 = 企业版() ? 们.filter((p) => 是交付(p.result)) : [];
@@ -95,6 +98,8 @@ export async function 可记沟通项目们(me: 谁, customerId: string): Promis
   return {
     总数: 们.length,
     在推数: 在推.length,
+    // 在推项目里我占着待分配的几个：只用来把「都不能记」的提示说准（不影响权限判断）
+    占位数: 企业版() ? 在推.filter((p) => 占着待分配(me, p)).length : 0,
     可记: 在推.filter((p) => 能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)).map((p) => ({ id: p.id, name: p.name })),
     售后: 客 ? 交付.filter((p) => 能记售后回访(me, { ...p, ...客 }, org, p.members[0]?.inviteStatus)).map((p) => ({ id: p.id, name: p.name })) : [],
   };
@@ -107,7 +112,7 @@ export async function 可记沟通项目们(me: 谁, customerId: string): Promis
 export async function 核沟通项目(me: 谁, customerId: string, projectId: string, 售后回访?: boolean): Promise<string | null> {
   const p = await 看全部(() => prisma.project.findUnique({
     where: { id: projectId },
-    select: { customerId: true, ownerId: true, pooledAt: true, result: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } },
+    select: { customerId: true, ownerId: true, pooledAt: true, awaitAssignAt: true, result: true, members: { where: { userId: me.id }, select: { inviteStatus: true } } },
   }));
   if (!p || p.customerId !== customerId) return 沟通项目不在话;
   if (p.pooledAt) return 沟通项目在公海话;
@@ -117,6 +122,7 @@ export async function 核沟通项目(me: 谁, customerId: string, projectId: st
   const org = await 权限组织();
   // 设了「只看某人」的进了组也只能看（P-看-19）：说只读那句，不说「只有组员能记」
   if (企业版() && 只看的人(org, me.id)) return 只看某人话;
+  if (企业版() && 占着待分配(me, p)) return 待分配不能动;
   if (!能往项目记沟通(me, p, org, p.members[0]?.inviteStatus)) return 沟通不是组员话;
   return null;
 }
@@ -159,5 +165,7 @@ export async function 定沟通挂哪个项目(
   if (们.售后.length) return { ok: false, error: 请选在推或售后话, 售后: 们.售后, ...(们.在推数 === 0 ? { 没项目: true as const } : {}) };
   if (们.总数 === 0) return { ok: false, error: 沟通没项目话, 没项目: true };
   if (们.在推数 === 0) return { ok: false, error: 沟通没在推项目话, 没项目: true };
+  // 在推项目全是我占着的待分配项目：说待分配那句，不说「你不是负责人或组员」
+  if (们.占位数 > 0 && 们.占位数 === 们.在推数) return { ok: false, error: 待分配不能动 };
   return { ok: false, error: 沟通都不能记话 };
 }

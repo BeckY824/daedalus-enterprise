@@ -149,7 +149,7 @@ export async function 本人限时改挡(me: 谁, f: { id: string; ownerId: stri
     where: { followUpId: f.id },
     select: {
       followUp: { select: { afterSale: true } },
-      project: { select: { ownerId: true, pooledAt: true, result: true, customer: { select: { salesOwnerId: true, pool: { select: { customerId: true } } } }, members: { where: { userId: me.id }, select: { inviteStatus: true } } } },
+      project: { select: { ownerId: true, pooledAt: true, awaitAssignAt: true, result: true, customer: { select: { salesOwnerId: true, pool: { select: { customerId: true } } } }, members: { where: { userId: me.id }, select: { inviteStatus: true } } } },
     },
   }));
   /*
