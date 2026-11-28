@@ -50,6 +50,9 @@ export function 未提交数(): number {
 export function 清登记(): void {
   忙们.clear();
   未提交们.clear();
+  组字中 = false;
+  选文件放?.();
+  选文件放 = null;
 }
 
 // ── 现场 ──
@@ -71,11 +74,60 @@ export function 有弹层(doc: Document | undefined = typeof document === "undef
   return false;
 }
 
-/** 正在往长文本框（textarea / 可编辑区）里打字、里面有字：算未提交，哪怕那个框没接草稿 */
+/** 输入法组字中（compositionstart 到 compositionend）：拼音还没上屏，换了就丢 */
+let 组字中 = false;
+/** 点开了文件选择（手机拍照会跳去相机，回来常超过 45 秒）：选完 / 取消 / 回到页面几秒后放 */
+let 选文件放: (() => void) | null = null;
+let 装了输入 = false;
+const 选文件宽限毫秒 = 3_000;
+export function 装输入监听(): void {
+  if (装了输入 || typeof document === "undefined" || typeof document.addEventListener !== "function") return;
+  装了输入 = true;
+  document.addEventListener("compositionstart", () => { 组字中 = true; }, true);
+  document.addEventListener("compositionend", () => { 组字中 = false; }, true);
+  document.addEventListener("focusout", () => { 组字中 = false; }, true);
+  document.addEventListener(
+    "click",
+    (e) => {
+      const t = e.target as HTMLElement | null;
+      if (!t || t.tagName !== "INPUT" || (t as HTMLInputElement).type !== "file") return;
+      选文件放?.();
+      const 放忙 = 登记忙("选文件");
+      let 定时: ReturnType<typeof setTimeout> | undefined;
+      const 放 = () => {
+        clearTimeout(定时);
+        放忙();
+        t.removeEventListener("change", 放);
+        t.removeEventListener("cancel", 放);
+        document.removeEventListener("visibilitychange", 回来);
+        window.removeEventListener("focus", 回来);
+        if (选文件放 === 放) 选文件放 = null;
+      };
+      const 回来 = () => {
+        if (document.visibilityState === "hidden") return;
+        clearTimeout(定时);
+        定时 = setTimeout(放, 选文件宽限毫秒);
+      };
+      t.addEventListener("change", 放);
+      t.addEventListener("cancel", 放);
+      document.addEventListener("visibilitychange", 回来);
+      window.addEventListener("focus", 回来);
+      选文件放 = 放;
+    },
+    true,
+  );
+}
+
+/** 正在往长文本框（textarea / 可编辑区）或聚焦且有值的单行框（text / search / tel / email / url）里打字、里面有字，或输入法组字中：算未提交，哪怕那个框没接草稿 */
 export function 正在打字(doc: Document | undefined = typeof document === "undefined" ? undefined : document): boolean {
   if (!doc) return false;
+  if (组字中) return true;
   const a = doc.activeElement as HTMLElement | null;
   if (!a) return false;
+  if (a.tagName === "INPUT") {
+    const 型 = ((a as HTMLInputElement).type || "text").toLowerCase();
+    return ["text", "search", "tel", "email", "url"].includes(型) && (a as HTMLInputElement).value.trim() !== "";
+  }
   if (a.tagName === "TEXTAREA") return (a as HTMLTextAreaElement).value.trim() !== "";
   if (a.isContentEditable) return (a.textContent ?? "").trim() !== "";
   return false;
@@ -125,12 +177,17 @@ export function 装请求计数(): void {
     const p = 原(input, init);
     p.then(
       (r) => {
-        // 流式回答：头回来了、正文还在流，等读完
-        const 流 = r.body && /event-stream|x-ndjson/i.test(r.headers.get("content-type") ?? "");
-        if (!流) return 放();
-        const rd = r.clone().body!.getReader();
-        const 抽 = (): Promise<void> => rd.read().then((v) => (v.done ? 放() : 抽()));
-        抽().catch(放);
+        // 流式回答：头回来了、正文还在流，等读完。回调里任何一步抛错都要放，不然永久忙
+        // （停止流必须用 AbortController：abort 后 read 会 reject，走 catch 放掉；不要只丢掉 reader）
+        try {
+          const 流 = r.body && /event-stream|x-ndjson/i.test(r.headers.get("content-type") ?? "");
+          if (!流) return 放();
+          const rd = r.clone().body!.getReader();
+          const 抽 = (): Promise<void> => rd.read().then((v) => (v.done ? 放() : 抽()));
+          抽().catch(放);
+        } catch {
+          放();
+        }
       },
       放,
     );

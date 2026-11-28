@@ -66,8 +66,8 @@ export type 网页录音 = {
 export function 开录(流: MediaStream, opt: { 每片毫秒: number; 片到了: (数据: Blob, 序号: number) => void; 音量?: (v: number) => void; 断了?: (原因: 打断原因) => void }): 网页录音 {
   const 格式 = 选格式();
   const rec = new MediaRecorder(流, { ...(格式 ? { mimeType: 格式 } : {}), audioBitsPerSecond: 24_000 });
-  // 录着的时候不能静默换版（lib/swap-guard.ts），收拾时放掉
-  const 放忙 = 登记忙("录音");
+  // 录着的时候不能静默换版（lib/swap-guard.ts），收拾时放掉；登记放在 rec.start() 成功之后（start 抛错就没有人调收拾）
+  let 放忙 = () => {};
   let 序号 = 0;
   let 取消了 = false;
   let 结束了 = false;
@@ -120,7 +120,13 @@ export function 开录(流: MediaStream, opt: { 每片毫秒: number; 片到了:
     }
     void 上下文?.close().catch(() => {});
   }
-  rec.start(opt.每片毫秒);
+  try {
+    rec.start(opt.每片毫秒);
+  } catch (e) {
+    收拾();
+    throw e;
+  }
+  放忙 = 登记忙("录音");
   return {
     mime: rec.mimeType || 格式 || "",
     async 停() {

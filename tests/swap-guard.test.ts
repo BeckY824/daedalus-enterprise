@@ -132,3 +132,101 @@ describe("请求计数 / 滚动（浏览器环境，用最小桩）", () => {
     expect((window.scrollTo as unknown as { mock: { calls: unknown[][] } }).mock.calls).toHaveLength(0);
   });
 });
+
+describe("O3 PR-C 审查修复 1：忙的登记补漏", () => {
+  beforeEach(() => { vi.resetModules(); 清登记(); });
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it("请求回调里抛错（r.clone 失败）也放掉，不永久忙", async () => {
+    const 坏响应 = { body: {}, headers: new Headers({ "content-type": "text/event-stream" }), clone: () => { throw new Error("body used"); } };
+    const 底 = vi.fn(async () => 坏响应);
+    vi.stubGlobal("window", { fetch: Object.assign(底, { bind: () => 底 }) });
+    const m = await import("@/lib/swap-guard");
+    m.装请求计数();
+    await (window as unknown as { fetch: (i: string, init: object) => Promise<unknown> }).fetch("/api/ai", { method: "POST" });
+    await Promise.resolve();
+    expect(m.忙数()).toBe(0);
+  });
+
+  it("正在打字：聚焦且有值的单行框算，空的 / 密码 / 复选框不算", async () => {
+    const m = await import("@/lib/swap-guard");
+    const 框 = (tagName: string, type: string, value: string) => ({ activeElement: { tagName, type, value, isContentEditable: false } }) as unknown as Document;
+    expect(m.正在打字(框("INPUT", "text", "张"))).toBe(true);
+    for (const t of ["search", "tel", "email", "url"]) expect(m.正在打字(框("INPUT", t, "x"))).toBe(true);
+    expect(m.正在打字(框("INPUT", "text", "  "))).toBe(false);
+    expect(m.正在打字(框("INPUT", "password", "x"))).toBe(false);
+    expect(m.正在打字(框("INPUT", "checkbox", "on"))).toBe(false);
+  });
+
+  it("输入法组字中不换，上屏（compositionend）后才放", async () => {
+    const 听: Record<string, () => void> = {};
+    vi.stubGlobal("document", { addEventListener: (n: string, f: () => void) => { 听[n] = f; }, activeElement: null });
+    const m = await import("@/lib/swap-guard");
+    m.装输入监听();
+    expect(m.正在打字()).toBe(false);
+    听.compositionstart();
+    expect(m.正在打字()).toBe(true);
+    听.compositionend();
+    expect(m.正在打字()).toBe(false);
+  });
+
+  it("点开 file input 算忙：选完（change）放；取消（cancel）放；回到页面 3 秒后放", async () => {
+    vi.useFakeTimers();
+    const 听: Record<string, (e?: unknown) => void> = {};
+    const 窗听: Record<string, () => void> = {};
+    vi.stubGlobal("window", { addEventListener: (n: string, f: () => void) => { 窗听[n] = f; }, removeEventListener: () => {} });
+    vi.stubGlobal("document", { visibilityState: "hidden", addEventListener: (n: string, f: () => void) => { 听[n] = f; }, removeEventListener: () => {} });
+    const m = await import("@/lib/swap-guard");
+    m.装输入监听();
+    const 点开 = () => {
+      const 事: Record<string, () => void> = {};
+      const 框 = { tagName: "INPUT", type: "file", addEventListener: (n: string, f: () => void) => { 事[n] = f; }, removeEventListener: () => {} };
+      听.click({ target: 框 });
+      return 事;
+    };
+    let 事 = 点开();
+    expect(m.忙数()).toBe(1);
+    事.change();
+    expect(m.忙数()).toBe(0);
+    事 = 点开();
+    事.cancel();
+    expect(m.忙数()).toBe(0);
+    点开();
+    expect(m.忙数()).toBe(1);
+    (document as unknown as { visibilityState: string }).visibilityState = "visible";
+    听.visibilitychange();
+    vi.advanceTimersByTime(2_900);
+    expect(m.忙数()).toBe(1);
+    vi.advanceTimersByTime(200);
+    expect(m.忙数()).toBe(0);
+  });
+
+  it("导出中登记忙：客户页导出的 effect 同时登记忙 / 卸载时放", async () => {
+    const { readFileSync } = await import("node:fs");
+    const 源 = readFileSync("src/app/(app)/customers/CustomersView.tsx", "utf8");
+    expect(源).toMatch(/if \(!导出中\) return;\s*const 放忙 = 登记忙\("导出"\);/);
+    expect(源).toMatch(/return \(\) => \{ 放忙\(\);/);
+  });
+
+  it("网页录：rec.start 抛错不留忙；成功后录音中算忙，停完放", async () => {
+    let 抛 = true;
+    const 轨 = { addEventListener() {}, removeEventListener() {}, stop() {} };
+    class 假录 { state = "inactive"; mimeType = "audio/webm"; ondataavailable: unknown; onstop: (() => void) | null = null; onerror: unknown;
+      static isTypeSupported() { return true; }
+      start() { if (抛) throw new Error("start 失败"); this.state = "recording"; }
+      stop() { this.state = "inactive"; this.onstop?.(); } }
+    vi.stubGlobal("window", { MediaRecorder: 假录 });
+    vi.stubGlobal("MediaRecorder", 假录);
+    vi.stubGlobal("cancelAnimationFrame", () => {});
+    const 流 = { getAudioTracks: () => [轨] } as unknown as MediaStream;
+    const m = await import("@/lib/swap-guard");
+    const { 开录 } = await import("@/components/CoachRecorder/web-recorder");
+    expect(() => 开录(流, { 每片毫秒: 15_000, 片到了() {} })).toThrow("start 失败");
+    expect(m.忙数()).toBe(0);
+    抛 = false;
+    const r = 开录(流, { 每片毫秒: 15_000, 片到了() {} });
+    expect(m.忙数()).toBe(1);
+    await r.停();
+    expect(m.忙数()).toBe(0);
+  });
+});

@@ -116,3 +116,29 @@ it("传文件慢话：按速度估超过 3 分钟才提示、写速度和分钟�
   expect(传文件慢话(0, 10)).toBeNull();
   expect(传文件慢话(10 * 1024 * 1024, 40 * 1024)).toBe("网络较慢（约 40KB/秒），传完大约还要 5 分钟，建议连 Wi-Fi；可以先去忙，别关这个页面");
 });
+
+it("O3 PR-C 审查修复：队列里有片没传上去（含重试间隔里）算忙；传完、停了、服务器拒了放掉", async () => {
+  const { 忙数, 清登记 } = await import("@/lib/swap-guard");
+  清登记();
+  let 断 = true;
+  const q = 建片队列({ 每秒字节: 3000, 取: (async () => (断 ? Promise.reject(new TypeError("断网")) : 回(200))) as typeof fetch });
+  expect(忙数()).toBe(0);
+  q.放(1, 0, 块(10)); // 编号没到，片攒着
+  expect(忙数()).toBe(1);
+  q.给编号("c");
+  await vi.advanceTimersByTimeAsync(1_000); // 第一次失败后在 2 秒退避里：没有请求在路上
+  expect(忙数()).toBe(1);
+  断 = false;
+  await vi.advanceTimersByTimeAsync(3_000);
+  expect(忙数()).toBe(0);
+  const q2 = 建片队列({ 每秒字节: 3000, 取: (async () => 回(400, { error: "no" })) as typeof fetch });
+  q2.给编号("d");
+  q2.放(1, 0, 块(10));
+  await vi.advanceTimersByTimeAsync(10);
+  expect(忙数()).toBe(0);
+  const q3 = 建片队列({ 每秒字节: 3000 });
+  q3.放(1, 0, 块(10));
+  expect(忙数()).toBe(1);
+  q3.停();
+  expect(忙数()).toBe(0);
+});

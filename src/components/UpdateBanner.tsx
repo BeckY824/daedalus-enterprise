@@ -17,7 +17,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { 有新版本话, 旧版本事件, 存好再刷新, 版本变了, 最短间隔毫秒, 定时毫秒 } from "@/lib/stale-deploy";
-import { 取现场, 听记位, 恢复滚动, 悄悄换, 装请求计数, 能静默换 } from "@/lib/swap-guard";
+import { 取现场, 听记位, 恢复滚动, 悄悄换, 装请求计数, 装输入监听, 能静默换 } from "@/lib/swap-guard";
 import { 全局兜底话, 认动作错 } from "@/lib/action-error";
 
 /** 兜底那条亮多久 */
@@ -54,6 +54,7 @@ export default function UpdateBanner({ 载入时 }: { 载入时: string | null }
   // 发版换页后恢复滚动位置；非 GET 请求（保存、上传、AI 流）没回完算「忙」，静默换版不打断它们
   useEffect(() => {
     装请求计数();
+    装输入监听();
     恢复滚动();
     return 听记位();
   }, []);
