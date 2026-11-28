@@ -80,6 +80,14 @@ export function 算确认人(org: 组织, B: { ownerId: string; bizLine?: string
   if (!出.length) for (const id of 系统管理员们(org)) 加(id, 层级.管理员);
   return 出;
 }
+/** 这张申请我算不算确认人：发起时存的名单里还在职的 ∪ 现在按组织重算的（和 处理跨并申请 服务端认的同一批）。页面的「等我确认」「去确认」共用 */
+export function 是确认人of(org: 组织 | null, r: { confirmerIds: string; fromOwnerId: string }, 被并线: string | null | undefined, 谁: string): boolean {
+  if (!org) return false;
+  let 存: { userId: string }[] = [];
+  try { 存 = JSON.parse(r.confirmerIds) as { userId: string }[]; } catch { /* 坏名单只认现算 */ }
+  if (存.some((x) => x.userId === 谁 && org.成员.has(谁))) return true;
+  return 算确认人(org, { ownerId: r.fromOwnerId, bizLine: 被并线 }).some((x) => x.userId === 谁);
+}
 const 层级们话 = (人们: readonly 确认人[]) => [...new Set(人们.map((x) => x.层级))].join("、");
 
 /* ───────────────────────── 快照（确认时比四项） ───────────────────────── */

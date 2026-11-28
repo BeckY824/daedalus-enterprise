@@ -33,9 +33,11 @@ beforeAll(async () => {
     import React from 'react';import {createRoot} from 'react-dom/client';import {App,ConfigProvider} from 'antd';import zhCN from 'antd/locale/zh_CN';
     import MergeHost from '@/app/(app)/customers/[id]/MergeHost';import {合并桥} from '@/app/(app)/customers/[id]/merge-bridge';
     import ProjectMergeRequests from '@/app/(app)/customers/merge-requests/ProjectMergeRequests';
+    import MergedIntoLine from '@/app/(app)/projects/[id]/MergedIntoLine';
     function 壳({请求}){const [r,setR]=React.useState(请求);
       return <合并桥.Provider value={{请求:r,收:()=>setR(null)}}><MergeHost customerId="a" 客户名=""/></合并桥.Provider>}
     window.__render=(请求)=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><壳 请求={{...请求,次:1}}/></App></ConfigProvider>);
+    window.__renderLine=(p)=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><MergedIntoLine 单={null} 项目名="我的项目" 去={null} {...p}/></App></ConfigProvider>);
     window.__renderList=(p)=>createRoot(document.getElementById('root')).render(<ConfigProvider locale={zhCN}><App><ProjectMergeRequests {...p}/></App></ConfigProvider>);
   `, loader: "tsx", resolveDir: process.cwd() }, bundle: true, write: false, format: "iife", jsx: "automatic", alias: { "@": path.resolve("src") }, loader: { ".css": "empty" }, define: { "process.env.NODE_ENV": '"production"' }, plugins: [plugin], logLevel: "silent" })).outputFiles[0].text;
   browser = await chromium.launch();
@@ -52,7 +54,7 @@ const 行 = (id: string, 补: object = {}) => ({
   确认人: [{ userId: "me", 名: "我", 层级: "实线上级" }, { userId: "x", 名: "示例线总乙", 层级: "条线总管理" }], ...补,
 });
 
-async function open(width: number, 渲染: "dialog" | "list", 参: object, 设: Record<string, unknown> = {}) {
+async function open(width: number, 渲染: "dialog" | "list" | "line", 参: object, 设: Record<string, unknown> = {}) {
   const page = await browser.newPage({ viewport: { width, height: width < 768 ? 844 : 900 } }); page.setDefaultTimeout(5000);
   const 错: string[] = [];
   page.on("pageerror", e => 错.push(String(e)));
@@ -63,7 +65,7 @@ async function open(width: number, 渲染: "dialog" | "list", 参: object, 设: 
   await page.addStyleTag({ path: path.resolve("src/app/(app)/customers/merge.css") });
   await page.addScriptTag({ content: bundle });
   await page.evaluate((x) => Object.assign(window, x), { __候选: 候选, __预览: 预览申请, ...设 });
-  await page.evaluate(([k, p]) => (window as unknown as Record<string, (x: object) => void>)[k === "dialog" ? "__render" : "__renderList"](p as object), [渲染, 参] as const);
+  await page.evaluate(([k, p]) => (window as unknown as Record<string, (x: object) => void>)[k === "dialog" ? "__render" : k === "line" ? "__renderLine" : "__renderList"](p as object), [渲染, 参] as const);
   return { page, 错 };
 }
 const 调 = (page: Page) => page.evaluate(() => (window as unknown as { __调?: unknown[][] }).__调 ?? []);
@@ -203,5 +205,26 @@ it("系统管理员：待确认的申请带「作废申请」，原因必填、�
     await ok.click();
     await page.locator('[data-testid="xmerge-done"]').waitFor();
     expect((await 调(page)).filter((c) => c[0] === "作废")).toEqual([["作废", "v1", "确认人已停用"]]);
+  } finally { await page.close(); }
+});
+
+it("390：项目页「待确认」那一行点开看全文（等谁、几时失效），不横滚、按钮 ≥ 44px；再点收起", async () => {
+  const 待确认 = { requestId: "r1", 角色: "并走", 另一个: 长名, 等: "示例上级甲（实线上级）、示例线总乙（条线总管理）", 到期: 天后(4), 我发起: true, 我确认: true };
+  const { page, 错 } = await open(390, "line", { 待确认 });
+  try {
+    const t = page.locator('[data-testid="project-xmerge-pending-text"]');
+    await t.waitFor();
+    const 窄 = await t.evaluate((e) => e.scrollWidth > e.clientWidth);
+    expect(窄, "一行省略时放不下全文").toBe(true);
+    await t.click();
+    expect(await t.evaluate((e) => e.classList.contains("is-full"))).toBe(true);
+    expect(await t.evaluate((e) => e.scrollWidth <= e.clientWidth + 1)).toBe(true);
+    expect(await 横滚(page)).toBe(false);
+    for (const id of ["project-xmerge-withdraw"]) {
+      expect(await page.locator(`[data-testid="${id}"]`).evaluate((e) => Math.round(e.getBoundingClientRect().height)), id).toBeGreaterThanOrEqual(44);
+    }
+    await t.click();
+    expect(await t.evaluate((e) => e.classList.contains("is-full"))).toBe(false);
+    expect(错).toEqual([]);
   } finally { await page.close(); }
 });

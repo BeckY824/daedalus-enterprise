@@ -395,6 +395,8 @@ export type 项目合并明细 = {
   自查?: { 两个项目都未开票: true; 谁: string; 时间: string };
   /** 被并掉的项目合并前的结局和线索验证（null = 原来没有验证这一行），和合并写下的无效原因 */
   被并: { result: string | null; closedAt: string | null; 验证: Record<string, unknown> | null; 无效原因: string };
+  /** 跨负责人并才有（跨并后补记写）：撤回时确认人和发起人都算合并的人，留下的项目判还归 留下负责人 */
+  跨负责人?: { 申请id: string | null; 发起人: string; 确认人: string; 发起方式: string; 确认人层级: string; 原负责人: string | null; 留下负责人: string | null };
 };
 
 type 通用表 = {
@@ -455,7 +457,7 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
   const 要 = 通知要 as { A: 项目行; B: 项目行 } | null;
   if (要) {
     await 存沟通后重算三态(要.A.customerId, 现在).catch((e) => console.warn("[合并项目] 三态没重算上：", e instanceof Error ? e.message : e));
-    await 合并后通知(要, me);
+    await 合并后通知(要, me, opt.跨负责人 ?? null);
   }
   return { ok: true, ...r! };
 }
@@ -555,20 +557,31 @@ function 组员话(组: 项目合并明细["被并组员"], A: 项目行): strin
  * 合并后通知（照第一批 E-280 三.2）：被并掉的项目创建人、来源渠道负责人各一条；系统管理员代并时负责人也一条。操作人自己不发。
  * 🔍 我方对应：第一批是被并那家客户的创建人、来源渠道负责人，项目合并换成被并项目的
  */
-async function 合并后通知({ A, B }: { A: 项目行; B: 项目行 }, me: 合并人): Promise<void> {
-  const 收 = [B.creatorId, B.channel?.channelOwnerId, B.ownerId].filter((u) => u && u !== me.id);
-  await notify(收, {
-    kind: 项目合并通知种类,
-    title: `项目「${名(B)}」已并入「${名(A)}」`,
-    body: `${me.name}把项目「${名(B)}」并进了「${名(A)}」，沟通、附件、项目联系人都已挪过去；「${名(B)}」结束为重复线索，不退还已占线索名额；${项目合并撤回天数} 天内可撤回。`,
-    link: `/projects/${A.id}`,
-    key: `merge-project:${B.id}:${A.id}:${Date.now()}`,
-  });
+async function 合并后通知({ A, B }: { A: 项目行; B: 项目行 }, me: 合并人, 跨: 跨并信息 | null = null): Promise<void> {
+  // 跨负责人并（审查 S5）：留下项目的负责人不是并的人（系统管理员 / 确认人直接并、申请确认的发起人除外：那条走 跨并通知）时也收一条，链接去留下的项目
+  const 留下负责人收 = 跨 && A.ownerId && A.ownerId !== me.id && A.ownerId !== 跨.发起人id ? A.ownerId : null;
+  const 收 = [B.creatorId, B.channel?.channelOwnerId, B.ownerId].filter((u) => u && u !== me.id && u !== 留下负责人收);
+  const 话 = `${me.name}把项目「${名(B)}」并进了「${名(A)}」，沟通、附件、项目联系人都已挪过去；「${名(B)}」结束为重复线索，不退还已占线索名额；${项目合并撤回天数} 天内可撤回。`;
+  const 标题 = `项目「${名(B)}」已并入「${名(A)}」`;
+  // 链接（审查 S4）：跨负责人并时被并走那头多半看不到留下的项目，链到被并掉的项目（已并入那一行）；留下项目的负责人自己的那条链到留下的项目
+  await notify(收, { kind: 项目合并通知种类, title: 标题, body: 话, link: `/projects/${跨 ? B.id : A.id}`, key: `merge-project:${B.id}:${A.id}:${Date.now()}` });
+  if (留下负责人收) await notify([留下负责人收], { kind: 项目合并通知种类, title: 标题, body: 话, link: `/projects/${A.id}`, key: `merge-project-a:${B.id}:${A.id}:${Date.now()}` });
 }
 
 /* ───────────────────────── 撤回 ───────────────────────── */
 
 export type 撤回项目合并完 = { 没还原: 没还原[] };
+
+/**
+ * 这张合并单谁算「合并的人」、留下的项目该归谁才能自己撤（跨负责人并读明细里记的，审查 M1 / 方案 E）：
+ * 跨负责人并 = 确认人（byUserId）和发起人都算；留下的项目判「还归并的当时的留下负责人」，不判 me。老单（同负责人并）= 合并人本人、留下的项目还归他。
+ */
+function 撤回身份(m: { byUserId: string; detail: string }, me: { id: string }): { 是合并的人: boolean; 留下归: string } {
+  let 跨: 项目合并明细["跨负责人"] | undefined;
+  try { 跨 = (JSON.parse(m.detail) as 项目合并明细).跨负责人; } catch { /* 老格式 */ }
+  if (!跨) return { 是合并的人: m.byUserId === me.id, 留下归: m.byUserId };
+  return { 是合并的人: m.byUserId === me.id || 跨.发起人 === me.id, 留下归: 跨.留下负责人 ?? "" };
+}
 const 改过话 = "合并之后被改过（换了项目或删了）";
 
 /**
@@ -587,10 +600,10 @@ export async function 撤回项目合并(db: 库, mergeId: string, me: 合并人
           const m = await tx.entCustomerMerge.findUnique({ where: { id: mergeId } });
           if (!m || m.kind !== 项目单) throw new 拦下("找不到这张合并单");
           if (m.status !== "已合并") throw new 拦下("这张合并单已经撤回过了");
-          if (!org || 只读角色(me, org) || 只看的人(org, me.id) || (m.byUserId !== me.id && !是系统管理员(me, org))) throw new 拦下("只有合并的人或系统管理员能撤回合并");
+          if (!org || 只读角色(me, org) || 只看的人(org, me.id) || (!撤回身份(m, me).是合并的人 && !是系统管理员(me, org))) throw new 拦下("只有合并的人或系统管理员能撤回合并");
           if (现在.getTime() - m.at.getTime() > 项目合并撤回天数 * 86_400_000) throw new 拦下(项目合并撤回过期话);
           const A = await 读项目(tx, m.intoId, true);
-          if (A && !是系统管理员(me, org) && (A.pooledAt || A.ownerId !== me.id)) throw new 拦下(`「${名(A)}」现在不归你负责，请找系统管理员撤回`);
+          if (A && !是系统管理员(me, org) && (A.pooledAt || A.ownerId !== 撤回身份(m, me).留下归)) throw new 拦下(`「${名(A)}」现在不归你负责，请找系统管理员撤回`);
           const r = await 在事务里撤回项目合并(tx, m, me, 现在, 开, true);
           客户 = r.客户;
           return r.没还原;
@@ -718,11 +731,11 @@ export type 项目合并单一条 = {
 
 /** 已合并的单这会儿为什么不能撤（和 撤回项目合并 / 在事务里撤回项目合并 的拦话同一套说法，先判的先说） */
 function 不能撤因of(
-  m: { at: Date; byUserId: string }, A: { name: string; ownerId: string | null; pooledAt: Date | null; deletedAt: Date | null } | undefined,
+  m: { at: Date; byUserId: string; detail: string }, A: { name: string; ownerId: string | null; pooledAt: Date | null; deletedAt: Date | null } | undefined,
   B: { name: string; deletedAt: Date | null } | undefined, me: 合并人, 管: boolean, 能写: boolean, 线: number,
 ): string {
   if (m.at.getTime() < 线) return 项目合并撤回过期话;
-  if (!能写 || (m.byUserId !== me.id && !管)) return "只有合并的人或系统管理员能撤回合并";
+  if (!能写 || (!撤回身份(m, me).是合并的人 && !管)) return "只有合并的人或系统管理员能撤回合并";
   if (!A || !B) return "项目已彻底删除，不能撤回合并";
   for (const p of [A, B]) if (p.deletedAt) return `「${名(p)}」在回收站里，先恢复再撤回合并`;
   return `「${名(A)}」现在不归你负责，请找系统管理员撤回`;
@@ -745,7 +758,7 @@ export async function 项目的合并单(db: 库, projectId: string, me: 合并�
     let 留下名 = A?.name ?? "";
     try { 留下名 = (JSON.parse(m.detail) as 项目合并明细).留下名 || 留下名; } catch { /* 老格式 */ }
     const 能撤 = m.status === "已合并" && m.at.getTime() >= 线 && 能写 && !!A && !!B && !A.deletedAt && !B.deletedAt
-      && (管 || (m.byUserId === me.id && A.ownerId === me.id && !A.pooledAt));
+      && (管 || (撤回身份(m, me).是合并的人 && A.ownerId === 撤回身份(m, me).留下归 && !A.pooledAt));
     return {
       id: m.id, 方向: m.intoId === projectId ? "并进来" as const : "并出去" as const, 从: m.fromName, 到: A?.name ?? 留下名, 从id: m.fromId, 到id: m.intoId,
       at: m.at.toISOString(), status: m.status, 谁: 人名.get(m.byUserId) ?? "", 能撤,

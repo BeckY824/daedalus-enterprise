@@ -40,7 +40,7 @@ import {
   type 发起完, type 处理完, type 快照, type 凭, type 涉及项目, type 合并申请预览结果,
 } from "@/lib/enterprise/merge-request";
 import {
-  发起跨负责人并, 跨并预览, 处理跨并申请, 撤回跨并申请, 作废跨并申请, 作废原因超话, 算确认人, 跨并状态, type 确认人层级,
+  发起跨负责人并, 跨并预览, 处理跨并申请, 撤回跨并申请, 作废跨并申请, 作废原因超话, 算确认人, 是确认人of, 跨并状态, type 确认人层级,
 } from "@/lib/enterprise/project-merge-request";
 import { 跨并通知 } from "@/lib/enterprise/project-merge-request-notice";
 import { 通知里的客户名 } from "@/lib/enterprise/notice-mask";
@@ -625,8 +625,13 @@ export type 跨并申请一条 = {
 
 async function 跨并行们(where: Prisma.EntProjectMergeRequestWhereInput, 只留我是确认人?: string): Promise<跨并申请一条[]> {
   if (!企业版()) return [];
-  const 行们 = (await 看全部(() => prisma.entProjectMergeRequest.findMany({ where, orderBy: { at: "desc" }, take: 50 })))
-    .filter((r) => !只留我是确认人 || 读JSON<{ userId: string }[]>(r.confirmerIds, []).some((x) => x.userId === 只留我是确认人));
+  let 行们 = await 看全部(() => prisma.entProjectMergeRequest.findMany({ where, orderBy: { at: "desc" }, take: 50 }));
+  // 等我确认的（审查建议 1）：发起时存的名单 ∪ 现在按组织重算的（和服务端 处理跨并申请 认的同一批），原确认人停用 / 调岗后新上级也看得到、点得了
+  if (只留我是确认人 && 行们.length) {
+    const org = await 权限组织();
+    const 线们 = new Map((await 看全部(() => prisma.project.findMany({ where: { id: { in: 行们.map((r) => r.fromProjectId) } }, select: { id: true, bizLine: true } }))).map((x) => [x.id, x.bizLine]));
+    行们 = 行们.filter((r) => 是确认人of(org, r, 线们.get(r.fromProjectId), 只留我是确认人));
+  }
   if (!行们.length) return [];
   const 项ids = [...new Set(行们.flatMap((r) => [r.fromProjectId, r.intoProjectId]))];
   const 确 = 行们.map((r) => ({ r, 们: 读JSON<{ userId: string; 层级: string }[]>(r.confirmerIds, []) }));
@@ -654,10 +659,10 @@ async function 跨并行们(where: Prisma.EntProjectMergeRequestWhereInput, 只�
   });
 }
 
-/** 等我确认的：待确认、我在确认人名单里 */
+/** 等我确认的：待确认、我是确认人（发起时存的名单 ∪ 现算的） */
 export async function 等我确认的跨并申请(): Promise<跨并申请一条[]> {
   const me = await requireUser();
-  return 跨并行们({ status: 跨并状态.待确认, confirmerIds: { contains: me.id } }, me.id);
+  return 跨并行们({ status: 跨并状态.待确认 }, me.id);
 }
 
 /** 我发起的：各种状态都列 */

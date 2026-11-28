@@ -23,9 +23,9 @@ import { 验证时限生效key, 验证时限扫一遍, 验证时限通知种类 
 import { 到期时刻 } from "@/lib/enterprise/merge-request";
 import { 发起合并申请 } from "@/lib/enterprise/merge-request";
 import { 待补数们 } from "@/lib/enterprise/invalid-makeup";
-import { 撤回项目合并, 执行项目合并, 读快照 } from "@/lib/enterprise/project-merge";
+import { 撤回项目合并, 执行项目合并, 读快照, 项目合并通知种类 } from "@/lib/enterprise/project-merge";
 import {
-  算确认人, 发起跨负责人并, 处理跨并申请, 撤回跨并申请, 扫过期跨并申请, 跨并预览, 跨并暂停中的项目, 跨并重新起算时刻们, 拒绝必填话, 客户合并申请挡话, 作废跨并申请,
+  算确认人, 发起跨负责人并, 处理跨并申请, 撤回跨并申请, 扫过期跨并申请, 跨并预览, 跨并暂停中的项目, 跨并重新起算时刻们, 拒绝必填话, 客户合并申请挡话, 作废跨并申请, 是确认人of,
 } from "@/lib/enterprise/project-merge-request";
 
 type 人 = { id: string; name: string; role: string };
@@ -513,5 +513,77 @@ describe("s1 审查修（必改 1–3 + 建议）", () => {
     expect(await 作废跨并申请(prisma, id, 老板, "再来")).toMatchObject({ ok: false });
     expect(await raw.auditLog.count({ where: { action: "project-merge-request-void", entityId: { in: [a, b] } } })).toBe(2);
     expect((await 发起跨负责人并(prisma, a, b, 乙)).ok).toBe(true);
+  });
+});
+
+describe("s2 审查修 M1：申请确认并成后，确认人和发起人都能撤回（方案 E）", () => {
+  const 并好 = async () => {
+    const { a, b } = await 一对();
+    const id = await 请(a, b);
+    expect(await 处理跨并申请(prisma, id, 销管, "确认")).toMatchObject({ ok: true });
+    return { a, b, mergeId: (await 申请(id)).mergeId! };
+  };
+  it("确认人能撤", async () => {
+    const { b, mergeId } = await 并好();
+    expect(await 撤回项目合并(prisma, mergeId, 销管)).toMatchObject({ ok: true });
+    expect((await 项(b)).result).toBeNull();
+  });
+  it("发起人（留下项目的负责人）能撤", async () => {
+    const { b, mergeId } = await 并好();
+    expect(await 撤回项目合并(prisma, mergeId, 乙)).toMatchObject({ ok: true });
+    expect((await 项(b)).result).toBeNull();
+  });
+  it("留下的项目换了负责人后，确认人和发起人都不能撤，系统管理员能", async () => {
+    const { a, mergeId } = await 并好();
+    await raw.project.update({ where: { id: a }, data: { ownerId: 丁.id } });
+    expect(await 撤回项目合并(prisma, mergeId, 销管)).toMatchObject({ ok: false, error: expect.stringContaining("系统管理员") });
+    expect(await 撤回项目合并(prisma, mergeId, 乙)).toMatchObject({ ok: false, error: expect.stringContaining("系统管理员") });
+    expect(await 撤回项目合并(prisma, mergeId, 老板)).toMatchObject({ ok: true });
+  });
+  it("无关人不能撤", async () => {
+    const { mergeId } = await 并好();
+    expect(await 撤回项目合并(prisma, mergeId, 丁)).toMatchObject({ ok: false, error: expect.stringContaining("只有合并的人") });
+    expect(await 撤回项目合并(prisma, mergeId, 丙)).toMatchObject({ ok: false, error: expect.stringContaining("只有合并的人") });
+  });
+  it("项目的合并单：撤回按钮对确认人、发起人出现，无关人不出", async () => {
+    const { a, mergeId } = await 并好();
+    const { 项目的合并单 } = await import("@/lib/enterprise/project-merge");
+    for (const [我, 要] of [[销管, true], [乙, true], [丁, false]] as const) {
+      expect((await 项目的合并单(prisma, a, 我)).find((m) => m.id === mergeId)?.能撤).toBe(要);
+    }
+  });
+});
+
+describe("s2 审查修 S4 / S5：并后通知", () => {
+  const 通 = (userId: string) => raw.entNotice.findMany({ where: { userId, kind: 项目合并通知种类 } });
+  it("系统管理员代并：被并走的原负责人收的链接去被并掉的项目；留下项目的负责人也收一条，链接去留下的项目", async () => {
+    const { a, b } = await 一对();
+    expect((await 发起跨负责人并(prisma, a, b, 老板)).ok).toBe(true);
+    await 等通知推完();
+    expect((await 通(丙.id)).map((n) => n.link)).toEqual([`/projects/${b}`]);
+    expect((await 通(乙.id)).map((n) => n.link)).toEqual([`/projects/${a}`]);
+  });
+  it("留下项目的负责人自己发起并（本人发起）不给自己发；申请确认的发起人也不重复收", async () => {
+    const { a, b } = await 一对();
+    await 处理跨并申请(prisma, await 请(a, b), 销管, "确认");
+    await 等通知推完();
+    expect(await 通(乙.id)).toEqual([]);
+    expect((await 通(丙.id)).map((n) => n.link)).toEqual([`/projects/${b}`]);
+  });
+});
+
+describe("s2 审查修 S1：等我确认的 = 存的名单 ∪ 现算的", () => {
+  it("存的确认人（销管）调走后，新上级也算确认人；无关人不算", async () => {
+    const { a, b } = await 一对();
+    const id = await 请(a, b);
+    const r = await 申请(id);
+    const 线 = (await 项(b)).bizLine;
+    expect(是确认人of(await 读组织(), r, 线, 销管.id)).toBe(true);
+    // 丙换了一位上级（原上级销管不再是实线上级）：存的名单里还有销管（还在职），新上级现算进来
+    const 新 = await 造人("xg2", "销管乙", "SALES");
+    await raw.entMember.create({ data: { userId: 新.id, bizRole: "sales_mgr", line: "内贸" } });
+    await raw.entMember.update({ where: { userId: 丙.id }, data: { managerId: 新.id } });
+    expect(是确认人of(await 读组织(), r, 线, 新.id)).toBe(true);
+    expect(是确认人of(await 读组织(), r, 线, 丁.id)).toBe(false);
   });
 });

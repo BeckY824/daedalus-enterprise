@@ -4,7 +4,7 @@
  * 项目详情顶上「已并入 → 留下的项目」一行（合并客户第二批 2a，规划「被并掉的项目详情显示已并入」）。
  *
  * 被并掉的项目（合并单没撤回）打开时：并进了哪个项目（点得过去）、谁、何时并的；能撤的人（load.ts 已并入of，和历史变更同一个预判）旁边带「撤回」，
- * 没权的不摆按钮；过了撤回期限（单.过期话，load.ts 带，谁看都一样、系统管理员也不能代撤）在按钮的位置写「合并已超过 N 天，不能撤回」。留下的项目上不摆。电脑和手机（≤767）同一个组件：一行放不下省略号，悬停看全，手机点一下展开看全。
+ * 没权的不摆按钮；过了撤回期限（单.过期话，load.ts 带，谁看都一样、系统管理员也不能代撤）在按钮的位置写「合并已超过 N 天，不能撤回」。留下的项目上不摆。电脑和手机（≤767）同一个组件：一行放不下省略号，悬停看全，手机点一下展开看全（待确认那一行同，审查建议 S3：手机上看不到等谁、几时失效就点开）。
  *
  * 页面（客户页 page.tsx 的项目区、项目详情页 page.tsx）当槽递给 ProjectDetail，不让 ProjectDetail 直接引服务端动作
  * （项目详情那十几个界面测试打包 ProjectDetail 时不用各自再桩一份 merge-actions）。
@@ -42,6 +42,7 @@ export default function MergedIntoLine({ 单, 项目名, 去, 嵌入, 待确认 
   const router = useRouter();
   const [问后果, 后果框] = useConsequence();
   const [全, set全] = useState(false);
+  const [待全, set待全] = useState(false);
   const [撤了, set撤了] = useState<撤回结果 | null>(null);
   const [申请撤了, set申请撤了] = useState(false);
   const [申请错, set申请错] = useState<string | null>(null);
@@ -50,7 +51,7 @@ export default function MergedIntoLine({ 单, 项目名, 去, 嵌入, 待确认 
     <div className={`mrg-into${嵌入 ? "" : " is-solo"}`} role="status" data-testid="project-xmerge-pending">
       <div className="mrg-into-r">
         <InfoCircleOutlined className="mrg-into-i" aria-hidden />
-        <span className="mrg-into-t" title={`跨负责人合并申请待确认：${待确认.角色 === "并走" ? "这个项目要并进" : "要把"}「${待确认.另一个}」${待确认.角色 === "并走" ? "" : "并进来"}，等 ${待确认.等} 确认；${天话(待确认.到期)}`}>
+        <span className={`mrg-into-t${待全 ? " is-full" : ""}`} data-testid="project-xmerge-pending-text" onClick={() => set待全((x) => !x)} title={`跨负责人合并申请待确认：${待确认.角色 === "并走" ? "这个项目要并进" : "要把"}「${待确认.另一个}」${待确认.角色 === "并走" ? "" : "并进来"}，等 ${待确认.等} 确认；${天话(待确认.到期)}`}>
           跨负责人合并申请待确认：{待确认.角色 === "并走" ? `这个项目要并进「${待确认.另一个}」` : `要把「${待确认.另一个}」并进来`}，等 {待确认.等} 确认
           <span className="mrg-into-s">（{天话(待确认.到期)}；这个项目的验证计时已暂停）</span>
         </span>
