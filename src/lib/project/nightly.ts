@@ -48,6 +48,7 @@ import { 钟上特殊裁定月通知 } from "@/lib/enterprise/objection-judge";
 import { 钟上待裁提醒, 钟上手工退回提醒 } from "@/lib/enterprise/objection-remind";
 import { 收拾卡住的推送 } from "@/lib/enterprise/feishu-push";
 import { 钟上扫过期合并申请 } from "@/lib/enterprise/merge-request";
+import { 钟上扫过期跨并申请 } from "@/lib/enterprise/project-merge-request";
 import { dayjs } from "../utils";
 
 export const 夜扫时刻 = { 时: 0, 分: 5 } as const;
@@ -174,6 +175,9 @@ export function 启动夜扫(间隔毫秒 = 60_000, 先等?: Promise<unknown>): 
       // 合并申请 5 个工作日没全部同意的记「已失效」（合并客户第二批 2b）
       .then(() => 钟上扫过期合并申请(现在))
       .then(() => undefined, (e) => console.error("[合并申请] 扫过期出错，下一遍再试", e))
+      // 跨负责人项目合并申请 5 个工作日没确认的记「已失效」（E-380）
+      .then(() => 钟上扫过期跨并申请(现在))
+      .then(() => undefined, (e) => console.error("[跨负责人项目合并] 扫过期出错，下一遍再试", e))
       // 飞书推送卡在「待推 / 推送中」的（进程重启、批次出错）记成失败，不重推（M-公海-33）；每 10 分钟最多一次
       .then(() => 收拾卡住的推送(现在))
       .then(() => undefined, (e) => console.error("[飞书推送] 收拾卡住的行出错，下一遍再试", e))

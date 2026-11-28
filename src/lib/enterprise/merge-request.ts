@@ -374,6 +374,9 @@ async function 发起前判(
     if (哪家.id === B!.id && 并掉看不到) return 不行(并掉看不到话);
     return 不行(`「${名(哪家)}」已有一张合并申请在等同意，先撤回那张再发`);
   }
+  // 和跨负责人项目合并申请（EntProjectMergeRequest，迁移 195）互斥：这两家名下有项目在等确认时不能发客户合并申请（不 import project-merge-request，免循环）
+  if (await db.entProjectMergeRequest.findFirst({ where: { customerId: { in: [A!.id, B!.id] }, status: { in: ["待确认", "执行中"] } }, select: { id: true } }))
+    return 不行("这位客户名下有一张跨负责人项目合并申请在等确认，先等它处理完再发客户合并申请");
   if ((await db.entMergeRequest.count({ where: { byUserId: me.id, status: 申请状态.待同意 } })) >= 每人最多待同意)
     return 不行(`你已有 ${每人最多待同意} 张合并申请在等同意，等处理完或撤回一张再发`);
   return { ok: true, 人们 };

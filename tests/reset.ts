@@ -84,6 +84,8 @@ async function 清空() {
   await prisma.entRequiredBlock.deleteMany();
   await prisma.entMergeApprover.deleteMany();
   await prisma.entMergeRequest.deleteMany();
+  // 跨负责人项目合并申请（迁移 195）：不挂外键，单独清
+  await prisma.entProjectMergeRequest.deleteMany();
   await prisma.entCustomerMerge.deleteMany();
   // 疑似重复清单「不是同一个人」（12-15 第三批 C）：不挂外键，各自清
   await prisma.customerNotDupe.deleteMany();

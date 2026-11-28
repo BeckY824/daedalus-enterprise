@@ -116,6 +116,8 @@ export const 不同步表 = [
   "EntCustomerMerge",
   // 企业版跨负责人合并申请和同意人（2026-11-26，迁移 174）：同上；申请执行时调的是这台库里的合并，也只在这台做
   "EntMergeRequest", "EntMergeApprover",
+  // 跨负责人项目直接合并申请（2026-11-28，迁移 195）：同上
+  "EntProjectMergeRequest",
 ] as const;
 
 /**
@@ -269,6 +271,11 @@ export const 指向人的列: [string, string][] = [
   ["EntMergeRequest", "endedById"],
   ["EntMergeApprover", "userId"],
   ["EntMergeApprover", "fromUserId"],
+  // 跨负责人项目合并申请（2026-11-28，迁移 195）：不建外键
+  ["EntProjectMergeRequest", "byUserId"],
+  ["EntProjectMergeRequest", "fromOwnerId"],
+  ["EntProjectMergeRequest", "intoOwnerId"],
+  ["EntProjectMergeRequest", "endedById"],
 ];
 
 /**

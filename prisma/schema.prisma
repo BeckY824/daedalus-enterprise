@@ -1685,7 +1685,7 @@ model EntLeadMakeup {
   voidAt        DateTime?
   /// 退名额的那一刻（= 判无效那一刻），多人有待补时按它先后
   createdAt     DateTime  @default(now())
-  /// 哪种待补（迁移 161）：空 = 判无效记的；giveup = 主动放弃（豁免）记的（lead-giveup.ts）。判无效那条线索被恢复时只作废空的那种
+  /// 哪种待补（迁移 161）：空 = 判无效记的；giveup = 主动放弃（豁免）记的（lead-giveup.ts）；merge-out = 项目被跨负责人并走记的（project-merge-request.ts）。判无效那条线索被恢复时只作废空的那种
   kind          String?
 
   @@index([userId, usedAt])
@@ -2407,6 +2407,45 @@ model EntMergeRequest {
 
   @@index([intoId, status])
   @@index([fromId, status])
+  @@index([byUserId, status])
+  @@index([status, expiresAt])
+}
+
+/// 跨负责人项目直接合并申请（迁移 195，E-380；方案 wt/plan-cross-owner-merge.md、终审 review/plan-xmerge-final.md）：
+/// 同一位客户下、负责人不同、都在线索阶段的两个项目，留下那个项目的负责人发起，被并走那位负责人的实线上级 / 同线条线总管理 / 系统管理员确认后同事务并。
+/// 确认人自己发起 = 直接并，不建申请。到期 5 个工作日失效；待确认期间被并那条新线索的验证时限、超时自动转暂停，结束后从头计时。
+/// 不建外键：指向项目、人、客户的列都不建（项目软删、人停用，申请照留）。说明见 lib/enterprise/project-merge-request.ts
+model EntProjectMergeRequest {
+  id             String    @id @default(cuid())
+  /// 被并走的项目（B）和它的负责人（发起时的，被并走的原负责人）
+  fromProjectId  String
+  fromOwnerId    String
+  /// 留下的项目（A）和它的负责人
+  intoProjectId  String
+  intoOwnerId    String
+  customerId     String
+  /// 谁发起的（留下项目的负责人）
+  byUserId       String
+  /// 确认人（JSON 数组，发起时算的）和他们凭什么：实线上级 / 条线总管理 / 系统管理员
+  confirmerIds   String    @default("[]")
+  confirmerRole  String
+  /// 待确认 / 已合并 / 已拒绝 / 已失效 / 已撤回；执行中 = 确认人点了确认、正在挪
+  status         String    @default("待确认")
+  /// 已拒绝 / 已失效 / 已撤回的一句原因
+  reason         String?
+  /// 发起时两个项目的快照（JSON）：负责人、阶段 / 结局、回款提成、被判无效；确认时只比这四项
+  snapshot       String
+  at             DateTime  @default(now())
+  /// 到期的那一刻：发起后第 5 个工作日的同一时刻
+  expiresAt      DateTime
+  endedAt        DateTime?
+  endedById      String?
+  /// 确认后的合并单（EntCustomerMerge.id）
+  mergeId        String?
+
+  @@index([fromProjectId, status])
+  @@index([intoProjectId, status])
+  @@index([customerId, status])
   @@index([byUserId, status])
   @@index([status, expiresAt])
 }

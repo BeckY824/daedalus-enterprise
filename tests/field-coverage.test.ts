@@ -677,6 +677,14 @@ const 派生: Record<string, Record<string, string>> = {
     at: "发起的那一刻，系统写", expiresAt: "发起后第 5 个工作日的同一时刻，系统算", endedAt: "结束的那一刻，系统写", endedById: "谁结束的（系统判失效时空），当前登录账号",
     mergeId: "执行后的合并单，系统写", approvers: "关系字段",
   },
+  EntProjectMergeRequest: {
+    fromProjectId: "被并走的项目，发起时系统写（lib/enterprise/project-merge-request.ts，迁移 195）", fromOwnerId: "被并走的原负责人，发起时系统取项目负责人",
+    intoProjectId: "留下的项目，发起时系统写", intoOwnerId: "留下项目的负责人，发起时系统取", customerId: "两个项目同属的客户，发起时系统取",
+    byUserId: "谁发起的，当前登录账号", confirmerIds: "确认人名单，发起时系统按原负责人的实线上级 / 同线条线总管理 / 系统管理员算", confirmerRole: "确认人是哪一级，系统写",
+    status: "待确认 / 执行中 / 已合并 / 已拒绝 / 已失效 / 已撤回，系统按确认、拒绝、到期、再判、撤回写", reason: "拒绝、失效、撤回的一句原因，系统写",
+    snapshot: "发起时两个项目的快照，系统写（确认时比四项）", at: "发起的那一刻，系统写", expiresAt: "发起后第 5 个工作日的同一时刻，系统算",
+    endedAt: "结束的那一刻，系统写", endedById: "谁结束的（系统判失效时为空）", mergeId: "确认后的合并单，系统写",
+  },
   EntMergeApprover: {
     requestId: "哪张申请，发起时系统写", request: "关系字段", userId: "要谁同意，系统按两家负责人和同事项目负责人算", why: "凭什么要他同意，系统写",
     projects: "他涉及的项目，系统写", status: "待同意 / 同意 / 拒绝，本人点", note: "拒绝时本人写的一句话", decidedAt: "本人同意 / 拒绝的那一刻，系统写",

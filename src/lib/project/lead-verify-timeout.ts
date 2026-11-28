@@ -9,6 +9,7 @@
  *   总管理终判 = 销售提交异议的 ackedAt，没走异议（初判无效直接交总管理）= verifiedAt。
  * 生效时刻 = max(本钟自己的 Setting 验证时限生效key, 超时转生效时刻)：本钟第一遍扫（= 上线时刻）记成那一刻，超时转开关从关拨开时那边重记，
  *   起钟早于生效时刻的（上线前就在等的、关着期间进入的）一律不提醒不落定，只认之后进入这一步的。
+ * 跨负责人并申请待确认期间（E-380，project-merge-request.ts）这条线索（被并走那条）暂停：不提醒不落定；申请结束（失效 / 拒绝 / 撤回）后从头计时：起钟取 max(起钟, 申请结束时刻)。
  * 提醒发出的时刻 = 站内通知（EntNotice kind 验证时限）的 createdAt，不另存。销售认领不是验证，不走这个钟。
  * 跑在每分钟那一遍（nightly.ts，排在超时自动转后面）；开关同「超时未跟进自动转」。从不抛。
  */
@@ -23,6 +24,7 @@ import { 该做, 不执行, 超时提醒到期, 超时转出安排, 超时自动
 import { 重复咨询来源 } from "./system-created";
 import { 有效线索节点 } from "./stage-gates";
 import { 实际待, 无效交给, 被等的人们, 到期落定, type 待哪步 } from "./lead-verify";
+import { 跨并暂停中的项目, 跨并重新起算时刻们 } from "@/lib/enterprise/project-merge-request";
 
 export const 验证时限通知种类 = "验证时限";
 type 钟步 = "市场复核" | "销售终验" | "总管理终判";
@@ -107,12 +109,17 @@ export async function 验证时限扫一遍(现在: Date = new Date(), 上限: n
     if (!行们.length) return 明细;
     const org = await 读组织();
     const 交给 = await 无效交给(org);
+    const 并停 = await 跨并暂停中的项目(prisma, 行们.map((v) => v.projectId), 现在);
+    const 并重起 = await 跨并重新起算时刻们(prisma, 行们.map((v) => v.projectId));
     for (const v of 行们) {
       try {
+        if (并停.has(v.projectId)) continue;
         const 步 = 实际待(v.pending, 交给) as 待哪步 | null;
         if (步 !== "市场复核" && 步 !== "销售终验" && 步 !== "总管理终判") continue;
-        const 起 = 起钟时刻(步, v);
-        if (!起 || 起.getTime() < 生效.getTime()) continue;
+        const 原起 = 起钟时刻(步, v);
+        if (!原起 || 原起.getTime() < 生效.getTime()) continue;
+        const 重起 = 并重起.get(v.projectId);
+        const 起 = 重起 && 重起.getTime() > 原起.getTime() ? 重起 : 原起;
         const 头 = 键头(v.projectId, 起);
         const 末提醒 = await prisma.entNotice.findFirst({ where: { kind: 验证时限通知种类, dedupeKey: { startsWith: `${头}:` } }, orderBy: { createdAt: "desc" }, select: { createdAt: true } });
         const 做 = 该做({ since: 起, overdueAt: 末提醒?.createdAt ?? null }, 现在);

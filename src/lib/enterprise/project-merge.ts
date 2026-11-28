@@ -34,6 +34,8 @@ import { 生效的合同状态 } from "@/lib/project/proj-fields";
 import { 在潜客培育, 培育计划来源, 撤培育计划 } from "@/lib/project/nurture-plan";
 import { 短时刻 } from "@/lib/project/time-fields";
 import { 实际待, 无效交给 } from "@/lib/project/lead-verify";
+import { 占过名额 } from "./lead-assign";
+import { 记并走待补, 作废并走待补 } from "./invalid-makeup";
 
 export { 项目单, 项目合并撤回天数, 项目合并验证步 };
 type 库 = PrismaClient;
@@ -52,9 +54,9 @@ const 项目列 = {
   id: true, name: true, customerId: true, ownerId: true, creatorId: true, phase: true, node: true, result: true, closedAt: true,
   pooledAt: true, awaitAssignAt: true, deletedAt: true, channelId: true, bizLine: true, contractStatus: true, channel: { select: { channelOwnerId: true } },
 } satisfies Prisma.ProjectSelect;
-type 项目行 = Prisma.ProjectGetPayload<{ select: typeof 项目列 }>;
+export type 项目行 = Prisma.ProjectGetPayload<{ select: typeof 项目列 }>;
 
-async function 读项目(db: Pick<Tx, "project">, id: string, 连删的 = false): Promise<项目行 | null> {
+export async function 读项目(db: Pick<Tx, "project">, id: string, 连删的 = false): Promise<项目行 | null> {
   return 看全部(() => db.project.findFirst({ where: { id, ...(连删的 ? {} : { deletedAt: null }) }, select: 项目列 }));
 }
 const 名 = (p: Pick<项目行, "name">) => p.name || "未命名项目";
@@ -82,7 +84,7 @@ export function 阶段和钱拦(p: Pick<项目行, "name" | "phase"> & { contrac
   return 因;
 }
 
-async function 钱(db: Pick<Tx, "entProjectPayment" | "entCommission" | "entCommissionSplit">, projectId: string) {
+export async function 钱(db: Pick<Tx, "entProjectPayment" | "entCommission" | "entCommissionSplit">, projectId: string) {
   const [回款, 提成, 分配] = await 看全部(() => Promise.all([
     db.entProjectPayment.count({ where: { projectId } }),
     db.entCommission.count({ where: { projectId } }),
@@ -101,13 +103,20 @@ export const 留下在等的原因 = (p: { name?: string | null }, 等: string) 
 
 /** 不能并的原因（空 = 能并）。A = 留下，B = 并掉 */
 /** 销售判无效现在交给谁（实际待要用）：读规则要用外面的库连接，不能在合并事务里读，调用方先在事务外算好传进来 */
-async function 现在交给(org: 组织 | null): Promise<"市场复核" | "总管理终判"> {
+export async function 现在交给(org: 组织 | null): Promise<"市场复核" | "总管理终判"> {
   return org ? 无效交给(org) : "总管理终判";
 }
 /** 验证里存着的 pending 换成现在实际在等的那步（规则关了 / 市场管理走了，存着「市场复核」按总管理终判算，和验证页、待办同一口径） */
 const 等谁 = (pending: string, 交给: "市场复核" | "总管理终判") => 实际待(pending, 交给) ?? pending;
 
-async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | null, me: 合并人, org: 组织 | null, 交给: "市场复核" | "总管理终判"): Promise<string[]> {
+/**
+ * 跨负责人并（E-380）时由 project-merge-request.ts 带进来：放开「负责人不同」和「不是你负责的」两条（谁能发起、谁能确认由申请那边判），
+ * 其余照旧；申请 id = 正在执行的那张申请（自己不挡自己）
+ */
+export type 跨并信息 = { 申请id: string | null; 发起人id: string; 确认人id: string; 发起方式: "本人发起" | "申请确认"; 确认人层级: string };
+export const 跨并待确认挡话 = (p: { name?: string | null }) => `「${p.name || "未命名项目"}」有一张跨负责人合并申请在等确认，先处理那张`;
+
+export async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | null, me: 合并人, org: 组织 | null, 交给: "市场复核" | "总管理终判", 跨: 跨并信息 | null = null): Promise<string[]> {
   if (!企业版()) return ["只有企业版能合并项目"];
   if (!A || !B) return ["项目不存在或已删除，刷新看看"];
   if (A.id === B.id) return ["不能和自己合并，请选另一个项目"];
@@ -127,9 +136,17 @@ async function 拦的原因(db: Tx | 库, A: 项目行 | null, B: 项目行 | nu
     else if (p.awaitAssignAt) { 因.push(`「${名(p)}」在等分配，先分出去再并`); 公海 = true; }
   }
   if (!公海) {
-    if (A.ownerId !== B.ownerId) 因.push("两个项目负责人不同，只能合并同一位负责人的两个项目");
+    if (跨) {
+      if (A.ownerId === B.ownerId) 因.push("两个项目是同一位负责人，直接合并即可，不用跨负责人申请");
+    } else if (A.ownerId !== B.ownerId) 因.push("两个项目负责人不同，只能合并同一位负责人的两个项目");
     else if (!管 && A.ownerId !== me.id) 因.push("这两个项目不是你负责的，只有负责人本人或系统管理员能合并");
   }
+  // 跨负责人合并申请在等确认的项目，别的合并先不动（申请执行时带 申请id，自己不挡自己）
+  const 挂 = await db.entProjectMergeRequest.findMany({
+    where: { status: { in: ["待确认", "执行中"] }, OR: [{ fromProjectId: { in: [A.id, B.id] } }, { intoProjectId: { in: [A.id, B.id] } }], ...(跨?.申请id ? { id: { not: 跨.申请id } } : {}) },
+    select: { fromProjectId: true, intoProjectId: true },
+  });
+  for (const p of [A, B]) if (挂.some((r) => r.fromProjectId === p.id || r.intoProjectId === p.id)) 因.push(跨并待确认挡话(p));
   for (const [p, 角色] of [[A, "留下"], [B, "并掉"]] as const) {
     if (p.result) { 因.push(`「${名(p)}」已经结束（${p.result}），不能合并`); continue; }
     因.push(...阶段和钱拦(p, 角色, await 钱(db as Tx, p.id)));
@@ -355,7 +372,7 @@ export type 项目合并完 = { mergeId: string; 条数: 项目合并条数 };
 /**
  * 执行项目合并：B 并进 A。B 的组员不并进 A（E-331 必改 3，推翻 E-280 一.2 的勾选），名单记进合并单和日志
  */
-export async function 执行项目合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 现在?: Date; 已核未开票?: boolean } = {}): Promise<结果<项目合并完>> {
+export async function 执行项目合并(db: 库, 留下id: string, 并掉id: string, me: 合并人, opt: { 现在?: Date; 已核未开票?: boolean; 跨负责人?: 跨并信息 } = {}): Promise<结果<项目合并完>> {
   if (!opt.已核未开票) return { ok: false, error: "请先确认两个项目都还没开票" };
   const 现在 = opt.现在 ?? new Date();
   const org = await 权限组织();
@@ -368,9 +385,10 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
       看全部(() =>
         db.$transaction(async (tx) => {
           const [A, B] = [await 读项目(tx, 留下id), await 读项目(tx, 并掉id)];
-          const 原因 = await 拦的原因(tx, A, B, me, org, 交给);
+          const 原因 = await 拦的原因(tx, A, B, me, org, 交给, opt.跨负责人 ?? null);
           if (原因.length) throw new 拦下(原因.join("；"));
           const 结 = await 挪(tx, A!, B!, me, 现在);
+          if (opt.跨负责人) await 跨并后补记(tx, A!, B!, 结.mergeId, opt.跨负责人, 现在);
           await 重算最近跟进(tx, A!.customerId);
           await 跟着项目重算(tx, 开, [A!.customerId]);
           通知要 = { A: A!, B: B! };
@@ -391,6 +409,28 @@ export async function 执行项目合并(db: 库, 留下id: string, 并掉id: st
     await 合并后通知(要, me);
   }
   return { ok: true, ...r! };
+}
+
+/**
+ * 跨负责人并成功后同事务补的三样（E-337:13、判定 二#15）：合并单明细记「跨负责人」（谁发起、谁确认、怎么发起，台账阶段读）；
+ * 被并走的原负责人记 1 个并走待补（占过名额才记，自己新建的、随客户分来的不补，P-合并-10 的「不退还已占线索名额」不变）；两个项目各记一条操作日志
+ */
+async function 跨并后补记(tx: Tx, A: 项目行, B: 项目行, mergeId: string, 跨: 跨并信息, 现在: Date): Promise<void> {
+  const 单 = await tx.entCustomerMerge.findUniqueOrThrow({ where: { id: mergeId }, select: { detail: true } });
+  const 明 = JSON.parse(单.detail) as Record<string, unknown>;
+  明.跨负责人 = { 申请id: 跨.申请id, 发起人: 跨.发起人id, 确认人: 跨.确认人id, 发起方式: 跨.发起方式, 确认人层级: 跨.确认人层级, 原负责人: B.ownerId, 留下负责人: A.ownerId };
+  await tx.entCustomerMerge.update({ where: { id: mergeId }, data: { detail: JSON.stringify(明) } });
+  // 跨负责人并的申请：同一笔里置「已合并」（条件更新，状态不是执行中 = 刚被别人处理过，整笔回滚）
+  if (跨.申请id) {
+    const n = await tx.entProjectMergeRequest.updateMany({ where: { id: 跨.申请id, status: "执行中" }, data: { status: "已合并", mergeId, endedAt: 现在, endedById: 跨.确认人id } });
+    if (!n.count) throw new 拦下("刚被别人改过，刷新看看");
+  }
+  const 补 = !!B.ownerId && (await 占过名额(tx, B.id, B.ownerId)) && (await 记并走待补(tx, B.ownerId, B.id, 现在));
+  const 话 = `跨负责人合并（${跨.发起方式}，${跨.确认人层级}确认）${补 ? "；原负责人记 1 个待补" : ""}`;
+  const 谁 = await tx.user.findUnique({ where: { id: 跨.确认人id }, select: { name: true } });
+  await tx.auditLog.createMany({
+    data: [A, B].map((p) => ({ userId: 跨.确认人id, userName: 谁?.name ?? "同事", action: "merge", entity: "Project", entityId: p.id, at: 现在, summary: 话, detail: JSON.stringify({ mergeId, 跨负责人: 明.跨负责人, 记待补: 补 }) })),
+  });
 }
 
 async function 挪(tx: Tx, A: 项目行, B: 项目行, me: 合并人, 现在: Date): Promise<项目合并完> {
@@ -593,6 +633,8 @@ export async function 在事务里撤回项目合并(
       data: { projectId: B.id, userId: me.id, at: 现在, fromPhase: B.phase, fromNode: B.node, fromResult: "线索流失", toPhase: B.phase, toNode: B.node, toResult: 明.被并.result, reason: `撤回并入「${名(A)}」`.slice(0, 500) },
     });
   } else 记("project", B.id, "合并之后结局或线索验证被改过，没清回");
+  // 跨负责人并时给原负责人记的待补：没用掉的作废（撤回 = 这次并没发生）
+  await 作废并走待补(tx, B.id, 现在);
 
   await 重算最近跟进(tx, A.customerId);
   await 跟着项目重算(tx, 开, [A.customerId]);
