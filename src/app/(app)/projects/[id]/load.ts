@@ -18,6 +18,8 @@ import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选, 是系统管理员, 只读角色, 只看的人, type 权限项目 } from "@/lib/enterprise/permissions";
 import { 项目来历 } from "@/lib/enterprise/customer-merge";
 import { 线索流失细分 } from "@/lib/enterprise/lost-split";
+import { 看全部 } from "@/lib/team-scope";
+import { 跨并状态 } from "@/lib/enterprise/project-merge-request";
 import { 有并进的候选, 能并的阶段, 签了合同, 已签合同的项目不能合并, 项目的合并单, 项目合并撤回过期话 } from "@/lib/enterprise/project-merge";
 import { 客户事项挡, 页面能改沟通, 能改沟通of, 页面能删沟通, 能删沟通of, 本人限时可改of, 本人可改到, 下一步跟着改of, 系统记的沟通们 } from "@/lib/enterprise/follow-perm";
 import { 沟通留痕们 } from "@/lib/enterprise/follow-edited";
@@ -381,6 +383,8 @@ export async function 读项目详情(me: SessionUser, id: string, 选项?: { �
       && (是系统管理员(me, org) || (!p.customer.pool && 能删除(me, org, p.customer.salesOwnerId) && (!!p.result || 公海 || !p.ownerId || p.ownerId === me.id))),
     // 合并客户第二批 2a「并进另一个项目」：只摆给负责人本人或系统管理员（同 能并进的项目）；结束了、不在线索阶段、没有可并进的项目时灰着写原因。能不能并整套在预览里再判
     ...(企业 && !占位 ? { 并进: await 并进菜单(me, org, p) } : {}),
+    // 跨负责人合并（E-380 阶段 2）：留下项目的负责人本人或系统管理员摆「把同事的项目并进来」；这个项目顶上的待确认申请一行（等谁确认、验证计时暂停）
+    ...(企业 && !占位 ? { 跨并: await 跨并菜单(me, org, p), 跨并待确认: await 跨并待确认of(me, p.id) } : {}),
     // 合并客户第二批 2a：被并掉的项目（结束为重复线索、合并单没撤回）顶上一行「已并入 → 留下的项目」；留下的项目不给。没结束的不查库
     ...(企业 && !占位 && p.result ? { 已并入: await 已并入of(me, p.id) } : {}),
     // 线索流失拆出的两类（P-界面-66，同看板列）：结局是线索流失才现算（lost-split.ts 一批三句 + 字典一句），其他线索流失不带
@@ -576,4 +580,42 @@ async function 并进菜单(
   if (!能并的阶段.并掉.includes(p.phase)) return { 灰: `在${p.phase}阶段，只有${能并的阶段.并掉.join("、")}阶段的项目能并进另一个项目` };
   if (签了合同(p)) return { 灰: 已签合同的项目不能合并 };
   return (await 有并进的候选(prisma, { id: p.id, customerId: p.customerId, ownerId: p.ownerId ?? "" })) ? {} : { 灰: "这位客户名下没有同一位负责人在推的别的项目" };
+}
+
+/** 「把同事的项目并进来」那一项：null = 不摆；没有候选 / 结束了 / 不在线索阶段不摆。只摆给留下项目的负责人本人或系统管理员（确认人要发直接并时从自己负责的项目进，或找系统管理员）；候选 = 同客户别人负责、线索阶段在推的 */
+async function 跨并菜单(
+  me: SessionUser, org: Awaited<ReturnType<typeof 权限组织>>,
+  p: { id: string; customerId: string; ownerId: string | null; phase: string; result: string | null; pooledAt: Date | null; awaitAssignAt: Date | null },
+): Promise<{ 灰?: string } | null> {
+  if (!org || 只读角色(me, org) || 只看的人(org, me.id) || p.pooledAt || p.awaitAssignAt || !p.ownerId) return null;
+  if (!是系统管理员(me, org) && p.ownerId !== me.id) return null;
+  // 结束了、不在线索阶段、客户名下没有同事在推的线索项目：不摆（跟「并进另一个项目」不同，这一项多数人用不上，灰着摆只会添乱）
+  if (p.result || !能并的阶段.留下.includes(p.phase)) return null;
+  const 主 = p.ownerId;
+  const 有 = await 看全部(() => prisma.project.findFirst({
+    where: { customerId: p.customerId, id: { not: p.id }, ownerId: { not: 主, notIn: [""] }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null, phase: "线索" },
+    select: { id: true },
+  }));
+  return 有 ? {} : null;
+}
+
+/** 这个项目有一张等确认的跨负责人合并申请（当留下的或被并走的）：顶上那一行写等谁、验证计时暂停。没有给 null。人名现查，没读到的不写 */
+async function 跨并待确认of(me: SessionUser, projectId: string): Promise<项目详情["跨并待确认"]> {
+  const r = await 看全部(() => prisma.entProjectMergeRequest.findFirst({
+    where: { status: 跨并状态.待确认, expiresAt: { gt: new Date() }, OR: [{ fromProjectId: projectId }, { intoProjectId: projectId }] },
+    select: { id: true, fromProjectId: true, intoProjectId: true, byUserId: true, confirmerIds: true, expiresAt: true },
+  }));
+  if (!r) return null;
+  const 们 = (() => { try { return JSON.parse(r.confirmerIds) as { userId: string; 层级: string }[]; } catch { return []; } })();
+  const 另一 = r.fromProjectId === projectId ? r.intoProjectId : r.fromProjectId;
+  const [人们, 另项] = await 看全部(() => Promise.all([
+    prisma.user.findMany({ where: { id: { in: 们.map((x) => x.userId) } }, select: { id: true, name: true } }),
+    prisma.project.findFirst({ where: { id: 另一 }, select: { name: true } }),
+  ]));
+  const 叫 = new Map(人们.map((u) => [u.id, u.name]));
+  return {
+    requestId: r.id, 角色: r.fromProjectId === projectId ? "并走" : "留下", 另一个: 另项?.name || "另一个项目",
+    等: 们.map((x) => `${叫.get(x.userId) ?? "同事"}（${x.层级}）`).join("、"), 到期: r.expiresAt.toISOString(),
+    我发起: r.byUserId === me.id, 我确认: 们.some((x) => x.userId === me.id),
+  };
 }

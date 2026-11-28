@@ -79,7 +79,7 @@ type 框 = { 种: "同意" | "拒绝"; 行: 合并申请一条 };
  * 办成了这一行留在表里、置灰写结果（刷新后从「等我同意」里去掉）；没办成原因写在框里、框不关。
  * 只读身份（只读管理员、销售教练、设了只看某人、切换视图在看别人）：列表照常，按钮置灰、悬停写原因；服务端本来就拦
  */
-export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因 = null }: { 等我: 合并申请一条[]; 我发起: 合并申请一条[]; 我: string; 只读原因?: string | null }) {
+export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因 = null, 项目区 = null }: { 等我: 合并申请一条[]; 我发起: 合并申请一条[]; 我: string; 只读原因?: string | null; /** 「项目合并」一节（跨负责人合并，E-380 阶段 2；page.tsx 递进来，摆在最上面） */ 项目区?: ReactNode }) {
   const router = useRouter();
   const 切换视图 = useViewAs();
   const 不能写 = 只读原因 ?? (切换视图 ? 看别人视角话 : null);
@@ -231,6 +231,7 @@ export default function MergeRequestsView({ 等我, 我发起, 我, 只读原因
     <div>
       <PageHead title="合并申请" subtitle={`同事负责的客户，或名下有同事在推的项目，合并要发申请：要同意的人都同意了才合并；${等待工作日} 个工作日内没全部同意，申请失效`} />
       <div className="mrq-stack">
+        {项目区}
         {不能写 && <Alert type="info" showIcon title={`${不能写}：列表照常显示，同意、拒绝、撤回按钮都点不了`} data-testid="merge-req-ro" />}
         <Card title={<span>等我同意{待处理数 ? <span className="mrq-cnt">{待处理数} 张等你处理</span> : null}</span>} size="small">
           {等我行.length

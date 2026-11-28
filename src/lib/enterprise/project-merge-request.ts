@@ -27,6 +27,7 @@ import { 是项目线 } from "./assign-line";
 import { 拦下, 合并事务选项, 并发失败话, 刚被改过话, type 合并人 } from "./customer-merge";
 import { 拒绝原因上限 } from "@/app/(app)/customers/merge-request-words";
 import { 到期时刻, 到期了, 到期话, 等待工作日 } from "./merge-request";
+import { 跨并通知 } from "./project-merge-request-notice";
 import { 拦的原因, 读项目, 现在交给, 钱, 执行项目合并, type 跨并信息, type 项目行, type 项目合并完 } from "./project-merge";
 
 type 库 = PrismaClient;
@@ -314,7 +315,11 @@ export async function 扫过期跨并申请(db: 库, 现在: Date = new Date()):
   const 们 = await db.entProjectMergeRequest.findMany({ where: { status: 跨并状态.待确认, expiresAt: { lte: 现在 } }, select: { id: true, fromProjectId: true, intoProjectId: true, byUserId: true } });
   let n = 0;
   for (const r of 们) {
-    if (await db.$transaction((tx) => 结束(tx, r, 跨并状态.待确认, 跨并状态.已失效, 到期话, null, "project-merge-request-void", 现在), 合并事务选项)) n++;
+    if (await db.$transaction((tx) => 结束(tx, r, 跨并状态.待确认, 跨并状态.已失效, 到期话, null, "project-merge-request-void", 现在), 合并事务选项)) {
+      n++;
+      // 到期失效通知发起人 + 确认人（阶段 2；提交以后发，从不抛）
+      await 跨并通知(db, r.id, "失效", null, 到期话);
+    }
   }
   return n;
 }

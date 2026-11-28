@@ -39,9 +39,14 @@ import {
   发起合并申请, 处理合并申请, 撤回合并申请, 作废合并申请, 申请状态, 同意状态, 合并申请预览, 给发起人藏名, 读选择, 看不到那家叫法, 显示状态of, 拒绝原因超话,
   type 发起完, type 处理完, type 快照, type 凭, type 涉及项目, type 合并申请预览结果,
 } from "@/lib/enterprise/merge-request";
+import {
+  发起跨负责人并, 跨并预览, 处理跨并申请, 撤回跨并申请, 算确认人, 跨并状态, type 确认人层级,
+} from "@/lib/enterprise/project-merge-request";
+import { 跨并通知 } from "@/lib/enterprise/project-merge-request-notice";
+import { 通知里的客户名 } from "@/lib/enterprise/notice-mask";
 import { 两家在我清单成对 } from "@/lib/enterprise/dupe-groups";
 import { 全公司查号 } from "@/lib/enterprise/contact-dedupe";
-import { 拒绝原因上限 } from "./merge-request-words";
+import { 拒绝原因上限, 合并申请页 } from "./merge-request-words";
 import { 验号码 } from "@/lib/enterprise/contact-format";
 
 type 结果<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -507,4 +512,156 @@ export async function 等我同意的合并申请(): Promise<合并申请一条[
 export async function 我发起的合并申请(): Promise<合并申请一条[]> {
   const me = await requireUser();
   return 申请们({ byUserId: me.id }, true);
+}
+
+
+/* ─────────── 跨负责人项目合并（阶段 2，E-380；服务端判定在 lib/enterprise/project-merge-request.ts，这里只管取数、转发、发通知） ─────────── */
+
+/** 一个并进来的候选：同一位客户名下、别人负责、线索阶段在推的项目。只给名字、节点、负责人名（不给沟通、联系人这些内页信息） */
+export type 跨并候选 = { id: string; name: string; node: string; 负责人: string };
+
+/** 从留下的项目（这个）出发，列同客户别人负责的在推线索项目。谁能发由 预览 / 发起 再判；这里只给「是留下项目的负责人 / 系统管理员 / 这条的确认人」列 */
+export async function 跨并候选们(留下id: string): Promise<跨并候选[]> {
+  const me = await 我();
+  if (!企业版() || !是id(留下id) || !(await 项目都看得到([留下id]))) return [];
+  const org = await 权限组织();
+  if (!org || 只读角色(me, org) || 只看的人(org, me.id)) return [];
+  const A = await 看全部(() => prisma.project.findFirst({ where: { id: 留下id, deletedAt: null }, select: { id: true, customerId: true, ownerId: true, result: true, pooledAt: true, awaitAssignAt: true } }));
+  if (!A || !A.ownerId || A.result || A.pooledAt || A.awaitAssignAt) return [];
+  const 行们 = await 看全部(() => prisma.project.findMany({
+    where: { customerId: A.customerId, id: { not: A.id }, ownerId: { not: A.ownerId, notIn: [""] }, deletedAt: null, result: null, pooledAt: null, awaitAssignAt: null, phase: "线索" },
+    orderBy: [{ updatedAt: "desc" }, { id: "asc" }], take: 30, select: { id: true, name: true, node: true, ownerId: true, bizLine: true },
+  }));
+  const 管 = 是系统管理员(me, org);
+  const 能 = 行们.filter((b) => b.ownerId && (A.ownerId === me.id || 管 || 算确认人(org, { ownerId: b.ownerId, bizLine: b.bizLine }).some((x) => x.userId === me.id)));
+  const 人们 = 能.length ? await 看全部(() => prisma.user.findMany({ where: { id: { in: [...new Set(能.map((b) => b.ownerId!))] } }, select: { id: true, name: true } })) : [];
+  const 叫 = new Map(人们.map((u) => [u.id, u.name]));
+  return 能.map((b) => ({ id: b.id, name: b.name || "未命名项目", node: b.node, 负责人: 叫.get(b.ownerId!) ?? "同事" }));
+}
+
+export type 跨并预览话 =
+  | { ok: true; 直接: boolean; 确认人: { 名: string; 层级: 确认人层级 }[]; 留下: { id: string; name: string; 负责人: string }; 并掉: { id: string; name: string; 负责人: string } }
+  | { ok: false; 原因: string[] };
+
+/** 点了候选以后读：直接并还是发申请、谁来确认；不能的写原因 */
+export async function 预览跨并(留下id: string, 并掉id: string): Promise<跨并预览话> {
+  const me = await 我();
+  if (!是id(留下id) || !是id(并掉id)) return { ok: false, 原因: [坏参数.error] };
+  if (!(await 项目都看得到([留下id]))) return { ok: false, 原因: [项目看不到.error] };
+  const r = await 跨并预览(prisma, 留下id, 并掉id, me);
+  if (!r.ok) return { ok: false, 原因: r.原因 };
+  const 人们 = await 看全部(() => prisma.user.findMany({ where: { id: { in: [...r.确认人.map((x) => x.userId), r.A.ownerId!, r.B.ownerId!] } }, select: { id: true, name: true } }));
+  const 叫 = new Map(人们.map((u) => [u.id, u.name]));
+  return {
+    ok: true, 直接: r.直接,
+    确认人: r.确认人.map((x) => ({ 名: 叫.get(x.userId) ?? "同事", 层级: x.层级 })),
+    留下: { id: r.A.id, name: r.A.name || "未命名项目", 负责人: 叫.get(r.A.ownerId!) ?? "同事" },
+    并掉: { id: r.B.id, name: r.B.name || "未命名项目", 负责人: 叫.get(r.B.ownerId!) ?? "同事" },
+  };
+}
+
+export type 跨并发起结果 = { 方式: "直接并"; mergeId: string } | { 方式: "申请"; requestId: string; 到期: Date };
+
+export async function 发起跨并(留下id: string, 并掉id: string): Promise<结果<跨并发起结果>> {
+  const me = await 我();
+  if (!是id(留下id) || !是id(并掉id) || 留下id === 并掉id) return 坏参数;
+  if (!(await 项目都看得到([留下id]))) return 项目看不到;
+  const r = await 发起跨负责人并(prisma, 留下id, 并掉id, me);
+  if (!r.ok) return r;
+  await 刷新项目(留下id, 并掉id);
+  if (r.方式 === "直接并") return { ok: true, 方式: "直接并", mergeId: r.mergeId };
+  await 跨并通知(prisma, r.requestId, "发起", me);
+  return { ok: true, 方式: "申请", requestId: r.requestId, 到期: r.expiresAt };
+}
+
+async function 刷新跨并(requestId: string) {
+  const r = await 看全部(() => prisma.entProjectMergeRequest.findUnique({ where: { id: requestId }, select: { fromProjectId: true, intoProjectId: true } }));
+  if (r) await 刷新项目(r.fromProjectId, r.intoProjectId);
+  revalidatePath(合并申请页);
+}
+
+/** 确认 / 拒绝（拒绝原因必填、≤100 字）。成了发通知；没成因为「已失效」（四项有变、被拦、到期）也发失效通知 */
+export async function 处理跨并(requestId: string, 结论: "确认" | "拒绝", 原因?: string): Promise<结果<{ 状态: string }>> {
+  const me = await 我();
+  if (!是id(requestId) || (结论 !== "确认" && 结论 !== "拒绝") || (原因 !== undefined && typeof 原因 !== "string")) return 坏参数;
+  if (原因 && 原因.trim().length > 拒绝原因上限) return { ok: false, error: 拒绝原因超话 };
+  const r = await 处理跨并申请(prisma, requestId, me, 结论, { 原因 });
+  if (r.ok) {
+    await 跨并通知(prisma, requestId, r.状态 === 跨并状态.已拒绝 ? "拒绝" : "确认", me, 原因 ?? "");
+    await 刷新跨并(requestId);
+    return { ok: true, 状态: r.状态 };
+  }
+  const 行 = await 看全部(() => prisma.entProjectMergeRequest.findUnique({ where: { id: requestId }, select: { status: true, reason: true } }));
+  if (行?.status === 跨并状态.已失效) {
+    await 跨并通知(prisma, requestId, "失效", null, 行.reason ?? "");
+    await 刷新跨并(requestId);
+  }
+  return r;
+}
+
+/** 发起人撤回（只在待确认） */
+export async function 撤回跨并申请单(requestId: string): Promise<结果> {
+  const me = await 我();
+  if (!是id(requestId)) return 坏参数;
+  const r = await 撤回跨并申请(prisma, requestId, me);
+  if (r.ok) {
+    await 跨并通知(prisma, requestId, "撤回", me);
+    await 刷新跨并(requestId);
+  }
+  return r;
+}
+
+/**
+ * 申请页「项目合并」一节的行。确认人看得到要并的两条项目的必要信息：项目名、节点、负责人、所属客户（打码名）、沟通条数、谁发起、几时失效；
+ * 不给联系人、号码、回款这些内页。项目名等现查（改名了跟着变），查不到的退回发起那一刻的快照名
+ */
+export type 跨并申请一条 = {
+  id: string; 状态: string; 原因: string | null; 客户: string;
+  留下: { id: string; 名: string; 节点: string; 负责人: string; 沟通: number };
+  并掉: { id: string; 名: string; 节点: string; 负责人: string; 沟通: number };
+  发起人: string; 发起人id: string; 发起: Date; 到期: Date; 结束: Date | null; mergeId: string | null;
+  确认人: { userId: string; 名: string; 层级: string }[];
+};
+
+async function 跨并行们(where: Prisma.EntProjectMergeRequestWhereInput, 只留我是确认人?: string): Promise<跨并申请一条[]> {
+  if (!企业版()) return [];
+  const 行们 = (await 看全部(() => prisma.entProjectMergeRequest.findMany({ where, orderBy: { at: "desc" }, take: 50 })))
+    .filter((r) => !只留我是确认人 || 读JSON<{ userId: string }[]>(r.confirmerIds, []).some((x) => x.userId === 只留我是确认人));
+  if (!行们.length) return [];
+  const 项ids = [...new Set(行们.flatMap((r) => [r.fromProjectId, r.intoProjectId]))];
+  const 确 = 行们.map((r) => ({ r, 们: 读JSON<{ userId: string; 层级: string }[]>(r.confirmerIds, []) }));
+  const 人ids = [...new Set([...行们.flatMap((r) => [r.byUserId, r.fromOwnerId, r.intoOwnerId]), ...确.flatMap((x) => x.们.map((c) => c.userId))])];
+  const [项目们, 人们, 客户们, 沟通们] = await 看全部(() => Promise.all([
+    prisma.project.findMany({ where: { id: { in: 项ids } }, select: { id: true, name: true, node: true } }),
+    prisma.user.findMany({ where: { id: { in: 人ids } }, select: { id: true, name: true } }),
+    prisma.customer.findMany({ where: { id: { in: [...new Set(行们.map((r) => r.customerId))] } }, select: { id: true, name: true, shortName: true, customerNo: true } }),
+    prisma.followUpProject.groupBy({ by: ["projectId"], where: { projectId: { in: 项ids } }, _count: { _all: true } }),
+  ]));
+  const 项 = new Map(项目们.map((p) => [p.id, p]));
+  const 叫 = new Map(人们.map((u) => [u.id, u.name]));
+  const 客 = new Map(客户们.map((c) => [c.id, c]));
+  const 数 = new Map(沟通们.map((g) => [g.projectId, g._count._all]));
+  return 确.map(({ r, 们 }) => {
+    const 快 = 读JSON<{ 项目?: Record<string, { 名?: string }> }>(r.snapshot, {}).项目 ?? {};
+    const 边 = (id: string, 负责人: string) => ({ id, 名: 项.get(id)?.name || 快[id]?.名 || "未命名项目", 节点: 项.get(id)?.node ?? "", 负责人: 叫.get(负责人) ?? "同事", 沟通: 数.get(id) ?? 0 });
+    const c = 客.get(r.customerId);
+    return {
+      id: r.id, 状态: r.status, 原因: r.reason, 客户: c ? 通知里的客户名(c) : "一位客户",
+      留下: 边(r.intoProjectId, r.intoOwnerId), 并掉: 边(r.fromProjectId, r.fromOwnerId),
+      发起人: 叫.get(r.byUserId) ?? "同事", 发起人id: r.byUserId, 发起: r.at, 到期: r.expiresAt, 结束: r.endedAt, mergeId: r.mergeId,
+      确认人: 们.map((c2) => ({ userId: c2.userId, 名: 叫.get(c2.userId) ?? "同事", 层级: c2.层级 })),
+    };
+  });
+}
+
+/** 等我确认的：待确认、我在确认人名单里 */
+export async function 等我确认的跨并申请(): Promise<跨并申请一条[]> {
+  const me = await requireUser();
+  return 跨并行们({ status: 跨并状态.待确认, confirmerIds: { contains: me.id } }, me.id);
+}
+
+/** 我发起的：各种状态都列 */
+export async function 我发起的跨并申请(): Promise<跨并申请一条[]> {
+  const me = await requireUser();
+  return 跨并行们({ byUserId: me.id });
 }

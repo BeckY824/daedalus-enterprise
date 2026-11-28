@@ -3,9 +3,10 @@ import { requireUser } from "@/lib/auth";
 import { 企业版 } from "@/lib/enterprise/switch";
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 只读角色, 只看的人, 只看某人话, 是教练 } from "@/lib/enterprise/permissions";
-import { 等我同意的合并申请, 我发起的合并申请 } from "../merge-actions";
+import { 等我同意的合并申请, 我发起的合并申请, 等我确认的跨并申请, 我发起的跨并申请 } from "../merge-actions";
 import { 只读管理员话, 教练只读话 } from "../merge-request-words";
 import MergeRequestsView from "./MergeRequestsView";
+import ProjectMergeRequests from "./ProjectMergeRequests";
 
 export const dynamic = "force-dynamic";
 
@@ -22,6 +23,6 @@ export default async function MergeRequestsPage() {
   const org = await 权限组织();
   if (!org) notFound();
   const 只读原因 = 只读角色(me, org) ? (是教练(me, org) ? 教练只读话 : 只读管理员话) : 只看的人(org, me.id) ? 只看某人话 : null;
-  const [等我, 我发起] = await Promise.all([等我同意的合并申请(), 我发起的合并申请()]);
-  return <MergeRequestsView 等我={等我} 我发起={我发起} 我={me.id} 只读原因={只读原因} />;
+  const [等我, 我发起, 项目等我, 项目我发起] = await Promise.all([等我同意的合并申请(), 我发起的合并申请(), 等我确认的跨并申请(), 我发起的跨并申请()]);
+  return <MergeRequestsView 等我={等我} 我发起={我发起} 我={me.id} 只读原因={只读原因} 项目区={<ProjectMergeRequests 等我={项目等我} 我发起={项目我发起} 只读原因={只读原因} />} />;
 }
