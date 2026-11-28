@@ -12,6 +12,7 @@ import DatePicker from "@/components/BusinessDatePicker";
 import { PageHead } from "@/components/ui";
 import { useBusiness } from "@/lib/business-client";
 import { useMe, 默认负责人 } from "@/lib/me-client";
+import { 撤未提交, 登记未提交 } from "@/lib/swap-guard";
 import { 草稿全名, 读草稿, 存草稿, 清草稿, 有内容, 带回话 } from "@/lib/form-draft";
 import { 跟进类型们 } from "@/lib/constants";
 import FollowMethodSelect, { useHabitDefault } from "@/components/FollowMethodSelect";
@@ -453,10 +454,14 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   const [已存, set已存] = useState(!!旧);
   const [接着填, set接着填] = useState(!!旧);
 
+  // 发版静默换版：没提交的向导登记着（改 里登记），建好 / 丢掉 / 离开时撤（lib/swap-guard.ts）
+  useEffect(() => () => 撤未提交(全名), [全名]);
+
   const 改 = <K extends keyof 稿>(k: K, v: Partial<稿[K]> | 稿[K]) => {
     setD((o) => {
       const n = { ...o, [k]: typeof v === "object" && v !== null ? { ...(o[k] as object), ...v } : v } as 稿;
       存草稿(全名, { 稿: n });
+      登记未提交(全名);
       return n;
     });
     set已存(true);
@@ -626,7 +631,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         ...(附件们.length ? { 要传附件: true } : {}),
       });
       if (!r.ok) return void set交错(r.error);
-      清草稿(全名);
+      清草稿(全名);撤未提交(全名);
       set建好了(true);
       const 看不到 = !!r.看不到客户了;
       const 附件话 = await 传首条附件(r);
@@ -706,7 +711,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         : await 建档只建客户({ 客户, 联系人, 跟进, ...(附件们.length ? { 要传附件: true } : {}) });
       if (!r.ok && "同号协同" in r) {
         // 同号再次录入：没新建，记录已写进现有项目（查重之后才有人录同号时走到这）。那句写在底栏上面，点「知道了」再关框
-        清草稿(全名);
+        清草稿(全名);撤未提交(全名);
         set建后话({ 话: r.error, 警: false });
         set知道了(() => () => {
           弹窗?.关();
@@ -726,7 +731,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
         set交错(r.error);
         return;
       }
-      清草稿(全名);
+      清草稿(全名);撤未提交(全名);
       set建好了(true);
       const 转走 = "转走" in r && !!r.转走;
       // 首条沟通的截图 / 附件：带项目的挂在新项目的首条沟通上；只建客户的首条沟通挂在潜客培育项目上，同样凭票传（企业版才摆挑选）
@@ -756,7 +761,7 @@ function WizardBody({ users, 要下一步, 企业, 新线索, 弹窗, 开关, �
   };
 
   const 重来 = () => {
-    清草稿(全名);
+    清草稿(全名);撤未提交(全名);
     setD(新稿());
     set已查(null);
     set撞(null);

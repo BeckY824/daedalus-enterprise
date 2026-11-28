@@ -17,10 +17,13 @@
  */
 import { useEffect, useRef, useState } from "react";
 import { 有新版本话, 旧版本事件, 存好再刷新, 版本变了, 最短间隔毫秒, 定时毫秒 } from "@/lib/stale-deploy";
+import { 取现场, 听记位, 恢复滚动, 悄悄换, 装请求计数, 能静默换 } from "@/lib/swap-guard";
 import { 全局兜底话, 认动作错 } from "@/lib/action-error";
 
 /** 兜底那条亮多久 */
 const 兜底亮毫秒 = 8000;
+/** 亮着横幅时多久看一次能不能静默换 */
+const 静默检查毫秒 = 5000;
 
 export default function UpdateBanner({ 载入时 }: { 载入时: string | null }) {
   const 起 = useRef(载入时);
@@ -47,6 +50,38 @@ export default function UpdateBanner({ 载入时 }: { 载入时: string | null }
       window.clearTimeout(钟);
     };
   }, []);
+
+  // 发版换页后恢复滚动位置；非 GET 请求（保存、上传、AI 流）没回完算「忙」，静默换版不打断它们
+  useEffect(() => {
+    装请求计数();
+    恢复滚动();
+    return 听记位();
+  }, []);
+
+  // 静默换版（PR-C）：亮着横幅、而且后台满 45 秒 / 前台空闲 ≥10 分钟、没有进行中的事 / 弹层 / 未提交录入，就自己换
+  useEffect(() => {
+    if (!亮) return;
+    let 动静 = Date.now();
+    let 后台起: number | null = document.visibilityState === "hidden" ? Date.now() : null;
+    const 动了 = () => {
+      动静 = Date.now();
+    };
+    const 可见变 = () => {
+      后台起 = document.visibilityState === "hidden" ? Date.now() : null;
+      动静 = Date.now();
+    };
+    const 动静事件 = ["pointerdown", "keydown", "wheel", "touchstart", "scroll"] as const;
+    for (const n of 动静事件) window.addEventListener(n, 动了, { passive: true, capture: true });
+    document.addEventListener("visibilitychange", 可见变);
+    const 钟 = window.setInterval(() => {
+      if (能静默换(取现场(后台起, 动静))) 悄悄换();
+    }, 静默检查毫秒);
+    return () => {
+      for (const n of 动静事件) window.removeEventListener(n, 动了, { capture: true });
+      document.removeEventListener("visibilitychange", 可见变);
+      window.clearInterval(钟);
+    };
+  }, [亮]);
 
   useEffect(() => {
     const 点亮 = () => {

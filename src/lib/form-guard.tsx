@@ -14,11 +14,13 @@
  * 编辑弹窗（11-17 起也存，键里带记录编号）：只存人改过的那几格（和打开那一刻比），带回时不拿旧值盖掉没动的格子。
  * 带回不再用底部撤销条：框里一行「已带回上次没提交的内容 · 清空」（守.提示，各弹窗摆在表单顶上）。
  */
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { App, Button, Space } from "antd";
 import type { FormInstance } from "antd";
 import { useMe } from "@/lib/me-client";
 import { DraftHint } from "@/components/FormDraft";
+import { 刷新前事件 } from "@/lib/stale-deploy";
+import { 撤未提交, 登记未提交 } from "@/lib/swap-guard";
 import { 草稿全名, 读一份, 存草稿, 清草稿, 有内容, 改过的格 } from "@/lib/form-draft";
 
 /** 存取挪到 lib/form-draft.ts（11-17 全站一份）；老地方照样能引 */
@@ -59,6 +61,7 @@ export function useFormGuard({ open, 关, form, 草稿键, 编辑 = false, 填�
   const 我 = useMe();
   const 全名 = 草稿键 ? 草稿全名(我?.id, 草稿键) : null;
   const 改过 = useRef(false);
+  const 登记号 = useId();
   const 问着 = useRef(false);
   const 不存键 = (不存 ?? []).join("|");
   /** 打开（动画走完、各弹窗填好初值）那一刻的值：编辑时草稿只存和它不一样的格子；「清空」放回它 */
@@ -94,20 +97,35 @@ export function useFormGuard({ open, 关, form, 草稿键, 编辑 = false, 填�
     待恢复.current = 全名 ? 读一份(全名) : null;
   }, [open, 全名]);
 
+  // 发版静默换版（lib/swap-guard.ts）：填着没提交的弹窗登记一下，换版等它交完 / 关掉；换之前（刷新前事件）立刻落盘
+  useEffect(() => {
+    if (!open) 撤未提交(登记号);
+    return () => 撤未提交(登记号);
+  }, [open, 登记号]);
+  useEffect(() => {
+    const 落 = () => {
+      if (改过.current) 存();
+    };
+    window.addEventListener(刷新前事件, 落);
+    return () => window.removeEventListener(刷新前事件, 落);
+  }, [存]);
+
   const 改了 = useCallback(() => {
     改过.current = true;
+    登记未提交(登记号);
     // 等这一下的 setState 画完再存：表单外头那几样（额外.取）读的是渲染后的值，同步存会慢一个字。存好了 之后不再存
     window.setTimeout(() => {
       if (改过.current) 存();
     }, 0);
-  }, [存]);
+  }, [存, 登记号]);
 
   /** 保存成功以后调：草稿清掉，关的时候不再问 */
   const 存好了 = useCallback(() => {
     改过.current = false;
+    撤未提交(登记号);
     if (全名) 清草稿(全名);
     set带回了(null);
-  }, [全名]);
+  }, [全名, 登记号]);
 
   /** 「清空」：带回的那几格放回打开时的样子、草稿扔掉 */
   const 清空 = useCallback(() => {
