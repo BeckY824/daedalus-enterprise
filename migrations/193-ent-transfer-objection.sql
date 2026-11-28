@@ -1,5 +1,6 @@
 -- 12-22 第 2 阶段 · 转让异议（2026-11-27，判定页 #7 #8 #18）：说明见 prisma/schema.prisma 的 EntTransferObjection、lib/enterprise/objection.ts。
 -- ownerLogId 可空、mergeId 为项目合并类异议留口（kind 加「项目合并」，只建结构）。
+-- 按旧 193（无 mergeId、ownerLogId NOT NULL）建过表的本机 / 测试库：先 DROP TABLE IF EXISTS "EntTransferObjection" 再起，否则下面的 mergeId 唯一键报 no such column；c2 从未建过这张表，不受影响。
 -- 规矩同 164：只加表、IF NOT EXISTS、每次启动整个重跑；指向人、客户、项目、换负责人记录的列都不建外键（停用的人、软删的客户照留）。
 CREATE TABLE IF NOT EXISTS "EntTransferObjection" (
     "id" TEXT NOT NULL PRIMARY KEY,

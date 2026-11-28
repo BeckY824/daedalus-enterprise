@@ -373,7 +373,7 @@ const 派生: Record<string, Record<string, string>> = {
     mergeId: "哪次项目合并（跨负责人并的合并记录），项目合并类异议才有，只建结构、流程另做",
     customerId: "哪位客户，转让时定",
     projectId: "哪个项目（项目异议才有），转让时定",
-    kind: "项目 / 客户，转让时定",
+    kind: "项目 / 客户 / 项目合并，转让或合并时定",
     targetKey: "唯一键：项目 id 或 customer，转让时定",
     targetName: "对象名（转让当时的叫法），转让时定",
     objectorUserId: "谁有权提，转让时定",
