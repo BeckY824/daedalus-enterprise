@@ -211,6 +211,8 @@ describe("客户进公海写 poolPrevOwnerId", () => {
       await prisma.$transaction((tx) => 导入改(tx, "customer", id, { salesOwnerId: 占位 }, { salesOwnerId: 甲.id }, new Date().toISOString(), { 批次Id: 批.id, 补培育: false }));
     }
     expect(await 客户列(新建的)).toBeNull();
+    // 原负责人（甲）仍看得到新建的（列空 = 不回避）
+    expect(await 以(甲, () => prisma.customer.findUnique({ where: { id: 新建的 }, select: { id: true } }))).not.toBeNull();
     expect(await 客户列(已有的)).toBe(甲.id);
     expect(await prisma.customerOwnerLog.count({ where: { customerId: 新建的, kind: "pool-release", fromOwnerId: 甲.id } })).toBe(1);
   });

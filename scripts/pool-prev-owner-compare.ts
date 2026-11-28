@@ -1,5 +1,5 @@
 /**
- * 回避名单根因（E-417 包 1）上 c2 回填后的只读对拍：每位在职员工，旧算法的回避集合（留痕现算）
+ * 回避名单根因（E-417 包 1）上 c2 回填后的只读对拍：每位在职员工，旧算法（E-417 之前的取法，去掉导入写的）的回避集合（留痕现算）
  * 和「在公海里且 poolPrevOwnerId 是我」（含客户 / 项目连带）必须完全相同。
  *
  *   CRM_ENTERPRISE=1 npx tsx --env-file=.env scripts/pool-prev-owner-compare.ts
@@ -19,6 +19,7 @@ async function main() {
   }
   const r = await 对拍(db, prisma);
   console.log(`数于（北京时刻）${北京时刻(r.数于)}`);
+  console.log("旧 = E-417 之前的取法、去掉导入写的（同回填口径）");
   console.log(`在职员工 ${r.在职人数} 人；不一致 ${r.不一致人数} 人；互补核对（以每个人的身份走限定层数能看到的公海行，应等于 总数 − 按列的回避集合）不成立 ${r.互补不成立人数} 人`);
   for (const x of r.不一致.slice(0, 20)) {
     console.log(`${x.userId}\t${x.实体}\t旧多出 ${x.旧多出.join(",") || "无"}\t新多出 ${x.新多出.join(",") || "无"}`);
