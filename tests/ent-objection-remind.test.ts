@@ -88,18 +88,20 @@ async function 一条待手工退回(裁定于: string, 对象 = "客户") {
 
 describe("待裁定满 5 个工作日提醒（每满 5 个再提醒，带第 N 次）", () => {
   it("满 5 / 10 / 15 个工作日各发一次，标题带第 1 / 2 / 3 次提醒", async () => {
-    // 2026-12-01 周二提；之后工作日：2,3,4,7(周一)… 第 5 个 = 12-07 周一？12-02 周三=1,3=2,4=3,7=4,8=5 → 12-08
+    // 2026-12-01 周二提；之后工作日 12-02=1,03=2,04=3,07=4,08=5（第 5 个）；满 5 个整工作日后的下一个工作日 12-09 发第 1 次
     const 行 = await 一条待裁("2026-12-01T10:00:00");
     await 钟上待裁提醒(北京("2026-12-07T09:00:00"));
     expect(await 提醒们(老板.id)).toHaveLength(0);
     await 钟上待裁提醒(北京("2026-12-08T09:00:00"));
+    expect(await 提醒们(老板.id)).toHaveLength(0);
+    await 钟上待裁提醒(北京("2026-12-09T09:00:00"));
     let n = await 提醒们(老板.id);
     expect(n).toHaveLength(1);
     expect(n[0].title).toContain("第 1 次提醒");
     expect(n[0].title).toContain("5 个工作日");
-    expect(n[0].link).toBe(`/objections?o=${行.id}`);
-    await 钟上待裁提醒(北京("2026-12-15T09:00:00")); // 12-09,10,11,14,15 = 10
-    await 钟上待裁提醒(北京("2026-12-22T09:00:00")); // 16,17,18,21,22 = 15
+    expect(n[0].link).toBe(`/objections?tab=all&j=${行.id}`); // 老板只是系统管理员，不是这条的裁定人
+    await 钟上待裁提醒(北京("2026-12-16T09:00:00")); // 12-09,10,11,14,15 = 10，12-16 = 11 发第 2 次
+    await 钟上待裁提醒(北京("2026-12-23T09:00:00")); // 16,17,18,21,22 = 15，12-23 = 16 发第 3 次
     n = await 提醒们(老板.id);
     expect(n.map((x) => x.title.match(/第 (\d) 次提醒/)?.[1])).toEqual(["1", "2", "3"]);
     expect(n[2].title).toContain("15 个工作日");
@@ -107,22 +109,23 @@ describe("待裁定满 5 个工作日提醒（每满 5 个再提醒，带第 N �
 
   it("08:00 前不发；同一天重复跑不重发；周末不算工作日", async () => {
     await 一条待裁("2026-12-01T10:00:00");
-    await 钟上待裁提醒(北京("2026-12-08T07:59:00"));
+    await 钟上待裁提醒(北京("2026-12-09T07:59:00"));
     expect(await 提醒们(老板.id)).toHaveLength(0);
-    await 钟上待裁提醒(北京("2026-12-08T08:00:00"));
-    await 钟上待裁提醒(北京("2026-12-08T09:00:00"));
+    await 钟上待裁提醒(北京("2026-12-09T08:00:00"));
+    await 钟上待裁提醒(北京("2026-12-09T09:00:00"));
     await setSetting("entObjRemindJudgeDay", "");
-    await 钟上待裁提醒(北京("2026-12-08T10:00:00"));
+    await 钟上待裁提醒(北京("2026-12-09T10:00:00"));
     expect(await 提醒们(老板.id)).toHaveLength(1);
   });
 
   it("跨法定节假日顺延：国庆放假不算，调休上班的周六算", async () => {
-    // 2026-09-28 周一提；9-29=1，9-30=2，10-1~7 放假，10-8=3，10-9=4，10-10（周六调休上班）=5
+    // 2026-09-28 周一提；9-29=1，9-30=2，10-1~7 放假，10-8=3，10-9=4，10-10（周六调休上班）=5，10-11 周日不算，10-12 = 6 发
     await 一条待裁("2026-09-28T10:00:00");
     await 钟上待裁提醒(北京("2026-10-05T09:00:00"));
-    await 钟上待裁提醒(北京("2026-10-09T09:00:00"));
-    expect(await 提醒们(老板.id)).toHaveLength(0);
     await 钟上待裁提醒(北京("2026-10-10T09:00:00"));
+    await 钟上待裁提醒(北京("2026-10-11T09:00:00"));
+    expect(await 提醒们(老板.id)).toHaveLength(0);
+    await 钟上待裁提醒(北京("2026-10-12T09:00:00"));
     expect(await 提醒们(老板.id)).toHaveLength(1);
   });
 
@@ -131,7 +134,7 @@ describe("待裁定满 5 个工作日提醒（每满 5 个再提醒，带第 N �
     当(老板);
     const r = await 裁定(老板, 行.id, "维持", "说明");
     expect(r.ok).toBe(true);
-    await 钟上待裁提醒(北京("2026-12-08T09:00:00"));
+    await 钟上待裁提醒(北京("2026-12-09T09:00:00"));
     expect(await 提醒们(老板.id)).toHaveLength(0);
   });
 
@@ -140,15 +143,18 @@ describe("待裁定满 5 个工作日提醒（每满 5 个再提醒，带第 N �
     const 停 = await 建("stopped", "ADMIN");
     await prisma.user.update({ where: { id: 停.id }, data: { active: false } });
     await prisma.entMember.create({ data: { userId: 停.id, bizRole: "director" } });
-    await 一条待裁("2026-12-01T10:00:00");
-    await 钟上待裁提醒(北京("2026-12-08T09:00:00"));
+    const 行 = await 一条待裁("2026-12-01T10:00:00");
+    await 钟上待裁提醒(北京("2026-12-09T09:00:00"));
     for (const p of [线总管, 老板, 副管]) expect(await 提醒们(p.id)).toHaveLength(1);
     for (const p of [停, 销售, 接手, 组长, 同事]) expect(await 提醒们(p.id)).toHaveLength(0);
+    // 链接：裁定人落「待我裁定」，只是系统管理员的落「全部待裁定」
+    expect((await 提醒们(线总管.id))[0].link).toBe(`/objections?j=${行.id}`);
+    for (const p of [老板, 副管]) expect((await 提醒们(p.id))[0].link).toBe(`/objections?tab=all&j=${行.id}`);
   });
 
   it("钟停了几天再起：只补当下该发的那一次，不一口气补 1..N", async () => {
     await 一条待裁("2026-12-01T10:00:00");
-    await 钟上待裁提醒(北京("2026-12-22T09:00:00"));
+    await 钟上待裁提醒(北京("2026-12-23T09:00:00"));
     const n = await 提醒们(老板.id);
     expect(n).toHaveLength(1);
     expect(n[0].title).toContain("第 3 次提醒");
@@ -158,49 +164,62 @@ describe("待裁定满 5 个工作日提醒（每满 5 个再提醒，带第 N �
 describe("待手工退回超过 3 个工作日没处理：提醒系统管理员（每条一次、同天合成一条）", () => {
   it("裁定后第 3 个工作日到点发；前一天不发；只发在职系统管理员", async () => {
     await prisma.user.update({ where: { id: 副管.id }, data: { role: "ADMIN" } });
-    await 一条待手工退回("2026-12-01T10:00:00"); // 12-02,03,04 = 3 → 12-04 周五到点
-    await 钟上手工退回提醒(北京("2026-12-03T09:00:00"));
-    expect(await 退回提醒们(老板.id)).toHaveLength(0);
+    await 一条待手工退回("2026-12-01T10:00:00"); // 12-02,03,04 = 3（满 3 个整工作日），12-05/06 周末，12-07（周一）= 第 4 个，到点
     await 钟上手工退回提醒(北京("2026-12-04T09:00:00"));
+    await 钟上手工退回提醒(北京("2026-12-05T09:00:00"));
+    expect(await 退回提醒们(老板.id)).toHaveLength(0);
+    await 钟上手工退回提醒(北京("2026-12-07T09:00:00"));
     for (const p of [老板, 副管]) expect(await 退回提醒们(p.id)).toHaveLength(1);
+    expect((await 退回提醒们(老板.id))[0].link).toBe("/objections?tab=hand");
     for (const p of [线总管, 组长, 销售, 接手]) expect(await 退回提醒们(p.id)).toHaveLength(0);
   });
 
   it("同一天到点的两条合成一条；第二天不重发同一条", async () => {
     await 一条待手工退回("2026-12-01T10:00:00");
     await 一条待手工退回("2026-12-01T15:00:00");
-    await 钟上手工退回提醒(北京("2026-12-04T09:00:00"));
+    await 钟上手工退回提醒(北京("2026-12-07T09:00:00"));
     const n = await 退回提醒们(老板.id);
     expect(n).toHaveLength(1);
     expect(n[0].title).toContain("2 条");
-    await 钟上手工退回提醒(北京("2026-12-07T09:00:00"));
+    expect(n[0].link).toBe("/objections?tab=hand");
     await 钟上手工退回提醒(北京("2026-12-08T09:00:00"));
+    await 钟上手工退回提醒(北京("2026-12-09T09:00:00"));
     expect(await 退回提醒们(老板.id)).toHaveLength(1);
   });
 
   it("不同天到点的各发一条，一天最多一条", async () => {
     await 一条待手工退回("2026-12-01T10:00:00");
-    await 一条待手工退回("2026-12-02T10:00:00"); // 到点 12-07
-    await 钟上手工退回提醒(北京("2026-12-04T09:00:00"));
-    await 钟上手工退回提醒(北京("2026-12-04T10:00:00"));
+    await 一条待手工退回("2026-12-02T10:00:00"); // 到点 12-08
     await 钟上手工退回提醒(北京("2026-12-07T09:00:00"));
+    await 钟上手工退回提醒(北京("2026-12-07T10:00:00"));
+    await 钟上手工退回提醒(北京("2026-12-08T09:00:00"));
     expect(await 退回提醒们(老板.id)).toHaveLength(2);
   });
 
   it("到点前已处理掉（不再是待手工退回）不发；08:00 前不发", async () => {
     const 行 = await 一条待手工退回("2026-12-01T10:00:00");
-    await 钟上手工退回提醒(北京("2026-12-04T07:59:00"));
+    await 钟上手工退回提醒(北京("2026-12-07T07:59:00"));
     expect(await 退回提醒们(老板.id)).toHaveLength(0);
     await prisma.entTransferObjection.update({ where: { id: 行.id }, data: { status: "已退回" } });
-    await 钟上手工退回提醒(北京("2026-12-04T09:00:00"));
+    await 钟上手工退回提醒(北京("2026-12-07T09:00:00"));
     expect(await 退回提醒们(老板.id)).toHaveLength(0);
   });
 
+  it("到点那天没有在职系统管理员：不写水位，有人以后还能提醒", async () => {
+    await 一条待手工退回("2026-12-01T10:00:00");
+    await prisma.user.updateMany({ where: { id: { in: [老板.id, 副管.id, 线总管.id] } }, data: { active: false } });
+    await 钟上手工退回提醒(北京("2026-12-07T09:00:00"));
+    await prisma.user.update({ where: { id: 老板.id }, data: { active: true } });
+    await 钟上手工退回提醒(北京("2026-12-07T10:00:00"));
+    expect(await 退回提醒们(老板.id)).toHaveLength(1);
+  });
+
   it("跨节假日顺延", async () => {
-    await 一条待手工退回("2026-09-30T10:00:00"); // 10-1~7 放假，10-8=1，10-9=2，10-10（调休上班）=3
-    await 钟上手工退回提醒(北京("2026-10-09T09:00:00"));
-    expect(await 退回提醒们(老板.id)).toHaveLength(0);
+    await 一条待手工退回("2026-09-30T10:00:00"); // 10-1~7 放假，10-8=1，10-9=2，10-10（调休上班）=3，10-11 周日不算，10-12 = 第 4 个，到点
     await 钟上手工退回提醒(北京("2026-10-10T09:00:00"));
+    await 钟上手工退回提醒(北京("2026-10-11T09:00:00"));
+    expect(await 退回提醒们(老板.id)).toHaveLength(0);
+    await 钟上手工退回提醒(北京("2026-10-12T09:00:00"));
     expect(await 退回提醒们(老板.id)).toHaveLength(1);
   });
 });
