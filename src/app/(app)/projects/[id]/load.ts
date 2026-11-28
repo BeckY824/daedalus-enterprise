@@ -17,6 +17,7 @@ import { 页面可选项, 预读页面字典, 页面字典, 可选名们, 已签
 import { 权限组织 } from "@/lib/enterprise/org";
 import { 能看项目, 能转让项目, 能删除, 能新建和领取, 权限项目选, 是系统管理员, 只读角色, 只看的人, type 权限项目 } from "@/lib/enterprise/permissions";
 import { 项目来历 } from "@/lib/enterprise/customer-merge";
+import { 合并异议of } from "@/lib/enterprise/objection";
 import { 线索流失细分 } from "@/lib/enterprise/lost-split";
 import { 看全部 } from "@/lib/team-scope";
 import { 可能是确认人, 跨并状态, 算确认人, 是确认人of } from "@/lib/enterprise/project-merge-request";
@@ -566,7 +567,10 @@ async function 流失细分of(p: { id: string; result: string | null; closedAt: 
  *  谁看都一样，系统管理员也不能代撤。没权的其他原因（不是合并的人、转给了别人……）照旧不写） */
 async function 已并入of(me: SessionUser, projectId: string): Promise<项目详情["已并入"]> {
   const m = (await 项目的合并单(prisma, projectId, me)).find((x) => x.方向 === "并出去" && x.status === "已合并");
-  return m ? { mergeId: m.id, 到id: m.到id, 到: m.到, at: m.at, 谁: m.谁, 能撤: m.能撤, ...(m.过期 ? { 过期话: 项目合并撤回过期话 } : {}) } : null;
+  if (!m) return null;
+  // 跨负责人合并：被并走项目的原负责人（本人）有异议入口 / 异议时，那一行再带一句（只读自己的，别人拿到 null）
+  const 异议 = await 合并异议of(me.id, m.id).catch(() => null);
+  return { mergeId: m.id, 到id: m.到id, 到: m.到, at: m.at, 谁: m.谁, 能撤: m.能撤, ...(m.过期 ? { 过期话: 项目合并撤回过期话 } : {}), ...(异议 ? { 异议 } : {}) };
 }
 
 /** 「并进另一个项目」那一项：null = 不摆；灰 = 摆着灰、悬停写原因（候选同 能并进的项目：同客户、同负责人、在推的；灰着列的候选也算有，框里写原因） */

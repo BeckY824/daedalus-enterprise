@@ -117,6 +117,16 @@ export async function 记合并异议留痕(user: { id: string; name: string }, 
   }
 }
 
+/** 项目详情「已并入」行要的：我（被并走项目的原负责人）对这次合并有没有异议入口 / 异议；没有（不是原负责人、同负责人合并、已作废）给 null */
+export type 合并异议口 = { id: string; 状态: string; 过期: boolean; 剩几天: number };
+export async function 合并异议of(userId: string, mergeId: string, 现在: Date = new Date()): Promise<合并异议口 | null> {
+  const r = await prisma.entTransferObjection.findFirst({
+    where: { mergeId, kind: 合并异议类, objectorUserId: userId, status: { not: 异议已撤销 } },
+    select: { id: true, status: true, expiresAt: true },
+  });
+  return r ? { id: r.id, 状态: r.status, 过期: r.expiresAt < 现在, 剩几天: 剩几天(r.expiresAt, 现在) } : null;
+}
+
 export type 异议行 = {
   id: string; 类别: "客户" | "项目" | "项目合并"; 对象: string; 状态: string; 操作人: string; 新负责人: string;
   转让于: string; 截止: string; 剩几天: number; 过期: boolean;

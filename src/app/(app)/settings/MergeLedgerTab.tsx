@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Input, Table, Tag } from "antd";
+import { Alert, Button, Input, Select, Table, Tag } from "antd";
 import DatePicker from "@/components/BusinessDatePicker";
 import type { Dayjs } from "dayjs";
 import { dayjs } from "@/lib/utils";
@@ -23,11 +23,14 @@ import type { 查合并台账, 导出合并台账Action } from "./merge-ledger-a
 type 段 = [Dayjs | null, Dayjs | null] | null;
 const 时 = (v: string | null) => (v ? dayjs(v).format("YYYY-MM-DD HH:mm") : "");
 /** 只传北京日期串：选择器回来的是业务钟实例（BusinessDatePicker），预设也是业务钟，直接 format；边界由服务端换成时刻 */
-const 条件of = (范围: 段, 词: string): 台账条件 => ({
+const 条件of = (范围: 段, 词: string, 类型: string = ""): 台账条件 => ({
   起: 范围?.[0] ? 范围[0].format("YYYY-MM-DD") : null,
   止: 范围?.[1] ? 范围[1].format("YYYY-MM-DD") : null,
   词: 词.trim() || null,
+  类型: 类型 || null,
 });
+/** 类型筛选（服务端 台账类型们 的同一组值；客户端组件不引服务端模块，这里照抄）：空 = 全部 */
+const 类型选项 = [{ value: "", label: "全部类型" }, { value: "同负责人", label: "同负责人" }, { value: "跨负责人", label: "跨负责人" }, { value: "公海客户", label: "公海客户" }];
 /** 周一对账用：本周、上周都从周一算（不跟 dayjs 语言包的周起点走） */
 function 周一(d: Dayjs) {
   return d.subtract((d.day() + 6) % 7, "day").startOf("day");
@@ -41,10 +44,12 @@ const 预设 = () => {
   ];
 };
 
-const 表头 = ["类型", "合并时间", "发起人", "客户", "留下项目", "被并项目", "留下项目负责人", "被并项目负责人", "开票自查勾选人", "开票自查时间", "状态", "撤回人", "撤回时间"] as const;
+const 表头 = ["类型", "合并时间", "发起人", "客户", "留下项目", "被并项目", "留下项目负责人", "被并项目负责人", "开票自查勾选人", "开票自查时间", "状态", "撤回人", "撤回时间", "撤回路径", "发起方式", "申请时间", "确认人", "确认人层级", "30 天截止"] as const;
+/** 类型一格：跨负责人合并写「跨负责人项目合并」，同负责人和老单仍写「项目合并」 */
+const 类型名 = (r: 台账行) => (r.类型 === "项目合并" && r.子类 === "跨负责人" ? "跨负责人项目合并" : r.类型);
 /** 被并那一格：项目合并是被并项目名；公海客户合并是被并客户（有编号带上 NO.xxxxx），台账上看得出并掉的是哪家 */
 const 被并名 = (r: 台账行) => (r.类型 === "公海客户合并" ? [r.被并编号, r.被并客户].filter(Boolean).join(" ") : r.被并项目);
-const 成格 = (r: 台账行) => [r.类型, 时(r.at), r.发起人, r.客户, r.留下项目, 被并名(r), r.留下负责人, r.被并负责人, r.自查人, 时(r.自查时间), r.状态, r.撤回人, 时(r.撤回时间)];
+const 成格 = (r: 台账行) => [类型名(r), 时(r.at), r.发起人, r.客户, r.留下项目, 被并名(r), r.留下负责人, r.被并负责人, r.自查人, 时(r.自查时间), r.状态, r.撤回人, 时(r.撤回时间), r.撤回路径 ?? "", r.发起方式 ?? "", 时(r.申请时间 ?? null), r.确认人 ?? "", r.确认人层级 ?? "", 时(r.三十天截止 ?? null)];
 
 /** 一格：一行、放不下省略号，悬停看全文 */
 const 一行 = (v: string) => <span className="ml-cell" title={v}>{v || "—"}</span>;
@@ -53,19 +58,20 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
   const [就地, 提示条] = useSettingsNote();
   const [范围, set范围] = useState<段>(null);
   const [词, set词] = useState("");
+  const [类型, set类型] = useState("");
   const [行, set行] = useState<台账行[] | null>(null);
   const [截断, set截断] = useState(false);
   const [读不到, set读不到] = useState<string | null>(null);
   const [导着, set导着] = useState(false);
   // 列表上次真正查过的条件（拉 成功后写入）：导出用它，不用输入框里还没搜的词
-  const [已查, set已查] = useState<台账条件>({ 起: null, 止: null, 词: null });
+  const [已查, set已查] = useState<台账条件>({ 起: null, 止: null, 词: null, 类型: null });
 
   // 初次进来 行 本来就是 null（转圈）；用户改条件时先清成 null 再查，见 重拉
   // 请求号：只认最后一次发出的结果，早发的后回来直接丢（读写 ref 都放在 then 回调里）
   const 请求号 = useRef(0);
   const 末发 = useRef(JSON.stringify(条件of(null, "")));
-  const 拉 = (范: 段, w: string) => {
-    const 条件 = 条件of(范, w);
+  const 拉 = (范: 段, w: string, 型 = "") => {
+    const 条件 = 条件of(范, w, 型);
     const 号 = (请求号.current += 1);
     return 查(条件)
       .catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "合并台账没读出来") }))
@@ -86,10 +92,10 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
     void 拉(null, "");
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 只在进来时拉一次，之后由 重拉 按用户改的条件查
   }, []);
-  const 重拉 = (范: 段, w: string) => {
-    末发.current = JSON.stringify(条件of(范, w));
+  const 重拉 = (范: 段, w: string, 型 = 类型) => {
+    末发.current = JSON.stringify(条件of(范, w, 型));
     set行(null);
-    void 拉(范, w);
+    void 拉(范, w, 型);
   };
   // 日期范围：rc-picker 改了结束日期后焦点会跳回开始框、弹层不收，onChange 要等弹层关了才来，
   // 所以范围凑齐（或清空）就由 onCalendarChange 立刻发；onChange 再来一次同条件的不重发
@@ -97,7 +103,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
     const 新 = v ?? null;
     if (新 && (!新[0] || !新[1])) return;
     set范围(新);
-    if (JSON.stringify(条件of(新, 词)) !== 末发.current) 重拉(新, 词);
+    if (JSON.stringify(条件of(新, 词, 类型)) !== 末发.current) 重拉(新, 词);
   };
 
   async function 导() {
@@ -105,7 +111,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
     try {
       const r = await 导出(已查).catch((e: unknown) => ({ ok: false as const, error: 出错原话(e, "导出没能完成，请重试") }));
       if (!r.ok) return void 就地.error(r.error);
-      const bytes = 写xlsx([{ 名: "合并台账", 表头, 行: r.行们.map(成格), 列宽: [12, 17, 10, 24, 24, 30, 12, 12, 12, 17, 8, 10, 17] }]);
+      const bytes = 写xlsx([{ 名: "合并台账", 表头, 行: r.行们.map(成格), 列宽: [16, 17, 10, 24, 24, 30, 12, 12, 12, 17, 8, 10, 17, 14, 10, 17, 10, 10, 17] }]);
       const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
       const a = document.createElement("a");
       a.href = url;
@@ -142,10 +148,17 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
           onChange={(v) => 改范围(v as 段)}
           onCalendarChange={(v) => 改范围(v as 段)}
         />
+        <Select
+          aria-label="按类型筛"
+          className="ml-type"
+          value={类型}
+          options={类型选项}
+          onChange={(v: string) => { set类型(v); 重拉(范围, 词, v); }}
+        />
         <Input.Search
-          aria-label="按客户名或项目名搜"
+          aria-label="按客户名、项目名、确认人或原负责人搜"
           className="ml-search"
-          placeholder="客户名 / 项目名"
+          placeholder="客户 / 项目 / 确认人 / 原负责人"
           allowClear
           value={词}
           onChange={(e) => {
@@ -169,7 +182,7 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
         loading={行 === null}
         dataSource={行 ?? []}
         tableLayout="fixed"
-        scroll={{ x: 1482 }}
+        scroll={{ x: 2100 }}
         pagination={{ pageSize: 20, showSizeChanger: false, hideOnSinglePage: true }}
         locale={{
           emptyText: 读不到 ? (
@@ -177,10 +190,10 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
               {读不到}
               <Button type="link" size="small" onClick={() => 重拉(范围, 词)}>重试</Button>
             </span>
-          ) : 范围 || 词 ? "这个范围里没有合并单" : "还没有项目合并或公海客户合并",
+          ) : 范围 || 词 || 类型 ? "这个范围里没有合并单" : "还没有项目合并或公海客户合并",
         }}
         columns={[
-          { title: "类型", dataIndex: "类型", width: 96, ellipsis: true, render: 一行 },
+          { title: "类型", key: "类型", width: 130, ellipsis: true, render: (_: unknown, r) => 一行(类型名(r)) },
           { title: "合并时间", dataIndex: "at", width: 140, ellipsis: true, render: (v: string) => 一行(时(v)) },
           { title: "发起人", dataIndex: "发起人", width: 96, ellipsis: true, render: 一行 },
           {
@@ -203,6 +216,14 @@ export default function MergeLedgerTab({ 查, 导出 }: { 查: typeof 查合并�
             title: "撤回", key: "撤回", width: 170, ellipsis: true,
             render: (_: unknown, r) => 一行([r.撤回人, 时(r.撤回时间)].filter(Boolean).join(" · ")),
           },
+          { title: "撤回路径", dataIndex: "撤回路径", width: 110, ellipsis: true, render: (v?: string) => 一行(v ?? "") },
+          { title: "发起方式", dataIndex: "发起方式", width: 96, ellipsis: true, render: (v?: string) => 一行(v ?? "") },
+          { title: "申请时间", dataIndex: "申请时间", width: 140, ellipsis: true, render: (v?: string | null) => 一行(时(v ?? null)) },
+          {
+            title: "确认人", key: "确认人", width: 150, ellipsis: true,
+            render: (_: unknown, r) => 一行([r.确认人, r.确认人层级].filter(Boolean).join(" · ")),
+          },
+          { title: "30 天截止", dataIndex: "三十天截止", width: 140, ellipsis: true, render: (v?: string | null) => 一行(时(v ?? null)) },
         ]}
       />
     </div>

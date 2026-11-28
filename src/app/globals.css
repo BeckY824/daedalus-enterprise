@@ -7096,6 +7096,8 @@ button.proj-miss-chip { cursor: pointer; }
 
 /* 转让异议（12-22 第 2 阶段 A 段，/objections）：一行一条，名字长了一行省略号、悬停看全 */
 .obj-card { margin-bottom: 16px; }
+.obj-kind { margin-bottom: 12px; max-width: 100%; }
+@media (max-width: 767px) { .obj-kind { display: flex; } .obj-kind .ant-segmented-item { flex: 1 1 0; min-height: var(--hit-touch); } }
 .obj-row { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border, rgba(128, 128, 128, 0.15)); }
 .obj-row:last-child { border-bottom: 0; }
 .obj-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }

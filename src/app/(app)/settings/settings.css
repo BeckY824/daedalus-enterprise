@@ -191,12 +191,13 @@
 .ml-tip { margin-bottom: 14px; }
 .ml-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2, 8px); margin-bottom: 12px; min-width: 0; }
 .ml-range { flex: 0 1 260px; min-width: 0; }
+.ml-type { flex: 0 1 130px; min-width: 0; }
 .ml-search { flex: 1 1 180px; min-width: 0; max-width: 280px; }
 .ml-count { color: var(--ink-soft); font-size: var(--fs-note); min-width: 0; overflow-wrap: anywhere; }
 .ml-cell { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ml-tag { margin: 0; }
 @media (max-width: 767px) {
-  .ml-range, .ml-search { flex-basis: 100%; max-width: none; }
+  .ml-range, .ml-search, .ml-type { flex-basis: 100%; max-width: none; }
 }
 /* 日期范围弹层双月并排约 780 宽：窄屏档（≤ 1199）有左栏 220，弹层靠右对齐会冒出视口左边（1024/1199 实测 left -33），改成上下两个月、预设排在上面 */
 @media (max-width: 1199px) {

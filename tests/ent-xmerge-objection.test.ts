@@ -19,7 +19,7 @@ import { 忘掉企业版范围 } from "@/lib/enterprise/visibility";
 import { 等通知推完 } from "@/lib/enterprise/notify";
 import { 撤回项目合并, 执行项目合并, 项目合并通知种类 } from "@/lib/enterprise/project-merge";
 import { 发起跨负责人并, 处理跨并申请 } from "@/lib/enterprise/project-merge-request";
-import { 提异议, 我的异议 } from "@/lib/enterprise/objection";
+import { 提异议, 我的异议, 合并异议of } from "@/lib/enterprise/objection";
 import { 裁定, 标记已手工退回, 待我裁定, 待手工退回们, 特殊裁定台账 } from "@/lib/enterprise/objection-judge";
 import { 客户有未裁定异议, 项目有未裁定异议, 读全部待裁定行, 挡着项目的异议 } from "@/lib/enterprise/objection-guard";
 import { 读合并台账, 导出合并台账 } from "@/lib/enterprise/merge-ledger";
@@ -212,6 +212,23 @@ describe("阶段 4 ②③：提异议、裁定人", () => {
     const { 行 } = await 直接并();
     const { 能提 } = await 我的异议(丙.id, 周五下午);
     expect(能提.map((x) => [x.id, x.类别, x.对象])).toEqual([[行!.id, "项目合并", expect.any(String)]]);
+  });
+});
+
+describe("单 2：项目详情「已并入」行要的 合并异议of", () => {
+  it("原负责人本人读到入口（可提 / 剩几天），提了变待裁定；别人和撤回后（已撤销）读不到", async () => {
+    const { mergeId, 行 } = await 直接并();
+    expect(await 合并异议of(丙.id, mergeId, 周五下午)).toMatchObject({ id: 行!.id, 状态: "可提", 过期: false });
+    expect(await 合并异议of(乙.id, mergeId, 周五下午)).toBeNull();
+    expect(await 合并异议of(丙.id, "不存在的单", 周五下午)).toBeNull();
+    await 提(行!.id);
+    expect(await 合并异议of(丙.id, mergeId, 周五下午)).toMatchObject({ 状态: "待裁定" });
+    expect((await 合并异议of(丙.id, mergeId, new Date(周五下午.getTime() + 40 * 天)))).toMatchObject({ 状态: "待裁定", 过期: true });
+  });
+  it("合并被撤回后入口作废：读不到", async () => {
+    const { mergeId } = await 直接并();
+    await raw.entTransferObjection.updateMany({ where: { mergeId }, data: { status: "已撤销" } });
+    expect(await 合并异议of(丙.id, mergeId, 周五下午)).toBeNull();
   });
 });
 

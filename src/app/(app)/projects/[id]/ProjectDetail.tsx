@@ -153,7 +153,7 @@ export type 项目详情 = {
   /** 这个项目是怎么到这位客户名下的：「从 NO.xxxxx「B」并入」（合并客户 / 项目换客户，customer-merge.ts 项目来历）；没有 = 不摆那一行 */
   并入自?: { 话: string; 怎么来: "合并客户" | "项目换客户"; at: string } | null;
   /** 这个项目并进了另一个项目（合并客户第二批 2a，load.ts 已并入of：没撤回的项目合并单，过了 30 天也给）：顶上「已并入 → 留下的项目」那一行（MergedIntoLine，页面当槽递进来）；留下的项目不给。过期话 = 过了撤回期限（谁看都带，系统管理员也不能代撤），那一行在按钮的位置写这句 */
-  已并入?: { mergeId: string; 到id: string; 到: string; at: string; 谁: string; 能撤: boolean; 过期话?: string } | null;
+  已并入?: { mergeId: string; 到id: string; 到: string; at: string; 谁: string; 能撤: boolean; 过期话?: string; 异议?: { id: string; 状态: string; 过期: boolean; 剩几天: number } | null } | null;
   /** 企业版结局线索流失、归项目合并 / 重复线索的（P-界面-66，load.ts 现算 线索流失细分，过了 30 天也给）：结局写「线索流失・项目合并」/「线索流失・重复线索」；其他线索流失不带 */
   流失细分?: "项目合并" | "重复线索";
   /** 企业版后售培育（P-界面-63，after-sale.ts）：停在潜客培育、客户名下有交付结清的；进程条第一格、「现在在」写后售培育。存的仍是潜客培育，不是 = 不带 */

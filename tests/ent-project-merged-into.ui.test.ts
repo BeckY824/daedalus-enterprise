@@ -149,3 +149,35 @@ it("撤回留下没还原的：原处列出几条、各是为什么（同第一�
     expect(await 拦.page.getByTestId("project-merged-into-done").count()).toBe(0);
   } finally { await 拦.page.close(); }
 }, 60_000);
+
+for (const 宽 of [1280, 390]) {
+  it(`${宽}：跨负责人合并异议那一行（原负责人本人）：可提写还剩几天 + 提异议链到 /objections?o=；待裁定 / 已裁定只写状态；过期没提和别人都不摆；一行省略、不横滚、手机点击区 ≥ 44`, async () => {
+    const 可 = await open(宽, 单({ 异议: { id: "ob1", 状态: "可提", 过期: false, 剩几天: 27 } }));
+    try {
+      const 行 = 可.page.getByTestId("project-merged-objection");
+      await 行.waitFor();
+      expect(await 行.innerText()).toContain("还剩 27 天可以提异议");
+      const 去 = 可.page.getByTestId("project-merged-objection-go");
+      expect(await 去.getAttribute("href")).toBe("/objections?o=ob1");
+      if (宽 < 768) expect((await 去.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+      expect(await 可.page.getByTestId("project-merged-objection").locator(".mrg-into-t").evaluate((el) => getComputedStyle(el).whiteSpace)).toBe("nowrap");
+      expect(await 横滚(可.page)).toBe(false);
+      expect(可.错).toEqual([]);
+    } finally { await 可.page.close(); }
+    for (const [状态, 话] of [["待裁定", "已提，等裁定"], ["因撤回终止", "合并异议：因撤回终止"]] as const) {
+      const 他 = await open(宽, 单({ 异议: { id: "ob1", 状态, 过期: false, 剩几天: 3 } }));
+      try {
+        expect(await 他.page.getByTestId("project-merged-objection").innerText()).toContain(话);
+        expect(await 他.page.getByTestId("project-merged-objection-go").count()).toBe(0);
+        expect(await 他.page.getByTestId("project-merged-objection-see").getAttribute("href")).toBe("/objections");
+      } finally { await 他.page.close(); }
+    }
+    for (const 异议 of [undefined, null, { id: "ob1", 状态: "可提", 过期: true, 剩几天: 0 }]) {
+      const 无 = await open(宽, 单(异议 === undefined ? {} : { 异议 }));
+      try {
+        await 无.page.getByTestId("project-merged-into").waitFor();
+        expect(await 无.page.getByTestId("project-merged-objection").count()).toBe(0);
+      } finally { await 无.page.close(); }
+    }
+  }, 60_000);
+}
